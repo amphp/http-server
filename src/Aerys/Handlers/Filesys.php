@@ -6,11 +6,16 @@ use Aerys\Server;
 
 class Filesys {
     
+    const ETAG_NONE = 0;
+    const ETAG_SIZE = 1;
+    const ETAG_INODE = 2;
+    const ETAG_ALL = 3;
+    
     private $docRoot;
     private $indexes = ['index.html', 'index.htm'];
     private $staleAfter = 60;
-    private $defaultType = 'text/plain';
     private $customTypes = [];
+    private $eTagMode = self::ETAG_ALL;
     
     private static $mimeTypes = [
         "323"       => "text/h323",
@@ -206,23 +211,37 @@ class Filesys {
         "zip"       => "application/zip"
     ];
     
-    public function __construct($docRoot, array $indexes = NULL, array $mimeTypes = []) {
-        if (!(is_readable($docRoot) && is_dir($docRoot))) {
-            throw new Exception;
+    /**
+     * @todo determine appropriate exception to throw on an unreadable $docRoot
+     */
+    function __construct($docRoot) {
+        if (is_readable($docRoot) && is_dir($docRoot)) {
+            $this->docRoot = rtrim($docRoot, '/');
+        } else {
+            throw new \Exception;
         }
-        
-        $this->docRoot = rtrim($docRoot, '/');
-        if (NULL !== $indexes) {
-            $this->indexes = $indexes;
-        }
-        
+    }
+    
+    function setIndexes(array $indexes) {
+        $this->indexes = $indexes;
+    }
+    
+    function setTypes(array $mimeTypes) {
         foreach ($mimeTypes as $ext => $type) {
             $ext = strtolower(ltrim($ext, '.'));
             $this->customTypes[$ext] = $type;
         }
     }
     
-    public function __invoke(array $asgiEnv, $requestId) {
+    function setEtagMode($mode) {
+        $this->eTagMode = (int) $mode;
+    }
+    
+    function setStaleAfter($seconds) {
+        $this->staleAfter = (int) $seconds;
+    }
+    
+    function __invoke(array $asgiEnv) {
         $requestUri = ($asgiEnv['PATH_INFO'] . $asgiEnv['SCRIPT_NAME']) ?: '/';
         $filePath = $this->docRoot . $requestUri;
         $fileExists = file_exists($filePath);
@@ -251,9 +270,6 @@ class Filesys {
         return NULL;
     }
     
-    /**
-     * @todo add option setters to affect how/if ETag headers are generated
-     */
     private function processExistingFile($filePath, array $asgiEnv) {
         $requestMethod = $asgiEnv['REQUEST_METHOD'];
         
@@ -261,10 +277,9 @@ class Filesys {
             return $this->methodNotAllowed();
         }
         
-        $inode = fileinode($filePath);
         $mTime = filemtime($filePath);
         $fileSize = filesize($filePath);
-        $eTag = md5($inode . $mTime . $fileSize);
+        $eTag = !$this->eTagMode ? NULL : $this->getEtag($mTime, $fileSize);
         
         if (isset($asgiEnv['HTTP_IF_NONE_MATCH']) && $eTag == $asgiEnv['HTTP_IF_NONE_MATCH']) {
             return $this->notModified();
@@ -279,22 +294,43 @@ class Filesys {
             $headers = [
                 'Date' => date(Server::HTTP_DATE, $now),
                 'Expires' => date(Server::HTTP_DATE, $now + $this->staleAfter),
-                'Content-Type' => $this->getMimeType($filePath),
                 'Content-Length' => $fileSize,
-                'ETag' => $eTag,
                 'Last-Modified' => date('D, d M Y H:i:s T', $mTime)
             ];
+            
+            if ($eTag) {
+                $headers['ETag'] = $eTag;
+            }
+            
+            if ($mimeType = $this->getMimeType($filePath)) {
+                $headers['Content-Type'] = $mimeType;
+            }
+            
             $body = ($requestMethod == 'GET') ? fopen($filePath, 'r') : NULL;
             
             return [$status, $headers, $body];
         }
     }
     
+    private function getEtag($mTime, $fileSize) {
+        $hashable = $mTime;
+        
+        if ($this->eTagMode & self::ETAG_SIZE) {
+            $hashable .= $fileSize;
+        }
+        
+        if ($this->eTagMode & self::ETAG_INODE) {
+            $hashable .= fileinode($filePath);
+        }
+        
+        return md5($hashable);
+    }
+    
     private function getMimeType($filePath) {
         $ext = pathinfo($filePath, PATHINFO_EXTENSION);
         
         if ($ext === '') {
-            return $this->defaultType;
+            return NULL;
         }
         
         $ext = strtolower($ext);
@@ -304,7 +340,7 @@ class Filesys {
         } elseif (isset(self::$mimeTypes[$ext])) {
             return self::$mimeTypes[$ext];
         } else {
-            return $this->defaultType;
+            return NULL;
         }
     }
     

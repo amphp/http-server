@@ -82,21 +82,22 @@ class ServerFactory {
         $tlsDefs = [];
         
         foreach ($tlsConf as $address => $tlsDef) {
-            if (!(isset($tlsDef['localCertFile'])
-                && isset($tlsDef['certPassphrase'])
-                && isset($tlsDef['allowSelfSigned'])
-                && isset($tlsDef['verifyPeer'])
-            )) {
+            if (!(isset($tlsDef['localCertFile']) && isset($tlsDef['certPassphrase']))) {
                 throw new \Exception;
             }
             
-            $tlsDefs[] = new TlsDefinition(
-                $address,
+            $localCertFile = $tlsDef['localCertFile'];
+            $certPassphrase = $tlsDef['certPassphrase'];
+            
+            unset(
                 $tlsDef['localCertFile'],
-                $tlsDef['certPassphrase'],
-                $tlsDef['allowSelfSigned'],
-                $tlsDef['verifyPeer']
+                $tlsDef['certPassphrase']
             );
+            
+            $definition = new TlsDefinition($address, $localCertFile, $certPassphrase);
+            $definition->setOptions($tlsDef);
+            
+            $tlsDefs[] = $definition;
         }
         
         return $tlsDefs;

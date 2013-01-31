@@ -8,38 +8,47 @@ class TlsDefinition {
     private $port;
     private $localCertFile;
     private $certPassphrase;
-    private $allowSelfSigned;
-    private $verifyPeer;
-    private $cyptoType;
+    private $allowSelfSigned = FALSE;
+    private $verifyPeer = FALSE;
+    private $ciphers = 'RC4-SHA:HIGH:!MD5:!aNULL:!EDH';
+    private $disableCompression = TRUE;
+    private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER;
     
-    /**
-     * STREAM_CRYPTO_METHOD_SSLv2_SERVER
-     * STREAM_CRYPTO_METHOD_SSLv3_SERVER
-     * STREAM_CRYPTO_METHOD_SSLv23_SERVER
-     * STREAM_CRYPTO_METHOD_TLS_SERVER
-     */
-    function __construct($address, $localCertFile, $certPassphrase, $allowSelfSigned, $verifyPeer, $cyptoType = NULL) {
+    function __construct($address, $localCertFile, $certPassphrase) {
         $this->parseAddress($address);
-        
         $this->localCertFile = $localCertFile;
         $this->certPassphrase = $certPassphrase;
-        $this->allowSelfSigned = $allowSelfSigned;
-        $this->verifyPeer = $verifyPeer;
-        $this->cryptoType = $cyptoType ?: STREAM_CRYPTO_METHOD_TLS_SERVER;
     }
     
-    /**
-     * @todo determine appropriate exception to throw on bad address
-     */
     private function parseAddress($address) {
         if (FALSE === strpos($address, ':')) {
-            throw new \Exception;
+            throw new \InvalidArgumentException;
         }
         
         list($interface, $port) = explode(':', $address);
         
         $this->interface = ($interface == '*') ? '0.0.0.0' : $interface;
         $this->port = (int) $port;
+    }
+    
+    function setOptions(array $options) {
+        $available = [
+            'allowSelfSigned',
+            'verifyPeer',
+            'ciphers',
+            'disableCompression',
+            'cryptoType'
+        ];
+        
+        foreach ($options as $key => $value) {
+            if (in_array($key, $available)) {
+                $this->$key = $available;
+            } else {
+                throw new \DomainException(
+                    'Invalid TLS option: ' . $key
+                );
+            }
+        }
     }
     
     function getAddress() {
@@ -60,30 +69,11 @@ class TlsDefinition {
                 'local_cert' => $this->localCertFile,
                 'passphrase' => $this->certPassphrase,
                 'allow_self_signed' => $this->allowSelfSigned,
-                'verify_peer' => $this->verifyPeer
-            ],
-            /*
-            'ctx' => [
-            
+                'verify_peer' => $this->verifyPeer,
+                'ciphers' => $this->ciphers,
+                'disable_compression' => $this->disableCompression
             ]
-            */
         ]);
-    }
-    
-    function getLocalCertFile() {
-        return $this->localCertFile;
-    }
-    
-    function getCertPassphrase() {
-        return $this->certPassphrase;
-    }
-    
-    function getAllowSelfSigned() {
-        return $this->allowSelfSigned;
-    }
-    
-    function getVerifyPeer() {
-        return $this->verifyPeer;
     }
     
     function getCryptoType() {

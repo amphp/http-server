@@ -6,6 +6,7 @@ class Server {
     
     const SERVER_SOFTWARE = 'Aerys';
     const SERVER_VERSION = '0.0.1';
+    
     const MICROSECOND_RESOLUTION = 1000000;
     const HTTP_DATE = 'D, d M Y H:i:s T';
     
@@ -36,17 +37,16 @@ class Server {
     private $tempEntityDir = NULL;
     private $cryptoHandshakeTimeout = 5;
     private $defaultContentType = 'text/html';
-    private $sendServerToken = TRUE;
+    private $exposeServerToken = TRUE;
     
     private $onHeadersMods = [];
     private $onRequestMods = [];
     private $beforeResponseMods = [];
     private $onResponseMods = [];
     
-    function __construct(Engine\EventBase $eventBase, HostCollection $hosts, $tlsDefs = []) {
+    function __construct(Engine\EventBase $eventBase, HostCollection $hosts, $tlsDefs = NULL) {
         $this->eventBase = $eventBase;
         $this->hosts = $hosts;
-        
         if ($tlsDefs) {
             $this->setTlsDefinitions($tlsDefs);
         }
@@ -71,20 +71,16 @@ class Server {
     
     function listen() {
         if (!$this->isListening) {
-            
+        
             $this->isListening = TRUE;
             
             foreach ($this->initializeServerSocks() as $boundAddress) {
                 echo 'Server listening on ', $boundAddress, "\n";
             }
             
-            // uncomment these lines to get a once-per-second update with the time and the current
-            // count of connected clients
-            /*
             $this->eventBase->repeat(1000000, function() {
                 echo time(), ' (', $this->cachedConnectionCount, ")\n";
             });
-            */
             
             $this->eventBase->run();
         }
@@ -108,6 +104,7 @@ class Server {
             $address = $interface . ':' . $port;
             $wildcardAddress = Host::NIC_WILDCARD . ':' . $port;
             
+            // An interface:port combo only needs to be bound once
             if (isset($boundServers[$address]) || isset($boundServers[$wildcardAddress])) {
                 continue;
             }
@@ -115,7 +112,7 @@ class Server {
             if ($tlsDefinition = $this->getTlsDefinition($interface, $port)) {
                 $context = $tlsDefinition->getStreamContext();
             } else {
-                $context = stream_context_create([]);
+                $context = stream_context_create();
             }
             
             if ($serverSock = stream_socket_server($address, $errNo, $errStr, $flags, $context)) {
@@ -138,7 +135,7 @@ class Server {
     }
     
     private function getTlsDefinition($interface, $port) {
-        $wildcardMatch = '0.0.0.0:' . $port;
+        $wildcardMatch =  Host::NIC_WILDCARD . ':' . $port;
         $addressMatch = $interface . ':' . $port;
         
         if (isset($this->tlsDefinitions[$wildcardMatch])) {
@@ -162,7 +159,6 @@ class Server {
             $sockName = stream_socket_get_name($serverSock, FALSE);
             stream_set_blocking($clientSock, FALSE);
             
-            
             if (!$tlsDefinition = $this->serverTlsMap[$serverId]) {
                 $this->generateClient($clientSock, $sockName, $peerName, FALSE);
             } else {
@@ -171,17 +167,14 @@ class Server {
                 }, 1000000);
                 
                 $clientId = (int) $clientSock;
-                $cryptoType = $tlsDefinition->getCryptoType();
-                $sessionRes = 
-                
                 $this->clientsPendingCrypto[$clientId] = [
-                    $cryptoType,
+                     $tlsDefinition->getCryptoType(),
                     time(),
                     $subscription,
                     $sockName,
                     $peerName,
-                    $sessionRes
                 ];
+                
                 $this->enablePendingCrypto($clientSock);
             }
             
@@ -291,18 +284,8 @@ class Server {
     }
     
     private function handleReadTimeout($clientId) {
-        $client = $this->clients[$clientId];
-        
-        $requestParser = $client->getParser();
-        
-        if ($requestParser->isProcessing()) {
-            $this->doServerLayerError(
-                $client,
-                408,
-                'Request timed out',
-                NULL,
-                FALSE
-            );
+        if ($this->clients[$clientId]->getParser()->isProcessing()) {
+            $this->doServerLayerError($client, 408, 'Request timed out', NULL, FALSE);
         } else {
             $this->close($clientId);
         }
@@ -310,11 +293,9 @@ class Server {
     
     private function onWritable($clientSock) {
         $clientId = (int) $clientSock;
-        $client = $this->clients[$clientId];
-        $writer = $client->getWriter();
         
         try {
-            if ($writer->write()) {
+            if ($this->clients[$clientId]->getWriter()->write()) {
                 $this->onResponse($clientId);
             }
         } catch (ResourceException $e) {
@@ -402,14 +383,18 @@ class Server {
             $asgiEnv = $client->pipeline[$requestId];
         }
         
-        $asgiResponse = $this->generateErrorResponse($code, $msg, $asgiEnv);
+        $asgiResponse = $this->generateServerLayerErrorResponse($code, $msg, $asgiEnv);
         
         $this->setResponse($requestId, $asgiResponse);
         $client->closeAfter = $requestId;
     }
     
-    private function generateErrorResponse($code, $msg, $asgiEnv) {
-        $body = $msg;
+    private function generateServerLayerErrorResponse($code, $msg, $asgiEnv) {
+        $serverToken = $this->exposeServerToken
+            ? self::SERVER_SOFTWARE . ' ' . self::SERVER_VERSION
+            : '';
+            
+        $body = '<html><body><h1>'.$code.'</h1><p>'.$msg.'</p><hr/>'.$serverToken.'</body></html>';
         $headers = [
             'Date' => date(self::HTTP_DATE),
             'Content-Type' => 'text/html',
@@ -539,8 +524,8 @@ class Server {
         $asgiEnv = $client->pipeline[$requestId];
         
         // Determine if we need to close BEFORE any mods execute to prevent alterations. The 
-        // response has already been sent and its original `Connection:` header must be adhered to
-        // regardless of whether a mod alters it.
+        // response has already been sent and its original Connection: header must be adhered to
+        // regardless of whether a mod has altered it.
         $shouldClose = ($client->closeAfter == $requestId || $this->shouldCloseOnResponse($asgiEnv));
         
         $hostName = $asgiEnv['SERVER_NAME'];
@@ -669,33 +654,37 @@ class Server {
         
         list($status, $headers, $body) = $asgiResponse;
         
-        $hasBody = ($body || $body === '0');
-        $headers = $this->normalizeResponseHeaders($headers, $hasBody);
+        $headers = $this->normalizeResponseHeaders($headers, $body);
         
         $msg = (new Http\Response)->setAll($protocol, $status, NULL, $headers, $body);
         $writer = $client->getWriter();
         $writer->enqueue($msg);
     }
     
-    private function normalizeResponseHeaders(array $headers, $hasBody) {
+    private function normalizeResponseHeaders(array $headers, $body) {
         $headers = array_combine(array_map('strtoupper', array_keys($headers)), $headers);
         
         if (!isset($headers['DATE'])) {
             $headers['DATE'] = date(self::HTTP_DATE);
         }
         
+        $hasBody = ($body || $body === '0');
+        
         if ($hasBody && !isset($headers['CONTENT-TYPE'])) {
             $headers['CONTENT-TYPE'] = $this->defaultContentType;
         }
         
-        // @todo Can't enable this until the MessageWriter supports auto-chunking stream and 
-        // traversable messages:
+        if ($hasBody && !isset($headers['CONTENT_LENGTH']) && is_string($body)) {
+            $headers['CONTENT-LENGTH'] = strlen($body);
+        }
+        
+        // @todo Can't enable this until the Http\MessageWriter supports auto-chunking:
         //
         //if ($hasBody && !(isset($keys['CONTENT-LENGTH']) || isset($keys['TRANSFER-ENCODING']))) {
         //    $headers['Transfer-Encoding'] = 'chunked';
         //}
         
-        if ($this->sendServerToken) {
+        if ($this->exposeServerToken) {
             $headers['SERVER'] = self::SERVER_SOFTWARE . '/' . self::SERVER_VERSION;
         } else {
             unset($headers['SERVER']);
@@ -779,8 +768,8 @@ class Server {
         $this->defaultContentType = $mimeType;
     }
     
-    private function setSendServerToken($boolFlag) {
-        $this->sendServerToken = (bool) $boolFlag;
+    private function setExposeServerToken($boolFlag) {
+        $this->exposeServerToken = (bool) $boolFlag;
     }
     
 }

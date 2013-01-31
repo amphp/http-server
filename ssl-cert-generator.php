@@ -30,7 +30,7 @@ $pemDn = array(
     "localityName" => "Myrtle Beach",               // your city name
     "organizationName" => "N/A",                    // company name
     "organizationalUnitName" => "N/A",              // department name
-    "commonName" => "aerys",                        // full hostname
+    "commonName" => "cpe-066-057-216-051.sc.res.rr.com",                        // full hostname
     "emailAddress" => "email@example.com"           // email address
 );
 

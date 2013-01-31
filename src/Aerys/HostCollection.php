@@ -24,7 +24,9 @@ class HostCollection implements \Iterator, \Countable {
      * @todo Determine correct exception to throw when no host match exists
      */
     function selectHost($name, $interface, $port) {
-        $name = strtolower(@parse_url($name, PHP_URL_HOST)) . ':' . $port;
+        $nameParts = parse_url($name);
+        $name = (isset($nameParts['port'])) ? $nameParts['host'] : $nameParts['path'];
+        $name = strtolower($name) . ':' . $port;
         
         if (isset($this->hostNameMap[$name])) {
             return $this->hostNameMap[$name];
