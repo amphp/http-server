@@ -748,7 +748,7 @@ class Server {
     }
     
     private function setIdleConnectionTimeout($seconds) {
-        $this->idleConnectionTimeout = (int) $seconds * self::MICROSECOND_RESOLUTION;
+        $this->idleConnectionTimeout = (int) $seconds;
     }
     
     private function setMaxStartLineSize($bytes) {
