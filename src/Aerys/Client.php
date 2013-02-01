@@ -2,8 +2,7 @@
 
 namespace Aerys;
 
-use Ardent\KeyException,
-    Aerys\Http\RequestParser,
+use Aerys\Http\RequestParser,
     Aerys\Http\MessageWriter;
 
 class Client {
@@ -17,8 +16,9 @@ class Client {
     private $writer;
     private $isCrypto;
     
+    public $tempEntityWriter;
+    public $midRequestInfo;
     public $requestCount = 0;
-    public $closeAfter;
     public $pipeline = [];
     public $responses = [];
     

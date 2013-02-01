@@ -14,10 +14,14 @@ class Host {
     
     function __construct(callable $handler, $name, $port = 80, $interface = '*', array $mods = []) {
         $this->handler = $handler;
-        $this->name = $name;
+        $this->name = strtolower($name);
         $this->port = (int) $port;
         $this->interface = ($interface == '*') ? self::NIC_WILDCARD : $interface;
         $this->mods = $mods;
+    }
+    
+    function getId() {
+        return $this->name . ':' . $this->port;
     }
     
     function getPort() {

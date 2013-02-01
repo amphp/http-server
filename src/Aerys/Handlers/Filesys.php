@@ -211,14 +211,13 @@ class Filesys {
         "zip"       => "application/zip"
     ];
     
-    /**
-     * @todo determine appropriate exception to throw on an unreadable $docRoot
-     */
     function __construct($docRoot) {
         if (is_readable($docRoot) && is_dir($docRoot)) {
             $this->docRoot = rtrim($docRoot, '/');
         } else {
-            throw new \Exception;
+            throw new \RuntimeException(
+                'Specified file system document root must be a readable directory'
+            );
         }
     }
     
@@ -241,14 +240,21 @@ class Filesys {
         $this->staleAfter = (int) $seconds;
     }
     
-    function __invoke(array $asgiEnv) {
-        $requestUri = ($asgiEnv['PATH_INFO'] . $asgiEnv['SCRIPT_NAME']) ?: '/';
-        $filePath = $this->docRoot . $requestUri;
+    function __invoke(array $asgiEnv, $requestId, $xSendFile = NULL) {
+        if (NULL === $xSendFile) {
+            $requestUri = ($asgiEnv['PATH_INFO'] . $asgiEnv['SCRIPT_NAME']) ?: '/';
+            $filePath = $this->docRoot . $requestUri;
+        } else {
+            $filePath = $this->docRoot . $xSendFile;
+        }
+        
         $fileExists = file_exists($filePath);
         
         // The `strpos` check is important to prevent access to files outside the docRoot when 
-        // resolving a URI that contains leading "../" segments
-        if ($fileExists && (0 !== strpos(realpath($filePath), $this->docRoot))) {
+        // resolving a URI that contains leading "../" segments. The boolean check for a truthy
+        // $this->docRoot value allows docRoot values at the filesystem root directory "/"
+        
+        if ($fileExists && $this->docRoot && (0 !== strpos(realpath($filePath), $this->docRoot))) {
             return $this->notFound();
         } elseif ($fileExists && !is_dir($filePath)) {
             return $this->processExistingFile($filePath, $asgiEnv);
@@ -279,7 +285,7 @@ class Filesys {
         
         $mTime = filemtime($filePath);
         $fileSize = filesize($filePath);
-        $eTag = !$this->eTagMode ? NULL : $this->getEtag($mTime, $fileSize);
+        $eTag = !$this->eTagMode ? NULL : $this->getEtag($mTime, $fileSize, $filePath);
         
         if (isset($asgiEnv['HTTP_IF_NONE_MATCH']) && $eTag == $asgiEnv['HTTP_IF_NONE_MATCH']) {
             return $this->notModified();
@@ -312,7 +318,7 @@ class Filesys {
         }
     }
     
-    private function getEtag($mTime, $fileSize) {
+    private function getEtag($mTime, $fileSize, $filePath) {
         $hashable = $mTime;
         
         if ($this->eTagMode & self::ETAG_SIZE) {
