@@ -175,7 +175,7 @@ abstract class MessageParser {
         }
         
         headers_start: {
-            if ($this->buffer === '') {
+            if ($this->buffer === '' || $this->buffer === FALSE) {
                 goto more_data_needed;
             } elseif ($this->buffer[0] == self::LF) {
                 $this->buffer = substr($this->buffer, 1);

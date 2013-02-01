@@ -275,8 +275,8 @@ class Server {
     }
     
     private function handleReadTimeout($clientId) {
-        if ($this->clients[$clientId]->getParser()->isProcessing()) {
-            $client = $this->clients[$clientId];
+        $client = $this->clients[$clientId];
+        if ($client->getParser()->isProcessing()) {
             $this->doServerLayerError($client, 408, 'Request timed out', NULL, FALSE);
         } else {
             $this->close($clientId);
