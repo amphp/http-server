@@ -276,6 +276,7 @@ class Server {
     
     private function handleReadTimeout($clientId) {
         if ($this->clients[$clientId]->getParser()->isProcessing()) {
+            $client = $this->clients[$clientId];
             $this->doServerLayerError($client, 408, 'Request timed out', NULL, FALSE);
         } else {
             $this->close($clientId);
@@ -325,6 +326,7 @@ class Server {
         
         $client->pipeline[$requestId] = $asgiEnv;
         
+        $hostId = $asgiEnv['SERVER_NAME'] . ':' . $client->getServerPort();
         if (isset($this->onHeadersMods[$hostId])) {
             foreach ($this->onHeadersMods[$hostId] as $mod) {
                 $mod->onHeaders($clientId, $requestId);

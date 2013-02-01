@@ -66,9 +66,7 @@ class Log implements OnResponseMod {
                     $msg = $this->doCommonFormat($requestId);
                     break;
                 default:
-                    // @todo commented for push:
-                    //$msg = $this->doCustomFormat($requestId, $format);
-                    $msg = $this->doCommonFormat($requestId, $format);
+                    $msg = $this->doCustomFormat($requestId, $format);
             }
             
             $buffer = $this->buffers[$resourceId][0] . $msg;
@@ -144,10 +142,8 @@ class Log implements OnResponseMod {
         
         return $msg;
     }
-    /*
-    // In progress (commented for push)
+    
     private function doCustomFormat($requestId, $format) {
-        
         $asgiEnv = $this->server->getRequest($requestId);
         $asgiResponse = $this->server->getResponse($requestId);
         
@@ -167,8 +163,20 @@ class Log implements OnResponseMod {
         ];
         
         $msg = str_replace($search, $replace, $format);
+        
+        
+        $pattern = "/\${([^\)]+)}/";
+        if (!preg_match_all($pattern, $msg, $matches), PREG_SET_ORDER) {
+            return $msg;
+        }
+        
+        foreach ($matches as $match) {
+            print_r($match[1]);
+        }
+        
+        return $msg;
     }
-    */
+    
 }
 
 
