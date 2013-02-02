@@ -255,29 +255,21 @@ class Server {
             }
         } catch (Http\ParseException $e) {
             switch ($e->getCode()) {
-                case Http\MessageParser::E_START_LINE_TOO_LARGE:
-                    $status = 414;
-                    break;
-                case Http\MessageParser::E_HEADERS_TOO_LARGE:
-                    $status = 431;
-                    break;
-                case Http\MessageParser::E_ENTITY_TOO_LARGE:
-                    $status = 413;
-                    break;
-                default:
-                    $status = 400;
+                case Http\MessageParser::E_START_LINE_TOO_LARGE: $status = 414; break;
+                case Http\MessageParser::E_HEADERS_TOO_LARGE: $status = 431; break;
+                case Http\MessageParser::E_ENTITY_TOO_LARGE: $status = 413; break;
+                default: $status = 400;
             }
             
-            $requestId = NULL;
-            $hasAsgiEnv = FALSE;
-            $this->doServerLayerError($client, $status, $e->getMessage(), $requestId, $hasAsgiEnv);
+            $this->doServerLayerError($client, $status, $e->getMessage());
         }
     }
     
     private function handleReadTimeout($clientId) {
         $client = $this->clients[$clientId];
-        if ($client->getParser()->isProcessing()) {
-            $this->doServerLayerError($client, 408, 'Request timed out', NULL, FALSE);
+        $parser = $client->getParser();
+        if ($parser->isProcessing()) {
+            $this->doServerLayerError($client, 408, 'Request timed out');
         } else {
             $this->close($clientId);
         }
@@ -296,7 +288,6 @@ class Server {
     }
     
     private function onHeaders($clientId, array $parsedRequest) {
-        $requestId = ++$this->lastRequestId;
         $client = $this->clients[$clientId];
         
         try {
@@ -306,14 +297,11 @@ class Server {
                 $parsedRequest
             );
         } catch (Http\StatusException $e) {
-            return $this->doServerLayerError(
-                $client,
-                $e->getCode(),
-                $e->getMessage(),
-                $requestId,
-                FALSE
-            );
+            $this->doServerLayerError($client, $e->getCode(),  $e->getMessage(), $parsedRequest);
+            return;
         }
+        
+        $requestId = ++$this->lastRequestId;
         
         $hostName = $host->getName();
         $asgiEnv = $this->generateAsgiEnv($client, $hostName, $parsedRequest);
@@ -341,7 +329,7 @@ class Server {
             return $this->setResponse($requestId, $asgiResponse);
         }
         
-        // @todo If `Expect: 100-continue` write HTTP/1.1 100 Continue to raw socket here
+        // @TODO If `Expect: 100-continue` write HTTP/1.1 100 Continue to raw socket here
         
         $client->midRequestInfo = [$requestId, $host->getId(), $handler];
     }
@@ -366,27 +354,22 @@ class Server {
         }
     }
     
-    private function doServerLayerError(Client $client, $code, $msg, $requestId, $hasAsgiEnv) {
-        if (!$requestId) {
-            $requestId = ++$this->lastRequestId;
-            $this->requestIdClientMap[$requestId] = $client->getId();
+    private function doServerLayerError(Client $client, $code, $msg, array $parsedRequest) {
+        $requestId = ++$this->lastRequestId;
+        $this->requestIdClientMap[$requestId] = $client->getId();
+        
+        if (!$parsedRequest) {
+            $parsedRequest = [
+                'method' => '?',
+                'uri' => '?',
+                'protocol' => '?',
+                'headers' => []
+            ];
         }
         
-        if (!$hasAsgiEnv) {
-            $serverName = '';
-            $requestParser = $client->getParser();
-            $parsedRequest = [
-                'method'    => $requestParser->getMethod(),
-                'uri'       => $requestParser->getUri(),
-                'protocol'  => $requestParser->getProtocol(),
-                'headers'   => $requestParser->getHeaders()
-            ];
-            
-            $asgiEnv = $this->generateAsgiEnv($client, $serverName, $parsedRequest);
-            $client->pipeline[$requestId] = $asgiEnv;
-        } else {
-            $asgiEnv = $client->pipeline[$requestId];
-        }
+        // Generate a placeholder $asgiEnv
+        $asgiEnv = $this->generateAsgiEnv($client, '?', $parsedRequest);
+        $client->pipeline[$requestId] = $asgiEnv;
         
         $body = '<html><body><h1>'.$code.'</h1><hr /><p>'.$msg.'</p></body></html>';
         $headers = [
@@ -420,7 +403,7 @@ class Server {
             $queryString = '';
             $pathInfo = '';
             $scriptName = '';
-        } else {
+        } elseif ($uri != '?') {
             $uriParts = parse_url($uri);
             $queryString = isset($uriParts['query']) ? $uriParts['query'] : '';
             $decodedPath = rawurldecode($uriParts['path']);
@@ -486,13 +469,8 @@ class Server {
                     $parsedRequest
                 );
             } catch (Http\StatusException $e) {
-                return $this->doServerLayerError(
-                    $client,
-                    $e->getCode(),
-                    $e->getMessage(),
-                    $requestId,
-                    FALSE
-                );
+                $this->doServerLayerError($client, $e->getCode(),  $e->getMessage(), $parsedRequest);
+                return;
             }
             
             $hostId = $host->getId();
@@ -530,9 +508,15 @@ class Server {
         $asgiEnv = $client->pipeline[$requestId];
         
         // Determine if we need to close BEFORE any mods execute to prevent alterations. The 
-        // response has already been sent and its original Connection: header must be adhered to
-        // regardless of whether a mod has altered it.
-        $shouldClose = $this->shouldCloseOnResponse($asgiEnv);
+        // response has already been sent and its original protocol and headers must be adhered to
+        // regardless of whether a mod has altered the Connection header.
+        if (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
+            $shouldClose = TRUE;
+        } elseif ($asgiEnv['SERVER_PROTOCOL'] == '1.1') {
+            $shouldClose = FALSE;
+        } else {
+            $shouldClose = TRUE;
+        }
         
         $hostId = strtolower($asgiEnv['SERVER_NAME']) . ':' . $client->getServerPort();
         if (isset($this->onResponseMods[$hostId])) {
@@ -550,28 +534,6 @@ class Server {
                 $client->responses[$requestId]
             );
         }
-    }
-    
-    private function shouldCloseOnResponse(array $asgiEnv) {
-        $shouldClose = FALSE;
-        
-        switch ($asgiEnv['SERVER_PROTOCOL']) {
-            case '1.1':
-                if (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
-                    $shouldClose = TRUE;
-                }
-                break;
-            case '1.0';
-                if (!isset($asgiEnv['HTTP_CONNECTION']) || strcasecmp('keep-alive', $asgiEnv['HTTP_CONNECTION'])) {
-                    $shouldClose = TRUE;
-                }
-                break;
-            default:
-                $shouldClose = TRUE;
-                
-        }
-        
-        return $shouldClose;
     }
     
     private function close($clientId) {
@@ -635,7 +597,7 @@ class Server {
         }
         
         $asgiEnv = $client->pipeline[$requestId];
-        $protocol = $asgiEnv['SERVER_PROTOCOL'];
+        $protocol = ($asgiEnv['SERVER_PROTOCOL'] != '?') ? $asgiEnv['SERVER_PROTOCOL'] : '1.0';
         
         if ($this->maxRequestsPerSession && $client->requestCount >= $this->maxRequestsPerSession) {
             $asgiResponse[1]['Connection'] = 'close';
@@ -693,7 +655,7 @@ class Server {
             $headers['CONTENT-LENGTH'] = strlen($body);
         }
         
-        // @todo Can't enable this until the Http\MessageWriter supports auto-chunking:
+        // @TODO Can't enable this until the Http\MessageWriter supports auto-chunking:
         //
         //if ($hasBody && !(isset($keys['CONTENT-LENGTH']) || isset($keys['TRANSFER-ENCODING']))) {
         //    $headers['Transfer-Encoding'] = 'chunked';
