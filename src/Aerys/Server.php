@@ -435,7 +435,6 @@ class Server {
             // NON-STANDARD AERYS ENV VARS
             'REQUEST_TIME'       => time(),
             'REQUEST_TIME_FLOAT' => microtime(TRUE),
-            'AWAITING_BODY'      => FALSE,
             
             // ADDITIONAL ASGI-REQUIRED ENV VARS
             'ASGI_VERSION'       => 0.1,
