@@ -11,7 +11,7 @@ class Log implements OnResponseMod {
     private $resourceFormatMap = [];
     private $buffers = [];
     private $msgGenerationCache = [];
-    private $flushSize = 1024;
+    private $flushSize = 0;
     private $logTime;
     
     function __construct(Server $server) {
@@ -107,7 +107,6 @@ class Log implements OnResponseMod {
         $userAgent = empty($asgiEnv['HTTP_USER_AGENT']) ? '-' : '"' . $asgiEnv['HTTP_USER_AGENT'] . '"';
         $time = date('d/M/Y:H:i:s O', $this->logTime);
         
-        // $ip $identd $userId $time $requestLine $statusCode $bytesReturned $referer $userAgent
         $msg = "$ip - - [$time] $requestLine $statusCode $bodySize $referer $userAgent" . PHP_EOL;
         
         $this->msgGenerationCache['combined'] = $msg;
@@ -137,7 +136,6 @@ class Log implements OnResponseMod {
         $bodySize = empty($headers['CONTENT-LENGTH']) ? '-' : $headers['CONTENT-LENGTH'];
         $time = date('d/M/Y:H:i:s O', $this->logTime);
         
-        // $ip $identd $userId $time $requestLine $statusCode $bytesReturned
         $msg = "$ip - - [$time] $requestLine $statusCode $bodySize" . PHP_EOL;
         
         $this->msgGenerationCache['common'] = $msg;
@@ -145,6 +143,15 @@ class Log implements OnResponseMod {
         return $msg;
     }
     
+    /**
+     * %h - Remote IP Address
+     * %t - Log Time
+     * %r - Request Line
+     * $s - Response Status Code
+     * %b - Response Content-Length in bytes ("-" if not available)
+     * 
+     * %{HEADER-FIELD} - Any request header (case-insensitive, "-" if not available)
+     */
     private function doCustomFormat($requestId, $format) {
         $asgiEnv = $this->server->getRequest($requestId);
         $asgiResponse = $this->server->getResponse($requestId);
@@ -168,17 +175,16 @@ class Log implements OnResponseMod {
         
         $msg = str_replace($search, $replace, $format);
         
-        
-        $pattern = "/\${([^\)]+)}/";
-        if (!preg_match_all($pattern, $msg, $matches, PREG_SET_ORDER)) {
-            return $msg;
+        if (FALSE === strpos($msg, '%{')) {
+            return $msg . PHP_EOL;
+        } else {
+            $replace = function ($match) use ($asgiEnv) {
+                $match = 'HTTP_' . str_replace('-', '_', strtoupper($match[1]));
+                return isset($asgiEnv[$match]) ? $asgiEnv[$match] : '-';
+            };
+            
+            return preg_replace_callback("/\%{([^\)]+)}/U", $replace, $msg) . PHP_EOL;
         }
-        
-        foreach ($matches as $match) {
-            print_r($match[1]);
-        }
-        
-        return $msg;
     }
     
 }
