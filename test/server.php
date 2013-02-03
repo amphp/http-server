@@ -18,11 +18,11 @@ require dirname(__DIR__) . '/autoload.php';
 
 $handler = function(array $asgiEnv, $requestId) {
     if ($asgiEnv['REQUEST_URI'] == '/sendfile') {
-        return [200, ['X-Sendfile' => __DIR__ .'/www/test.txt'], NULL];
+        return [200, 'OK', ['X-Sendfile' => __DIR__ .'/www/test.txt'], NULL];
     } elseif ($asgiEnv['REQUEST_URI'] == '/favicon.ico') {
-        return [404, [], '<h1>404 Not Found</h1>'];
+        return [404, 'Not Found', [], '<h1>404 Not Found</h1>'];
     } else {
-        return [200, [], '<html><body><h1>Hello, world.</h1></body></html>'];
+        return [200, 'OK', [], '<html><body><h1>Hello, world.</h1></body></html>'];
     }
 };
 
@@ -79,9 +79,9 @@ $config = [
         //],
         
         'mod.log'   =>  [
-            'flushSize' => 0,
+            'flushSize' => 5000,
             'logs' => [
-                //__DIR__ . '/log/access.log' => 'combined',
+                __DIR__ . '/log/access.log' => 'common',
                 'php://stdout' => 'common',
             ]
         ],
@@ -103,11 +103,11 @@ $config = [
 //(new ServerFactory)->createServer($config)->listen();
 
 $server = (new ServerFactory)->createServer($config);
-
+/*
 $log = new Aerys\Mods\Log($server);
 $log->configure($config['host.dynamic']['mod.log']);
 $server->registerMod($log, 'aerys:1337');
-
+*/
 
 /*
 $sendFile = new Aerys\Mods\SendFile($server, new Aerys\Handlers\Filesys('/'));

@@ -24,11 +24,12 @@ $dynamicHandler = function(array $asgiEnv) {
         $response = [404, [], '<h1>404 Not Found</h1>'];
     } else {
         $status = 200;
+        $reason = 'OK';
         $body = '<html><body><h1>Hello, world.</h1><hr/>';
         $body.= '<img src="http://static.aerys/funtheysaid.png" alt="Img from static host"/><hr/><br/>';
         $body.= 'Woah, dang! ^ That image came from a different domain!';
         $body.= '</body></html>';
-        $response = [$status, [], $body];
+        $response = [$status, $reason, [], $body];
     }
     
     return $response;

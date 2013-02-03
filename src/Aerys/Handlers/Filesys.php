@@ -296,6 +296,7 @@ class Filesys {
             return $this->notModified();
         } else {
             $status = 200;
+            $reason = 'OK';
             $now = time();
             $headers = [
                 'Date' => date(Server::HTTP_DATE, $now),
@@ -314,7 +315,7 @@ class Filesys {
             
             $body = ($requestMethod == 'GET') ? fopen($filePath, 'r') : NULL;
             
-            return [$status, $headers, $body];
+            return [$status, $reason, $headers, $body];
         }
     }
     
@@ -352,25 +353,28 @@ class Filesys {
     
     private function methodNotAllowed() {
         $status = 405;
+        $reason = 'Method Not Allowed';
         $headers = [
             'Date' => date('D, d M Y H:i:s T'),
             'Allow' => 'GET, HEAD'
         ];
         
-        return [$status, $headers, NULL];
+        return [$status, $reason, $headers, NULL];
     }
     
     private function notModified() {
         $status = 304;
+        $reason = 'Not Modified';
         $headers = [
             'Date' => date('D, d M Y H:i:s T')
         ];
         
-        return [304, $headers, NULL];
+        return [304, $reason, $headers, NULL];
     }
     
     private function notFound() {
         $status = 404;
+        $reason = 'Not Found';
         $body = '<html><body><h1>404 Not Found</h1></body></html>';
         $headers = [
             'Date' => date('D, d M Y H:i:s T'),
@@ -378,7 +382,7 @@ class Filesys {
             'Content-Length' => strlen($body),
         ];
         
-        return [$status, $headers, $body];
+        return [$status, $reason, $headers, $body];
     }
 }
 

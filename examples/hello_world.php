@@ -17,10 +17,11 @@ date_default_timezone_set('GMT');
 
 $handler = function(array $asgiEnv) {
     $status = 200;
+    $reason = 'OK';
     $headers = [];
     $body = '<html><body><h1>Hello, world.</h1></body></html>';
     
-    return [$status, $headers, $body];
+    return [$status, $reason, $headers, $body];
 };
 
 (new Aerys\ServerFactory)->createServer([[

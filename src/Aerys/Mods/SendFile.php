@@ -16,7 +16,7 @@ class SendFile implements BeforeResponseMod {
     }
     
     function beforeResponse($clientId, $requestId) {
-        $headers = $this->server->getResponse($requestId)[1];
+        $headers = $this->server->getResponse($requestId)[2];
         
         if (!empty($headers['X-SENDFILE'])) {
             $asgiEnv = $this->server->getRequest($requestId);

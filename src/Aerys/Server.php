@@ -43,7 +43,9 @@ class Server {
     private $beforeResponseMods = [];
     private $onResponseMods = [];
     
-    private $isInsideBeforeResponseModLoop = FALSE;
+    private $insideBeforeResponseModLoop = FALSE;
+    
+    public $closeCount = 0;
     
     function __construct(Engine\EventBase $eventBase, HostCollection $hosts, $tlsDefs = NULL) {
         $this->eventBase = $eventBase;
@@ -371,6 +373,7 @@ class Server {
         $asgiEnv = $this->generateAsgiEnv($client, '?', $parsedRequest);
         $client->pipeline[$requestId] = $asgiEnv;
         
+        $reason = '';
         $body = '<html><body><h1>'.$code.'</h1><hr /><p>'.$msg.'</p></body></html>';
         $headers = [
             'Date' => date(self::HTTP_DATE),
@@ -379,7 +382,9 @@ class Server {
             'Connection' => 'close'
         ];
         
-        $this->setResponse($requestId, [$code, $headers, $body]);
+        $asgiResponse = [$code, $reason, $headers, $body];
+        
+        $this->setResponse($requestId, $asgiResponse);
     }
     
     private function generateAsgiEnv(Client $client, $serverName, $parsedRequest) {
@@ -435,7 +440,6 @@ class Server {
             // NON-STANDARD AERYS ENV VARS
             'REQUEST_TIME'       => time(),
             'REQUEST_TIME_FLOAT' => microtime(TRUE),
-            'AWAITING_BODY'      => FALSE,
             
             // ADDITIONAL ASGI-REQUIRED ENV VARS
             'ASGI_VERSION'       => 0.1,
@@ -510,13 +514,7 @@ class Server {
         // Determine if we need to close BEFORE any mods execute to prevent alterations. The 
         // response has already been sent and its original protocol and headers must be adhered to
         // regardless of whether a mod has altered the Connection header.
-        if (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
-            $shouldClose = TRUE;
-        } elseif ($asgiEnv['SERVER_PROTOCOL'] == '1.1') {
-            $shouldClose = FALSE;
-        } else {
-            $shouldClose = TRUE;
-        }
+        $shouldClose = $this->shouldCloseAfterResponse($asgiEnv, $client->responses[$requestId]);
         
         $hostId = strtolower($asgiEnv['SERVER_NAME']) . ':' . $client->getServerPort();
         if (isset($this->onResponseMods[$hostId])) {
@@ -533,6 +531,20 @@ class Server {
                 $client->pipeline[$requestId],
                 $client->responses[$requestId]
             );
+        }
+    }
+    
+    private function shouldCloseAfterResponse(array $asgiEnv, array $asgiResponse) {
+        $headers = $asgiResponse[2];
+        
+        if (isset($headers['CONNECTION']) && !strcasecmp('close', $headers['CONNECTION'])) {
+            return TRUE;
+        } elseif (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
+            return TRUE;
+        } elseif ($asgiEnv['SERVER_PROTOCOL'] == '1.0' && !isset($asgiEnv['HTTP_CONNECTION'])) {
+            return TRUE;
+        } else {
+            return FALSE;
         }
     }
     
@@ -591,49 +603,53 @@ class Server {
         $clientId = $this->requestIdClientMap[$requestId];
         $client = $this->clients[$clientId];
         
-        if ($this->isInsideBeforeResponseModLoop) {
+        if ($this->insideBeforeResponseModLoop) {
             $client->responses[$requestId] = $asgiResponse;
             return;
         }
         
+        if ((string) $asgiResponse[1] === '') {
+            $reasonConst = 'Aerys\\Http\\Reasons::HTTP_' . $asgiResponse[0];
+            $asgiResponse[1] = defined($reasonConst) ? constant($reasonConst) : $asgiResponse[1];
+        }
+        
         $asgiEnv = $client->pipeline[$requestId];
-        $protocol = ($asgiEnv['SERVER_PROTOCOL'] != '?') ? $asgiEnv['SERVER_PROTOCOL'] : '1.0';
+        $protocol = $asgiEnv['SERVER_PROTOCOL'];
+        $protocol = ($protocol == '1.0' || $protocol == '1.1') ? $protocol : '1.0';
         
         if ($this->maxRequestsPerSession && $client->requestCount >= $this->maxRequestsPerSession) {
-            $asgiResponse[1]['Connection'] = 'close';
+            $asgiResponse[2]['Connection'] = 'close';
         } elseif (!empty($asgiEnv['HTTP_CONNECTION'])
             && !strcasecmp($asgiEnv['HTTP_CONNECTION'], 'keep-alive')
         ) {
-            if (empty($asgiResponse[1]['Connection'])) {
-                $asgiResponse[1]['Connection'] = 'keep-alive';
+            if (empty($asgiResponse[2]['Connection'])) {
+                $asgiResponse[2]['Connection'] = 'keep-alive';
             }
         }
         
-        $asgiResponse[1] = $this->normalizeResponseHeaders($asgiResponse[1], $asgiResponse[2]);
+        $asgiResponse[2] = $this->normalizeResponseHeaders($asgiResponse[2], $asgiResponse[3]);
         
         if ($asgiEnv['REQUEST_METHOD'] == 'HEAD') {
-            $asgiResponse[2] = NULL;
+            $asgiResponse[3] = NULL;
         }
         
         $client->responses[$requestId] = $asgiResponse;
         
         $hostId = $asgiEnv['SERVER_NAME'] . ':' . $client->getServerPort();
         if (isset($this->beforeResponseMods[$hostId])) {
-            $this->isInsideBeforeResponseModLoop = TRUE;
-            
+            $this->insideBeforeResponseModLoop = TRUE;
             foreach ($this->beforeResponseMods[$hostId] as $mod) {
                $mod->beforeResponse($clientId, $requestId);
             }
+            $this->insideBeforeResponseModLoop = FALSE;
             
             // In case the response was altered by any mods ...
             $asgiResponse = $client->responses[$requestId];
-            
-            $this->isInsideBeforeResponseModLoop = FALSE;
         }
         
-        list($status, $headers, $body) = $asgiResponse;
+        list($status, $reason, $headers, $body) = $asgiResponse;
         
-        $msg = (new Http\Response)->setAll($protocol, $status, NULL, $headers, $body);
+        $msg = (new Http\Response)->setAll($protocol, $status, $reason, $headers, $body);
         $writer = $client->getWriter();
         $writer->enqueue($msg);
     }

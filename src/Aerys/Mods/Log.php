@@ -100,7 +100,8 @@ class Log implements OnResponseMod {
         $requestLine.= 'HTTP/' . $asgiEnv['SERVER_PROTOCOL'] . '"';
         
         $statusCode = $asgiResponse[0];
-        $bodySize = empty($asgiResponse[1]['CONTENT-LENGTH']) ? '-' : $asgiResponse[1]['CONTENT-LENGTH'];
+        $headers = $asgiResponse[2];
+        $bodySize = empty($headers['CONTENT-LENGTH']) ? '-' : $headers['CONTENT-LENGTH'];
         $referer = empty($asgiEnv['HTTP_REFERER']) ? '-' : $asgiEnv['HTTP_REFERER'];
         
         $userAgent = empty($asgiEnv['HTTP_USER_AGENT']) ? '-' : '"' . $asgiEnv['HTTP_USER_AGENT'] . '"';
@@ -132,7 +133,8 @@ class Log implements OnResponseMod {
         $requestLine.= 'HTTP/' . $asgiEnv['SERVER_PROTOCOL'] . '"';
         
         $statusCode = $asgiResponse[0];
-        $bodySize = empty($asgiResponse[1]['CONTENT-LENGTH']) ? '-' : $asgiResponse[1]['CONTENT-LENGTH'];
+        $headers = $asgiResponse[2];
+        $bodySize = empty($headers['CONTENT-LENGTH']) ? '-' : $headers['CONTENT-LENGTH'];
         $time = date('d/M/Y:H:i:s O', $this->logTime);
         
         // $ip $identd $userId $time $requestLine $statusCode $bytesReturned
@@ -151,7 +153,9 @@ class Log implements OnResponseMod {
         $requestLine.= $asgiEnv['REQUEST_URI'] . ' ';
         $requestLine.= 'HTTP/' . $asgiEnv['SERVER_PROTOCOL'] . '"';
         
-        $bytes = empty($asgiResponse[1]['CONTENT-LENGTH']) ? '-' : $asgiResponse[1]['CONTENT-LENGTH'];
+        $headers = $asgiResponse[2];
+        
+        $bytes = empty($headers['CONTENT-LENGTH']) ? '-' : $headers['CONTENT-LENGTH'];
         
         $search = ['%h', '%t', '%r', '%s', '%b'];
         $replace = [
@@ -166,7 +170,7 @@ class Log implements OnResponseMod {
         
         
         $pattern = "/\${([^\)]+)}/";
-        if (!preg_match_all($pattern, $msg, $matches), PREG_SET_ORDER) {
+        if (!preg_match_all($pattern, $msg, $matches, PREG_SET_ORDER)) {
             return $msg;
         }
         
