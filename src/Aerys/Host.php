@@ -4,44 +4,44 @@ namespace Aerys;
 
 class Host {
     
-    const NIC_WILDCARD = '0.0.0.0';
-    
+    private $interface;
     private $port;
     private $name;
     private $handler;
-    private $interface;
-    private $mods;
     
-    function __construct(callable $handler, $name, $port = 80, $interface = '*', array $mods = []) {
-        $this->handler = $handler;
-        $this->name = strtolower($name);
+    function __construct($interface, $port, $name, callable $handler) {
         $this->port = (int) $port;
-        $this->interface = ($interface == '*') ? self::NIC_WILDCARD : $interface;
-        $this->mods = $mods;
+        $this->interface = $interface;
+        $this->name = strtolower($name);
+        $this->handler = $handler;
     }
     
     function getId() {
         return $this->name . ':' . $this->port;
     }
     
-    function getPort() {
-        return $this->port;
-    }
-    
     function getName() {
         return $this->name;
-    }
-    
-    function getHandler() {
-        return $this->handler;
     }
     
     function getInterface() {
         return $this->interface;
     }
     
-    function getMods() {
-        return $this->mods;
+    function hasWildcardInterface() {
+        return ($this->interface == Server::WILDCARD);
+    }
+    
+    function getInterfaceId() {
+        return $this->interface . ':' . $this->port;
+    }
+    
+    function getPort() {
+        return $this->port;
+    }
+    
+    function getHandler() {
+        return $this->handler;
     }
     
 }

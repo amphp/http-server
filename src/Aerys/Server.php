@@ -2,11 +2,15 @@
 
 namespace Aerys;
 
+use Aerys\Engine\EventBase;
+
 class Server {
     
     const SERVER_SOFTWARE = 'Aerys';
     const SERVER_VERSION = '0.0.1';
-    
+    const WILDCARD = '*';
+    const WILDCARD_IPV4 = '0.0.0.0';
+    const WILDCARD_IPV6 = '[::]';
     const MICROSECOND_RESOLUTION = 1000000;
     const HTTP_DATE = 'D, d M Y H:i:s T';
     
@@ -16,18 +20,19 @@ class Server {
     private $readSubscriptions = [];
     private $writeSubscriptions = [];
     
-    private $hosts;
-    private $tlsDefinitions = [];
-    private $serverTlsMap = [];
-    
+    private $vhosts;
     private $clients = [];
+    private $pendingTlsClients = [];
+    
+    private $clientCount = 0;
+    private $pendingTlsClientCount = 0;
+    private $lastRequestId = 0;
+    
     private $requestIdClientMap = [];
     private $preRequestInfoMap = [];
     private $tempEntityWriters = [];
     
-    private $lastRequestId = 0;
-    private $cachedClientCount = 0;
-    
+    private $tlsDefinitions = [];
     private $maxConnections = 0;
     private $maxRequestsPerSession = 100;
     private $idleConnectionTimeout = 15;
@@ -35,55 +40,35 @@ class Server {
     private $maxHeadersSize = 8192;
     private $maxEntityBodySize = 2097152;
     private $tempEntityDir = NULL;
-    private $cryptoHandshakeTimeout = 5;
     private $defaultContentType = 'text/html';
+    private $autoReasonPhrase = TRUE;
+    private $cryptoHandshakeTimeout = 3;
+    private $ipv6WildcardMode = FALSE;
     
     private $onHeadersMods = [];
     private $onRequestMods = [];
     private $beforeResponseMods = [];
-    private $onResponseMods = [];
+    private $afterResponseMods = [];
+    private $onCloseMods = [];
     
     private $insideBeforeResponseModLoop = FALSE;
     
-    public $closeCount = 0;
-    
-    function __construct(Engine\EventBase $eventBase, HostCollection $hosts, $tlsDefs = NULL) {
+    function __construct(EventBase $eventBase, VirtualHostGroup $vhosts) {
         $this->eventBase = $eventBase;
-        $this->hosts = $hosts;
-        
-        if ($tlsDefs) {
-            $this->setTlsDefinitions($tlsDefs);
-        }
-        
+        $this->vhosts = $vhosts;
         $this->tempEntityDir = sys_get_temp_dir();
-    }
-    
-    private function setTlsDefinitions($tlsDefs) {
-        if (!(is_array($tlsDefs) || $tlsDefs instanceof \Traversable)) {
-            throw new \InvalidArgumentException;
-        }
-        
-        foreach ($tlsDefs as $tlsDef) {
-            if ($tlsDef instanceof TlsDefinition) {
-                $address = $tlsDef->getAddress();
-                $this->tlsDefinitions[$address] = $tlsDef;
-            } else {
-                throw new \InvalidArgumentException;
-            }
-        }
     }
     
     function listen() {
         if (!$this->isListening) {
-        
             $this->isListening = TRUE;
             
-            foreach ($this->initializeServerSocks() as $boundAddress) {
+            foreach ($this->bindServerSocks() as $boundAddress) {
                 echo 'Server listening on ', $boundAddress, "\n";
             }
             
             $this->eventBase->repeat(1000000, function() {
-                echo time(), ' (', $this->cachedClientCount, ")\n";
+                echo time(), ' (', $this->clientCount, ")\n";
             });
             
             $this->eventBase->run();
@@ -96,105 +81,125 @@ class Server {
         }
     }
     
-    private function initializeServerSocks() {
-        $boundServers = [];
+    private function bindServerSocks() {
+        $boundSockets = [];
         $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+        $wildcard = $this->ipv6WildcardMode ? self::WILDCARD_IPV6 : self::WILDCARD_IPV4;
         
-        foreach ($this->hosts as $host) {
-            
+        foreach ($this->vhosts as $host) {
             $name = $host->getName();
-            $interface = $host->getInterface();
             $port = $host->getPort();
-            $address = $interface . ':' . $port;
-            $wildcardAddress = Host::NIC_WILDCARD . ':' . $port;
+            $interface = $host->getInterface();
+            $interface = ($interface == '*') ? $wildcard : $interface;
             
-            // An interface:port combo only needs to be bound once
-            if (isset($boundServers[$address]) || isset($boundServers[$wildcardAddress])) {
+            $bindOn = $interface . ':' . $port;
+            $wildcardBindOn = $wildcard . ':' . $port;
+            
+            if (isset($boundSockets[$bindOn]) || isset($boundSockets[$wildcardBindOn])) {
                 continue;
             }
             
-            if ($tlsDefinition = $this->getTlsDefinition($interface, $port)) {
-                $context = $tlsDefinition->getStreamContext();
+            if ($serverSock = stream_socket_server($bindOn, $errNo, $errStr, $flags)) {
+                stream_set_blocking($serverSock, FALSE);
+                $this->eventBase->onReadable($serverSock, function ($serverSock) {
+                    $this->acceptNewClients($serverSock);
+                });
+                $boundSockets[$bindOn] = $host->getInterfaceId();
             } else {
-                $context = stream_context_create();
+                throw new \RuntimeException(
+                    "Failed binding server on $bindOn: [Error# $errNo] $errStr"
+                );
             }
-            
-            if (!$serverSock = stream_socket_server($address, $errNo, $errStr, $flags, $context)) {
-                throw new \ErrorException;
-            }
-            
-            stream_set_blocking($serverSock, FALSE);
-            
-            $serverId = (int) $serverSock;
-            $this->serverTlsMap[$serverId] = $tlsDefinition;
-            $this->eventBase->onReadable($serverSock, function ($serverSock) {
-                //if (!$this->maxConnections || ($this->cachedClientCount < $this->maxConnections)) {
-                    $this->accept($serverSock);
-                //}
-            });
-            
-            $boundServers[$address] = TRUE;
         }
         
-        return array_map(function($addr) { return str_replace(Host::NIC_WILDCARD, '*', $addr); }, array_keys($boundServers));
+        return array_values($boundSockets);
     }
     
-    private function getTlsDefinition($interface, $port) {
-        $wildcardMatch =  Host::NIC_WILDCARD . ':' . $port;
-        $addressMatch = $interface . ':' . $port;
-        
-        if (isset($this->tlsDefinitions[$wildcardMatch])) {
-            return $this->tlsDefinitions[$wildcardMatch];
-        } elseif (isset($this->tlsDefinitions[$addressMatch])) {
-            return $this->tlsDefinitions[$addressMatch];
-        } else {
-            return NULL;
+    private function acceptNewClients($serverSock) {
+        if (!$this->isListening) {
+            return; // not helpful now, but will eventually aid in graceful shutdown
         }
-    }
-    
-    private function accept($serverSock) {
-        while ($clientSock = @stream_socket_accept($serverSock, 0, $peerName)) {
-            $serverId = (int) $serverSock;
-            $sockName = stream_socket_get_name($serverSock, FALSE);
-            stream_set_blocking($clientSock, FALSE);
-            
-            if ($tlsDefinition = $this->serverTlsMap[$serverId]) {
-                $subscription = $this->eventBase->onReadable($clientSock, function ($clientSock) {
-                    $this->enablePendingCrypto($clientSock);
-                }, 1000000);
-                
-                $clientId = (int) $clientSock;
-                $this->clientsPendingCrypto[$clientId] = [
-                     $tlsDefinition->getCryptoType(),
-                    time(),
-                    $subscription,
-                    $sockName,
-                    $peerName,
-                ];
-                
-                $this->enablePendingCrypto($clientSock);
+        
+        $currentClientCount = $this->clientCount + $this->pendingTlsClientCount;
+        if ($this->maxConnections && ($this->maxConnections <= $currentClientCount)) {
+            return;
+        }
+        
+        $serverName = stream_socket_get_name($serverSock, FALSE);
+        $tlsWildcard = '*' . substr($serverName, strrpos($serverName, ':'));
+        
+        // Since we're going to gobble up sockets in a loop until there are none left we need to
+        // suppress the E_WARNING that will trigger when the accept finally fails because there 
+        // are no more clients awaiting acceptance.
+        while ($clientSock = @stream_socket_accept($serverSock, 0, $clientName)) {
+            if (isset($this->tlsDefinitions[$serverName])) {
+                $tlsInterfaceId = $serverName;
+            } elseif (isset($this->tlsDefinitions[$tlsWildcard])) {
+                $tlsInterfaceId = $tlsWildcard;
             } else {
-                $this->generateClient($clientSock, $sockName, $peerName, FALSE);
+                $this->generateClient($clientSock, $clientName, $serverName);
+                continue;
             }
             
-            ++$this->cachedClientCount;
+            // If we're still here we need to enable crypto.
+            ++$this->pendingTlsClientCount;
+            
+            $tlsDefinition = $this->tlsDefinitions[$tlsInterfaceId];
+            $cryptoType = $tlsDefinition->getCryptoType();
+            stream_context_set_option($clientSock, $tlsDefinition->getContextOptions());
+            $subscription = $this->eventBase->onReadable($clientSock, function ($clientSock) {
+                $this->enablePendingTlsClient($clientSock);
+            }, 1000000);
+            
+            $pendingInfo = [$clientName, $serverName, $subscription, $cryptoType, time()];
+            
+            $clientId = (int) $clientSock;
+            $this->pendingTlsClients[$clientId] = $pendingInfo;
+            $this->enablePendingTlsClient($clientSock);
         }
     }
     
-    private function generateClient($clientSock, $sockName, $peerName, $isCryptoEnabled) {
+    private function enablePendingTlsClient($clientSock) {
+        $clientId = (int) $clientSock;
+        $pendingInfo = $this->pendingTlsClients[$clientId];
+        
+        list($clientName, $serverName, $subscription, $cryptoType, $connectedAt) = $pendingInfo;
+        
+        if ($cryptoResult = @stream_socket_enable_crypto($clientSock, TRUE, $cryptoType)) {
+            --$this->pendingTlsClientCount;
+            unset($this->pendingTlsClients[$clientId]);
+            $subscription->cancel();
+            
+            $this->generateClient($clientSock, $clientName, $serverName);
+            
+        } elseif (FALSE === $cryptoResult || time() - $connectedAt > $this->cryptoHandshakeTimeout) {
+            --$this->pendingTlsClientCount;
+            unset($this->pendingTlsClients[$clientId]);
+            $subscription->cancel();
+            
+            stream_socket_shutdown($clientSock, STREAM_SHUT_RDWR);
+            fclose($clientSock);
+        }
+    }
+    
+    private function generateClient($clientSock, $clientName, $serverName) {
         $clientId = (int) $clientSock;
         
         $writer = new Http\MessageWriter($clientSock);
         $parser = new Http\RequestParser;
+        
         $parser->onHeaders(function(array $parsedRequest) use ($clientId) {
             $this->onHeaders($clientId, $parsedRequest);
         });
+        
         $parser->onBodyData(function($data) use ($clientId) {
             $this->clients[$clientId]->tempEntityWriter->write($data);
         });
+        
         $readSub = $this->eventBase->onReadable($clientSock, function ($clientSock, $triggeredBy) {
             $this->onReadable($clientSock, $triggeredBy);
         }, $this->idleConnectionTimeout * self::MICROSECOND_RESOLUTION);
+        
         $writeSub = $this->eventBase->onWritable($clientSock, function ($clientSock, $triggeredBy) {
             $this->onWritable($clientSock, $triggeredBy);
         });
@@ -202,41 +207,9 @@ class Server {
         $this->readSubscriptions[$clientId] = $readSub;
         $this->writeSubscriptions[$clientId] = $writeSub;
         
-        list($serverIp, $serverPort) = explode(':', $sockName);
-        list($clientIp, $clientPort) = explode(':', $peerName);
+        $this->clients[$clientId] = new Client($clientSock, $clientName, $serverName, $parser, $writer);
         
-        $this->clients[$clientId] = new Client(
-            $clientSock,
-            $clientIp,
-            $clientPort,
-            $serverIp,
-            $serverPort,
-            $parser,
-            $writer,
-            $isCryptoEnabled
-        );
-    }
-    
-    private function enablePendingCrypto($clientSock) {
-        $clientId = (int) $clientSock;
-        $pendingInfoArr = $this->clientsPendingCrypto[$clientId];
-        list($cryptoType, $connectedAt, $subscription, $sockName, $peerName) = $pendingInfoArr;
-        
-        if ($isComplete = @stream_socket_enable_crypto($clientSock, TRUE, $cryptoType)) {
-            
-            $subscription->cancel();
-            unset($this->clientsPendingCrypto[$clientId]);
-            $this->generateClient($clientSock, $sockName, $peerName, TRUE);
-            
-        } elseif ($isComplete === FALSE || (time() - $connectedAt > $this->cryptoHandshakeTimeout)) {
-            
-            $subscription->cancel();
-            unset($this->clientsPendingCrypto[$clientId]);
-            stream_socket_shutdown($clientSock, STREAM_SHUT_RDWR);
-            fclose($clientSock);
-            
-            --$this->cachedClientCount;
-        }
+        ++$this->clientCount;
     }
     
     private function onReadable($clientSock, $triggeredBy) {
@@ -257,12 +230,20 @@ class Server {
             }
         } catch (Http\ParseException $e) {
             switch ($e->getCode()) {
-                case Http\MessageParser::E_START_LINE_TOO_LARGE: $status = 414; break;
-                case Http\MessageParser::E_HEADERS_TOO_LARGE: $status = 431; break;
-                case Http\MessageParser::E_ENTITY_TOO_LARGE: $status = 413; break;
-                default: $status = 400;
+                case Http\MessageParser::E_START_LINE_TOO_LARGE:
+                    $status = 414;
+                    break;
+                case Http\MessageParser::E_HEADERS_TOO_LARGE:
+                    $status = 431;
+                    break;
+                case Http\MessageParser::E_ENTITY_TOO_LARGE:
+                    $status = 413;
+                    break;
+                default:
+                    $status = 400;
             }
             
+            $client = $this->clients[$clientId];
             $this->doServerLayerError($client, $status, $e->getMessage());
         }
     }
@@ -270,11 +251,7 @@ class Server {
     private function handleReadTimeout($clientId) {
         $client = $this->clients[$clientId];
         $parser = $client->getParser();
-        if ($parser->isProcessing()) {
-            $this->doServerLayerError($client, 408, 'Request timed out');
-        } else {
-            $this->close($clientId);
-        }
+        $this->doServerLayerError($client, 408, 'Request timed out');
     }
     
     private function onWritable($clientSock) {
@@ -321,13 +298,10 @@ class Server {
             foreach ($this->onHeadersMods[$hostId] as $mod) {
                 $mod->onHeaders($clientId, $requestId);
             }
-            
-            // In case any Mods changed environment vars
-            $asgiEnv = $client->pipeline[$requestId];
         }
         
         $handler = $host->getHandler();
-        if ($asgiResponse = $handler($asgiEnv)) {
+        if ($asgiResponse = $handler($client->pipeline[$requestId])) {
             return $this->setResponse($requestId, $asgiResponse);
         }
         
@@ -347,7 +321,7 @@ class Server {
                 400
             );
         } elseif ($protocol === '1.1' || $protocol === '1.0') {
-            return $this->hosts->selectHost($host, $serverInterface, $serverPort);
+            return $this->vhosts->selectHost($host, $serverInterface, $serverPort);
         } else {
             throw new Http\StatusException(
                 'HTTP Version not supported',
@@ -356,7 +330,7 @@ class Server {
         }
     }
     
-    private function doServerLayerError(Client $client, $code, $msg, array $parsedRequest) {
+    private function doServerLayerError(Client $client, $code, $msg, array $parsedRequest = NULL) {
         $requestId = ++$this->lastRequestId;
         $this->requestIdClientMap[$requestId] = $client->getId();
         
@@ -388,18 +362,8 @@ class Server {
     }
     
     private function generateAsgiEnv(Client $client, $serverName, $parsedRequest) {
-        $clientIp = $client->getIp();
-        $clientPort = $client->getPort();
-        $serverPort = $client->getServerPort();
-        $isCryptoEnabled = $client->isCryptoEnabled();
-        
-        $method = $parsedRequest['method'];
         $uri = $parsedRequest['uri'];
-        $protocol = $parsedRequest['protocol'];
         $headers = $parsedRequest['headers'];
-        
-        $asgiUrlScheme = $isCryptoEnabled ? 'https' : 'http';
-        
         $queryString = '';
         $pathInfo = '';
         $scriptName = '';
@@ -420,35 +384,30 @@ class Server {
         
         $contentType = isset($headers['CONTENT-TYPE']) ? $headers['CONTENT-TYPE'] : '';
         $contentLength = isset($headers['CONTENT-LENGTH']) ? $headers['CONTENT-LENGTH'] : '';
-        unset($headers['CONTENT-TYPE'], $headers['CONTENT-LENGTH']);
+        
+        $scheme = isset(stream_context_get_options($client->getSocket())['ssl']) ? 'https' : 'http';
         
         $asgiEnv = [
             'SERVER_SOFTWARE'    => self::SERVER_SOFTWARE . ' ' . self::SERVER_VERSION,
             'SERVER_NAME'        => $serverName,
-            'SERVER_PORT'        => $serverPort,
-            'REMOTE_ADDR'        => $clientIp,
-            'REMOTE_PORT'        => $clientPort,
-            'SERVER_PROTOCOL'    => $protocol,
-            'REQUEST_METHOD'     => $method,
+            'SERVER_PORT'        => $client->getServerPort(),
+            'REMOTE_ADDR'        => $client->getIp(),
+            'REMOTE_PORT'        => $client->getPort(),
+            'SERVER_PROTOCOL'    => $parsedRequest['protocol'],
+            'REQUEST_METHOD'     => $parsedRequest['method'],
             'REQUEST_URI'        => $uri,
             'QUERY_STRING'       => $queryString,
             'SCRIPT_NAME'        => $scriptName,
             'PATH_INFO'          => $pathInfo,
             'CONTENT_TYPE'       => $contentType,
             'CONTENT_LENGTH'     => $contentLength,
-            
-            // NON-STANDARD AERYS ENV VARS
-            'REQUEST_TIME'       => time(),
-            'REQUEST_TIME_FLOAT' => microtime(TRUE),
-            
-            // ADDITIONAL ASGI-REQUIRED ENV VARS
             'ASGI_VERSION'       => 0.1,
-            'ASGI_URL_SCHEME'    => $asgiUrlScheme,// The URL scheme
+            'ASGI_URL_SCHEME'    => $scheme,// The URL scheme (will always be "http" unless mod.ssl enabled)
             'ASGI_INPUT'         => NULL,  // The temp filesystem path of the request entity body
-            'ASGI_CAN_STREAM'    => TRUE,  // ATRUE if the server supports callback style delayed response and streaming writer object.
+            'ASGI_CAN_STREAM'    => TRUE,  // TRUE if the server supports callback-style delayed response and streaming traversable entity body.
             'ASGI_NON_BLOCKING'  => TRUE,  // TRUE if the server is calling the application in a non-blocking event loop.
-            'ASGI_LAST_CHANCE'   => TRUE,  // TRUE if the server expects (but does not guarantee!) that the application will only be invoked this one time during the life of its containing process.
-            'ASGI_MULTIPROCESS'  => FALSE  // This is a boolean value, which MUST be TRUE if an equivalent application object may be simultaneously invoked by another process, FALSE otherwise.
+            'ASGI_LAST_CHANCE'   => TRUE,  // TRUE if this is the final time a handler will be notified of the current request
+            'ASGI_MULTIPROCESS'  => FALSE  // TRUE if an equivalent application object may be simultaneously invoked by another process, FALSE otherwise.
         ];
         
         foreach ($headers as $field => $value) {
@@ -517,9 +476,10 @@ class Server {
         $shouldClose = $this->shouldCloseAfterResponse($asgiEnv, $client->responses[$requestId]);
         
         $hostId = strtolower($asgiEnv['SERVER_NAME']) . ':' . $client->getServerPort();
-        if (isset($this->onResponseMods[$hostId])) {
-            foreach ($this->onResponseMods[$hostId] as $mod) {
-                $mod->onResponse($clientId, $requestId);
+        
+        if (isset($this->afterResponseMods[$hostId])) {
+            foreach ($this->afterResponseMods[$hostId] as $mod) {
+                $mod->afterResponse($clientId, $requestId);
             }
         }
         
@@ -590,9 +550,19 @@ class Server {
             $this->writeSubscriptions[$clientId]
         );
         
-        --$this->cachedClientCount;
+        --$this->clientCount;
         
         return $client->getSocket();
+    }
+    
+    function setRequest($requestId, array $asgiEnv) {
+        if (!isset($this->requestIdClientMap[$requestId])) {
+            throw new \DomainException;
+        }
+        
+        $clientId = $this->requestIdClientMap[$requestId];
+        $client = $this->clients[$clientId];
+        $client->pipeline[$requestId] = $asgiEnv;
     }
     
     function setResponse($requestId, array $asgiResponse) {
@@ -608,7 +578,7 @@ class Server {
             return;
         }
         
-        if ((string) $asgiResponse[1] === '') {
+        if ($this->autoReasonPhrase && (string) $asgiResponse[1] === '') {
             $reasonConst = 'Aerys\\Http\\Reasons::HTTP_' . $asgiResponse[0];
             $asgiResponse[1] = defined($reasonConst) ? constant($reasonConst) : $asgiResponse[1];
         }
@@ -745,50 +715,57 @@ class Server {
     
     private function setTempEntityDir($dir) {
         $this->tempEntityDir = $dir ?: sys_get_temp_dir();
-    }   
-    
-    private function setCryptoHandshakeTimeout($seconds) {
-        $this->cryptoHandshakeTimeout = (int) $seconds;
     }
     
     private function setDefaultContentType($mimeType) {
         $this->defaultContentType = $mimeType;
     }
     
+    private function setAutoReasonPhrase($boolFlag) {
+        $this->autoReasonPhrase = (bool) $boolFlag;
+    }
+    
+    private function setCryptoHandshakeTimeout($seconds) {
+        $this->cryptoHandshakeTimeout = (int) $seconds;
+    }
+    
+    private function setIpv6WildcardMode($boolFlag) {
+        $this->ipv6WildcardMode = (bool) $boolFlag;
+    }
     
     
     
-    function registerMod($mod, $hostNameAndPort) {
-        if ($this->isListening) {
-            return;
+    function setTlsDefinition($interfaceId, TlsDefinition $tlsDef) {
+        // PHP returns the server name WITHOUT brackets when retrieved from IPv6 server sockets. If 
+        // we don't remove them here the server won't realize it needs to encrypt the relevant
+        // traffic.
+        $interfaceId = str_replace(['[', ']'], '', $interfaceId);
+        
+        $this->tlsDefinitions[$interfaceId] = $tlsDef;
+    }
+    
+    function registerMod($hostId, $mod) {
+        if ($mod instanceof Mods\OnHeadersMod) {
+            $this->onHeadersMods[$hostId][] = $mod;
         }
         
-        $isWildcardMatch = ($hostNameAndPort == '*');
+        if ($mod instanceof Mods\OnRequestMod) {
+            $this->onRequestMods[$hostId][] = $mod;
+        }
         
-        foreach ($this->hosts as $host) {
-            $hostId = $host->getId();
-            
-            if (!($isWildcardMatch || $hostId == $hostNameAndPort)) {
-                continue;
-            }
-            
-            if ($mod instanceof Mods\OnHeadersMod) {
-                $this->onHeadersMods[$hostId][] = $mod;
-            }
-            
-            if ($mod instanceof Mods\OnRequestMod) {
-                $this->onHeadersMods[$hostId][] = $mod;
-            }
-            
-            if ($mod instanceof Mods\BeforeResponseMod) {
-                $this->beforeResponseMods[$hostId][] = $mod;
-            }
-            
-            if ($mod instanceof Mods\OnResponseMod) {
-                $this->onResponseMods[$hostId][] = $mod;
-            }
+        if ($mod instanceof Mods\BeforeResponseMod) {
+            $this->beforeResponseMods[$hostId][] = $mod;
+        }
+        
+        if ($mod instanceof Mods\AfterResponseMod) {
+            $this->afterResponseMods[$hostId][] = $mod;
+        }
+        
+        if ($mod instanceof Mods\OnCloseMod) {
+            $this->onCloseMods[$hostId][] = $mod;
         }
     }
+    
 }
 
 

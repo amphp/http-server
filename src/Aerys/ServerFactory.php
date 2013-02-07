@@ -2,102 +2,131 @@
 
 namespace Aerys;
 
+use Aerys\Engine\EventBase,
+    Aerys\Engine\LibEventBase;
+
 class ServerFactory {
     
+    private $modFactories = [
+        'mod.log'       => ['Aerys\\Mods\\Log', 'createMod'],
+        'mod.errorpages'=> ['Aerys\\Mods\\ErrorPages', 'createMod'],
+        // --- INCOMPLETE ---
+        //'mod.sendfile'  => ['Aerys\\Mods\\SendFile', 'createMod']
+    ];
+    
     function createServer(array $config) {
-        $options = isset($config['aerys.globals']) ? $config['aerys.globals'] : [];
-        $tlsConf = isset($options['tlsDefinitions']) ? $options['tlsDefinitions'] : [];
+        list($opts, $tls, $globalMods, $hosts) = $this->listConfigSections($config);
         
-        unset(
-            $config['aerys.globals'],
-            $options['tlsDefinitions']
-        );
+        $mods = [];
+        $vhosts = new VirtualHostGroup;
         
-        if (empty($config)) {
-            throw new \Exception;
-        } else {
-            $hostConf = $config;
+        foreach ($this->generateHostDefinitions($hosts) as $hostId => $hostStruct) {
+            list($host, $hostMods) = $hostStruct;
+            $vhosts->addHost($host);
+            $mods[$hostId] = $hostMods;
         }
         
-        $hostDefs = $this->generateHostDefs($hostConf);
-        $tlsDefs = $this->generateTlsDefs($tlsConf);
         $eventBase = $this->selectEventBase();
+        $server = new Server($eventBase, $vhosts);
         
-        $server = new Server($eventBase, $hostDefs, $tlsDefs);
-        
-        foreach ($options as $key => $value) {
+        foreach ($opts as $key => $value) {
             $server->setOption($key, $value);
         }
+        
+        foreach ($this->generateTlsDefinitions($tls) as $interfaceId => $definition) {
+            $server->setTlsDefinition($interfaceId, $definition);
+        }
+        
+        $this->registerMods($server, $eventBase, $globalMods, $mods);
         
         return $server;
     }
     
-    /**
-     * @todo select best available event base according to system availability
-     */
-    private function selectEventBase() {
-        return new Engine\LibEventBase;
-    }
-    
-    /**
-     * @todo determine appropriate exception to throw on config errors
-     */
-    private function generateHostDefs(array $hostConf) {
-        $hostDefs = new HostCollection;
+    private function listConfigSections(array $config) {
+        $opts = $tls = $mods = $hosts = [];
         
-        foreach ($hostConf as $hostArr) {
-            if (!empty($hostArr['listen'])) {
-                list($interface, $port) = explode(':', $hostArr['listen']);
-            } else {
-                throw new \Exception;
-            }
-            
-            if (!empty($hostArr['handler'])) {
-                $handler = $hostArr['handler'];
-            } else {
-                throw new \Exception;
-            }
-            
-            $name = empty($hostArr['name']) ? '127.0.0.1' : $hostArr['name'];
-            
-            unset(
-                $hostArr['listen'],
-                $hostArr['handler'],
-                $hostArr['name']
-            );
-            
-            $mods = $hostArr;
-            
-            $host = new Host($handler, $name, $port, $interface, $mods);
-            $hostDefs->attach($host);
+        if (isset($config['globals']['opts'])) {
+            $opts = $config['globals']['opts'];
+        }
+        if (isset($config['globals']['tls'])) {
+            $tls = $config['globals']['tls'];
+        }
+        if (isset($config['globals']['mods'])) {
+            $mods = $config['globals']['mods'];
         }
         
-        return $hostDefs;
+        unset($config['globals']);
+        
+        // Anything left in the config array should be a host definition
+        
+        return [$opts, $tls, $mods, $config];
     }
     
     /**
-     * @todo determine appropriate exception to throw on config errors
+     * @TODO determine appropriate exception to throw on config errors
      */
-    private function generateTlsDefs(array $tlsConf) {
-        $tlsDefs = [];
+    private function generateHostDefinitions(array $hosts) {
+        $hostDefinitions = [];
         
-        foreach ($tlsConf as $address => $tlsDef) {
-            if (!(isset($tlsDef['localCertFile']) && isset($tlsDef['certPassphrase']))) {
-                throw new \Exception;
+        foreach ($hosts as $hostDefinitionArr) {
+            if (!(empty($hostDefinitionArr['listen']) || empty($hostDefinitionArr['handler']))) {
+                list($interface, $port) = explode(':', $hostDefinitionArr['listen']);
+                $handler = $hostDefinitionArr['handler'];
+            } else {
+                throw new \RuntimeException;
             }
             
-            $localCertFile = $tlsDef['localCertFile'];
-            $certPassphrase = $tlsDef['certPassphrase'];
+            $name = empty($hostDefinitionArr['name']) ? '127.0.0.1' : $hostDefinitionArr['name'];
+            $mods = isset($hostDefinitionArr['mods']) ? $hostDefinitionArr['mods'] : [];
             
-            unset(
-                $tlsDef['localCertFile'],
-                $tlsDef['certPassphrase']
-            );
+            $host = new Host($interface, $port, $name, $handler);
+            $hostDefinitions[$host->getId()] = [$host, $mods];
+        }
+        
+        return $hostDefinitions;
+    }
+    
+    /**
+     * @TODO select best available event base according to system availability
+     */
+    private function selectEventBase() {
+        return new LibEventBase;
+    }
+    
+    private function registerMods(Server $server, EventBase $eventBase, $globalMods, $hostMods) {
+        foreach ($globalMods as $modKey => $modDefinition) {
+            $modFactory = $this->modFactories[$modKey];
+            $globalMods[$modKey] = $modFactory($server, $eventBase, $modDefinition);
+        }
+        
+        foreach ($hostMods as $hostId => $hostModArr) {
+            $mods = [];
+            foreach ($hostModArr as $modKey => $modDefinition) {
+                $modFactory = $this->modFactories[$modKey];
+                $mods[$modKey] = $modFactory($server, $eventBase, $modDefinition);
+            }
             
-            $definition = new TlsDefinition($address, $localCertFile, $certPassphrase);
-            $definition->setOptions($tlsDef);
+            foreach (array_merge($globalMods, $mods) as $mod) {
+                $server->registerMod($hostId, $mod);
+            }
+        }
+    }
+    
+    private function generateTlsDefinitions(array $tlsDefinitionArr) {
+        $tlsDefs = [];
+        
+        foreach ($tlsDefinitionArr as $interfaceId => $definition) {
+            if (!(isset($definition['localCertFile']) && isset($definition['certPassphrase']))) {
+                throw new \InvalidArgumentException(
+                    'Invalid TLS definition'
+                );
+            }
             
-            $tlsDefs[] = $definition;
+            $tlsDef = new TlsDefinition($definition['localCertFile'], $definition['certPassphrase']);
+            unset($definition['localCertFile'], $definition['certPassphrase']);
+            $tlsDef->setOptions($definition);
+            
+            $tlsDefs[$interfaceId] = $tlsDef;
         }
         
         return $tlsDefs;

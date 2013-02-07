@@ -2,9 +2,10 @@
 
 namespace Aerys\Mods;
 
-use Aerys\Server;
+use Aerys\Server,
+    Aerys\Engine\EventBase;
 
-class Log implements OnResponseMod {
+class Log implements AfterResponseMod {
     
     private $server;
     private $resources = [];
@@ -14,11 +15,17 @@ class Log implements OnResponseMod {
     private $flushSize = 0;
     private $logTime;
     
-    function __construct(Server $server) {
-        $this->server = $server;
+    static function createMod(Server $server, EventBase $eventBase, array $config) {
+        $class = __CLASS__;
+        return new $class($server, $config);
     }
     
-    function configure(array $config) {
+    function __construct(Server $server, array $config) {
+        $this->server = $server;
+        $this->configure($config);
+    }
+    
+    private function configure(array $config) {
         if (isset($config['flushSize'])) {
             $this->flushSize = (int) $config['flushSize'];
         }
@@ -52,21 +59,23 @@ class Log implements OnResponseMod {
         }
     }
     
-    function onResponse($clientId, $requestId) {
+    function afterResponse($clientId, $requestId) {
         $this->logTime = time();
         
         foreach ($this->resources as $resourceId => $resource) {
+            $asgiEnv = $this->server->getRequest($requestId);
+            $asgiResponse = $this->server->getResponse($requestId);
             $format = $this->resourceFormatMap[$resourceId];
             
             switch ($format) {
                 case 'combined':
-                    $msg = $this->doCombinedFormat($requestId);
+                    $msg = $this->doCombinedFormat($asgiEnv, $asgiResponse);
                     break;
                 case 'common':
-                    $msg = $this->doCommonFormat($requestId);
+                    $msg = $this->doCommonFormat($asgiEnv, $asgiResponse);
                     break;
                 default:
-                    $msg = $this->doCustomFormat($requestId, $format);
+                    $msg = $this->doCustomFormat($asgiEnv, $asgiResponse, $format);
             }
             
             $buffer = $this->buffers[$resourceId][0] . $msg;
@@ -85,13 +94,10 @@ class Log implements OnResponseMod {
     /**
      * @link http://httpd.apache.org/docs/2.2/logs.html#combined
      */
-    private function doCombinedFormat($requestId) {
+    private function doCombinedFormat(array $asgiEnv, array $asgiResponse) {
         if (isset($this->msgGenerationCache['combined'])) {
             return $this->msgGenerationCache['combined'];
         }
-        
-        $asgiEnv = $this->server->getRequest($requestId);
-        $asgiResponse = $this->server->getResponse($requestId);
         
         $ip = $asgiEnv['REMOTE_ADDR'];
         
@@ -117,13 +123,10 @@ class Log implements OnResponseMod {
     /**
      * @link http://httpd.apache.org/docs/2.2/logs.html#common
      */
-    private function doCommonFormat($requestId) {
+    private function doCommonFormat(array $asgiEnv, array $asgiResponse) {
         if (isset($this->msgGenerationCache['common'])) {
             return $this->msgGenerationCache['common'];
         }
-        
-        $asgiEnv = $this->server->getRequest($requestId);
-        $asgiResponse = $this->server->getResponse($requestId);
         
         $ip = $asgiEnv['REMOTE_ADDR'];
         
@@ -152,9 +155,7 @@ class Log implements OnResponseMod {
      * 
      * %{HEADER-FIELD} - Any request header (case-insensitive, "-" if not available)
      */
-    private function doCustomFormat($requestId, $format) {
-        $asgiEnv = $this->server->getRequest($requestId);
-        $asgiResponse = $this->server->getResponse($requestId);
+    private function doCustomFormat(array $asgiEnv, array $asgiResponse, $format) {
         
         $requestLine = '"' . $asgiEnv['REQUEST_METHOD'] . ' ';
         $requestLine.= $asgiEnv['REQUEST_URI'] . ' ';
@@ -186,31 +187,5 @@ class Log implements OnResponseMod {
             return preg_replace_callback("/\%{([^\)]+)}/U", $replace, $msg) . PHP_EOL;
         }
     }
-    
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

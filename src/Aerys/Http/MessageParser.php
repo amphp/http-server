@@ -122,10 +122,6 @@ abstract class MessageParser {
         }
     }
     
-    function isProcessing() {
-        return ($this->state != self::START_LINE);
-    }
-    
     abstract protected function parseStartLine($rawStartLine);
     abstract protected function allowsEntityBody();
     abstract protected function getParsedMessageVals();

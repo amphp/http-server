@@ -4,31 +4,32 @@ namespace Aerys;
 
 class TlsDefinition {
     
-    private $interface;
-    private $port;
     private $localCertFile;
     private $certPassphrase;
-    private $allowSelfSigned = FALSE;
+    private $allowSelfSigned = TRUE;
     private $verifyPeer = FALSE;
     private $ciphers = 'RC4-SHA:HIGH:!MD5:!aNULL:!EDH';
     private $disableCompression = TRUE;
     private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER;
     
-    function __construct($address, $localCertFile, $certPassphrase) {
-        $this->parseAddress($address);
+    function __construct($localCertFile, $certPassphrase) {
         $this->localCertFile = $localCertFile;
         $this->certPassphrase = $certPassphrase;
     }
     
-    private function parseAddress($address) {
-        if (FALSE === strpos($address, ':')) {
-            throw new \InvalidArgumentException;
-        }
-        
-        list($interface, $port) = explode(':', $address);
-        
-        $this->interface = ($interface == '*') ? '0.0.0.0' : $interface;
-        $this->port = (int) $port;
+    function getCryptoType() {
+        return $this->cryptoType;
+    }
+    
+    function getContextOptions() {
+        return ['ssl' => [
+            'local_cert' => $this->localCertFile,
+            'passphrase' => $this->certPassphrase,
+            'allow_self_signed' => $this->allowSelfSigned,
+            'verify_peer' => $this->verifyPeer,
+            'ciphers' => $this->ciphers,
+            'disable_compression' => $this->disableCompression
+        ]];
     }
     
     function setOptions(array $options) {
@@ -49,35 +50,6 @@ class TlsDefinition {
                 );
             }
         }
-    }
-    
-    function getAddress() {
-        return $this->interface . ':' . $this->port;
-    }
-    
-    function getInterface() {
-        return $this->interface;
-    }
-    
-    function getPort() {
-        return $this->port;
-    }
-    
-    function getStreamContext() {
-        return stream_context_create([
-            'ssl' => [
-                'local_cert' => $this->localCertFile,
-                'passphrase' => $this->certPassphrase,
-                'allow_self_signed' => $this->allowSelfSigned,
-                'verify_peer' => $this->verifyPeer,
-                'ciphers' => $this->ciphers,
-                'disable_compression' => $this->disableCompression
-            ]
-        ]);
-    }
-    
-    function getCryptoType() {
-        return $this->cryptoType;
     }
     
 }

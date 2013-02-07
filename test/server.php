@@ -27,108 +27,92 @@ $handler = function(array $asgiEnv, $requestId) {
 };
 
 $config = [
-    'aerys.globals'   => [
-        'maxConnections'                => 0,
-        'maxRequestsPerSession'         => 0,
-        'idleConnectionTimeout'         => 15,
-        'maxStartLineSize'              => 2048,
-        'maxHeadersSize'                => 8192,
-        'maxEntityBodySize'             => 2097152,
-        'tempEntityDir'                 => NULL,
-        'cryptoHandshakeTimeout'        => 3,
-        'defaultContentType'            => 'text/html',
+    'globals' => [
         
-        'tlsDefinitions'                => [
-            '*:443' => [
-                'localCertFile'     => dirname(__DIR__) . '/mycert.pem',
-                'certPassphrase'    => '42 is not a legitimate passphrase'
-            ],
-        ]
-    ],
-    
-    // --- ANY OTHER KEYS ARE CONSIDERED HOST CONTAINERS ---
-    /*
-    'host.secure' => [
-        'listen'    => '*:443',
-        'name'      => 'aerys',
-        'handler'   => $handler
-    ],
-    */
-    
-    
-    
-    'host.dynamic' => [
-        'listen'    => '*:1337',
-        'name'      => 'aerys',
-        'handler'   => $handler,
-        
-        // forthcoming mod configs ...
-        /*
-        'mod.sendfile' => [
-            'docRoot' => '/',
-            'indexes' => ['index.html', 'index.htm'],
-            'staleAfter' => 60,
-            'types' => [],
-            'eTagMode' => Aerys\Handlers\Filesys::ETAG_ALL
+        'opts' => [
+            'maxConnections'            => 0,
+            'maxRequestsPerSession'     => 0,
+            'idleConnectionTimeout'     => 15,
+            'maxStartLineSize'          => 2048,
+            'maxHeadersSize'            => 8192,
+            'maxEntityBodySize'         => 2097152,
+            'tempEntityDir'             => NULL,
+            'defaultContentType'        => 'text/html',
+            'autoReasonPhrase'          => TRUE,
+            'cryptoHandshakeTimeout'    => 3,
+            'ipv6WildcardMode'          => TRUE
+            
         ],
-        */
-        //'mod.limit' => [ // 429 Too Many Requests
-        //   '*' => [$maxRequestsPerIp, $timePeriodInSeconds],
-        //    '/some/specific/resource' => [$maxRequestsPerIp, $timePeriodInSeconds],
-        //    '/some/dir/*' => [$maxRequestsPerIp, $timePeriodInSeconds],
-        //],
         
-        'mod.log'   =>  [
-            'flushSize' => 5000,
-            'logs' => [
-                __DIR__ . '/log/access.log' => 'common',
-                'php://stdout' => 'common',
+        'tls'   => [
+            '*:1500' => [
+                'localCertFile'         => dirname(__DIR__) . '/mycert.pem',
+                'certPassphrase'        => '42 is not a legitimate passphrase'
             ]
         ],
         
-        // @todo mod.redirect
-        // @todo mod.rewrite
-        // @todo mod.websocket
+        'mods'  => [
+            // Any mod you want applied to all hosts should be specified here.
+            // If a mod using the same key exists in the host config it will
+            // override the global instance specified in this block.
+        ]
     ],
     
-    /*
-    'host.static' => [
-        'listen'    => '*:1337',
-        'name'      => 'static.aerys',
-        'handler'   => new Aerys\Handlers\Filesys(__DIR__ . '/www')
+    // --- ALL OTHER KEYS ARE CONSIDERED HOST CONTAINERS ---
+    
+    'myHost.secure' => [
+        'listen'    => '*:1500', // <-- we specified a TLS definition in the "globals" section
+        'name'      => 'aerys',
+        'handler'   => $handler
     ],
-    */
+    
+    'myHost.insecure' => [
+        'listen'    => '*:1337',
+        'name'      => 'aerys',
+        'handler'   => $handler,
+        'mods'      => [
+            /*
+            'mod.log'   =>  [
+                'logs' => [
+                    'php://stdout' => 'common'
+                ]
+            ],
+            
+            'mod.errorpages' => [
+                404 => [__DIR__ .'/errorpages/404.html', 'text/html'],
+            ],
+            */
+            // --- INCOMPLETE MODS ---
+            // @todo mod.redirect
+            // @todo mod.rewrite
+            // @todo mod.websocket
+            
+            /*
+            'mod.limit' => [
+                'ipProxyHeader' => NULL, // use the specified header instead of the raw IP if available (helpful for proxies)
+                'perIpConnectionLimit' => 16, // limit simultaneous connections per IP (429 Too Many Requests + Connection: close)
+                'rateLimits' => [ // (429 Too Many Requests + Connection: close)
+                    ['period' => 60, 'limit' => 100],
+                    ['period' => 3600, 'limit' => 2500],
+                    ['period' => 86400, 'limit' => 5000, 'location' => '/some/site/path/*'] // only applies if URI matches path
+                ],
+                'block' => ['*'], // specific IP or range of IPs
+                'allow' => ['127.0.0.1'] // specific IP or range of IPs
+            ],
+            
+            'mod.sendfile' => [
+                'docRoot' => '/',
+                'indexes' => ['index.html', 'index.htm'],
+                'staleAfter' => 60,
+                'types' => [],
+                'eTagMode' => Aerys\Handlers\Filesys::ETAG_ALL
+            ],
+            */
+        ]
+    ]
 ];
 
-//(new ServerFactory)->createServer($config)->listen();
-
-$server = (new ServerFactory)->createServer($config);
-/*
-$log = new Aerys\Mods\Log($server);
-$log->configure($config['host.dynamic']['mod.log']);
-$server->registerMod($log, 'aerys:1337');
-*/
-
-/*
-$sendFile = new Aerys\Mods\SendFile($server, new Aerys\Handlers\Filesys('/'));
-$server->registerMod($sendFile, 'aerys:1337');
-*/
-
-$server->listen();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+$server = (new ServerFactory)->createServer($config)->listen();
 
 
 
