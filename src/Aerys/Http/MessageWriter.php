@@ -9,10 +9,12 @@ class MessageWriter {
     const BODY_NONE = 20;
     const BODY_IDENTITY = 30;
     const BODY_RESOURCE = 40;
-    const BODY_RESOURCE_CHUNKS = 50;
-    const BODY_TRAVERSABLE = 60;
+    const BODY_TRAVERSABLE = 50;
     const BODY_TRAVERSABLE_CHUNKS = 60;
     const COMPLETE = 99;
+    
+    const CHUNK_DELIMITER = "\r\n";
+    const FINAL_CHUNK = "0\r\n\r\n";
     
     private $state = self::START;
     private $ioResource;
@@ -21,13 +23,15 @@ class MessageWriter {
     private $body;
     private $bodySize;
     private $bodyStyle;
-    private $bodyIsChunked;
     private $bodyBytesWritten = 0;
     
     private $priorityBuffer;
     
     private $writeBuffer;
     private $granularity = 8192;
+    
+    private $remainingChunkBytes = 0;
+    private $hasBufferedFinalChunk;
     
     public function __construct($ioResource) {
         $this->ioResource = $ioResource;
@@ -59,8 +63,6 @@ class MessageWriter {
                 goto body_identity;
             case self::BODY_RESOURCE:
                 goto body_resource;
-            case self::BODY_RESOURCE_CHUNKS:
-                goto body_resource_chunks;
             case self::BODY_TRAVERSABLE:
                 goto body_traversable;
             case self::BODY_TRAVERSABLE_CHUNKS:
@@ -101,8 +103,6 @@ class MessageWriter {
                     goto body_identity;
                 case self::BODY_RESOURCE:
                     goto body_resource;
-                case self::BODY_RESOURCE_CHUNKS:
-                    goto body_resource_chunks;
                 case self::BODY_TRAVERSABLE:
                     goto body_traversable;
                 case self::BODY_TRAVERSABLE_CHUNKS:
@@ -126,16 +126,20 @@ class MessageWriter {
             }
         }
         
-        body_resource_chunks: {
-            // @todo
-        }
-        
         body_traversable: {
-            // @todo
+            if ($this->bodyTraversable()) {
+                goto complete;
+            } else {
+                goto further_write_required;
+            }
         }
         
         body_traversable_chunks: {
-            // @todo
+            if ($this->bodyTraversableChunks()) {
+                goto complete;
+            } else {
+                goto further_write_required;
+            }
         }
         
         further_write_required: {
@@ -147,9 +151,10 @@ class MessageWriter {
             $this->body = NULL;
             $this->bodySize = NULL;
             $this->bodyStyle = NULL;
-            $this->bodyIsChunked = NULL;
             $this->bodyBytesWritten = 0;
             $this->writeBuffer = NULL;
+            $this->remainingChunkBytes = 0;
+            $this->hasBufferedFinalChunk = NULL;
             
             return TRUE;
         }
@@ -162,7 +167,7 @@ class MessageWriter {
         $this->writeBuffer = $msg->getStartLineAndHeaders();
         $this->state = self::HEADERS;
         
-        if (empty($this->body) && $this->body !== '0') {
+        if (!$this->body && $this->body !== '0') {
             $this->bodyStyle = self::BODY_NONE;
             return;
         }
@@ -173,25 +178,16 @@ class MessageWriter {
             return;
         }
         
-        $headers = $msg->getHeaders();
-        
-        if ($headers) {
-            $keys = array_map('strtoupper', array_keys($headers));
-            $headers = array_combine($keys, $headers);
-        }
-        
-        if ($bodyIsChunked = isset($headers['TRANSFER-ENCODING'])) {
-            $bodyIsChunked = ('chunked' === strtolower($headers['TRANSFER-ENCODING']));
-        }
-        
         if (is_resource($this->body)) {
             fseek($this->body, 0, SEEK_END);
             $this->bodySize = ftell($this->body);
             rewind($this->body);
-            stream_set_blocking($this->body, FALSE);
-            $this->bodyStyle = $bodyIsChunked ? self::BODY_RESOURCE_CHUNKED : self::BODY_RESOURCE;
-        } elseif ($this->body instanceof \Traversable || is_array($this->body)) {
-            $this->bodyStyle = $bodyIsChunked ? self::BODY_TRAVERSABLE_CHUNKED : self::BODY_TRAVERSABLE;
+            $this->bodyStyle = self::BODY_RESOURCE;
+        } elseif ($this->body instanceof \Iterator) {
+            $canChunk = ($msg->getProtocol() >= 1.1);
+            $this->bodyStyle = $canChunk ? self::BODY_TRAVERSABLE_CHUNKS : self::BODY_TRAVERSABLE;
+        } else {
+            throw new \InvalidArgumentException;
         }
     }
     
@@ -249,15 +245,112 @@ class MessageWriter {
         }
     }
     
-    private function bodyResourceChunks() {
-        // @todo
-    }
-    
+    /**
+     * An Iterator body will automatically use this method if the message protocol is less than 1.1.
+     * Note that if a request message does not specify a `Content-Length` header when writing an
+     * Iterator body using the 1.0 protocol it will result in an invalid messsage. It is the
+     * responsibility of the calling application to ensure applicable headers exist for the message
+     * it is writing.
+     */
     private function bodyTraversable() {
-        // @todo
+        $this->writeBuffer .= $this->body->current();
+        $this->body->next();
+        if (!$this->writeBuffer && $this->writeBuffer !== '0') {
+            return FALSE;
+        }
+        
+        $bytesWritten = @fwrite($this->ioResource, $this->writeBuffer, $this->granularity);
+        
+        if ($bytesWritten && $bytesWritten == strlen($this->writeBuffer)) {
+            $this->writeBuffer = NULL;
+            return !$this->body->valid();
+        } elseif ($bytesWritten) {
+            $this->writeBuffer = substr($this->writeBuffer, $bytesWritten);
+            return FALSE;
+        } elseif (!is_resource($this->ioResource)) {
+            throw new ResourceException(
+                'Failed writing to destination stream resource'
+            );
+        }
     }
     
     private function bodyTraversableChunks() {
-        // @todo
+        if (!$this->writeBuffer && !$this->generateNextTraversableChunk()) {
+            return FALSE;
+        }
+        
+        $bytesWritten = @fwrite($this->ioResource, $this->writeBuffer, $this->granularity);
+        
+        if ($bytesWritten && $bytesWritten == $this->remainingChunkBytes) {
+            $this->writeBuffer = NULL;
+            $this->remainingChunkBytes = 0;
+            return $this->hasBufferedFinalChunk;
+        } elseif ($bytesWritten) {
+            $this->writeBuffer = substr($this->writeBuffer, $bytesWritten);
+            $this->remainingChunkBytes -= $bytesWritten;
+            return FALSE;
+        } elseif (!is_resource($this->ioResource)) {
+            throw new ResourceException(
+                'Failed writing to destination stream resource'
+            );
+        }
     }
+    
+    private function generateNextTraversableChunk() {
+        if ($this->body->valid()) {
+            $nextChunkData = $this->body->current();
+            if (!$nextChunkData && $nextChunkData !== '0') {
+                return FALSE;
+            }
+            
+            $this->body->next();
+            $chunkSize = strlen($nextChunkData);
+            $this->writeBuffer = dechex($chunkSize) . self::CHUNK_DELIMITER . $nextChunkData . self::CHUNK_DELIMITER;
+        } else {
+            $this->writeBuffer = self::FINAL_CHUNK;
+            $this->hasBufferedFinalChunk = TRUE;
+        }
+        
+        $this->remainingChunkBytes = strlen($this->writeBuffer);
+        
+        return TRUE;
+    }
+    
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

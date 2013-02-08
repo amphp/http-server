@@ -178,11 +178,9 @@ class Server {
         $parser->onHeaders(function(array $parsedRequest) use ($clientId) {
             $this->onRequest($clientId, $parsedRequest, $isAwaitingBody = TRUE);
         });
-        
         $parser->onBodyData(function($data) use ($clientId) {
             $this->tempEntityWriters[$clientId]->write($data);
         });
-        
         $readSub = $this->eventBase->onReadable($clientSock, function ($clientSock, $triggeredBy) {
             $this->onReadable($clientSock, $triggeredBy);
         }, $this->idleConnectionTimeout * self::MICROSECOND_RESOLUTION);
@@ -552,7 +550,7 @@ class Server {
             }
         }
         
-        $asgiResponse[2] = $this->normalizeResponseHeaders($asgiResponse[2], $asgiResponse[3]);
+        $asgiResponse[2] = $this->normalizeResponseHeaders($protocol, $asgiResponse[2], $asgiResponse[3]);
         
         if ($asgiEnv['REQUEST_METHOD'] == 'HEAD') {
             $asgiResponse[3] = NULL;
@@ -581,7 +579,7 @@ class Server {
         $writer->enqueue($msg);
     }
     
-    private function normalizeResponseHeaders(array $headers, $body) {
+    private function normalizeResponseHeaders($protocol, array $headers, $body) {
         $headers = array_combine(array_map('strtoupper', array_keys($headers)), $headers);
         
         if (!isset($headers['DATE'])) {
@@ -594,15 +592,21 @@ class Server {
             $headers['CONTENT-TYPE'] = $this->defaultContentType;
         }
         
-        if ($hasBody && !isset($headers['CONTENT_LENGTH']) && is_string($body)) {
-            $headers['CONTENT-LENGTH'] = strlen($body);
-        }
+        $hasContentLength = isset($headers['CONTENT_LENGTH']);
+        $isChunked = isset($headers['TRANSFER-ENCODING']) && !strcasecmp($headers['TRANSFER-ENCODING'], 'chunked');
+        $isIterator = $body instanceof \Iterator;
         
-        // @TODO Can't enable this until the Http\MessageWriter supports auto-chunking:
-        //
-        //if ($hasBody && !(isset($keys['CONTENT-LENGTH']) || isset($keys['TRANSFER-ENCODING']))) {
-        //    $headers['Transfer-Encoding'] = 'chunked';
-        //}
+        if ($hasBody && !$hasContentLength && is_string($body)) {
+            $headers['CONTENT-LENGTH'] = strlen($body);
+        } elseif ($hasBody && !$hasContentLength && is_resource($body)) {
+            fseek($body, 0, SEEK_END);
+            $headers['CONTENT-LENGTH'] = ftell($body);
+            rewind($body);
+        } elseif ($hasBody && $protocol >= 1.1 && !$isChunked && $isIterator) {
+            $headers['TRANSFER-ENCODING'] = 'chunked';
+        } elseif ($hasBody && !$hasContentLength && $protocol < '1.1' && $isIterator) {
+            $headers['CONNECTION'] = 'close';
+        }
         
         return $headers;
     }
