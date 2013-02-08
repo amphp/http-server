@@ -10,8 +10,7 @@ class ServerFactory {
     private $modFactories = [
         'mod.log'       => ['Aerys\\Mods\\Log', 'createMod'],
         'mod.errorpages'=> ['Aerys\\Mods\\ErrorPages', 'createMod'],
-        // --- INCOMPLETE ---
-        //'mod.sendfile'  => ['Aerys\\Mods\\SendFile', 'createMod']
+        'mod.sendfile'  => ['Aerys\\Mods\\SendFile', 'createMod']
     ];
     
     function createServer(array $config) {

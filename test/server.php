@@ -71,6 +71,7 @@ $config = [
         'name'      => 'aerys',
         'handler'   => $handler,
         'mods'      => [
+            
             /*
             'mod.log'   =>  [
                 'logs' => [
@@ -81,13 +82,24 @@ $config = [
             'mod.errorpages' => [
                 404 => [__DIR__ .'/errorpages/404.html', 'text/html'],
             ],
+            
+            // All sendfile keys are optional; these are the defaults:
+            'mod.sendfile' => [
+                'docRoot' => '/',
+                'staleAfter' => 60,
+                'types' => [],
+                'eTagMode' => Aerys\Handlers\Filesys::ETAG_ALL
+            ],
             */
+            
+            /*
             // --- INCOMPLETE MODS ---
+            
+            // @todo mod.limit
             // @todo mod.redirect
             // @todo mod.rewrite
             // @todo mod.websocket
             
-            /*
             'mod.limit' => [
                 'ipProxyHeader' => NULL, // use the specified header instead of the raw IP if available (helpful for proxies)
                 'block' => ['*'], // specific IP or range of IPs
@@ -97,14 +109,6 @@ $config = [
                     ['period' => 3600, 'limit' => 2500],
                     ['period' => 86400, 'limit' => 5000, 'location' => '/some/site/path/*'] // only applies if URI matches path
                 ]
-            ],
-            
-            'mod.sendfile' => [
-                'docRoot' => '/',
-                'indexes' => ['index.html', 'index.htm'],
-                'staleAfter' => 60,
-                'types' => [],
-                'eTagMode' => Aerys\Handlers\Filesys::ETAG_ALL
             ],
             */
         ]

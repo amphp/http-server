@@ -11,19 +11,10 @@ class SendFile implements BeforeResponseMod {
     private $server;
     private $filesys;
     
-    /**
-     * @todo Determine appropriate exception to throw on undefined docroot
-     */
     static function createMod(Server $server, EventBase $eventBase, array $config) {
-        if (isset($config['docRoot'])) {
-            $filesys = new Filesys($config['docRoot']);
-        } else {
-            throw new \Exception;
-        }
+        $docRoot = isset($config['docRoot']) ? $config['docRoot'] : '/';
+        $filesys = new Filesys($docRoot);
         
-        if (isset($config['indexes'])) {
-            $filesys->setIndexes($config['indexes']);
-        }
         if (isset($config['staleAfter'])) {
             $filesys->setStaleAfter($config['staleAfter']);
         }
