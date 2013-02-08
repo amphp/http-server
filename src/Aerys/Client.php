@@ -16,20 +16,20 @@ class Client {
     private $parser;
     private $writer;
     
-    public $tempEntityWriter;
-    public $midRequestInfo;
     public $requestCount = 0;
     public $pipeline = [];
     public $responses = [];
     
+    private $preBodyRequestInfo;
+    
     function __construct($socket, $peerName, $serverName, RequestParser $parser, MessageWriter $writer) {
-        $portStart = strrpos($peerName, ':');
-        $clientIp = substr($peerName, 0, $portStart);
-        $clientPort = substr($peerName, $portStart + 1);
+        $clientPortStartPos = strrpos($peerName, ':');
+        $clientIp = substr($peerName, 0, $clientPortStartPos);
+        $clientPort = substr($peerName, $clientPortStartPos + 1);
         
-        $portStart = strrpos($serverName, ':');
-        $serverIp = substr($serverName, 0, $portStart);
-        $serverPort = substr($serverName, $portStart + 1);
+        $serverPortStartPos = strrpos($serverName, ':');
+        $serverIp = substr($serverName, 0, $serverPortStartPos);
+        $serverPort = substr($serverName, $serverPortStartPos + 1);
         
         $this->id = (int) $socket;
         $this->socket = $socket;
@@ -39,6 +39,17 @@ class Client {
         $this->serverPort = $serverPort;
         $this->parser = $parser;
         $this->writer = $writer;
+    }
+    
+    function storePreBodyRequestInfo(array $info) {
+        $this->preBodyRequestInfo = $info;
+    }
+    
+    function shiftPreBodyRequestInfo() {
+        if ($info = $this->preBodyRequestInfo) {
+            $this->preBodyRequestInfo = NULL;
+            return $info;
+        }
     }
     
     function getId() {

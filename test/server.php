@@ -40,7 +40,7 @@ $config = [
             'defaultContentType'        => 'text/html',
             'autoReasonPhrase'          => TRUE,
             'cryptoHandshakeTimeout'    => 3,
-            'ipv6WildcardMode'          => TRUE
+            'ipv6Mode'                  => FALSE
             
         ],
         
@@ -90,14 +90,13 @@ $config = [
             /*
             'mod.limit' => [
                 'ipProxyHeader' => NULL, // use the specified header instead of the raw IP if available (helpful for proxies)
-                'perIpConnectionLimit' => 16, // limit simultaneous connections per IP (429 Too Many Requests + Connection: close)
+                'block' => ['*'], // specific IP or range of IPs
+                'allow' => ['127.0.0.1'], // specific IP or range of IPs
                 'rateLimits' => [ // (429 Too Many Requests + Connection: close)
                     ['period' => 60, 'limit' => 100],
                     ['period' => 3600, 'limit' => 2500],
                     ['period' => 86400, 'limit' => 5000, 'location' => '/some/site/path/*'] // only applies if URI matches path
-                ],
-                'block' => ['*'], // specific IP or range of IPs
-                'allow' => ['127.0.0.1'] // specific IP or range of IPs
+                ]
             ],
             
             'mod.sendfile' => [

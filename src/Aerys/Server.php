@@ -17,22 +17,17 @@ class Server {
     private $isListening = FALSE;
     
     private $eventBase;
-    private $readSubscriptions = [];
-    private $writeSubscriptions = [];
-    
     private $vhosts;
+    private $tlsDefinitions = [];
     private $clients = [];
     private $pendingTlsClients = [];
-    
+    private $clientIoSubscriptions = [];
+    private $requestIdClientMap = [];
+    private $tempEntityWriters = [];
     private $clientCount = 0;
     private $pendingTlsClientCount = 0;
     private $lastRequestId = 0;
     
-    private $requestIdClientMap = [];
-    private $preRequestInfoMap = [];
-    private $tempEntityWriters = [];
-    
-    private $tlsDefinitions = [];
     private $maxConnections = 0;
     private $maxRequestsPerSession = 100;
     private $idleConnectionTimeout = 15;
@@ -43,9 +38,8 @@ class Server {
     private $defaultContentType = 'text/html';
     private $autoReasonPhrase = TRUE;
     private $cryptoHandshakeTimeout = 3;
-    private $ipv6WildcardMode = FALSE;
+    private $ipv6Mode = FALSE;
     
-    private $onHeadersMods = [];
     private $onRequestMods = [];
     private $beforeResponseMods = [];
     private $afterResponseMods = [];
@@ -62,15 +56,12 @@ class Server {
     function listen() {
         if (!$this->isListening) {
             $this->isListening = TRUE;
-            
             foreach ($this->bindServerSocks() as $boundAddress) {
                 echo 'Server listening on ', $boundAddress, "\n";
             }
-            
             $this->eventBase->repeat(1000000, function() {
                 echo time(), ' (', $this->clientCount, ")\n";
             });
-            
             $this->eventBase->run();
         }
     }
@@ -84,7 +75,7 @@ class Server {
     private function bindServerSocks() {
         $boundSockets = [];
         $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
-        $wildcard = $this->ipv6WildcardMode ? self::WILDCARD_IPV6 : self::WILDCARD_IPV4;
+        $wildcard = $this->ipv6Mode ? self::WILDCARD_IPV6 : self::WILDCARD_IPV4;
         
         foreach ($this->vhosts as $host) {
             $name = $host->getName();
@@ -101,7 +92,7 @@ class Server {
             
             if ($serverSock = stream_socket_server($bindOn, $errNo, $errStr, $flags)) {
                 stream_set_blocking($serverSock, FALSE);
-                $this->eventBase->onReadable($serverSock, function ($serverSock) {
+                $this->eventBase->onReadable($serverSock, function($serverSock) {
                     $this->acceptNewClients($serverSock);
                 });
                 $boundSockets[$bindOn] = $host->getInterfaceId();
@@ -116,10 +107,6 @@ class Server {
     }
     
     private function acceptNewClients($serverSock) {
-        if (!$this->isListening) {
-            return; // not helpful now, but will eventually aid in graceful shutdown
-        }
-        
         $currentClientCount = $this->clientCount + $this->pendingTlsClientCount;
         if ($this->maxConnections && ($this->maxConnections <= $currentClientCount)) {
             return;
@@ -189,11 +176,11 @@ class Server {
         $parser = new Http\RequestParser;
         
         $parser->onHeaders(function(array $parsedRequest) use ($clientId) {
-            $this->onHeaders($clientId, $parsedRequest);
+            $this->onRequest($clientId, $parsedRequest, $isAwaitingBody = TRUE);
         });
         
         $parser->onBodyData(function($data) use ($clientId) {
-            $this->clients[$clientId]->tempEntityWriter->write($data);
+            $this->tempEntityWriters[$clientId]->write($data);
         });
         
         $readSub = $this->eventBase->onReadable($clientSock, function ($clientSock, $triggeredBy) {
@@ -204,10 +191,8 @@ class Server {
             $this->onWritable($clientSock, $triggeredBy);
         });
         
-        $this->readSubscriptions[$clientId] = $readSub;
-        $this->writeSubscriptions[$clientId] = $writeSub;
-        
         $this->clients[$clientId] = new Client($clientSock, $clientName, $serverName, $parser, $writer);
+        $this->clientIoSubscriptions[$clientId] = [$readSub, $writeSub];
         
         ++$this->clientCount;
     }
@@ -226,7 +211,7 @@ class Server {
         
         try {
             if ($parsedRequest = $this->clients[$clientId]->getParser()->parse($data)) {
-                $this->onRequest($clientId, $parsedRequest);
+                $this->onRequest($clientId, $parsedRequest, $isAwaitingBody = FALSE);
             }
         } catch (Http\ParseException $e) {
             switch ($e->getCode()) {
@@ -266,48 +251,66 @@ class Server {
         }
     }
     
-    private function onHeaders($clientId, array $parsedRequest) {
+    private function onRequest($clientId, array $parsedRequest, $isAwaitingBody) {
         $client = $this->clients[$clientId];
         
-        try {
-            $host = $this->selectRequestHost(
-                $client->getServerIp(),
-                $client->getServerPort(),
-                $parsedRequest
-            );
-        } catch (Http\StatusException $e) {
-            $this->doServerLayerError($client, $e->getCode(),  $e->getMessage(), $parsedRequest);
-            return;
+        if ($preBodyRequestInfo = $client->shiftPreBodyRequestInfo()) {
+            list($requestId, $host) = $preBodyRequestInfo;
+            $client->pipeline[$requestId]['AWAITING_BODY'] = FALSE;
+            $client->pipeline[$requestId]['ASGI_LAST_CHANCE'] = TRUE;
+            $this->tempEntityWriters[$clientId] = NULL;
+        } else {
+            $requestId = ++$this->lastRequestId;
+            $this->requestIdClientMap[$requestId] = $clientId;
+            
+            try {
+                $host = $this->selectRequestHost(
+                    $client->getServerIp(),
+                    $client->getServerPort(),
+                    $parsedRequest
+                );
+            } catch (Http\StatusException $e) {
+                $this->doServerLayerError($client, $e->getCode(),  $e->getMessage(), $parsedRequest);
+                return;
+            }
+            
+            $client->pipeline[$requestId] = $this->generateAsgiEnv($client, $host->getName(), $parsedRequest);
         }
         
-        $requestId = ++$this->lastRequestId;
+        if ($isAwaitingBody) {
+            $tempEntityPath = tempnam($this->tempEntityDir, "aerys");
+            $this->tempEntityWriters[$clientId] = new TempEntityWriter($tempEntityPath);
+            $client->pipeline[$requestId]['ASGI_INPUT'] = $tempEntityPath;
+            $client->pipeline[$requestId]['ASGI_LAST_CHANCE'] = FALSE;
+            $client->storePreBodyRequestInfo([$requestId, $host]);
+        } else {
+            ++$client->requestCount;
+        }
         
-        $hostName = $host->getName();
-        $asgiEnv = $this->generateAsgiEnv($client, $hostName, $parsedRequest);
-        
-        $tempEntityPath = tempnam($this->tempEntityDir, "aerys");
-        $client->tempEntityWriter = new TempEntityWriter($tempEntityPath);
-        
-        $asgiEnv['ASGI_INPUT'] = $tempEntityPath;
-        $asgiEnv['ASGI_LAST_CHANCE'] = FALSE;
-        
-        $client->pipeline[$requestId] = $asgiEnv;
-        
-        $hostId = $asgiEnv['SERVER_NAME'] . ':' . $client->getServerPort();
-        if (isset($this->onHeadersMods[$hostId])) {
-            foreach ($this->onHeadersMods[$hostId] as $mod) {
-                $mod->onHeaders($clientId, $requestId);
+        $hostId = $host->getId();
+        if (isset($this->onRequestMods[$hostId])) {
+            foreach ($this->onRequestMods[$hostId] as $mod) {
+                if (FALSE === $mod->onRequest($clientId, $requestId)) {
+                    break;
+                }
             }
         }
         
-        $handler = $host->getHandler();
-        if ($asgiResponse = $handler($client->pipeline[$requestId])) {
-            return $this->setResponse($requestId, $asgiResponse);
+        if (!isset($this->clients[$clientId]) || isset($client->responses[$requestId])) {
+            // If a Mod assigned a response or exported the socket we're finished
+            return;
         }
         
-        // @TODO If `Expect: 100-continue` write HTTP/1.1 100 Continue to raw socket here
-        
-        $client->midRequestInfo = [$requestId, $host->getId(), $handler];
+        $handler = $host->getHandler();
+        if ($asgiResponse = $handler($client->pipeline[$requestId], $requestId)) {
+            $this->setResponse($requestId, $asgiResponse);
+        } elseif ($isAwaitingBody
+            && isset($asgiEnv['HTTP_EXPECT'])
+            && strtoupper($asgiEnv['HTTP_EXPECT']) == '100-CONTINUE'
+        ) {
+            $msg = "100 Continue\r\n\r\n";
+            $client->getWriter()->priorityWrite($msg);
+        }
     }
     
     private function selectRequestHost($serverInterface, $serverPort, array $parsedRequest) {
@@ -418,53 +421,6 @@ class Server {
         return $asgiEnv;
     }
     
-    private function onRequest($clientId, array $parsedRequest) {
-        $client = $this->clients[$clientId];
-        
-        if (!$client->midRequestInfo) {
-            $requestId = ++$this->lastRequestId;
-            $this->requestIdClientMap[$requestId] = $clientId;
-            
-            try {
-                $host = $this->selectRequestHost(
-                    $client->getServerIp(),
-                    $client->getServerPort(),
-                    $parsedRequest
-                );
-            } catch (Http\StatusException $e) {
-                $this->doServerLayerError($client, $e->getCode(),  $e->getMessage(), $parsedRequest);
-                return;
-            }
-            
-            $hostId = $host->getId();
-            $handler = $host->getHandler();
-            $client->pipeline[$requestId] = $this->generateAsgiEnv($client, $host->getName(), $parsedRequest);
-        } else {
-            list($requestId, $hostId, $handler) = $client->midRequestInfo;
-            $client->midRequestInfo = NULL;
-            $client->tempEntityWriter = NULL;
-            $client->pipeline[$requestId]['AWAITING_BODY'] = FALSE;
-            $client->pipeline[$requestId]['ASGI_LAST_CHANCE'] = TRUE;
-        }
-        
-        ++$client->requestCount;
-        
-        if (isset($this->onRequestMods[$hostId])) {
-            foreach ($this->onRequestMods[$hostId] as $mod) {
-                $mod->onRequest($clientId, $requestId);
-            }
-        }
-        
-        // If a Mod assigned a response we're finished here
-        if (isset($client->responses[$requestId])) {
-            return;
-        }
-        
-        if ($asgiResponse = $handler($client->pipeline[$requestId], $requestId)) {
-            $this->setResponse($requestId, $asgiResponse);
-        }
-    }
-    
     private function onResponse($clientId) {
         $client = $this->clients[$clientId];
         $requestId = key($client->pipeline);
@@ -479,7 +435,9 @@ class Server {
         
         if (isset($this->afterResponseMods[$hostId])) {
             foreach ($this->afterResponseMods[$hostId] as $mod) {
-                $mod->afterResponse($clientId, $requestId);
+                if (FALSE === $mod->afterResponse($clientId, $requestId)) {
+                    break;
+                }
             }
         }
         
@@ -537,17 +495,14 @@ class Server {
             }
         }
         
-        $readSub = $this->readSubscriptions[$clientId];
-        $readSub->cancel();
-        $writeSub = $this->writeSubscriptions[$clientId];
-        $writeSub->cancel();
+        list($readSubscription, $writeSubscription) = $this->clientIoSubscriptions[$clientId];
+        $readSubscription->cancel();
+        $writeSubscription->cancel();
         
         unset(
             $this->clients[$clientId],
-            $this->preRequestInfoMap[$clientId],
             $this->tempEntityWriters[$clientId],
-            $this->readSubscriptions[$clientId],
-            $this->writeSubscriptions[$clientId]
+            $this->clientIoSubscriptions[$clientId]
         );
         
         --$this->clientCount;
@@ -609,7 +564,9 @@ class Server {
         if (isset($this->beforeResponseMods[$hostId])) {
             $this->insideBeforeResponseModLoop = TRUE;
             foreach ($this->beforeResponseMods[$hostId] as $mod) {
-               $mod->beforeResponse($clientId, $requestId);
+                if (FALSE === $mod->beforeResponse($clientId, $requestId)) {
+                    break;
+                }
             }
             $this->insideBeforeResponseModLoop = FALSE;
             
@@ -729,8 +686,8 @@ class Server {
         $this->cryptoHandshakeTimeout = (int) $seconds;
     }
     
-    private function setIpv6WildcardMode($boolFlag) {
-        $this->ipv6WildcardMode = (bool) $boolFlag;
+    private function setIpv6Mode($boolFlag) {
+        $this->ipv6Mode = (bool) $boolFlag;
     }
     
     
@@ -745,10 +702,6 @@ class Server {
     }
     
     function registerMod($hostId, $mod) {
-        if ($mod instanceof Mods\OnHeadersMod) {
-            $this->onHeadersMods[$hostId][] = $mod;
-        }
-        
         if ($mod instanceof Mods\OnRequestMod) {
             $this->onRequestMods[$hostId][] = $mod;
         }

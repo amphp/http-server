@@ -24,7 +24,7 @@ class MessageWriter {
     private $bodyIsChunked;
     private $bodyBytesWritten = 0;
     
-    private $onComplete;
+    private $priorityBuffer;
     
     private $writeBuffer;
     private $granularity = 8192;
@@ -37,12 +37,16 @@ class MessageWriter {
         $this->messageQueue[] = $msg;
     }
     
+    public function priorityWrite($data) {
+        $this->priorityBuffer .= $data;
+    }
+    
     /**
      * @throws ResourceException On destination stream write failure
      * @return Returns TRUE on write completion, FALSE otherwise
      */
     public function write() {
-        if (!$this->messageQueue && $this->state == self::START) {
+        if (!$this->messageQueue && $this->state == self::START && $this->priorityBuffer === NULL) {
             return FALSE;
         }
         
@@ -64,6 +68,9 @@ class MessageWriter {
         }
         
         start: {
+            if ($this->priorityBuffer !== NULL && !$this->priority()) {
+                return FALSE;
+            }
             $this->start();
             goto headers;
         }
@@ -185,6 +192,23 @@ class MessageWriter {
             $this->bodyStyle = $bodyIsChunked ? self::BODY_RESOURCE_CHUNKED : self::BODY_RESOURCE;
         } elseif ($this->body instanceof \Traversable || is_array($this->body)) {
             $this->bodyStyle = $bodyIsChunked ? self::BODY_TRAVERSABLE_CHUNKED : self::BODY_TRAVERSABLE;
+        }
+    }
+    
+    private function priority() {
+        $priorityLen = strlen($this->priorityBuffer);
+        $bytesWritten = @fwrite($this->ioResource, $this->priorityBuffer, $this->granularity);
+        
+        if ($bytesWritten == $priorityLen) {
+            $this->priorityBuffer = NULL;
+            return TRUE;
+        } elseif ($bytesWritten) {
+            $this->priorityBuffer = substr($this->priorityBuffer, $bytesWritten);
+            return FALSE;
+        } elseif (!is_resource($this->ioResource)) {
+            throw new ResourceException(
+                'Failed writing to destination stream resource'
+            );
         }
     }
     
