@@ -7,8 +7,6 @@ use Aerys\Server,
 
 class ErrorPages implements BeforeResponseMod {
     
-    const X_ERROR_PAGES_NO_MODIFY = 'X-ERROR-PAGES-NO-MODIFY';
-    
     private $server;
     private $errorPages;
     
@@ -39,11 +37,7 @@ class ErrorPages implements BeforeResponseMod {
     function beforeResponse($clientId, $requestId) {
         list($status, $reason, $headers, $body) = $this->server->getResponse($requestId);
         
-        if (isset($headers[self::X_ERROR_PAGES_NO_MODIFY])) {
-            unset($headers[self::X_ERROR_PAGES_NO_MODIFY]);
-            $this->server->setResponse($requestId, [$status, $reason, $headers, $body]);
-            
-        } elseif ($status >= 400 && isset($this->errorPages[$status])) {
+        if ($status >= 400 && isset($this->errorPages[$status])) {
             list($body, $contentLength, $contentType) = $this->errorPages[$status];
             $headers['CONTENT-LENGTH'] = $contentLength;
             if (NULL !== $contentType) {
