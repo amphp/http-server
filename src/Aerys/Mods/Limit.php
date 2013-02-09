@@ -56,6 +56,7 @@ class Limit implements OnRequestMod {
         $eventBase->repeat(self::RATE_LIMIT_CLEANUP_INTERVAL, function() {
             $this->clearExpiredRateLimitData(time());
         });
+        
     }
     
     /**
@@ -76,7 +77,7 @@ class Limit implements OnRequestMod {
         
         $now = time();
         if ($this->isRateLimited($clientIp, $now)) {
-            $this->limit($requestId);
+            $this->limit($requestId, $clientIp);
         }
         
         $this->clearExpiredRateLimitData($now);
@@ -88,10 +89,11 @@ class Limit implements OnRequestMod {
                 $this->rateAllowances[$period][$clientIp] = $rate;
             }
             
+            // NOTICE: We are operating on this value BY REFERENCE.
             $allowance =& $this->rateAllowances[$period][$clientIp];
             
             if (isset($this->lastRateCheckTimes[$clientIp])) {
-                $elapsedTime = $now - $this->lastRateCheckTimes[$clientIp];
+                $elapsedTime = (float) ($now - $this->lastRateCheckTimes[$clientIp]);
                 unset($this->lastRateCheckTimes[$clientIp]);
             } else {
                 $elapsedTime = 0;
@@ -101,26 +103,26 @@ class Limit implements OnRequestMod {
             
             $allowance += $elapsedTime * ($rate / $period);
             
+            // Throttle (because you can't save up "rate credit" beyond the max)
             if ($allowance > $rate) {
-                $allowance = $rate; // throttle
+                $allowance = $rate;
             }
             
-            if ($allowance < 1) {
+            // All requests, even rate-limited requests count against your average rate
+            $allowance -= 1.0;
+            if ($allowance < 0.0) {
                 return TRUE;
-            } else {
-                --$allowance;
             }
         }
         
         return FALSE;
     }
     
-    private function limit($requestId) {
-        $body = "<html><body><h1>429 Too Many Requests</h1></body></html>";
+    private function limit($requestId, $clientIp) {
+        $body = "<html><body><h1>429 Too Many Requests</h1><p>IP: $clientIp</p></body></html>";
         $headers = [
             'Content-Type' => 'text\html',
-            'Content-Length' => strlen($body),
-            'Connection' => 'close'
+            'Content-Length' => strlen($body)
         ];
         $asgiResponse = [429, 'Too Many Requests', $headers, $body];
         
