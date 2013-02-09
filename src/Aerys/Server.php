@@ -288,15 +288,12 @@ class Server {
         $hostId = $host->getId();
         if (isset($this->onRequestMods[$hostId])) {
             foreach ($this->onRequestMods[$hostId] as $mod) {
-                if (FALSE === $mod->onRequest($clientId, $requestId)) {
-                    break;
+                $mod->onRequest($clientId, $requestId);
+                // If a Mod exported the socket or assigned a response we're finished
+                if (!isset($this->clients[$clientId]) || isset($client->responses[$requestId])) {
+                    return;
                 }
             }
-        }
-        
-        if (!isset($this->clients[$clientId]) || isset($client->responses[$requestId])) {
-            // If a Mod assigned a response or exported the socket we're finished
-            return;
         }
         
         $handler = $host->getHandler();

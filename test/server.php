@@ -71,11 +71,17 @@ $config = [
         'name'      => 'aerys',
         'handler'   => $handler,
         'mods'      => [
-            
             /*
             'mod.log'   =>  [
                 'logs' => [
                     'php://stdout' => 'common'
+                ]
+            ],
+            
+            'mod.limit' => [
+                'ipProxyHeader' => NULL, // use this header's value as the ip if available (helpful behind proxies)
+                'limits' => [
+                    60 => 120, // send a 429 if client has made > 120 requests in the past 60 seconds
                 ]
             ],
             
@@ -95,20 +101,15 @@ $config = [
             /*
             // --- INCOMPLETE MODS ---
             
-            // @todo mod.limit
             // @todo mod.redirect
             // @todo mod.rewrite
             // @todo mod.websocket
+            // @todo mod.block
             
-            'mod.limit' => [
-                'ipProxyHeader' => NULL, // use the specified header instead of the raw IP if available (helpful for proxies)
-                'block' => ['*'], // specific IP or range of IPs
-                'allow' => ['127.0.0.1'], // specific IP or range of IPs
-                'rateLimits' => [ // (429 Too Many Requests + Connection: close)
-                    ['period' => 60, 'limit' => 100],
-                    ['period' => 3600, 'limit' => 2500],
-                    ['period' => 86400, 'limit' => 5000, 'location' => '/some/site/path/*'] // only applies if URI matches path
-                ]
+            'mod.block' => [
+                'ipProxyHeader' => NULL, // use the specified header instead of the raw IP if available
+                'block' => ['*'], // specific IPs or IP ranges
+                'allow' => ['127.0.0.1'] // specific IPs or IP ranges
             ],
             */
         ]
