@@ -95,7 +95,6 @@ class Filesys implements Handler {
     
     private function respondToFoundFile($filePath, array $asgiEnv) {
         $method = $asgiEnv['REQUEST_METHOD'];
-        $contentType = $this->getMimeType($filePath);
         
         if ($method == 'OPTIONS') {
             return $this->options();
@@ -115,9 +114,9 @@ class Filesys implements Handler {
             case self::PRECONDITION_FAILED:
                 return $this->preconditionFailed($eTag, $mTime);
             case self::PRECONDITION_IF_RANGE_OK:
-                return $this->doRange($filePath, $method, $contentType, $ranges, $mTime, $fileSize, $eTag);
+                return $this->doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag);
             case self::PRECONDITION_IF_RANGE_FAILED:
-                return $this->doFile($filePath,  $method, $contentType, $mTime, $fileSize, $eTag);
+                return $this->doFile($filePath,  $method, $mTime, $fileSize, $eTag);
             case self::PRECONDITION_PASS:
                 break;
             default:
@@ -198,18 +197,22 @@ class Filesys implements Handler {
         }
     }
     
-    private function doFile($filePath, $method, $contentType, $mTime, $fileSize, $eTag) {
+    private function doFile($filePath, $method, $mTime, $fileSize, $eTag) {
         $status = 200;
         $reason = 'OK';
         $now = time();
+        
         $headers = [
             'Date' => date(Server::HTTP_DATE, $now),
             'Expires' => date(Server::HTTP_DATE, $now + $this->staleAfter),
             'Content-Length' => $fileSize,
-            'Content-Type' => $contentType,
             'Last-Modified' => date(Server::HTTP_DATE, $mTime),
             'Accept-Ranges' => 'bytes'
         ];
+        
+        if ($contentType = $this->getMimeType($filePath)) {
+            $headers['Content-Type'] = $contentType;
+        }
         
         if ($eTag) {
             $headers['ETag'] = $eTag;
@@ -220,7 +223,7 @@ class Filesys implements Handler {
         return [$status, $reason, $headers, $body];
     }
     
-    private function doRange($filePath, $method, $contentType, $ranges, $mTime, $fileSize, $eTag) {
+    private function doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag) {
         if (is_array($ranges)
             || (0 !== stripos($ranges, 'bytes='))
             || !strstr($ranges, '-')
@@ -253,13 +256,16 @@ class Filesys implements Handler {
             
         } else {
             list($startPos, $endPos) = $ranges[0];
-            $headers['Content-Type'] = $contentType;
             $headers['Content-Length'] = $endPos - $startPos;
             $headers['Content-Range'] = "bytes $startPos-$endPos/$fileSize";
             
             $body = ($method == 'GET')
                 ? new ByteRangeBody($body, $startPos, $endPos)
                 : NULL;
+        }
+        
+        if (!isset($headers['Content-Type']) && ($contentType = $this->getMimeType($filePath))) {
+            $headers['Content-Type'] = $contentType;
         }
         
         return [$status, $reason, $headers, $body];
