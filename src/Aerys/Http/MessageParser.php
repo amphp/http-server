@@ -122,6 +122,10 @@ abstract class MessageParser {
         }
     }
     
+    function hasMessageInProgress() {
+        return ($this->state || $this->buffer || $this->buffer === '0');
+    }
+    
     abstract protected function parseStartLine($rawStartLine);
     abstract protected function allowsEntityBody();
     abstract protected function getParsedMessageVals();

@@ -11,7 +11,7 @@ class Server {
     const WILDCARD = '*';
     const WILDCARD_IPV4 = '0.0.0.0';
     const WILDCARD_IPV6 = '[::]';
-    const MICROSECOND_RESOLUTION = 1000000;
+    const MICROSECOND_TICKS = 1000000;
     const HTTP_DATE = 'D, d M Y H:i:s T';
     
     private $isListening = FALSE;
@@ -30,7 +30,7 @@ class Server {
     
     private $maxConnections = 0;
     private $maxRequestsPerSession = 100;
-    private $idleConnectionTimeout = 30;
+    private $idleConnectionTimeout = 5;
     private $maxStartLineSize = 2048;
     private $maxHeadersSize = 8192;
     private $maxEntityBodySize = 2097152;
@@ -187,7 +187,7 @@ class Server {
         });
         $readSub = $this->eventBase->onReadable($clientSock, function ($clientSock, $triggeredBy) {
             $this->onReadable($clientSock, $triggeredBy);
-        }, $this->idleConnectionTimeout * self::MICROSECOND_RESOLUTION);
+        }, $this->idleConnectionTimeout * self::MICROSECOND_TICKS);
         
         $writeSub = $this->eventBase->onWritable($clientSock, function ($clientSock, $triggeredBy) {
             $this->onWritable($clientSock, $triggeredBy);
@@ -238,7 +238,11 @@ class Server {
     private function handleReadTimeout($clientId) {
         $client = $this->clients[$clientId];
         $parser = $client->getParser();
-        $this->doServerLayerError($client, 408, 'Request timed out');
+        if ($parser->hasMessageInProgress()) {
+            $this->doServerLayerError($client, 408, 'Request timed out');
+        } else {
+            $this->close($clientId);
+        }
     }
     
     private function onWritable($clientSock) {
