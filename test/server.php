@@ -17,6 +17,8 @@ set_error_handler(function($errNo, $errStr, $errFile, $errLine) {
 require dirname(__DIR__) . '/autoload.php';
 
 $handler = function(array $asgiEnv, $requestId) {
+    return [200, 'OK', [], '<html><body><h1>Hello, world.</h1></body></html>'];
+    /*
     if ($asgiEnv['REQUEST_URI'] == '/sendfile') {
         return [200, 'OK', ['X-Sendfile' => __DIR__ .'/www/test.txt'], NULL];
     } elseif ($asgiEnv['REQUEST_URI'] == '/favicon.ico') {
@@ -24,9 +26,11 @@ $handler = function(array $asgiEnv, $requestId) {
     } else {
         return [200, 'OK', [], '<html><body><h1>Hello, world.</h1></body></html>'];
     }
+    */
 };
 
 $config = [
+    /*
     'globals' => [
         
         'opts' => [
@@ -41,7 +45,6 @@ $config = [
             'autoReasonPhrase'          => TRUE,
             'cryptoHandshakeTimeout'    => 3,
             'ipv6Mode'                  => FALSE
-            
         ],
         
         'tls'   => [
@@ -53,25 +56,32 @@ $config = [
         
         'mods'  => [
             // Any mod you want applied to all hosts should be specified here.
-            // If a mod using the same key exists in the host config it will
-            // override the global instance specified in this block.
+            // If a mod exists with the same key in a host config block it will
+            // override the global instance specified here.
         ]
     ],
-    
+    */
     // --- ALL OTHER KEYS ARE CONSIDERED HOST CONTAINERS ---
-    
+    /*
     'myHost.secure' => [
         'listen'    => '*:1500', // <-- we specified a TLS definition in the "globals" section
-        'name'      => 'aerys',
+        'name'      => 'aerys', // <--- optional
         'handler'   => $handler
     ],
+    */
     
+    'myHost.static' => [
+        'listen'    => '*:1337', // <-- we specified a TLS definition in the "globals" section
+        'name'      => 'aerys', // <--- optional
+        'handler'   => new Aerys\Handlers\Filesys(__DIR__ . '/www')
+    ],
+    
+    /*
     'myHost.insecure' => [
         'listen'    => '*:1337',
-        'name'      => 'aerys',
+        'name'      => 'aerys', // <--- optional
         'handler'   => $handler,
         'mods'      => [
-            /*
             'mod.log'   =>  [
                 'logs' => [
                     'php://stdout' => 'common'
@@ -80,8 +90,10 @@ $config = [
             
             'mod.limit' => [
                 'ipProxyHeader' => NULL, // use this header's value as the ip if available (helpful behind proxies)
+                'onLimitCmd' => NULL,
+                'onLimitCallback' => NULL,
                 'limits' => [
-                    60 => 120, // send a 429 if client has made > 120 requests in the past 60 seconds
+                    60 => 200, // send a 429 if client has made > 200 requests in the past 60 seconds
                 ]
             ],
             
@@ -111,9 +123,9 @@ $config = [
                 'block' => ['*'], // specific IPs or IP ranges
                 'allow' => ['127.0.0.1'] // specific IPs or IP ranges
             ],
-            */
         ]
     ]
+    */
 ];
 
 $server = (new ServerFactory)->createServer($config)->listen();

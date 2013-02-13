@@ -3,7 +3,8 @@
 namespace Aerys;
 
 use Aerys\Engine\EventBase,
-    Aerys\Engine\LibEventBase;
+    Aerys\Engine\LibEventBase,
+    Aerys\Handlers\InitHandler;
 
 class ServerFactory {
     
@@ -38,6 +39,13 @@ class ServerFactory {
         }
         
         $this->registerMods($server, $eventBase, $globalMods, $mods);
+        
+        foreach ($vhosts as $host) {
+            $handler = $host->getHandler();
+            if ($handler instanceof InitHandler) {
+                $handler->init($server, $eventBase);
+            }
+        }
         
         return $server;
     }

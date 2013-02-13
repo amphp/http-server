@@ -30,7 +30,7 @@ class Server {
     
     private $maxConnections = 0;
     private $maxRequestsPerSession = 100;
-    private $idleConnectionTimeout = 15;
+    private $idleConnectionTimeout = 30;
     private $maxStartLineSize = 2048;
     private $maxHeadersSize = 8192;
     private $maxEntityBodySize = 2097152;
@@ -47,10 +47,14 @@ class Server {
     
     private $insideBeforeResponseModLoop = FALSE;
     
+    private $bodyWriterFactory;
+    
     function __construct(EventBase $eventBase, VirtualHostGroup $vhosts) {
         $this->eventBase = $eventBase;
         $this->vhosts = $vhosts;
         $this->tempEntityDir = sys_get_temp_dir();
+        
+        $this->bodyWriterFactory = new Http\BodyWriters\BodyWriterFactory;
     }
     
     function listen() {
@@ -172,7 +176,7 @@ class Server {
     private function generateClient($clientSock, $clientName, $serverName) {
         $clientId = (int) $clientSock;
         
-        $writer = new Http\MessageWriter($clientSock);
+        $writer = new Http\MessageWriter($clientSock, $this->bodyWriterFactory);
         $parser = new Http\RequestParser;
         
         $parser->onHeaders(function(array $parsedRequest) use ($clientId) {
@@ -507,7 +511,8 @@ class Server {
     
     function setRequest($requestId, array $asgiEnv) {
         if (!isset($this->requestIdClientMap[$requestId])) {
-            throw new \DomainException;
+            //throw new \DomainException;
+            return;
         }
         
         $clientId = $this->requestIdClientMap[$requestId];
@@ -517,7 +522,8 @@ class Server {
     
     function setResponse($requestId, array $asgiResponse) {
         if (!isset($this->requestIdClientMap[$requestId])) {
-            throw new \DomainException;
+            //throw new \DomainException;
+            return;
         }
         
         $clientId = $this->requestIdClientMap[$requestId];
@@ -569,11 +575,12 @@ class Server {
             $asgiResponse = $client->responses[$requestId];
         }
         
-        list($status, $reason, $headers, $body) = $asgiResponse;
+        //list($status, $reason, $headers, $body) = $asgiResponse;
+        //$msg = (new Http\Response)->setAll($protocol, $status, $reason, $headers, $body);
         
-        $msg = (new Http\Response)->setAll($protocol, $status, $reason, $headers, $body);
         $writer = $client->getWriter();
-        $writer->enqueue($msg);
+        //$writer->enqueue($msg);
+        $writer->enqueue($protocol, $asgiResponse);
     }
     
     private function normalizeResponseHeaders($protocol, array $headers, $body) {
