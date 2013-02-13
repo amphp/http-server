@@ -369,7 +369,7 @@ class Filesys implements Handler {
         $reason = 'Not Modified';
         $headers = [
             'Date' => date(Server::HTTP_DATE),
-            'Last-Modified' => $lastModified
+            'Last-Modified' => date(Server::HTTP_DATE, $lastModified)
         ];
         
         if ($eTag) {
