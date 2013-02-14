@@ -225,7 +225,7 @@ class Server {
             $this->onRequest($clientId, $parsedRequest, $isAwaitingBody = TRUE);
         });
         $parser->onBodyData(function($data) use ($clientId) {
-            $this->tempEntityWriters[$clientId]->write($data);
+            return $this->tempEntityWriters[$clientId]->write($data);
         });
         $readSub = $this->eventBase->onReadable($clientSock, function ($clientSock, $triggeredBy) {
             $this->onReadable($clientSock, $triggeredBy);
@@ -307,7 +307,6 @@ class Server {
             list($requestId, $host) = $preBodyRequestInfo;
             $client->pipeline[$requestId]['AWAITING_BODY'] = FALSE;
             $client->pipeline[$requestId]['ASGI_LAST_CHANCE'] = TRUE;
-            $this->tempEntityWriters[$clientId] = NULL;
         } else {
             $requestId = ++$this->lastRequestId;
             $this->requestIdClientMap[$requestId] = $clientId;
@@ -367,16 +366,13 @@ class Server {
             return;
         }
         
-        if ($isAwaitingBody && $asgiResponse && $asgiResponse[0] == 100) {
-             $this->place100ContinueInPipeline($client, $requestId, $asgiResponse);
+        if ($asgiResponse) {
+            $this->setResponse($requestId, $asgiResponse);
         } elseif ($isAwaitingBody
-            && !$asgiResponse
             && isset($asgiEnv['HTTP_EXPECT'])
             && !strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue')
         ) {
             $asgiResponse = [100, 'Continue', [], NULL];
-            $this->place100ContinueInPipeline($client, $requestId, $asgiResponse);
-        } elseif ($asgiResponse) {
             $this->setResponse($requestId, $asgiResponse);
         }
     }
@@ -397,15 +393,7 @@ class Server {
                 continue;
             }
             
-            if (!isset($client->responses[$requestId])) {
-                continue;
-            } elseif ($client->responses[$requestId][0] == 100) {
-                // 100 Continue responses can't go in the normal queue. Since a mod assigned the
-                // response we need to remove it.
-                $asgiResponse = $client->responses[$requestId];
-                unset($client->responses[$requestId]);
-                $this->place100ContinueInPipeline($client, $requestId, $asgiResponse);
-            } else {
+            if (isset($client->responses[$requestId])) {
                 return TRUE;
             }
         }
@@ -596,6 +584,7 @@ class Server {
         } else {
             unset(
                 $this->requestIdClientMap[$requestId],
+                $this->tempEntityWriters[$clientId],
                 $client->pipeline[$requestId],
                 $client->responses[$requestId]
             );
@@ -616,17 +605,32 @@ class Server {
         }
     }
     
+    /**
+     * Attempt a graceful socket close by shutting down writes and trying to read any remaining
+     * data still on the wire before finally closing the socket. The final read is limited to a
+     * predetermined number of bytes to avoid slowness. If there's any more data after this read
+     * we'll just have to cut it off ungracefully.
+     */
     private function close($clientId) {
         $clientSock = $this->export($clientId);
         stream_socket_shutdown($clientSock, STREAM_SHUT_WR);
+        
+        // Despite `stream_get_meta_data` reporting that blocking is FALSE at this point, the call
+        // to stream_socket_shutdown covertly places the stream back in blocking mode. If we don't
+        // manually remind PHP that this is supposed to be a non-blocking stream the subsequent
+        // fread operation can potentially block for several seconds. Manually resetting the socket
+        // to non-blocking fixes this bug.
+        stream_set_blocking($clientSock, FALSE);
+        
+        fread($clientSock, 8192);
         fclose($clientSock);
     }
     
     private function export($clientId) {
         $client = $this->clients[$clientId];
         
-        if ($pipeline = $this->clients[$clientId]->pipeline) {
-            foreach (array_keys($pipeline) as $requestId) {
+        if ($client->pipeline) {
+            foreach (array_keys($client->pipeline) as $requestId) {
                 unset(
                     $this->requestIdClientMap[$requestId],
                     $this->continueAfter[$requestId],
@@ -668,12 +672,14 @@ class Server {
         $clientId = $this->requestIdClientMap[$requestId];
         $client = $this->clients[$clientId];
         
+        
         // It's important to normalize header case each time a response is assigned (whether set by
         // a handler or a mod) so that all other code can depend on uppercase dictionary keys.
         $asgiResponse[2] = array_combine(array_map('strtoupper', array_keys($asgiResponse[2])), $asgiResponse[2]);
         
-        if ($this->insideBeforeResponseModLoop) {
-            $client->responses[$requestId] = $asgiResponse;
+        // 100 Continue responses don't go in the normal pipeline. We head them off before they get there.
+        if ($asgiResponse[0] == 100) {
+            $this->place100ContinueInPipeline($client, $requestId, $asgiResponse);
             return;
         }
         
@@ -687,12 +693,12 @@ class Server {
         $protocol = ($protocol == '1.0' || $protocol == '1.1') ? $protocol : '1.0';
         
         if ($this->maxRequestsPerSession && $client->requestCount >= $this->maxRequestsPerSession) {
-            $asgiResponse[2]['Connection'] = 'close';
+            $asgiResponse[2]['CONNECTION'] = 'close';
         } elseif (!empty($asgiEnv['HTTP_CONNECTION'])
             && !strcasecmp($asgiEnv['HTTP_CONNECTION'], 'keep-alive')
         ) {
-            if (empty($asgiResponse[2]['Connection'])) {
-                $asgiResponse[2]['Connection'] = 'keep-alive';
+            if (empty($asgiResponse[2]['CONNECTION'])) {
+                $asgiResponse[2]['CONNECTION'] = 'keep-alive';
             }
         }
         
@@ -703,6 +709,10 @@ class Server {
         }
         
         $client->responses[$requestId] = $asgiResponse;
+        
+        if ($this->insideBeforeResponseModLoop) {
+            return;
+        }
         
         $hostId = $asgiEnv['SERVER_NAME'] . ':' . $client->getServerPort();
         if (isset($this->beforeResponseMods[$hostId])) {
@@ -760,7 +770,7 @@ class Server {
         
         $hasBody = ($body || $body === '0');
         
-        if ($hasBody && !isset($headers['CONTENT-TYPE'])) {
+        if ($hasBody && empty($headers['CONTENT-TYPE'])) {
             $headers['CONTENT-TYPE'] = $this->defaultContentType;
         }
         
@@ -771,9 +781,10 @@ class Server {
         if ($hasBody && !$hasContentLength && is_string($body)) {
             $headers['CONTENT-LENGTH'] = strlen($body);
         } elseif ($hasBody && !$hasContentLength && is_resource($body)) {
+            $currentPos = ftell($body);
             fseek($body, 0, SEEK_END);
-            $headers['CONTENT-LENGTH'] = ftell($body);
-            rewind($body);
+            $headers['CONTENT-LENGTH'] = ftell($body) - $currentPos;
+            fseek($body, $currentPos);
         } elseif ($hasBody && $protocol >= 1.1 && !$isChunked && $isIterator) {
             $headers['TRANSFER-ENCODING'] = 'chunked';
         } elseif ($hasBody && !$hasContentLength && $protocol < '1.1' && $isIterator) {

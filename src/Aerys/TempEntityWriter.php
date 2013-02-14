@@ -35,15 +35,6 @@ class TempEntityWriter {
      * @throws ResourceException On resource write failure
      * @return bool Returns TRUE if all data has been written, FALSE otherwise
      */
-    public function __invoke($data = NULL) {
-        return $this->write($data);
-    }
-    
-    /**
-     * @param string $data The info we want to write
-     * @throws ResourceException On resource write failure
-     * @return bool Returns TRUE if all data has been written, FALSE otherwise
-     */
     public function write($data = NULL) {
         if ($data !== NULL) {
             $this->buffer .= $data;
