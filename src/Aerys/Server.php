@@ -34,6 +34,9 @@ class Server {
     private $pendingTlsClientCount = 0;
     private $lastRequestId = 0;
     
+    private $upgradeAfter = [];
+    private $continueAfter = [];
+    
     private $maxConnections = 0;
     private $maxRequestsPerSession = 100;
     private $idleConnectionTimeout = 5;
@@ -365,14 +368,14 @@ class Server {
         }
         
         if ($isAwaitingBody && $asgiResponse && $asgiResponse[0] == 100) {
-             $client->getWriter()->enqueue($asgiEnv['SERVER_PROTOCOL'], $asgiResponse);
+             $this->place100ContinueInPipeline($client, $requestId, $asgiResponse);
         } elseif ($isAwaitingBody
             && !$asgiResponse
             && isset($asgiEnv['HTTP_EXPECT'])
             && !strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue')
         ) {
             $asgiResponse = [100, 'Continue', [], NULL];
-            $client->getWriter()->enqueue($asgiEnv['SERVER_PROTOCOL'], $asgiResponse);
+            $this->place100ContinueInPipeline($client, $requestId, $asgiResponse);
         } elseif ($asgiResponse) {
             $this->setResponse($requestId, $asgiResponse);
         }
@@ -397,15 +400,42 @@ class Server {
             if (!isset($client->responses[$requestId])) {
                 continue;
             } elseif ($client->responses[$requestId][0] == 100) {
-                $protocol = $client->pipeline[$requestId]['SERVER_PROTOCOL'];
-                $client->getWriter()->enqueue($protocol, $client->responses[$requestId]);
+                // 100 Continue responses can't go in the normal queue. Since a mod assigned the
+                // response we need to remove it.
+                $asgiResponse = $client->responses[$requestId];
                 unset($client->responses[$requestId]);
+                $this->place100ContinueInPipeline($client, $requestId, $asgiResponse);
             } else {
                 return TRUE;
             }
         }
         
         return FALSE;
+    }
+    
+    private function place100ContinueInPipeline(Client $client, $requestId, array $asgiResponse) {
+        $previousKey = NULL;
+        
+        foreach (array_keys($client->pipeline) as $iterRequestId) {
+            if ($iterRequestId == $requestId) {
+                break;
+            } else {
+                $previousKey = $iterRequestId;
+            }
+        }
+        
+        $protocol = $client->requests[$requestId]['SERVER_PROTOCOL'];
+        
+        // 1xx responses cannot carry an entity body
+        $asgiResponse[3] = NULL;
+        
+        // If this is the first request in line we can queue up the 100 Continue response right
+        // away. Otherwise we need to store it for a later response.
+        if ($previousKey === NULL) {
+            $client->getWriter()->enqueue($protocol, $asgiResponse);
+        } else {
+            $this->continueAfter[$previousKey] = [$protocol, $asgiResponse];
+        }
     }
     
     private function selectRequestHost($serverInterface, $serverPort, array $parsedRequest) {
@@ -542,6 +572,12 @@ class Server {
             }
         }
         
+        if (isset($this->continueAfter[$requestId])) {
+            list($protocol, $continueResponse) = $this->continueAfter[$requestId];
+            unset($this->continueAfter[$requestId]);
+            $client->getWriter()->enqueue($protocol, $continueResponse);
+        }
+        
         if (isset($this->upgradeAfter[$requestId])) {
             $upgradeCallback = $this->upgradeAfter[$requestId];
             $clientSock = $this->export($clientId);
@@ -593,6 +629,7 @@ class Server {
             foreach (array_keys($pipeline) as $requestId) {
                 unset(
                     $this->requestIdClientMap[$requestId],
+                    $this->continueAfter[$requestId],
                     $this->upgradeAfter[$requestId]
                 );
             }
