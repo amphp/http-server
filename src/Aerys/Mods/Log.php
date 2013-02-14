@@ -2,12 +2,10 @@
 
 namespace Aerys\Mods;
 
-use Aerys\Server,
-    Aerys\Engine\EventBase;
+use Aerys\Server;
 
 class Log implements AfterResponseMod {
     
-    private $server;
     private $resources = [];
     private $resourceFormatMap = [];
     private $buffers = [];
@@ -15,17 +13,7 @@ class Log implements AfterResponseMod {
     private $flushSize = 0;
     private $logTime;
     
-    static function createMod(Server $server, EventBase $eventBase, array $config) {
-        $class = __CLASS__;
-        return new $class($server, $config);
-    }
-    
-    function __construct(Server $server, array $config) {
-        $this->server = $server;
-        $this->configure($config);
-    }
-    
-    private function configure(array $config) {
+    function configure(array $config) {
         if (isset($config['flushSize'])) {
             $this->flushSize = (int) $config['flushSize'];
         }
@@ -44,27 +32,12 @@ class Log implements AfterResponseMod {
         }
     }
     
-    function __destruct() {
-        foreach ($this->buffers as $resourceId => $bufferList) {
-            $buffer = $bufflerList[0];
-            
-            if (!$buffer && $buffer !== '0') {
-                continue;
-            }
-            
-            $resource = $this->resources[$resourceId];
-            stream_set_blocking($resource, TRUE);
-            fwrite($resource, $buffer);
-            fclose($resource);
-        }
-    }
-    
-    function afterResponse($clientId, $requestId) {
+    function afterResponse(Server $server, $requestId) {
         $this->logTime = time();
         
         foreach ($this->resources as $resourceId => $resource) {
-            $asgiEnv = $this->server->getRequest($requestId);
-            $asgiResponse = $this->server->getResponse($requestId);
+            $asgiEnv = $server->getRequest($requestId);
+            $asgiResponse = $server->getResponse($requestId);
             $format = $this->resourceFormatMap[$resourceId];
             
             switch ($format) {
@@ -185,6 +158,21 @@ class Log implements AfterResponseMod {
             };
             
             return preg_replace_callback("/\%{([^\)]+)}/U", $replace, $msg) . PHP_EOL;
+        }
+    }
+    
+    function __destruct() {
+        foreach ($this->buffers as $resourceId => $bufferList) {
+            $buffer = $bufferList[0];
+            
+            if (!$buffer && $buffer !== '0') {
+                continue;
+            }
+            
+            $resource = $this->resources[$resourceId];
+            stream_set_blocking($resource, TRUE);
+            fwrite($resource, $buffer);
+            fclose($resource);
         }
     }
 }

@@ -44,7 +44,7 @@ $config = [
     'host.static' => [
         'listen'    => '*:80',
         'name'      => 'static.aerys',
-        'handler'   => new Aerys\Handlers\Filesys(__DIR__ . '/file_server_root')
+        'handler'   => new Aerys\Filesys(__DIR__ . '/file_server_root')
     ]
 ];
 

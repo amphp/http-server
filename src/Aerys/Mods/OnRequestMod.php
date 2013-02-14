@@ -2,6 +2,8 @@
 
 namespace Aerys\Mods;
 
-interface OnRequestMod {
-    function onRequest($clientId, $requestId);
+use Aerys\Server;
+
+interface OnRequestMod extends Mod {
+    function onRequest(Server $server, $requestId);
 }

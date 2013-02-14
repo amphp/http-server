@@ -2,8 +2,7 @@
 
 namespace Aerys\Mods;
 
-use Aerys\Server,
-    Aerys\Engine\EventBase;
+use Aerys\Server;
 
 /*
 'mod.limit' => [
@@ -18,8 +17,6 @@ use Aerys\Server,
 */
 
 class Limit implements OnRequestMod {
-
-    private $server;
     
     private $ipProxyHeader;
     private $rateLimits = [];
@@ -31,17 +28,7 @@ class Limit implements OnRequestMod {
     private $onLimitCmd;
     private $onLimitCallback;
     
-    static function createMod(Server $server, EventBase $eventBase, array $config) {
-        $class = __CLASS__;
-        return new $class($server,$config);
-    }
-    
-    function __construct(Server $server, array $config) {
-        $this->server = $server;
-        $this->configure($config);
-    }
-    
-    private function configure(array $config) {
+    function configure(array $config) {
         if (!empty($config['ipProxyHeader'])) {
             $this->ipProxyHeader = strtoupper($config['ipProxyHeader']);
         }
@@ -68,8 +55,8 @@ class Limit implements OnRequestMod {
      * @param int $requestId
      * @return void
      */
-    function onRequest($clientId, $requestId) {
-        $asgiEnv = $this->server->getRequest($requestId);
+    function onRequest(Server $server, $requestId) {
+        $asgiEnv = $server->getRequest($requestId);
         
         if ($this->ipProxyHeader) {
             $clientIp = isset($asgiEnv[$this->ipProxyHeader])
@@ -82,7 +69,9 @@ class Limit implements OnRequestMod {
         $now = time();
         
         if ($this->isRateLimited($clientIp, $now)) {
-            $this->limit($requestId);
+            
+            $this->limit($server, $requestId);
+            
             if ($this->onLimitCmd) {
                 $this->execSystemCmd($clientIp);
             }
@@ -132,7 +121,7 @@ class Limit implements OnRequestMod {
         return FALSE;
     }
     
-    private function limit($requestId) {
+    private function limit(Server $server, $requestId) {
         $body = "<html><body><h1>429 Too Many Requests</h1></body></html>";
         $headers = [
             'Content-Type' => 'text\html',
@@ -140,7 +129,7 @@ class Limit implements OnRequestMod {
         ];
         $asgiResponse = [429, 'Too Many Requests', $headers, $body];
         
-        $this->server->setResponse($requestId, $asgiResponse);
+        $server->setResponse($requestId, $asgiResponse);
     }
     
     private function execSystemCmd($clientIp) {

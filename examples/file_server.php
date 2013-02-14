@@ -29,7 +29,6 @@ date_default_timezone_set('GMT');
 
 (new Aerys\ServerFactory)->createServer([[
     'listen'  => '*:1337',
-    'name'    => '127.0.0.1',
-    'handler' => new Aerys\Handlers\Filesys(__DIR__ . '/file_server_root')
+    'handler' => new Aerys\Filesys(__DIR__ . '/file_server_root')
 ]])->listen();
 

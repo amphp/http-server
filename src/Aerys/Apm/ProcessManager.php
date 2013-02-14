@@ -1,10 +1,10 @@
 <?php
 
-namespace Aerys\Handlers\Apm;
+namespace Aerys\Apm;
 
 use Aerys\Server,
     Aerys\Engine\EventBase,
-    Aerys\Handlers\InitHandler;
+    Aerys\InitHandler;
 
 class ProcessManager implements InitHandler {
     

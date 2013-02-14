@@ -2,6 +2,8 @@
 
 namespace Aerys\Mods;
 
-interface BeforeResponseMod {
-    function beforeResponse($clientId, $requestId);
+use Aerys\Server;
+
+interface BeforeResponseMod extends Mod {
+    function beforeResponse(Server $server, $requestId);
 }

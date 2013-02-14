@@ -14,6 +14,12 @@ class Server {
     const MICROSECOND_TICKS = 1000000;
     const HTTP_DATE = 'D, d M Y H:i:s T';
     
+    const E_LOG_HANDLER = 'User Handler';
+    const E_LOG_ON_REQUEST = 'OnRequest Mod';
+    const E_LOG_BEFORE_RESPONSE = 'BeforeResponse Mod';
+    const E_LOG_AFTER_RESPONSE = 'AfterResponse Mod';
+    const E_LOG_UPGRADE_CALLBACK = 'Upgrade Callback';
+    
     private $isListening = FALSE;
     
     private $eventBase;
@@ -39,6 +45,8 @@ class Server {
     private $autoReasonPhrase = TRUE;
     private $cryptoHandshakeTimeout = 3;
     private $ipv6Mode = FALSE;
+    private $errorLog;
+    private $handleOnHeaders = FALSE;
     
     private $onRequestMods = [];
     private $beforeResponseMods = [];
@@ -57,23 +65,54 @@ class Server {
         $this->bodyWriterFactory = new Http\BodyWriters\BodyWriterFactory;
     }
     
+    function stop() {
+        if (!$this->isListening) {
+            return;
+        }
+        $this->eventBase->stop();
+        
+        if ($this->errorLog !== STDERR) {
+            fclose($this->errorLog);
+        }
+    }
+    
     function listen() {
         if (!$this->isListening) {
             $this->isListening = TRUE;
+            
+            $this->initializeErrorLog();
+            
             foreach ($this->bindServerSocks() as $boundAddress) {
                 echo 'Server listening on ', $boundAddress, "\n";
             }
+            
             $this->eventBase->repeat(1000000, function() {
                 echo time(), ' (', $this->clientCount, ")\n";
             });
+            
             $this->eventBase->run();
         }
     }
     
-    function stop() {
-        if ($this->isListening) {
-            $this->eventBase->stop();
+    private function initializeErrorLog() {
+        if ($this->errorLog) {
+            $this->errorLog = fopen($this->errorLog, 'ab+');
+        } else {
+            $this->errorLog = STDERR;
         }
+    }
+    
+    private function logUserlandError(\Exception $e, $thrownByConst, $host, $requestUri) {
+        fwrite(
+            $this->errorLog,
+            '------------------------------------' . PHP_EOL .
+            'Exception thrown by ' . $thrownByConst . PHP_EOL .
+            'When: ' . date(self::HTTP_DATE) . PHP_EOL .
+            'Host: ' . $host . PHP_EOL .
+            'Request URI: ' . $requestUri .  PHP_EOL .
+            $e . PHP_EOL .
+            '------------------------------------' . PHP_EOL
+        );
     }
     
     private function bindServerSocks() {
@@ -238,6 +277,7 @@ class Server {
     private function handleReadTimeout($clientId) {
         $client = $this->clients[$clientId];
         $parser = $client->getParser();
+        
         if ($parser->hasMessageInProgress()) {
             $this->doServerLayerError($client, 408, 'Request timed out');
         } else {
@@ -294,26 +334,78 @@ class Server {
         }
         
         $hostId = $host->getId();
-        if (isset($this->onRequestMods[$hostId])) {
-            foreach ($this->onRequestMods[$hostId] as $mod) {
-                $mod->onRequest($clientId, $requestId);
-                // If a Mod exported the socket or assigned a response we're finished
-                if (!isset($this->clients[$clientId]) || isset($client->responses[$requestId])) {
-                    return;
-                }
+        
+        if (isset($this->onRequestMods[$hostId]) && $this->doOnRequestMods($hostId, $client, $requestId)) {
+            return;
+        } elseif ($isAwaitingBody && !$this->handleOnHeaders) {
+            return;
+        }
+        
+        // Retrieve the environment again in case any mods have altered it
+        $asgiEnv = $client->pipeline[$requestId];
+        $handler = $host->getHandler();
+        
+        try {
+            $asgiResponse = $handler($asgiEnv, $requestId);
+        } catch (\Exception $e) {
+            $thrownBy = self::E_LOG_HANDLER;
+            $serverName = $asgiEnv['SERVER_NAME'];
+            $requestUri = $asgiEnv['REQUEST_URI'];
+            
+            $this->logUserlandError($e, $thrownBy, $serverName, $requestUri);
+            
+            $this->setResponse($requestId, [
+                500,
+                'Internal Server Error',
+                [],
+                NULL
+            ]);
+            
+            return;
+        }
+        
+        if ($isAwaitingBody && $asgiResponse && $asgiResponse[0] == 100) {
+             $client->getWriter()->enqueue($asgiEnv['SERVER_PROTOCOL'], $asgiResponse);
+        } elseif ($isAwaitingBody
+            && !$asgiResponse
+            && isset($asgiEnv['HTTP_EXPECT'])
+            && !strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue')
+        ) {
+            $asgiResponse = [100, 'Continue', [], NULL];
+            $client->getWriter()->enqueue($asgiEnv['SERVER_PROTOCOL'], $asgiResponse);
+        } elseif ($asgiResponse) {
+            $this->setResponse($requestId, $asgiResponse);
+        }
+    }
+    
+    /**
+     * @return bool Returns TRUE if a response was assigned by an onRequestMod
+     */
+    private function doOnRequestMods($hostId, Client $client, $requestId) {
+        foreach ($this->onRequestMods[$hostId] as $mod) {
+            try {
+                $mod->onRequest($this, $requestId);
+            } catch (\Exception $e) {
+                $thrownBy = self::E_LOG_ON_REQUEST;
+                $serverName = $asgiEnv['SERVER_NAME'];
+                $requestUri = $asgiEnv['REQUEST_URI'];
+                
+                $this->logUserlandError($e, $thrownBy, $serverName, $requestUri);
+                continue;
+            }
+            
+            if (!isset($client->responses[$requestId])) {
+                continue;
+            } elseif ($client->responses[$requestId][0] == 100) {
+                $protocol = $client->pipeline[$requestId]['SERVER_PROTOCOL'];
+                $client->getWriter()->enqueue($protocol, $client->responses[$requestId]);
+                unset($client->responses[$requestId]);
+            } else {
+                return TRUE;
             }
         }
         
-        $handler = $host->getHandler();
-        if ($asgiResponse = $handler($client->pipeline[$requestId], $requestId)) {
-            $this->setResponse($requestId, $asgiResponse);
-        } elseif ($isAwaitingBody
-            && isset($asgiEnv['HTTP_EXPECT'])
-            && strtoupper($asgiEnv['HTTP_EXPECT']) == '100-CONTINUE'
-        ) {
-            $msg = "100 Continue\r\n\r\n";
-            $client->getWriter()->priorityWrite($msg);
-        }
+        return FALSE;
     }
     
     private function selectRequestHost($serverInterface, $serverPort, array $parsedRequest) {
@@ -408,12 +500,12 @@ class Server {
             'CONTENT_TYPE'       => $contentType,
             'CONTENT_LENGTH'     => $contentLength,
             'ASGI_VERSION'       => 0.1,
-            'ASGI_URL_SCHEME'    => $scheme,// The URL scheme (will always be "http" unless mod.ssl enabled)
-            'ASGI_INPUT'         => NULL,  // The temp filesystem path of the request entity body
-            'ASGI_CAN_STREAM'    => TRUE,  // TRUE if the server supports callback-style delayed response and streaming traversable entity body.
-            'ASGI_NON_BLOCKING'  => TRUE,  // TRUE if the server is calling the application in a non-blocking event loop.
-            'ASGI_LAST_CHANCE'   => TRUE,  // TRUE if this is the final time a handler will be notified of the current request
-            'ASGI_MULTIPROCESS'  => FALSE  // TRUE if an equivalent application object may be simultaneously invoked by another process, FALSE otherwise.
+            'ASGI_URL_SCHEME'    => $scheme,
+            'ASGI_INPUT'         => NULL,
+            'ASGI_ERROR'         => NULL,
+            'ASGI_CAN_STREAM'    => TRUE,
+            'ASGI_NON_BLOCKING'  => TRUE,
+            'ASGI_LAST_CHANCE'   => TRUE
         ];
         
         foreach ($headers as $field => $value) {
@@ -438,13 +530,32 @@ class Server {
         
         if (isset($this->afterResponseMods[$hostId])) {
             foreach ($this->afterResponseMods[$hostId] as $mod) {
-                if (FALSE === $mod->afterResponse($clientId, $requestId)) {
-                    break;
+                try {
+                    $mod->afterResponse($this, $requestId);
+                } catch (\Exception $e) {
+                    $thrownBy = self::E_LOG_AFTER_RESPONSE;
+                    $serverName = $asgiEnv['SERVER_NAME'];
+                    $requestUri = $asgiEnv['REQUEST_URI'];
+                    
+                    $this->logUserlandError($e, $thrownBy, $serverName, $requestUri);
                 }
             }
         }
         
-        if ($shouldClose) {
+        if (isset($this->upgradeAfter[$requestId])) {
+            $upgradeCallback = $this->upgradeAfter[$requestId];
+            $clientSock = $this->export($clientId);
+            
+            try {
+                $upgradeCallback($clientSock);
+            } catch (\Exception $e) {
+                $thrownBy = self::E_LOG_UPGRADE_CALLBACK;
+                $serverName = $asgiEnv['SERVER_NAME'];
+                $requestUri = $asgiEnv['REQUEST_URI'];
+                
+                $this->logUserlandError($e, $thrownBy, $serverName, $requestUri);
+            }
+        } elseif ($shouldClose) {
             $this->close($clientId);
         } else {
             unset(
@@ -472,29 +583,18 @@ class Server {
     private function close($clientId) {
         $clientSock = $this->export($clientId);
         stream_socket_shutdown($clientSock, STREAM_SHUT_WR);
-        
-        while (TRUE) {
-            $read = fgets($clientSock);
-            if ($read === FALSE || $read === '') {
-                break;
-            }
-        }
-        
         fclose($clientSock);
     }
     
-    function export($clientId) {
-        if (!isset($this->clients[$clientId])) {
-            throw new \DomainException(
-                'Invalid client ID: ' . $clientId
-            );
-        }
-        
+    private function export($clientId) {
         $client = $this->clients[$clientId];
         
         if ($pipeline = $this->clients[$clientId]->pipeline) {
             foreach (array_keys($pipeline) as $requestId) {
-                unset($this->requestIdClientMap[$requestId]);
+                unset(
+                    $this->requestIdClientMap[$requestId],
+                    $this->upgradeAfter[$requestId]
+                );
             }
         }
         
@@ -515,8 +615,7 @@ class Server {
     
     function setRequest($requestId, array $asgiEnv) {
         if (!isset($this->requestIdClientMap[$requestId])) {
-            //throw new \DomainException;
-            return;
+            throw new \DomainException;
         }
         
         $clientId = $this->requestIdClientMap[$requestId];
@@ -526,12 +625,15 @@ class Server {
     
     function setResponse($requestId, array $asgiResponse) {
         if (!isset($this->requestIdClientMap[$requestId])) {
-            //throw new \DomainException;
-            return;
+            throw new \DomainException;
         }
         
         $clientId = $this->requestIdClientMap[$requestId];
         $client = $this->clients[$clientId];
+        
+        // It's important to normalize header case each time a response is assigned (whether set by
+        // a handler or a mod) so that all other code can depend on uppercase dictionary keys.
+        $asgiResponse[2] = array_combine(array_map('strtoupper', array_keys($asgiResponse[2])), $asgiResponse[2]);
         
         if ($this->insideBeforeResponseModLoop) {
             $client->responses[$requestId] = $asgiResponse;
@@ -567,29 +669,54 @@ class Server {
         
         $hostId = $asgiEnv['SERVER_NAME'] . ':' . $client->getServerPort();
         if (isset($this->beforeResponseMods[$hostId])) {
-            $this->insideBeforeResponseModLoop = TRUE;
-            foreach ($this->beforeResponseMods[$hostId] as $mod) {
-                if (FALSE === $mod->beforeResponse($clientId, $requestId)) {
-                    break;
-                }
-            }
-            $this->insideBeforeResponseModLoop = FALSE;
-            
+            $this->doBeforeResponseMods($hostId, $requestId);
             // In case the response was altered by any mods ...
             $asgiResponse = $client->responses[$requestId];
         }
         
-        //list($status, $reason, $headers, $body) = $asgiResponse;
-        //$msg = (new Http\Response)->setAll($protocol, $status, $reason, $headers, $body);
+        if ($asgiResponse[0] == 101) {
+            $this->prepareProtocolUpgrade($requestId, $asgiResponse);
+        } else {
+            $client->getWriter()->enqueue($protocol, $asgiResponse);
+        }
+    }
+    
+    private function doBeforeResponseMods($hostId, $requestId) {
+        $this->insideBeforeResponseModLoop = TRUE;
         
-        $writer = $client->getWriter();
-        //$writer->enqueue($msg);
-        $writer->enqueue($protocol, $asgiResponse);
+        foreach ($this->beforeResponseMods[$hostId] as $mod) {
+            try {
+                $mod->beforeResponse($this, $requestId);
+            } catch (\Exception $e) {
+                $thrownBy = self::E_LOG_BEFORE_RESPONSE;
+                $serverName = $asgiEnv['SERVER_NAME'];
+                $requestUri = $asgiEnv['REQUEST_URI'];
+                
+                $this->logUserlandError($e, $thrownBy, $serverName, $requestUri);
+            }
+        }
+        
+        $this->insideBeforeResponseModLoop = FALSE;
+    }
+    
+    private function prepareProtocolUpgrade($requestId, $asgiResponse) {
+        if (isset($asgiResponse[4]) && is_callable($asgiResponse[4])) {
+            $this->upgradeAfter[$requestId] = $asgiResponse[4];
+        } else {
+            $status = 500;
+            $reason = 'Internal Server Error';
+            $headers = [
+                'Connection' => 'close'
+            ];
+            $body = '';
+            
+            $asgiResponse = [$status, $reason, $headers, $body];
+        }
+        
+        $this->setResponse($requestId, $asgiResponse);
     }
     
     private function normalizeResponseHeaders($protocol, array $headers, $body) {
-        $headers = array_combine(array_map('strtoupper', array_keys($headers)), $headers);
-        
         if (!isset($headers['DATE'])) {
             $headers['DATE'] = date(self::HTTP_DATE);
         }
@@ -702,6 +829,16 @@ class Server {
         $this->ipv6Mode = (bool) $boolFlag;
     }
     
+    private function setErrorLog($filePath) {
+        $this->errorLog = $filePath;
+    }
+    
+    private function setHandleOnHeaders($boolFlag) {
+        $this->handleOnHeaders = (bool) $boolFlag;
+    }
+    
+    
+    
     
     
     function setTlsDefinition($interfaceId, TlsDefinition $tlsDef) {
@@ -724,10 +861,6 @@ class Server {
         
         if ($mod instanceof Mods\AfterResponseMod) {
             $this->afterResponseMods[$hostId][] = $mod;
-        }
-        
-        if ($mod instanceof Mods\OnCloseMod) {
-            $this->onCloseMods[$hostId][] = $mod;
         }
     }
     

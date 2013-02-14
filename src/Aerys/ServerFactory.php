@@ -2,17 +2,17 @@
 
 namespace Aerys;
 
-use Aerys\Engine\EventBase,
-    Aerys\Engine\LibEventBase,
-    Aerys\Handlers\InitHandler;
+use Aerys\InitHandler,
+    Aerys\Engine\EventBase,
+    Aerys\Engine\LibEventBase;
 
 class ServerFactory {
     
-    private $modFactories = [
-        'mod.log'       => ['Aerys\\Mods\\Log', 'createMod'],
-        'mod.errorpages'=> ['Aerys\\Mods\\ErrorPages', 'createMod'],
-        'mod.sendfile'  => ['Aerys\\Mods\\SendFile', 'createMod'],
-        'mod.limit'     => ['Aerys\\Mods\\Limit', 'createMod']
+    private $modClasses = [
+        'mod.log'       => 'Aerys\\Mods\\Log',
+        'mod.errorpages'=> 'Aerys\\Mods\\ErrorPages',
+        'mod.sendfile'  => 'Aerys\\Mods\\SendFile',
+        'mod.limit'     => 'Aerys\\Mods\\Limit'
     ];
     
     function createServer(array $config) {
@@ -38,7 +38,7 @@ class ServerFactory {
             $server->setTlsDefinition($interfaceId, $definition);
         }
         
-        $this->registerMods($server, $eventBase, $globalMods, $mods);
+        $this->registerMods($server, $globalMods, $mods);
         
         foreach ($vhosts as $host) {
             $handler = $host->getHandler();
@@ -101,17 +101,21 @@ class ServerFactory {
         return new LibEventBase;
     }
     
-    private function registerMods(Server $server, EventBase $eventBase, $globalMods, $hostMods) {
+    private function registerMods(Server $server, $globalMods, $hostMods) {
         foreach ($globalMods as $modKey => $modDefinition) {
-            $modFactory = $this->modFactories[$modKey];
-            $globalMods[$modKey] = $modFactory($server, $eventBase, $modDefinition);
+            $modClass = $this->modClasses[$modKey];
+            $mod = new $modClass;
+            $mod->configure($modDefinition);
+            $globalMods[$modKey] = $mod;
         }
         
         foreach ($hostMods as $hostId => $hostModArr) {
             $mods = [];
             foreach ($hostModArr as $modKey => $modDefinition) {
-                $modFactory = $this->modFactories[$modKey];
-                $mods[$modKey] = $modFactory($server, $eventBase, $modDefinition);
+                $modClass = $this->modClasses[$modKey];
+                $mod = new $modClass;
+                $mod->configure($modDefinition);
+                $mods[$modKey] = $mod;
             }
             
             foreach (array_merge($globalMods, $mods) as $mod) {

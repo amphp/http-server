@@ -2,22 +2,13 @@
 
 namespace Aerys\Mods;
 
-use Aerys\Server,
-    Aerys\Engine\EventBase;
+use Aerys\Server;
 
 class ErrorPages implements BeforeResponseMod {
     
-    private $server;
     private $errorPages;
     
-    static function createMod(Server $server, EventBase $eventBase, array $config) {
-        $class = __CLASS__;
-        return new $class($server, $config);
-    }
-    
-    function __construct(Server $server, array $config) {
-        $this->server = $server;
-        
+    function configure(array $config) {
         foreach ($config as $statusCode => $pageAndContentType) {
             $filePath = $pageAndContentType[0];
             $contentType = isset($pageAndContentType[1]) ? $pageAndContentType[1] : NULL;
@@ -34,8 +25,8 @@ class ErrorPages implements BeforeResponseMod {
         }
     }
     
-    function beforeResponse($clientId, $requestId) {
-        list($status, $reason, $headers, $body) = $this->server->getResponse($requestId);
+    function beforeResponse(Server $server, $requestId) {
+        list($status, $reason, $headers, $body) = $server->getResponse($requestId);
         
         if ($status >= 400 && isset($this->errorPages[$status])) {
             list($body, $contentLength, $contentType) = $this->errorPages[$status];
@@ -44,7 +35,7 @@ class ErrorPages implements BeforeResponseMod {
                 $headers['CONTENT-TYPE'] = $contentType;
             }
             
-            $this->server->setResponse($requestId, [$status, $reason, $headers, $body]);
+            $server->setResponse($requestId, [$status, $reason, $headers, $body]);
         }
     }
 }

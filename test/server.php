@@ -1,7 +1,6 @@
 <?php
 
-use Aerys\Server, 
-    Aerys\ServerFactory;
+use Aerys\ServerFactory;
 
 date_default_timezone_set('GMT');
 error_reporting(E_ALL);
@@ -18,6 +17,7 @@ require dirname(__DIR__) . '/autoload.php';
 
 $handler = function(array $asgiEnv, $requestId) {
     return [200, 'OK', [], '<html><body><h1>Hello, world.</h1></body></html>'];
+    
     /*
     if ($asgiEnv['REQUEST_URI'] == '/sendfile') {
         return [200, 'OK', ['X-Sendfile' => __DIR__ .'/www/test.txt'], NULL];
@@ -44,7 +44,9 @@ $config = [
             'defaultContentType'        => 'text/html',
             'autoReasonPhrase'          => TRUE,
             'cryptoHandshakeTimeout'    => 3,
-            'ipv6Mode'                  => FALSE
+            'ipv6Mode'                  => FALSE,
+            'errorLog'                  => NULL,
+            'handleOnHeaders'     => FALSE
         ],
         
         'tls'   => [
@@ -69,19 +71,20 @@ $config = [
         'handler'   => $handler
     ],
     */
-    
+    /*
     'myHost.static' => [
         'listen'    => '*:1337', // <-- we specified a TLS definition in the "globals" section
         'name'      => 'aerys', // <--- optional
         'handler'   => new Aerys\Handlers\Filesys(__DIR__ . '/www')
     ],
+    */
     
-    /*
     'myHost.insecure' => [
         'listen'    => '*:1337',
         'name'      => 'aerys', // <--- optional
         'handler'   => $handler,
         'mods'      => [
+            /*
             'mod.log'   =>  [
                 'logs' => [
                     'php://stdout' => 'common'
@@ -93,7 +96,7 @@ $config = [
                 'onLimitCmd' => NULL,
                 'onLimitCallback' => NULL,
                 'limits' => [
-                    60 => 200, // send a 429 if client has made > 200 requests in the past 60 seconds
+                    60 => 10, // send a 429 if client has made > 200 requests in the past 60 seconds
                 ]
             ],
             
@@ -108,24 +111,24 @@ $config = [
                 'types' => [],
                 'eTagMode' => Aerys\Handlers\Filesys::ETAG_ALL
             ],
-            */
+            
             
             /*
             // --- INCOMPLETE MODS ---
             
             // @todo mod.redirect
             // @todo mod.rewrite
-            // @todo mod.websocket
             // @todo mod.block
             
             'mod.block' => [
-                'ipProxyHeader' => NULL, // use the specified header instead of the raw IP if available
+                'ipProxyHeader' => NULL,
                 'block' => ['*'], // specific IPs or IP ranges
                 'allow' => ['127.0.0.1'] // specific IPs or IP ranges
             ],
+            */
         ]
     ]
-    */
+    
 ];
 
 $server = (new ServerFactory)->createServer($config)->listen();

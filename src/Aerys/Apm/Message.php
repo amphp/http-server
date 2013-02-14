@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Handlers\Apm;
+namespace Aerys\Apm;
 
 /*
 APM MESSAGE HEADER SPEC

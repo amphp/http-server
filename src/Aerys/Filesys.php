@@ -1,11 +1,13 @@
 <?php
 
-namespace Aerys\Handlers;
+namespace Aerys;
 
-use Aerys\Server,
-    Aerys\Http\ByteRangeBody,
+use Aerys\Http\ByteRangeBody,
     Aerys\Http\MultiPartByteRangeBody;
 
+/**
+ * @TODO Decide how best to periodically clear the file stat cache
+ */
 class Filesys implements Handler {
     
     const ETAG_NONE = 0;
@@ -26,7 +28,15 @@ class Filesys implements Handler {
     private $mimeTypes = [];
     private $customTypes = [];
     
-    function __construct($docRoot) {
+    function __construct($docRoot = NULL) {
+        if ($docRoot) {
+            $this->setDocRoot($docRoot);
+        }
+        
+        $this->setDefaultMimeTypes();
+    }
+    
+    function setDocRoot($docRoot) {
         if (is_readable($docRoot) && is_dir($docRoot)) {
             $this->docRoot = rtrim($docRoot, '/');
         } else {
@@ -34,8 +44,6 @@ class Filesys implements Handler {
                 'Specified file system document root must be a readable directory'
             );
         }
-        
-        $this->setDefaultMimeTypes();
     }
     
     function setIndexes(array $indexes) {
@@ -125,8 +133,8 @@ class Filesys implements Handler {
         }
         
         return $ranges
-            ? $this->doRange($filePath, $method, $contentType, $ranges, $mTime, $fileSize, $eTag)
-            : $this->doFile($filePath, $method, $contentType, $mTime, $fileSize, $eTag);
+            ? $this->doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag)
+            : $this->doFile($filePath, $method, $mTime, $fileSize, $eTag);
     }
     
     private function checkPreconditions($mTime, $fileSize, $eTag, $asgiEnv) {

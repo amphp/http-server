@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Handlers;
+namespace Aerys;
 
 use Aerys\Server,
     Aerys\Engine\EventBase;

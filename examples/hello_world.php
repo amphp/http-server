@@ -26,7 +26,6 @@ $handler = function(array $asgiEnv) {
 
 (new Aerys\ServerFactory)->createServer([[
     'listen'  => '*:1337',
-    'name'    => '127.0.0.1',
     'handler' => $handler
 ]])->listen();
 

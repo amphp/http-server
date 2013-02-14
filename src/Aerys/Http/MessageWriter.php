@@ -114,6 +114,7 @@ class MessageWriter {
         complete: {
             $this->state = self::START;
             $this->body = NULL;
+            $this->bodyWriter = NULL;
             
             return TRUE;
         }

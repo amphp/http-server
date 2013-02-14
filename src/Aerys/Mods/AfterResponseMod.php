@@ -2,6 +2,8 @@
 
 namespace Aerys\Mods;
 
-interface AfterResponseMod {
-    function afterResponse($clientId, $requestId);
+use Aerys\Server;
+
+interface AfterResponseMod extends Mod {
+    function afterResponse(Server $server, $requestId);
 }
