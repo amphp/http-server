@@ -393,8 +393,9 @@ abstract class MessageParser {
         } else {
             $overflowBytes = $bufferDataSize - $this->remainingBodyBytes;
             $bodyData = substr($this->buffer, 0, $this->remainingBodyBytes);
-            $this->addToBody($this->buffer);
-            $this->buffer = substr($this->buffer, $overflowBytes);
+            $this->addToBody($bodyData);
+            $this->buffer = substr($this->buffer, $this->remainingBodyBytes);
+            $this->remainingBodyBytes = 0;
             
             return TRUE;
             
@@ -537,9 +538,8 @@ abstract class MessageParser {
                 'Entity body too large',
                 self::E_ENTITY_TOO_LARGE
             );
-        } elseif ($this->onBodyData) {
-            $callback = $this->onBodyData;
-            $this->awaitingEntityDelegate = !$callback($data);
+        } elseif ($onBodyData = $this->onBodyData) {
+            $this->awaitingEntityDelegate = !$onBodyData($data);
         } else {
             $this->body .= $data;
         }
