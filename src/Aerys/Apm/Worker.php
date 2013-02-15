@@ -10,6 +10,7 @@ class Worker {
     
     private $parser;
     private $process;
+    private $errorOutputStream;
     private $pipes = [];
     private static $descriptors = [
         0 => ["pipe", "r"],
@@ -18,8 +19,15 @@ class Worker {
     ];
     
     private $readSubscription;
+    private $errorSubscription;
     
-    function __construct(EventBase $eventBase, MessageParser $parser, $cmd, $workingDir = NULL) {
+    function __construct(
+        EventBase $eventBase,
+        MessageParser $parser,
+        $errorOutputStream,
+        $cmd,
+        $workingDir = NULL
+    ) {
         $workingDir = $workingDir ?: getcwd();
         $this->process = proc_open($cmd, self::$descriptors, $this->pipes, $workingDir);
         
@@ -29,14 +37,19 @@ class Worker {
             );
         }
         $this->parser = $parser;
+        $this->errorOutputStream = $errorOutputStream;
         
         stream_set_blocking($this->pipes[1], FALSE);
+        stream_set_blocking($this->pipes[2], FALSE);
         
-        $this->readSubscription = $eventBase->onReadable(
-            $this->pipes[1],
-            [$this, 'read'],
-            self::READ_TIMEOUT
-        );
+        $this->readSubscription = $eventBase->onReadable($this->pipes[1], [$this, 'read'], self::READ_TIMEOUT);
+        $this->errorSubscription = $eventBase->onReadable($this->pipes[2], [$this, 'error'], self::READ_TIMEOUT);
+    }
+    
+    function error($errorPipe, $triggeredBy) {
+        if ($triggeredBy != EV_TIMEOUT) {
+            stream_copy_to_stream($errorPipe, $this->errorOutputStream);
+        }
     }
     
     function read($readPipe, $triggeredBy) {
@@ -68,6 +81,7 @@ class Worker {
     
     function __destruct() {
         $this->readSubscription->cancel();
+        $this->errorSubscription->cancel();
         
         foreach ($this->pipes as $pipe) {
             if (is_resource($pipe)) {

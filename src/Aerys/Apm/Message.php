@@ -33,8 +33,8 @@ class Message {
     const HEADER_UNPACK_PATTERN = 'Cversion/Ctype/NrequestId/Nlength';
     
     const REQUEST = 10;
-    const RESPONSE = 50;
-    const ERROR = 70;
+    const RESPONSE = 30;
+    const ERROR = 50;
     
     private $version;
     private $type;

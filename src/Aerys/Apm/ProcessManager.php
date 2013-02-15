@@ -12,7 +12,7 @@ class ProcessManager implements InitHandler {
     
     private $cmd;
     private $childWorkingDir;
-    private $maxWorkers = 20;
+    private $maxWorkers = 1;
     
     private $workers = [];
     private $workerIdMap;
@@ -39,7 +39,7 @@ class ProcessManager implements InitHandler {
     }
     
     function __invoke(array $asgiEnv, $requestId) {
-        // Assign the worker with the fewest pending requests
+        // Assign the worker with the fewest queued requests
         asort($this->pendingRequestCounts);
         $workerId = key($this->pendingRequestCounts);
         
@@ -98,7 +98,9 @@ class ProcessManager implements InitHandler {
             $this->onResponse($msg);
         });
         
-        $worker = new Worker($this->eventBase, $parser, $this->cmd, $this->childWorkingDir);
+        $errorStream = $this->server->getErrorStream();
+        $worker = new Worker($this->eventBase, $parser, $errorStream, $this->cmd, $this->childWorkingDir);
+        
         $this->workers[] = $worker;
         end($this->workers);
         $workerId = key($this->workers);
@@ -107,11 +109,23 @@ class ProcessManager implements InitHandler {
     }
     
     private function onResponse(array $msg) {
-        list($type, $requestId, $asgiResponse) = $msg;
+        list($type, $requestId, $msgBody) = $msg;
         
-        $asgiResponse = $asgiResponse ? json_decode($asgiResponse, TRUE) : $asgiResponse;
+        if ($type == Message::RESPONSE) {
+            $asgiResponse = $msgBody ? json_decode($msgBody, TRUE) : NULL;
+        } else {
+            $status = 500;
+            $reason = 'Internal Server Error';
+            $body = '<html><body><h1>500 Internal Server Error</h1><hr/>'.$msgBody.'</body></html>';
+            $headers = [
+                'Content-Type' => 'text/html',
+                'Content-Length' => strlen($body)
+            ];
+            
+            $asgiResponse = [500, 'Internal Server Error', $headers, $body];
+        }
+        
         $workerId = $this->requestIdWorkerMap[$requestId];
-        
         --$this->pendingRequestCounts[$workerId];
         unset($this->requestIdWorkerMap[$requestId]);
         

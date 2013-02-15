@@ -35,7 +35,32 @@ define('APM_VERSION', 1);
 define('READ_TIMEOUT', 60000000);
 stream_set_blocking(STDIN, FALSE);
 
-
+error_reporting(E_ALL);
+set_error_handler(function($errNo, $errStr, $errFile, $errLine) {
+    if (!error_reporting()) {
+        return;
+    }
+    
+    switch ($errNo) {
+        case 1:     $errType = 'E_ERROR'; break;
+        case 2:     $errType = 'E_WARNING'; break;
+        case 4:     $errType = 'E_PARSE'; break;
+        case 8:     $errType = 'E_NOTICE'; break;
+        case 256:   $errType = 'E_USER_ERROR'; break;
+        case 512:   $errType = 'E_USER_WARNING'; break;
+        case 1024:  $errType = 'E_USER_NOTICE'; break;
+        case 2048:  $errType = 'E_STRICT'; break;
+        case 4096:  $errType = 'E_RECOVERABLE_ERROR'; break;
+        case 8192:  $errType = 'E_DEPRECATED'; break;
+        case 16384: $errType = 'E_USER_DEPRECATED'; break;
+        
+        default:    $errType = 'PHP ERROR'; break;
+    }
+                
+    $msg = "[$errType]: $errStr in $errFile on line $errLine" . PHP_EOL;
+    
+    throw new ErrorException($msg, $errNo);
+});
 
 /**
  * Validate the handler as much as humanly possible
@@ -61,13 +86,13 @@ if (!ini_get('register_argc_argv')) {
     exit(1);
 } elseif (!function_exists('main')) {
     trigger_error(
-        'Application controller does not specify the requisite `main()` function',
+        'Application controller MUST specify a `main()` function to return the application callable',
         E_USER_ERROR
     );
     exit(1);
 } elseif (!(($app = main()) && is_callable($app))) {
     trigger_error(
-        'Application controller `main()` function must return a valid callable',
+        'Application controller `main()` function MUST return a valid callable',
         E_USER_ERROR
     );
     exit(1);
@@ -88,17 +113,25 @@ $inputParser = (new MessageParser)->setOnMessageCallback(function(array $msg) us
         $asgiEnv['ASGI_INPUT'] = $asgiEnv['ASGI_INPUT'] ? fopen($asgiEnv['ASGI_INPUT'], 'r') : NULL;
     }
     
+    ob_start();
+    
     try {
         $asgiResponse = $app($asgiEnv);
         $body = json_encode($asgiResponse);
-        $length = strlen($body);
         $type = Message::RESPONSE;
     } catch (Exception $e) {
-        fwrite(STDERR, $e);
-        $body = NULL;
-        $length = 0;
+        $body = ($exMsg = $e->getMessage()) ? "<h4>$exMsg</h4>" : '';
+        $body.= "<pre>$e</pre>";
         $type = Message::ERROR;
     }
+    
+    $length = strlen($body);
+    
+    if ($badOutput = ob_get_contents()) {
+        fwrite(STDERR, '[E_SCRIPT_OUTPUT] ' . trim($badOutput) . PHP_EOL);
+    }
+    
+    ob_end_clean();
     
     echo pack(Message::HEADER_PACK_PATTERN, APM_VERSION, $type, $requestId, $length), $body;
 });
