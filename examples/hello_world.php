@@ -19,7 +19,11 @@ $handler = function(array $asgiEnv) {
     $status = 200;
     $reason = 'OK';
     $headers = [];
-    $body = '<html><body><h1>Hello, world.</h1></body></html>';
+    
+    $body = '<html><body><h1>Hello, world.</h1>';
+    $body.= '<h3>Your request environment is ...</h3>';
+    $body.= '<pre>' . print_r($asgiEnv, TRUE) . '</pre>';
+    $body.= '</body></html>';
     
     return [$status, $reason, $headers, $body];
 };
