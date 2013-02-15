@@ -19,8 +19,8 @@
  * CANNOT return stream resources or Iterator instances as the entity body parameter; these body
  * types cannot be passed across the pipe to the process manager. As a result the process manager,
  * just like normal PHP web SAPIs, is not ideal for streaming. However, if static file streaming is
- * needed applications can simply enable mod.sendfile for high-performance file serving behind
- * process manager application handling.
+ * needed applications can simply enable mod.sendfile for high-performance file serving in tandem
+ * with process manager application handling.
  * 
  * To start this example server:
  * 
@@ -35,11 +35,11 @@ require dirname(__DIR__) . '/autoload.php';
 
 date_default_timezone_set('GMT');
 
-$phpPath = '/usr/bin/php';
-$worker  = dirname(__DIR__) . '/apm_worker.php';
-$handler = __DIR__ . '/apm_example_handler.php';
+$phpBin  = '/usr/bin/php'; // Or something like "C:\\php\\php.exe" on windows
+$worker  = dirname(__DIR__) . '/apm_worker.php'; // The worker script
+$handler = __DIR__ . '/apm_example_handler.php'; // MUST specify a main() function to return your app
 
-$cmd = $phpPath . ' ' . $worker . ' ' . $handler;
+$cmd = $phpBin . ' ' . $worker . ' ' . $handler;
 
 (new Aerys\ServerFactory)->createServer([[
     'listen' => '*:1337',

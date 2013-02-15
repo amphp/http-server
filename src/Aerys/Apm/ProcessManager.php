@@ -61,6 +61,8 @@ class ProcessManager implements InitHandler {
         $this->requestIdWorkerMap[$requestId] = $workerId;
         ++$this->pendingRequestCounts[$workerId];
         
+        $asgiEnv = $this->normalizeStreamsForTransport($asgiEnv);
+        
         $body = json_encode($asgiEnv);
         $msg = pack(
             Message::HEADER_PACK_PATTERN,
@@ -71,6 +73,24 @@ class ProcessManager implements InitHandler {
         ) . $body;
         
         $worker->write($msg);
+    }
+    
+    private function normalizeStreamsForTransport(array $asgiEnv) {
+        // External processes can't access the entity body stream before completion or everything 
+        // goes to hell. On completion we change the input stream value to its temp filesystem
+        // path so worker processes can load up the input stream as a file handle on their own.
+        if ($asgiEnv['ASGI_LAST_CHANCE'] && $asgiEnv['ASGI_INPUT']) {
+            $asgiEnv['ASGI_INPUT'] = stream_get_meta_data($asgiEnv['ASGI_INPUT'])['uri'];
+        } elseif (!$asgiEnv['ASGI_LAST_CHANCE'] && $asgiEnv['ASGI_INPUT']) {
+            $asgiEnv['ASGI_INPUT'] = NULL;
+        }
+        
+        // We can't pass the error stream across processes. Instead the worker MUST populate this
+        // value with its own STDERR resource so that error messages are returned to the current
+        // process.
+        unset($asgiEnv['ASGI_ERROR']);
+        
+        return $asgiEnv;
     }
     
     private function spawnWorker() {

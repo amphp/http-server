@@ -61,16 +61,13 @@ if (!ini_get('register_argc_argv')) {
     exit(1);
 } elseif (!function_exists('main')) {
     trigger_error(
-        'Application handler does not specify the requisite `main()` function',
+        'Application controller does not specify the requisite `main()` function',
         E_USER_ERROR
     );
     exit(1);
-}
-
-$mainReflection = new ReflectionFunction('main');
-if (!$mainReflection->getParameters()) {
+} elseif (!(($app = main()) && is_callable($app))) {
     trigger_error(
-        'Application handler `main()` function must accept an ASGI environment param at Argument 1',
+        'Application controller `main()` function must return a valid callable',
         E_USER_ERROR
     );
     exit(1);
@@ -82,22 +79,24 @@ if (!$mainReflection->getParameters()) {
  * Fire up the event loop and wait for requests to arrive
  */
 
-$inputParser = (new MessageParser)->setOnMessageCallback(function(array $msg) {
+$inputParser = (new MessageParser)->setOnMessageCallback(function(array $msg) use ($app) {
     list($type, $requestId, $asgiEnv) = $msg;
     
     if ($asgiEnv) {
         $asgiEnv = json_decode($asgiEnv, TRUE);
         $asgiEnv['ASGI_ERROR'] = STDERR;
+        $asgiEnv['ASGI_INPUT'] = $asgiEnv['ASGI_INPUT'] ? fopen($asgiEnv['ASGI_INPUT'], 'r') : NULL;
     }
     
     try {
-        $asgiResponse = main($asgiEnv);
+        $asgiResponse = $app($asgiEnv);
         $body = json_encode($asgiResponse);
         $length = strlen($body);
         $type = Message::RESPONSE;
     } catch (Exception $e) {
-        $body = $e->getMessage();
-        $length = strlen($body);
+        fwrite(STDERR, $e);
+        $body = NULL;
+        $length = 0;
         $type = Message::ERROR;
     }
     
