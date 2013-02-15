@@ -2,7 +2,9 @@
 
 namespace Aerys;
 
-use Aerys\Engine\EventBase;
+use Aerys\Engine\EventBase,
+    Aerys\Http\TempEntityWriter,
+    Aerys\Http\BodyWriters\BodyWriterFactory;
 
 class Server {
     
@@ -22,8 +24,11 @@ class Server {
     
     private $isListening = FALSE;
     
+    private $errorStream = STDERR;
+    
     private $eventBase;
-    private $vhosts;
+    private $virtualHosts;
+    private $bodyWriterFactory;
     private $tlsDefinitions = [];
     private $clients = [];
     private $pendingTlsClients = [];
@@ -48,8 +53,8 @@ class Server {
     private $autoReasonPhrase = TRUE;
     private $cryptoHandshakeTimeout = 3;
     private $ipv6Mode = FALSE;
-    private $errorLog;
     private $handleOnHeaders = FALSE;
+    private $errorLogFile;
     
     private $onRequestMods = [];
     private $beforeResponseMods = [];
@@ -58,14 +63,16 @@ class Server {
     
     private $insideBeforeResponseModLoop = FALSE;
     
-    private $bodyWriterFactory;
-    
-    function __construct(EventBase $eventBase, VirtualHostGroup $vhosts) {
+    function __construct(
+        EventBase $eventBase,
+        VirtualHostGroup $virtualHosts,
+        BodyWriterFactory $bodyWriterFactory = NULL
+    ) {
         $this->eventBase = $eventBase;
-        $this->vhosts = $vhosts;
-        $this->tempEntityDir = sys_get_temp_dir();
+        $this->virtualHosts = $virtualHosts;
+        $this->bodyWriterFactory = $bodyWriterFactory ?: new BodyWriterFactory;
         
-        $this->bodyWriterFactory = new Http\BodyWriters\BodyWriterFactory;
+        $this->tempEntityDir = sys_get_temp_dir();
     }
     
     function stop() {
@@ -74,8 +81,8 @@ class Server {
         }
         $this->eventBase->stop();
         
-        if ($this->errorLog !== STDERR) {
-            fclose($this->errorLog);
+        if ($this->errorLogFile) {
+            fclose($this->errorStream);
         }
     }
     
@@ -83,7 +90,9 @@ class Server {
         if (!$this->isListening) {
             $this->isListening = TRUE;
             
-            $this->initializeErrorLog();
+            if ($this->errorLogFile) {
+                $this->errorStream = fopen($this->errorLogFile, 'ab+');
+            }
             
             foreach ($this->bindServerSocks() as $boundAddress) {
                 echo 'Server listening on ', $boundAddress, "\n";
@@ -97,17 +106,13 @@ class Server {
         }
     }
     
-    private function initializeErrorLog() {
-        if ($this->errorLog) {
-            $this->errorLog = fopen($this->errorLog, 'ab+');
-        } else {
-            $this->errorLog = STDERR;
-        }
+    function getErrorStream() {
+        return $this->errorStream;
     }
     
     private function logUserlandError(\Exception $e, $thrownByConst, $host, $requestUri) {
         fwrite(
-            $this->errorLog,
+            $this->errorStream,
             '------------------------------------' . PHP_EOL .
             'Exception thrown by ' . $thrownByConst . PHP_EOL .
             'When: ' . date(self::HTTP_DATE) . PHP_EOL .
@@ -123,7 +128,7 @@ class Server {
         $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
         $wildcard = $this->ipv6Mode ? self::WILDCARD_IPV6 : self::WILDCARD_IPV4;
         
-        foreach ($this->vhosts as $host) {
+        foreach ($this->virtualHosts as $host) {
             $name = $host->getName();
             $port = $host->getPort();
             $interface = $host->getInterface();
@@ -327,10 +332,15 @@ class Server {
         
         if ($isAwaitingBody) {
             $tempEntityPath = tempnam($this->tempEntityDir, "aerys");
-            $this->tempEntityWriters[$clientId] = new TempEntityWriter($tempEntityPath);
-            $client->pipeline[$requestId]['ASGI_INPUT'] = $tempEntityPath;
+            $tempEntityWriter = new TempEntityWriter($tempEntityPath);
+            $this->tempEntityWriters[$clientId] = $tempEntityWriter;
+            
+            $client->pipeline[$requestId]['ASGI_INPUT'] = $tempEntityWriter->getResource();
             $client->pipeline[$requestId]['ASGI_LAST_CHANCE'] = FALSE;
             $client->storePreBodyRequestInfo([$requestId, $host]);
+        } elseif ($client->pipeline[$requestId]['ASGI_INPUT']) {
+            rewind($client->pipeline[$requestId]['ASGI_INPUT']);
+            ++$client->requestCount;
         } else {
             ++$client->requestCount;
         }
@@ -437,7 +447,7 @@ class Server {
                 400
             );
         } elseif ($protocol === '1.1' || $protocol === '1.0') {
-            return $this->vhosts->selectHost($host, $serverInterface, $serverPort);
+            return $this->virtualHosts->selectHost($host, $serverInterface, $serverPort);
         } else {
             throw new Http\StatusException(
                 'HTTP Version not supported',
@@ -459,7 +469,7 @@ class Server {
             ];
         }
         
-        // Generate a placeholder $asgiEnv
+        // Generate a placeholder $asgiEnv for our "fake" $requestId
         $asgiEnv = $this->generateAsgiEnv($client, '?', $parsedRequest);
         $client->pipeline[$requestId] = $asgiEnv;
         
@@ -520,7 +530,7 @@ class Server {
             'ASGI_VERSION'       => 0.1,
             'ASGI_URL_SCHEME'    => $scheme,
             'ASGI_INPUT'         => NULL,
-            'ASGI_ERROR'         => NULL,
+            'ASGI_ERROR'         => $this->errorStream,
             'ASGI_CAN_STREAM'    => TRUE,
             'ASGI_NON_BLOCKING'  => TRUE,
             'ASGI_LAST_CHANCE'   => TRUE
@@ -877,8 +887,8 @@ class Server {
         $this->ipv6Mode = (bool) $boolFlag;
     }
     
-    private function setErrorLog($filePath) {
-        $this->errorLog = $filePath;
+    private function setErrorLogFile($filePath) {
+        $this->errorLogFile = $filePath;
     }
     
     private function setHandleOnHeaders($boolFlag) {

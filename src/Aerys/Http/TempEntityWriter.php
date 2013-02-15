@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Http;
 
 class TempEntityWriter {
     
@@ -11,8 +11,8 @@ class TempEntityWriter {
     /**
      * @throws ResourceException On resource open failure
      */
-    public function __construct($path) {
-        if (!$this->resource = fopen($path, 'a')) {
+    function __construct($path) {
+        if (!$this->resource = fopen($path, 'ab+')) {
             throw new ResourceException;
         }
         stream_set_blocking($this->resource, FALSE);
@@ -22,7 +22,7 @@ class TempEntityWriter {
     /**
      * Clean up after ourselves when the object is destroyed
      */
-    public function __destruct() {
+    function __destruct() {
         if (is_resource($this->resource)) {
             fclose($this->resource);
         }
@@ -35,7 +35,7 @@ class TempEntityWriter {
      * @throws ResourceException On resource write failure
      * @return bool Returns TRUE if all data has been written, FALSE otherwise
      */
-    public function write($data = NULL) {
+    function write($data = NULL) {
         if ($data !== NULL) {
             $this->buffer .= $data;
         } elseif ($this->buffer === '') {
@@ -56,6 +56,10 @@ class TempEntityWriter {
         } elseif (!$bytesWritten) {
             throw new ResourceException;
         }
+    }
+    
+    function getResource() {
+        return $this->resource;
     }
     
 }

@@ -3,30 +3,27 @@
 use Aerys\ServerFactory;
 
 date_default_timezone_set('GMT');
-error_reporting(E_ALL);
-set_error_handler(function($errNo, $errStr, $errFile, $errLine) {
-    $msg = "$errStr in $errFile on line $errLine";
-    if (error_reporting() != 0) {
-        throw new ErrorException($msg, $errNo);
-    }
-    
-    //echo $msg, "\n";
-});
 
 require dirname(__DIR__) . '/autoload.php';
 
 $handler = function(array $asgiEnv, $requestId) {
-    return [200, 'OK', [], '<html><body><h1>Hello, world.</h1></body></html>'];
+    if (!$asgiEnv['ASGI_LAST_CHANCE']) {
     
-    /*
+        return NULL;
+    }
+    
     if ($asgiEnv['REQUEST_URI'] == '/sendfile') {
         return [200, 'OK', ['X-Sendfile' => __DIR__ .'/www/test.txt'], NULL];
     } elseif ($asgiEnv['REQUEST_URI'] == '/favicon.ico') {
         return [404, 'Not Found', [], '<h1>404 Not Found</h1>'];
+    } elseif ($asgiEnv['ASGI_INPUT']) {
+        $input = $asgiEnv['ASGI_INPUT'];
+        $entity = stream_get_contents($input);
+        
+        return [200, 'OK', [], "Entity Received: $entity"];
     } else {
         return [200, 'OK', [], '<html><body><h1>Hello, world.</h1></body></html>'];
     }
-    */
 };
 
 $config = [
@@ -46,7 +43,7 @@ $config = [
             'cryptoHandshakeTimeout'    => 3,
             'ipv6Mode'                  => FALSE,
             'errorLog'                  => NULL,
-            'handleOnHeaders'     => FALSE
+            'handleOnHeaders'           => FALSE
         ],
         
         'tls'   => [
@@ -79,6 +76,14 @@ $config = [
     ],
     */
     
+    'globals' => [
+        'opts' => [
+            'maxConnections'            => 0,
+            'maxRequestsPerSession'     => 0,
+            'idleConnectionTimeout'     => 30,
+            'tempEntityDir'             => __DIR__ .'/temp'
+        ],
+    ],
     'myHost.insecure' => [
         'listen'    => '*:1337',
         'name'      => 'aerys', // <--- optional
