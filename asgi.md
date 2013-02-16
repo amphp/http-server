@@ -6,17 +6,19 @@ four values:
 
 - A valid HTTP status code in the range 100-599
 - A reason phrase (may be an empty string)
-- An assiative array of header values
+- An associative array of header values
 - A string, stream resource or `Iterator` representing the response entity body
 
 ```php
 $asgiApp = function(array $asgiEnv) {
-    return [
-        200,
-        'OK'
-        ['Content-Type' => 'text/plain' ],
-        "Hello World"
+    $status = 200;
+    $reason = 'OK';
+    $headers = [
+        'Content-Type' => 'text/plain'
     ];
+    $body = "Hello World";
+    
+    return [$status, $reason, $headers, $body];
 };
 ```
 
@@ -122,7 +124,7 @@ $asgiEnv = [
     
     'ASGI_VERSION'       => '0.1',
     'ASGI_URL_SCHEME'    => 'http',     // The URL scheme ("https" if the connection is encrypted, "http" otherwise)
-    'ASGI_INPUT'         => NULL,       // The temporary filesystem path to the entity body or a direct stream resource reference
+    'ASGI_INPUT'         => NULL,       // The stream resource reference to the request entity body
     'ASGI_ERROR'         => $resource   // An open stream resource to which applications may write errors
     'ASGI_NON_BLOCKING'  => TRUE,       // TRUE if the server is calling the application in a non-blocking event loop.
     'ASGI_LAST_CHANCE'   => TRUE        // TRUE if this is the final time a handler will be notified of the current request
@@ -135,19 +137,19 @@ Applications `MUST` return a response as an indexed four element array. The arra
 ordered from 0 to 4 and associative keys `MUST NOT` be used. The response array consists of the following
 elements:
 
-###### Status
+###### STATUS
 
 An HTTP status code. This `MUST` be a scalar value that, when cast as an integer, has a value greater
 than or equal to 100, less than or equal to 599. Status codes `SHOULD` used to reflect the semantic
 meaning of the HTTP status codes documented in RFC 2616 section 10.
 
-###### Reason
+###### REASON
 
 The reason `MAY` be an empty string or NULL value and `SHOULD` be an HTTP reason phrase as documented
 in RFC 2616. The specification of the reason phrase is explicitly separated from the numeric status
 code to simplify server processing of responses by their status.
 
-###### Headers
+###### HEADERS
 
 The headers `MUST` be an associative array of key/value pairs. Header keys are case-insensitive and
 may be normalized by servers without altering their meaning. All header keys must conform to the
@@ -166,7 +168,7 @@ multiple `Set-Cookie` headers).
 Applications `SHOULD` endeavor to populate `Content-Type` key and, if known, the `Content-Length`
 key.
 
-###### Body
+###### BODY
 
 The response body `MUST` be returned from the application as any one of the following:
 
