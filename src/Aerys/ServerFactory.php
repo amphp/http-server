@@ -12,7 +12,8 @@ class ServerFactory {
         'mod.log'       => 'Aerys\\Mods\\Log',
         'mod.errorpages'=> 'Aerys\\Mods\\ErrorPages',
         'mod.sendfile'  => 'Aerys\\Mods\\SendFile',
-        'mod.limit'     => 'Aerys\\Mods\\Limit'
+        'mod.limit'     => 'Aerys\\Mods\\Limit',
+        'mod.expect'    => 'Aerys\\Mods\\Expect'
     ];
     
     function createServer(array $config) {
@@ -171,6 +172,8 @@ class ServerFactory {
                 $errorStream = $server->getErrorStream();
                 
                 fwrite($errorStream, $msg);
+                
+                throw new \ErrorException($msg, $errNo);
             }
         });
     }

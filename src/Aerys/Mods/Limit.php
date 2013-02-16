@@ -4,18 +4,6 @@ namespace Aerys\Mods;
 
 use Aerys\Server;
 
-/*
-'mod.limit' => [
-    'ipProxyHeader' => NULL, // use the specified header instead of the raw IP if available
-    'onLimitCmd' => NULL,
-    'onLimitCallback' => NULL,
-    'limits' => [
-        60 => 100,
-        3600 => 2500
-    ]
-],
-*/
-
 class Limit implements OnRequestMod {
     
     private $ipProxyHeader;
@@ -28,20 +16,54 @@ class Limit implements OnRequestMod {
     private $onLimitCmd;
     private $onLimitCallback;
     
+    /**
+     * Configure the mod to enforce rate limits.
+     * 
+     * Rate limits are defined as key-value pairs inside the config array's "limits" key. The key
+     * represents the time period in seconds and the value sets the maximum number of requests
+     * allowed during that time period before rate limiting is invoked. In the example config array
+     * below, client requests are limited by the following criteria:
+     * 
+     * 1. 100 requests per minute (60)
+     * 2. 2500 requests per hour (3600)
+     * 
+     * Rate-limited requests DO count against a client's rate. For example, if a client is allowed 
+     * one request per minute and that client makes five requests in rapid succession, the rate limit
+     * will remain in effect for five minutes until the client's average request rate/minute dips
+     * below the maximum allowable threshold.
+     * 
+     * Example config array:
+     * 
+     * ```
+     * $modLimitConfig = [
+     *     'ipProxyHeader'   => NULL,
+     *     'onLimitCmd'      => NULL,
+     *     'onLimitCallback' => NULL,
+     *     'limits' => [
+     *         60 => 100,
+     *         3600 => 2500
+     *     ]
+     * ];
+     * ```
+     * 
+     * @param array $config
+     * @return void
+     */
     function configure(array $config) {
+        if (empty($config['limits'])) {
+            throw new \DomainException(
+                'No rate limits specified'
+            );
+        }
+        
         if (!empty($config['ipProxyHeader'])) {
-            $this->ipProxyHeader = strtoupper($config['ipProxyHeader']);
+            $this->ipProxyHeader = 'HTTP_' . strtoupper($config['ipProxyHeader']);
         }
         if (!empty($config['onLimitCmd'])) {
             $this->onLimitCmd = $config['onLimitCmd'];
         }
         if (!empty($config['onLimitCallback']) && is_callable($config['onLimitCallback'])) {
             $this->onLimitCallback = $config['onLimitCallback'];
-        }
-        if (empty($config['limits'])) {
-            throw new \DomainException(
-                'No rate limits specified'
-            );
         }
         
         ksort($config['limits']);
@@ -51,7 +73,9 @@ class Limit implements OnRequestMod {
     }
     
     /**
-     * @param int $clientId
+     * Tracks request rates per-client and assigns a 429 response if the request is rate-limited
+     * 
+     * @param Server $server
      * @param int $requestId
      * @return void
      */
@@ -75,12 +99,9 @@ class Limit implements OnRequestMod {
             if ($this->onLimitCmd) {
                 $this->execSystemCmd($clientIp);
             }
-            if ($callback = $this->onLimitCallback) {
-                try {
-                    $callback($clientIp);
-                } catch (\Exception $e) {
-                    // @TODO Handle exception
-                }
+            if ($onLimit = $this->onLimitCallback) {
+                // Do NOT catch userland exceptions here; Server executes mods in its own try/catch
+                $onLimit($clientIp);
             }
         }
         
@@ -105,7 +126,7 @@ class Limit implements OnRequestMod {
         foreach ($this->rateLimits as $period => $rate) {
             $allowances[$period] += $elapsedTime * ($rate / $period);
             
-            // Throttle (because you can't save up "rate credit" beyond the max)
+            // Throttle (you can't save up "rate credit" beyond the maximum)
             if ($allowances[$period] > $rate) {
                 $allowances[$period] = $rate;
             }
