@@ -21,7 +21,6 @@ class Client {
     private $requestCount = 0;
     private $preBodyRequest;
     private $tempEntityWriter;
-    private $tempEntityWriterRequestLink;
     
     private $pipeline = [];
     private $responses = [];
