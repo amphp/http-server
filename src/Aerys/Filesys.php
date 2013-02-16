@@ -254,6 +254,8 @@ class Filesys implements Handler {
             $headers['ETag'] = $eTag;
         }
         
+        $contentType = $this->getMimeType($filePath);
+        
         if ($isMultiPart = (count($ranges) > 1)) {
             $boundary = uniqid();
             $headers['Content-Type'] = 'multipart/byteranges; boundary=' . $boundary;
@@ -272,7 +274,7 @@ class Filesys implements Handler {
                 : NULL;
         }
         
-        if (!isset($headers['Content-Type']) && ($contentType = $this->getMimeType($filePath))) {
+        if (!isset($headers['Content-Type']) && $contentType) {
             $headers['Content-Type'] = $contentType;
         }
         
