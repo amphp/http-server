@@ -38,6 +38,7 @@ class Reasons {
     const HTTP_415 = 'Unsupported Media Type';
     const HTTP_416 = 'Requested Range Not Satisfiable';
     const HTTP_417 = 'Expectation Failed';
+    const HTTP_426 = 'Upgrade Required';
     const HTTP_428 = 'Precondition Required';
     const HTTP_429 = 'Too Many Requests';
     const HTTP_431 = 'Request Header Fields Too Large';

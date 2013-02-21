@@ -39,6 +39,7 @@ class Worker {
         $this->parser = $parser;
         $this->errorOutputStream = $errorOutputStream;
         
+        stream_set_blocking($this->pipes[0], FALSE);
         stream_set_blocking($this->pipes[1], FALSE);
         stream_set_blocking($this->pipes[2], FALSE);
         

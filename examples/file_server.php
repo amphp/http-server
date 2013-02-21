@@ -27,8 +27,8 @@ require dirname(__DIR__) . '/autoload.php';
 
 date_default_timezone_set('GMT');
 
-(new Aerys\ServerFactory)->createServer([[
-    'listen'  => '*:1337',
-    'handler' => new Aerys\Filesys(__DIR__ . '/file_server_root')
+(new Aerys\Http\HttpServerFactory)->createServer([[
+    'listen'  => '127.0.0.1:1337',
+    'handler' => new Aerys\Http\Filesys(__DIR__ . '/file_server_root')
 ]])->listen();
 

@@ -4,7 +4,7 @@ namespace Aerys\Engine;
 
 class LibEventBase implements EventBase {
     
-    const GARBAGE_COLLECT_INTERVAL = 1000000;
+    const GARBAGE_COLLECT_INTERVAL = 2000000;
     
     private $base;
     private $subscriptions;
@@ -34,8 +34,6 @@ class LibEventBase implements EventBase {
     
     function once($interval, callable $callback) {
         $event = event_new();
-        $subscription = new LibEventSubscription($this, $event);
-        $this->subscriptions->attach($subscription, $event);
         
         $wrapper = function() use ($callback) {
             try {
@@ -50,13 +48,15 @@ class LibEventBase implements EventBase {
         event_base_set($event, $this->base);
         event_add($event, $interval);
         
+        $subscription = new LibEventSubscription($this, $event, $interval);
+        $this->subscriptions->attach($subscription, $event);
+        
         return $subscription;
+        
     }
     
     function repeat($interval, callable $callback) {
         $event = event_new();
-        $subscription = new LibEventSubscription($this, $event);
-        $this->subscriptions->attach($subscription, $event);
         
         $wrapper = function() use ($callback, $event, $interval) {
             try {
@@ -72,6 +72,9 @@ class LibEventBase implements EventBase {
         event_base_set($event, $this->base);
         event_add($event, $interval);
         
+        $subscription = new LibEventSubscription($this, $event, $interval);
+        $this->subscriptions->attach($subscription, $event);
+        
         return $subscription;
     }
     
@@ -85,8 +88,6 @@ class LibEventBase implements EventBase {
     
     private function subscribe($ioStream, $flags, callable $callback, $timeout) {
         $event = event_new();
-        $subscription = new LibEventSubscription($this, $event);
-        $this->subscriptions->attach($subscription, $event);
         
         $wrapper = function($ioStream, $triggeredBy) use ($callback) {
             // @todo add bitwise check to determine READ/WRITE/TIMEOUT for $triggeredBy
@@ -102,6 +103,9 @@ class LibEventBase implements EventBase {
         event_base_set($event, $this->base);
         event_add($event, $timeout);
         
+        $subscription = new LibEventSubscription($this, $event, $timeout);
+        $this->subscriptions->attach($subscription);
+        
         return $subscription;
     }
     
@@ -111,12 +115,9 @@ class LibEventBase implements EventBase {
      * we store the cancelled subscription in the garbage and collect it periodically.
      */
     function cancel(Subscription $subscription) {
-        if ($this->subscriptions->contains($subscription)) {
-            $event = $this->subscriptions->offsetGet($subscription);
-            event_del($event);
-            $this->subscriptions->detach($subscription);
-            $this->garbage[] = $subscription;
-        }
+        $subscription->disable();
+        $this->subscriptions->detach($subscription);
+        $this->garbage[] = $subscription;
     }
     
     private function collectGarbage($nullFd, $flags, $garbageEvent) {

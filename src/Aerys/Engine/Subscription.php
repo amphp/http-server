@@ -2,18 +2,16 @@
 
 namespace Aerys\Engine;
 
-class Subscription {
-
-    private $base;
-    private $callback;
+interface Subscription {
     
-    function __construct(EventBase $base) {
-        $this->base = $base;
-    }
+    const DISABLED = 0;
+    const ENABLED = 1;
+    const CANCELLED = -1;
     
-    function cancel() {
-        $this->base->cancel($this);
-    }
+    function status();
+    function cancel();
+    function enable();
+    function disable();
     
 }
 

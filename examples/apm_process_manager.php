@@ -41,8 +41,8 @@ $handler = __DIR__ . '/apm_example_handler.php'; // MUST specify a main() functi
 
 $cmd = $phpBin . ' ' . $worker . ' ' . $handler;
 
-(new Aerys\ServerFactory)->createServer([[
-    'listen' => '*:1337',
+(new Aerys\Http\HttpServerFactory)->createServer([[
+    'listen' => '127.0.0.1:1337',
     'handler' => new Aerys\Apm\ProcessManager($cmd)
 ]])->listen();
 

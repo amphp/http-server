@@ -1,18 +1,22 @@
 <?php
 
-use Aerys\ServerFactory;
+use Aerys\Http\HttpServerFactory;
 
 date_default_timezone_set('GMT');
 
 require dirname(__DIR__) . '/autoload.php';
 
+//$body = file_get_contents(__DIR__ . '/www/large.txt');
+//$handler = function(array $asgiEnv, $requestId) use ($body) {
+//    return [200, 'OK', [], $body];
+
 $handler = function(array $asgiEnv, $requestId) {
+    return [200, 'OK', [], '<html><body><h1>Hello, world.</h1>1234567890123456789012345678901</body></html>'];
+    /*
     if (!$asgiEnv['ASGI_LAST_CHANCE']) {
-    
+        return [100, 'Continue Bitch', [], NULL];
         return NULL;
-    }
-    
-    if ($asgiEnv['REQUEST_URI'] == '/sendfile') {
+    } elseif ($asgiEnv['REQUEST_URI'] == '/sendfile') {
         return [200, 'OK', ['X-Sendfile' => __DIR__ .'/www/test.txt'], NULL];
     } elseif ($asgiEnv['REQUEST_URI'] == '/favicon.ico') {
         return [404, 'Not Found', [], '<h1>404 Not Found</h1>'];
@@ -24,6 +28,7 @@ $handler = function(array $asgiEnv, $requestId) {
     } else {
         return [200, 'OK', [], '<html><body><h1>Hello, world.</h1></body></html>'];
     }
+    */
 };
 
 $config = [
@@ -43,7 +48,11 @@ $config = [
             'cryptoHandshakeTimeout'    => 3,
             'ipv6Mode'                  => FALSE,
             'errorLog'                  => NULL,
-            'handleOnHeaders'           => FALSE
+            'handleAfterHeaders'        => FALSE,
+            'normalizeMethodCase'       => TRUE,
+            'defaultHosts'              => [
+                '127.0.0.1:1337' => 'aerys:1337'
+            ]
         ],
         
         'tls'   => [
@@ -63,16 +72,16 @@ $config = [
     // --- ALL OTHER KEYS ARE CONSIDERED HOST CONTAINERS ---
     /*
     'myHost.secure' => [
-        'listen'    => '*:1500', // <-- we specified a TLS definition in the "globals" section
+        'listen'    => '127.0.0.1:1500', // <-- we specified a TLS definition in the "globals" section
         'name'      => 'aerys', // <--- optional
         'handler'   => $handler
     ],
     */
     /*
     'myHost.static' => [
-        'listen'    => '*:1337', // <-- we specified a TLS definition in the "globals" section
+        'listen'    => '127.0.0.1:1337', // <-- we specified a TLS definition in the "globals" section
         'name'      => 'aerys', // <--- optional
-        'handler'   => new Aerys\Handlers\Filesys(__DIR__ . '/www')
+        'handler'   => new Aerys\Filesys(__DIR__ . '/www')
     ],
     */
     
@@ -80,14 +89,21 @@ $config = [
         'opts' => [
             'maxConnections'            => 0,
             'maxRequestsPerSession'     => 0,
-            'idleConnectionTimeout'     => 30,
-            'tempEntityDir'             => __DIR__ .'/temp'
+            'idleConnectionTimeout'     => 60,
+            'tempEntityDir'             => __DIR__ .'/temp',
+            'handleAfterHeaders'        => FALSE,
+            'disableKeepAlive'          => FALSE,
+            'defaultHosts'              => [
+                '127.0.0.1:1337' => 'aerys'
+            ],
         ],
     ],
+    
     'myHost.insecure' => [
-        'listen'    => '*:1337',
-        'name'      => 'aerys', // <--- optional
+        'listen'    => '127.0.0.1:1337',
+        'name'      => 'aerys', // <-- optional
         'handler'   => $handler,
+        //'handler'   => new Aerys\Http\Filesys(__DIR__ . '/www'),
         'mods'      => [
             /*
             'mod.log'   =>  [
@@ -114,9 +130,12 @@ $config = [
                 'docRoot' => '/',
                 'staleAfter' => 60,
                 'types' => [],
-                'eTagMode' => Aerys\Handlers\Filesys::ETAG_ALL
+                'eTagMode' => Aerys\Http\Filesys::ETAG_ALL
             ],
             
+            'mod.expect' => [
+                '/' => function() { return FALSE; }
+            ]
             
             /*
             // --- INCOMPLETE MODS ---
@@ -136,7 +155,7 @@ $config = [
     
 ];
 
-$server = (new ServerFactory)->createServer($config)->listen();
+$server = (new HttpServerFactory)->createServer($config)->listen();
 
 
 

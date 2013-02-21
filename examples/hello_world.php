@@ -28,8 +28,8 @@ $handler = function(array $asgiEnv) {
     return [$status, $reason, $headers, $body];
 };
 
-(new Aerys\ServerFactory)->createServer([[
-    'listen'  => '*:1337',
+(new Aerys\Http\HttpServerFactory)->createServer([[
+    'listen'  => '127.0.0.1:1337',
     'handler' => $handler
 ]])->listen();
 

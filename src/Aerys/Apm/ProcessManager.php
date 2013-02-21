@@ -2,9 +2,9 @@
 
 namespace Aerys\Apm;
 
-use Aerys\Server,
+use Aerys\Http\HttpServer,
     Aerys\Engine\EventBase,
-    Aerys\InitHandler;
+    Aerys\Http\InitHandler;
 
 class ProcessManager implements InitHandler {
     
@@ -12,7 +12,7 @@ class ProcessManager implements InitHandler {
     
     private $cmd;
     private $childWorkingDir;
-    private $maxWorkers = 1;
+    private $maxWorkers = 30;
     
     private $workers = [];
     private $workerIdMap;
@@ -25,7 +25,7 @@ class ProcessManager implements InitHandler {
         $this->workerIdMap = new \SplObjectStorage;
     }
     
-    function init(Server $server, EventBase $eventBase) {
+    function init(HttpServer $server, EventBase $eventBase) {
         $this->server = $server;
         $this->eventBase = $eventBase;
         
