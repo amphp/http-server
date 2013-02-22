@@ -3,6 +3,7 @@
 namespace Aerys\Http;
 
 use Aerys\Server,
+    Aerys\TlsServer,
     Aerys\Engine\EventBase,
     Aerys\Engine\LibEventBase;
 
@@ -32,15 +33,28 @@ class HttpServerFactory {
         $mods = [];
         
         foreach ($tls as $interfaceId => $tlsArr) {
-            list($interface, $port) = explode(':', $interfaceId);
+            $portStartPos = strrpos($interfaceId, ':');
+            $interface = substr($interfaceId, 0, $portStartPos);
+            $port = substr($interfaceId, $portStartPos + 1);
             
-            $socketServers[$interfaceId] = new TlsServer(
+            $server = new TlsServer(
                 $eventBase,
                 $interface,
                 $port,
                 $tlsArr['localCertFile'],
                 $tlsArr['certPassphrase']
             );
+            
+            unset(
+                $tlsArr['localCertFile'],
+                $tlsArr['certPassphrase']
+            );
+            
+            foreach ($tlsArr as $option => $value) {
+                $server->setOption($option, $value);
+            }
+            
+            $socketServers[$interfaceId] = $server;
         }
         
         foreach ($this->generateHostDefinitions($hostConf) as $hostId => $hostStruct) {
@@ -105,7 +119,11 @@ class HttpServerFactory {
         
         foreach ($hosts as $hostDefinitionArr) {
             if (!(empty($hostDefinitionArr['listen']) || empty($hostDefinitionArr['handler']))) {
-                list($interface, $port) = explode(':', $hostDefinitionArr['listen']);
+                $interfaceId = $hostDefinitionArr['listen'];
+                $portStartPos = strrpos($interfaceId, ':');
+                $interface = substr($interfaceId, 0, $portStartPos);
+                $port = substr($interfaceId, $portStartPos + 1);
+                
                 $handler = $hostDefinitionArr['handler'];
             } else {
                 throw new \RuntimeException;

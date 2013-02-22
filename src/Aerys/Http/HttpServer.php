@@ -54,7 +54,7 @@ class HttpServer {
     
     private $maxConnections = 0;
     private $maxRequestsPerSession = 100;
-    private $idleConnectionTimeout = 15;
+    private $idleConnectionTimeout = 30;
     private $maxStartLineSize = 2048;
     private $maxHeadersSize = 8192;
     private $maxEntityBodySize = 2097152;
@@ -628,19 +628,27 @@ class HttpServer {
     }
     
     private function sever(ClientSession $client) {
-        $clientSock = socket_import_stream($this->export($client));
+        $clientSock = $this->export($client);
         
-        socket_set_block($clientSock);
-        socket_set_option($clientSock, SOL_SOCKET, SO_LINGER, [
+        // socket extension can't import stream if it has crypto enabled
+        @stream_socket_enable_crypto($clientSock, FALSE);
+        $rawSock = socket_import_stream($clientSock);
+        
+        socket_set_block($rawSock);
+        socket_set_option($rawSock, SOL_SOCKET, SO_LINGER, [
             'l_onoff' => 1,
             'l_linger' => 0
         ]);
         
-        socket_close($clientSock);
+        socket_close($rawSock);
     }
     
     private function close(ClientSession $client) {
-        $rawSock = socket_import_stream($this->export($client));
+        $clientSock = $this->export($client);
+        
+        // socket extension can't import stream if it has crypto enabled
+        @stream_socket_enable_crypto($clientSock, FALSE);
+        $rawSock = socket_import_stream($clientSock);
         
         if (@socket_shutdown($rawSock, 1)) {
             socket_set_block($rawSock);

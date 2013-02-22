@@ -25,7 +25,7 @@ $dynamicHandler = function(array $asgiEnv) {
     } else {
         $status = 200;
         $reason = 'OK';
-        $body = '<html><body><h1>Hello, world.</h1><hr/>';
+        $body = '<html><body style="font-family: Sans-Serif;"><h1>Hello, world.</h1><hr/>';
         $body.= '<img src="http://static.aerys:1337/allofthethings.png" width="480" height="335" alt="PHP! ALL OF THE THINGS!" /><hr/><br/>';
         $body.= 'Woah, dang! ^ That image came from a different domain!';
         $body.= '</body></html>';

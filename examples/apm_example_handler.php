@@ -15,7 +15,7 @@ class MyApp {
         $reason = 'OK';
         $headers = [];
         
-        $body = '<html><body><h1>Hello, world.</h1>';
+        $body = '<html><body style="font-family: Sans-Serif;"><h1>Hello, world.</h1>';
         $body.= '<h3>Your request environment is ...</h3>';
         $body.= '<pre>' . print_r($asgiEnv, TRUE) . '</pre>';
         $body.= '</body></html>';

@@ -32,9 +32,9 @@ $handler = function(array $asgiEnv, $requestId) {
 };
 
 $config = [
-    /*
+    
     'globals' => [
-        
+        /*
         'opts' => [
             'maxConnections'            => 0,
             'maxRequestsPerSession'     => 0,
@@ -45,8 +45,6 @@ $config = [
             'tempEntityDir'             => NULL,
             'defaultContentType'        => 'text/html',
             'autoReasonPhrase'          => TRUE,
-            'cryptoHandshakeTimeout'    => 3,
-            'ipv6Mode'                  => FALSE,
             'errorLog'                  => NULL,
             'handleAfterHeaders'        => FALSE,
             'normalizeMethodCase'       => TRUE,
@@ -54,9 +52,9 @@ $config = [
                 '127.0.0.1:1337' => 'aerys:1337'
             ]
         ],
-        
+        */
         'tls'   => [
-            '*:1500' => [
+            '127.0.0.1:1500' => [
                 'localCertFile'         => dirname(__DIR__) . '/mycert.pem',
                 'certPassphrase'        => '42 is not a legitimate passphrase'
             ]
@@ -68,15 +66,15 @@ $config = [
             // override the global instance specified here.
         ]
     ],
-    */
+    
     // --- ALL OTHER KEYS ARE CONSIDERED HOST CONTAINERS ---
-    /*
+    
     'myHost.secure' => [
         'listen'    => '127.0.0.1:1500', // <-- we specified a TLS definition in the "globals" section
         'name'      => 'aerys', // <--- optional
         'handler'   => $handler
     ],
-    */
+    
     /*
     'myHost.static' => [
         'listen'    => '127.0.0.1:1337', // <-- we specified a TLS definition in the "globals" section
@@ -84,20 +82,6 @@ $config = [
         'handler'   => new Aerys\Filesys(__DIR__ . '/www')
     ],
     */
-    
-    'globals' => [
-        'opts' => [
-            'maxConnections'            => 0,
-            'maxRequestsPerSession'     => 0,
-            'idleConnectionTimeout'     => 60,
-            'tempEntityDir'             => __DIR__ .'/temp',
-            'handleAfterHeaders'        => FALSE,
-            'disableKeepAlive'          => FALSE,
-            'defaultHosts'              => [
-                '127.0.0.1:1337' => 'aerys'
-            ],
-        ],
-    ],
     
     'myHost.insecure' => [
         'listen'    => '127.0.0.1:1337',

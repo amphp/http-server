@@ -28,7 +28,7 @@ class TlsServer extends Server {
         $this->context['passphrase'] = $passphrase;
     }
     
-    function setOption($option, $value) {
+    final function setOption($option, $value) {
         $optionMap = [
             'allowSelfSigned' => 'allow_self_signed',
             'verifyPeer' => 'verify_peer',
@@ -54,14 +54,14 @@ class TlsServer extends Server {
         while ($clientSock = @stream_socket_accept($socket, 0, $peerName)) {
             stream_context_set_option($clientSock, ['ssl' => $this->context]);
             
-            $tlsEnabler = $this->eventBase->onReadable($clientSock, function ($clientSock, $trigger) {
+            $onReadable = $this->eventBase->onReadable($clientSock, function ($clientSock, $trigger) {
                 $this->doHandshake($clientSock, $trigger);
             }, $this->handshakeTimeout * 1000000);
             
             $clientId = (int) $clientSock;
-            $this->clientsPendingHandshake[$clientId] = [$tlsEnabler, $clientName, $serverName, $onClient];
+            $this->clientsPendingHandshake[$clientId] = [$onReadable, $peerName, $serverName, $onClient];
             $this->pendingClientCount++;
-            $this->doHandshake($clientSock);
+            $this->doHandshake($clientSock, NULL);
         }
     }
     
@@ -75,9 +75,9 @@ class TlsServer extends Server {
         } elseif ($cryptoResult = @stream_socket_enable_crypto($clientSock, TRUE, $this->cryptoType)) {
             $clientId = (int) $clientSock;
             $pendingInfo = $this->clientsPendingHandshake[$clientId];
-            list($tlsEnabler, $clientName, $serverName, $onClient) = $pendingInfo;
+            list($onReadable, $peerName, $serverName, $onClient) = $pendingInfo;
             
-            $tlsEnabler->cancel();
+            $onReadable->cancel();
             $this->pendingClientCount--;
             unset($this->clientsPendingHandshake[$clientId]);
             
@@ -90,8 +90,8 @@ class TlsServer extends Server {
     
     private function failConnectionAttempt($clientSock) {
         $clientId = (int) $clientSock;
-        $tlsEnabler = $this->clientsPendingHandshake[$clientId][0];
-        $tlsEnabler->cancel();
+        $onReadable = $this->clientsPendingHandshake[$clientId][0];
+        $onReadable->cancel();
         $this->pendingTlsClientCount--;
         
         fclose($clientSock);

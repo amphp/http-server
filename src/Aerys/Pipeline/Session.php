@@ -16,7 +16,7 @@ class Session {
     }
     
     function isEmpty() {
-        return (bool) $this->requests;
+        return !$this->requests;
     }
     
     function canWrite() {

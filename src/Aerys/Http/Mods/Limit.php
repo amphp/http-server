@@ -4,6 +4,36 @@ namespace Aerys\Http\Mods;
 
 use Aerys\Http\HttpServer;
 
+/**
+ * Enforce request rate limits
+ * 
+ * Rate limits are defined as key-value pairs inside the config array's "limits" key. The key
+ * represents the time period in seconds and the value sets the maximum number of requests
+ * allowed during that time period before rate limiting is invoked. In the example config array
+ * below, client requests are limited by the following criteria:
+ * 
+ * 1. 100 requests per minute (60)
+ * 2. 2500 requests per hour (3600)
+ * 
+ * Rate-limited requests DO count against a client's rate. For example, if a client is allowed 
+ * one request per minute and that client makes five requests in rapid succession, the rate limit
+ * will remain in effect for five minutes until the client's average request rate/minute dips
+ * below the maximum allowable threshold.
+ * 
+ * Example config array:
+ * 
+ * ```
+ * $modLimitConfig = [
+ *     'ipProxyHeader'   => NULL,
+ *     'onLimitCmd'      => NULL,
+ *     'onLimitCallback' => NULL,
+ *     'limits' => [
+ *         60 => 100,
+ *         3600 => 2500
+ *     ]
+ * ];
+ * ```
+ */
 class Limit implements OnRequestMod {
     
     private $ipProxyHeader;
@@ -17,36 +47,9 @@ class Limit implements OnRequestMod {
     private $onLimitCallback;
     
     /**
-     * Configure the mod to enforce rate limits.
+     * Invoked at server instantiation with the relevant host's `mod.limit` configuration
      * 
-     * Rate limits are defined as key-value pairs inside the config array's "limits" key. The key
-     * represents the time period in seconds and the value sets the maximum number of requests
-     * allowed during that time period before rate limiting is invoked. In the example config array
-     * below, client requests are limited by the following criteria:
-     * 
-     * 1. 100 requests per minute (60)
-     * 2. 2500 requests per hour (3600)
-     * 
-     * Rate-limited requests DO count against a client's rate. For example, if a client is allowed 
-     * one request per minute and that client makes five requests in rapid succession, the rate limit
-     * will remain in effect for five minutes until the client's average request rate/minute dips
-     * below the maximum allowable threshold.
-     * 
-     * Example config array:
-     * 
-     * ```
-     * $modLimitConfig = [
-     *     'ipProxyHeader'   => NULL,
-     *     'onLimitCmd'      => NULL,
-     *     'onLimitCallback' => NULL,
-     *     'limits' => [
-     *         60 => 100,
-     *         3600 => 2500
-     *     ]
-     * ];
-     * ```
-     * 
-     * @param array $config
+     * @param array $config The mod.limit configuration array
      * @return void
      */
     function configure(array $config) {
