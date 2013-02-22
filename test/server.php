@@ -6,13 +6,9 @@ date_default_timezone_set('GMT');
 
 require dirname(__DIR__) . '/autoload.php';
 
-//$body = file_get_contents(__DIR__ . '/www/large.txt');
-//$handler = function(array $asgiEnv, $requestId) use ($body) {
-//    return [200, 'OK', [], $body];
-
 $handler = function(array $asgiEnv, $requestId) {
-    //return [200, 'OK', [], '<html><body><h1>Hello, world.</h1>1234567890123456789012345678901</body></html>'];
-    
+    return [200, 'OK', [], '<html><body><h1>Hello, world.</h1>1234567890123456789012345678901</body></html>'];
+    /*
     if (!$asgiEnv['ASGI_LAST_CHANCE']) {
         return [100, 'Continue Bitch', [], NULL];
         return NULL;
@@ -28,7 +24,7 @@ $handler = function(array $asgiEnv, $requestId) {
     } else {
         return [200, 'OK', [], '<html><body><h1>Hello, world.</h1></body></html>'];
     }
-    
+    */
 };
 
 $config = [
@@ -50,7 +46,7 @@ $config = [
             'errorLogFile'              => NULL,
             'handleBeforeBody'          => FALSE,
             'normalizeMethodCase'       => TRUE,
-            'defaultHosts'              => ['127.0.0.1:1337' => 'aerys:1337'],
+            //'defaultHosts'              => ['127.0.0.1:1337' => 'aerys:1337'],
             'dontCombineHeaders'        => ['Set-Cookie'],
             'allowedMethods'            => [
                 'GET',
@@ -87,16 +83,17 @@ $config = [
     ],
     */
     
+    /*
     'myHost.static' => [
         'listen'    => '127.0.0.1:1337', // <-- we specified a TLS definition in the "globals" section
         'name'      => 'static.aerys',
         'handler'   => new Aerys\Http\Filesys(__DIR__ . '/www')
     ],
-    
+    */
     
     'myHost.insecure' => [
         'listen'    => '127.0.0.1:1337',
-        'name'      => 'aerys', // <-- optional, defaults to 127.0.0.1
+        //'name'      => 'aerys', // <-- optional, defaults to 127.0.0.1
         'handler'   => $handler,
         'mods'      => [
             /*
@@ -116,7 +113,7 @@ $config = [
             ],
             
             'mod.errorpages' => [
-                404 => [__DIR__ .'/errorpages/404.html', 'text/html'],
+                404 => [__DIR__ .'/errorpages/404.html', 'text/html; charset=utf-8'],
             ],
             
             // All sendfile keys are optional; these are the defaults:

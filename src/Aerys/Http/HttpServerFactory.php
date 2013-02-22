@@ -57,7 +57,9 @@ class HttpServerFactory {
             $socketServers[$interfaceId] = $server;
         }
         
-        foreach ($this->generateHostDefinitions($hostConf) as $hostId => $hostStruct) {
+        $hostDefs = $this->generateHostDefinitions($hostConf);
+        
+        foreach ($hostDefs as $hostId => $hostStruct) {
             list($host, $hostMods) = $hostStruct;
             $hosts[$hostId] = $host;
             $mods[$hostId] = $hostMods;
@@ -129,7 +131,7 @@ class HttpServerFactory {
                 throw new \RuntimeException;
             }
             
-            $name = empty($hostDefinitionArr['name']) ? self::IPV4_LOOPBACK : $hostDefinitionArr['name'];
+            $name = empty($hostDefinitionArr['name']) ? $interface : $hostDefinitionArr['name'];
             $mods = isset($hostDefinitionArr['mods']) ? $hostDefinitionArr['mods'] : [];
             
             $host = new Host($interface, $port, $name, $handler);

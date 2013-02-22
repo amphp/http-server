@@ -401,7 +401,10 @@ class HttpServer {
         $hostHeader = isset($headers['HOST']) ? strtolower($headers['HOST']) : '';
         $hostId = strpos($hostHeader, ':') ? $hostHeader : $hostHeader .':' . $port;
         
-        if ($protocol >= self::PROTOCOL_V11 && ($hostHeader || $hostHeader ==='0') && isset($this->hosts[$hostId])) {
+        if ($protocol >= self::PROTOCOL_V11
+            && ($hostHeader || $hostHeader ==='0')
+            && isset($this->hosts[$hostId])
+        ) {
             return $this->hosts[$hostId];
         } elseif ($protocol >= self::PROTOCOL_V11) {
             return NULL;
@@ -738,6 +741,7 @@ class HttpServer {
         $queuedResponseCount = $client->enqueueResponsesForWrite();
         $responseWriteCompleted = $client->write();
         
+        
         if ($responseWriteCompleted && $queuedResponseCount == 1) {
             unset($this->clientsRequiringWrite[$clientId]);
             $this->afterResponse($client);
@@ -1014,8 +1018,9 @@ class HttpServer {
                 $this->defaultHosts[$interfaceId] = $mergedHostId;
             } else {
                 throw new \DomainException(
-                   'Invalid default host'
+                   'Invalid default host: ' . $interfaceId
                 );
+                
             }
         }
     }
