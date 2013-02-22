@@ -47,7 +47,7 @@ class ResponseParser extends MessageParser {
             'headers'  => $headers,
             'body'     => $this->body,
             'trace'    => $this->traceBuffer
-        );
+        ];
     }
     
     protected function resetForNextMessage() {
