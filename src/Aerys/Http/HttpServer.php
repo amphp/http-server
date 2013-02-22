@@ -429,9 +429,6 @@ class HttpServer {
         return $portHosts[$port];
     }
     
-    /**
-     * @return bool Returns TRUE if mod(s) assigned a response; FALSE otherwise.
-     */
     private function invokeOnRequestMods($hostId, $requestId) {
         if (empty($this->onRequestMods[$hostId])) {
             return FALSE;
@@ -560,17 +557,19 @@ class HttpServer {
         
         $client->incrementRequestCount();
         
+        // Headers may have changed in the presence of trailers, so regenerate the request environment
         $hasTrailerHeader = !empty($asgiEnv['HTTP_TRAILER']);
-        
         if ($hasPreBodyRequest && $hasTrailerHeader) {
             $asgiEnv = $this->generateAsgiEnv($client, $host->getName(), $parsedRequest);
         }
         
         $client->setRequest($requestId, $asgiEnv);
         
-        if ($hasPreBodyRequest || !$this->invokeOnRequestMods($host->getId(), $requestId)) {
-            $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
+        if (!$hasPreBodyRequest || $hasTrailerHeader) {
+            $this->invokeOnRequestMods($host->getId(), $requestId);
         }
+        
+        $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
     }
     
     private function afterResponse(ClientSession $client) {
