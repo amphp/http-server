@@ -451,7 +451,7 @@ class HttpServer {
     
     private function invokeRequestHandler($requestId, array $asgiEnv, callable $handler) {
         try {
-            if ($asgiResponse = $handler($asgiEnv, $requestId, $this, $this->engine)) {
+            if ($asgiResponse = $handler($asgiEnv, $requestId)) {
                 $this->setResponse($requestId, $asgiResponse);
                 return TRUE;
             } else {
