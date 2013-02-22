@@ -4,20 +4,25 @@ namespace Aerys\Engine;
 
 class LibEventBase implements EventBase {
     
-    const GARBAGE_COLLECT_INTERVAL = 2000000;
+    const RESOLUTION = 1000000;
     
     private $base;
     private $subscriptions;
     private $garbage = [];
+    private $garbageCollectionInterval;
     
-    function __construct() {
+    function __construct($gcInterval = NULL) {
         $this->base = event_base_new();
         $this->subscriptions = new \SplObjectStorage;
+        
+        $this->garbageCollectionInterval = $gcInterval
+            ? $gcInterval * self::RESOLUTION
+            : 2 * self::RESOLUTION;
         
         $garbageEvent = event_new();
         event_timer_set($garbageEvent, [$this, 'collectGarbage'], $garbageEvent);
         event_base_set($garbageEvent, $this->base);
-        event_add($garbageEvent, self::GARBAGE_COLLECT_INTERVAL);
+        event_add($garbageEvent, $this->garbageCollectionInterval);
     }
     
     function tick() {
@@ -52,7 +57,6 @@ class LibEventBase implements EventBase {
         $this->subscriptions->attach($subscription, $event);
         
         return $subscription;
-        
     }
     
     function repeat($interval, callable $callback) {
@@ -90,7 +94,6 @@ class LibEventBase implements EventBase {
         $event = event_new();
         
         $wrapper = function($ioStream, $triggeredBy) use ($callback) {
-            // @todo add bitwise check to determine READ/WRITE/TIMEOUT for $triggeredBy
             try {
                 $callback($ioStream, $triggeredBy);
             } catch (\Exception $e) {
@@ -112,7 +115,7 @@ class LibEventBase implements EventBase {
     /**
      * Sometimes it's desirable to cancel a subscription from within an event callback. We can't
      * destroy lambda callbacks inside cancel() from inside a subscribed event callback, so instead
-     * we store the cancelled subscription in the garbage and collect it periodically.
+     * we store the cancelled subscription in the garbage periodically clean up after ourselves.
      */
     function cancel(Subscription $subscription) {
         $subscription->disable();
@@ -122,7 +125,7 @@ class LibEventBase implements EventBase {
     
     private function collectGarbage($nullFd, $flags, $garbageEvent) {
         $this->garbage = [];
-        event_add($garbageEvent, self::GARBAGE_COLLECT_INTERVAL);
+        event_add($garbageEvent, $this->garbageCollectionInterval);
     }
     
 }

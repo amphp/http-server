@@ -2,6 +2,8 @@
 
 namespace Aerys\Http\Io;
 
+use Aerys\Http\HttpServer;
+
 abstract class MessageParser implements \Aerys\Pipeline\Reader {
     
     const SP = "\x20";
@@ -39,79 +41,51 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
     const E_CHUNKS = 1200;
     const E_TRAILERS = 1300;
     
-    const IGNORE_BODY = 'attrIgnoreBody';
-    const MAX_START_LINE_BYTES = 'attrMaxStartLineBytes';
-    const MAX_HEADER_BYTES = 'attrMaxHeaderBytes';
-    const MAX_BODY_BYTES = 'attrMaxBodyBytes';
+    protected $input;
+    protected $state = self::START_LINE;
+    protected $buffer = '';
+    protected $rawHeaders = '';
+    protected $headers = [];
+    protected $body;
+    protected $protocol;
+    protected $traceBuffer;
     
-    private $input;
-    private $state = self::START_LINE;
-    private $buffer = '';
-    private $rawHeaders = '';
-    private $headers = array();
-    private $body = '';
-    private $traceBuffer = '';
+    protected $remainingBodyBytes;
+    protected $currentChunkSize;
+    protected $bodyBytesConsumed = 0;
     
-    private $remainingBodyBytes;
-    private $currentChunkSize;
-    private $bodyBytesConsumed = 0;
+    protected $onHeaders;
+    protected $onBody;
     
-    private $onHeaders;
-    private $onBody;
-    
-    private $awaitingEntityDelegate = FALSE;
-    
-    private $hexCharMap = array(
+    protected $maxStartLineBytes = 2048;
+    protected $maxHeaderBytes = 8192;
+    protected $maxBodyBytes = 2097152;
+    protected $hexCharMap = [
         'a' => 1, 'b' => 1, 'c' => 1, 'd' => 1, 'e' => 1, 'f' => 1,
         'A' => 1, 'B' => 1, 'C' => 1, 'D' => 1, 'E' => 1, 'F' => 1,
         0 => 1, 1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 1, 6 => 1, 7 => 1, 8 => 1, 9 => 1
-    );
-    
-    private $attributes = array(
-        self::IGNORE_BODY => FALSE,
-        self::MAX_START_LINE_BYTES => 2048,
-        self::MAX_HEADER_BYTES => 8192,
-        self::MAX_BODY_BYTES => 2097152
-    );
+    ];
+    protected $awaitingEntityDelegate = FALSE;
     
     function __construct($inputStream) {
         $this->input = $inputStream;
     }
     
-    /**
-     * Assign multiple parser attributes at once
-     * 
-     * @param array $array A key-value traversable mapping attributes to integer values
-     * @return MessageParser Returns the current object instance
-     */
-    function setAllAttributes(array $opts) {
-        foreach ($opts as $attribute => $value) {
-            if (isset($this->attributes[$attribute])) {
-                $this->attributes[$attribute] = (int) $value;
-            }
-        }
-        
-        return $this;
+    abstract protected function parseStartLine($rawStartLine);
+    abstract protected function allowsEntityBody();
+    abstract protected function getParsedMessageVals();
+    abstract protected function resetForNextMessage();
+    
+    function setMaxStartLineBytes($bytes) {
+        $this->maxStartLineBytes = (int) $bytes;
     }
     
-    /**
-     * Assign an optional parser attribute
-     * 
-     * @param string $attribute
-     * @param int $value
-     * @throws \DomainException On invalid attribute name
-     * @return MessageParser Returns the current object instance
-     */
-    function setAttribute($attribute, $value) {
-        if (isset($this->attributes[$attribute])) {
-            $this->attributes[$attribute] = (int) $value;
-        } else {
-            throw new \DomainException(
-                'Invalid attribute'
-            );
-        }
-        
-        return $this;
+    function setMaxHeaderBytes($bytes) {
+        $this->maxHeaderBytes = (int) $bytes;
+    }
+    
+    function setMaxBodyBytes($bytes) {
+        $this->maxBodyBytes = (int) $bytes;
     }
     
     function onHeaders(callable $callback) {
@@ -125,10 +99,6 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
     function inProgress() {
         return ($this->state || $this->buffer || $this->buffer === '0');
     }
-    
-    abstract protected function parseStartLine($rawStartLine);
-    abstract protected function allowsEntityBody();
-    abstract protected function getParsedMessageVals();
     
     function read() {
         $data = fread($this->input, 8192);
@@ -171,17 +141,29 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         }
         
         start_line: {
-            $this->traceBuffer = '';
             $startLine = $this->shiftStartLineFromMessageBuffer();
             
             if (NULL !== $startLine) {
                 $this->parseStartLine($startLine);
                 $this->state = self::HEADERS_START;
                 $this->traceBuffer = $startLine;
-                goto headers_start;
+                goto validate_protocol;
             } else {
                 goto more_data_needed;
             }
+        }
+        
+        validate_protocol: {
+            if (!($this->protocol == HttpServer::PROTOCOL_V10
+                || $this->protocol == HttpServer::PROTOCOL_V11
+            )) {
+                throw new ParseException(
+                    'Protocol not supported',
+                    self::E_PROTOCOL_NOT_SUPPORTED
+                );
+            }
+            
+            goto headers_start;
         }
         
         headers_start: {
@@ -203,7 +185,6 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         
         headers: {
             $headers = $this->shiftHeadersFromMessageBuffer();
-            
             if (NULL !== $headers) {
                 $this->traceBuffer .= $headers;
                 $this->parseHeaders($headers);
@@ -214,9 +195,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         }
         
         transition_from_headers_to_body: {
-            if ($this->attributes[self::IGNORE_BODY]) {
-                goto complete;
-            } elseif (!$this->allowsEntityBody()) {
+            if (!$this->allowsEntityBody()) {
                 goto complete;
             } elseif ($this->isChunkEncoded()) {
                 if ($this->onHeaders && !isset($this->headers['TRAILER'])) {
@@ -235,7 +214,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
                 $this->state = self::BODY_IDENTITY;
                 goto body_identity;
             } else {
-                // @todo read until connection is closed for requests
+                // @TODO Allow reading until connection is closed when parsing responses
                 goto complete;
             }
         }
@@ -283,6 +262,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
             }
             
             $parsedMsgArr = $this->getParsedMessageVals();
+            
             $this->resetForNextMessage();
             
             return $parsedMsgArr;
@@ -293,7 +273,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         }
     }
     
-    private function shiftStartLineFromMessageBuffer() {
+    protected function shiftStartLineFromMessageBuffer() {
         $this->buffer = ltrim($this->buffer);
         
         if ($startLineSize = strpos($this->buffer, self::LF)) {
@@ -304,7 +284,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
             $startLine = NULL;
         }
         
-        if ($startLineSize > $this->attributes[self::MAX_START_LINE_BYTES]) {
+        if ($startLineSize > $this->maxStartLineBytes) {
             throw new ParseException(
                 "Maximum allowable start line size exceeded",
                 self::E_START_LINE_TOO_LARGE
@@ -314,7 +294,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         return $startLine;
     }
     
-    private function shiftHeadersFromMessageBuffer() {
+    protected function shiftHeadersFromMessageBuffer() {
         if ($headersSize = strpos($this->buffer, self::CRLFx2)) {
             $terminatorSize = 4;
             $headers = substr($this->buffer, 0, $headersSize + 2);
@@ -326,7 +306,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
             $headers = NULL;
         }
         
-        if ($headersSize > $this->attributes[self::MAX_HEADER_BYTES]) {
+        if ($headersSize > $this->maxHeaderBytes) {
             throw new ParseException(
                 "Maximum allowable headers size exceeded",
                 self::E_HEADERS_TOO_LARGE
@@ -340,7 +320,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         return $headers;
     }
     
-    private function parseHeaders($headers) {
+    protected function parseHeaders($headers) {
         if (strpos($headers, "\n\x20") || strpos($headers, "\n\x09")) {
             $headers = preg_replace("/(?:\r\n|\n)[\x20\x09]+/", self::SP, $headers);
         }
@@ -373,13 +353,13 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         }
     }
     
-    private function isChunkEncoded() {
+    protected function isChunkEncoded() {
         return !isset($this->headers['TRANSFER-ENCODING'][0])
             ? FALSE
             : strcasecmp($this->headers['TRANSFER-ENCODING'][0], 'identity');
     }
     
-    private function determineBodyLength() {
+    protected function determineBodyLength() {
         if (empty($this->headers['CONTENT-LENGTH'][0])) {
             return FALSE;
         } else {
@@ -387,7 +367,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         }
     }
     
-    private function bodyIdentity() {
+    protected function bodyIdentity() {
         $bufferDataSize = strlen($this->buffer);
         
         if ($bufferDataSize < $this->remainingBodyBytes) {
@@ -416,12 +396,12 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         }
     }
     
-    private function bodyIdentityEof() {
+    protected function bodyIdentityEof() {
         $this->addToBody($this->buffer);
         $this->buffer = NULL;
     }
     
-    private function bodyChunks() {
+    protected function bodyChunks() {
         $parsedBody = '';
         $availableCharCount = strlen($this->buffer);
         
@@ -543,11 +523,10 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         return ($this->state === self::TRAILER_START);
     }
     
-    private function addToBody($data) {
+    protected function addToBody($data) {
         $this->bodyBytesConsumed += strlen($data);
-        $maxSize = $this->attributes[self::MAX_BODY_BYTES];
         
-        if ($maxSize && $this->bodyBytesConsumed > $maxSize) {
+        if ($this->maxBodyBytes && $this->bodyBytesConsumed > $this->maxBodyBytes) {
             throw new ParseException(
                 'Entity body too large',
                 self::E_ENTITY_TOO_LARGE
@@ -557,32 +536,6 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         } else {
             $this->body .= $data;
         }
-    }
-    
-    function getHeaders() {
-        $headers = array();
-        foreach ($this->headers as $key => $arr) {
-            $headers[$key] = (count($arr) == 1) ? $arr[0] : $arr;
-        }
-        
-        return $headers;
-    }
-    
-    function getBody() {
-        return $this->body;
-    }
-    
-    function getTraceBuffer() {
-        return $this->traceBuffer;
-    }
-    
-    protected function resetForNextMessage() {
-        $this->state = self::START_LINE;
-        $this->headers = array();
-        $this->body = NULL;
-        $this->bodyBytesConsumed = 0;
-        $this->remainingBodyBytes = NULL;
-        $this->currentChunkSize = NULL;
     }
     
 }

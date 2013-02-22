@@ -18,8 +18,6 @@ class ClientSession extends \Aerys\Pipeline\Session {
     private $preBodyRequest;
     private $requestCount = 0;
     
-    private $tempEntityWriter;
-    
     function __construct($socket, $peerName, $serverName, RequestParser $parser, MessageWriter $writer) {
         $this->socket = $socket;
         $this->id = (int) $socket;

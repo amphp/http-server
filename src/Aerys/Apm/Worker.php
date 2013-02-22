@@ -48,13 +48,13 @@ class Worker {
     }
     
     function error($errorPipe, $triggeredBy) {
-        if ($triggeredBy != EV_TIMEOUT) {
+        if ($triggeredBy != EventBase::TIMEOUT) {
             stream_copy_to_stream($errorPipe, $this->errorOutputStream);
         }
     }
     
     function read($readPipe, $triggeredBy) {
-        if ($triggeredBy == EV_TIMEOUT) {
+        if ($triggeredBy == EventBase::TIMEOUT) {
             return;
         }
         

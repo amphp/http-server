@@ -8,8 +8,6 @@ class LibEventSubscription implements Subscription {
     private $event;
     private $interval;
     private $status = self::ENABLED;
-    private $isEnabled = TRUE;
-    private $isCancelled = FALSE;
     
     function __construct(LibEventBase $base, $event, $interval) {
         $this->base = $base;
@@ -18,20 +16,20 @@ class LibEventSubscription implements Subscription {
     }
     
     function cancel() {
-        if (!$this->isCancelled) {
+        if ($this->status != self::CANCELLED) {
             $this->base->cancel($this);
             $this->status = self::CANCELLED;
         }
     }
     
     function enable() {
-        if ($this->status == self::CANCELLED) {
-            throw new \RuntimeException(
-                'Cannot reenable a cancelled subscription'
-            );
-        } elseif ($this->status == self::DISABLED) {
+        if ($this->status == self::DISABLED) {
             event_add($this->event, $this->interval);
             $this->status = self::ENABLED;
+        } elseif ($this->status == self::CANCELLED) {
+            throw new \RuntimeException(
+                'Cannot reenable a subscription once cancelled'
+            );
         }
     }
     

@@ -11,8 +11,8 @@ require dirname(__DIR__) . '/autoload.php';
 //    return [200, 'OK', [], $body];
 
 $handler = function(array $asgiEnv, $requestId) {
-    return [200, 'OK', [], '<html><body><h1>Hello, world.</h1>1234567890123456789012345678901</body></html>'];
-    /*
+    //return [200, 'OK', [], '<html><body><h1>Hello, world.</h1>1234567890123456789012345678901</body></html>'];
+    
     if (!$asgiEnv['ASGI_LAST_CHANCE']) {
         return [100, 'Continue Bitch', [], NULL];
         return NULL;
@@ -28,7 +28,7 @@ $handler = function(array $asgiEnv, $requestId) {
     } else {
         return [200, 'OK', [], '<html><body><h1>Hello, world.</h1></body></html>'];
     }
-    */
+    
 };
 
 $config = [

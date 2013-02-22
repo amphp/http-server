@@ -3,6 +3,11 @@
 namespace Aerys\Engine;
 
 interface EventBase {
+    
+    const TIMEOUT = 1;
+    const READ = 2;
+    const WRITE = 4;    
+    
     function tick();
     function run();
     function stop();

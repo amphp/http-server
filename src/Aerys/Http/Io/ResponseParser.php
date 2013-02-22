@@ -10,21 +10,8 @@ class ResponseParser extends MessageParser {
         (?P<reason>[^\x01-\x08\x10-\x19]*)
     $#ix";
     
-    private $protocol;
-    private $status;
-    private $reason;
-    
-    function getProtocol() {
-        return $this->protocol;
-    }
-    
-    function getStatus() {
-        return $this->status;
-    }
-    
-    function getReason() {
-        return $this->reason;
-    }
+    protected $status;
+    protected $reason;
     
     /**
      * @throws ParseException On invalid status line
@@ -33,10 +20,9 @@ class ResponseParser extends MessageParser {
     protected function parseStartLine($rawStartLine) {
         if (preg_match(self::STATUS_LINE_PATTERN, $rawStartLine, $m)) {
             $this->protocol = $m['protocol'];
-            $this->status = $m['status'];
-            $this->reason = $m['reason'];
+            $this->status   = $m['status'];
+            $this->reason   = $m['reason'];
         } else {
-            var_dump($rawStartLine);die;
             throw new ParseException(
                 "Invalid status line",
                 self::E_START_LINE_SYNTAX
@@ -49,33 +35,32 @@ class ResponseParser extends MessageParser {
     }
     
     protected function getParsedMessageVals() {
-        return array(
+        $headers = [];
+        foreach ($this->headers as $key => $arr) {
+            $headers[$key] = isset($arr[1]) ? $arr : $arr[0];
+        }
+        
+        return [
             'protocol' => $this->protocol,
-            'status' => $this->status,
-            'reason' => $this->reason,
-            'headers' => $this->getHeaders(),
-            'body' => $this->getBody()
+            'status'   => $this->status,
+            'reason'   => $this->reason,
+            'headers'  => $headers,
+            'body'     => $this->body,
+            'trace'    => $this->traceBuffer
         );
     }
     
     protected function resetForNextMessage() {
-        parent::resetForNextMessage();
-        
-        $this->method = NULL;
-        $this->uri = NULL;
+        $this->state = self::START_LINE;
+        $this->traceBuffer = NULL;
+        $this->headers = [];
+        $this->body = NULL;
+        $this->bodyBytesConsumed = 0;
+        $this->remainingBodyBytes = NULL;
+        $this->currentChunkSize = NULL;
         $this->protocol = NULL;
-    }
-    
-    function getStatus() {
-        return $this->status;
-    }
-    
-    function getReason() {
-        return $this->reason;
-    }
-    
-    function getProtocol() {
-        return $this->protocol;
+        $this->status = NULL;
+        $this->reason = NULL;
     }
     
 }

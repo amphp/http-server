@@ -3,14 +3,14 @@
 namespace Aerys\Http;
 
 use Aerys\Server,
-    Aerys\Client,
     Aerys\Engine\EventBase,
     Aerys\Http\Io\RequestParser,
     Aerys\Http\Io\MessageWriter,
     Aerys\Http\Io\TempEntityWriter,
     Aerys\Http\Io\ParseException,
     Aerys\Http\Io\ResourceException,
-    Aerys\Http\Io\BodyWriterFactory;
+    Aerys\Http\Io\BodyWriterFactory,
+    Aerys\Http\Mods\Mod;
 
 class HttpServer {
     
@@ -34,6 +34,7 @@ class HttpServer {
     private $servers = [];
     private $hosts = [];
     private $bodyWriterFactory;
+    private $errorStream = STDERR;
     
     private $clients = [];
     private $clientsRequiringWrite = [];
@@ -42,6 +43,14 @@ class HttpServer {
     private $closeInProgress = [];
     private $cachedClientCount = 0;
     private $lastRequestId = 0;
+    
+    private $isListening = FALSE;
+    private $acceptEnabled = TRUE;
+    private $insideBeforeResponseModLoop = FALSE;
+    
+    private $onRequestMods = [];
+    private $beforeResponseMods = [];
+    private $afterResponseMods = [];
     
     private $maxConnections = 0;
     private $maxRequestsPerSession = 100;
@@ -53,7 +62,6 @@ class HttpServer {
     private $defaultContentType = 'text/html';
     private $defaultCharset = 'utf-8';
     private $autoReasonPhrase = TRUE;
-    private $ipv6Mode = FALSE;
     private $handleAfterHeaders = FALSE;
     private $errorLogFile = NULL;
     private $defaultHosts = [];
@@ -70,14 +78,6 @@ class HttpServer {
         self::POST    => 1,
         self::DELETE  => 1
     ];
-    
-    private $onRequestMods = [];
-    private $beforeResponseMods = [];
-    private $afterResponseMods = [];
-    
-    private $isListening = FALSE;
-    private $insideBeforeResponseModLoop = FALSE;
-    private $errorStream = STDERR;
     
     function __construct(EventBase $engine, array $servers, array $hosts, BodyWriterFactory $bwf = NULL) {
         $this->engine = $engine;
@@ -116,19 +116,6 @@ class HttpServer {
         $this->hosts = $hosts;
     }
     
-    function stop() {
-        if (!$this->isListening) {
-            return;
-        }
-        foreach ($this->servers as $server) {
-            $server->stop();
-        }
-        $this->engine->stop();
-        if ($this->errorStream !== STDERR) {
-            fclose($this->errorStream);
-        }
-    }
-    
     function listen() {
         if (!$this->isListening) {
             $this->isListening = TRUE;
@@ -162,6 +149,33 @@ class HttpServer {
         }
     }
     
+    function stop() {
+        if (!$this->isListening) {
+            return;
+        }
+        foreach ($this->servers as $server) {
+            $server->stop();
+        }
+        $this->engine->stop();
+        if ($this->errorStream !== STDERR) {
+            fclose($this->errorStream);
+        }
+    }
+    
+    private function disableNewClients() {
+        foreach ($this->servers as $server) {
+            $server->disable();
+        }
+        $this->acceptEnabled = FALSE;
+    }
+    
+    private function enableNewClients() {
+        foreach ($this->servers as $server) {
+            $server->enable();
+        }
+        $this->acceptEnabled = TRUE;
+    }
+    
     private function write() {
         foreach ($this->clientsRequiringWrite as $client) {
             try {
@@ -184,12 +198,17 @@ class HttpServer {
         $writer = new MessageWriter($clientSock, $this->bodyWriterFactory);
         $client = new ClientSession($clientSock, $peerName, $serverName, $parser, $writer);
         
+        $parser->setMaxStartLineBytes($this->maxStartLineSize);
+        $parser->setMaxHeaderBytes($this->maxHeadersSize);
+        $parser->setMaxBodyBytes($this->maxEntityBodySize);
+        
         $parser->onHeaders(function(array $parsedRequest) use ($client) {
             $this->onHeaders($client, $parsedRequest);
         });
         
         $clientId = $client->getId();
         $this->clients[$clientId] = $client;
+        
         $this->readSubscriptions[$clientId] = $this->engine->onReadable($clientSock,
             function ($clientSock, $trigger) use ($client) {
                 $this->onReadable($trigger, $client);
@@ -199,13 +218,17 @@ class HttpServer {
         
         ++$this->cachedClientCount;
         
+        if ($this->maxConnections && $this->cachedClientCount >= $this->maxConnections) {
+            $this->disableNewClients();
+        }
+        
         if ($this->clientsRequiringWrite) {
             $this->write();
         }
     }
     
     private function onReadable($triggeredBy, ClientSession $client) {
-        if ($triggeredBy == EV_TIMEOUT) {
+        if ($triggeredBy == EventBase::TIMEOUT) {
             return $this->handleReadTimeout($client);
         }
         
@@ -218,22 +241,22 @@ class HttpServer {
         } catch (ParseException $e) {
             switch ($e->getCode()) {
                 case RequestParser::E_START_LINE_TOO_LARGE:
-                    $status = 414;
+                    $status = Status::REQUEST_URI_TOO_LONG;
                     break;
                 case RequestParser::E_HEADERS_TOO_LARGE:
-                    $status = 431;
+                    $status = Status::REQUEST_HEADER_FIELDS_TOO_LARGE;
                     break;
                 case RequestParser::E_ENTITY_TOO_LARGE:
-                    $status = 413;
+                    $status = Status::REQUEST_ENTITY_TOO_LARGE;
                     break;
                 case RequestParser::E_PROTOCOL_NOT_SUPPORTED:
-                    $status = 505;
+                    $status = Status::HTTP_VERSION_NOT_SUPPORTED;
                     break;
                 default:
-                    $status = 400;
+                    $status = Status::BAD_REQUEST;
             }
             
-            $this->doServerLayerError($client, $status);
+            $this->handleRequestParseError($client, $status);
         }
         
         if ($this->clientsRequiringWrite) {
@@ -242,9 +265,40 @@ class HttpServer {
     }
     
     private function handleReadTimeout(ClientSession $client) {
-        return $client->hasUnfinishedRead()
-            ? $this->doServerLayerError($client, Status::REQUEST_TIMEOUT)
-            : $this->close($client);
+        if ($client->hasUnfinishedRead()) {
+            $this->sever($client);
+        } elseif ($client->isEmpty()) {
+            $this->close($client);
+        }
+    }
+    
+    private function handleRequestParseError(ClientSession $client, $status) {
+        $requestId = ++$this->lastRequestId;
+        $this->requestIdClientMap[$requestId] = $client;
+        
+        // Generate a stand-in parsed request since there was a problem with the real one
+        $parsedRequest = [
+            'method'   => self::UNKNOWN,
+            'uri'      => self::UNKNOWN,
+            'protocol' => self::PROTOCOL_V10,
+            'headers'  => []
+        ];
+        
+        // Generate a placeholder $asgiEnv from our stand-in parsed request
+        $asgiEnv = $this->generateAsgiEnv($client, '?', $parsedRequest);
+        $client->setRequest($requestId, $asgiEnv);
+        
+        $reason = $this->getReasonPhrase($status);
+        $heading = $status . ' ' . $reason;
+        $body = '<html><body><h1>'.$heading.'</h1></body></html>';
+        $headers = [
+            'Date' => date(self::HTTP_DATE),
+            'Content-Type' => 'text/html; charset=iso-8859-1',
+            'Content-Length' => strlen($body),
+            'Connection' => 'close'
+        ];
+        
+        $this->setResponse($requestId, [$status, $reason, $headers, $body]);
     }
     
     private function onHeaders(ClientSession $client, array $parsedRequest) {
@@ -299,12 +353,11 @@ class HttpServer {
             $response = [Status::METHOD_NOT_ALLOWED, Reasons::HTTP_405, $headers, NULL];
             
         } elseif ($method == self::TRACE) {
-            $body = $client->getTraceBuffer();
             $headers = [
-                'Content-Length' => strlen($body), 
+                'Content-Length' => strlen($parsedRequest['trace']), 
                 'Content-Type' => 'text/plain; charset=iso-8859-1'
             ];
-            $response = [Status::OK, Reasons::HTTP_200, $headers, $body];
+            $response = [Status::OK, Reasons::HTTP_200, $headers, $parsedRequest['trace']];
             
         } elseif ($method == self::OPTIONS && $parsedRequest['uri'] == self::WILDCARD) {
             $headers = ['Allow' => implode(',', array_keys($this->allowedMethods))];
@@ -413,37 +466,6 @@ class HttpServer {
         }
     }
     
-    private function doServerLayerError(ClientSession $client, $status, array $parsedRequest = NULL) {
-        $requestId = ++$this->lastRequestId;
-        $this->requestIdClientMap[$requestId] = $client;
-        
-        // Generate a stand-in parsed request since there was a problem with the real one
-        $parsedRequest = $parsedRequest ?: [
-            'method' => self::UNKNOWN,
-            'uri' => self::UNKNOWN,
-            'protocol' => self::PROTOCOL_V10,
-            'headers' => []
-        ];
-        
-        // Generate a placeholder $asgiEnv for our "fake" $requestId
-        $asgiEnv = $this->generateAsgiEnv($client, '?', $parsedRequest);
-        $client->setRequest($requestId, $asgiEnv);
-        
-        $reason = $this->getReasonPhrase($status);
-        $heading = $status . ' ' . $reason;
-        $body = '<html><body><h1>'.$heading.'</h1></body></html>';
-        $headers = [
-            'Date' => date(self::HTTP_DATE),
-            'Content-Type' => 'text/html',
-            'Content-Length' => strlen($body),
-            'Connection' => 'close'
-        ];
-        
-        $asgiResponse = [$status, $reason, $headers, $body];
-        
-        $this->setResponse($requestId, $asgiResponse);
-    }
-    
     private function getReasonPhrase($statusCode) {
         $reasonConst = 'Aerys\\Http\\Reasons::HTTP_' . $statusCode;
         return defined($reasonConst) ? constant($reasonConst) : '';
@@ -481,12 +503,11 @@ class HttpServer {
         $scheme = isset(stream_context_get_options($client->getSocket())['ssl']) ? 'https' : 'http';
         
         $asgiEnv = [
-            'SERVER_SOFTWARE'    => self::SERVER_SOFTWARE . ' ' . self::SERVER_VERSION,
             'SERVER_NAME'        => $serverName,
             'SERVER_PORT'        => $client->getServerPort(),
+            'SERVER_PROTOCOL'    => $parsedRequest['protocol'],
             'REMOTE_ADDR'        => $client->getInterface(),
             'REMOTE_PORT'        => $client->getPort(),
-            'SERVER_PROTOCOL'    => $parsedRequest['protocol'],
             'REQUEST_METHOD'     => $parsedRequest['method'],
             'REQUEST_URI'        => $uri,
             'QUERY_STRING'       => $queryString,
@@ -599,7 +620,7 @@ class HttpServer {
             return TRUE;
         } elseif (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
             return TRUE;
-        } elseif ($asgiEnv['SERVER_PROTOCOL'] == '1.0' && !isset($asgiEnv['HTTP_CONNECTION'])) {
+        } elseif ($asgiEnv['SERVER_PROTOCOL'] == self::PROTOCOL_V10 && !isset($asgiEnv['HTTP_CONNECTION'])) {
             return TRUE;
         } else {
             return FALSE;
@@ -649,7 +670,8 @@ class HttpServer {
         
         $clientId = $client->getId();
         
-        $this->readSubscriptions[$clientId]->cancel();
+        $readSubscription = $this->readSubscriptions[$clientId];
+        $readSubscription->cancel();
         
         unset(
             $this->clients[$clientId],
@@ -658,6 +680,10 @@ class HttpServer {
         );
         
         --$this->cachedClientCount;
+        
+        if (!$this->acceptEnabled && $this->cachedClientCount < $this->maxConnections) {
+            $this->enableNewClients();
+        }
         
         return $client->getSocket();
     }
@@ -670,7 +696,6 @@ class HttpServer {
         $client = $this->requestIdClientMap[$requestId];
         
         $asgiEnv = $client->getRequest($requestId);
-        
         $asgiResponse = $this->normalizeResponse($asgiEnv, $asgiResponse);
         
         $is100Continue = ($asgiResponse[0] == 100);
@@ -924,10 +949,6 @@ class HttpServer {
         $this->autoReasonPhrase = (bool) $boolFlag;
     }
     
-    private function setIpv6Mode($boolFlag) {
-        $this->ipv6Mode = (bool) $boolFlag;
-    }
-    
     private function setErrorLogFile($filePath) {
         $this->errorLogFile = $filePath;
     }
@@ -989,7 +1010,7 @@ class HttpServer {
         }
     }
     
-    function registerMod($hostId, $mod) {
+    function registerMod($hostId, Mod $mod) {
         if (!isset($this->hosts[$hostId])) {
             throw new \DomainException(
                 'Mod $hostId doesn\'t exist: ' . $hostId

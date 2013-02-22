@@ -15,6 +15,14 @@ class Session {
         $this->writer = $writer;
     }
     
+    function isEmpty() {
+        return (bool) $this->requests;
+    }
+    
+    function canWrite() {
+        return (bool) $this->responses;
+    }
+    
     function hasRequest($requestId) {
         return isset($this->requests[$requestId]);
     }
@@ -64,10 +72,6 @@ class Session {
         }
         
         return $pendingResponses;
-    }
-    
-    function canWrite() {
-        return (bool) $this->responses;
     }
     
     function write() {

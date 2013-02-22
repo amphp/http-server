@@ -70,7 +70,7 @@ class TlsServer extends Server {
      * zero integer value is returned when the handshake is still pending.
      */
     private function doHandshake($clientSock, $trigger) {
-        if ($trigger == EV_TIMEOUT) {
+        if ($trigger == EventBase::TIMEOUT) {
             $this->failConnectionAttempt($clientSock);
         } elseif ($cryptoResult = @stream_socket_enable_crypto($clientSock, TRUE, $this->cryptoType)) {
             $clientId = (int) $clientSock;

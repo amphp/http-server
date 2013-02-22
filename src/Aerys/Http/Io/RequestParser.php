@@ -12,18 +12,13 @@ class RequestParser extends MessageParser {
         HTTP/(?P<protocol>\d+\.\d+)[\x0D]?
     $#ix";
     
-    private $method;
-    private $uri;
-    private $protocol;
+    protected $method;
+    protected $uri;
     
-    /**
-     * @throws ParseException On invalid request line
-     * @return void
-     */
     protected function parseStartLine($rawStartLine) {
         if (preg_match(self::REQUEST_LINE_PATTERN, $rawStartLine, $m)) {
-            $this->method = $m['method'];
-            $this->uri = $m['uri'];
+            $this->method   = $m['method'];
+            $this->uri      = $m['uri'];
             $this->protocol = $m['protocol'];
         } else {
             throw new ParseException(
@@ -31,47 +26,41 @@ class RequestParser extends MessageParser {
                 self::E_START_LINE_SYNTAX
             );
         }
-        
-        if (!($this->protocol == '1.1' || $this->protocol == '1.0')) {
-            throw new ParseException(
-                'Protocol not supported',
-                self::E_PROTOCOL_NOT_SUPPORTED
-            );
-        }
     }
     
     protected function allowsEntityBody() {
-        return !($this->method == HttpServer::HEAD || $this->method == HttpServer::TRACE);
+        $method = strtoupper($this->method);
+        return !($method == HttpServer::HEAD || $method == HttpServer::TRACE);
     }
     
     protected function getParsedMessageVals() {
-        return array(
-            'method' => $this->method,
-            'uri' => $this->uri,
+        $headers = [];
+        foreach ($this->headers as $key => $arr) {
+            $headers[$key] = isset($arr[1]) ? $arr : $arr[0];
+        }
+        
+        return [
+            'method'   => $this->method,
+            'uri'      => $this->uri,
             'protocol' => $this->protocol,
-            'headers' => $this->getHeaders(),
-            'body' => $this->getBody()
-        );
+            'headers'  => $headers,
+            'body'     => $this->body,
+            'trace'    => $this->traceBuffer
+        ];
     }
     
     protected function resetForNextMessage() {
-        parent::resetForNextMessage();
-        
+        $this->state = self::START_LINE;
+        $this->traceBuffer = NULL;
+        $this->headers = [];
+        $this->body = NULL;
+        $this->bodyBytesConsumed = 0;
+        $this->remainingBodyBytes = NULL;
+        $this->currentChunkSize = NULL;
+        $this->protocol = NULL;
         $this->method = NULL;
         $this->uri = NULL;
-        $this->protocol = NULL;
-    }
-    
-    function getMethod() {
-        return $this->method;
-    }
-    
-    function getUri() {
-        return $this->uri;
-    }
-    
-    function getProtocol() {
-        return $this->protocol;
     }
     
 }
+
