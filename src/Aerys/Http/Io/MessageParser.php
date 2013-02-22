@@ -44,7 +44,6 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
     protected $input;
     protected $state = self::START_LINE;
     protected $buffer = '';
-    protected $rawHeaders = '';
     protected $headers = [];
     protected $body;
     protected $protocol;
@@ -154,16 +153,16 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         }
         
         validate_protocol: {
-            if (!($this->protocol == HttpServer::PROTOCOL_V10
+            if ($this->protocol == HttpServer::PROTOCOL_V10
                 || $this->protocol == HttpServer::PROTOCOL_V11
-            )) {
+            ) {
+                goto headers_start;
+            } else {
                 throw new ParseException(
                     'Protocol not supported',
                     self::E_PROTOCOL_NOT_SUPPORTED
                 );
             }
-            
-            goto headers_start;
         }
         
         headers_start: {
