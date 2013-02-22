@@ -448,6 +448,8 @@ class HttpServer {
                 $this->logUserlandError($e, $serverName, $requestUri);
             }
         }
+        
+        return TRUE;
     }
     
     private function invokeRequestHandler($requestId, array $asgiEnv, callable $handler) {
