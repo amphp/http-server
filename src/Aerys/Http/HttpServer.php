@@ -756,7 +756,7 @@ class HttpServer {
         list($status, $reason, $headers, $body) = $asgiResponse;
         
         if ($headers) {
-            $headers = array_combine(array_map('strtoupper', array_keys($headers)), $headers);
+            $headers = array_change_key_case($headers, CASE_UPPER);
         }
         
         if ($this->autoReasonPhrase && (string) $reason === '') {
