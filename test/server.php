@@ -34,25 +34,35 @@ $handler = function(array $asgiEnv, $requestId) {
 $config = [
     
     'globals' => [
-        /*
         'opts' => [
             'maxConnections'            => 0,
             'maxRequestsPerSession'     => 0,
-            'idleConnectionTimeout'     => 15,
+            'idleConnectionTimeout'     => 30,
             'maxStartLineSize'          => 2048,
             'maxHeadersSize'            => 8192,
             'maxEntityBodySize'         => 2097152,
             'tempEntityDir'             => NULL,
             'defaultContentType'        => 'text/html',
+            'defaultCharset'            => 'utf-8',
+            'disableKeepAlive'          => FALSE,
+            'sendServerToken'           => FALSE,
             'autoReasonPhrase'          => TRUE,
-            'errorLog'                  => NULL,
-            'handleAfterHeaders'        => FALSE,
+            'errorLogFile'              => NULL,
+            'handleBeforeBody'          => FALSE,
             'normalizeMethodCase'       => TRUE,
-            'defaultHosts'              => [
-                '127.0.0.1:1337' => 'aerys:1337'
-            ]
+            'defaultHosts'              => ['127.0.0.1:1337' => 'aerys:1337'],
+            'dontCombineHeaders'        => ['Set-Cookie'],
+            'allowedMethods'            => [
+                'GET',
+                'HEAD',
+                'OPTIONS',
+                'POST',
+                'PUT',
+                'TRACE',
+                'DELETE'
+            ],
         ],
-        */
+        /*
         'tls'   => [
             '127.0.0.1:1500' => [
                 'localCertFile'         => dirname(__DIR__) . '/mycert.pem',
@@ -65,29 +75,29 @@ $config = [
             // If a mod exists with the same key in a host config block it will
             // override the global instance specified here.
         ]
+        */
     ],
     
     // --- ALL OTHER KEYS ARE CONSIDERED HOST CONTAINERS ---
-    
+    /*
     'myHost.secure' => [
         'listen'    => '127.0.0.1:1500', // <-- we specified a TLS definition in the "globals" section
         'name'      => 'aerys', // <--- optional
         'handler'   => $handler
     ],
+    */
     
-    /*
     'myHost.static' => [
         'listen'    => '127.0.0.1:1337', // <-- we specified a TLS definition in the "globals" section
-        'name'      => 'aerys', // <--- optional
-        'handler'   => new Aerys\Filesys(__DIR__ . '/www')
+        'name'      => 'static.aerys',
+        'handler'   => new Aerys\Http\Filesys(__DIR__ . '/www')
     ],
-    */
+    
     
     'myHost.insecure' => [
         'listen'    => '127.0.0.1:1337',
-        'name'      => 'aerys', // <-- optional
+        'name'      => 'aerys', // <-- optional, defaults to 127.0.0.1
         'handler'   => $handler,
-        //'handler'   => new Aerys\Http\Filesys(__DIR__ . '/www'),
         'mods'      => [
             /*
             'mod.log'   =>  [
@@ -120,23 +130,15 @@ $config = [
             'mod.expect' => [
                 '/' => function() { return FALSE; }
             ]
+            */
             
-            /*
             // --- INCOMPLETE MODS ---
             
             // @todo mod.redirect
             // @todo mod.rewrite
             // @todo mod.block
-            
-            'mod.block' => [
-                'ipProxyHeader' => NULL,
-                'block' => ['*'], // specific IPs or IP ranges
-                'allow' => ['127.0.0.1'] // specific IPs or IP ranges
-            ],
-            */
         ]
     ]
-    
 ];
 
 $server = (new HttpServerFactory)->createServer($config)->listen();

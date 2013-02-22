@@ -62,7 +62,7 @@ class HttpServer {
     private $defaultContentType = 'text/html';
     private $defaultCharset = 'utf-8';
     private $autoReasonPhrase = TRUE;
-    private $handleAfterHeaders = FALSE;
+    private $handleBeforeBody = FALSE;
     private $errorLogFile = NULL;
     private $defaultHosts = [];
     private $sendServerToken = FALSE;
@@ -326,12 +326,12 @@ class HttpServer {
         
         if ($client->hasResponse($requestId)) {
             $client->incrementRequestCount();
-        } elseif ($this->handleAfterHeaders
+        } elseif ($this->handleBeforeBody
             && !$this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler())
             && $needs100Continue
         ) {
             $this->setResponse($requestId, [Status::CONTINUE_100, '', [], NULL]);
-        } elseif (!$this->handleAfterHeaders && $needs100Continue) {
+        } elseif (!$this->handleBeforeBody && $needs100Continue) {
             $this->setResponse($requestId, [Status::CONTINUE_100, '', [], NULL]);
         }
     }
@@ -917,7 +917,9 @@ class HttpServer {
         if (property_exists($this, $option) && method_exists($this, $setter)) {
             $this->$setter($value);
         } else {
-            throw new \DomainException($option);
+            throw new \DomainException(
+                'Invalid server option: ' . $option
+            );
         }
     }
     
@@ -961,8 +963,8 @@ class HttpServer {
         $this->errorLogFile = $filePath;
     }
     
-    private function setHandleAfterHeaders($boolFlag) {
-        $this->handleAfterHeaders = (bool) $boolFlag;
+    private function setHandleBeforeBody($boolFlag) {
+        $this->handleBeforeBody = (bool) $boolFlag;
     }
     
     private function setDefaultCharset($charset) {
