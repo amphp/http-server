@@ -794,6 +794,11 @@ class HttpServer {
         }
         
         $hasContentLength = isset($headers['CONTENT-LENGTH']);
+        
+        if ($status >= 200 && !$hasContentLength) {
+            $headers['CONTENT-LENGTH'] = 0;
+        }
+        
         $isChunked = isset($headers['TRANSFER-ENCODING']) && !strcasecmp($headers['TRANSFER-ENCODING'], 'chunked');
         $isIterator = ($body instanceof \Iterator && !$body instanceof Http\MultiPartByteRangeBody);
         
