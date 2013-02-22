@@ -795,7 +795,7 @@ class HttpServer {
         
         $hasContentLength = isset($headers['CONTENT-LENGTH']);
         
-        if ($status >= 200 && !$hasContentLength) {
+        if (!$hasBody && $status >= 200 && !$hasContentLength) {
             $headers['CONTENT-LENGTH'] = 0;
         }
         
