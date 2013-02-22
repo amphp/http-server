@@ -384,7 +384,6 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
             return TRUE;
             
         } else {
-            $overflowBytes = $bufferDataSize - $this->remainingBodyBytes;
             $bodyData = substr($this->buffer, 0, $this->remainingBodyBytes);
             $this->addToBody($bodyData);
             $this->buffer = substr($this->buffer, $this->remainingBodyBytes);
