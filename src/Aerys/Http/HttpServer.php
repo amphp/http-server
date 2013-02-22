@@ -511,7 +511,7 @@ class HttpServer {
             'SERVER_PROTOCOL'    => $parsedRequest['protocol'],
             'REMOTE_ADDR'        => $client->getInterface(),
             'REMOTE_PORT'        => $client->getPort(),
-            'REQUEST_METHOD'     => $parsedRequest['method'],
+            'REQUEST_METHOD'     => $method,
             'REQUEST_URI'        => $uri,
             'QUERY_STRING'       => $queryString,
             'SCRIPT_NAME'        => $scriptName,
