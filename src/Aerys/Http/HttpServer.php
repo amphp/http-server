@@ -370,7 +370,15 @@ class HttpServer {
         
         if (!$host = $this->selectRequestHost($client, $parsedRequest)) {
             $asgiEnv = $this->generateAsgiEnv($client, self::UNKNOWN, $parsedRequest);
-            $response = [Status::BAD_REQUEST, Reasons::HTTP_400, [], NULL];
+            
+            $status = Status::BAD_REQUEST;
+            $reason = Reasons::HTTP_400 . ': Invalid Host';
+            $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
+            $headers = [
+                'Content-Type' => 'text/html; charset=iso-8859-1',
+                'Content-Length' => strlen($body)
+            ];
+            $response = [$status, $reason, $headers, $body];
         } else {
             $asgiEnv = $this->generateAsgiEnv($client, $host->getName(), $parsedRequest);
         }
@@ -1008,7 +1016,7 @@ class HttpServer {
             $headers = array_change_key_case(array_flip($headers), CASE_UPPER);
         }
         
-        $this->dontCombineHeaders = $headers ? array_map(function() { return 1; }, $noCombine) : [];
+        $this->dontCombineHeaders = $headers ? array_map(function() { return 1; }, $headers) : [];
     }
     
     private function setNormalizeMethodCase($boolFlag) {
