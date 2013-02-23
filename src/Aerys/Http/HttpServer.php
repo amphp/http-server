@@ -582,8 +582,10 @@ class HttpServer {
         $hostId = $asgiEnv['SERVER_NAME'] . ':' . $client->getServerPort();
         $this->doAfterResponseMods($hostId, $requestId);
         
-        if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS && ($upgradeCallback = $asgiResponse[4])) {
+        if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
+            $upgradeCallback = $asgiResponse[4];
             $clientSock = $this->export($client);
+            
             try {
                 $upgradeCallback($clientSock);
             } catch (\Exception $e) {
