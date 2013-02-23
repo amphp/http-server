@@ -285,7 +285,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         
         if ($startLineSize > $this->maxStartLineBytes) {
             throw new ParseException(
-                "Maximum allowable start line size exceeded",
+                'Maximum allowable start line size exceeded',
                 self::E_START_LINE_TOO_LARGE
             );
         }
@@ -307,7 +307,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         
         if ($headersSize > $this->maxHeaderBytes) {
             throw new ParseException(
-                "Maximum allowable headers size exceeded",
+                'Maximum allowable headers size exceeded',
                 self::E_HEADERS_TOO_LARGE
             );
         }
@@ -326,7 +326,7 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
         
         if (!preg_match_all(self::HEADERS_PATTERN, $headers, $matches)) {
             throw new ParseException(
-                "Invalid headers",
+                'Invalid headers',
                 self::E_HEADERS_SYNTAX
             );
         }
@@ -336,17 +336,12 @@ abstract class MessageParser implements \Aerys\Pipeline\Reader {
             $matchedHeaders .= $matches[0][$i];
             $field = strtoupper($matches['field'][$i]);
             $value = $matches['value'][$i];
-            
-            if (isset($this->headers[$field])) {
-                $this->headers[$field][] = $value;
-            } else {
-                $this->headers[$field] = array($value);
-            }
+            $this->headers[$field][] = $value;
         }
         
         if (strlen($headers) !== strlen($matchedHeaders)) {
             throw new ParseException(
-                "Invalid headers",
+                'Invalid headers',
                 self::E_HEADERS_SYNTAX
             );
         }
