@@ -47,6 +47,7 @@ class HttpServer {
     private $isListening = FALSE;
     private $acceptEnabled = TRUE;
     private $insideBeforeResponseModLoop = FALSE;
+    private $insideAfterResponseModLoop = FALSE;
     
     private $onRequestMods = [];
     private $beforeResponseMods = [];
@@ -153,10 +154,13 @@ class HttpServer {
         if (!$this->isListening) {
             return;
         }
+        
         foreach ($this->servers as $server) {
             $server->stop();
         }
+        
         $this->engine->stop();
+        
         if ($this->errorStream !== STDERR) {
             fclose($this->errorStream);
         }
@@ -575,29 +579,11 @@ class HttpServer {
     private function afterResponse(ClientSession $client) {
         list($requestId, $asgiEnv, $asgiResponse) = $client->front();
         
-        // Determine if we need to close BEFORE any mods execute to prevent alterations. The 
-        // response has already been sent and its original protocol and headers must be adhered to
-        // regardless of whether a mod has altered the Connection header.
-        $shouldClose = $this->shouldCloseAfterResponse($asgiEnv, $asgiResponse);
-        
         $hostId = $asgiEnv['SERVER_NAME'] . ':' . $client->getServerPort();
-        
-        if (isset($this->afterResponseMods[$hostId])) {
-            foreach ($this->afterResponseMods[$hostId] as $mod) {
-                try {
-                    $mod->afterResponse($this, $requestId);
-                } catch (\Exception $e) {
-                    $serverName = $asgiEnv['SERVER_NAME'];
-                    $requestUri = $asgiEnv['REQUEST_URI'];
-                    
-                    $this->logUserlandError($e, $serverName, $requestUri);
-                }
-            }
-        }
+        $this->doAfterResponseMods($hostId, $requestId);
         
         if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS && ($upgradeCallback = $asgiResponse[4])) {
             $clientSock = $this->export($client);
-            
             try {
                 $upgradeCallback($clientSock);
             } catch (\Exception $e) {
@@ -606,7 +592,7 @@ class HttpServer {
                 
                 $this->logUserlandError($e, $serverName, $requestUri);
             }
-        } elseif ($shouldClose) {
+        } elseif ($this->shouldCloseAfterResponse($asgiEnv, $asgiResponse)) {
             $this->close($client);
         } else {
             $client->shift();
@@ -629,6 +615,27 @@ class HttpServer {
         } else {
             return FALSE;
         }
+    }
+    
+    private function doAfterResponseMods($hostId, $requestId) {
+        if (!isset($this->afterResponseMods[$hostId])) {
+            return;
+        }
+        
+        $this->insideAfterResponseModLoop = TRUE;
+        
+        foreach ($this->afterResponseMods[$hostId] as $mod) {
+            try {
+                $mod->afterResponse($this, $requestId);
+            } catch (\Exception $e) {
+                $serverName = $asgiEnv['SERVER_NAME'];
+                $requestUri = $asgiEnv['REQUEST_URI'];
+                
+                $this->logUserlandError($e, $serverName, $requestUri);
+            }
+        }
+        
+        $this->insideAfterResponseModLoop = FALSE;
     }
     
     private function sever(ClientSession $client) {
@@ -703,6 +710,10 @@ class HttpServer {
     function setResponse($requestId, array $asgiResponse) {
         if (!isset($this->requestIdClientMap[$requestId])) {
             return;
+        } elseif ($this->insideAfterResponseModLoop) {
+            throw new \LogicException(
+                'Cannot modify response; message already sent'
+            );
         }
         
         $client = $this->requestIdClientMap[$requestId];
@@ -796,17 +807,16 @@ class HttpServer {
         
         $hasContentLength = isset($headers['CONTENT-LENGTH']);
         
-        if (!$hasBody && $status >= 200 && !$hasContentLength) {
+        if (!$hasBody && $status >= Status::OK && !$hasContentLength) {
             $headers['CONTENT-LENGTH'] = 0;
         }
         
         $isChunked = isset($headers['TRANSFER-ENCODING']) && !strcasecmp($headers['TRANSFER-ENCODING'], 'chunked');
         $isIterator = ($body instanceof \Iterator && !$body instanceof Http\MultiPartByteRangeBody);
         
-        $protocol = $asgiEnv['SERVER_PROTOCOL'];
-        $protocol = ($protocol == self::PROTOCOL_V10 || $protocol == self::PROTOCOL_V11)
-            ? $protocol
-            : self::PROTOCOL_V10;
+        $protocol = ($asgiEnv['SERVER_PROTOCOL'] == self::UNKNOWN)
+            ? self::PROTOCOL_V10
+            : $asgiEnv['SERVER_PROTOCOL'];
         
         if ($hasBody && !$hasContentLength && is_string($body)) {
             $headers['CONTENT-LENGTH'] = strlen($body);
@@ -860,11 +870,11 @@ class HttpServer {
         if (isset($asgiResponse[4]) && is_callable($asgiResponse[4])) {
             return $asgiResponse;
         } else {
-            $status = 500;
-            $reason = 'Internal Server Error';
-            $body = '<html><body><h1>500 Internal Server Error</h1></body></html>';
+            $status = Status::INTERNAL_SERVER_ERROR;
+            $reason = Reasons::HTTP_505;
+            $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
             $headers = [
-                'Content-Type' => 'text/html',
+                'Content-Type' => 'text/html; charset=iso-8859-1',
                 'Content-Length' => strlen($body),
                 'Connection' => 'close'
             ];
@@ -875,7 +885,9 @@ class HttpServer {
     
     function getResponse($requestId) {
         if (!isset($this->requestIdClientMap[$requestId])) {
-            throw new \DomainException;
+            throw new \DomainException(
+                'Request ID does not exist: ' . $requestId
+            );
         }
         
         $client = $this->requestIdClientMap[$requestId];
@@ -900,7 +912,7 @@ class HttpServer {
             return $client->getRequest($requestId);
         } else {
             throw new \DomainException(
-                "Request ID $requestId does not exist"
+                'Request ID does not exist: ' . $requestId
             );
         }
     }
@@ -991,7 +1003,7 @@ class HttpServer {
     
     private function setDontCombineHeaders(array $noCombine) {
         $this->dontCombineHeaders = $noCombine
-            ? array_map(function() { return 1; }, array_flip(array_map('strtoupper', $noCombine)))
+            ? array_map(function() { return 1; }, array_change_key_case(array_flip($noCombine)))
             : [];
     }
     
