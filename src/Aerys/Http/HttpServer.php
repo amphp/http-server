@@ -1003,10 +1003,12 @@ class HttpServer {
         $this->disableKeepAlive = (bool) $boolFlag;
     }
     
-    private function setDontCombineHeaders(array $noCombine) {
-        $this->dontCombineHeaders = $noCombine
-            ? array_map(function() { return 1; }, array_change_key_case(array_flip($noCombine)))
-            : [];
+    private function setDontCombineHeaders(array $headers) {
+        if ($headers) {
+            $headers = array_change_key_case(array_flip($headers), CASE_UPPER);
+        }
+        
+        $this->dontCombineHeaders = $headers ? array_map(function() { return 1; }, $noCombine) : [];
     }
     
     private function setNormalizeMethodCase($boolFlag) {
