@@ -4,8 +4,6 @@ namespace Aerys\Http;
 
 class Host {
     
-    const WILDCARD = '*';
-    
     private $interface;
     private $port;
     private $name;
@@ -28,10 +26,6 @@ class Host {
     
     function getInterface() {
         return $this->interface;
-    }
-    
-    function hasWildcardInterface() {
-        return ($this->interface == self::WILDCARD);
     }
     
     function getInterfaceId() {
