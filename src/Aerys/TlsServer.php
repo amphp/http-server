@@ -6,7 +6,7 @@ use Aerys\Engine\EventBase;
 
 class TlsServer extends Server {
     
-    private $eventBase;
+    private $engine;
     private $clientsPendingHandshake = [];
     private $pendingClientCount = 0;
     private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER;
@@ -20,10 +20,10 @@ class TlsServer extends Server {
         'disable_compression' => TRUE
     ];
     
-    function __construct(EventBase $eventBase, $interface, $port, $localCert, $passphrase) {
-        parent::__construct($eventBase, $interface, $port);
+    final function __construct(EventBase $engine, $interface, $port, $localCert, $passphrase) {
+        parent::__construct($engine, $interface, $port);
         
-        $this->eventBase = $eventBase;
+        $this->engine = $engine;
         $this->context['local_cert'] = $localCert;
         $this->context['passphrase'] = $passphrase;
     }
@@ -54,7 +54,7 @@ class TlsServer extends Server {
         while ($clientSock = @stream_socket_accept($socket, 0, $peerName)) {
             stream_context_set_option($clientSock, ['ssl' => $this->context]);
             
-            $onReadable = $this->eventBase->onReadable($clientSock, function ($clientSock, $trigger) {
+            $onReadable = $this->engine->onReadable($clientSock, function ($clientSock, $trigger) {
                 $this->doHandshake($clientSock, $trigger);
             }, $this->handshakeTimeout * 1000000);
             

@@ -6,7 +6,7 @@ use Aerys\Engine\EventBase;
 
 class Server {
     
-    private $eventBase;
+    private $engine;
     private $interface;
     private $port;
     private $socket;
@@ -14,8 +14,8 @@ class Server {
     
     private $isBound = FALSE;
     
-    function __construct(EventBase $eventBase, $interface, $port) {
-        $this->eventBase = $eventBase;
+    function __construct(EventBase $engine, $interface, $port) {
+        $this->engine = $engine;
         $this->setInterface($interface);
         $this->port = (int) $port;
     }
@@ -25,11 +25,19 @@ class Server {
             $this->interface = $interface;
         } else {
             throw new \InvalidArgumentException(
-                'Invalid server interface IP'
+                'Invalid server interface address'
             );
         }
     }
     
+    /**
+     * Listen on the defined INTERFACE:PORT, invoking the supplied callable on new connections
+     * 
+     * Applications must start the event engine separately.
+     * 
+     * @param callable $onClient The callable to invoke when new connections are established
+     * @return void
+     */
     final function bind(callable $onClient) {
         if ($this->isBound) {
             return;
@@ -41,7 +49,7 @@ class Server {
         if ($socket = stream_socket_server($bindOn, $errNo, $errStr, $flags)) {
             stream_set_blocking($socket, FALSE);
             $this->socket = $socket;
-            $this->acceptSubscription = $this->eventBase->onReadable($socket, function($socket) use ($onClient) {
+            $this->acceptSubscription = $this->engine->onReadable($socket, function($socket) use ($onClient) {
                 $this->accept($socket, $onClient);
             });
             $this->isBound = TRUE;
@@ -91,10 +99,16 @@ class Server {
         }
     }
     
+    /**
+     * Retrieve the server's interface address
+     */
     final function getInterface() {
         return $this->interface;
     }
     
+    /**
+     * Retrieve the port on which the server listens
+     */
     final function getPort() {
         return $this->port;
     }
