@@ -42,14 +42,20 @@ class SendFile implements BeforeResponseMod {
         
         $filePath = '/' . ltrim($originalHeaders['X-SENDFILE'], '/\\');
         
-        // prevent the X-SENDFILE from showing up in the final response
-        unset($originalHeaders['X-SENDFILE']);
+        // Prevent the X-SENDFILE header from showing up in the final response. We also need to
+        // zap pre-existing Content-Length headers so they don't override our new one; all other
+        // headers will override the filesystem response's values.
+        unset(
+            $originalHeaders['X-SENDFILE'],
+            $originalHeaders['CONTENT-LENGTH']
+        );
         
         $asgiEnv = $server->getRequest($requestId);
-        $filesysResponse = $this->filesys->__invoke($asgiEnv, $requestId, $filePath);
+        $asgiEnv['PATH_INFO'] = '';
+        $asgiEnv['SCRIPT_NAME'] = $filePath;
         
-        $filesysHeaders = $filesysResponse[2];
-        $filesysHeaders = array_combine(array_map('strtoupper', array_keys($filesysHeaders)), $filesysHeaders);
+        $filesysResponse = $this->filesys->__invoke($asgiEnv, $requestId);
+        $filesysHeaders = array_change_key_case($filesysResponse[2], CASE_UPPER);
         $filesysResponse[2] = array_merge($filesysHeaders, $originalHeaders);
         
         $server->setResponse($requestId, $filesysResponse);

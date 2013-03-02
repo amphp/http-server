@@ -70,14 +70,9 @@ class Filesys implements Handler {
         $this->charset = $charset;
     }
     
-    function __invoke(array $asgiEnv, $requestId, $xSendFile = NULL) {
-        if (NULL === $xSendFile) {
-            $requestUri = ($asgiEnv['PATH_INFO'] . $asgiEnv['SCRIPT_NAME']) ?: '/';
-            $filePath = $this->docRoot . $requestUri;
-        } else {
-            $filePath = $this->docRoot . $xSendFile;
-        }
-        
+    function __invoke(array $asgiEnv, $requestId) {
+        $requestUri = ($asgiEnv['PATH_INFO'] . $asgiEnv['SCRIPT_NAME']) ?: '/';
+        $filePath = $this->docRoot . $requestUri;
         $fileExists = file_exists($filePath);
         
         // The `strpos` check is important to prevent access to files outside the docRoot when 

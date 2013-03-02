@@ -595,7 +595,7 @@ class HttpServer {
             $clientSock = $this->export($client);
             
             try {
-                $upgradeCallback($clientSock);
+                $upgradeCallback($clientSock, $asgiEnv);
             } catch (\Exception $e) {
                 $serverName = $asgiEnv['SERVER_NAME'];
                 $requestUri = $asgiEnv['REQUEST_URI'];
@@ -762,7 +762,6 @@ class HttpServer {
         $clientId = $client->getId();
         $queuedResponseCount = $client->enqueueResponsesForWrite();
         $responseWriteCompleted = $client->write();
-        
         
         if ($responseWriteCompleted && $queuedResponseCount == 1) {
             unset($this->clientsRequiringWrite[$clientId]);
