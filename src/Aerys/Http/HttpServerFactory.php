@@ -24,9 +24,9 @@ class HttpServerFactory {
     ];
     
     function createServer(array $config) {
-        list($opts, $tls, $globalMods, $hostConf) = $this->listConfigSections($config);
+        list($engine, $opts, $tls, $globalMods, $hostConf) = $this->listConfigSections($config);
         
-        $eventBase = $this->selectEventBase();
+        $engine = $engine ?: $this->selectEventBase();
         
         $socketServers = [];
         $hosts = [];
@@ -38,7 +38,7 @@ class HttpServerFactory {
             $port = substr($interfaceId, $portStartPos + 1);
             
             $server = new TlsServer(
-                $eventBase,
+                $engine,
                 $interface,
                 $port,
                 $tlsArr['localCertFile'],
@@ -69,11 +69,11 @@ class HttpServerFactory {
             $interfaceId = $interface . ':' . $port;
             
             if (!isset($socketServers[$interfaceId])) {
-                $socketServers[$interfaceId] = new Server($eventBase, $interface, $port);
+                $socketServers[$interfaceId] = new Server($engine, $interface, $port);
             }
         }
         
-        $httpServer = new HttpServer($eventBase, $socketServers, $hosts);
+        $httpServer = new HttpServer($engine, $socketServers, $hosts);
         
         foreach ($opts as $key => $value) {
             $httpServer->setOption($key, $value);
@@ -84,7 +84,7 @@ class HttpServerFactory {
         foreach ($hosts as $host) {
             $handler = $host->getHandler();
             if ($handler instanceof InitHandler) {
-                $handler->init($httpServer, $eventBase);
+                $handler->init($httpServer, $engine);
             }
         }
         
@@ -94,8 +94,11 @@ class HttpServerFactory {
     }
     
     private function listConfigSections(array $config) {
-        $opts = $tls = $mods = $hosts = [];
+        $engine = $opts = $tls = $mods = $hosts = [];
         
+        if (isset($config['globals']['engine'])) {
+            $engine = $config['globals']['engine'];
+        }
         if (isset($config['globals']['opts'])) {
             $opts = $config['globals']['opts'];
         }
@@ -108,9 +111,9 @@ class HttpServerFactory {
         
         unset($config['globals']);
         
-        // Anything left in the config array should be a host definition
+        $hosts = $config;
         
-        return [$opts, $tls, $mods, $config];
+        return [$engine, $opts, $tls, $mods, $hosts];
     }
     
     /**
