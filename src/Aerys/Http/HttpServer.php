@@ -133,11 +133,11 @@ class HttpServer {
                 $listeningOn = $server->getInterface() . ':' . $server->getPort();
                 echo 'Server listening on ', $listeningOn, PHP_EOL;
             }
-            
+            /*
             $diagnostics = $this->engine->repeat(1000000, function() {
                 echo time(), ' (', $this->cachedClientCount, ")\n";
             });
-            
+            */
             $this->engine->repeat(20000, function() {
                 $this->write();
             });
@@ -775,6 +775,7 @@ class HttpServer {
     
     private function normalizeResponse(array $asgiEnv, array $asgiResponse) {
         list($status, $reason, $headers, $body) = $asgiResponse;
+        $exportCallback = isset($asgiResponse[4]) ? $asgiResponse[4] : NULL;
         
         if ($headers) {
             $headers = array_change_key_case($headers, CASE_UPPER);
@@ -844,7 +845,9 @@ class HttpServer {
             $headers['SERVER'] = self::SERVER_SOFTWARE . '/' . self::SERVER_VERSION;
         }
         
-        return [$status, $reason, $headers, $body];
+        return $exportCallback
+            ? [$status, $reason, $headers, $body, $exportCallback]
+            : [$status, $reason, $headers, $body];
     }
     
     private function doBeforeResponseMods($hostId, $requestId) {
@@ -880,7 +883,7 @@ class HttpServer {
             return $asgiResponse;
         } else {
             $status = Status::INTERNAL_SERVER_ERROR;
-            $reason = Reasons::HTTP_505;
+            $reason = Reasons::HTTP_500;
             $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
             $headers = [
                 'Content-Type' => 'text/html; charset=iso-8859-1',
