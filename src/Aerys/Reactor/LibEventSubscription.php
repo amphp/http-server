@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Engine;
+namespace Aerys\Reactor;
 
 class LibEventSubscription implements Subscription {
     
@@ -9,7 +9,7 @@ class LibEventSubscription implements Subscription {
     private $interval;
     private $status = self::ENABLED;
     
-    function __construct(LibEventBase $base, $event, $interval) {
+    function __construct(LibEventReactor $base, $event, $interval) {
         $this->base = $base;
         $this->event = $event;
         $this->interval = $interval;

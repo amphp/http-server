@@ -4,11 +4,14 @@ namespace Aerys\Http\Mods;
 
 use Aerys\Http\HttpServer;
 
-class ErrorPages implements BeforeResponseMod {
+class ModErrorPages implements BeforeResponseMod {
     
+    private $httpServer;
     private $errorPages;
     
-    function configure(array $config) {
+    function __construct(HttpServer $httpServer, array $config) {
+        $this->httpServer = $httpServer;
+        
         foreach ($config as $statusCode => $pageAndContentType) {
             $filePath = $pageAndContentType[0];
             $contentType = isset($pageAndContentType[1]) ? $pageAndContentType[1] : NULL;
@@ -25,8 +28,8 @@ class ErrorPages implements BeforeResponseMod {
         }
     }
     
-    function beforeResponse(HttpServer $server, $requestId) {
-        list($status, $reason, $headers, $body) = $server->getResponse($requestId);
+    function beforeResponse($requestId) {
+        list($status, $reason, $headers, $body) = $this->httpServer->getResponse($requestId);
         
         if ($status >= 400 && isset($this->errorPages[$status])) {
             list($body, $contentLength, $contentType) = $this->errorPages[$status];
@@ -35,7 +38,7 @@ class ErrorPages implements BeforeResponseMod {
                 $headers['CONTENT-TYPE'] = $contentType;
             }
             
-            $server->setResponse($requestId, [$status, $reason, $headers, $body]);
+            $this->httpServer->setResponse($requestId, [$status, $reason, $headers, $body]);
         }
     }
 }

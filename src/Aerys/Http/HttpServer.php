@@ -3,19 +3,17 @@
 namespace Aerys\Http;
 
 use Aerys\Server,
-    Aerys\Engine\EventBase,
+    Aerys\Reactor\Reactor,
     Aerys\Http\Io\RequestParser,
     Aerys\Http\Io\MessageWriter,
     Aerys\Http\Io\TempEntityWriter,
     Aerys\Http\Io\ParseException,
     Aerys\Http\Io\ResourceException,
-    Aerys\Http\Io\BodyWriterFactory,
-    Aerys\Http\Mods\Mod;
+    Aerys\Http\Io\BodyWriterFactory;
 
 class HttpServer {
     
-    const SERVER_SOFTWARE = 'Aerys';
-    const SERVER_VERSION = '0.0.1';
+    const SERVER_SOFTWARE = 'Aerys/0.0.1';
     const MICROSECOND_TICKS = 1000000;
     const HTTP_DATE = 'D, d M Y H:i:s T';
     const OPTIONS = 'OPTIONS';
@@ -30,8 +28,8 @@ class HttpServer {
     const PROTOCOL_V10 = '1.0';
     const PROTOCOL_V11 = '1.1';
     
-    private $engine;
-    private $servers = [];
+    private $reactor;
+    private $servers;
     private $hosts = [];
     private $bodyWriterFactory;
     private $errorStream = STDERR;
@@ -80,41 +78,20 @@ class HttpServer {
         self::DELETE  => 1
     ];
     
-    function __construct(EventBase $engine, array $servers, array $hosts, BodyWriterFactory $bwf = NULL) {
-        $this->engine = $engine;
-        $this->setServers($servers);
-        $this->setHosts($hosts);
+    function __construct(Reactor $reactor, BodyWriterFactory $bwf = NULL) {
+        $this->reactor = $reactor;
+        $this->servers = new \SplObjectStorage;
         $this->bodyWriterFactory = $bwf ?: new BodyWriterFactory;
-        
         $this->tempEntityDir = sys_get_temp_dir();
     }
     
-    private function setServers(array $servers) {
-        if (empty($servers)) {
-            throw new \InvalidArgumentException;
-        }
-        
-        foreach ($servers as $server) {
-            if (!$server instanceof Server) {
-                throw new \InvalidArgumentException;
-            }
-        }
-        
-        $this->servers = $servers;
+    function addServer(Server $server) {
+        $this->servers->attach($server);
     }
     
-    private function setHosts(array $hosts) {
-        if (empty($hosts)) {
-            throw new \InvalidArgumentException;
-        }
-        
-        foreach ($hosts as $host) {
-            if (!$host instanceof Host) {
-                throw new \InvalidArgumentException;
-            }
-        }
-        
-        $this->hosts = $hosts;
+    function addHost(Host $host) {
+        $hostId = $host->getId();
+        $this->hosts[$hostId] = $host;
     }
     
     function listen() {
@@ -134,19 +111,19 @@ class HttpServer {
                 echo 'Server listening on ', $listeningOn, PHP_EOL;
             }
             /*
-            $diagnostics = $this->engine->repeat(1000000, function() {
+            $diagnostics = $this->reactor->repeat(1000000, function() {
                 echo time(), ' (', $this->cachedClientCount, ")\n";
             });
             */
-            $this->engine->repeat(20000, function() {
+            $this->reactor->repeat(20000, function() {
                 $this->write();
             });
             
-            $this->engine->repeat(self::MICROSECOND_TICKS, function() {
+            $this->reactor->repeat(self::MICROSECOND_TICKS, function() {
                 $this->gracefulClose();
             });
             
-            $this->engine->run();
+            $this->reactor->run();
         }
     }
     
@@ -159,7 +136,7 @@ class HttpServer {
             $server->stop();
         }
         
-        $this->engine->stop();
+        $this->reactor->stop();
         
         if ($this->errorStream !== STDERR) {
             fclose($this->errorStream);
@@ -213,7 +190,7 @@ class HttpServer {
         $clientId = $client->getId();
         $this->clients[$clientId] = $client;
         
-        $this->readSubscriptions[$clientId] = $this->engine->onReadable($clientSock,
+        $this->readSubscriptions[$clientId] = $this->reactor->onReadable($clientSock,
             function ($clientSock, $trigger) use ($client) {
                 $this->onReadable($trigger, $client);
             },
@@ -232,7 +209,7 @@ class HttpServer {
     }
     
     private function onReadable($triggeredBy, ClientSession $client) {
-        if ($triggeredBy == EventBase::TIMEOUT) {
+        if ($triggeredBy == Reactor::TIMEOUT) {
             return $this->handleReadTimeout($client);
         }
         
@@ -448,7 +425,7 @@ class HttpServer {
         
         foreach ($this->onRequestMods[$hostId] as $mod) {
             try {
-                $mod->onRequest($this, $requestId);
+                $mod->onRequest($requestId);
             } catch (\Exception $e) {
                 $asgiEnv = $this->getRequest($requestId);
                 $serverName = $asgiEnv['SERVER_NAME'];
@@ -636,7 +613,7 @@ class HttpServer {
         
         foreach ($this->afterResponseMods[$hostId] as $mod) {
             try {
-                $mod->afterResponse($this, $requestId);
+                $mod->afterResponse($requestId);
             } catch (\Exception $e) {
                 $serverName = $asgiEnv['SERVER_NAME'];
                 $requestUri = $asgiEnv['REQUEST_URI'];
@@ -842,7 +819,7 @@ class HttpServer {
         }
         
         if ($this->sendServerToken) {
-            $headers['SERVER'] = self::SERVER_SOFTWARE . '/' . self::SERVER_VERSION;
+            $headers['SERVER'] = self::SERVER_SOFTWARE;
         }
         
         return $exportCallback
@@ -861,7 +838,7 @@ class HttpServer {
         
         foreach ($this->beforeResponseMods[$hostId] as $mod) {
             try {
-                $mod->beforeResponse($this, $requestId);
+                $mod->beforeResponse($requestId);
             } catch (\Exception $e) {
                 $asgiEnv = $this->getRequest($requestId);
                 $serverName = $asgiEnv['SERVER_NAME'];
@@ -915,7 +892,9 @@ class HttpServer {
     
     function getRequest($requestId) {
         if (!isset($this->requestIdClientMap[$requestId])) {
-            throw new \DomainException;
+            throw new \DomainException(
+                'Request ID does not exist: ' . $requestId
+            );
         }
         
         $client = $this->requestIdClientMap[$requestId];
@@ -1057,10 +1036,10 @@ class HttpServer {
         }
     }
     
-    function registerMod($hostId, Mod $mod) {
+    function registerMod($hostId, $mod) {
         if (!isset($this->hosts[$hostId])) {
             throw new \DomainException(
-                'Mod $hostId doesn\'t exist: ' . $hostId
+                "Mod Host ID doesn't exist: " . $hostId
             );
         }
         

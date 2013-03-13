@@ -5,36 +5,18 @@ namespace Aerys\Http\Mods;
 use Aerys\Http\HttpServer,
     Aerys\Http\Filesys;
 
-class SendFile implements BeforeResponseMod {
+class ModSendFile implements BeforeResponseMod {
     
+    private $httpServer;
     private $filesys;
     
-    function __construct(Filesys $filesys = NULL) {
-        $this->filesys = $filesys ?: new Filesys;
+    function __construct(HttpServer $httpServer, Filesys $filesys) {
+        $this->httpServer = $httpServer;
+        $this->filesys = $filesys;
     }
     
-    function configure(array $config) {
-        if (isset($config['docRoot'])) {
-            $this->filesys->setDocRoot($config['docRoot']);
-        } else {
-            throw new \RuntimeException(
-                'mod.sendfile requires a document root specification'
-            );
-        }
-        
-        if (isset($config['staleAfter'])) {
-            $this->filesys->setStaleAfter($config['staleAfter']);
-        }
-        if (isset($config['types'])) {
-            $this->filesys->setTypes($config['types']);
-        }
-        if (isset($config['eTagMode'])) {
-            $this->filesys->setEtagMode($config['eTagMode']);
-        }
-    }
-    
-    function beforeResponse(HttpServer $server, $requestId) {
-        $originalHeaders = $server->getResponse($requestId)[2];
+    function beforeResponse($requestId) {
+        $originalHeaders = $this->httpServer->getResponse($requestId)[2];
         
         if (empty($originalHeaders['X-SENDFILE'])) {
             return;
@@ -50,7 +32,7 @@ class SendFile implements BeforeResponseMod {
             $originalHeaders['CONTENT-LENGTH']
         );
         
-        $asgiEnv = $server->getRequest($requestId);
+        $asgiEnv = $this->httpServer->getRequest($requestId);
         $asgiEnv['PATH_INFO'] = '';
         $asgiEnv['SCRIPT_NAME'] = $filePath;
         
@@ -58,7 +40,7 @@ class SendFile implements BeforeResponseMod {
         $filesysHeaders = array_change_key_case($filesysResponse[2], CASE_UPPER);
         $filesysResponse[2] = array_merge($filesysHeaders, $originalHeaders);
         
-        $server->setResponse($requestId, $filesysResponse);
+        $this->httpServer->setResponse($requestId, $filesysResponse);
     }
     
 }

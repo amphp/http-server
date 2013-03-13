@@ -42,19 +42,16 @@ use Aerys\Http\HttpServer;
  * ]
  * ```
  */
-class Expect implements OnRequestMod {
+class ModExpect implements OnRequestMod {
     
+    private $httpServer;
     private $callbacks = [];
     private static $response100 = [100, 'Continue', [], NULL];
     private static $response417 = [417, 'Expectation Failed', [], NULL];
     
-    /**
-     * Invoked at server instantiation with the relevant host's `mod.expect` configuration
-     * 
-     * @param array $config The mod.expect configuration array
-     * @return void
-     */
-    function configure(array $config) {
+    function __construct(HttpServer $httpServer, array $config) {
+        $this->httpServer = $httpServer;
+        
         if (empty($config)) {
             throw new \DomainException(
                 'No rate expectation validation callbacks specified'
@@ -75,12 +72,11 @@ class Expect implements OnRequestMod {
     /**
      * Assigns an appropriate response for requests providing a 100-continue expectation
      * 
-     * @param \Aerys\HttpServer $server
      * @param int $requestId
      * @return void
      */
-    function onRequest(HttpServer $server, $requestId) {
-        $asgiEnv = $server->getRequest($requestId);
+    function onRequest($requestId) {
+        $asgiEnv = $this->httpServer->getRequest($requestId);
         
         if (!isset($asgiEnv['HTTP_EXPECT'])) {
             return;
@@ -96,15 +92,15 @@ class Expect implements OnRequestMod {
         }
         
         if (!isset($this->callbacks[$requestUri])) {
-            return $server->setResponse($requestId, self::$response100);
+            return $this->httpServer->setResponse($requestId, self::$response100);
         }
         
         $userCallback = $this->callbacks[$requestUri];
         
         if ($userCallback($asgiEnv)) {
-            $server->setResponse($requestId, self::$response100);
+            $this->httpServer->setResponse($requestId, self::$response100);
         } else {
-            $server->setResponse($requestId, self::$response417);
+            $this->httpServer->setResponse($requestId, self::$response417);
         }
     }
     

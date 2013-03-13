@@ -1,14 +1,15 @@
 <?php
 
-use Aerys\Http\HttpServerFactory;
+use Aerys\Http\Config\ServerConfigurator;
 
 date_default_timezone_set('GMT');
 
 require dirname(__DIR__) . '/autoload.php';
 
-$handler = function(array $asgiEnv, $requestId) {
-    return [200, 'OK', [], '<html><body><h1>Hello, world.</h1>1234567890123456789012345678901</body></html>'];
-    /*
+
+$myApp = function(array $asgiEnv, $requestId) {
+    //return [200, 'OK', [], '<html><body><h1>Hello, world.</h1>1234567890123456789012345678901</body></html>'];
+    
     if (!$asgiEnv['ASGI_LAST_CHANCE']) {
         return [100, 'Continue Bitch', [], NULL];
         return NULL;
@@ -24,7 +25,7 @@ $handler = function(array $asgiEnv, $requestId) {
     } else {
         return [200, 'OK', [], '<html><body><h1>Hello, world.</h1></body></html>'];
     }
-    */
+    
 };
 
 $config = [
@@ -46,7 +47,7 @@ $config = [
             'errorLogFile'              => NULL,
             'handleBeforeBody'          => FALSE,
             'normalizeMethodCase'       => TRUE,
-            //'defaultHosts'              => ['127.0.0.1:1337' => 'aerys:1337'],
+            'defaultHosts'              => ['127.0.0.1:1337' => 'aerys:1337'],
             'dontCombineHeaders'        => ['Set-Cookie'],
             'allowedMethods'            => [
                 'GET',
@@ -69,46 +70,46 @@ $config = [
         'mods'  => [
             // Any mod you want applied to all hosts should be specified here.
             // If a mod exists with the same key in a host config block it will
-            // override the global instance specified here.
+            // override the global setting specified here.
         ]
         */
     ],
     
     // --- ALL OTHER KEYS ARE CONSIDERED HOST CONTAINERS ---
     /*
-    'myHost.secure' => [
-        'listen'    => '127.0.0.1:1500', // <-- we specified a TLS definition in the "globals" section
-        'name'      => 'aerys', // <--- optional
-        'handler'   => $handler
+    'myHost.secure'     => [
+        'listenOn'      => '127.0.0.1:1443', // <-- we specified a TLS definition in the "globals" section
+        'name'          => 'aerys', // <--- optional
+        'application'   => $handler
     ],
     */
     
     /*
-    'myHost.static' => [
-        'listen'    => '127.0.0.1:1337', // <-- we specified a TLS definition in the "globals" section
-        'name'      => 'static.aerys',
-        'handler'   => new Aerys\Http\Filesys(__DIR__ . '/www')
+    'myHost.static'     => [
+        'listenOn'      => '127.0.0.1:1337', // <-- we specified a TLS definition in the "globals" section
+        'name'          => 'static.aerys',
+        'application'   => new Aerys\Http\Filesys(__DIR__ . '/www')
     ],
     */
     
-    'myHost.insecure' => [
-        'listen'    => '127.0.0.1:1337',
-        //'name'      => 'aerys', // <-- optional, defaults to 127.0.0.1
-        'handler'   => $handler,
-        'mods'      => [
-            /*
+    'myHost.insecure'   => [
+        'listenOn'      => '127.0.0.1:1337',
+        'name'          => 'aerys',
+        'application'   => $myApp,
+        'mods'          => [
+            
             'mod.log'   =>  [
                 'logs' => [
                     'php://stdout' => 'common'
                 ]
             ],
-            
+            /*
             'mod.limit' => [
-                'ipProxyHeader' => NULL, // use this header's value as the ip if available (helpful behind proxies)
-                'onLimitCmd' => NULL,
-                'onLimitCallback' => NULL,
-                'limits' => [
-                    60 => 10, // send a 429 if client has made > 200 requests in the past 60 seconds
+                'ipProxyHeader'     => NULL, // use this header's value as the ip if available (helpful behind proxies)
+                'onLimitCmd'        => NULL,
+                'onLimitCallback'   => NULL,
+                'limits'            => [
+                    60 => 90, // send a 429 if client has made > 90 requests in the past 60 seconds
                 ]
             ],
             
@@ -116,12 +117,13 @@ $config = [
                 404 => [__DIR__ .'/errorpages/404.html', 'text/html; charset=utf-8'],
             ],
             
-            // All sendfile keys are optional; these are the defaults:
             'mod.sendfile' => [
-                'docRoot' => '/',
-                'staleAfter' => 60,
-                'types' => [],
-                'eTagMode' => Aerys\Http\Filesys::ETAG_ALL
+                'docRoot'               => '/',
+                'indexes'               => ['index.html', 'index.htm'],
+                'eTagMode'              => Aerys\Http\Filesys::ETAG_ALL,
+                'staleAfter'            => 300,
+                'customMimeTypes'       => [],
+                'defaultTextCharset'    => 'utf-8'
             ],
             
             'mod.expect' => [
@@ -133,12 +135,11 @@ $config = [
             
             // @todo mod.redirect
             // @todo mod.rewrite
-            // @todo mod.block
         ]
     ]
 ];
 
-$server = (new HttpServerFactory)->createServer($config)->listen();
+$server = (new ServerConfigurator)->createServer($config)->listen();
 
 
 

@@ -25,9 +25,9 @@
  * @TODO Select appropriate event base by system lib availability
  */
 
-use Aerys\Engine\LibEventBase,
-    Aerys\Apm\Message,
-    Aerys\Apm\MessageParser;
+use Aerys\Apm\Message,
+    Aerys\Apm\MessageParser,
+    Aerys\Reactor\ReactorFactory;
 
 require __DIR__ . '/autoload.php';
 
@@ -136,11 +136,11 @@ $inputParser = (new MessageParser)->setOnMessageCallback(function(array $msg) us
     echo pack(Message::HEADER_PACK_PATTERN, APM_VERSION, $type, $requestId, $length), $body;
 });
 
-$eventBase = new LibEventBase;
-$eventBase->onReadable(STDIN, function() use ($inputParser) {
+$reactor = (new ReactorFactory)->select();
+$reactor->onReadable(STDIN, function() use ($inputParser) {
     $input = fread(STDIN, 8192);
     $inputParser->parse($input);
 }, READ_TIMEOUT);
 
-$eventBase->run();
+$reactor->run();
 

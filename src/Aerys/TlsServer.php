@@ -2,11 +2,11 @@
 
 namespace Aerys;
 
-use Aerys\Engine\EventBase;
+use Aerys\Reactor\Reactor;
 
 class TlsServer extends Server {
     
-    private $engine;
+    private $reactor;
     private $clientsPendingHandshake = [];
     private $pendingClientCount = 0;
     private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER;
@@ -20,10 +20,10 @@ class TlsServer extends Server {
         'disable_compression' => TRUE
     ];
     
-    final function __construct(EventBase $engine, $interface, $port, $localCert, $passphrase) {
-        parent::__construct($engine, $interface, $port);
+    final function __construct(Reactor $reactor, $interface, $port, $localCert, $passphrase) {
+        parent::__construct($reactor, $interface, $port);
         
-        $this->engine = $engine;
+        $this->reactor = $reactor;
         $this->context['local_cert'] = $localCert;
         $this->context['passphrase'] = $passphrase;
     }
@@ -54,7 +54,7 @@ class TlsServer extends Server {
         while ($clientSock = @stream_socket_accept($socket, 0, $peerName)) {
             stream_context_set_option($clientSock, ['ssl' => $this->context]);
             
-            $onReadable = $this->engine->onReadable($clientSock, function ($clientSock, $trigger) {
+            $onReadable = $this->reactor->onReadable($clientSock, function ($clientSock, $trigger) {
                 $this->doHandshake($clientSock, $trigger);
             }, $this->handshakeTimeout * 1000000);
             
@@ -70,7 +70,7 @@ class TlsServer extends Server {
      * zero integer value is returned when the handshake is still pending.
      */
     private function doHandshake($clientSock, $trigger) {
-        if ($trigger == EventBase::TIMEOUT) {
+        if ($trigger == Reactor::TIMEOUT) {
             $this->failConnectionAttempt($clientSock);
         } elseif ($cryptoResult = @stream_socket_enable_crypto($clientSock, TRUE, $this->cryptoType)) {
             $clientId = (int) $clientSock;

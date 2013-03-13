@@ -1,28 +1,31 @@
 <?php
 
-namespace Aerys\Engine;
+namespace Aerys\Reactor;
 
-class LibEventBase implements EventBase {
-    
-    const RESOLUTION = 1000000;
+class LibEventReactor implements Reactor {
     
     private $base;
     private $subscriptions;
     private $garbage = [];
     private $garbageCollectionInterval;
+    private $resolution = 1000000;
     
     function __construct($gcInterval = NULL) {
         $this->base = event_base_new();
         $this->subscriptions = new \SplObjectStorage;
         
         $this->garbageCollectionInterval = $gcInterval
-            ? $gcInterval * self::RESOLUTION
-            : 2 * self::RESOLUTION;
+            ? $gcInterval * $this->resolution
+            : 2 * $this->resolution;
         
         $garbageEvent = event_new();
         event_timer_set($garbageEvent, [$this, 'collectGarbage'], $garbageEvent);
         event_base_set($garbageEvent, $this->base);
         event_add($garbageEvent, $this->garbageCollectionInterval);
+    }
+    
+    function getResolution() {
+        return $this->resolution;
     }
     
     function tick() {

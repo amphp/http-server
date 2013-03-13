@@ -2,11 +2,11 @@
 
 namespace Aerys;
 
-use Aerys\Engine\EventBase;
+use Aerys\Reactor\Reactor;
 
 class Server {
     
-    private $engine;
+    private $reactor;
     private $interface;
     private $port;
     private $socket;
@@ -14,8 +14,8 @@ class Server {
     
     private $isBound = FALSE;
     
-    function __construct(EventBase $engine, $interface, $port) {
-        $this->engine = $engine;
+    function __construct(Reactor $reactor, $interface, $port) {
+        $this->reactor = $reactor;
         $this->setInterface($interface);
         $this->port = (int) $port;
     }
@@ -33,7 +33,7 @@ class Server {
     /**
      * Listen on the defined INTERFACE:PORT, invoking the supplied callable on new connections
      * 
-     * Applications must start the event engine separately.
+     * Applications must start the event reactor separately.
      * 
      * @param callable $onClient The callable to invoke when new connections are established
      * @return void
@@ -49,7 +49,7 @@ class Server {
         if ($socket = stream_socket_server($bindOn, $errNo, $errStr, $flags)) {
             stream_set_blocking($socket, FALSE);
             $this->socket = $socket;
-            $this->acceptSubscription = $this->engine->onReadable($socket, function($socket) use ($onClient) {
+            $this->acceptSubscription = $this->reactor->onReadable($socket, function($socket) use ($onClient) {
                 $this->accept($socket, $onClient);
             });
             $this->isBound = TRUE;

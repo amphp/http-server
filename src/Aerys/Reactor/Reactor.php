@@ -1,8 +1,8 @@
 <?php
 
-namespace Aerys\Engine;
+namespace Aerys\Reactor;
 
-interface EventBase {
+interface Reactor {
     
     const TIMEOUT = 1;
     const READ = 2;
@@ -16,5 +16,6 @@ interface EventBase {
     function onReadable($ioStream, callable $callback, $timeout);
     function onWritable($ioStream, callable $callback, $timeout);
     function cancel(Subscription $subscription);
+    function getResolution();
 }
 

@@ -3,39 +3,45 @@
 namespace Aerys\Apm;
 
 use Aerys\Http\HttpServer,
-    Aerys\Engine\EventBase,
-    Aerys\Http\InitHandler;
+    Aerys\Reactor\Reactor;
 
-class ProcessManager implements InitHandler {
+class ProcessManager {
     
     const APM_VERSION = 1;
     
-    private $cmd;
-    private $childWorkingDir;
-    private $maxWorkers = 30;
+    private $command;
+    private $worderCwd;
+    private $maxWorkers = 10;
     
     private $workers = [];
     private $workerIdMap;
     private $pendingRequestCounts = [];
     private $requestIdWorkerMap = [];
     
-    function __construct($command, $workingDir = NULL) {
-        $this->cmd = $command;
-        $this->childWorkingDir = $workingDir ?: getcwd();
-        $this->workerIdMap = new \SplObjectStorage;
-    }
-    
-    function init(HttpServer $server, EventBase $eventBase) {
+    function __construct(HttpServer $server, Reactor $reactor, $command) {
         $this->server = $server;
-        $this->eventBase = $eventBase;
+        $this->reactor = $reactor;
+        $this->command = $command;
+        $this->worderCwd = getcwd();
+        $this->workerIdMap = new \SplObjectStorage;
         
         for ($i=0; $i < $this->maxWorkers; $i++) {
             $this->spawnWorker();
         }
     }
     
+    function setWorkerCwd($dir) {
+        $this->worderCwd = $dir;
+    }
+    
     function setMaxWorkers($workers) {
         $this->maxWorkers = (int) $workers;
+    }
+    
+    function init() {
+        for ($i=0; $i < $this->maxWorkers; $i++) {
+            $this->spawnWorker();
+        }
     }
     
     function __invoke(array $asgiEnv, $requestId) {
@@ -99,7 +105,7 @@ class ProcessManager implements InitHandler {
         });
         
         $errorStream = $this->server->getErrorStream();
-        $worker = new Worker($this->eventBase, $parser, $errorStream, $this->cmd, $this->childWorkingDir);
+        $worker = new Worker($this->reactor, $parser, $errorStream, $this->command, $this->worderCwd);
         
         $this->workers[] = $worker;
         end($this->workers);
@@ -148,7 +154,7 @@ class ProcessManager implements InitHandler {
         
         $this->spawnWorker();
         
-        $this->eventBase->once(1000000, function() {
+        $this->reactor->once(1000000, function() {
             $this->deadWorkerGarbageBin = [];
         });
         */

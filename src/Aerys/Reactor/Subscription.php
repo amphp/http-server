@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Engine;
+namespace Aerys\Reactor;
 
 interface Subscription {
     

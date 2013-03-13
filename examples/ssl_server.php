@@ -9,14 +9,17 @@
  * 
  * $ php ssl_server.php
  * 
- * Once the server has started, request http://127.0.0.1:1443/ in your browser or client of choice.
+ * Once the server has started, request https://127.0.0.1:1443/ in your browser or client of choice.
+ * _IMPORTANT:_ Make sure to use the HTTPS scheme and not HTTP (duh!)
  */
+
+use Aerys\Http\Config\ServerConfigurator;
 
 require dirname(__DIR__) . '/autoload.php';
 
 date_default_timezone_set('GMT');
 
-$handler = function(array $asgiEnv) {
+$myApp = function(array $asgiEnv) {
     $status = 200;
     $reason = 'OK';
     $headers = [];
@@ -34,16 +37,16 @@ $config = [
     'globals' => [
         'tls' => [
             '127.0.0.1:1443' => [
-                'localCertFile'  => __DIR__ . '/ssl_example_cert.pem',
+                'localCertFile'  => __DIR__ . '/support_files/ssl_example_cert.pem',
                 'certPassphrase' => '42 is not a legitimate passphrase'
             ]
         ]
     ],
-    'mySslServer' => [
-        'listen'  => '127.0.0.1:1443',
-        'handler' => $handler
+    'mySslServer'       => [
+        'listenOn'      => '127.0.0.1:1443',
+        'application'   => $myApp
     ]
 ];
 
-(new Aerys\Http\HttpServerFactory)->createServer($config)->listen();
+(new ServerConfigurator)->createServer($config)->listen();
 

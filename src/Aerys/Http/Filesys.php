@@ -5,7 +5,7 @@ namespace Aerys\Http;
 /**
  * @TODO Decide how best to periodically clear the file stat cache
  */
-class Filesys implements Handler {
+class Filesys {
     
     const ETAG_NONE = 0;
     const ETAG_SIZE = 1;
@@ -21,28 +21,33 @@ class Filesys implements Handler {
     private $docRoot;
     private $indexes = ['index.html', 'index.htm'];
     private $eTagMode = self::ETAG_ALL;
-    private $staleAfter = 300;
-    private $mimeTypes = [];
-    private $customTypes = [];
-    private $charset = 'utf-8';
+    private $expiresHeaderPeriod = 300;
+    private $customMimeTypes = [];
+    private $defaultTextCharset = 'utf-8';
     
+    private $mimeTypes;
     private $fdCache = [];
-    private $fdCacheTimeout = 20;
+    private $fdCacheTtl = 20;
     
-    function __construct($docRoot = NULL) {
-        if ($docRoot) {
-            $this->setDocRoot($docRoot);
-        }
+    function __construct($docRoot, array $options = NULL) {
+        $this->validateDocRoot($docRoot);
+        $this->docRoot = rtrim($docRoot, '/');
+        $this->assignDefaultMimeTypes();
         
-        $this->setDefaultMimeTypes();
+        if ($options) {
+            foreach ($options as $key => $value) {
+                $setter = "set" . ucfirst($key);
+                if (method_exists($this, $setter) && isset($value)) {
+                    $this->$setter($value);
+                }
+            }
+        }
     }
     
-    function setDocRoot($docRoot) {
-        if (is_readable($docRoot) && is_dir($docRoot)) {
-            $this->docRoot = rtrim($docRoot, '/');
-        } else {
-            throw new \RuntimeException(
-                'Specified file system document root must be a readable directory'
+    private function validateDocRoot($docRoot) {
+        if (!(is_readable($docRoot) && is_dir($docRoot))) {
+            throw new \InvalidArgumentException(
+                'Filesys document root must be a readable directory'
             );
         }
     }
@@ -51,23 +56,27 @@ class Filesys implements Handler {
         $this->indexes = $indexes;
     }
     
-    function setEtagMode($mode) {
+    function setETagMode($mode) {
         $this->eTagMode = (int) $mode;
     }
     
-    function setStaleAfter($seconds) {
-        $this->staleAfter = (int) $seconds;
+    function setExpiresHeaderPeriod($seconds) {
+        $this->expiresHeaderPeriod = (int) $seconds;
     }
     
-    function setTypes(array $mimeTypes) {
+    function setCustomMimeTypes(array $mimeTypes) {
         foreach ($mimeTypes as $ext => $type) {
             $ext = strtolower(ltrim($ext, '.'));
-            $this->customTypes[$ext] = $type;
+            $this->customMimeTypes[$ext] = $type;
         }
     }
     
-    function setCharset($charset) {
-        $this->charset = $charset;
+    function setDefaultTextCharset($charset) {
+        $this->defaultTextCharset = $charset;
+    }
+    
+    function setFileDescriptorCacheTtl($seconds) {
+        $this->fdCacheTtl = (int) $seconds;
     }
     
     function __invoke(array $asgiEnv, $requestId) {
@@ -212,7 +221,7 @@ class Filesys implements Handler {
         
         $headers = [
             'Date' => date(HttpServer::HTTP_DATE, $now),
-            'Expires' => date(HttpServer::HTTP_DATE, $now + $this->staleAfter),
+            'Expires' => date(HttpServer::HTTP_DATE, $now + $this->expiresHeaderPeriod),
             'Cache-Control' => 'public',
             'Content-Length' => $fileSize,
             'Last-Modified' => date(HttpServer::HTTP_DATE, $mTime),
@@ -233,9 +242,11 @@ class Filesys implements Handler {
     private function getFileDescriptor($filePath) {
         $cacheId = strtolower($filePath);
         
-        if (!isset($this->fdCache[$cacheId])) {
+        if (!$this->fdCacheTtl) {
+            return fopen($filePath, 'rb');
+        } elseif (!isset($this->fdCache[$cacheId])) {
             $fd = fopen($filePath, 'rb');
-            $cacheExpiry = time() + $this->fdCacheTimeout;
+            $cacheExpiry = time() + $this->fdCacheTtl;
             $this->fdCache[$cacheId] = [$fd, $cacheExpiry];
             
             return $fd;
@@ -254,7 +265,7 @@ class Filesys implements Handler {
         $contentType = $this->getMimeType($filePath) ?: 'application/octet-stream';
         
         if (0 === stripos($contentType, 'text/')) {
-            $contentType .= '; charset=' . $this->charset;
+            $contentType .= '; charset=' . $this->defaultTextCharset;
         }
         
         return $contentType;
@@ -275,7 +286,7 @@ class Filesys implements Handler {
         $reason = 'Partial Content';
         $headers = [
             'Date' => date(HttpServer::HTTP_DATE, $now),
-            'Expires' => date(HttpServer::HTTP_DATE, $now + $this->staleAfter),
+            'Expires' => date(HttpServer::HTTP_DATE, $now + $this->expiresHeaderPeriod),
             'Cache-Control' => 'public',
             'Last-Modified' => date(HttpServer::HTTP_DATE, $mTime)
         ];
@@ -362,8 +373,8 @@ class Filesys implements Handler {
         
         $ext = strtolower($ext);
         
-        if (isset($this->customTypes[$ext])) {
-            return $this->customTypes[$ext];
+        if (isset($this->customMimeTypes[$ext])) {
+            return $this->customMimeTypes[$ext];
         } elseif (isset($this->mimeTypes[$ext])) {
             return $this->mimeTypes[$ext];
         } else {
@@ -442,7 +453,7 @@ class Filesys implements Handler {
         return [$status, $reason, $headers, $body];
     }
     
-    private function setDefaultMimeTypes() {
+    function assignDefaultMimeTypes() {
         $this->mimeTypes = [
             "323"       => "text/h323",
             "acx"       => "application/internet-property-stream",

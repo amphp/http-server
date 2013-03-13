@@ -31,18 +31,25 @@
  * to all client requests.
  */
 
+use Aerys\Http\Config\ServerConfigurator,
+    Aerys\Http\Config\ProcessManagerApp;
+
 require dirname(__DIR__) . '/autoload.php';
 
 date_default_timezone_set('GMT');
 
 $phpBin  = '/usr/bin/php'; // Or something like "C:\\php\\php.exe" on windows
 $worker  = dirname(__DIR__) . '/apm_worker.php'; // The worker script
-$handler = __DIR__ . '/apm_example_handler.php'; // MUST specify a main() function to return your app
+$handler = __DIR__ . '/support_files/apm_example_handler.php'; // MUST specify a main() function returning the app callable
 
-$cmd = $phpBin . ' ' . $worker . ' ' . $handler;
+$command = $phpBin . ' ' . $worker . ' ' . $handler;
 
-(new Aerys\Http\HttpServerFactory)->createServer([[
-    'listen' => '127.0.0.1:1337',
-    'handler' => new Aerys\Apm\ProcessManager($cmd)
+(new ServerConfigurator)->createServer([[
+    'listenOn'      => '127.0.0.1:1337',
+    'application'   => new ProcessManagerApp([
+        'command'       => $command, // *REQUIRED
+        'maxWorkers'    => 10,
+        'workerCwd'     => NULL
+    ])
 ]])->listen();
 

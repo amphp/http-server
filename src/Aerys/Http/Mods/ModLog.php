@@ -4,8 +4,9 @@ namespace Aerys\Http\Mods;
 
 use Aerys\Http\HttpServer;
 
-class Log implements AfterResponseMod {
+class ModLog implements AfterResponseMod {
     
+    private $httpServer;
     private $resources = [];
     private $resourceFormatMap = [];
     private $buffers = [];
@@ -13,12 +14,16 @@ class Log implements AfterResponseMod {
     private $flushSize = 0;
     private $logTime;
     
-    function configure(array $config) {
-        if (isset($config['flushSize'])) {
-            $this->flushSize = (int) $config['flushSize'];
+    function __construct(HttpServer $httpServer, array $logs, array $options = NULL) {
+        $this->httpServer = $httpServer;
+        
+        if (empty($logs)) {
+            throw new \InvalidArgumentException(
+                __CLASS__ . '::__construct expects a non-empty $logs array at Argument 2'
+            );
         }
         
-        foreach ($config['logs'] as $path => $format) {
+        foreach ($logs as $path => $format) {
             if (!$resource = fopen($path, 'a+')) {
                 continue;
             }
@@ -30,14 +35,18 @@ class Log implements AfterResponseMod {
             $this->resources[$resourceId] = $resource;
             $this->resourceFormatMap[$resourceId] = $format;
         }
+        
+        if (isset($options['flushSize'])) {
+            $this->flushSize = (int) $options['flushSize'];
+        }
     }
     
-    function afterResponse(HttpServer $server, $requestId) {
+    function afterResponse($requestId) {
         $this->logTime = time();
         
         foreach ($this->resources as $resourceId => $resource) {
-            $asgiEnv = $server->getRequest($requestId);
-            $asgiResponse = $server->getResponse($requestId);
+            $asgiEnv = $this->httpServer->getRequest($requestId);
+            $asgiResponse = $this->httpServer->getResponse($requestId);
             $format = $this->resourceFormatMap[$resourceId];
             
             switch ($format) {

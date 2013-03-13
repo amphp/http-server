@@ -11,11 +11,13 @@
  * Once the server has started, request http://127.0.0.1:1337/ in your browser or client of choice.
  */
 
+use Aerys\Http\Config\ServerConfigurator;
+
 require dirname(__DIR__) . '/autoload.php';
 
 date_default_timezone_set('GMT');
 
-$handler = function(array $asgiEnv) {
+$myApp = function(array $asgiEnv) {
     $status = 200;
     $reason = 'OK';
     $headers = [];
@@ -28,8 +30,8 @@ $handler = function(array $asgiEnv) {
     return [$status, $reason, $headers, $body];
 };
 
-(new Aerys\Http\HttpServerFactory)->createServer([[
-    'listen'  => '127.0.0.1:1337',
-    'handler' => $handler
+(new ServerConfigurator)->createServer([[
+    'listenOn'      => '127.0.0.1:1337',
+    'application'   => $myApp
 ]])->listen();
 

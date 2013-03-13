@@ -2,7 +2,7 @@
 
 namespace Aerys\Apm;
 
-use Aerys\Engine\EventBase;
+use Aerys\Reactor\Reactor;
 
 class Worker {
     
@@ -22,7 +22,7 @@ class Worker {
     private $errorSubscription;
     
     function __construct(
-        EventBase $eventBase,
+        Reactor $eventBase,
         MessageParser $parser,
         $errorOutputStream,
         $cmd,
@@ -48,13 +48,13 @@ class Worker {
     }
     
     function error($errorPipe, $triggeredBy) {
-        if ($triggeredBy != EventBase::TIMEOUT) {
+        if ($triggeredBy != Reactor::TIMEOUT) {
             stream_copy_to_stream($errorPipe, $this->errorOutputStream);
         }
     }
     
     function read($readPipe, $triggeredBy) {
-        if ($triggeredBy == EventBase::TIMEOUT) {
+        if ($triggeredBy == Reactor::TIMEOUT) {
             return;
         }
         
