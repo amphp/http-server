@@ -1,0 +1,3 @@
+[submodule "vendor/Auryn"]
+	path = vendor/Auryn
+	url = git@github.com:rdlowrey/Auryn.git
