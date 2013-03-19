@@ -4,19 +4,26 @@
  * examples/name_based_vhosts.php
  * 
  * Aerys allows the specification of multiple virtual hosts in the same server instance. Each host
- * specifies its own set of options and modules.
+ * specifies its own application handler and mods.
  * 
  * The example below uses a static file server to host static files referenced in the HTML generated
  * on the dynamic server. To access the hosts by name make sure you add the names to your 
- * "/etc/hosts" file or alternatively the  "%SystemRoot%\system32\drivers\etc\hosts" in windows.
+ * "/etc/hosts" file or alternatively the  "%SystemRoot%\system32\drivers\etc\hosts" in Windows.
+ * 
+ * An Aerys server may specify as many virtual host names as needed. For example, an application
+ * could serve static files from one host using the built-in static file handler, websocket endpoints
+ * from another host using the included websocket functionality and do both while serving a traditional
+ * PHP application on yet another hostname.
+ * 
+ * To run this example:
  * 
  * $ php name_based_vhosts.php
  * 
  * Once the server has started, request http://aerys:1337/ in your browser or client of choice.
  */
 
-use Aerys\Http\Config\StaticFilesApp,
-    Aerys\Http\Config\ServerConfigurator;
+use Aerys\Config\StaticFilesApp,
+    Aerys\Config\ServerConfigurator;
 
 require dirname(__DIR__) . '/autoload.php';
 
@@ -41,12 +48,12 @@ $myApp = function(array $asgiEnv) {
 $config = [
     'host.dynamic' => [
         'listenOn'      => '127.0.0.1:1337',
-        'name'          => 'aerys',
+        'name'          => 'aerys', // <--- ADD NAME TO YOUR HOSTS FILE OR THE EXAMPLE WON'T WORK
         'application'   => $myApp
     ],
     'host.static' => [
         'listenOn'      => '127.0.0.1:1337',
-        'name'          => 'static.aerys',
+        'name'          => 'static.aerys', // <--- ADD NAME TO YOUR HOSTS FILE OR THE EXAMPLE WON'T WORK
         'application'   => new StaticFilesApp([
             'docRoot'   => __DIR__ . '/support_files/file_server_root'
         ])

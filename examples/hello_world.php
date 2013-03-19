@@ -11,7 +11,7 @@
  * Once the server has started, request http://127.0.0.1:1337/ in your browser or client of choice.
  */
 
-use Aerys\Http\Config\ServerConfigurator;
+use Aerys\Config\ServerConfigurator;
 
 require dirname(__DIR__) . '/autoload.php';
 

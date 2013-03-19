@@ -23,9 +23,9 @@
  * Once the server has started, request http://127.0.0.1:1337/ in your browser or client of choice.
  */
 
-use Aerys\Http\Config\ServerConfigurator,
-    Aerys\Http\Config\StaticFilesApp,
-    Aerys\Http\Filesys;
+use Aerys\Config\ServerConfigurator,
+    Aerys\Config\StaticFilesApp,
+    Aerys\Handlers\StaticFiles\Handler;
 
 require dirname(__DIR__) . '/autoload.php';
 
@@ -34,10 +34,12 @@ date_default_timezone_set('GMT');
 (new ServerConfigurator)->createServer([[
     'listenOn'      => '127.0.0.1:1337',
     'application'   => new StaticFilesApp([
-        'docRoot'               => __DIR__ . '/support_files/file_server_root', // *REQUIRED
+        'docRoot'               => __DIR__ . '/support_files/file_server_root',
+        
         // --- ALL OTHER KEYS ARE OPTIONAL; DEFAULTS SHOWN BELOW --- //
+        
         'indexes'                   => ['index.html', 'index.htm'],
-        'eTagMode'                  => Filesys::ETAG_ALL,
+        'eTagMode'                  => Handler::ETAG_ALL,
         'expiresHeaderPeriod'       => 300,
         'customMimeTypes'           => [],
         'defaultTextCharset'        => 'utf-8',

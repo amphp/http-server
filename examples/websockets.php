@@ -18,9 +18,9 @@
  * the websocket application!
  */
 
-use Aerys\Http\Config\WebsocketApp,
-    Aerys\Http\Config\StaticFilesApp,
-    Aerys\Http\Config\ServerConfigurator;
+use Aerys\Config\WebsocketApp,
+    Aerys\Config\StaticFilesApp,
+    Aerys\Config\ServerConfigurator;
 
 require dirname(__DIR__) . '/autoload.php';
 require __DIR__ . '/support_files/WsExampleChatEndpoint.php';

@@ -3,17 +3,17 @@
 /**
  * examples/ssl_server.php
  * 
- * TLS/SSL settings are defined on a per INTERFACE:PORT basis. Enabling crypto on a given interface
- * will enable it for ALL hosts set to listen on that INTERFACE:PORT. For this reason, TLS settings
+ * TLS/SSL settings are defined on a per ADDRESS:PORT basis. Enabling crypto on a given interface
+ * will enable it for ALL hosts set to listen on that ADDRESS:PORT. For this reason, TLS settings
  * are applied inside the "globals" config section under the "tls" key.
  * 
  * $ php ssl_server.php
  * 
- * Once the server has started, request https://127.0.0.1:1443/ in your browser or client of choice.
+ * Once the server has started, request https://localhost:1443/ in your browser or client of choice.
  * _IMPORTANT:_ Make sure to use the HTTPS scheme and not HTTP (duh!)
  */
 
-use Aerys\Http\Config\ServerConfigurator;
+use Aerys\Config\ServerConfigurator;
 
 require dirname(__DIR__) . '/autoload.php';
 
@@ -37,13 +37,24 @@ $config = [
     'globals' => [
         'tls' => [
             '127.0.0.1:1443' => [
-                'localCertFile'  => __DIR__ . '/support_files/ssl_example_cert.pem',
-                'certPassphrase' => '42 is not a legitimate passphrase'
+                
+                'pemCertFile'        => __DIR__ . '/support_files/localhost_cert.pem',
+                'pemCertPassphrase'  => '42 is not a legitimate passphrase',
+                
+                /* -------- OPTIONAL SETTINGS BEYOND THIS POINT ---------- */
+                
+                'allowSelfSigned'    => NULL,   // TRUE
+                'verifyPeer'         => NULL,   // FALSE
+                'ciphers'            => NULL,   // RC4-SHA:HIGH:!MD5:!aNULL:!EDH
+                'disableCompression' => NULL,   // TRUE
+                'certAuthorityFile'  => NULL,   // -
+                'certAuthorityDir'   => NULL    // -
             ]
         ]
     ],
     'mySslServer'       => [
         'listenOn'      => '127.0.0.1:1443',
+        'name'          => 'localhost',
         'application'   => $myApp
     ]
 ];

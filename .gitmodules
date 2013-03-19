@@ -1,3 +1,6 @@
 [submodule "vendor/Auryn"]
 	path = vendor/Auryn
 	url = git@github.com:rdlowrey/Auryn.git
+[submodule "vendor/Amp"]
+	path = vendor/Amp
+	url = git@github.com:rdlowrey/Amp

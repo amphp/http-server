@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\Http\Config\ServerConfigurator;
+use Aerys\Config\ServerConfigurator;
 
 date_default_timezone_set('GMT');
 
@@ -61,7 +61,7 @@ $config = [
         ],
         /*
         'tls'   => [
-            '127.0.0.1:1500' => [
+            '127.0.0.1:1443' => [
                 'localCertFile'         => dirname(__DIR__) . '/mycert.pem',
                 'certPassphrase'        => '42 is not a legitimate passphrase'
             ]
@@ -76,23 +76,8 @@ $config = [
     ],
     
     // --- ALL OTHER KEYS ARE CONSIDERED HOST CONTAINERS ---
-    /*
-    'myHost.secure'     => [
-        'listenOn'      => '127.0.0.1:1443', // <-- we specified a TLS definition in the "globals" section
-        'name'          => 'aerys', // <--- optional
-        'application'   => $handler
-    ],
-    */
     
-    /*
-    'myHost.static'     => [
-        'listenOn'      => '127.0.0.1:1337', // <-- we specified a TLS definition in the "globals" section
-        'name'          => 'static.aerys',
-        'application'   => new Aerys\Http\Filesys(__DIR__ . '/www')
-    ],
-    */
-    
-    'myHost.insecure'   => [
+    'myHost'   => [
         'listenOn'      => '127.0.0.1:1337',
         'name'          => 'aerys',
         'application'   => $myApp,
@@ -120,7 +105,7 @@ $config = [
             'mod.sendfile' => [
                 'docRoot'               => '/',
                 'indexes'               => ['index.html', 'index.htm'],
-                'eTagMode'              => Aerys\Http\Filesys::ETAG_ALL,
+                'eTagMode'              => Aerys\Handlers\StaticFiles\Handler::ETAG_ALL,
                 'staleAfter'            => 300,
                 'customMimeTypes'       => [],
                 'defaultTextCharset'    => 'utf-8'
@@ -131,7 +116,7 @@ $config = [
             ]
             */
             
-            // --- INCOMPLETE MODS ---
+            // --- MOD @TODO LIST ---
             
             // @todo mod.redirect
             // @todo mod.rewrite

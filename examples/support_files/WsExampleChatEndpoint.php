@@ -1,9 +1,9 @@
 <?php
 
-use Aerys\Ws\Client,
-    Aerys\Ws\Message,
-    Aerys\Ws\Endpoint,
-    Aerys\Ws\EndpointOptions;
+use Aerys\Handlers\Websocket\Client,
+    Aerys\Handlers\Websocket\Message,
+    Aerys\Handlers\Websocket\Endpoint,
+    Aerys\Handlers\Websocket\EndpointOptions;
 
 class WsExampleChatEndpoint implements Endpoint {
     
