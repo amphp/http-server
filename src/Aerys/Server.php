@@ -83,8 +83,6 @@ class Server {
         $this->reactor = $reactor;
         $this->tcpServers = new \SplObjectStorage;
         $this->bodyWriterFactory = $bwf ?: new BodyWriterFactory;
-        
-        $this->tickResolution = $reactor->getResolution();
         $this->tempEntityDir = sys_get_temp_dir();
     }
     
@@ -122,7 +120,7 @@ class Server {
                 $this->write();
             });
             
-            $this->reactor->repeat($this->tickResolution, function() {
+            $this->reactor->repeat(1, function() {
                 $this->gracefulClose();
             });
             

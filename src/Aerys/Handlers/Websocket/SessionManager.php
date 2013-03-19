@@ -13,7 +13,6 @@ class SessionManager implements \Countable {
     private $awaitingClose;
     private $awaitingWrite;
     
-    private $resolution;
     private $readTimeout = 3;
     private $closeTimeout = 5;
     private $autoWriteInterval = 0.025;
@@ -24,7 +23,6 @@ class SessionManager implements \Countable {
     
     function __construct(Reactor $reactor, SessionFactory $sessionFactory = NULL) {
         $this->reactor = $reactor;
-        $this->resolution = $reactor->getResolution();
         
         $this->sessionFactory = $sessionFactory ?: new SessionFactory;
         
@@ -32,8 +30,8 @@ class SessionManager implements \Countable {
         $this->awaitingWrite = new \SplObjectStorage;
         $this->awaitingClose = new \SplObjectStorage;
         
-        $reactor->repeat($this->autoWriteInterval * $this->resolution, [$this, 'autoWrite']);
-        $reactor->repeat($this->autoCloseInterval * $this->resolution, [$this, 'autoClose']);
+        $reactor->repeat($this->autoWriteInterval, [$this, 'autoWrite']);
+        $reactor->repeat($this->autoCloseInterval, [$this, 'autoClose']);
     }
     
     function open($socket, Endpoint $endpoint, array $asgiEnv) {
@@ -50,8 +48,8 @@ class SessionManager implements \Countable {
         }
         
         $readTimeout = $this->heartbeatPeriods[$requestUri]
-            ? $this->heartbeatPeriods[$requestUri] * $this->resolution
-            : $this->readTimeout * $this->resolution;
+            ? $this->heartbeatPeriods[$requestUri]
+            : $this->readTimeout;
         
         $subscription = $this->reactor->onReadable($socket, [$session, 'read'], $readTimeout);
         $this->sessions->attach($session, [$socket, $subscription]);
