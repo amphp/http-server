@@ -22,7 +22,7 @@ class Handler {
     function __invoke(array $asgiEnv, $requestId) {
         $asgiEnv = $this->normalizeStreamsForTransport($asgiEnv);
         $task = new RequestTask($this, $asgiEnv);
-        $callId = $this->dispatcher->call($task);
+        $callId = $this->dispatcher->dispatch($task);
         $this->callIdRequestIdMap[$callId] = $requestId;
     }
     

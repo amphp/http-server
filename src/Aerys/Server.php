@@ -53,6 +53,8 @@ class Server {
     private $maxConnections = 0;
     private $maxRequestsPerSession = 100;
     private $idleConnectionTimeout = 30;
+    private $autoWriteInterval = 0.025; // @TODO add option setter
+    private $gracefulCloseInterval = 1; // @TODO add option setter
     private $maxStartLineSize = 2048;
     private $maxHeadersSize = 8192;
     private $maxEntityBodySize = 2097152;
@@ -77,7 +79,6 @@ class Server {
         self::DELETE  => 1
     ];
     
-    private $tickResolution;
     
     function __construct(Reactor $reactor, BodyWriterFactory $bwf = NULL) {
         $this->reactor = $reactor;
@@ -112,15 +113,15 @@ class Server {
                 echo 'Server listening on ', $listeningOn, PHP_EOL;
             }
             /*
-            $diagnostics = $this->reactor->repeat(1000000, function() {
+            $diagnostics = $this->reactor->repeat(1, function() {
                 echo time(), ' (', $this->cachedClientCount, ")\n";
             });
             */
-            $this->reactor->repeat(20000, function() {
+            $this->reactor->repeat($this->autoWriteInterval, function() {
                 $this->write();
             });
             
-            $this->reactor->repeat(1, function() {
+            $this->reactor->repeat($this->gracefulCloseInterval, function() {
                 $this->gracefulClose();
             });
             
@@ -195,7 +196,7 @@ class Server {
             function ($clientSock, $trigger) use ($client) {
                 $this->onReadable($trigger, $client);
             },
-            $this->idleConnectionTimeout * $this->tickResolution
+            $this->idleConnectionTimeout
         );
         
         ++$this->cachedClientCount;

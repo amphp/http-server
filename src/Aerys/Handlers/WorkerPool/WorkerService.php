@@ -4,7 +4,6 @@ namespace Aerys\Handlers\WorkerPool;
 
 use Amp\Async\ProtocolException,
     Amp\Async\Processes\Io\Frame,
-    Amp\Async\Processes\Io\Message,
     Amp\Async\Processes\Io\FrameParser,
     Amp\Async\Processes\Io\FrameWriter;
 
@@ -13,8 +12,7 @@ class WorkerService {
     private $parser;
     private $writer;
     private $controller;
-    private $frames = [];
-    private $cachedFrameCount = 0;
+    private $buffer = '';
     
     function __construct(FrameParser $parser, FrameWriter $writer, callable $controller) {
         $this->parser = $parser;
@@ -27,29 +25,15 @@ class WorkerService {
             return;
         }
         
-        $this->frames[] = $frame;
-        $this->cachedFrameCount++;
+        $this->buffer .= $frame->getPayload();
         
-        if (!$frame->isFin()) {
-            return;
+        if ($frame->isFin()) {
+            list($procedure, $jsonAsgiEnv) = unserialize($this->buffer);
+            
+            $this->buffer = '';
+            $asgiEnv = json_decode($jsonAsgiEnv, TRUE);
+            $this->invokeController($asgiEnv);
         }
-        
-        if ($this->cachedFrameCount == 1) {
-            $payload = $frame->getPayload();
-            $payload = is_resource($payload) ? stream_get_contents($payload) : $payload;
-        } else {
-            $msg = new Message($this->frames);
-            $payload = $msg->getPayload();
-        }
-        
-        $this->frames = [];
-        $this->cachedFrameCount = 0;
-        
-        list($procedure, $jsonAsgiEnv) = unserialize($payload);
-        
-        $asgiEnv = json_decode($jsonAsgiEnv, TRUE);
-        
-        $this->invokeController($asgiEnv);
     }
     
     private function invokeController(array $asgiEnv) {
@@ -81,7 +65,7 @@ class WorkerService {
             $frame = new Frame($fin = 1, $rsv = 0, Frame::OP_DATA, $payload = '', $length = 0);
             $this->writer->write($frame);
             
-        } elseif (!is_resource($entityBody) && ($jsonAsgiResponse = json_encode($asgiResponse))) {
+        } elseif ($jsonAsgiResponse = json_encode($asgiResponse)) {
         
             $length = strlen($jsonAsgiResponse);
             $frame = new Frame($fin = 1, $rsv = 0, Frame::OP_DATA, $jsonAsgiResponse, $length);
