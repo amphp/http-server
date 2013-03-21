@@ -42,7 +42,7 @@ $workerCmd = $phpBin . ' ' . $worker . ' ' . $handler;
     'application'   => new WorkerPoolApp([
         'workerCmd'         => $workerCmd,
         'maxWorkers'        => 15,
-        'responseTimeout'   => 30,
+        'autoTimeoutInterval'   => 30,
         'workerCwd'         => NULL
     ])
 ]])->listen();

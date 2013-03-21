@@ -37,7 +37,8 @@ class MyApp {
         $reason = 'OK';
         $headers = [];
         
-        $body = new ExampleIteratorBody;
+        //$body = new ExampleIteratorBody;
+        $body = 'Hello, world.';
         
         return [$status, $reason, $headers, $body];
     }
