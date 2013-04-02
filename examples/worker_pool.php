@@ -29,11 +29,11 @@ use Aerys\Config\ServerConfigurator,
 
 require dirname(__DIR__) . '/autoload.php';
 
-date_default_timezone_set('GMT');
+date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
 
 $phpBin  = '/usr/bin/php';                                 // Or e.g. "C:/php/php.exe" on windows
-$worker  = dirname(__DIR__) . '/workers/worker_pool.php';  // The built-in worker script
-$handler = __DIR__ . '/support_files/worker_pool_app.php'; // <-- YOUR APP; MUST specify aerysFrontController()
+$worker  = dirname(__DIR__) . '/workers/php/worker.php';   // The built-in PHP worker script
+$handler = __DIR__ . '/support_files/worker_pool_app.php'; // <-- MUST specify `main()` app callable
 
 $workerCmd = $phpBin . ' ' . $worker . ' ' . $handler;
 
@@ -41,8 +41,8 @@ $workerCmd = $phpBin . ' ' . $worker . ' ' . $handler;
     'listenOn'      => '127.0.0.1:1337',
     'application'   => new WorkerPoolApp([
         'workerCmd'         => $workerCmd,
-        'maxWorkers'        => 15,
-        'autoTimeoutInterval'   => 30,
+        'poolSize'          => 16,
+        'responseTimeout'   => 5,
         'workerCwd'         => NULL
     ])
 ]])->listen();

@@ -4,7 +4,7 @@
  * worker_pool_app.php
  * 
  * This file provides the handler used in the `worker_pool.php` server example. The front controller
- * file for worker pool applications must specify an `aerysFrontController()` function. This 
+ * file for worker pool applications must specify an `aerys()` front controller function. This 
  * function's only job is to return the callable ASGI application handler to respond to client 
  * requests. The front controller function is invoked only once -- when a worker process is first
  * started. This allows applications to benefit from faster load times for requests down the line
@@ -27,8 +27,11 @@
  * completes.
  */
 
-function aerysFrontController() {
-    return [new MyApp, 'onRequest'];
+$myApp = new MyApp;
+
+function main(array $asgiEnv) {
+    global $myApp;
+    return $myApp->onRequest($asgiEnv);
 }
 
 class MyApp {

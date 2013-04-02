@@ -15,7 +15,7 @@ use Aerys\Config\ServerConfigurator;
 
 require dirname(__DIR__) . '/autoload.php';
 
-date_default_timezone_set('GMT');
+date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
 
 $myApp = function(array $asgiEnv) {
     $status = 200;

@@ -25,7 +25,7 @@ use Aerys\Config\WebsocketApp,
 require dirname(__DIR__) . '/autoload.php';
 require __DIR__ . '/support_files/WsExampleChatEndpoint.php';
 
-date_default_timezone_set('GMT');
+date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
 
 (new ServerConfigurator)->createServer([[
     'listenOn'      => '127.0.0.1:1337',
