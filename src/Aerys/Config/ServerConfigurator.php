@@ -266,9 +266,9 @@ class ServerConfigurator {
                 
                 $msg = "[$errType]: $errStr in $errFile on line $errLine" . PHP_EOL;
                 
-                //$errorStream = $server->getErrorStream();
-                //fwrite($errorStream, $msg);
-                throw new \ErrorException($msg);
+                $errorStream = $server->getErrorStream();
+                fwrite($errorStream, $msg);
+                //throw new \ErrorException($msg);
             }
         });
     }

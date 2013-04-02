@@ -8,9 +8,10 @@ class WorkerPoolApp implements AppLauncher {
     
     private $options = [
         'workerCmd'         => NULL,
-        'maxWorkers'        => NULL,
+        'poolSize'          => NULL,
         'responseTimeout'   => NULL,
-        'workerCwd'         => NULL
+        'workerCwd'         => NULL,
+        'workerProcedure'   => 'main'
     ];
     
     function __construct(array $options) {
@@ -41,27 +42,24 @@ class WorkerPoolApp implements AppLauncher {
     }
     
     function launchApp(Injector $injector) {
-        $opts = $this->options;
-        $workerCmd = $opts['workerCmd'];
+        $dispatcher = $injector->make("Amp\\Async\\Dispatcher");
         
-        unset($opts['workerCmd']);
+        $dispatcher->setCallTimeout($this->options['responseTimeout']);
+        $dispatcher->notifyOnPartialResult(TRUE);
         
-        $processDispatcher = $injector->make("Amp\\Async\\Processes\\ProcessDispatcher", [
-            ':workerCmd' => $workerCmd
+        $dispatcher->start(
+            $this->options['poolSize'],
+            $this->options['workerCmd'],
+            $this->options['workerCwd']
+        );
+        
+        $handler = $injector->make("Aerys\\Handlers\\WorkerPool\\Handler", [
+            ':dispatcher' => $dispatcher
         ]);
         
-        foreach ($opts as $key => $value) {
-            if (isset($value)) {
-                $setter = "set" . ucfirst($key);
-                $processDispatcher->$setter($value);
-            }
-        }
+        $handler->setWorkerProcedure($this->options['workerProcedure']);
         
-        $processDispatcher->start();
-        
-        return $injector->make("Aerys\\Handlers\\WorkerPool\\Handler", [
-            ':dispatcher' => $processDispatcher
-        ]);
+        return $handler;
     }
     
 }

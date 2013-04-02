@@ -5,24 +5,31 @@ namespace Aerys\Handlers\WorkerPool;
 use Aerys\Server,
     Aerys\Status,
     Aerys\Reason,
-    Amp\Async\Processes\ProcessDispatcher;
+    Amp\Async\Dispatcher,
+    Amp\Async\CallResult;
 
 class Handler {
     
     private $server;
     private $dispatcher;
+    private $procedure = 'main';
     private $callIdRequestIdMap = [];
     private $streamBodyMap = [];
     
-    function __construct(Server $server, ProcessDispatcher $dispatcher) {
+    function __construct(Server $server, Dispatcher $dispatcher) {
         $this->server = $server;
         $this->dispatcher = $dispatcher;
     }
     
+    function setWorkerProcedure($procedureName) {
+        $this->procedure = $procedureName;
+    }
+    
     function __invoke(array $asgiEnv, $requestId) {
         $asgiEnv = $this->normalizeStreamsForTransport($asgiEnv);
-        $task = new RequestTask($this, $asgiEnv);
-        $callId = $this->dispatcher->dispatch($task);
+        $workload = json_encode($asgiEnv);
+        $callId = $this->dispatcher->call([$this, 'onResult'], $this->procedure, $workload);
+        
         $this->callIdRequestIdMap[$callId] = $requestId;
     }
     
@@ -48,46 +55,28 @@ class Handler {
         return $asgiEnv;
     }
     
-    function onIncrement($partialResult, $callId) {
+    function onResult(CallResult $callResult) {
+        if (!$callResult->isComplete()) {
+            $this->onIncrement($callResult);
+        } elseif ($callResult->isSuccess()) {
+            $this->onSuccess($callResult);
+        } else {
+            $this->onError($callResult);
+        }
+    }
+    
+    private function onIncrement(CallResult $callResult) {
+        $callId = $callResult->getCallId();
+        $partialResult = $callResult->getResult();
+        
         if (isset($this->streamBodyMap[$callId])) {
             $this->streamBodyMap[$callId]->addData($partialResult);
         } else {
-            $this->onFirstStreamIncrement($partialResult, $callId);
+            $this->onFirstStreamIncrement($callId, $partialResult);
         }
     }
     
-    function onSuccess($result, $callId) {
-        if (isset($this->streamBodyMap[$callId])) {
-            $this->streamBodyMap[$callId]->markComplete();
-        } else {
-            $requestId = $this->callIdRequestIdMap[$callId];
-            unset($this->callIdRequestIdMap[$callId]);
-            
-            $asgiResponse = json_decode($result, TRUE);
-            
-            $this->server->setResponse($requestId, $asgiResponse);
-        }
-    }
-    
-    function onError(\Exception $e, $callId) {
-        $requestId = $this->callIdRequestIdMap[$callId];
-        unset($this->callIdRequestIdMap[$callId]);
-        
-        if (isset($this->streamBodyMap[$callId])) {
-            // @TODO Handle errors occuring during body stream processing
-            // @TODO Close the socket for 1.0, send final chunk for 1.1 if response output started
-            // @TODO Set 500 response if response output not yet started
-        } else {
-            $this->server->setResponse($requestId, [
-                $status  = Status::INTERNAL_SERVER_ERROR,
-                $reason  = Reason::HTTP_500,
-                $headers = [],
-                $body    = $e
-            ]);
-        }
-    }
-    
-    private function onFirstStreamIncrement($jsonAsgiResponse, $callId) {
+    private function onFirstStreamIncrement($callId, $jsonAsgiResponse) {
         $requestId = $this->callIdRequestIdMap[$callId];
         unset($this->callIdRequestIdMap[$callId]);
         
@@ -99,5 +88,45 @@ class Handler {
         
         $this->server->setResponse($requestId, $asgiResponse);
     }
+    
+    private function onSuccess(CallResult $callResult) {
+        $callId = $callResult->getCallId();
+        
+        if (isset($this->streamBodyMap[$callId])) {
+            $this->streamBodyMap[$callId]->addData($callResult->getResult());
+            $this->streamBodyMap[$callId]->markComplete();
+        } else {
+            $requestId = $this->callIdRequestIdMap[$callId];
+            unset($this->callIdRequestIdMap[$callId]);
+            $asgiResponse = json_decode($callResult->getResult(), TRUE);
+            
+            $this->server->setResponse($requestId, $asgiResponse);
+        }
+    }
+    
+    private function onError(CallResult $callResult) {
+        $callId = $callResult->getCallId();
+        $error = $callResult->getError();
+        $requestId = $this->callIdRequestIdMap[$callId];
+        
+        unset($this->callIdRequestIdMap[$callId]);
+        
+        if (isset($this->streamBodyMap[$callId])) {
+            
+            // @TODO Handle errors occuring during body stream processing
+            // @TODO Close the socket for 1.0, send final chunk for 1.1 if response output started
+            // @TODO Set 500 response if response output not yet started
+            unset($this->streamBodyMap[$callId]);
+            
+        } else {
+            $this->server->setResponse($requestId, [
+                $status  = Status::INTERNAL_SERVER_ERROR,
+                $reason  = Reason::HTTP_500,
+                $headers = [],
+                $body    = $error
+            ]);
+        }
+    }
+    
 }
 
