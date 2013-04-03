@@ -30,8 +30,8 @@ class SessionManager implements \Countable {
         $this->awaitingWrite = new \SplObjectStorage;
         $this->awaitingClose = new \SplObjectStorage;
         
-        $reactor->repeat($this->autoWriteInterval, [$this, 'autoWrite']);
-        $reactor->repeat($this->autoCloseInterval, [$this, 'autoClose']);
+        $reactor->repeat([$this, 'autoWrite'], $this->autoWriteInterval);
+        $reactor->repeat([$this, 'autoClose'], $this->autoCloseInterval);
     }
     
     function open($socket, Endpoint $endpoint, array $asgiEnv) {

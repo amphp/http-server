@@ -113,17 +113,12 @@ class Server {
                 echo 'Server listening on ', $listeningOn, PHP_EOL;
             }
             /*
-            $diagnostics = $this->reactor->repeat(1, function() {
+            $diagnostics = $this->reactor->repeat(function() {
                 echo time(), ' (', $this->cachedClientCount, ")\n";
-            });
+            }, $delay = 1);
             */
-            $this->reactor->repeat($this->autoWriteInterval, function() {
-                $this->write();
-            });
-            
-            $this->reactor->repeat($this->gracefulCloseInterval, function() {
-                $this->gracefulClose();
-            });
+            $this->reactor->repeat(function() { $this->write(); }, $this->autoWriteInterval);
+            $this->reactor->repeat(function() { $this->gracefulClose(); }, $this->gracefulCloseInterval);
             
             $this->reactor->run();
         }
