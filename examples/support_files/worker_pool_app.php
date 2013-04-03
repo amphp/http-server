@@ -41,7 +41,7 @@ class MyApp {
         $headers = [];
         
         //$body = new ExampleIteratorBody;
-        $body = 'Hello, world.';
+        $body = '<html><body style="font-family: Sans-Serif;"><h1>Hello, world.</h1></body></html>';
         
         return [$status, $reason, $headers, $body];
     }
