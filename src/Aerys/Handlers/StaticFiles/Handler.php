@@ -103,7 +103,7 @@ class Handler {
     
     private function matchIndex($dirPath) {
         foreach ($this->indexes as $indexFile) {
-            $indexPath = $dirPath . $indexFile;
+            $indexPath = $dirPath . '/' . $indexFile;
             if (file_exists($indexPath)) {
                 return $indexPath;
             }
