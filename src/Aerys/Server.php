@@ -346,7 +346,7 @@ class Server {
             $asgiEnv = $this->generateAsgiEnv($client, self::UNKNOWN, $parsedRequest);
             
             $status = Status::BAD_REQUEST;
-            $reason = Server::HTTP_400 . ': Invalid Host';
+            $reason = Reason::HTTP_400 . ': Invalid Host';
             $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
             $headers = [
                 'Content-Type' => 'text/html; charset=iso-8859-1',
