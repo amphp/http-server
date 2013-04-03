@@ -43,6 +43,7 @@ class Worker {
     private function invokeProcedure($callId, $procedure, $workload) {
         $asgiEnv = json_decode($workload, TRUE);
         
+        $asgiEnv['ASGI_NON_BLOCKING'] = FALSE;
         $asgiEnv['ASGI_ERROR'] = STDERR;
         
         if ($asgiEnv['ASGI_INPUT']) {
