@@ -11,7 +11,7 @@
  * Once the server has started, request http://127.0.0.1:1337/ in your browser or client of choice.
  */
 
-use Aerys\Config\ServerConfigurator;
+use Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
 
@@ -30,7 +30,7 @@ $myApp = function(array $asgiEnv) {
     return [$status, $reason, $headers, $body];
 };
 
-(new ServerConfigurator)->createServer([[
+(new Configurator)->createServer([[
     'listenOn'      => '127.0.0.1:1337',
     'application'   => $myApp
 ]])->listen();

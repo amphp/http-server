@@ -20,14 +20,14 @@
 
 use Aerys\Config\WebsocketApp,
     Aerys\Config\StaticFilesApp,
-    Aerys\Config\ServerConfigurator;
+    Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
 require __DIR__ . '/support_files/WsExampleChatEndpoint.php';
 
 date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
 
-(new ServerConfigurator)->createServer([[
+(new Configurator)->createServer([[
     'listenOn'      => '127.0.0.1:1337',
     'application'   => new StaticFilesApp([
         'docRoot'   => __DIR__ . '/support_files/mod_websocket_root'

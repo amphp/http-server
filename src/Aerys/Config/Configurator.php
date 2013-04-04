@@ -11,7 +11,7 @@ use Auryn\Injector,
     Aerys\Host,
     Aerys\Server;
 
-class ServerConfigurator {
+class Configurator {
     
     private $injector;
     private $reactorFactory;

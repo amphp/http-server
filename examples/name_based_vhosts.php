@@ -23,7 +23,7 @@
  */
 
 use Aerys\Config\StaticFilesApp,
-    Aerys\Config\ServerConfigurator;
+    Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
 
@@ -60,5 +60,5 @@ $config = [
     ]
 ];
 
-(new ServerConfigurator)->createServer($config)->listen();
+(new Configurator)->createServer($config)->listen();
 

@@ -13,7 +13,7 @@
  * _IMPORTANT:_ Make sure to use the HTTPS scheme and not HTTP (duh!)
  */
 
-use Aerys\Config\ServerConfigurator;
+use Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
 
@@ -59,5 +59,5 @@ $config = [
     ]
 ];
 
-(new ServerConfigurator)->createServer($config)->listen();
+(new Configurator)->createServer($config)->listen();
 

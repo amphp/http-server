@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\Config\ServerConfigurator;
+use Aerys\Config\Configurator;
 
 date_default_timezone_set('GMT');
 
@@ -124,7 +124,7 @@ $config = [
     ]
 ];
 
-$server = (new ServerConfigurator)->createServer($config)->listen();
+$server = (new Configurator)->createServer($config)->listen();
 
 
 

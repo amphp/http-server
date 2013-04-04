@@ -24,7 +24,7 @@
  * are covered in the example handler file used below, "support_files/worker_pool_app.php" ...
  */
 
-use Aerys\Config\ServerConfigurator,
+use Aerys\Config\Configurator,
     Aerys\Config\WorkerPoolApp;
 
 require dirname(__DIR__) . '/autoload.php';
@@ -37,7 +37,7 @@ $handler = __DIR__ . '/support_files/worker_pool_app.php'; // <-- MUST specify `
 
 $workerCmd = $phpBin . ' ' . $worker . ' ' . $handler;
 
-(new ServerConfigurator)->createServer([[
+(new Configurator)->createServer([[
     'listenOn'      => '127.0.0.1:1337',
     'application'   => new WorkerPoolApp([
         'workerCmd'         => $workerCmd,
