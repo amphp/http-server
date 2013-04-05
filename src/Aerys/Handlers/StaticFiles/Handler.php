@@ -2,11 +2,12 @@
 
 namespace Aerys\Handlers\StaticFiles;
 
-use Aerys\Server;
+use Aerys\Server,
+    Aerys\Status,
+    Aerys\Reason,
+    Aerys\Io\ByteRangeBody,
+    Aerys\Io\MultiPartByteRangeBody;
 
-/**
- * @TODO Decide how best to periodically clear the file stat cache
- */
 class Handler {
     
     const ETAG_NONE = 0;
@@ -24,32 +25,27 @@ class Handler {
     private $indexes = ['index.html', 'index.htm'];
     private $eTagMode = self::ETAG_ALL;
     private $expiresHeaderPeriod = 300;
+    private $defaultMimeType = 'text/plain';
     private $customMimeTypes = [];
     private $defaultTextCharset = 'utf-8';
+    private $indexRedirection = TRUE;
+    private $multipartBoundary;
     
     private $mimeTypes;
     private $fdCache = [];
-    private $fdCacheTtl = 20;
+    private $fdCacheTtl = 5;
     
-    function __construct($docRoot, array $options = NULL) {
+    function __construct($docRoot) {
         $this->validateDocRoot($docRoot);
         $this->docRoot = rtrim($docRoot, '/');
         $this->assignDefaultMimeTypes();
-        
-        if ($options) {
-            foreach ($options as $key => $value) {
-                $setter = "set" . ucfirst($key);
-                if (method_exists($this, $setter) && isset($value)) {
-                    $this->$setter($value);
-                }
-            }
-        }
+        $this->multipartBoundary = uniqid();
     }
     
     private function validateDocRoot($docRoot) {
         if (!(is_readable($docRoot) && is_dir($docRoot))) {
             throw new \InvalidArgumentException(
-                'Filesys document root must be a readable directory'
+                'Document root must be a readable directory'
             );
         }
     }
@@ -58,12 +54,23 @@ class Handler {
         $this->indexes = $indexes;
     }
     
+    function setIndexRedirection($boolFlag) {
+        $this->indexRedirection = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
+    }
+    
     function setETagMode($mode) {
         $this->eTagMode = (int) $mode;
     }
     
     function setExpiresHeaderPeriod($seconds) {
-        $this->expiresHeaderPeriod = (int) $seconds;
+        $this->expiresHeaderPeriod = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
+            'min_range' => -1,
+            'default' => 300
+        ]]);
+    }
+    
+    function setDefaultMimeType($mimeType) {
+        $this->defaultMimeType = $mimeType;
     }
     
     function setCustomMimeTypes(array $mimeTypes) {
@@ -78,26 +85,65 @@ class Handler {
     }
     
     function setFileDescriptorCacheTtl($seconds) {
-        $this->fdCacheTtl = (int) $seconds;
+        $this->fdCacheTtl = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
+            'min_range' => 0,
+            'default' => 5
+        ]]);
     }
     
-    function __invoke(array $asgiEnv, $requestId) {
-        $requestUri = ($asgiEnv['PATH_INFO'] . $asgiEnv['SCRIPT_NAME']) ?: '/';
-        $filePath = $this->docRoot . $requestUri;
-        $fileExists = file_exists($filePath);
+    function __invoke(array $asgiEnv) {
+        $requestUri = ltrim($asgiEnv['REQUEST_URI'], '/');
         
-        // The `strpos` check is important to prevent access to files outside the docRoot when 
-        // resolving a URI that contains leading "../" segments. Also, the boolean check for a truthy
-        // $this->docRoot value allows docRoot values at the filesystem root directory "/"; it is
-        // not an accident and should not be removed.
-        if ($fileExists && $this->docRoot && (0 !== strpos(realpath($filePath), $this->docRoot))) {
+        if ($queryStartPos = strpos($requestUri, '?')) {
+            $requestUri = substr($requestUri, 0, $queryStartPos);
+        }
+        
+        $filePath = $this->docRoot . '/' . $requestUri;
+        
+        if (!$filePath = $this->validateFilePath($filePath)) {
             return $this->notFound();
-        } elseif ($fileExists && !is_dir($filePath)) {
+        }
+        
+        $isDir = is_dir($filePath);
+        $redirectToIndex = NULL;
+        
+        if (!$isDir && $this->indexRedirection && $this->indexes) {
+            $pathParts = pathinfo($filePath);
+            $redirectToIndex = in_array($pathParts['basename'], $this->indexes)
+                ? substr($pathParts['dirname'] . '/', strlen($this->docRoot))
+                : NULL;
+        }
+        
+        if ($redirectToIndex) {
+            return $this->redirectTo($redirectToIndex);
+        } elseif (!$isDir) {
             return $this->respondToFoundFile($filePath, $asgiEnv);
-        } elseif ($fileExists && $this->indexes && ($filePath = $this->matchIndex($filePath))) {
+        } elseif ($isDir && $this->indexes && ($filePath = $this->matchIndex($filePath))) {
             return $this->respondToFoundFile($filePath, $asgiEnv);
         } else {
             return $this->notFound();
+        }
+    }
+    
+    /**
+     * The `realpath()` check is IMPORTANT to prevent access to the filesystem above the defined
+     * document root using relative path segments such as "../".
+     * 
+     * `realpath()` will return FALSE if the file does not exist but we still need to verify that
+     * its resulting path resides within the top-level docRoot path if a match is found.
+     * 
+     * This method carries protected accessibility because vfsStream cannot mock the results of the
+     * `realpath()` function and we need to manually use inheritance to mock this behavior in our
+     * unit tests. The StaticFileRelativePathAscensionTest integration test validates this security
+     * measure against the real file system without vfsStream mocking.
+     */
+    protected function validateFilePath($filePath) {
+        if (!$realPath = realpath($filePath)) {
+            return FALSE;
+        } elseif (0 !== strpos($realPath, $this->docRoot)) {
+            return FALSE;
+        } else {
+            return $realPath;
         }
     }
     
@@ -110,6 +156,20 @@ class Handler {
         }
         
         return NULL;
+    }
+    
+    private function redirectTo($redirectToIndex) {
+        $status = Status::MOVED_PERMANENTLY;
+        $reason = Reason::HTTP_301;
+        $body = '<html><body><h1>Moved!</h1></body></html>';
+        $headers = [
+            'Date' => date(Server::HTTP_DATE),
+            'Location' => $redirectToIndex,
+            'Content-Type' => 'text/html',
+            'Content-Length' => strlen($body),
+        ];
+        
+        return [$status, $reason, $headers, $body];
     }
     
     private function respondToFoundFile($filePath, array $asgiEnv) {
@@ -139,8 +199,9 @@ class Handler {
             case self::PRECONDITION_PASS:
                 break;
             default:
-                // This should never happen, but just in case
-                throw new \DomainException;
+                throw new \UnexpectedValueException(
+                    'Unexpected precondition check result value encountered'
+                );
         }
         
         return $ranges
@@ -195,11 +256,11 @@ class Handler {
     }
     
     private function eTagMatchesPrecondition($eTag, $headerStringOrArray) {
-        if (is_string($headerStringOrArray)) {
-            return ($eTag == $headerStringOrArray);
-        }
+        $eTagArr = is_string($headerStringOrArray)
+            ? explode(',', $headerStringOrArray)
+            : $headerStringOrArray;
         
-        foreach ($headerStringOrArray as $value) {
+        foreach ($eTagArr as $value) {
             if ($eTag == $value) {
                 return TRUE;
             }
@@ -216,6 +277,12 @@ class Handler {
         }
     }
     
+    /**
+     * @link http://tools.ietf.org/html/rfc2616#section-14.21
+     * 
+     * > To mark a response as "already expired," an origin server sends an
+     * > Expires date that is equal to the Date header value.
+     */
     private function doFile($filePath, $method, $mTime, $fileSize, $eTag) {
         $status = 200;
         $reason = 'OK';
@@ -223,12 +290,16 @@ class Handler {
         
         $headers = [
             'Date' => date(Server::HTTP_DATE, $now),
-            'Expires' => date(Server::HTTP_DATE, $now + $this->expiresHeaderPeriod),
             'Cache-Control' => 'public',
             'Content-Length' => $fileSize,
             'Last-Modified' => date(Server::HTTP_DATE, $mTime),
             'Accept-Ranges' => 'bytes'
         ];
+        
+        // See @link in method docblock
+        $headers['Expires'] = ($this->expiresHeaderPeriod > 0)
+            ? date(Server::HTTP_DATE, $now + $this->expiresHeaderPeriod)
+            : $headers['Date'];
         
         $headers['Content-Type'] = $this->generateContentTypeHeader($filePath);
         
@@ -244,27 +315,31 @@ class Handler {
     private function getFileDescriptor($filePath) {
         $cacheId = strtolower($filePath);
         
-        if (!$this->fdCacheTtl) {
-            return fopen($filePath, 'rb');
-        } elseif (!isset($this->fdCache[$cacheId])) {
+        if ($this->fdCacheTtl && !isset($this->fdCache[$cacheId])) {
+            
             $fd = fopen($filePath, 'rb');
             $cacheExpiry = time() + $this->fdCacheTtl;
-            $this->fdCache[$cacheId] = [$fd, $cacheExpiry];
+            $this->fdCache[$cacheId] = [$fd, $cacheExpiry, $filePath];
             
-            return $fd;
-        }
+        } elseif ($this->fdCacheTtl) {
         
-        list($fd, $cacheExpiry) = $this->fdCache[$cacheId];
-        
-        if ($cacheExpiry < time()) {
-            unset($this->fdCache[$cacheId]);
+            list($fd, $cacheExpiry, $filePath) = $this->fdCache[$cacheId];
+            
+            if ($cacheExpiry < time()) {
+                unset($this->fdCache[$cacheId]);
+                clearstatcache(FALSE, $filePath);
+            }
+            
+        } else {
+            $fd = fopen($filePath, 'rb');
+            clearstatcache(FALSE, $filePath);
         }
         
         return $fd;
     }
     
     private function generateContentTypeHeader($filePath) {
-        $contentType = $this->getMimeType($filePath) ?: 'application/octet-stream';
+        $contentType = $this->getMimeType($filePath) ?: $this->defaultMimeType;
         
         if (0 === stripos($contentType, 'text/')) {
             $contentType .= '; charset=' . $this->defaultTextCharset;
@@ -288,21 +363,23 @@ class Handler {
         $reason = 'Partial Content';
         $headers = [
             'Date' => date(Server::HTTP_DATE, $now),
-            'Expires' => date(Server::HTTP_DATE, $now + $this->expiresHeaderPeriod),
             'Cache-Control' => 'public',
             'Last-Modified' => date(Server::HTTP_DATE, $mTime)
         ];
+        
+        $headers['Expires'] = ($this->expiresHeaderPeriod > 0)
+            ? date(Server::HTTP_DATE, $now + $this->expiresHeaderPeriod)
+            : $headers['Date'];
         
         if ($eTag) {
             $headers['ETag'] = $eTag;
         }
         
         if ($isMultiPart = (count($ranges) > 1)) {
-            $boundary = uniqid();
-            $headers['Content-Type'] = 'multipart/byteranges; boundary=' . $boundary;
+            $headers['Content-Type'] = 'multipart/byteranges; boundary=' . $this->multipartBoundary;
             
             $body = ($method == 'GET')
-                ? new MultiPartByteRangeBody($body, $ranges, $boundary, $contentType, $fileSize)
+                ? new MultiPartByteRangeBody($body, $ranges, $this->multipartBoundary, $contentType, $fileSize)
                 : NULL;
             
         } else {

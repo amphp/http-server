@@ -4,3 +4,6 @@
 [submodule "vendor/Amp"]
 	path = vendor/Amp
 	url = git@github.com:rdlowrey/Amp
+[submodule "vendor/vfsStream"]
+	path = vendor/vfsStream
+	url = git://github.com/mikey179/vfsStream.git

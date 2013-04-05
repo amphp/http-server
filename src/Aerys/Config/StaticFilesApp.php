@@ -13,6 +13,7 @@ class StaticFilesApp implements AppLauncher {
         'indexes'                   => NULL,
         'eTagMode'                  => NULL,
         'expiresHeaderPeriod'       => NULL,
+        'defaultMimeType'           => NULL,
         'customMimeTypes'           => NULL,
         'defaultTextCharset'        => NULL,
         'fileDescriptorCacheTtl'    => NULL
@@ -37,20 +38,27 @@ class StaticFilesApp implements AppLauncher {
         if (!($docRoot && is_dir($docRoot) && is_readable($docRoot))) {
             throw new ConfigException(
                 __CLASS__ . "::__construct requires a 'docRoot' key specifying a readable " .
-                "directory from which to server static files"
+                "directory from which to serve static files"
             );
         }
     }
     
     function launchApp(Injector $injector) {
         $opts = $this->options;
-        $docRoot = $opts['docRoot'];
+        $handler = $injector->make($this->handlerClass, [
+            ':docRoot' => $opts['docRoot']
+        ]);
+        
         unset($opts['docRoot']);
         
-        return $injector->make($this->handlerClass, [
-            ':docRoot' => $docRoot,
-            ':options' => $opts
-        ]);
+        foreach ($opts as $key => $value) {
+            $setter = "set" . ucfirst($key);
+            if (method_exists($handler, $setter) && isset($value)) {
+                $handler->$setter($value);
+            }
+        }
+        
+        return $handler;
     }
     
 }
