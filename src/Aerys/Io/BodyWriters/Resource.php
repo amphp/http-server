@@ -12,14 +12,15 @@ class Resource extends BodyWriter {
     private $source;
     private $sourcePos;
     private $contentLength;
-    private $bytesLeftToWrite;
+    private $bytesRemaining;
+    private $maxChunkSize = 262144;
     
     function __construct($destination, $source, $contentLength) {
         $this->destination = $destination;
         $this->source = $source;
         $this->sourcePos = 0;
         $this->contentLength = $contentLength;
-        $this->bytesLeftToWrite = $contentLength;
+        $this->bytesRemaining = $contentLength;
     }
     
     /**
@@ -27,11 +28,11 @@ class Resource extends BodyWriter {
      * many concurrent responses
      */
     function write() {
-        $byteWriteLimit = ($this->bytesLeftToWrite > $this->granularity)
-            ? $this->granularity
-            : $this->bytesLeftToWrite;
+        $byteWriteLimit = ($this->bytesRemaining > $this->maxChunkSize)
+            ? $this->maxChunkSize
+            : $this->bytesRemaining;
         
-        $offsetPosition = $this->contentLength - $this->bytesLeftToWrite;
+        $offsetPosition = $this->contentLength - $this->bytesRemaining;
         
         fseek($this->source, $this->sourcePos);
         
@@ -44,9 +45,9 @@ class Resource extends BodyWriter {
         
         $this->sourcePos += $bytesWritten;
         
-        $this->bytesLeftToWrite -= $bytesWritten;
+        $this->bytesRemaining -= $bytesWritten;
         
-        if (!$this->bytesLeftToWrite) {
+        if (!$this->bytesRemaining) {
             return TRUE;
         } elseif ($bytesWritten) {
             return FALSE;
