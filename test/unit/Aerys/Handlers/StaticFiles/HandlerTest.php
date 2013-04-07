@@ -26,6 +26,23 @@ class HandlerTest extends PHPUnit_Framework_TestCase {
         $handler = new VfsRealpathHandler('vfs://dirthatdoesntexist');
     }
     
+    function testSetEtagMode() {
+        $handler = new VfsRealpathHandler('vfs://root');
+        $handler->setETagMode(Handler::ETAG_NONE);
+        
+        $asgiEnv = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/'
+        ];
+        
+        $asgiResponse = $handler->__invoke($asgiEnv);
+        $headers = $asgiResponse[2];
+        $this->assertFalse(isset($headers['ETag']));
+        
+        $this->assertEquals(200, $asgiResponse[0]);
+        
+    }
+    
     function testSetFileDescriptorCacheTtl() {
         $handler = new VfsRealpathHandler('vfs://root');
         $handler->setFileDescriptorCacheTtl(30);
@@ -223,22 +240,174 @@ class HandlerTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals('GET, HEAD, OPTIONS', $headers['Allow']);
     }
     
-    function testRangeRequest() {
+    
+    function provideRangeRequests() {
+        $return = [];
+        
+        // 0 ---------------------------------------------------------------------------------------
+        
+        // IMPORTANT: ASSUMES RESOURCE test.txt == 42 BYTES IN SIZE
+        
+        $startPos = 0;
+        $endPos = 5;
+        $asgiEnv = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/test.txt',
+            'HTTP_RANGE' => "bytes={$startPos}-{$endPos}"
+        ];
+        $expectedStatus = Status::PARTIAL_CONTENT;
+        
+        $return[] = [$asgiEnv, $expectedStatus, $startPos, $endPos];
+        
+        // 1 ---------------------------------------------------------------------------------------
+        
+        // IMPORTANT: ASSUMES RESOURCE test.txt == 42 BYTES IN SIZE
+        
+        $startPos = 0;
+        $endPos = 20;
+        $asgiEnv = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/test.txt',
+            'HTTP_RANGE' => "bytes={$startPos}-{$endPos}"
+        ];
+        $expectedStatus = Status::PARTIAL_CONTENT;
+        
+        $return[] = [$asgiEnv, $expectedStatus, $expectedStartPos = 0, $expectedEndPos = 20];
+        
+        // 2 ---------------------------------------------------------------------------------------
+        
+        // IMPORTANT: ASSUMES RESOURCE test.txt == 42 BYTES IN SIZE
+        
+        $startPos = 10;
+        $endPos = 41;
+        $asgiEnv = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/test.txt',
+            'HTTP_RANGE' => "bytes={$startPos}-{$endPos}"
+        ];
+        $expectedStatus = Status::PARTIAL_CONTENT;
+        
+        $return[] = [$asgiEnv, $expectedStatus, $expectedStartPos = 10, $expectedEndPos = 41];
+        
+        // 3 ---------------------------------------------------------------------------------------
+        
+        // IMPORTANT: ASSUMES RESOURCE test.txt == 42 BYTES IN SIZE
+        
+        $startPos = '';
+        $endPos = 20;
+        $asgiEnv = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/test.txt',
+            'HTTP_RANGE' => "bytes={$startPos}-{$endPos}"
+        ];
+        $expectedStatus = Status::PARTIAL_CONTENT;
+        
+        $return[] = [$asgiEnv, $expectedStatus, $expectedStartPos = 21, $expectedEndPos = 41];
+        
+        // 4 ---------------------------------------------------------------------------------------
+        
+        // IMPORTANT: ASSUMES RESOURCE test.txt == 42 BYTES IN SIZE
+        
+        $startPos = 20;
+        $endPos = '';
+        $asgiEnv = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/test.txt',
+            'HTTP_RANGE' => "bytes={$startPos}-{$endPos}"
+        ];
+        $expectedStatus = Status::PARTIAL_CONTENT;
+        
+        $return[] = [$asgiEnv, $expectedStatus, $expectedStartPos = 20, $expectedEndPos = 41];
+        
+        // x ---------------------------------------------------------------------------------------
+        
+        return $return;
+    }
+    
+    /**
+     * @dataProvider provideRangeRequests
+     */
+    function testRangeRequest($asgiEnv, $expectedStatus, $expectedStartPos, $expectedEndPos) {
+        $handler = new VfsRealpathHandler('vfs://root');
+        
+        $asgiResponse = $handler->__invoke($asgiEnv);
+        list($status, $reason, $headers, $body) = $asgiResponse;
+        
+        $this->assertEquals($expectedStatus, $status);
+        $this->assertEquals($expectedStartPos, $body->getStartPos());
+        $this->assertEquals($expectedEndPos, $body->getEndPos());
+    }
+    
+    function provideUnsatisfiableRangeRequests() {
+        $return = [];
+        
+        // 0 ---------------------------------------------------------------------------------------
+        
+        $asgiEnv = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/test.txt',
+            'HTTP_RANGE' => "bytes=-"
+        ];
+        $return[] = [$asgiEnv];
+        
+        // 1 ---------------------------------------------------------------------------------------
+        
+        $asgiEnv = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/test.txt',
+            'HTTP_RANGE' => "bytes="
+        ];
+        $return[] = [$asgiEnv];
+        
+        // 2 ---------------------------------------------------------------------------------------
+        
+        $asgiEnv = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/test.txt',
+            'HTTP_RANGE' => 'bytes=8888888-9999999'
+        ];
+        $return[] = [$asgiEnv];
+        
+        // 3 ---------------------------------------------------------------------------------------
+        
+        $asgiEnv = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => '/test.txt',
+            'HTTP_RANGE' => ['bytes=8888888-9999999', 'bytes=6666666-7777777']
+        ];
+        $return[] = [$asgiEnv];
+        
+        // x ---------------------------------------------------------------------------------------
+        
+        return $return;
+    }
+    
+    /**
+     * @dataProvider provideUnsatisfiableRangeRequests
+     */
+    function testNotSatisfiableReturnedOnBadRangeRequest($asgiEnv) {
+        $handler = new VfsRealpathHandler('vfs://root');
+        
+        $asgiResponse = $handler->__invoke($asgiEnv);
+        
+        $this->assertEquals(Status::REQUESTED_RANGE_NOT_SATISFIABLE, $asgiResponse[0]);
+    }
+    
+    function testMultipartRangeRequest() {
         $handler = new VfsRealpathHandler('vfs://root');
         
         $asgiEnv = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI' => '/test.txt',
-            'HTTP_RANGE' => 'bytes=0-5'
+            'HTTP_RANGE' => ['bytes=0-10', 'bytes=11-20']
         ];
         
         $asgiResponse = $handler->__invoke($asgiEnv);
         list($status, $reason, $headers, $body) = $asgiResponse;
         
-        $this->assertEquals(206, $status);
-        $this->assertInstanceOf('Aerys\Io\ByteRangeBody', $body);
-        $this->assertEquals(0, $body->getStartPos());
-        $this->assertEquals(5, $body->getEndPos());
+        $this->assertEquals(Status::PARTIAL_CONTENT, $status);
+        $this->assertInstanceOf('\Aerys\Io\MultiPartByteRangeBody', $body);
+        
     }
     
     function testDefaultMimeTypeReturnedIfUnkownOrMissingExtension() {
@@ -346,20 +515,6 @@ class HandlerTest extends PHPUnit_Framework_TestCase {
         $statusCode = $asgiResponse[0];
         
         $this->assertEquals(Status::PRECONDITION_FAILED, $statusCode);
-    }
-    
-    function testRequestRangeNotSatisfiableResponse() {
-        $handler = new VfsRealpathHandler('vfs://root');
-        
-        $asgiEnv = [
-            'REQUEST_METHOD' => 'GET',
-            'REQUEST_URI' => '/test.txt',
-            'HTTP_RANGE' => 'bytes=5555555-9999999'
-        ];
-        $asgiResponse = $handler->__invoke($asgiEnv);
-        $statusCode = $asgiResponse[0];
-        
-        $this->assertEquals(Status::REQUESTED_RANGE_NOT_SATISFIABLE, $statusCode);
     }
     
     function testIfRangeMatchesETagResponse() {

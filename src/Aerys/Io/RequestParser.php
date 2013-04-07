@@ -2,7 +2,7 @@
 
 namespace Aerys\Io;
 
-use Aerys\Server;
+use Aerys\Method;
 
 class RequestParser extends MessageParser {
     
@@ -30,7 +30,7 @@ class RequestParser extends MessageParser {
     
     protected function allowsEntityBody() {
         $method = strtoupper($this->method);
-        return !($method == Server::HEAD || $method == Server::TRACE);
+        return !($method == Method::HEAD || $method == Method::TRACE);
     }
     
     protected function getParsedMessageVals() {

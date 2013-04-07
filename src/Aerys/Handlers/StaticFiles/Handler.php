@@ -196,12 +196,8 @@ class Handler {
                 return $this->doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag);
             case self::PRECONDITION_IF_RANGE_FAILED:
                 return $this->doFile($filePath,  $method, $mTime, $fileSize, $eTag);
-            case self::PRECONDITION_PASS:
-                break;
             default:
-                throw new \UnexpectedValueException(
-                    'Unexpected precondition check result value encountered'
-                );
+                break;
         }
         
         return $ranges
@@ -284,8 +280,8 @@ class Handler {
      * > Expires date that is equal to the Date header value.
      */
     private function doFile($filePath, $method, $mTime, $fileSize, $eTag) {
-        $status = 200;
-        $reason = 'OK';
+        $status = Status::OK;
+        $reason = Reason::HTTP_200;
         $now = time();
         
         $headers = [
@@ -313,26 +309,28 @@ class Handler {
     }
     
     private function getFileDescriptor($filePath) {
-        $cacheId = strtolower($filePath);
-        
-        if ($this->fdCacheTtl && !isset($this->fdCache[$cacheId])) {
-            
-            $fd = fopen($filePath, 'rb');
-            $cacheExpiry = time() + $this->fdCacheTtl;
-            $this->fdCache[$cacheId] = [$fd, $cacheExpiry, $filePath];
-            
-        } elseif ($this->fdCacheTtl) {
-        
-            list($fd, $cacheExpiry, $filePath) = $this->fdCache[$cacheId];
-            
-            if ($cacheExpiry < time()) {
-                unset($this->fdCache[$cacheId]);
-                clearstatcache(FALSE, $filePath);
-            }
-            
-        } else {
+        if (!$this->fdCacheTtl) {
             $fd = fopen($filePath, 'rb');
             clearstatcache(FALSE, $filePath);
+            
+            return $fd;
+        }
+        
+        $now = time();
+        $cacheId = strtolower($filePath);
+        $isCached = isset($this->fdCache[$cacheId]);
+        $cacheExpiry = $isCached ? $this->fdCache[$cacheId][1] : $now + $this->fdCacheTtl;
+        
+        if ($isCached && $cacheExpiry < $now) {
+            unset($this->fdCache[$cacheId]);
+            clearstatcache(FALSE, $filePath);
+            $fd = fopen($filePath, 'rb');
+            $this->fdCache[$cacheId] = [$fd, $cacheExpiry];
+        } elseif ($isCached) {
+            $fd = $this->fdCache[$cacheId][0];
+        } else {
+            $fd = fopen($filePath, 'rb');
+            $this->fdCache[$cacheId] = [$fd, $cacheExpiry];
         }
         
         return $fd;
@@ -349,18 +347,14 @@ class Handler {
     }
     
     private function doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag) {
-        if (is_array($ranges)
-            || (0 !== stripos($ranges, 'bytes='))
-            || !strstr($ranges, '-')
-            || !($ranges = $this->normalizeByteRanges($fileSize, $ranges))
-        ) {
+        if (!$ranges = $this->normalizeByteRanges($fileSize, $ranges)) {
            return $this->requestedRangeNotSatisfiable($fileSize);
         }
         
         $now = time();
         $body = $this->getFileDescriptor($filePath);
-        $status = 206;
-        $reason = 'Partial Content';
+        $status = Status::PARTIAL_CONTENT;
+        $reason = Reason::HTTP_206;
         $headers = [
             'Date' => date(Server::HTTP_DATE, $now),
             'Cache-Control' => 'public',
@@ -375,6 +369,8 @@ class Handler {
             $headers['ETag'] = $eTag;
         }
         
+        $contentType = $this->generateContentTypeHeader($filePath);
+        
         if ($isMultiPart = (count($ranges) > 1)) {
             $headers['Content-Type'] = 'multipart/byteranges; boundary=' . $this->multipartBoundary;
             
@@ -386,7 +382,7 @@ class Handler {
             list($startPos, $endPos) = $ranges[0];
             $headers['Content-Length'] = $endPos - $startPos;
             $headers['Content-Range'] = "bytes $startPos-$endPos/$fileSize";
-            $headers['Content-Type'] = $this->generateContentTypeHeader($filePath);
+            $headers['Content-Type'] = $contentType;
             $body = ($method == 'GET')
                 ? new ByteRangeBody($body, $startPos, $endPos)
                 : NULL;
@@ -395,24 +391,37 @@ class Handler {
         return [$status, $reason, $headers, $body];
     }
     
-    private function normalizeByteRanges($fileSize, $ranges) {
-        $normalized = [];
+    /**
+     * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
+     */
+    private function normalizeByteRanges($fileSize, $rawRanges) {
+        if (is_array($rawRanges)) {
+            $rawRanges = implode(',', array_filter($rawRanges));
+        }
         
-        $ranges = substr($ranges, 6);
-        $ranges = explode(',', $ranges);
+        $rawRanges = str_ireplace([' ', 'bytes='], '', $rawRanges);
+        $rawRanges = explode(',', $rawRanges);
         
-        foreach ($ranges as $range) {
+        $normalizedByteRanges = [];
+        
+        foreach ($rawRanges as $range) {
+            if (FALSE === strpos($range, '-')) {
+                return NULL;
+            }
+            
             list($startPos, $endPos) = explode('-', rtrim($range));
             
             if ($startPos === '' && $endPos === '') {
                 return NULL;
             } elseif ($startPos === '' && $endPos !== '') {
-                // The -1 is necessary and not a hack because byte ranges start at 0. Don't remove it.
+                // The -1 is necessary and not a hack because byte ranges are inclusive and start
+                // at 0. DO NOT REMOVE THE -1.
                 $startPos = $fileSize - $endPos - 1;
                 $endPos = $fileSize - 1;
             } elseif ($endPos === '' && $startPos !== '') {
                 $startPos = (int) $startPos;
-                // The -1 is necessary and not a hack because byte ranges start at 0. Don't remove it.
+                // The -1 is necessary and not a hack because byte ranges are inclusive and start
+                // at 0. DO NOT REMOVE THE -1.
                 $endPos = $fileSize - 1;
             } else {
                 $startPos = (int) $startPos;
@@ -423,10 +432,10 @@ class Handler {
                 return NULL;
             }
             
-            $normalized[] = [$startPos, $endPos];
+            $normalizedByteRanges[] = [$startPos, $endPos];
         }
         
-        return $normalized;
+        return $normalizedByteRanges;
     }
     
     private function getEtag($mTime, $fileSize, $filePath) {
@@ -462,9 +471,10 @@ class Handler {
     }
     
     private function options() {
-        $status = 200;
-        $reason = 'OK';
+        $status = Status::OK;
+        $reason = Reason::HTTP_200;
         $headers = [
+            'Date' => date(Server::HTTP_DATE),
             'Allow' => 'GET, HEAD, OPTIONS',
             'Accept-Ranges' => 'bytes'
         ];
@@ -473,8 +483,8 @@ class Handler {
     }
     
     private function methodNotAllowed() {
-        $status = 405;
-        $reason = 'Method Not Allowed';
+        $status = Status::METHOD_NOT_ALLOWED;
+        $reason = Reason::HTTP_405;
         $headers = [
             'Date' => date(Server::HTTP_DATE),
             'Allow' => 'GET, HEAD, OPTIONS'
@@ -484,8 +494,8 @@ class Handler {
     }
     
     private function requestedRangeNotSatisfiable($fileSize) {
-        $status = 416;
-        $reason = 'Requested Range Not Satisfiable';
+        $status = Status::REQUESTED_RANGE_NOT_SATISFIABLE;
+        $reason = Reason::HTTP_416;
         $headers = [
             'Date' => date(Server::HTTP_DATE, time()),
             'Content-Range' => '*/' . $fileSize
@@ -495,8 +505,8 @@ class Handler {
     }
     
     private function notModified($eTag, $lastModified) {
-        $status = 304;
-        $reason = 'Not Modified';
+        $status = Status::NOT_MODIFIED;
+        $reason = Reason::HTTP_304;
         $headers = [
             'Date' => date(Server::HTTP_DATE),
             'Last-Modified' => date(Server::HTTP_DATE, $lastModified)
@@ -510,8 +520,8 @@ class Handler {
     }
     
     private function preconditionFailed() {
-        $status = 412;
-        $reason = 'Precondition Failed';
+        $status = Status::PRECONDITION_FAILED;
+        $reason = Reason::HTTP_412;
         $headers = [
             'Date' => date(Server::HTTP_DATE)
         ];
@@ -520,8 +530,8 @@ class Handler {
     }
     
     private function notFound() {
-        $status = 404;
-        $reason = 'Not Found';
+        $status = Status::NOT_FOUND;
+        $reason = Reason::HTTP_404;
         $body = '<html><body><h1>404 Not Found</h1></body></html>';
         $headers = [
             'Date' => date(Server::HTTP_DATE),

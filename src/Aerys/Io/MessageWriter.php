@@ -28,8 +28,8 @@ class MessageWriter {
         $this->granularity = (int) $bytes;
     }
     
-    function enqueue($asgiResponseAndProtocol) {
-        $this->toWriteQueue[] = $asgiResponseAndProtocol;
+    function enqueue($asgiResponse, $protocol, $contentLength) {
+        $this->toWriteQueue[] = [$asgiResponse, $protocol, $contentLength];
     }
     
     /**
@@ -48,14 +48,8 @@ class MessageWriter {
         }
         
         start: {
-            $nextMsg = array_shift($this->toWriteQueue);
-            list($status, $reason, $headers, $body) = $nextMsg;
-            
-            // end() is used because the protocol may be at index 4 or 5 depending on whether or
-            // not the userland handler assigned a 101 Switching Protocols callback at index 4
-            $protocol = end($nextMsg);
-            
-            $contentLength = empty($headers['CONTENT-LENGTH']) ? NULL : $headers['CONTENT-LENGTH'];
+            list($asgiResponse, $protocol, $contentLength) = array_shift($this->toWriteQueue);
+            list($status, $reason, $headers, $body) = $asgiResponse;
             
             $this->body = $body;
             $this->headers = $this->generateStartLineAndHeaders($protocol, $status, $reason, $headers);
@@ -76,7 +70,7 @@ class MessageWriter {
         }
         
         headers: {
-            $bytesWritten = @fwrite($this->destination, $this->headers);
+            $bytesWritten = @fwrite($this->destination, $this->headers, $this->granularity);
             
             if ($bytesWritten && $bytesWritten == $this->headerSize) {
                 $this->headers = NULL;

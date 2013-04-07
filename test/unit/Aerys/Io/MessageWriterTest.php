@@ -1,21 +1,46 @@
 <?php
 
-use Aerys\MessageWriter;
+use Aerys\Io\MessageWriter,
+    Aerys\Io\BodyWriterFactory;
 
 class MessageWriterTest extends PHPUnit_Framework_TestCase {
     
+    /**
+     * @dataProvider provideWriteExpectations
+     */
+    public function testWrite($protocol, $status, $reason, $headers, $body, $expected) {
+        
+        $destination = fopen('php://memory', 'r+');
+        $writer = new MessageWriter($destination, new BodyWriterFactory);
+        $writer->setGranularity(1);
+        
+        $ucHeaders = array_change_key_case($headers, CASE_UPPER);
+        $contentLength = empty($ucHeaders['CONTENT-LENGTH']) ? NULL : $ucHeaders['CONTENT-LENGTH'];
+        
+        $asgiResponse = [$status, $reason, $headers, $body];
+        $writer->enqueue($asgiResponse, $protocol, $contentLength);
+        
+        while (!$writer->write()) {
+            continue;
+        }
+        
+        rewind($destination);
+        
+        $this->assertEquals($expected, stream_get_contents($destination));
+    }
+    
     public function provideWriteExpectations() {
-        $returnArr = array();
+        $returnArr = [];
         
         // 0 -------------------------------------------------------------------------------------->
         $protocol = '1.1';
         $status = 200;
         $reason = '';
         $body = 'Woot!';
-        $headers = array(
+        $headers = [
             'Content-Length' => strlen($body),
             'Content-Type' => 'text/plain'
-        );
+        ];
         
         $expected = 
             "HTTP/1.1 200\r\n" .
@@ -25,29 +50,29 @@ class MessageWriterTest extends PHPUnit_Framework_TestCase {
             $body
         ;
         
-        $returnArr[] = array($protocol, $status, $reason, $headers, $body, $expected);
+        $returnArr[] = [$protocol, $status, $reason, $headers, $body, $expected];
         
         // 1 -------------------------------------------------------------------------------------->
         $protocol = '1.1';
         $status = 100;
         $reason = 'Continue';
         $body = NULL;
-        $headers = array();
+        $headers = [];
         
         $expected = "HTTP/1.1 100 Continue\r\n\r\n";
         
-        $returnArr[] = array($protocol, $status, $reason, $headers, $body, $expected);
+        $returnArr[] = [$protocol, $status, $reason, $headers, $body, $expected];
         
         // 2 -------------------------------------------------------------------------------------->
         $protocol = '1.1';
         $status = 200;
         $reason = '';
         $body = 'Woot!';
-        $headers = array(
+        $headers = [
             'Content-Length' => strlen($body),
             'Content-Type' => 'text/plain',
-            'Set-Cookie' => array('cookie1', 'cookie2', 'cookie3')
-        );
+            'Set-Cookie' => ['cookie1', 'cookie2', 'cookie3']
+        ];
         
         $expected = 
             "HTTP/1.1 200\r\n" .
@@ -60,7 +85,7 @@ class MessageWriterTest extends PHPUnit_Framework_TestCase {
             $body
         ;
         
-        $returnArr[] = array($protocol, $status, $reason, $headers, $body, $expected);
+        $returnArr[] = [$protocol, $status, $reason, $headers, $body, $expected];
         
         // 3 -------------------------------------------------------------------------------------->
         $protocol = '1.1';
@@ -71,10 +96,10 @@ class MessageWriterTest extends PHPUnit_Framework_TestCase {
         fwrite($body, $bodyStr);
         rewind($body);
         
-        $headers = array(
+        $headers = [
             'Content-Length' => strlen($bodyStr),
             'Content-Type' => 'text/plain'
-        );
+        ];
         
         $expected = 
             "HTTP/1.1 200\r\n" .
@@ -84,21 +109,22 @@ class MessageWriterTest extends PHPUnit_Framework_TestCase {
             $bodyStr
         ;
         
-        $returnArr[] = array($protocol, $status, $reason, $headers, $body, $expected);
+        $returnArr[] = [$protocol, $status, $reason, $headers, $body, $expected];
         
         // 4 -------------------------------------------------------------------------------------->
+        
         $protocol = '1.1';
         $status = 200;
         $reason = '';
-        $bodyStr = str_repeat('X', 32768);
+        $bodyStr = str_repeat('X', 16384);
         $body = fopen('php://memory', 'r+');
         fwrite($body, $bodyStr);
         rewind($body);
         
-        $headers = array(
+        $headers = [
             'Content-Length' => strlen($bodyStr),
             'Content-Type' => 'text/plain'
-        );
+        ];
         
         $expected = 
             "HTTP/1.1 200\r\n" .
@@ -108,7 +134,7 @@ class MessageWriterTest extends PHPUnit_Framework_TestCase {
             $bodyStr
         ;
         
-        $returnArr[] = array($protocol, $status, $reason, $headers, $body, $expected);
+        $returnArr[] = [$protocol, $status, $reason, $headers, $body, $expected];
         
         // 5 -------------------------------------------------------------------------------------->
         $protocol = '1.1';
@@ -116,10 +142,10 @@ class MessageWriterTest extends PHPUnit_Framework_TestCase {
         $reason = 'OK';
         $body = new ArrayIterator(['chunk1', 'chunk2', 'chunk3']);
         
-        $headers = array(
+        $headers = [
             'Transfer-Encoding' => 'chunked',
             'Content-Type' => 'text/plain'
-        );
+        ];
         
         $expected = 
             "HTTP/1.1 200 OK\r\n" .
@@ -132,7 +158,7 @@ class MessageWriterTest extends PHPUnit_Framework_TestCase {
             "0\r\n\r\n"
         ;
         
-        $returnArr[] = array($protocol, $status, $reason, $headers, $body, $expected);
+        $returnArr[] = [$protocol, $status, $reason, $headers, $body, $expected];
         
         // 6 -------------------------------------------------------------------------------------->
         $protocol = '1.0';
@@ -140,10 +166,10 @@ class MessageWriterTest extends PHPUnit_Framework_TestCase {
         $reason = 'OK';
         $body = new ArrayIterator(['chunk1', 'chunk2', 'chunk3']);
         
-        $headers = array(
+        $headers = [
             'Connection' => 'close',
             'Content-Type' => 'text/plain'
-        );
+        ];
         
         $expected = 
             "HTTP/1.0 200 OK\r\n" .
@@ -155,53 +181,12 @@ class MessageWriterTest extends PHPUnit_Framework_TestCase {
             "chunk3"
         ;
         
-        $returnArr[] = array($protocol, $status, $reason, $headers, $body, $expected);
+        $returnArr[] = [$protocol, $status, $reason, $headers, $body, $expected];
         
         // x -------------------------------------------------------------------------------------->
         
         return $returnArr;
     }
     
-    /**
-     * @dataProvider provideWriteExpectations
-     */
-    public function testWrite($protocol, $status, $reason, $headers, $body, $expected) {
-        $this->markTestSkipped();
-        
-        $destination = fopen('php://memory', 'r+');
-        $writer = new MessageWriter($destination);
-        
-        // @TODO This no longer matches the API
-        $message = (new Response)->setAll($protocol, $status, $reason, $headers, $body);
-        $writer->enqueue($message);
-        
-        while(!$writer->write()) {
-            continue;
-        }
-        
-        rewind($destination);
-        
-        $this->assertEquals($expected, stream_get_contents($destination));
-    }
-    
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

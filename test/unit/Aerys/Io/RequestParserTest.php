@@ -4,8 +4,54 @@ use Aerys\Io\RequestParser;
 
 class RequestParserTest extends PHPUnit_Framework_TestCase {
     
+    /**
+     * @dataProvider provideParseExpectations
+     */
+    public function testParse($msg, $method, $uri, $protocol, $headers, $body) {
+        $inputStream = fopen('php://memory', 'r+');
+        fwrite($inputStream, $msg);
+        rewind($inputStream);
+        
+        $requestParser = new RequestParser($inputStream);
+        $parsedRequestArr = $requestParser->read();
+        
+        $this->assertEquals($method, $parsedRequestArr['method']);
+        $this->assertEquals($uri, $parsedRequestArr['uri']);
+        $this->assertEquals($protocol, $parsedRequestArr['protocol']);
+        $this->assertEquals($headers, $parsedRequestArr['headers']);
+        $this->assertEquals($body, $parsedRequestArr['body']);
+    }
+    
+    /**
+     * @dataProvider provideParseExpectations
+     */
+    public function testIncrementalParse($msg, $method, $uri, $protocol, $headers, $body) {
+        $inputStream = fopen('php://memory', 'r+');
+        $requestParser = new RequestParser($inputStream);
+        
+        $byteIncrement = 1;
+        $msgLen = strlen($msg);
+        for ($i=0; $i < $msgLen; $i+=$byteIncrement) {
+            $msgPart = substr($msg, $i);
+            $currentPos = ftell($inputStream);
+            fwrite($inputStream, $msgPart);
+            fseek($inputStream, $currentPos);
+            
+            $parsedRequestArr = $requestParser->read();
+            if (NULL !== $parsedRequestArr) {
+                break;
+            }
+        }
+        
+        $this->assertEquals($method, $parsedRequestArr['method']);
+        $this->assertEquals($uri, $parsedRequestArr['uri']);
+        $this->assertEquals($protocol, $parsedRequestArr['protocol']);
+        $this->assertEquals($headers, $parsedRequestArr['headers']);
+        $this->assertEquals($body, $parsedRequestArr['body']);
+    }
+    
     public function provideParseExpectations() {
-        $return = array();
+        $return = [];
         
         // 0 -------------------------------------------------------------------------------------->
         $msg = "" .
@@ -17,10 +63,10 @@ class RequestParserTest extends PHPUnit_Framework_TestCase {
         $method = 'GET';
         $uri = '/';
         $protocol = '1.1';
-        $headers = array('HOST' => 'localhost');
+        $headers = ['HOST' => 'localhost'];
         $body = NULL;
         
-        $return[] = array($msg, $method, $uri, $protocol, $headers, $body);
+        $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
         
         // 1 -------------------------------------------------------------------------------------->
         $msg = "" .
@@ -36,14 +82,14 @@ class RequestParserTest extends PHPUnit_Framework_TestCase {
         $method = 'POST';
         $uri = '/post-endpoint';
         $protocol = '1.0';
-        $headers = array(
+        $headers = [
             'HOST' => 'localhost',
-            'COOKIE' => array('cookie1', 'cookie2'),
+            'COOKIE' => ['cookie1', 'cookie2'],
             'CONTENT-LENGTH' => 3
-        );
+        ];
         $body = '123';
         
-        $return[] = array($msg, $method, $uri, $protocol, $headers, $body);
+        $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
         
         // 2 -------------------------------------------------------------------------------------->
         $msg = "" .
@@ -54,10 +100,10 @@ class RequestParserTest extends PHPUnit_Framework_TestCase {
         $method = 'OPTIONS';
         $uri = '*';
         $protocol = '1.0';
-        $headers = array();
+        $headers = [];
         $body = NULL;
         
-        $return[] = array($msg, $method, $uri, $protocol, $headers, $body);
+        $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
         
         // 3 -------------------------------------------------------------------------------------->
         $msg = "" .
@@ -71,13 +117,13 @@ class RequestParserTest extends PHPUnit_Framework_TestCase {
         $method = 'GET';
         $uri = '/test';
         $protocol = '1.1';
-        $headers = array(
+        $headers = [
             'HOST' => 'localhost',
             'TRANSFER-ENCODING' => 'chunked'
-        );
+        ];
         $body = NULL;
         
-        $return[] = array($msg, $method, $uri, $protocol, $headers, $body);
+        $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
         
         // 4 -------------------------------------------------------------------------------------->
         
@@ -101,7 +147,7 @@ class RequestParserTest extends PHPUnit_Framework_TestCase {
         $method = 'GET';
         $uri = '/test';
         $protocol = '1.1';
-        $headers = array(
+        $headers = [
             'HOST' => 'localhost',
             'CONNECTION' => 'keep-alive',
             'USER-AGENT' => 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.97 Safari/537.11',
@@ -110,9 +156,9 @@ class RequestParserTest extends PHPUnit_Framework_TestCase {
             'ACCEPT-LANGUAGE' => 'en-US,en;q=0.8',
             'ACCEPT-CHARSET' => 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
             'CONTENT-LENGTH' => $len
-        );
+        ];
         
-        $return[] = array($msg, $method, $uri, $protocol, $headers, $body);
+        $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
         
         // 5 -------------------------------------------------------------------------------------->
         $msg = "" .
@@ -129,13 +175,13 @@ class RequestParserTest extends PHPUnit_Framework_TestCase {
         $method = 'GET';
         $uri = '/test';
         $protocol = '1.1';
-        $headers = array(
+        $headers = [
             'HOST' => 'localhost',
             'HEADER-LWS-SPLIT' => 'line1 line2 line3 line4 line5'
-        );
+        ];
         $body = NULL;
         
-        $return[] = array($msg, $method, $uri, $protocol, $headers, $body);
+        $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
         
         // 6 -------------------------------------------------------------------------------------->
         $msg = "" .
@@ -147,55 +193,14 @@ class RequestParserTest extends PHPUnit_Framework_TestCase {
         $method = 'GET';
         $uri = '/';
         $protocol = '1.1';
-        $headers = array('HOST' => 'localhost');
+        $headers = ['HOST' => 'localhost'];
         $body = NULL;
         
-        $return[] = array($msg, $method, $uri, $protocol, $headers, $body);
+        $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
         
         // x -------------------------------------------------------------------------------------->
         
         return $return;
-    }
-    
-    /**
-     * @dataProvider provideParseExpectations
-     */
-    public function testParse($msg, $method, $uri, $protocol, $headers, $body) {
-        $this->markTestSkipped();
-        
-        $requestParser = new RequestParser;
-        $parsedRequestArr = $requestParser->parse($msg);
-        
-        $this->assertEquals($method, $parsedRequestArr['method']);
-        $this->assertEquals($uri, $parsedRequestArr['uri']);
-        $this->assertEquals($protocol, $parsedRequestArr['protocol']);
-        $this->assertEquals($headers, $parsedRequestArr['headers']);
-        $this->assertEquals($body, $parsedRequestArr['body']);
-    }
-    
-    /**
-     * @dataProvider provideParseExpectations
-     */
-    public function testIncrementalParse($msg, $method, $uri, $protocol, $headers, $body) {
-        $this->markTestSkipped();
-        
-        $requestParser = new RequestParser;
-        
-        $increment = 1;
-        $msgLen = strlen($msg);
-        for ($i=0; $i < $msgLen; $i+=$increment) {
-            $msgPart = substr($msg, $i);
-            $parsedRequestArr = $requestParser->parse($msgPart);
-            if (NULL !== $parsedRequestArr) {
-                break;
-            }
-        }
-        
-        $this->assertEquals($method, $parsedRequestArr['method']);
-        $this->assertEquals($uri, $parsedRequestArr['uri']);
-        $this->assertEquals($protocol, $parsedRequestArr['protocol']);
-        $this->assertEquals($headers, $parsedRequestArr['headers']);
-        $this->assertEquals($body, $parsedRequestArr['body']);
     }
     
 }
