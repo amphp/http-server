@@ -22,7 +22,7 @@ class Configurator {
     }
     
     function createServer(array $config) {
-        list($reactor, $opts, $tls, $globalMods, $hostConf) = $this->listConfigSections($config);
+        list($reactor, $opts, $globalMods, $hostConf) = $this->listConfigSections($config);
         
         $reactor = $this->generateReactor($reactor);
         $httpServer = new Server($reactor);
@@ -31,25 +31,15 @@ class Configurator {
         $this->injector->share($reactor);
         $this->injector->share($httpServer);
         
-        $socketServers = [];
+        $serverMap = [];
         $hosts = [];
         $mods = [];
-        
-        foreach ($tls as $interfaceId => $tlsArr) {
-            $portStartPos = strrpos($interfaceId, ':');
-            $interface = substr($interfaceId, 0, $portStartPos);
-            $port = substr($interfaceId, $portStartPos + 1);
-            
-            $server = new TcpServerCrypto($reactor, $interface, $port);
-            $server->setAllOptions($tlsArr);
-            
-            $socketServers[$interfaceId] = $server;
-        }
         
         $hostDefs = $this->generateHostDefinitions($hostConf);
         
         foreach ($hostDefs as $hostId => $hostStruct) {
-            list($host, $hostMods) = $hostStruct;
+            list($host, $hostMods, $tls) = $hostStruct;
+            
             $hosts[$hostId] = $host;
             $mods[$hostId] = $hostMods;
             
@@ -57,12 +47,16 @@ class Configurator {
             $port = $host->getPort();
             $interfaceId = $interface . ':' . $port;
             
-            if (!isset($socketServers[$interfaceId])) {
-                $socketServers[$interfaceId] = new TcpServer($reactor, $interface, $port);
+            if ($tls) {
+                $server = new TcpServerCrypto($reactor, $interface, $port);
+                $server->setAllOptions($tls);
+                $serverMap[$interfaceId] = $server;
+            } elseif (!isset($serverMap[$interfaceId])) {
+                $serverMap[$interfaceId] = new TcpServer($reactor, $interface, $port);
             }
         }
         
-        foreach ($socketServers as $server) {
+        foreach ($serverMap as $server) {
             $httpServer->addTcpServer($server);
         }
         
@@ -89,18 +83,15 @@ class Configurator {
         if (isset($config['globals']['opts'])) {
             $opts = $config['globals']['opts'];
         }
-        if (isset($config['globals']['tls'])) {
-            $tls = $config['globals']['tls'];
-        }
         if (isset($config['globals']['mods'])) {
             $mods = $config['globals']['mods'];
         }
         
         unset($config['globals']);
         
-        $hosts = $config;
+        $hostConfs = $config;
         
-        return [$reactor, $opts, $tls, $mods, $hosts];
+        return [$reactor, $opts, $mods, $hostConfs];
     }
     
     private function generateReactor($reactor) {
@@ -156,7 +147,9 @@ class Configurator {
                 );
             }
             
-            $hostDefinitions[$hostId] = [$host, $mods];
+            $tls = empty($hostDefinitionArr['tls']) ? [] : $hostDefinitionArr['tls'];
+            
+            $hostDefinitions[$hostId] = [$host, $mods, $tls];
         }
         
         return $hostDefinitions;

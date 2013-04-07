@@ -34,28 +34,24 @@ $myApp = function(array $asgiEnv) {
 };
 
 $config = [
-    'globals' => [
-        'tls' => [
-            '127.0.0.1:1443' => [
-                
-                'pemCertFile'        => __DIR__ . '/support_files/localhost_cert.pem',
-                'pemCertPassphrase'  => '42 is not a legitimate passphrase',
-                
-                /* -------- OPTIONAL SETTINGS BEYOND THIS POINT ---------- */
-                
-                'allowSelfSigned'    => NULL,   // TRUE
-                'verifyPeer'         => NULL,   // FALSE
-                'ciphers'            => NULL,   // RC4-SHA:HIGH:!MD5:!aNULL:!EDH
-                'disableCompression' => NULL,   // TRUE
-                'certAuthorityFile'  => NULL,   // -
-                'certAuthorityDir'   => NULL    // -
-            ]
-        ]
-    ],
     'mySslServer'       => [
         'listenOn'      => '127.0.0.1:1443',
         'name'          => 'localhost',
-        'application'   => $myApp
+        'application'   => $myApp,
+        
+        'tls'           => [
+            'pemCertFile'        => __DIR__ . '/support_files/localhost_cert.pem',
+            'pemCertPassphrase'  => '42 is not a legitimate passphrase',
+            
+            /* -------- OPTIONAL SETTINGS BEYOND THIS POINT ---------- */
+            
+            'allowSelfSigned'    => NULL,   // TRUE
+            'verifyPeer'         => NULL,   // FALSE
+            'ciphers'            => NULL,   // RC4-SHA:HIGH:!MD5:!aNULL:!EDH
+            'disableCompression' => NULL,   // TRUE
+            'certAuthorityFile'  => NULL,   // -
+            'certAuthorityDir'   => NULL    // -
+        ]
     ]
 ];
 
