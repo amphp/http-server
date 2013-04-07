@@ -11,7 +11,7 @@ class MessageWriter {
     private $destination;
     private $bodyWriterFactory;
     private $state = self::START;
-    private $granularity = 8192;
+    private $granularity = 32768;
     private $toWriteQueue = [];
     
     private $headers;
