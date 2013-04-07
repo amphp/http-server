@@ -311,6 +311,7 @@ class Handler {
     private function getFileDescriptor($filePath) {
         if (!$this->fdCacheTtl) {
             $fd = fopen($filePath, 'rb');
+            stream_set_blocking($fd, 0);
             clearstatcache(FALSE, $filePath);
             
             return $fd;
@@ -332,6 +333,8 @@ class Handler {
             $fd = fopen($filePath, 'rb');
             $this->fdCache[$cacheId] = [$fd, $cacheExpiry];
         }
+        
+        stream_set_blocking($fd, 0);
         
         return $fd;
     }
