@@ -151,11 +151,19 @@ class ClientSession {
             }
             
             if (isset($this->responses[$requestId])) {
-                $writableResponse = $this->responses[$requestId];
-                $writableResponse[] = $asgiEnv['SERVER_PROTOCOL'];
-                $this->writer->enqueue($writableResponse);
+                
+                $asgiResponse = $this->responses[$requestId];
+                $responseHeaders = $asgiResponse[2];
+                $contentLength = empty($responseHeaders['CONTENT-LENGTH'])
+                    ? NULL
+                    : $responseHeaders['CONTENT-LENGTH'];
+                
+                $protocol = $asgiEnv['SERVER_PROTOCOL'];
+                
+                $this->writer->enqueue($asgiResponse, $protocol, $contentLength);
                 $this->isWriting[$requestId] = TRUE;
                 $pendingResponses++;
+                
             } else {
                 break;
             }
