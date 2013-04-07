@@ -15,13 +15,6 @@ class Server {
     
     const SERVER_SOFTWARE = 'Aerys/0.0.1';
     const HTTP_DATE = 'D, d M Y H:i:s T';
-    const OPTIONS = 'OPTIONS';
-    const GET = 'GET';
-    const HEAD = 'HEAD';
-    const POST = 'POST';
-    const PUT = 'PUT';
-    const DELETE = 'DELETE';
-    const TRACE = 'TRACE';
     const WILDCARD = '*';
     const UNKNOWN = '?';
     const PROTOCOL_V10 = '1.0';
@@ -64,21 +57,20 @@ class Server {
     private $autoReasonPhrase = TRUE;
     private $handleBeforeBody = FALSE;
     private $errorLogFile = NULL;
-    private $defaultHosts = [];
     private $sendServerToken = FALSE;
     private $disableKeepAlive = FALSE;
+    private $defaultHost;
     private $dontCombineHeaders = ['SET-COOKIE' => 1];
     private $normalizeMethodCase = TRUE;
     private $allowedMethods = [
-        self::GET     => 1,
-        self::HEAD    => 1,
-        self::OPTIONS => 1,
-        self::TRACE   => 1,
-        self::PUT     => 1,
-        self::POST    => 1,
-        self::DELETE  => 1
+        Method::GET     => 1,
+        Method::HEAD    => 1,
+        Method::OPTIONS => 1,
+        Method::TRACE   => 1,
+        Method::PUT     => 1,
+        Method::POST    => 1,
+        Method::DELETE  => 1
     ];
-    
     
     function __construct(Reactor $reactor, BodyWriterFactory $bwf = NULL) {
         $this->reactor = $reactor;
@@ -308,9 +300,9 @@ class Server {
             && !$this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler())
             && $needs100Continue
         ) {
-            $this->setResponse($requestId, [Status::CONTINUE_100, Server::HTTP_100, [], NULL]);
+            $this->setResponse($requestId, [Status::CONTINUE_100, Reason::HTTP_100, [], NULL]);
         } elseif (!$this->handleBeforeBody && $needs100Continue) {
-            $this->setResponse($requestId, [Status::CONTINUE_100, Server::HTTP_100, [], NULL]);
+            $this->setResponse($requestId, [Status::CONTINUE_100, Reason::HTTP_100, [], NULL]);
         }
     }
     
@@ -328,21 +320,23 @@ class Server {
         
         if (!isset($this->allowedMethods[$method])) {
             $headers = ['Allow' => implode(',', array_keys($this->allowedMethods))];
-            $response = [Status::METHOD_NOT_ALLOWED, Server::HTTP_405, $headers, NULL];
+            $response = [Status::METHOD_NOT_ALLOWED, Reason::HTTP_405, $headers, NULL];
             
-        } elseif ($method == self::TRACE) {
+        } elseif ($method == Method::TRACE) {
             $headers = [
                 'Content-Length' => strlen($parsedRequest['trace']), 
                 'Content-Type' => 'text/plain; charset=iso-8859-1'
             ];
-            $response = [Status::OK, Server::HTTP_200, $headers, $parsedRequest['trace']];
+            $response = [Status::OK, Reason::HTTP_200, $headers, $parsedRequest['trace']];
             
-        } elseif ($method == self::OPTIONS && $parsedRequest['uri'] == self::WILDCARD) {
+        } elseif ($method == Method::OPTIONS && $parsedRequest['uri'] == self::WILDCARD) {
             $headers = ['Allow' => implode(',', array_keys($this->allowedMethods))];
-            $response = [Status::OK, Server::HTTP_200, $headers, NULL];
+            $response = [Status::OK, Reason::HTTP_200, $headers, NULL];
         }
         
-        if (!$host = $this->selectRequestHost($client, $parsedRequest)) {
+        if ($host = $this->selectRequestHost($parsedRequest)) {
+            $asgiEnv = $this->generateAsgiEnv($client, $host->getName(), $parsedRequest);
+        } else {
             $asgiEnv = $this->generateAsgiEnv($client, self::UNKNOWN, $parsedRequest);
             
             $status = Status::BAD_REQUEST;
@@ -353,8 +347,6 @@ class Server {
                 'Content-Length' => strlen($body)
             ];
             $response = [$status, $reason, $headers, $body];
-        } else {
-            $asgiEnv = $this->generateAsgiEnv($client, $host->getName(), $parsedRequest);
         }
         
         $client->setRequest($requestId, $asgiEnv);
@@ -369,50 +361,71 @@ class Server {
     
     /**
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
+     * 
+     * 1. If Request-URI is an absoluteURI, the host is part of the Request-URI. Any Host header field
+     *    value in the request MUST be ignored.
+     * 2. If the Request-URI is not an absoluteURI, and the request includes a Host header field, the
+     *    host is determined by the Host header field value.
+     * 3. If the host as determined by rule 1 or 2 is not a valid host on the server, the response MUST
+     *    be a 400 (Bad Request) error message.
+     * 
+     * Recipients of an HTTP/1.0 request that lacks a Host header field MAY attempt to use heuristics 
+     * (e.g., examination of the URI path for something unique to a particular host) in order to 
+     * determine what exact resource is being requested.
      */
-    private function selectRequestHost(ClientSession $client, array $parsedRequest) {
-        $interface = $client->getServerAddress();
-        $port = $client->getServerPort();
-        $uri = $parsedRequest['uri'];
-        
-        if (0 === stripos($uri, 'http://') || stripos($uri, 'https://') === 0) {
-            $hostName = parse_url($parsedRequest['uri'], PHP_URL_HOST);
-            $hostId = strtolower($hostName) . ':' . $port;
-            
-            return isset($this->hosts[$hostId]) ? $this->hosts[$hostId] : NULL;
-        }
-        
+    private function selectRequestHost(array $parsedRequest) {
         $protocol = $parsedRequest['protocol'];
+        $requestUri = $parsedRequest['uri'];
         $headers = $parsedRequest['headers'];
-        $hostHeader = isset($headers['HOST']) ? strtolower($headers['HOST']) : '';
-        $hostId = strpos($hostHeader, ':') ? $hostHeader : $hostHeader .':' . $port;
+        $hostHeader = isset($headers['HOST'])
+            ? strtolower($headers['HOST'])
+            : NULL;
         
-        if ($protocol >= self::PROTOCOL_V11
-            && ($hostHeader || $hostHeader ==='0')
-            && isset($this->hosts[$hostId])
-        ) {
-            return $this->hosts[$hostId];
-        } elseif ($protocol >= self::PROTOCOL_V11) {
-            return NULL;
-        } elseif ($hostHeader) {
-            return isset($this->hosts[$hostId]) ? $this->hosts[$hostId] : NULL;
-        } else {
-            $portHosts = [];
-            $interfaceId = $interface . ':' . $port;
-            
-            foreach ($this->hosts as $host) {
-                if (isset($this->defaultHosts[$interfaceId])) {
-                    $hostId = $this->defaultHosts[$interfaceId];
-                    return $this->hosts[$hostId];
-                } elseif ($host->getInterfaceId() == $interfaceId) {
-                    return $host;
-                } elseif (!isset($portHosts[$port]) && $host->getPort() == $port) {
-                    $portHosts[$port] = $host;
-                }
-            }
+        if (0 === stripos($requestUri, 'http://') || stripos($requestUri, 'https://') === 0) {
+            $host = $this->selectHostByAbsoluteUri($requestUri);
+        } elseif ($hostHeader !== NULL || $protocol >= self::PROTOCOL_V11) {
+            $host = $this->selectHostByHeader($hostHeader);
+        } elseif ($protocol == self::PROTOCOL_V10) {
+            $host = $this->defaultHost ?: current($this->hosts);
         }
         
-        return $portHosts[$port];
+        return $host;
+    }
+    
+    /**
+     * @TODO Figure out how best to allow for proxy servers here
+     */
+    private function selectHostByAbsoluteUri($uri) {
+        $urlParts = parse_url($requestUri);
+        $port = empty($urlParts['port']) ? '80' : $urlPorts['port'];
+        $hostId = strtolower($urlParts['host']) . ':' . $port;
+        
+        return isset($this->hosts[$hostId])
+            ? $this->hosts[$hostId]
+            : NULL;
+    }
+    
+    private function selectHostByHeader($hostHeader) {
+        $hostHeader = strtolower($hostHeader);
+        
+        if ($portStartPos = strrpos($hostHeader , ':')) {
+            $port = substr($hostHeader, $portStartPos + 1);
+        } else {
+            $port = '80';
+            $hostHeader .= ':' . $port;
+        }
+        
+        $wildcardHost = '*:' . $port;
+        
+        if (isset($this->hosts[$hostHeader])) {
+            $host = $this->hosts[$hostHeader];
+        } elseif (isset($this->hosts[$wildcardHost])) {
+            $host = $this->hosts[$wildcardHost];
+        } else {
+            $host = NULL;
+        }
+        
+        return $host;
     }
     
     private function invokeOnRequestMods($hostId, $requestId) {
@@ -455,7 +468,7 @@ class Server {
     }
     
     private function getReasonPhrase($statusCode) {
-        $reasonConst = 'Aerys\\Http\\Server::HTTP_' . $statusCode;
+        $reasonConst = 'Aerys\\Http\\Reason::HTTP_' . $statusCode;
         return defined($reasonConst) ? constant($reasonConst) : '';
     }
     
@@ -562,7 +575,7 @@ class Server {
         list($requestId, $asgiEnv, $asgiResponse) = $client->front();
         
         $hostId = $asgiEnv['SERVER_NAME'] . ':' . $client->getServerPort();
-        $this->doAfterResponseMods($hostId, $requestId);
+        $this->invokeAfterResponseMods($hostId, $requestId);
         
         if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
             $upgradeCallback = $asgiResponse[4];
@@ -601,7 +614,7 @@ class Server {
         }
     }
     
-    private function doAfterResponseMods($hostId, $requestId) {
+    private function invokeAfterResponseMods($hostId, $requestId) {
         if (!isset($this->afterResponseMods[$hostId])) {
             return;
         }
@@ -724,7 +737,7 @@ class Server {
         $hostId = $asgiEnv['SERVER_NAME'] . ':' . $client->getServerPort();
         
         // Reload the response array in case it was altered by beforeResponse mods ...
-        if ($this->doBeforeResponseMods($hostId, $requestId)) {
+        if ($this->invokeBeforeResponseMods($hostId, $requestId)) {
             $asgiResponse = $client->getResponse($requestId);
         }
         
@@ -828,7 +841,7 @@ class Server {
             : [$status, $reason, $headers, $body];
     }
     
-    private function doBeforeResponseMods($hostId, $requestId) {
+    private function invokeBeforeResponseMods($hostId, $requestId) {
         if (!isset($this->beforeResponseMods[$hostId])) {
             return 0;
         }
@@ -861,7 +874,7 @@ class Server {
             return $asgiResponse;
         } else {
             $status = Status::INTERNAL_SERVER_ERROR;
-            $reason = Server::HTTP_500;
+            $reason = Reason::HTTP_500;
             $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
             $headers = [
                 'Content-Type' => 'text/html; charset=iso-8859-1',
@@ -1007,55 +1020,119 @@ class Server {
     
     private function setAllowedMethods(array $methods) {
         $this->allowedMethods = array_map(function() { return 1; }, array_flip($methods));
-        $this->allowedMethods['GET'] = 1;
-        $this->allowedMethods['HEAD'] = 1;
+        $this->allowedMethods[Method::GET] = 1;
+        $this->allowedMethods[Method::HEAD] = 1;
     }
     
-    private function setDefaultHosts(array $interfaceHostMap) {
-        foreach ($interfaceHostMap as $interfaceId => $hostId) {
-            if (isset($this->hosts[$hostId])
-                && $this->hosts[$hostId]->getInterfaceId() == $interfaceId
-            ) {
-                $this->defaultHosts[$interfaceId] = $hostId;
-                continue;
-            }
-            
-            $mergedHostId = NULL;
-            
-            if (FALSE === strpos($hostId, ':') && ($portStartPos = stripos($interfaceId, ':'))) {
-                $mergedHostId = $hostId . ':' . substr($interfaceId, $portStartPos + 1);
-            }
-            
-            if ($mergedHostId && isset($this->hosts[$mergedHostId])) {
-                $this->defaultHosts[$interfaceId] = $mergedHostId;
-            } else {
-                throw new \DomainException(
-                   'Invalid default host: ' . $interfaceId
-                );
-                
-            }
+    private function setDefaultHost($hostId) {
+        $hostId = $host->getId();
+        
+        if (isset($this->hosts[$hostId])) {
+            $this->defaultHost = $this->hosts[$hostId];
+        } else {
+            throw new \DomainException(
+                'Cannot assign default host: no registered hosts match ' . $hostId
+            );
         }
     }
     
     function registerMod($hostId, $mod) {
-        if (!isset($this->hosts[$hostId])) {
-            throw new \DomainException(
-                "Mod Host ID doesn't exist: " . $hostId
-            );
-        }
-        
-        if ($mod instanceof Mods\OnRequestMod) {
-            $this->onRequestMods[$hostId][] = $mod;
-        }
-        
-        if ($mod instanceof Mods\BeforeResponseMod) {
-            $this->beforeResponseMods[$hostId][] = $mod;
-        }
-        
-        if ($mod instanceof Mods\AfterResponseMod) {
-            $this->afterResponseMods[$hostId][] = $mod;
+        foreach ($this->selectApplicableModHosts($hostId) as $host) {
+            $hostId = $host->getId();
+            
+            if ($mod instanceof Mods\OnRequestMod) {
+                $this->onRequestMods[$hostId][] = $mod;
+                usort($this->onRequestMods[$hostId], [$this, 'onRequestModPrioritySort']);
+            }
+            
+            if ($mod instanceof Mods\BeforeResponseMod) {
+                $this->beforeResponseMods[$hostId][] = $mod;
+                usort($this->beforeResponseMods[$hostId], [$this, 'beforeResponseModPrioritySort']);
+            }
+            
+            if ($mod instanceof Mods\AfterResponseMod) {
+                $this->afterResponseMods[$hostId][] = $mod;
+                usort($this->afterResponseMods[$hostId], [$this, 'afterResponseModPrioritySort']);
+            }
         }
     }
     
+    private function selectApplicableModHosts($hostId) {
+        if ($hostId == '*') {
+            $hosts = $this->hosts;
+        } elseif (substr($hostId, 0, 2) == '*:') {
+            $port = substr($hostId, 2);
+            $hosts = array_filter($this->hosts, function($host) use ($port) {
+                return ($port == '*' || $host->getPort() == $port);
+            });
+        } elseif (substr($hostId, -2) == ':*') {
+            $addr = substr($hostId, 0, -2);
+            $hosts = array_filter($this->hosts, function($host) use ($addr) {
+                return ($addr == '*' || $host->getInterface() == $addr);
+            });
+        } elseif (isset($this->hosts[$hostId])) {
+            $hosts = [$this->hosts[$hostId]];
+        } else {
+            $hosts = [];
+        }
+        
+        return $hosts;
+    }
+    
+    private function modPrioritySort($a, $b) {
+        return ($a != $b) ? ($a - $b) : 0;
+    }
+    
+    private function onRequestModPrioritySort(Mods\OnRequestMod $modA, Mods\OnRequestMod $modB) {
+        $a = $modA->getOnRequestPriority();
+        $b = $modB->getOnRequestPriority();
+        
+        return $this->modPrioritySort($a, $b);
+    }
+    
+    private function beforeResponseModPrioritySort(Mods\BeforeResponseMod $modA, Mods\BeforeResponseMod $modB) {
+        $a = $modA->getBeforeResponsePriority();
+        $b = $modB->getBeforeResponsePriority();
+        
+        return $this->modPrioritySort($a, $b);
+    }
+    
+    private function afterResponseModPrioritySort(Mods\AfterResponseMod $modA, Mods\AfterResponseMod $modB) {
+        $a = $modA->getAfterResponsePriority();
+        $b = $modB->getAfterResponsePriority();
+        
+        return $this->modPrioritySort($a, $b);
+    }
+    
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

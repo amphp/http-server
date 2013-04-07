@@ -2,7 +2,9 @@
 
 namespace Aerys\Mods;
 
-use Aerys\Server;
+use Aerys\Server,
+    Aerys\Status,
+    Aerys\Reason;
 
 /**
  * Enforce request rate limits
@@ -25,8 +27,6 @@ use Aerys\Server;
  * ```
  * $modLimitConfig = [
  *     'ipProxyHeader'   => NULL,
- *     'onLimitCmd'      => NULL,
- *     'onLimitCallback' => NULL,
  *     'limits' => [
  *         60 => 100,
  *         3600 => 2500
@@ -44,9 +44,7 @@ class ModLimit implements OnRequestMod {
     private $rateAllowances = [];
     private $lastRateCheckedAt = [];
     private $maxRatePeriod;
-    
-    private $onLimitCmd;
-    private $onLimitCallback;
+    private $onRequestPriority = 10;
     
     function __construct(Server $httpServer, array $config) {
         $this->httpServer = $httpServer;
@@ -60,12 +58,6 @@ class ModLimit implements OnRequestMod {
         if (!empty($config['ipProxyHeader'])) {
             $this->ipProxyHeader = 'HTTP_' . strtoupper($config['ipProxyHeader']);
         }
-        if (!empty($config['onLimitCmd'])) {
-            $this->onLimitCmd = $config['onLimitCmd'];
-        }
-        if (!empty($config['onLimitCallback']) && is_callable($config['onLimitCallback'])) {
-            $this->onLimitCallback = $config['onLimitCallback'];
-        }
         
         ksort($config['limits']);
         $this->maxRatePeriod = max(array_keys($config['limits']));
@@ -73,8 +65,12 @@ class ModLimit implements OnRequestMod {
         $this->ratePeriods[] = array_keys($config['limits']);
     }
     
+    function getOnRequestPriority() {
+        return $this->onRequestPriority;
+    }
+    
     /**
-     * Tracks request rates per-client and assigns a 429 response if the request is rate-limited
+     * Tracks request rates per-client and assigns a 429 response if the client is rate-limited
      * 
      * @param Server $server
      * @param int $requestId
@@ -94,16 +90,7 @@ class ModLimit implements OnRequestMod {
         $now = time();
         
         if ($this->isRateLimited($clientIp, $now)) {
-            
             $this->limit($requestId);
-            
-            if ($this->onLimitCmd) {
-                $this->execSystemCmd($clientIp);
-            }
-            if ($onLimit = $this->onLimitCallback) {
-                // Do NOT catch userland exceptions here; Server executes mods in its own try/catch
-                $onLimit($clientIp);
-            }
         }
         
         $this->clearExpiredRateLimitData($now);
@@ -149,19 +136,9 @@ class ModLimit implements OnRequestMod {
             'Content-Type' => 'text\html',
             'Content-Length' => strlen($body)
         ];
-        $asgiResponse = [429, 'Too Many Requests', $headers, $body];
+        $asgiResponse = [Status::TOO_MANY_REQUESTS, Reason::HTTP_429, $headers, $body];
         
         $this->httpServer->setResponse($requestId, $asgiResponse);
-    }
-    
-    private function execSystemCmd($clientIp) {
-        $cmd = escapeshellcmd($this->onLimitCmd . ' ' . escapeshellarg($clientIp));
-        
-        if (substr(php_uname(), 0, 7) == "Windows") {
-            pclose(popen("start /B ". $cmd, "r"));
-        } else {
-            exec($cmd . " > /dev/null &");
-        }
     }
     
     private function clearExpiredRateLimitData($now) {

@@ -13,6 +13,7 @@ class ModLog implements AfterResponseMod {
     private $msgGenerationCache = [];
     private $flushSize = 0;
     private $logTime;
+    private $afterResponsePriority = 75;
     
     function __construct(Server $httpServer, array $logs, array $options = NULL) {
         $this->httpServer = $httpServer;
@@ -39,6 +40,10 @@ class ModLog implements AfterResponseMod {
         if (isset($options['flushSize'])) {
             $this->flushSize = (int) $options['flushSize'];
         }
+    }
+    
+    function getAfterResponsePriority() {
+        return $this->afterResponsePriority;
     }
     
     function afterResponse($requestId) {

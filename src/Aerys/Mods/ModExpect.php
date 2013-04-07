@@ -2,11 +2,11 @@
 
 namespace Aerys\Mods;
 
-use Aerys\Server;
+use Aerys\Server,
+    Aerys\Status,
+    Aerys\Reason;
 
 /**
- * mod.expect
- * 
  * By default Aerys will send a `100 Continue` response immediately to any requests specifying the
  * `Expect: 100-continue` header. While handlers may be optionally invoked to respond on their
  * own, it can be easier to specify the URI-callback key-value pairs using mod.expect to validate
@@ -35,7 +35,7 @@ use Aerys\Server;
  * // ... AND IN YOUR CONFIG:
  * 
  * 'mods' => [
- *     'mod.expect' => [
+ *     'expect' => [
  *         '/resource/accepting/uploaded/data' => $expectationValidator,
  *         '/some/other/resource' => $someOtherCallable
  *     ]
@@ -46,15 +46,28 @@ class ModExpect implements OnRequestMod {
     
     private $httpServer;
     private $callbacks = [];
-    private static $response100 = [100, 'Continue', [], NULL];
-    private static $response417 = [417, 'Expectation Failed', [], NULL];
+    private $onRequestPriority = 50;
+    
+    private $response100 = [
+        Status::CONTINUE_100,
+        Reason::HTTP_100,
+        [],
+        NULL
+    ];
+    
+    private $response417 = [
+        Status::EXPECTATION_FAILED,
+        Reason::HTTP_417,
+        [],
+        NULL
+    ];
     
     function __construct(Server $httpServer, array $config) {
         $this->httpServer = $httpServer;
         
         if (empty($config)) {
-            throw new \DomainException(
-                'No rate expectation validation callbacks specified'
+            throw new \UnexpectedValueException(
+                'No expectation callbacks specified'
             );
         }
         
@@ -69,8 +82,13 @@ class ModExpect implements OnRequestMod {
         }
     }
     
+    function getOnRequestPriority() {
+        return $this->onRequestPriority;
+    }
+    
     /**
-     * Assigns an appropriate response for requests providing a 100-continue expectation
+     * Assign an appropriate response for `Expect: 100-continue` requests based on the boolean
+     * return value of a user-specified callback
      * 
      * @param int $requestId
      * @return void
@@ -86,21 +104,18 @@ class ModExpect implements OnRequestMod {
             return;
         }
         
-        // Use this concatenation because the REQUEST_URI key may have query parameters
-        if (!$requestUri = ($asgiEnv['PATH_INFO'] . $asgiEnv['SCRIPT_NAME'])) {
-            $requestUri = '/';
+        $requestUriPath = str_replace($asgiEnv['QUERY_STRING'], '', $asgiEnv['REQUEST_URI']);
+        
+        if (!isset($this->callbacks[$requestUriPath])) {
+            return $this->httpServer->setResponse($requestId, $this->response100);
         }
         
-        if (!isset($this->callbacks[$requestUri])) {
-            return $this->httpServer->setResponse($requestId, self::$response100);
-        }
-        
-        $userCallback = $this->callbacks[$requestUri];
+        $userCallback = $this->callbacks[$requestUriPath];
         
         if ($userCallback($asgiEnv)) {
-            $this->httpServer->setResponse($requestId, self::$response100);
+            $this->httpServer->setResponse($requestId, $this->response100);
         } else {
-            $this->httpServer->setResponse($requestId, self::$response417);
+            $this->httpServer->setResponse($requestId, $this->response417);
         }
     }
     

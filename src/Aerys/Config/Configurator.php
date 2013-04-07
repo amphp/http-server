@@ -132,11 +132,31 @@ class Configurator {
             $interface = substr($interfaceId, 0, $portStartPos);
             $port = substr($interfaceId, $portStartPos + 1);
             
-            $name = empty($hostDefinitionArr['name']) ? $interface : $hostDefinitionArr['name'];
+            if ($hasName = !empty($hostDefinitionArr['name'])) {
+                $name = $hostDefinitionArr['name'];
+            } else {
+                $name = $interface;
+            }
+            
             $mods = isset($hostDefinitionArr['mods']) ? $hostDefinitionArr['mods'] : [];
             
             $host = new Host($interface, $port, $name, $handler);
-            $hostDefinitions[$host->getId()] = [$host, $mods];
+            $hostId = $host->getId();
+            
+            $wildcardHostId = "*:$port";
+            
+            if (isset($hostDefinitions[$hostId])) {
+                throw new ConfigException(
+                    'Invalid host definition; host ID ' . $hostId . ' already exists'
+                );
+            } elseif (!$hasName && isset($hostDefinitions[$wildcardHostId])) {
+                throw new ConfigException(
+                    'Invalid host definition; unnamed host ID ' . $hostId . ' conflicts with ' .
+                    'previously defined host: ' . $wildcardHostId
+                );
+            }
+            
+            $hostDefinitions[$hostId] = [$host, $mods];
         }
         
         return $hostDefinitions;

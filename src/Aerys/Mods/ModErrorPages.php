@@ -8,6 +8,7 @@ class ModErrorPages implements BeforeResponseMod {
     
     private $httpServer;
     private $errorPages;
+    private $beforeResponsePriority = 50;
     
     function __construct(Server $httpServer, array $config) {
         $this->httpServer = $httpServer;
@@ -26,6 +27,10 @@ class ModErrorPages implements BeforeResponseMod {
                 );
             }
         }
+    }
+    
+    function getBeforeResponsePriority() {
+        return $this->beforeResponsePriority;
     }
     
     function beforeResponse($requestId) {
