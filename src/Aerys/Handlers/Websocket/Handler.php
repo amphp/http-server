@@ -4,6 +4,7 @@ namespace Aerys\Handlers\Websocket;
 
 use Aerys\Status,
     Aerys\Reason,
+    Aerys\Method,
     Aerys\Server;
 
 class Handler {
@@ -12,34 +13,50 @@ class Handler {
     
     private $sessionManager;
     private $sessionFactory;
+    private $importCallback;
     private $endpoints = [];
     private $supportedVersions = [13 => TRUE];
     
     function __construct(SessionManager $sessMgr, array $endpoints, SessionFactory $sf = NULL) {
         $this->sessionManager = $sessMgr;
         $this->sessionFactory = $sf ?: new SessionFactory;
+        $this->setEndpoints($endpoints);
         
-        if ($this->validateEndpoints($endpoints)) {
-            $this->endpoints = $endpoints;
-        } else {
-            throw new \InvalidArgumentException(
-                'Endpoint list must specify an array mapping URI keys to Endpoint instances'
-            );
-        }
+        $this->importCallback = [$this, 'importSocket'];
     }
     
-    private function validateEndpoints(array $endpoints) {
+    private function setEndpoints(array $endpoints) {
         if (empty($endpoints)) {
-            return FALSE;
+             throw new \InvalidArgumentException(
+                'Endpoint array cannot be empty'
+            );
         }
         
         foreach ($endpoints as $uri => $endpoint) {
-            if (!$endpoint instanceof Endpoint) {
-                return FALSE;
+            if ($endpoint instanceof Endpoint) {
+                $this->endpoints[$uri] = [$endpoint, new EndpointOptions];
+            } elseif ($endpoint && is_array($endpoint)) {
+                $this->setEndpointFromArray($uri, $endpoint);
+            } else {
+                throw new \InvalidArgumentException(
+                    'Invalid endpoint; array or Endpoint instance expected at index: ' . $uri
+                );
             }
         }
+    }
+    
+    private function setEndpointFromArray($uri, array $endpointStruct) {
+        $endpoint = array_shift($endpointStruct);
         
-        return TRUE;
+        if (!$endpoint instanceof Endpoint) {
+            throw new \InvalidArgumentException(
+                'Invalid endpoint; Endpoint instance expected at index[0] of array at key: ' . $uri
+            );
+        }
+        
+        $options = array_shift($endpointStruct) ?: [];
+        
+        $this->endpoints[$uri] = [$endpoint, new EndpointOptions($options)];
     }
     
     function __invoke(array $asgiEnv) {
@@ -57,20 +74,24 @@ class Handler {
     
     private function validateClientHandshake(array $asgiEnv) {
         $requestUri = $asgiEnv['REQUEST_URI'];
+        if ($queryString = $asgiEnv['QUERY_STRING']) {
+            $requestUri = str_replace($queryString, '', $requestUri);
+        }
+        
         
         if (isset($this->endpoints[$requestUri])) {
-            $endpointOpts = $this->endpoints[$requestUri]->getOptions();
+            $endpointOptions = $this->endpoints[$requestUri][1];
         } else {
             return [FALSE, [Status::NOT_FOUND, Reason::HTTP_404, [], NULL]];
         }
         
-        if (($beforeHandshake = $endpointOpts->getBeforeHandshake())
+        if (($beforeHandshake = $endpointOptions->getBeforeHandshake())
             && ($result = $this->beforeHandshake($beforeHandshake, $asgiEnv))
         ) {
             return [FALSE, $result];
         }
         
-        if ($asgiEnv['REQUEST_METHOD'] != 'GET') {
+        if ($asgiEnv['REQUEST_METHOD'] != Method::GET) {
             return [FALSE, [Status::METHOD_NOT_ALLOWED, Reason::HTTP_405, [], NULL]];
         }
         
@@ -112,13 +133,13 @@ class Handler {
             return [FALSE, [Status::BAD_REQUEST, $reason, $headers, NULL]];
         }
         
-        $allowedOrigins = $endpointOpts->getAllowedOrigins();
+        $allowedOrigins = $endpointOptions->getAllowedOrigins();
         $originHeader = empty($asgiEnv['HTTP_ORIGIN']) ? NULL : $asgiEnv['HTTP_ORIGIN'];
         if ($allowedOrigins && !in_array($originHeader, $allowedOrigins)) {
             return [FALSE, [Status::FORBIDDEN, Reason::HTTP_403, [], NULL]];
         }
         
-        $subprotocol = $endpointOpts->getSubprotocol();
+        $subprotocol = $endpointOptions->getSubprotocol();
         $subprotocolHeader = !empty($asgiEnv['HTTP_SEC_WEBSOCKET_PROTOCOL'])
             ? explode(',', $asgiEnv['HTTP_SEC_WEBSOCKET_PROTOCOL'])
             : [];
@@ -172,12 +193,25 @@ class Handler {
             $headers['Sec-WebSocket-Extensions'] = implode(',', $extensions);
         }
         
-        return [Status::SWITCHING_PROTOCOLS, Reason::HTTP_101, $headers, NULL, [$this, 'importSocket']];
+        return [
+            Status::SWITCHING_PROTOCOLS,
+            Reason::HTTP_101,
+            $headers,
+            $body = NULL,
+            $this->importCallback
+        ];
     }
     
     function importSocket($socket, array $asgiEnv) {
-        $endpoint = $this->endpoints[$asgiEnv['REQUEST_URI']];
-        $this->sessionManager->open($socket, $endpoint, $asgiEnv);
+        $requestUri = $asgiEnv['REQUEST_URI'];
+        
+        if ($queryString = $asgiEnv['QUERY_STRING']) {
+            $requestUri = str_replace($queryString, '', $requestUri);
+        }
+        
+        list($endpoint, $options) = $this->endpoints[$requestUri];
+        
+        $this->sessionManager->open($socket, $endpoint, $options, $asgiEnv);
     }
     
 }

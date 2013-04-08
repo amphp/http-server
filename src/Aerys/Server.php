@@ -44,7 +44,7 @@ class Server {
     private $afterResponseMods = [];
     
     private $maxConnections = 0;
-    private $maxRequestsPerSession = 100;
+    private $maxRequestsPerSession = 250;
     private $idleConnectionTimeout = 30;
     private $autoWriteInterval = 0.025; // @TODO add option setter
     private $gracefulCloseInterval = 1; // @TODO add option setter
@@ -149,13 +149,17 @@ class Server {
     private function write() {
         foreach ($this->clientsRequiringWrite as $client) {
             try {
-                if ($client->write()) {
-                    $this->afterResponse($client);
-                    
-                    if (!$client->canWrite()) {
-                        $clientId = $client->getId();
-                        unset($this->clientsRequiringWrite[$clientId]);
-                    }
+                $pipelineWriteResult = $client->write();
+                
+                if ($pipelineWriteResult < 0) {
+                    return;
+                }
+                
+                $this->afterResponse($client);
+                
+                if (!$pipelineWriteResult) {
+                    $clientId = $client->getId();
+                    unset($this->clientsRequiringWrite[$clientId]);
                 }
             } catch (ResourceException $e) {
                 $this->sever($client);
@@ -486,16 +490,11 @@ class Server {
         
         if ($uri == '/' || $uri == '*') {
             $queryString = '';
-            $pathInfo = '';
-            $scriptName = '';
         } elseif ($uri != '?') {
             $uriParts = parse_url($uri);
             $queryString = isset($uriParts['query']) ? $uriParts['query'] : '';
             $decodedPath = rawurldecode($uriParts['path']);
             $pathParts = pathinfo($decodedPath);
-            $pathInfo = !$uri || ($pathParts['dirname'] == '/') ? '' : $pathParts['dirname'];
-            $scriptName = '/' . $pathParts['filename'];
-            $scriptName = isset($pathParts['extension']) ? $scriptName . '.' . $pathParts['extension'] : $scriptName;
         }
         
         $contentType = isset($headers['CONTENT-TYPE']) ? $headers['CONTENT-TYPE'] : '';
@@ -512,8 +511,6 @@ class Server {
             'REQUEST_METHOD'     => $method,
             'REQUEST_URI'        => $uri,
             'QUERY_STRING'       => $queryString,
-            'SCRIPT_NAME'        => $scriptName,
-            'PATH_INFO'          => $pathInfo,
             'CONTENT_TYPE'       => $contentType,
             'CONTENT_LENGTH'     => $contentLength,
             'ASGI_VERSION'       => 0.1,
@@ -748,15 +745,15 @@ class Server {
         
         $clientId = $client->getId();
         $queuedResponseCount = $client->enqueueResponsesForWrite();
-        $responseWriteCompleted = $client->write();
+        $pipelineWriteResult = $client->write();
         
-        if ($responseWriteCompleted && $queuedResponseCount == 1) {
+        if ($pipelineWriteResult < 0) {
+            $this->clientsRequiringWrite[$clientId] = $client;
+        } elseif ($pipelineWriteResult === 0) {
             unset($this->clientsRequiringWrite[$clientId]);
             $this->afterResponse($client);
-        } elseif ($responseWriteCompleted) {
-            $this->afterResponse($client);
         } else {
-            $this->clientsRequiringWrite[$clientId] = $client;
+            $this->afterResponse($client);
         }
     }
     

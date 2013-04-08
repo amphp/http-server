@@ -17,11 +17,9 @@ class Client {
      * @return void
      */
     function sendText($data) {
-        if (!($data || $data === '0')) {
-            return;
+        if ($data || $data === '0') {
+            $this->sessionFacade->send($data, Frame::OP_TEXT);
         }
-        
-        $this->sessionFacade->send($data, Frame::OP_TEXT);
     }
     
     /**
@@ -31,11 +29,9 @@ class Client {
      * @return void
      */
     function sendBinary($data) {
-        if (!($data || $data === '0')) {
-            return;
+        if ($data || $data === '0') {
+            $this->sessionFacade->send($data, Frame::OP_BIN);
         }
-        
-        $this->sessionFacade->send($data, Frame::OP_BIN);
     }
     
     /**

@@ -20,7 +20,7 @@ class MessageWriterTest extends PHPUnit_Framework_TestCase {
         $asgiResponse = [$status, $reason, $headers, $body];
         $writer->enqueue($asgiResponse, $protocol, $contentLength);
         
-        while (!$writer->write()) {
+        while ($writer->write() == -1) {
             continue;
         }
         

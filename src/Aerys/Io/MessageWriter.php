@@ -111,11 +111,15 @@ class MessageWriter {
             $this->body = NULL;
             $this->bodyWriter = NULL;
             
-            return TRUE;
+            if ($this->toWriteQueue) {
+                goto start;
+            } else {
+                return $this->toWriteQueue ? count($this->toWriteQueue) : 0;
+            }
         }
         
         further_write_needed: {
-            return FALSE;
+            return -1;
         }
     }
     

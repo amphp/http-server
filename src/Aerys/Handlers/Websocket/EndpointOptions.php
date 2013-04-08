@@ -24,7 +24,7 @@ class EndpointOptions {
     function __construct(array $options = []) {
         foreach ($options as $name => $value) {
             $method = 'set' . ucfirst($name);
-            if (method_exists($this, $method)) {
+            if (isset($value) && method_exists($this, $method)) {
                 $this->$method($value);
             }
         }

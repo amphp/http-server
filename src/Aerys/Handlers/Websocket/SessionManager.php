@@ -34,11 +34,10 @@ class SessionManager implements \Countable {
         $reactor->repeat([$this, 'autoClose'], $this->autoCloseInterval);
     }
     
-    function open($socket, Endpoint $endpoint, array $asgiEnv) {
+    function open($socket, Endpoint $endpoint, EndpointOptions $endpointOpts, array $asgiEnv) {
         $session = $this->sessionFactory->make($socket, $this, $endpoint, $asgiEnv);
         
         $requestUri = $asgiEnv['REQUEST_URI'];
-        $endpointOpts = $endpoint->getOptions();
         
         if (isset($this->clientCounts[$requestUri])) {
             $this->clientCounts[$requestUri]++;

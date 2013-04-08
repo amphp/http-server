@@ -26,8 +26,6 @@ class ModLogTest extends PHPUnit_Framework_TestCase {
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI' => '/',
             'QUERY_STRING' => '', 
-            'SCRIPT_NAME' => '' ,
-            'PATH_INFO' => '', 
             'CONTENT_TYPE' => '',
             'CONTENT_LENGTH' => '',
             'ASGI_VERSION' => '0.1',
