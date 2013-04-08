@@ -3,14 +3,10 @@
 /**
  * examples/ssl_server.php
  * 
- * TLS/SSL settings are defined on a per ADDRESS:PORT basis. Enabling crypto on a given interface
- * will enable it for ALL hosts set to listen on that ADDRESS:PORT. For this reason, TLS settings
- * are applied inside the "globals" config section under the "tls" key.
- * 
  * $ php ssl_server.php
  * 
  * Once the server has started, request https://localhost:1443/ in your browser or client of choice.
- * _IMPORTANT:_ Make sure to use the HTTPS scheme and not HTTP (duh!)
+ * IMPORTANT: Make sure to use the HTTPS scheme and not HTTP!
  */
 
 use Aerys\Config\Configurator;

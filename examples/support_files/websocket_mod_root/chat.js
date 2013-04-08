@@ -3,6 +3,11 @@
 var submit = document.getElementById('submit');
 var messages = document.getElementById('messages');
 var conn = new WebSocket('ws://127.0.0.1:1337/chat');
+var theForm = document.getElementById('theForm');
+
+theForm.onsubmit = function() {
+    return false;
+};
 
 conn.onopen = function(event) {
     console.log('Connected ...');

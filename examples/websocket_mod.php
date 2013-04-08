@@ -1,7 +1,7 @@
 <?php
 
 /**
- * examples/websockets.php
+ * examples/websocket_mod.php
  * 
  * While an Aerys host can serve strictly ws:// or wss:// resources, it's often useful to layer 
  * endpoints on top of your regular application handler. To accomplish this we simply register the 
@@ -11,30 +11,29 @@
  * 
  * To run:
  * 
- * $ php websockets.php
+ * $ php websocket_mod.php
  * 
  * Once the server has started, request http://127.0.0.1:1337/ in your browser or client of choice.
  * If you open the address in multiple tabs you'll see that your data is passed back and forth via
  * the websocket application!
  */
 
-use Aerys\Config\WebsocketApp,
-    Aerys\Config\StaticFilesApp,
+use Aerys\Config\StaticFilesApp,
     Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
-require __DIR__ . '/support_files/WsExampleChatEndpoint.php';
+require __DIR__ . '/support_files/ExampleChatEndpoint.php'; // <-- example endpoint class file
 
 date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
 
 (new Configurator)->createServer([[
     'listenOn'      => '127.0.0.1:1337',
     'application'   => new StaticFilesApp([
-        'docRoot'   => __DIR__ . '/support_files/mod_websocket_root'
+        'docRoot'   => __DIR__ . '/support_files/websocket_mod_root'
     ]),
     'mods' => [
         'websocket' => [
-            '/chat' => new WsExampleChatEndpoint
+            '/chat' => new ExampleChatEndpoint
         ]
     ]
 ]])->listen();

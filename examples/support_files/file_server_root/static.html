@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Aerys Static File Server</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="Daniel Lowrey">
+
+    <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.min.css" rel="stylesheet">
+    
+    <style>
+      body {
+        padding-top: 60px; /* 60px to make the container go all the way to the bottom of the topbar */
+      }
+    </style>
+
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-inverse navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="brand" href="/">Aerys</a>
+          <div class="nav-collapse collapse">
+            <ul class="nav">
+              <li><a href="/asgi.html">ASGI</a></li>
+              <li class="active"><a href="/static.html">Static</a></li>
+              <li><a href="/apps.html">Applications</a></li>
+              <li><a href="/websockets.html">Websockets</a></li>
+              <li><a href="/vhosts.html">Vhosts</a></li>
+              <li><a href="/encryption.html">Encryption</a></li>
+              <li><a href="/mods.html">Mods</a></li>
+            </ul>
+          </div><
+        </div>
+      </div>
+    </div>
+    
+    <div class="container">
+
+      <h1>Serving Static Files</h1>
+      
+      <p class="lead">
+        Aerys is a performant static file server.
+      </p>
+      
+      <p>
+        While one of the main drivers behind Aerys's development was the belief that applications
+        suffer from being shoehorned into static file servers, the ability to reliably and quickly
+        serve static files is still a necessity in today's interwebs. Aerys makes serving static
+        files alongside your dynamic application a triviality.
+      </p>
+      
+      <hr />
+      
+      <h2>Caching and Conditional Retrieval</h2>
+      <p>
+        Caching headers are adhered to and attached for to all requests and responses as outlined in
+        RFC 2616. Standard conditional retrieval headers are also supported:
+      </p>
+      
+      <ul>  
+        <li>If-Match</li>
+        <li>If-Modified-Since</li>
+        <li>If-None-Match</li>
+        <li>If-Range</li>
+        <li>If-Unmodified-Since</li>
+      </ul>
+      
+      <hr />
+      
+      <h2>Range Requests</h2>
+      <p>
+        The static file handler fully supports HTTP/1.1 byte-range requests via the <i>Range:</i>
+        request header. Multiple byte ranges are also supported within individual requests as
+        outlined in RFC 2616. Range requests allow the static file server to act as a streaming
+        media server for audio and video out of the box.
+      </p>
+      
+      <hr />
+      
+      <h2>Example</h2>
+      
+      <pre><code class="php">&lt;?php // file_server.php
+
+(new Aerys\Config\Configurator)->createServer([[
+    'listenOn'      =&gt; '127.0.0.1:1337',
+    'application'   =&gt; new Aerys\Handlers\Static\StaticApp([
+        'docRoot'   =&gt; '/path/to/document/root',
+    ])
+]])-&gt;listen();</code></pre>
+      
+      <p>
+        To use this example, simply execute the file using your system's php binary:
+      </p>
+      
+      <pre><code class="bash">$ php file_server.php</code></pre>
+      
+      <p>
+        Once the server has started, request <b>http://127.0.0.1:1337/</b> in your browser or client
+        of choice.
+      </p>
+      
+      <hr />
+      
+      <h2>Customization and Features</h2>
+      
+      <dl class="dl-horizontal">
+        
+        <dt>Indexes</dt>
+        <dd>Specify custom file names to represent directory indexes.</dd>
+        
+        <dt>Index Redirection</dt>
+        <dd>
+          Automatically redirect index file requests like <i>/index.html</i> to the directory
+          root <i>/</i> to avoid search engine duplicate content penalties.
+        </dd>
+        
+        <dt>ETag Customization</dt>
+        <dd>
+          Use any combination of inode, file modification time and file size (or none at all) to
+          generate strong ETag resource identifiers.
+        </dd>
+        
+        <dt>Resource Staleness</dt>
+        <dd>
+          Specify the number of seconds the server should pass via the <i>Expires:</i> header to
+          indicate resource staleness.
+        </dd>
+        
+        <dt>Custom Mime Types</dt>
+        <dd>
+          Customize content types and text character sets returned by file extension.
+        </dd>
+        
+      </dl>
+      
+      
+    </div>
+
+    <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/js/bootstrap.min.js"></script>
+
+  </body>
+</html>

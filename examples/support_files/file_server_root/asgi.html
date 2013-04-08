@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>The ASGI Standard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="Daniel Lowrey">
+
+    <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.min.css" rel="stylesheet">
+    
+    <style>
+      body {
+        padding-top: 60px; /* 60px to make the container go all the way to the bottom of the topbar */
+      }
+    </style>
+
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-inverse navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="brand" href="/">Aerys</a>
+          <div class="nav-collapse collapse">
+            <ul class="nav">
+              <li class="active"><a href="/asgi.html">ASGI</a></li>
+              <li><a href="/static.html">Static</a></li>
+              <li><a href="/apps.html">Applications</a></li>
+              <li><a href="/websockets.html">Websockets</a></li>
+              <li><a href="/vhosts.html">Vhosts</a></li>
+              <li><a href="/encryption.html">Encryption</a></li>
+              <li><a href="/mods.html">Mods</a></li>
+            </ul>
+          </div><
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+
+      <h1>The ASGI Standard</h1>
+      <p class="lead">
+        An open server standard to help PHP escape the shadow of third-party web servers.
+      </p>
+      
+      <hr />
+      
+      <h2>The Application</h2>
+      <p>
+        An ASGI application (<i>the Application</i>) is a reference to a PHP callable. This callable accepts
+        <i>at least</i> one argument, the <i>Environment</i>, and <b>MUST</b> return an indexed array
+        containing exactly four values:
+      </p>
+      
+      <ul>
+        <li>A valid HTTP status code in the range 100-599</li>
+        <li>A reason phrase (may be an empty string)</li>
+        <li>An associative array of header values</li>
+        <li>A string, stream resource or <code>Iterator</code> instance representing the response entity body</li>
+      </ul>
+      
+      <hr />    
+      
+      <h3>Example ASGI Application Callable</h3>
+      
+      <pre><code class="php">&lt;?php // asgi_app.php
+$asgiApp = function(array $asgiEnv) {
+    $status = 200;
+    $reason = 'OK';
+    $headers = [
+        'Content-Type' =&gt; 'text/plain'
+    ];
+    $body = "Hello World";
+    
+    return [$status, $reason, $headers, $body];
+};</code></pre>
+      
+      <p>
+        While ASGI-compliant applications may optionally return more data beginning at index 4 of
+        the response array, it is not guaranteed to be supported across ASGI-compliant server
+        platforms. Further discussion of the return array may be found in the </b>RESPONSE</b> section.
+      </p>
+      
+      <hr />
+      
+      <h2>The ASGI Environment</h2>
+      <p>
+        The <i>Environment</i> <b>MUST</b> be an associative array specifying CGI-like headers (as detailed below).
+        The <i>Application</i> is free to modify the <i>Environment</i>. The <i>Environment</i> <b>MUST</b> include these keys
+        (adopted from PEP 333 and PSGI) unless they would normally be empty. For example, an <i>Environment</i>
+        describing an HTTP request with no entity body is not required to specify <code>CONTENT-LENGTH</code> or
+        <code>CONTENT-TYPE</code> keys.
+      </p>
+      <p>
+
+When an environment key is described as a boolean, its value <b>MUST</b> conform to PHP's concept of truthy-ness.
+This means that an empty string or an integer 0 are both valid false values. If a boolean key is not
+present, an application MAY treat this as a false value.
+
+The values for all CGI keys (those not prefixed with <i>ASGI_</i>) <b>MUST</b> be of the string type. This mandate
+also applies to "numeric" values such as port numbers or content-length values.
+     </p>
+     
+     <hr />
+     
+     <h3>CGI Keys</h3>
+     
+     <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>Environment Key</th><th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+          <tr>
+            <td>SERVER_NAME</td>
+            <td>
+              The host/domain name specified by the client request stripped of any postfixed port numbers. Hosts
+without a DNS name should specify the server's IP address.
+            </td>
+          </tr>
+          
+          <tr>
+            <td>SERVER_PORT</td>
+            <td>
+              The public facing port on which the request was received.
+            </td>
+          </tr>
+          
+          <tr>
+            <td>SERVER_PROTOCOL</td>
+            <td>
+              The protocol agreed upon for the current request e.g. 1.0 or 1.1
+            </td>
+          </tr>
+          
+          <tr>
+            <td>REMOTE_ADDR</td>
+            <td>
+              The IP address of the remote client responsible for the current request
+            </td>
+          </tr>
+          
+          <tr>
+            <td>REMOTE_PORT</td>
+            <td>
+              The port number in use by the remote client when making the current request
+            </td>
+          </tr>
+          
+          <tr>
+            <td>REQUEST_METHOD</td>
+            <td>
+              The HTTP request method used in the current request e.g. GET/HEAD/POST. This value **MUST NOT** be
+an empty string; it is always required.
+            </td>
+          </tr>
+          
+          <tr>
+            <td>REQUEST_URI</td>
+            <td>
+              The undecoded, raw request URL line. It is the raw URI path and query part that appears in the
+HTTP <code>GET /... HTTP/1.x</code> line and does not contain URI scheme and host names. This value
+**MUST NOT** be an empty string; it is always required.
+            </td>
+          </tr>
+          
+          <tr>
+            <td>QUERY_STRING</td>
+            <td>
+              The portion of the request URL that follows the ?, if any. This key **MAY** be empty, but <b>MUST</b>
+always be present, even if empty.
+            </td>
+          </tr>
+          
+          <tr>
+            <td>CONTENT_TYPE</td>
+            <td>
+              The request's MIME type, as specified by the client. The presence or absence of this key **SHOULD**
+correspond to the presence or absence of HTTP Content-Type header in the request.
+            </td>
+          </tr>
+          
+          <tr>
+            <td>CONTENT_LENGTH</td>
+            <td>
+              The length of the content in bytes. The presence or absence of this key **SHOULD** correspond to the
+presence or absence of HTTP Content-Length header in the request.
+            </td>
+          </tr>
+        </tbody>
+        </table>
+        
+     
+     <h3>ASGI Keys</h3>
+     
+     <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>Environment Key</th><th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+          <tr>
+            <td>ASGI_VERSION</td>
+            <td>
+              @TODO
+            </td>
+          </tr>
+          
+          <tr>
+            <td>ASGI_URL_SCHEME</td>
+            <td>
+              The HTTP URL scheme for this request: `"https"` if the connection is encrypted, `"http"` otherwise.
+            </td>
+          </tr>
+          
+          <tr>
+            <td>ASGI_INPUT</td>
+            <td>
+              An open stream resource referencing to the request entity body (if present in the request).
+            </td>
+          </tr>
+          
+          <tr>
+            <td>ASGI_ERROR</td>
+            <td>
+              An open stream resource referencing the server's error stream. This makes it possible for applications
+to centralize error logging in a single location.
+            </td>
+          </tr>
+          
+          <tr>
+            <td>ASGI_NON_BLOCKING</td>
+            <td>
+              `TRUE` if the server is calling the application in a non-blocking event loop.
+            </td>
+          </tr>
+          
+          <tr>
+            <td>ASGI_LAST_CHANCE</td>
+            <td>
+              `TRUE` if this is the final time the server expects to notify a handler of the current request.
+            </td>
+          </tr>
+
+        </tbody>
+        </table>
+        
+     
+       <h3>HTTP_* Keys</h3>
+        
+       <p>
+These keys correspond to the client-supplied HTTP request headers. The presence or absence of these
+keys should correspond to the presence or absence of the appropriate HTTP header in the request. The
+key is obtained converting the HTTP header field name to upper case, replacing all occurrences of
+hyphens `(-)` with underscores `(_)` and prepending `HTTP_`, as in RFC 3875.
+      </p>
+      <p>
+If a client sends multiple header lines with the same key, the server **MAY** treat them as if they
+were sent in one line and combine them using commas `(,)` as specified in RFC 2616. Servers are not,
+however, required to combine multiple header lines as some applications require the separation of
+such fields (specifically, the `Set-Cookie` header). As a result, valid `HTTP_*` keys may contain either
+a single string value or a one-dimensional numerically indexed array of strings representing each
+individual header line.
+      </p>
+      
+      <hr />    
+      
+      <h3>Example ASGI Environment</h3>
+      
+      <pre><code class="php">&lt;?php // asgi_app.php
+
+$asgiEnv = [
+    'SERVER_NAME'           =&gt; 'mysite.com',
+    'SERVER_PORT'           =&gt; '80',
+    'SERVER_PROTOCOL'       =&gt; '1.1',
+    'REMOTE_ADDR'           =&gt; '123.456.789.123',
+    'REMOTE_PORT'           =&gt; '9382',
+    'REQUEST_METHOD'        =&gt; 'GET',
+    'REQUEST_URI'           =&gt; '/hello_world.php?foo=bar',
+    'QUERY_STRING'          =&gt; '?foo=bar',
+    'CONTENT_TYPE'          =&gt; 'text/plain',
+    'CONTENT_LENGTH'        =&gt; '42',
+    
+    // --- BEGIN ASGI-SPECIFIC KEYS --- //
+    
+    'ASGI_VERSION'          =&gt; '0.1',
+    'ASGI_URL_SCHEME'       =&gt; 'http',
+    'ASGI_INPUT'            =&gt; NULL,
+    'ASGI_ERROR'            =&gt; $resource,
+    'ASGI_NON_BLOCKING'     =&gt; TRUE,
+    'ASGI_LAST_CHANCE'       =&gt; TRUE,
+    
+    // --- BEGIN HTTP_* KEYS --- //
+    
+    'HTTP_HOST'             =&gt; '127.0.0.1:1337',
+    'HTTP_CONNECTION'       =&gt; 'keep-alive',
+    'HTTP_ACCEPT'           =&gt; 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'HTTP_USER_AGENT'       =&gt; 'Mozilla/5.0 (X11; Linux x86_64) ...',
+    'HTTP_ACCEPT_ENCODING'  =&gt; 'gzip,deflate,sdch',
+    'HTTP_ACCEPT_LANGUAGE'  =&gt; 'en-US,en;q=0.8',
+    'HTTP_ACCEPT_CHARSET'   =&gt; 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
+    'HTTP_SET_COOKIE'       =&gt; [
+        'cookie1',
+        'cookie2',
+        'cookie3'
+    ];
+];
+</code></pre>
+
+      <hr />    
+      
+      <h2>The ASGI Response</h2>
+      
+      <h4>Response</h4>
+      
+      <p>
+Applications <b>MUST</b> return a response as an indexed four element array. The array indexes <b>MUST</b> be
+ordered from 0 to 4 and associative keys **MUST NOT** be used. The response array consists of the following
+elements:
+      </p>
+      
+      <h4>Status</h4>
+      <p>
+An HTTP status code. This <b>MUST</b> be a scalar value that, when cast as an integer, has a value greater
+than or equal to 100, less than or equal to 599. Status codes **SHOULD** used to reflect the semantic
+meaning of the HTTP status codes documented in RFC 2616 section 10.
+      </p>
+      
+      <h4>Reason</h4>
+      <p>
+The reason **MAY** be an empty string or `NULL` value and **SHOULD** be an HTTP reason phrase as documented
+in RFC 2616. The specification of the reason phrase is explicitly separated from the numeric status
+code to simplify server processing of responses by their status.
+      </p>
+      
+      <h4>Headers</h4>
+      <p>
+The headers <b>MUST</b> be an associative array of key/value pairs. Header keys are case-insensitive and
+may be normalized by servers without altering their meaning. All header keys must conform to the
+ABNF rules specified in RFC 2616 section 4.2. The value of each header key <b>MUST</b> contain either:
+      </p>
+      
+      <ol>
+        <li>A defined scalar (not `NULL`), or ...</li>
+        <li>A numerically indexed single dimensional array containing defined scalar values</li>
+      </ol>
+      
+      <p>
+Any scalar header values <b>MUST</b> adhere to the ABNF rules specified in RFC 2616 section 4.2.
+
+In the event of an array header value, each value <b>MUST</b> be sent to the client separately (e.g.
+multiple `Set-Cookie` headers).
+
+Applications **SHOULD** endeavor to populate `Content-Type` key and, if known, the `Content-Length`
+key. Servers may, but are not required to normalize and/or correct invalid header values.
+      </p>
+      
+      <h4>Body</h4>
+      <p>
+The response body <b>MUST</b> be returned from the application as any one of the following:
+      </p>
+      
+      <ul>
+        <li>A `NULL` value</li>
+        <li>A string (possibly empty)</li>
+        <li>An open PHP stream resource</li>
+        <li>An object instance implementing the `Iterator` interface</li>
+      </ul>
+      
+      <p>
+`NULL`/string entity bodies are self-explanatory and should be returned directly to the client.
+Entity bodies returned in stream resource form <b>MUST</b> be seekable to allow servers the opportunity
+to add/correct missing `Content-Length` headers prior to sending the entity. The prohibition on 
+unseekable resource streams also prevents the use of custom stream wrappers to stream entity data
+directly to clients. This decision is intenional and meant to enforce the use of `Iterator` body 
+values as the method for streaming entities from server to client.
+      </p>
+      
+      <h5>Delayed Response and Streaming Entity Bodies</h5>
+      <p>
+In addition to strings and stream resources, all ASGI-compliant servers <b>MUST</b> support the output
+of `Iterator` response entity bodies. `Iterator` bodies may be streamed to both HTTP/1.0 and HTTP/1.1
+clients. HTTP/1.1 servers <b>MUST</b> chunk-encode the non-empty results of calls to `Iterator::current`
+until `Iterator::valid` returns `FALSE` when responding to HTTP/1.1 clients. Streaming responses
+<b>MUST</b> be accompanied by a `Connection: close` header when sent to HTTP/1.0 clients as the length
+is not known when response output begins.
+      </p>
+      
+      
+    </div>
+
+    <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/js/bootstrap.min.js"></script>
+
+  </body>
+</html>

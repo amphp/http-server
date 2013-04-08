@@ -3,12 +3,26 @@
 /**
  * examples/name_based_vhosts.php
  * 
+ * 
+ * 
+ * !!!!!!!! IMPORTANT !!!!!!
+ * 
+ * This example utilizes Aerys's name-based virtual hosting capability to serve the front-facing
+ * static files from one host (myhost) and the backend websocket host on a separate host (websockets.myhost).
+ * This example will not work unless you specify these names in your hosts file. In linux this means
+ * editing `/etc/hosts` so that it looks similar to this:
+ * 
+ *     127.0.0.1     localhost aerys static.aerys
+ * 
+ * In windows environments the line looks the same but the hosts file is located at:
+ * 
+ *     %systemroot%\system32\drivers\etc\hosts
+ * 
+ * 
+ * 
+ * 
  * Aerys allows the specification of multiple virtual hosts in the same server instance. Each host
  * specifies its own application handler and mods.
- * 
- * The example below uses a static file server to host static files referenced in the HTML generated
- * on the dynamic server. To access the hosts by name make sure you add the names to your 
- * "/etc/hosts" file or alternatively the  "%SystemRoot%\system32\drivers\etc\hosts" in Windows.
  * 
  * An Aerys server may specify as many virtual host names as needed. For example, an application
  * could serve static files from one host using the built-in static file handler, websocket endpoints
