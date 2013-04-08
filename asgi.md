@@ -38,58 +38,57 @@ When an environment key is described as a boolean, its value **MUST** conform to
 This means that an empty string or an integer 0 are both valid false values. If a boolean key is not
 present, an application MAY treat this as a false value.
 
-The values for all CGI keys (those not prefixed with "ASGI_") MUST be a scalar string. This also
-applies to "numeric" values such as port numbers or content-length values.
+The values for all CGI keys (those not prefixed with "ASGI_") **MUST** be of the string type. This mandate
+also applies to "numeric" values such as port numbers or content-length values.
 
 ###### CGI KEYS
 
 - 'SERVER_NAME'
 
-*@todo*
+The host/domain name specified by the client request stripped of any postfixed port numbers. Hosts
+without a DNS name should specify the server's IP address.
 
 - 'SERVER_PORT'
 
-*@todo*
+The public facing port on which the request was received.
 
 - 'SERVER_PROTOCOL'
 
-*@todo*
+The protocol agreed upon for the current request e.g. 1.0 or 1.1
 
 - 'REMOTE_ADDR'
 
-*@todo*
+The IP address of the remote client responsible for the current request
 
 - 'REMOTE_PORT'
 
-*@todo*
+The port number in use by the remote client when making the current request
 
 - 'REQUEST_METHOD'
 
-*@todo*
+The HTTP request method used in the current request e.g. GET/HEAD/POST. This value **MUST NOT** be
+an empty string; it is always required.
 
 - 'REQUEST_URI'
 
-*@todo*
+The undecoded, raw request URL line. It is the raw URI path and query part that appears in the
+HTTP <code>GET /... HTTP/1.x</code> line and does not contain URI scheme and host names. This value
+**MUST NOT** be an empty string; it is always required.
 
 - 'QUERY_STRING'
 
-*@todo*
-
-- 'SCRIPT_NAME'
-
-*@todo*
-
-- 'PATH_INFO'
-
-*@todo*
+The portion of the request URL that follows the ?, if any. This key **MAY** be empty, but **MUST**
+always be present, even if empty.
 
 - 'CONTENT_TYPE'
 
-*@todo*
+The request's MIME type, as specified by the client. The presence or absence of this key **SHOULD**
+correspond to the presence or absence of HTTP Content-Type header in the request.
 
 - 'CONTENT_LENGTH'
 
-*@todo*
+The length of the content in bytes. The presence or absence of this key **SHOULD** correspond to the
+presence or absence of HTTP Content-Length header in the request.
 
 ###### ASGI KEYS
 
@@ -146,8 +145,6 @@ $asgiEnv = [
     'REQUEST_METHOD'     => 'GET',
     'REQUEST_URI'        => '/hello_world.php?foo=bar',
     'QUERY_STRING'       => '?foo=bar',
-    'SCRIPT_NAME'        => 'hello_world.php',
-    'PATH_INFO'          => '',
     'CONTENT_TYPE'       => 'text/plain',
     'CONTENT_LENGTH'     => '42',
     
@@ -223,8 +220,6 @@ The response body **MUST** be returned from the application as any one of the fo
 - A string (possibly empty)
 - An open PHP stream resource
 - An object instance implementing the `Iterator` interface
-
-The body **MUST** be encoded into appropriate encodings and MUST NOT contain wide characters (> 255).
 
 `NULL`/string entity bodies are self-explanatory and should be returned directly to the client.
 Entity bodies returned in stream resource form **MUST** be seekable to allow servers the opportunity
