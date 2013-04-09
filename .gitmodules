@@ -3,7 +3,7 @@
 	url = git@github.com:rdlowrey/Auryn.git
 [submodule "vendor/Amp"]
 	path = vendor/Amp
-	url = git@github.com:rdlowrey/Amp
+        url = https://github.com/rdlowrey/Amp.git
 [submodule "vendor/vfsStream"]
 	path = vendor/vfsStream
 	url = git://github.com/mikey179/vfsStream.git
