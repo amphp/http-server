@@ -12,14 +12,12 @@ class Handler {
     const ACCEPT_CONCATENATOR = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
     
     private $sessionManager;
-    private $sessionFactory;
-    private $importCallback;
     private $endpoints = [];
+    private $importCallback;
     private $supportedVersions = [13 => TRUE];
     
-    function __construct(SessionManager $sessMgr, array $endpoints, SessionFactory $sf = NULL) {
+    function __construct(SessionManager $sessMgr, array $endpoints) {
         $this->sessionManager = $sessMgr;
-        $this->sessionFactory = $sf ?: new SessionFactory;
         $this->setEndpoints($endpoints);
         
         $this->importCallback = [$this, 'importSocket'];
@@ -103,7 +101,7 @@ class Handler {
             return [FALSE, [Status::UPGRADE_REQUIRED, Reason::HTTP_426, [], NULL]];
         }
         
-        if (empty($asgiEnv['HTTP_CONNECTION']) || !stristr($asgiEnv['HTTP_CONNECTION'], 'upgrade')) {
+        if (empty($asgiEnv['HTTP_CONNECTION']) || strcasecmp($asgiEnv['HTTP_CONNECTION'], 'upgrade')) {
             $reason = 'Bad Request: "Connection: Upgrade" header required';
             return [FALSE, [Status::BAD_REQUEST, $reason, [], NULL]];
         }
@@ -170,7 +168,7 @@ class Handler {
         try {
             return $beforeHandshake($asgiEnv);
         } catch (\Exception $e) {
-            @fwrite($asgiEnv['ASGI_ERROR'], $e);
+            fwrite($asgiEnv['ASGI_ERROR'], $e);
             return [Status::INTERNAL_SERVER_ERROR, Reason::HTTP_500, [], NULL];
         }
     }
