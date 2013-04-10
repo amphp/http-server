@@ -406,7 +406,7 @@ class HandlerTest extends PHPUnit_Framework_TestCase {
         list($status, $reason, $headers, $body) = $asgiResponse;
         
         $this->assertEquals(Status::PARTIAL_CONTENT, $status);
-        $this->assertInstanceOf('\Aerys\Io\MultiPartByteRangeBody', $body);
+        $this->assertInstanceOf('Aerys\Writing\MultiPartByteRangeBody', $body);
         
     }
     

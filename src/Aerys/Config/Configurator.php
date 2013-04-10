@@ -43,7 +43,7 @@ class Configurator {
             $hosts[$hostId] = $host;
             $mods[$hostId] = $hostMods;
             
-            $interface = $host->getInterface();
+            $interface = $host->getAddress();
             $port = $host->getPort();
             $interfaceId = $interface . ':' . $port;
             

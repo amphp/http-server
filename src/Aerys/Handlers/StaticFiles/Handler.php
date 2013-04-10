@@ -5,8 +5,8 @@ namespace Aerys\Handlers\StaticFiles;
 use Aerys\Server,
     Aerys\Status,
     Aerys\Reason,
-    Aerys\Io\ByteRangeBody,
-    Aerys\Io\MultiPartByteRangeBody;
+    Aerys\Writing\ByteRangeBody,
+    Aerys\Writing\MultiPartByteRangeBody;
 
 class Handler {
     
