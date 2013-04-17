@@ -186,21 +186,6 @@ class PeclMessageParserTest extends PHPUnit_Framework_TestCase {
         
         $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
         
-        // 6 -------------------------------------------------------------------------------------->
-        $msg = "" .
-            "GET     /   \t   HTTP/1.1" . "\n" . 
-            "Host: localhost" . "\n" . 
-            "\n"
-        ;
-        
-        $method = 'GET';
-        $uri = '/';
-        $protocol = '1.1';
-        $headers = ['HOST' => 'localhost'];
-        $body = NULL;
-        
-        $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
-        
         // x -------------------------------------------------------------------------------------->
         
         return $return;

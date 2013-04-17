@@ -1,27 +1,17 @@
 <?php
 
-use Aerys\Writing\IteratorBodyWriter;
+use Aerys\Writing\IteratorWriter;
 
-class IteratorBodyWriterTest extends PHPUnit_Framework_TestCase {
-    
-    /**
-     * @expectedException Aerys\Writing\ResourceWriteException
-     */
-    function testWriteThrowsExceptionOnResourceWriteFailure() {
-        $destination = 'should fail because this is not a resource';
-        $body = new IteratorBodyWriterTestIteratorStub;
-        
-        $writer = new IteratorBodyWriter($destination, $body);
-        $writer->write();
-    }
+class IteratorWriterTest extends PHPUnit_Framework_TestCase {
     
     function testWrite() {
         $destination = fopen('php://memory', 'r+');
-        $body = new IteratorBodyWriterTestIteratorStub;
-        $expectedBody = 'test';
+        $headers = 'headers';
+        $body = new IteratorWriterTestIteratorStub;
+        $expectedBody = $headers . 'test';
         
         $contentLength = strlen($expectedBody);
-        $writer = new IteratorBodyWriter($destination, $body);
+        $writer = new IteratorWriter($destination, $headers, $body);
         $writer->setGranularity(1);
         
         while (!$writer->write());
@@ -33,7 +23,7 @@ class IteratorBodyWriterTest extends PHPUnit_Framework_TestCase {
     
 }
 
-class IteratorBodyWriterTestIteratorStub implements Iterator {
+class IteratorWriterTestIteratorStub implements Iterator {
     
     private $position = 0;
     private $parts = [
@@ -50,7 +40,7 @@ class IteratorBodyWriterTestIteratorStub implements Iterator {
     }
 
     function current() {
-        return $this->parts[$this->position];
+        return isset($this->parts[$this->position]) ? $this->parts[$this->position] : NULL;
     }
 
     function key() {

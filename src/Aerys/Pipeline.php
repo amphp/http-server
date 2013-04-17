@@ -2,13 +2,10 @@
 
 namespace Aerys;
 
-use Aerys\Writing\MessageWriter,
+use Aerys\Writing\WriterFactory,
     Aerys\Parsing\MessageParser,
     Aerys\Parsing\TempEntityWriter;
 
-/**
- * @TODO Cleanup this mess
- */
 class Pipeline {
     
     private $id;
@@ -17,38 +14,40 @@ class Pipeline {
     private $port;
     private $serverAddress;
     private $serverPort;
-    
     private $parser;
-    private $writer;
     private $requests = [];
     private $responses = [];
-    private $isWriting = [];
+    private $inProgressResponses = [];
     
     private $preBodyRequest;
     private $requestCount = 0;
     
-    function __construct($socket, $peerName, $serverName, MessageParser $parser, MessageWriter $writer) {
+    private $writerFactory;
+    
+    function __construct($socket, MessageParser $parser, WriterFactory $writerFactory = NULL) {
         $this->socket = $socket;
+        $this->parser = $parser;
+        $this->writerFactory = $writerFactory ?: new WriterFactory;
+        
         $this->id = (int) $socket;
         
-        $clientPortStartPos = strrpos($peerName, ':');
-        $this->address = substr($peerName, 0, $clientPortStartPos);
-        $this->port = substr($peerName, $clientPortStartPos + 1);
+        $peerName = stream_socket_get_name($socket, TRUE);
+        list($this->address, $this->port) = $this->generateAddressAndPort($peerName);
         
-        $serverPortStartPos = strrpos($serverName, ':');
-        $this->serverAddress = substr($serverName, 0, $serverPortStartPos);
-        $this->serverPort = substr($serverName, $serverPortStartPos + 1);
-        
-        $this->parser = $parser;
-        $this->writer = $writer;
+        $serverName = stream_socket_get_name($socket, FALSE);
+        list($this->serverAddress, $this->serverPort) = $this->generateAddressAndPort($serverName);
     }
     
-    function isEmpty() {
-        return !$this->requests;
+    private function generateAddressAndPort($name) {
+        $portStartPos = strrpos($name, ':');
+        $addr = substr($name, 0, $portStartPos);
+        $port = substr($name, $portStartPos + 1);
+        
+        return [$addr, $port];
     }
     
-    function canWrite() {
-        return (bool) $this->responses;
+    function hasRequestsAwaitingResponse() {
+        return (bool) $this->requests;
     }
     
     function hasRequest($requestId) {
@@ -61,7 +60,7 @@ class Pipeline {
     
     function setRequest($requestId, $request) {
         $this->requests[$requestId] = $request;
-        $this->isWriting[$requestId] = FALSE;
+        $this->inProgressResponses[$requestId] = FALSE;
     }
     
     function hasResponse($requestId) {
@@ -76,28 +75,24 @@ class Pipeline {
         $this->responses[$requestId] = $asgiResponse;
     }
     
-    function write() {
-        return $this->writer->write();
-    }
-    
-    function front() {
+    function getFront() {
         reset($this->requests);
         $requestId = key($this->requests);
         
         return [$requestId, $this->requests[$requestId], $this->responses[$requestId]];
     }
     
-    function shift() {
-        reset($this->requests);
-        $requestId = key($this->requests);
+    function shiftFront() {
+        $result = $this->getFront();
+        $requestId = $result[0];
         
         unset(
             $this->requests[$requestId],
             $this->responses[$requestId],
-            $this->isWriting[$requestId]
+            $this->inProgressResponses[$requestId]
         );
         
-        return $requestId;
+        return $result;
     }
     
     function parse() {
@@ -105,7 +100,7 @@ class Pipeline {
     }
     
     function hasUnfinishedRead() {
-        return $this->parser->inProgress();
+        return $this->parser->hasInProgressMessage();
     }
     
     function getRequestIds() {
@@ -136,40 +131,62 @@ class Pipeline {
         return $this->serverPort;
     }
     
-    /**
-     * Enqueue pipelined responses with the writer (maintaining the original request order)
-     * 
-     * @return Returns the number of queued responses for which writing has yet to complete
-     */
+    function write() {
+        return current($this->inProgressResponses)->write()
+            ? count($this->inProgressResponses) - 1
+            : -1;
+    }
+    
     function enqueueResponsesForWrite() {
         $pendingResponses = 0;
         
         foreach ($this->requests as $requestId => $asgiEnv) {
-            if ($this->isWriting[$requestId]) {
+            if ($this->inProgressResponses[$requestId]) {
                 $pendingResponses++;
-                continue;
-            }
-            
-            if (isset($this->responses[$requestId])) {
-                
-                $asgiResponse = $this->responses[$requestId];
-                $responseHeaders = $asgiResponse[2];
-                $contentLength = empty($responseHeaders['CONTENT-LENGTH'])
-                    ? NULL
-                    : $responseHeaders['CONTENT-LENGTH'];
-                
+            } elseif (isset($this->responses[$requestId])) {
+                list($status, $reason, $headers, $body) = $this->responses[$requestId];
+                    
                 $protocol = $asgiEnv['SERVER_PROTOCOL'];
+                $rawHeaders = $this->generateRawHeaders($protocol, $status, $reason, $headers);
                 
-                $this->writer->enqueue($asgiResponse, $protocol, $contentLength);
-                $this->isWriting[$requestId] = TRUE;
+                $responseWriter = $this->writerFactory->make($this->socket, $rawHeaders, $body, $protocol);
+                
+                $this->inProgressResponses[$requestId] = $responseWriter;
                 $pendingResponses++;
-                
             } else {
                 break;
             }
         }
         
         return $pendingResponses;
+    }
+    
+    private function generateRawHeaders($protocol, $status, $reason, array $headers) {
+        $msg = "HTTP/$protocol $status";
+        
+        if ($reason || $reason === '0') {
+            $msg .= " $reason";
+        }
+        
+        $msg .= "\r\n";
+        
+        foreach ($headers as $header => $value) {
+            if (is_array($value)) {
+                foreach ($value as $nestedValue) {
+                    $msg .= "$header: $nestedValue\r\n";
+                }
+            } else {
+                $msg .= "$header: $value\r\n";
+            }
+        }
+        
+        $msg .= "\r\n";
+        
+        return $msg;
+    }
+    
+    function hasPreBodyRequest() {
+        return (bool) $this->preBodyRequest;
     }
     
     function addPreBodyRequest($requestId, array $asgiEnv, Host $host, $needs100Continue) {
@@ -186,10 +203,6 @@ class Pipeline {
                 'No pre-body request assigned'
             );
         }
-    }
-    
-    function hasPreBodyRequest() {
-        return (bool) $this->preBodyRequest;
     }
     
     function setTempEntityWriter(TempEntityWriter $tempEntityWriter) {

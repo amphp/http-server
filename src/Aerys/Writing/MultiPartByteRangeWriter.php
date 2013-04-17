@@ -2,35 +2,25 @@
 
 namespace Aerys\Writing;
 
-class MultiPartByteRangeBodyWriter implements BodyWriter {
+class MultiPartByteRangeWriter extends Writer {
     
     const BOUNDARY = 0;
     const RANGE = 1;
     const FINAL_BOUNDARY = 2;
     
     private $state = self::BOUNDARY;
-    
-    private $destination;
     private $body;
-    private $contentType;
-    private $granularity = 131072;
-    
-    private $boundary;
-    private $boundarySize;
-    private $boundaryBytesWritten;
-    
     private $source;
     private $sourcePos;
     private $bytesRemainingInRange;
+    private $boundaryGenerated = FALSE;
     
-    function __construct($destination, MultiPartByteRangeBody $body) {
+    function __construct($destination, $rawHeaders, MultiPartByteRangeBody $body) {
         $this->destination = $destination;
+        $this->bufferData($rawHeaders);
+        
         $this->body = $body;
         $this->source = $body->getResource();
-    }
-    
-    function setGranularity($bytes) {
-        $this->granularity = (int) $bytes;
     }
     
     function write() {
@@ -45,6 +35,7 @@ class MultiPartByteRangeBodyWriter implements BodyWriter {
         
         boundary: {
             if ($this->writeBoundary()) {
+                $this->state = self::RANGE;
                 goto range_start;
             } else {
                 goto further_write_needed;
@@ -78,25 +69,30 @@ class MultiPartByteRangeBodyWriter implements BodyWriter {
         
         range_complete: {
             if ($this->body->valid()) {
+                $this->boundaryGenerated = FALSE;
                 $this->state = self::BOUNDARY;
+                
                 goto boundary;
+                
             } else {
                 $this->state = self::FINAL_BOUNDARY;
-                
-                $this->boundary = '--' . $this->body->getBoundary() . "--\r\n";
-                $this->boundarySize = strlen($this->boundary);
-                $this->boundaryBytesWritten = 0;
+                $boundary = '--' . $this->body->getBoundary() . "--\r\n";
+                $this->bufferData($boundary);
                 
                 goto final_boundary;
             }
         }
         
         final_boundary: {
-            if ($this->writeBoundary()) {
-                return TRUE;
+            if (parent::write()) {
+                goto complete;
             } else {
                 goto further_write_needed;
             }
+        }
+        
+        complete: {
+            return TRUE;
         }
         
         further_write_needed: {
@@ -105,31 +101,12 @@ class MultiPartByteRangeBodyWriter implements BodyWriter {
     }
     
     private function writeBoundary() {
-        if (NULL === $this->boundary) {
-            $this->generateBoundary();
+        if (!$this->boundaryGenerated) {
+            $boundary = $this->generateBoundary();
+            $this->bufferData($boundary);
         }
         
-        $bytesWritten = @fwrite($this->destination, $this->boundary, $this->granularity);
-        
-        $this->boundaryBytesWritten += $bytesWritten;
-        
-        if ($this->boundaryBytesWritten == $this->boundarySize) {
-            $this->boundary = NULL;
-            $this->boundarySize = NULL;
-            $this->boundaryBytesWritten = NULL;
-            
-            $result = TRUE;
-            
-        } elseif ($bytesWritten) {
-            $this->boundary = substr($this->boundary, $bytesWritten);
-            $result = FALSE;
-        } elseif (is_resource($this->destination)) {
-            $result = FALSE;
-        } else {
-            throw new ResourceWriteException;
-        }
-        
-        return $result;
+        return parent::write();
     }
     
     private function generateBoundary() {
@@ -140,12 +117,14 @@ class MultiPartByteRangeBodyWriter implements BodyWriter {
         $boundary.= "Content-Range: bytes {$startPos}-{$endPos}/" . $this->body->getContentLength();
         $boundary.= "\r\n\r\n";
         
-        $this->boundary = $boundary;
-        $this->boundarySize = strlen($boundary);
-        $this->boundaryBytesWritten = 0;
+        $this->boundaryGenerated = TRUE;
+        
+        return $boundary;
     }
     
     private function writeRange() {
+        fseek($this->source, $this->sourcePos);
+        
         $maxWriteSize = ($this->bytesRemainingInRange > $this->granularity)
             ? $this->granularity
             : $this->bytesRemainingInRange;

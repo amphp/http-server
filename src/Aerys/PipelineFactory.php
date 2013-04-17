@@ -2,31 +2,30 @@
 
 namespace Aerys;
 
-use Aerys\Writing\BodyWriterFactory,
-    Aerys\Writing\MessageWriter,
+use Aerys\Writing\WriterFactory,
     Aerys\Parsing\MessageParser,
     Aerys\Parsing\PeclMessageParser;
 
 class PipelineFactory {
     
-    private $bodyWriterFactory;
+    private $writerFactory;
     
-    function __construct(BodyWriterFactory $bwf = NULL) {
-        $this->bodyWriterFactory = $bwf ?: new BodyWriterFactory;
+    function __construct(WriterFactory $writerFactory = NULL) {
+        $this->writerFactory = $writerFactory ?: new WriterFactory;
         $this->canUsePeclHttp = $this->canUsePeclHttp();
     }
     
+    // This method is *only* protected to allow test mocking
     protected function canUsePeclHttp() {
         return extension_loaded('http') && function_exists('http_parse_headers');
     }
     
-    function makePipeline($clientSocket, $peerName, $serverName) {
-        $writer = new MessageWriter($clientSocket, $this->bodyWriterFactory);
+    function makePipeline($socket) {
         $parser = $this->canUsePeclHttp
-            ? new PeclMessageParser($clientSocket, MessageParser::MODE_REQUEST)
-            : new MessageParser($clientSocket, MessageParser::MODE_REQUEST);
+            ? new PeclMessageParser($socket, MessageParser::MODE_REQUEST)
+            : new MessageParser($socket, MessageParser::MODE_REQUEST);
         
-        return new Pipeline($clientSocket, $peerName, $serverName, $parser, $writer);
+        return new Pipeline($socket, $parser, $this->writerFactory);
     }
     
 }

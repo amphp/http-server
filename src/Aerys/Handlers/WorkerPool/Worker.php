@@ -11,12 +11,17 @@ class Worker {
     
     private $parser;
     private $writer;
+    private $chrCallResult;
+    private $chrCallError;
     
     function __construct(FrameParser $parser, FrameWriter $writer) {
         $this->parser = $parser;
         $this->writer = $writer;
         
         $parser->throwOnEof(FALSE);
+        
+        $this->chrCallResult = chr(Dispatcher::CALL_RESULT);
+        $this->chrCallError = chr(Dispatcher::CALL_ERROR);
     }
     
     function onReadable() {
@@ -24,17 +29,18 @@ class Worker {
             $payload = $frameArr[3];
             
             $callId = substr($payload, 0, 4);
-            $procLen = ord($payload[4]);
-            $procedure = substr($payload, 5, $procLen);
-            $workload = substr($payload, $procLen + 5);
+            $callCode = $payload[4];
+            $procLen = ord($payload[5]);
+            $procedure = substr($payload, 6, $procLen);
+            $workload = substr($payload, $procLen + 6);
             
             try {
                 $this->invokeProcedure($callId, $procedure, $workload);
             } catch (ResourceException $e) {
                 throw $e;
             } catch (\Exception $e) {
-                $payload = $callId . $e->__toString();
-                $frame = new Frame($fin = 1, Dispatcher::CALL_ERROR, Frame::OP_DATA, $payload);
+                $payload = $callId . $this->chrCallError . $e->__toString();
+                $frame = new Frame($fin = 1, $rsv = 0, Frame::OP_DATA, $payload);
                 $this->send($frame);
             }
         }
@@ -56,8 +62,8 @@ class Worker {
             
             list($status, $reason, $headers, $body) = $asgiResponse;
             
-            $payload = $callId . json_encode([$status, $reason, $headers]);
-            $frame = new Frame($isFin = 0, Dispatcher::CALL_RESULT, Frame::OP_DATA, $payload);
+            $payload = $callId . $this->chrCallResult . json_encode([$status, $reason, $headers]);
+            $frame = new Frame($isFin = 0, $rsv = 0, Frame::OP_DATA, $payload);
             $this->writer->writeAll($frame);
             
             while (TRUE) {
@@ -66,8 +72,8 @@ class Worker {
                 $isFin = (int) !$body->valid();
                 
                 if (NULL !== $chunk) {
-                    $chunk = $callId . $chunk;
-                    $frame = new Frame($isFin, Dispatcher::CALL_RESULT, Frame::OP_DATA, $chunk);
+                    $chunk = $callId . $this->chrCallResult . $chunk;
+                    $frame = new Frame($isFin, $rsv = 0, Frame::OP_DATA, $chunk);
                     $this->writer->writeAll($frame);
                 }
                 
@@ -77,8 +83,8 @@ class Worker {
             }
             
         } elseif ($payload = json_encode($asgiResponse)) {
-            $payload = $callId . $payload;
-            $frame = new Frame($isFin = 1, Dispatcher::CALL_RESULT, Frame::OP_DATA, $payload);
+            $payload = $callId . $this->chrCallResult . $payload;
+            $frame = new Frame($isFin = 1, $rsv = 0, Frame::OP_DATA, $payload);
             $this->writer->writeAll($frame);
         } else {
             throw new \RuntimeException(

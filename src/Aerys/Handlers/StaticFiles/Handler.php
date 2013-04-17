@@ -2,7 +2,8 @@
 
 namespace Aerys\Handlers\StaticFiles;
 
-use Aerys\Server,
+use Amp\Reactor,
+    Aerys\Server,
     Aerys\Status,
     Aerys\Reason,
     Aerys\Writing\ByteRangeBody,
@@ -30,16 +31,25 @@ class Handler {
     private $defaultTextCharset = 'utf-8';
     private $indexRedirection = TRUE;
     private $multipartBoundary;
-    
     private $mimeTypes;
-    private $fdCache = [];
-    private $fdCacheTtl = 5;
+    private $cacheTtl = 10;
+    private $fileDescriptorCache = [];
+    private $memoryCache = [];
+    private $memoryCacheMaxSize = 67108864;    // 64 MiB
+    private $memoryCacheMaxFileSize = 1048576; //  1 MiB
+    private $memoryCacheCurrentSize = 0;
+    private $staleCacheClearanceSubscription;
     
-    function __construct($docRoot) {
+    function __construct(Reactor $reactor, $docRoot) {
         $this->validateDocRoot($docRoot);
+        
         $this->docRoot = rtrim($docRoot, '/');
         $this->assignDefaultMimeTypes();
         $this->multipartBoundary = uniqid();
+        
+        $this->staleCacheClearanceSubscription = $reactor->repeat(function() {
+            $this->cleanCache();
+        }, $interval = 1);
     }
     
     private function validateDocRoot($docRoot) {
@@ -47,6 +57,31 @@ class Handler {
             throw new \InvalidArgumentException(
                 'Document root must be a readable directory'
             );
+        }
+    }
+    
+    private function cleanCache() {
+        $now = time();
+        
+        if ($this->memoryCache) {
+            $this->clearStaleCacheEntries($now, $this->memoryCache);
+        }
+        
+        if ($this->fileDescriptorCache) {
+            $this->clearStaleCacheEntries($now, $this->fileDescriptorCache);
+        }
+        
+        clearstatcache();
+    }
+    
+    private function clearStaleCacheEntries($now, &$cache) {
+        foreach ($cache as $cacheId => $cacheArr) {
+            $cacheExpiry = $cacheArr[1];
+            if ($cacheExpiry <= $now) {
+                unset($cache[$cacheId]);
+            } else {
+                break;
+            }
         }
     }
     
@@ -84,10 +119,24 @@ class Handler {
         $this->defaultTextCharset = $charset;
     }
     
-    function setFileDescriptorCacheTtl($seconds) {
-        $this->fdCacheTtl = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
+    function setCacheTtl($seconds) {
+        $this->cacheTtl = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
             'default' => 5
+        ]]);
+    }
+    
+    function setMemoryCacheMaxSize($bytes) {
+        $this->memoryCacheMaxSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
+            'min_range' => 0,
+            'default' => 67108864
+        ]]);
+    }
+    
+    function setMemoryCacheMaxFileSize($bytes) {
+        $this->memoryCacheMaxFileSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
+            'min_range' => 0,
+            'default' => 1048576
         ]]);
     }
     
@@ -275,9 +324,6 @@ class Handler {
     
     /**
      * @link http://tools.ietf.org/html/rfc2616#section-14.21
-     * 
-     * > To mark a response as "already expired," an origin server sends an
-     * > Expires date that is equal to the Date header value.
      */
     private function doFile($filePath, $method, $mTime, $fileSize, $eTag) {
         $status = Status::OK;
@@ -292,7 +338,6 @@ class Handler {
             'Accept-Ranges' => 'bytes'
         ];
         
-        // See @link in method docblock
         $headers['Expires'] = ($this->expiresHeaderPeriod > 0)
             ? date(Server::HTTP_DATE, $now + $this->expiresHeaderPeriod)
             : $headers['Date'];
@@ -303,37 +348,51 @@ class Handler {
             $headers['ETag'] = $eTag;
         }
         
-        $body = ($method == 'GET') ? $this->getFileDescriptor($filePath) : NULL;
+        if ($method !== 'GET') {
+            $body = NULL;
+        } elseif ($fileSize < $this->memoryCacheMaxFileSize) {
+            $body = $this->getMemoryCacheableFile($filePath, $fileSize);
+        } elseif ($this->cacheTtl) {
+            $body = $this->getCacheableFileDescriptor($filePath);
+        } else {
+            $body = $this->getFileDescriptor($filePath);
+        }
         
         return [$status, $reason, $headers, $body];
     }
     
-    private function getFileDescriptor($filePath) {
-        if (!$this->fdCacheTtl) {
-            $fd = fopen($filePath, 'rb');
-            stream_set_blocking($fd, 0);
-            clearstatcache(FALSE, $filePath);
-            
-            return $fd;
-        }
-        
-        $now = time();
+    private function getMemoryCacheableFile($filePath, $fileSize) {
         $cacheId = strtolower($filePath);
-        $isCached = isset($this->fdCache[$cacheId]);
-        $cacheExpiry = $isCached ? $this->fdCache[$cacheId][1] : $now + $this->fdCacheTtl;
         
-        if ($isCached && $cacheExpiry < $now) {
-            unset($this->fdCache[$cacheId]);
-            clearstatcache(FALSE, $filePath);
-            $fd = fopen($filePath, 'rb');
-            $this->fdCache[$cacheId] = [$fd, $cacheExpiry];
-        } elseif ($isCached) {
-            $fd = $this->fdCache[$cacheId][0];
+        return isset($this->memoryCache[$cacheId])
+            ? $this->memoryCache[$cacheId][0]
+            : $this->storeFileInMemoryCache($cacheId, $filePath, $fileSize);
+    }
+    
+    private function storeFileInMemoryCache($cacheId, $filePath, $fileSize) {
+        $memFile = file_get_contents($filePath);
+        $cacheExpiry = time() + $this->cacheTtl;
+        $this->memoryCache[$cacheId] = [$memFile, $cacheExpiry, $fileSize, $filePath];
+        
+        return $memFile;
+    }
+    
+    private function getCacheableFileDescriptor($filePath) {
+        $cacheId = strtolower($filePath);
+        
+        if (isset($this->fileDescriptorCache[$cacheId])) {
+            $fd = $this->fileDescriptorCache[$cacheId][0];
         } else {
-            $fd = fopen($filePath, 'rb');
-            $this->fdCache[$cacheId] = [$fd, $cacheExpiry];
+            $fd = $this->getFileDescriptor($filePath);
+            $cacheExpiry = time() + $this->cacheTtl;
+            $this->fileDescriptorCache[$cacheId] = [$fd, $cacheExpiry, $filePath];
         }
         
+        return $fd;
+    }
+    
+    private function getFileDescriptor($filePath) {
+        $fd = fopen($filePath, 'rb');
         stream_set_blocking($fd, 0);
         
         return $fd;

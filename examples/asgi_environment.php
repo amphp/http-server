@@ -1,12 +1,13 @@
 <?php
 
 /**
- * examples/hello_world.php
+ * examples/asgi_environment.php
  * 
- * This is the most basic HTTP/1.1 server you can create; it returns the same basic response for
- * every request it receives. To run:
+ * All Aerys requests are relayed to the application using the standard ASGI environment array. This
+ * example responds to every request with a "hello world" message and a printed summary of this set
+ * of request environment variables. To run:
  * 
- * $ php hello_world.php
+ * $ php asgi_environment.php
  * 
  * Once the server has started, request http://127.0.0.1:1337/ in your browser or client of choice.
  */
@@ -21,7 +22,11 @@ $myApp = function(array $asgiEnv) {
     $status = 200;
     $reason = 'OK';
     $headers = [];
-    $body = '<html><body><h1>Hello, World.</h1></body></html>';
+    
+    $body = '<html><body><h1>Hello, world.</h1>';
+    $body.= '<h3>Your request environment is ...</h3>';
+    $body.= '<pre>' . print_r($asgiEnv, TRUE) . '</pre>';
+    $body.= '</body></html>';
     
     return [$status, $reason, $headers, $body];
 };

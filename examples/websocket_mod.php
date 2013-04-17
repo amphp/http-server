@@ -9,6 +9,10 @@
  * websocket mod will be caught and handled by the specified websocket endpoints instead of being
  * handled by the normal application callable.
  * 
+ * In this example we serve static files from a specified document root for all requests but register
+ * the websocket mod to intercept requests made to the `/chat` URI and process them using our
+ * `ExampleChatEndpoint` class.
+ * 
  * To run:
  * 
  * $ php websocket_mod.php
@@ -33,7 +37,7 @@ date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
     ]),
     'mods' => [
         'websocket' => [
-            '/chat' => new ExampleChatEndpoint
+            '/chat' => new ExampleChatEndpoint // <-- class file was required manually above
         ]
     ]
 ]])->listen();

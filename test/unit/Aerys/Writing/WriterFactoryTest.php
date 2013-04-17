@@ -1,17 +1,18 @@
 <?php
 
-use Aerys\Writing\BodyWriterFactory,
+use Aerys\Writing\WriterFactory,
     Aerys\Writing\ByteRangeBody,
     Aerys\Writing\MultiPartByteRangeBody;
 
-class BodyWriterFactoryTest extends PHPUnit_Framework_TestCase {
+class WriterFactoryTest extends PHPUnit_Framework_TestCase {
     
     /**
      * @dataProvider provideMakeExpectations
      */
-    function testMake($destinationStream, $body, $protocol, $contentLength, $expectedType) {
-        $bwf = new BodyWriterFactory;
-        $bodyWriter = $bwf->make($destinationStream, $body, $protocol, $contentLength);
+    function testMake($destinationStream, $body, $protocol, $expectedType) {
+        $factory = new WriterFactory;
+        $headers = 'test';
+        $bodyWriter = $factory->make($destinationStream, $headers, $body, $protocol);
         $this->assertInstanceOf($expectedType, $bodyWriter);
     }
     
@@ -19,9 +20,9 @@ class BodyWriterFactoryTest extends PHPUnit_Framework_TestCase {
      * @dataProvider provideBadMakeExpectations
      * @expectedException DomainException
      */
-    function testMakeThrowsOnInvalidInputParameters($destinationStream, $body, $protocol, $contentLength) {
-        $bwf = new BodyWriterFactory;
-        $bodyWriter = $bwf->make($destinationStream, $body, $protocol, $contentLength);
+    function testMakeThrowsOnInvalidInputParameters($destinationStream, $body, $protocol) {
+        $factory = new WriterFactory;
+        $writer = $factory->make($destinationStream, 'headers', $body, $protocol);
     }
     
     function provideMakeExpectations() {
@@ -33,14 +34,12 @@ class BodyWriterFactoryTest extends PHPUnit_Framework_TestCase {
         
         $body = 'some string';
         $protocol = '1.1';
-        $contentLength = strlen($body);
-        $expectedType = 'Aerys\Writing\StringBodyWriter';
+        $expectedType = 'Aerys\Writing\Writer';
         
         $return[] = [
             $destinationStream,
             $body,
             $protocol,
-            $contentLength,
             $expectedType
         ];
         
@@ -48,14 +47,12 @@ class BodyWriterFactoryTest extends PHPUnit_Framework_TestCase {
         
         $body = fopen('php://memory', 'r+');
         $protocol = '1.1';
-        $contentLength = 42;
-        $expectedType = 'Aerys\Writing\ResourceBodyWriter';
+        $expectedType = 'Aerys\Writing\StreamWriter';
         
         $return[] = [
             $destinationStream,
             $body,
             $protocol,
-            $contentLength,
             $expectedType
         ];
         
@@ -63,14 +60,12 @@ class BodyWriterFactoryTest extends PHPUnit_Framework_TestCase {
         
         $body = new ByteRangeBody(fopen('php://memory', 'r+'), NULL, NULL);
         $protocol = '1.1';
-        $contentLength = NULL;
-        $expectedType = 'Aerys\Writing\ByteRangeBodyWriter';
+        $expectedType = 'Aerys\Writing\ByteRangeWriter';
         
         $return[] = [
             $destinationStream,
             $body,
             $protocol,
-            $contentLength,
             $expectedType
         ];
         
@@ -78,14 +73,12 @@ class BodyWriterFactoryTest extends PHPUnit_Framework_TestCase {
         
         $body = new MultiPartByteRangeBody(NULL, [], NULL, NULL, NULL);
         $protocol = '1.1';
-        $contentLength = NULL;
-        $expectedType = 'Aerys\Writing\MultiPartByteRangeBodyWriter';
+        $expectedType = 'Aerys\Writing\MultiPartByteRangeWriter';
         
         $return[] = [
             $destinationStream,
             $body,
             $protocol,
-            $contentLength,
             $expectedType
         ];
         
@@ -93,14 +86,12 @@ class BodyWriterFactoryTest extends PHPUnit_Framework_TestCase {
         
         $body = $this->getMock('Iterator');
         $protocol = '1.1';
-        $contentLength = NULL;
-        $expectedType = 'Aerys\Writing\ChunkedIteratorBodyWriter';
+        $expectedType = 'Aerys\Writing\ChunkedIteratorWriter';
         
         $return[] = [
             $destinationStream,
             $body,
             $protocol,
-            $contentLength,
             $expectedType
         ];
         
@@ -108,14 +99,12 @@ class BodyWriterFactoryTest extends PHPUnit_Framework_TestCase {
         
         $body = $this->getMock('Iterator');
         $protocol = '1.0';
-        $contentLength = NULL;
-        $expectedType = 'Aerys\Writing\IteratorBodyWriter';
+        $expectedType = 'Aerys\Writing\IteratorWriter';
         
         $return[] = [
             $destinationStream,
             $body,
             $protocol,
-            $contentLength,
             $expectedType
         ];
         
@@ -133,39 +122,11 @@ class BodyWriterFactoryTest extends PHPUnit_Framework_TestCase {
         
         $body = new StdClass;
         $protocol = '1.1';
-        $contentLength = 42;
         
         $return[] = [
             $destinationStream,
             $body,
-            $protocol,
-            $contentLength
-        ];
-        
-        // 1 ---------------------------------------------------------------------------------------
-        
-        $body = 'string';
-        $protocol = '1.1';
-        $contentLength = NULL;
-        
-        $return[] = [
-            $destinationStream,
-            $body,
-            $protocol,
-            $contentLength
-        ];
-        
-        // 2 ---------------------------------------------------------------------------------------
-        
-        $body = fopen('php://memory', 'r+');
-        $protocol = '1.1';
-        $contentLength = NULL;
-        
-        $return[] = [
-            $destinationStream,
-            $body,
-            $protocol,
-            $contentLength
+            $protocol
         ];
         
         // x ---------------------------------------------------------------------------------------

@@ -41,7 +41,7 @@ $workerCmd = $phpBin . ' ' . $worker . ' ' . $handler;
     'listenOn'      => '127.0.0.1:1337',
     'application'   => new WorkerPoolApp([
         'workerCmd'         => $workerCmd,
-        'poolSize'          => 16,
+        'poolSize'          => 8,
         'responseTimeout'   => 5,
         'workerCwd'         => NULL
     ])

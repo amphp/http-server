@@ -21,12 +21,6 @@ class MessageParser {
     const TRAILER_START = 600;
     const AWAITING_ENTITY_DELEGATE = 700;
     
-    const REQUEST_LINE_PATTERN = "#^
-        (?P<method>[^\(\)<>@,;:\\\"/\[\]\?\={}\x20\x09\x01-\x1F\x7F]+)[\x20\x09]+
-        (?P<uri>[a-zA-Z0-9\$\-_\.\+!*'\(\),;/\?\:\@\=\&]+)[\x20\x09]+
-        HTTP/(?P<protocol>\d+\.\d+)[\x0D]?
-    $#ix";
-    
     const STATUS_LINE_PATTERN = "#^
         HTTP/(?P<protocol>\d+\.\d+)[\x20\x09]+
         (?P<status>[1-5]\d\d)[\x20\x09]*
@@ -99,7 +93,7 @@ class MessageParser {
         }
     }
     
-    function inProgress() {
+    function hasInProgressMessage() {
         return ($this->state || $this->buffer || $this->buffer === '0');
     }
     
@@ -161,15 +155,7 @@ class MessageParser {
             $this->state = self::HEADERS_START;
             $this->traceBuffer = $startLine;
             
-            goto validate_protocol;
-        }
-        
-        validate_protocol: {
-            if ($this->protocol == '1.0' || '1.1' == $this->protocol) {
-                goto headers_start;
-            } else {
-                throw new ProtocolNotSupportedException;
-            }
+            goto headers_start;
         }
         
         headers_start: {
@@ -323,12 +309,28 @@ class MessageParser {
     }
     
     protected function parseRequestLine($rawStartLine) {
-        if (preg_match(self::REQUEST_LINE_PATTERN, $rawStartLine, $m)) {
-            $this->protocol = $m['protocol'];
-            $this->requestMethod = $m['method'];
-            $this->requestUri = $m['uri'];
+        $parts = explode(' ', trim($rawStartLine));
+        
+        if (isset($parts[0]) && ($method = trim($parts[0]))) {
+            $this->requestMethod = $method;
         } else {
             throw new StartLineSyntaxException;
+        }
+        
+        if (isset($parts[1]) && ($uri = trim($parts[1]))) {
+            $this->requestUri = $uri;
+        } else {
+            throw new StartLineSyntaxException;
+        }
+        
+        if (isset($parts[2]) && ($protocol = str_ireplace('HTTP/', '', trim($parts[2])))) {
+            $this->protocol = $protocol;
+        } else {
+            throw new StartLineSyntaxException;
+        }
+        
+        if (!($protocol === '1.0' || '1.1' === $protocol)) {
+            throw new ProtocolNotSupportedException;
         }
     }
     

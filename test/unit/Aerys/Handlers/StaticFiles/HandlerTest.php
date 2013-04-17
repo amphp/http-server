@@ -1,6 +1,7 @@
 <?php
 
 use Aerys\Handlers\StaticFiles\Handler,
+    Amp\ReactorFactory,
     Aerys\Status,
     Aerys\Server,
     org\bovigo\vfs\vfsStream;
@@ -43,9 +44,9 @@ class HandlerTest extends PHPUnit_Framework_TestCase {
         
     }
     
-    function testSetFileDescriptorCacheTtl() {
+    function testSetCacheTtl() {
         $handler = new VfsRealpathHandler('vfs://root');
-        $handler->setFileDescriptorCacheTtl(30);
+        $handler->setCacheTtl(30);
     }
     
     function testSetIndexes() {
@@ -334,8 +335,8 @@ class HandlerTest extends PHPUnit_Framework_TestCase {
         list($status, $reason, $headers, $body) = $asgiResponse;
         
         $this->assertEquals($expectedStatus, $status);
-        $this->assertEquals($expectedStartPos, $body->getStartPos());
-        $this->assertEquals($expectedEndPos, $body->getEndPos());
+        $this->assertEquals($expectedStartPos, $body->getStartPosition());
+        $this->assertEquals($expectedEndPos, $body->getEndPosition());
     }
     
     function provideUnsatisfiableRangeRequests() {
@@ -588,6 +589,11 @@ class HandlerTest extends PHPUnit_Framework_TestCase {
 }
 
 class VfsRealpathHandler extends Handler {
+    function __construct($docRoot) {
+        $reactor = (new ReactorFactory)->select();
+        parent::__construct($reactor, $docRoot);
+    }
+    
     protected function validateFilePath($filePath) {
         return $filePath;
     }

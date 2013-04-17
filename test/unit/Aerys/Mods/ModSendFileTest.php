@@ -20,7 +20,7 @@ class ModSendFileTest extends PHPUnit_Framework_TestCase {
     function testBeforeResponseTakesNoActionIfMissingSendFileHeader() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', ['getResponse'], [$reactor]);
-        $filesysHandler = $this->getMock('Aerys\Handlers\StaticFiles\Handler', NULL, ['vfs://root']);
+        $filesysHandler = $this->getMock('Aerys\Handlers\StaticFiles\Handler', NULL, [$reactor, 'vfs://root']);
         
         $requestId = 42;
         $asgiResponse = [
@@ -42,7 +42,7 @@ class ModSendFileTest extends PHPUnit_Framework_TestCase {
     function testBeforeResponseAssignsFileResourceOnSendFileHeaderMatch() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'getResponse', 'setResponse'], [$reactor]);
-        $filesysHandler = $this->getMock('Aerys\Handlers\StaticFiles\Handler', ['__invoke'], ['vfs://root']);
+        $filesysHandler = $this->getMock('Aerys\Handlers\StaticFiles\Handler', ['__invoke'], [$reactor, 'vfs://root']);
         
         $requestId = 42;
         $originalAsgiResponse = [

@@ -18,11 +18,11 @@ class ByteRangeBody {
         return $this->resource;
     }
     
-    function getStartPos() {
+    function getStartPosition() {
         return $this->startPos;
     }
     
-    function getEndPos() {
+    function getEndPosition() {
         return $this->endPos;
     }
     

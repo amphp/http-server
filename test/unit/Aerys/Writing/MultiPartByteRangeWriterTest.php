@@ -1,9 +1,9 @@
 <?php
 
-use Aerys\Writing\MultiPartByteRangeBodyWriter,
+use Aerys\Writing\MultiPartByteRangeWriter,
     Aerys\Writing\MultiPartByteRangeBody;
 
-class MultiPartByteRangeBodyWriterTest extends PHPUnit_Framework_TestCase {
+class MultiPartByteRangeWriterTest extends PHPUnit_Framework_TestCase {
     
     function testWrite() {
         $resourceData = 'test line three';
@@ -22,7 +22,8 @@ class MultiPartByteRangeBodyWriterTest extends PHPUnit_Framework_TestCase {
         
         $body = new MultiPartByteRangeBody($resource, $ranges, $boundary, $contentType, $contentLength);
         
-        $expectedWrite = '';
+        $headers = "headers\r\n";
+        $expectedWrite = $headers;
         
         foreach ($ranges as $range) {
             list($startPos, $endPos) = $range;
@@ -41,7 +42,7 @@ class MultiPartByteRangeBodyWriterTest extends PHPUnit_Framework_TestCase {
         
         $destination = fopen('php://memory', 'r+');
         
-        $writer = new MultiPartByteRangeBodyWriter($destination, $body);
+        $writer = new MultiPartByteRangeWriter($destination, $headers, $body);
         $writer->setGranularity(1);
         
         while(!$writer->write());
@@ -66,8 +67,9 @@ class MultiPartByteRangeBodyWriterTest extends PHPUnit_Framework_TestCase {
         
         $body = new MultiPartByteRangeBody($resource, $ranges, $boundary, $contentType, $contentLength);
         
+        $headers = "headers\r\n";
         $destination = 'should fail because this is not a resource';
-        $writer = new MultiPartByteRangeBodyWriter($destination, $body);
+        $writer = new MultiPartByteRangeWriter($destination, $headers, $body);
         $writer->write();
     }
     
@@ -89,8 +91,9 @@ class MultiPartByteRangeBodyWriterTest extends PHPUnit_Framework_TestCase {
         
         $body = new MultiPartByteRangeBody($resource, $ranges, $boundary, $contentType, $contentLength);
         
+        $headers = "headers\r\n";
         $destination = fopen('php://memory', 'r+');
-        $writer = new MultiPartByteRangeBodyWriter($destination, $body);
+        $writer = new MultiPartByteRangeWriter($destination, $headers, $body);
         $writer->setGranularity(200);
         $writer->write();
         

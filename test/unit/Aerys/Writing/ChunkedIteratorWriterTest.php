@@ -1,24 +1,14 @@
 <?php
 
-use Aerys\Writing\ChunkedIteratorBodyWriter;
+use Aerys\Writing\ChunkedIteratorWriter;
 
-class ChunkedIteratorBodyWriterTest extends PHPUnit_Framework_TestCase {
-    
-    /**
-     * @expectedException Aerys\Writing\ResourceWriteException
-     */
-    function testWriteThrowsExceptionOnResourceWriteFailure() {
-        $destination = 'should fail because this is not a resource';
-        $body = new ChunkedIteratorBodyWriterTestIteratorStub;
-        
-        $writer = new ChunkedIteratorBodyWriter($destination, $body);
-        $writer->write();
-    }
+class ChunkedIteratorWriterTest extends PHPUnit_Framework_TestCase {
     
     function testWrite() {
         $destination = fopen('php://memory', 'r+');
-        $body = new ChunkedIteratorBodyWriterTestIteratorStub;
-        $expectedBody = '' .
+        $headers = 'headers';
+        $body = new ChunkedIteratorWriterTestIteratorStub;
+        $expectedWrite = $headers .
             "1\r\n" .
             "t\r\n" .
             "1\r\n" . 
@@ -29,20 +19,19 @@ class ChunkedIteratorBodyWriterTest extends PHPUnit_Framework_TestCase {
             "t\r\n" .
             "0\r\n\r\n";
         
-        $contentLength = strlen($expectedBody);
-        $writer = new ChunkedIteratorBodyWriter($destination, $body);
+        $writer = new ChunkedIteratorWriter($destination, $headers, $body);
         $writer->setGranularity(1);
         
         while (!$writer->write());
         
         rewind($destination);
         
-        $this->assertEquals($expectedBody, stream_get_contents($destination));
+        $this->assertEquals($expectedWrite, stream_get_contents($destination));
     }
     
 }
 
-class ChunkedIteratorBodyWriterTestIteratorStub implements Iterator {
+class ChunkedIteratorWriterTestIteratorStub implements Iterator {
     
     private $position = 0;
     private $parts = [
