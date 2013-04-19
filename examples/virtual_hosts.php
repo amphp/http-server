@@ -1,7 +1,7 @@
 <?php
 
 /**
- * examples/name_based_vhosts.php
+ * examples/virtual_hosts.php
  * 
  * 
  * 
@@ -18,9 +18,6 @@
  * 
  *     %systemroot%\system32\drivers\etc\hosts
  * 
- * 
- * 
- * 
  * Aerys allows the specification of multiple virtual hosts in the same server instance. Each host
  * specifies its own application handler and mods.
  * 
@@ -31,7 +28,7 @@
  * 
  * To run this example:
  * 
- * $ php name_based_vhosts.php
+ * $ php virtual_hosts.php
  * 
  * Once the server has started, request http://aerys:1337/ in your browser or client of choice.
  */
