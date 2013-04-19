@@ -8,34 +8,23 @@ use Aerys\Writing\WriterFactory,
 
 class Pipeline {
     
-    private $id;
-    private $socket;
-    private $address;
-    private $port;
-    private $serverAddress;
-    private $serverPort;
+    private $connection;
     private $parser;
+    private $writerFactory;
+    
+    private $id;
     private $requests = [];
     private $responses = [];
     private $inProgressResponses = [];
-    
     private $preBodyRequest;
     private $requestCount = 0;
     
-    private $writerFactory;
-    
-    function __construct($socket, MessageParser $parser, WriterFactory $writerFactory = NULL) {
-        $this->socket = $socket;
+    function __construct($connection, MessageParser $parser, WriterFactory $writerFactory = NULL) {
+        $this->connection = $connection;
         $this->parser = $parser;
         $this->writerFactory = $writerFactory ?: new WriterFactory;
         
-        $this->id = (int) $socket;
-        
-        $peerName = stream_socket_get_name($socket, TRUE);
-        list($this->address, $this->port) = $this->generateAddressAndPort($peerName);
-        
-        $serverName = stream_socket_get_name($socket, FALSE);
-        list($this->serverAddress, $this->serverPort) = $this->generateAddressAndPort($serverName);
+        $this->id = (int) $connection->getSocket();
     }
     
     private function generateAddressAndPort($name) {
@@ -112,23 +101,27 @@ class Pipeline {
     }
     
     function getSocket() {
-        return $this->socket;
+        return $this->connection->getSocket();
+    }
+    
+    function getConnection() {
+        return $this->connection;
     }
     
     function getAddress() {
-        return $this->address;
+        return $this->connection->getAddress();
     }
     
     function getPort() {
-        return $this->port;
+        return $this->connection->getPort();
     }
     
-    function getServerAddress() {
-        return $this->serverAddress;
+    function getPeerAddress() {
+        return $this->connection->getPeerAddress();
     }
     
-    function getServerPort() {
-        return $this->serverPort;
+    function getPeerPort() {
+        return $this->connection->getPeerPort();
     }
     
     function write() {
@@ -149,7 +142,8 @@ class Pipeline {
                 $protocol = $asgiEnv['SERVER_PROTOCOL'];
                 $rawHeaders = $this->generateRawHeaders($protocol, $status, $reason, $headers);
                 
-                $responseWriter = $this->writerFactory->make($this->socket, $rawHeaders, $body, $protocol);
+                $socket = $this->connection->getSocket();
+                $responseWriter = $this->writerFactory->make($socket, $rawHeaders, $body, $protocol);
                 
                 $this->inProgressResponses[$requestId] = $responseWriter;
                 $pendingResponses++;
@@ -219,6 +213,10 @@ class Pipeline {
     
     function setParseOptions(array $options) {
         $this->parser->setAllOptions($options);
+    }
+    
+    function isEncrypted() {
+        return $this->connection->isEncrypted();
     }
     
 }

@@ -72,7 +72,8 @@ class Handler {
     
     private function validateClientHandshake(array $asgiEnv) {
         $requestUri = $asgiEnv['REQUEST_URI'];
-        if ($queryString = $asgiEnv['QUERY_STRING']) {
+        if ($asgiEnv['QUERY_STRING']) {
+            $queryString = '?' . $asgiEnv['QUERY_STRING'];
             $requestUri = str_replace($queryString, '', $requestUri);
         }
         
@@ -200,7 +201,7 @@ class Handler {
         ];
     }
     
-    function importSocket($socket, array $asgiEnv) {
+    function importSocket($connection, array $asgiEnv) {
         $requestUri = $asgiEnv['REQUEST_URI'];
         
         if ($queryString = $asgiEnv['QUERY_STRING']) {
@@ -209,7 +210,7 @@ class Handler {
         
         list($endpoint, $options) = $this->endpoints[$requestUri];
         
-        $this->sessionManager->open($socket, $endpoint, $options, $asgiEnv);
+        $this->sessionManager->open($connection, $endpoint, $options, $asgiEnv);
     }
     
 }

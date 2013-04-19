@@ -36,17 +36,17 @@ $config = [
         'application'   => $myApp,
         
         'tls'           => [
-            'pemCertFile'        => __DIR__ . '/support_files/localhost_cert.pem',
-            'pemCertPassphrase'  => '42 is not a legitimate passphrase',
+            'local_cert'            => __DIR__ . '/support_files/localhost_cert.pem',
+            'passphrase'            => '42 is not a legitimate passphrase',
             
             /* -------- OPTIONAL SETTINGS BEYOND THIS POINT ---------- */
             
-            'allowSelfSigned'    => NULL,   // TRUE
-            'verifyPeer'         => NULL,   // FALSE
-            'ciphers'            => NULL,   // RC4-SHA:HIGH:!MD5:!aNULL:!EDH
-            'disableCompression' => NULL,   // TRUE
-            'certAuthorityFile'  => NULL,   // -
-            'certAuthorityDir'   => NULL    // -
+            'allow_self_signed'     => NULL,   // TRUE,
+            'verify_peer'           => NULL,   // FALSE,
+            'ciphers'               => NULL,   // 'RC4-SHA:HIGH:!MD5:!aNULL:!EDH',
+            'disable_compression'   => NULL,   // TRUE,
+            'cafile'                => NULL,   // NULL,
+            'capath'                => NULL,   // NULL
         ]
     ]
 ];

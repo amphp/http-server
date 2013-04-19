@@ -3,7 +3,7 @@
 namespace Aerys;
 
 use Amp\Reactor,
-    Amp\Server\TcpServer,
+    Amp\TcpServer,
     Aerys\Parsing\TempEntityWriter;
 
 class Server {
@@ -14,7 +14,7 @@ class Server {
     const UNKNOWN = '?';
     
     private $reactor;
-    private $tcpServers;
+    private $tcpServer;
     private $hosts = [];
     private $pipelineFactory;
     private $errorStream;
@@ -23,12 +23,9 @@ class Server {
     private $pipelinesRequiringWrite = [];
     private $readSubscriptions = [];
     private $requestIdPipelineMap = [];
-    private $closeInProgress = [];
-    private $cachedClientCount = 0;
     private $lastRequestId = 0;
     
     private $isListening = FALSE;
-    private $isAcceptEnabled = TRUE;
     private $insideBeforeResponseModLoop = FALSE;
     private $insideAfterResponseModLoop = FALSE;
     
@@ -38,8 +35,8 @@ class Server {
     
     private $autoWriteInterval = 0.025; // @TODO add option setter
     private $logErrorsTo = 'php://stderr';
-    private $maxConnections = 0;
-    private $maxRequestsPerSession = 150;
+    private $maxConnections = 1000;
+    private $maxRequestsPerSession = 100;
     private $keepAliveTimeout = 10;
     private $maxStartLineSize = 2048;
     private $maxHeadersSize = 8192;
@@ -66,13 +63,12 @@ class Server {
     
     function __construct(Reactor $reactor, PipelineFactory $pf = NULL) {
         $this->reactor = $reactor;
-        $this->tcpServers = new \SplObjectStorage;
         $this->pipelineFactory = $pf ?: new PipelineFactory;
         $this->tempEntityDir = sys_get_temp_dir();
     }
     
-    function addTcpServer(TcpServer $tcpServer) {
-        $this->tcpServers->attach($tcpServer);
+    function setTcpServer(TcpServer $tcpServer) {
+        $this->tcpServer = $tcpServer;
     }
     
     function addHost(Host $host) {
@@ -88,21 +84,18 @@ class Server {
         $this->isListening = TRUE;
         $this->errorStream = fopen($this->logErrorsTo, 'ab+');
         
-        foreach ($this->tcpServers as $tcpServer) {
-            $tcpServer->listen(function($clientSock) {
-                $this->accept($clientSock);
-            });
-            
-            $listeningOn = $tcpServer->getAddress() . ':' . $tcpServer->getPort();
-            echo 'Server listening on ', $listeningOn, PHP_EOL;
-        }
+        $this->tcpServer->listen(function($connection) {
+            $this->accept($connection);
+        });
+        
+        echo "Server listening ...\n";
         
         /*
         $diagnostics = $this->reactor->repeat(function() {
-            //echo time(), ' (', $this->cachedClientCount, ")\n";
-            var_dump(memory_get_peak_usage() / 1048576);
-            var_dump(memory_get_usage() / 1048576);
-        }, $delay = 3);
+            echo time(), "\n";
+            //var_dump(memory_get_peak_usage() / 1048576);
+            //var_dump(memory_get_usage() / 1048576);
+        }, $delay = 1);
         */
         
         $this->reactor->repeat(function() { $this->autoWrite(); }, $this->autoWriteInterval);
@@ -115,29 +108,12 @@ class Server {
             return;
         }
         
-        foreach ($this->servers as $server) {
-            $server->stop();
-        }
-        
+        $this->tcpServer->stop();
         $this->reactor->stop();
         
-        if ($this->errorStream !== STDERR) {
+        if ($this->logErrorsTo !== 'php://stderr') {
             fclose($this->errorStream);
         }
-    }
-    
-    private function disableNewClients() {
-        foreach ($this->servers as $server) {
-            $server->disable();
-        }
-        $this->isAcceptEnabled = FALSE;
-    }
-    
-    private function enableNewClients() {
-        foreach ($this->servers as $server) {
-            $server->enable();
-        }
-        $this->isAcceptEnabled = TRUE;
     }
     
     private function autoWrite() {
@@ -162,8 +138,11 @@ class Server {
         }
     }
     
-    private function accept($clientSock) {
-        $pipeline = $this->pipelineFactory->makePipeline($clientSock);
+    private function accept($connection) {
+        
+        $clientSock = $connection->getSocket();
+        
+        $pipeline = $this->pipelineFactory->makePipeline($connection);
         
         $onHeaders = function(array $parsedRequest) use ($pipeline) {
             $this->onHeaders($pipeline, $parsedRequest);
@@ -185,12 +164,6 @@ class Server {
             },
             $this->keepAliveTimeout
         );
-        
-        ++$this->cachedClientCount;
-        
-        if ($this->maxConnections && $this->cachedClientCount >= $this->maxConnections) {
-            $this->disableNewClients();
-        }
         
         if ($this->pipelinesRequiringWrite) {
             $this->autoWrite();
@@ -466,30 +439,35 @@ class Server {
         $uri = $parsedRequest['uri'];
         $queryString =  ($uri == '/' || $uri == '*') ? '' : parse_url($uri, PHP_URL_QUERY);
         $method = $this->normalizeMethodCase ? strtoupper($parsedRequest['method']) : $parsedRequest['method'];
-        $headers = $parsedRequest['headers'];
-        $contentType = isset($headers['CONTENT-TYPE']) ? $headers['CONTENT-TYPE'] : '';
-        $contentLength = isset($headers['CONTENT-LENGTH']) ? $headers['CONTENT-LENGTH'] : '';
-        $scheme = isset(stream_context_get_options($pipeline->getSocket())['ssl']) ? 'https' : 'http';
+        $scheme = $pipeline->isEncrypted() ? 'https' : 'http';
         
         $asgiEnv = [
-            'SERVER_NAME'       => $serverName,
-            'SERVER_PORT'       => $pipeline->getServerPort(),
-            'SERVER_PROTOCOL'   => $parsedRequest['protocol'],
-            'REMOTE_ADDR'       => $pipeline->getAddress(),
-            'REMOTE_PORT'       => $pipeline->getPort(),
-            'REQUEST_METHOD'    => $method,
-            'REQUEST_URI'       => $uri,
-            'QUERY_STRING'      => $queryString,
-            'CONTENT_TYPE'      => $contentType,
-            'CONTENT_LENGTH'    => $contentLength,
-            'ASGI_VERSION'      => 0.1,
+            'ASGI_VERSION'      => '0.1',
             'ASGI_URL_SCHEME'   => $scheme,
             'ASGI_INPUT'        => NULL,
             'ASGI_ERROR'        => $this->errorStream,
             'ASGI_CAN_STREAM'   => TRUE,
             'ASGI_NON_BLOCKING' => TRUE,
-            'ASGI_LAST_CHANCE'  => TRUE
+            'ASGI_LAST_CHANCE'  => TRUE,
+            'SERVER_NAME'       => $serverName,
+            'SERVER_PORT'       => $pipeline->getPort(),
+            'SERVER_PROTOCOL'   => $parsedRequest['protocol'],
+            'REMOTE_ADDR'       => $pipeline->getPeerAddress(),
+            'REMOTE_PORT'       => $pipeline->getPeerPort(),
+            'REQUEST_METHOD'    => $method,
+            'REQUEST_URI'       => $uri,
+            'QUERY_STRING'      => $queryString
         ];
+        
+        $headers = $parsedRequest['headers'];
+        
+        if (isset($headers['CONTENT-TYPE'])) {
+            $asgiEnv['CONTENT_TYPE'] = $headers['CONTENT-TYPE'];
+        }
+        
+        if (isset($headers['CONTENT-LENGTH'])) {
+            $asgiEnv['CONTENT_LENGTH'] = $headers['CONTENT-LENGTH'];
+        }
         
         foreach ($headers as $field => $value) {
             $field = strtoupper($field);
@@ -536,7 +514,7 @@ class Server {
     private function afterResponse(Pipeline $pipeline) {
         list($requestId, $asgiEnv, $asgiResponse) = $pipeline->getFront();
         
-        $hostId = $asgiEnv['SERVER_NAME'] . ':' . $pipeline->getServerPort();
+        $hostId = $asgiEnv['SERVER_NAME'] . ':' . $pipeline->getPort();
         $this->invokeAfterResponseMods($hostId, $requestId);
         
         if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
@@ -598,16 +576,8 @@ class Server {
     }
     
     private function close(Pipeline $pipeline) {
-        $clientSock = $this->export($pipeline);
-        
-        $isResource = is_resource($clientSock);
-        
-        if ($isResource && $this->soLinger !== NULL) {
-            $this->closeWithSoLinger($clientSock);
-        } elseif ($isResource) {
-            stream_socket_shutdown($clientSock, STREAM_SHUT_RDWR);
-            fclose($clientSock);
-        }
+        $connection = $this->export($pipeline);
+        $connection->close();
     }
     
     private function export(Pipeline $pipeline) {
@@ -631,27 +601,7 @@ class Server {
             $this->readSubscriptions[$pipelineId]
         );
         
-        --$this->cachedClientCount;
-        
-        if (!$this->isAcceptEnabled && $this->cachedClientCount < $this->maxConnections) {
-            $this->enableNewClients();
-        }
-        
-        return $pipeline->getSocket();
-    }
-    
-    private function closeWithSoLinger($clientSock) {
-        // socket extension can't import stream if it has crypto enabled
-        @stream_socket_enable_crypto($clientSock, FALSE);
-        $rawSock = socket_import_stream($clientSock);
-        
-        socket_set_block($rawSock);
-        socket_set_option($rawSock, SOL_SOCKET, SO_LINGER, [
-            'l_onoff' => 1,
-            'l_linger' => $this->soLinger
-        ]);
-        
-        socket_close($rawSock);
+        return $pipeline->getConnection();
     }
     
     function setResponse($requestId, array $asgiResponse) {
@@ -684,7 +634,7 @@ class Server {
             return;
         }
         
-        $hostId = $asgiEnv['SERVER_NAME'] . ':' . $pipeline->getServerPort();
+        $hostId = $asgiEnv['SERVER_NAME'] . ':' . $pipeline->getPort();
         
         // Reload the response array in case it was altered by beforeResponse mods ...
         if ($this->invokeBeforeResponseMods($hostId, $requestId)) {
@@ -903,7 +853,7 @@ class Server {
     }
     
     private function setMaxConnections($maxConns) {
-        $this->maxConnections = (int) $maxConns;
+        $this->tcpServer->setMaxConnections($maxConns);
     }
     
     private function setMaxRequestsPerSession($maxRequests) {
@@ -979,13 +929,11 @@ class Server {
     }
     
     private function setDefaultHost($hostId) {
-        $hostId = $host->getId();
-        
         if (isset($this->hosts[$hostId])) {
             $this->defaultHost = $this->hosts[$hostId];
         } else {
             throw new \DomainException(
-                'Cannot assign default host: no registered hosts match ' . $hostId
+                'Cannot assign default host: no registered host match: ' . $hostId
             );
         }
     }

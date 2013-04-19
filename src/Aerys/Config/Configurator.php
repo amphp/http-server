@@ -6,8 +6,7 @@ use Auryn\Injector,
     Auryn\Provider,
     Amp\Reactor,
     Amp\ReactorFactory,
-    Amp\Server\TcpServer,
-    Amp\Server\TcpServerCrypto,
+    Amp\TcpServer,
     Aerys\Host,
     Aerys\Server;
 
@@ -31,7 +30,7 @@ class Configurator {
         $this->injector->share($reactor);
         $this->injector->share($httpServer);
         
-        $serverMap = [];
+        $servers = [];
         $hosts = [];
         $mods = [];
         
@@ -43,29 +42,24 @@ class Configurator {
             $hosts[$hostId] = $host;
             $mods[$hostId] = $hostMods;
             
-            $interface = $host->getAddress();
+            $addr = $host->getAddress();
             $port = $host->getPort();
-            $interfaceId = $interface . ':' . $port;
+            $interfaceId = $addr . ':' . $port;
             
-            if ($tls) {
-                $server = new TcpServerCrypto($reactor, $interface, $port);
-                $server->setAllOptions($tls);
-                $serverMap[$interfaceId] = $server;
-            } elseif (!isset($serverMap[$interfaceId])) {
-                $serverMap[$interfaceId] = new TcpServer($reactor, $interface, $port);
-            }
+            $servers[$interfaceId] = [$interfaceId, $tls];
         }
         
-        foreach ($serverMap as $server) {
-            $httpServer->addTcpServer($server);
-        }
+        $tcpServer = new TcpServer($reactor, $servers);
+        $httpServer->setTcpServer($tcpServer);
         
         foreach ($hosts as $host) {
             $httpServer->addHost($host);
-        } 
+        }
         
         foreach ($opts as $key => $value) {
-            $httpServer->setOption($key, $value);
+            if (isset($value)) {
+                $httpServer->setOption($key, $value);
+            }
         }
         
         $this->registerMods($httpServer, $globalMods, $mods);
