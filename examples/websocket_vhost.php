@@ -54,5 +54,5 @@ $config = [
     ]
 ];
 
-(new Configurator)->createServer($config)->listen();
+(new Configurator)->createServer($config)->start();
 

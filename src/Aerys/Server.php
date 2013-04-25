@@ -4,53 +4,44 @@ namespace Aerys;
 
 use Amp\Reactor,
     Amp\TcpServer,
-    Aerys\Parsing\TempEntityWriter;
+    Aerys\Parsing\MessageParser,
+    Aerys\Parsing\PeclMessageParser,
+    Aerys\Parsing\ParseException,
+    Aerys\Parsing\ResourceReadException,
+    Aerys\Mods\OnHeadersMod,
+    Aerys\Mods\BeforeResponseMod,
+    Aerys\Mods\AfterResponseMod;
 
-class Server {
+class Server extends TcpServer {
     
     const SERVER_SOFTWARE = 'Aerys/0.0.1';
     const HTTP_DATE = 'D, d M Y H:i:s T';
-    const WILDCARD = '*';
-    const UNKNOWN = '?';
     
-    private $reactor;
-    private $tcpServer;
-    private $hosts = [];
     private $pipelineFactory;
-    private $errorStream;
-    
-    private $pipelines = [];
-    private $pipelinesRequiringWrite = [];
-    private $readSubscriptions = [];
+    private $pipelines;
+    private $writablePipelines;
+    private $autoWriteInterval = 0.04;
+    private $hosts = [];
     private $requestIdPipelineMap = [];
-    private $lastRequestId = 0;
-    
-    private $isListening = FALSE;
+    private $onHeadersMods = [];
+    private $beforeResponseMods = [];
+    private $afterResponseMods = [];
     private $insideBeforeResponseModLoop = FALSE;
     private $insideAfterResponseModLoop = FALSE;
     
-    private $onRequestMods = [];
-    private $beforeResponseMods = [];
-    private $afterResponseMods = [];
-    
-    private $autoWriteInterval = 0.025; // @TODO add option setter
     private $logErrorsTo = 'php://stderr';
-    private $maxConnections = 1000;
-    private $maxRequestsPerSession = 100;
-    private $keepAliveTimeout = 10;
-    private $maxStartLineSize = 2048;
-    private $maxHeadersSize = 8192;
-    private $maxEntityBodySize = 2097152;
-    private $tempEntityDir = NULL;
+    private $maxConnections = 2500;
+    private $maxRequests = 150;
+    private $keepAliveTimeout = 5;
     private $defaultContentType = 'text/html';
     private $defaultCharset = 'utf-8';
     private $autoReasonPhrase = TRUE;
-    private $handleBeforeBody = FALSE;
     private $sendServerToken = FALSE;
     private $disableKeepAlive = FALSE;
-    private $soLinger = NULL;
+    private $socketSoLinger = NULL;
     private $defaultHost;
     private $normalizeMethodCase = TRUE;
+    private $requireBodyLength = FALSE;
     private $allowedMethods = [
         Method::GET     => 1,
         Method::HEAD    => 1,
@@ -61,14 +52,15 @@ class Server {
         Method::DELETE  => 1
     ];
     
+    private $errorStream;
+    private $lastRequestId = 0;
+    private $cachedClientCount = 0;
+    
     function __construct(Reactor $reactor, PipelineFactory $pf = NULL) {
         $this->reactor = $reactor;
         $this->pipelineFactory = $pf ?: new PipelineFactory;
-        $this->tempEntityDir = sys_get_temp_dir();
-    }
-    
-    function setTcpServer(TcpServer $tcpServer) {
-        $this->tcpServer = $tcpServer;
+        $this->pipelines = new \SplObjectStorage;
+        $this->writablePipelines = new \SplObjectStorage;
     }
     
     function addHost(Host $host) {
@@ -76,271 +68,205 @@ class Server {
         $this->hosts[$hostId] = $host;
     }
     
-    function listen() {
-        if ($this->isListening) {
-            return;
-        }
-        
-        $this->isListening = TRUE;
-        $this->errorStream = fopen($this->logErrorsTo, 'ab+');
-        
-        $this->tcpServer->listen(function($connection) {
-            $this->accept($connection);
-        });
-        
-        echo "Server listening ...\n";
-        
-        /*
-        $diagnostics = $this->reactor->repeat(function() {
-            echo time(), "\n";
-            //var_dump(memory_get_peak_usage() / 1048576);
-            //var_dump(memory_get_usage() / 1048576);
-        }, $delay = 1);
-        */
-        
-        $this->reactor->repeat(function() { $this->autoWrite(); }, $this->autoWriteInterval);
-        
-        $this->reactor->run();
-    }
-    
-    function stop() {
-        if (!$this->isListening) {
-            return;
-        }
-        
-        $this->tcpServer->stop();
-        $this->reactor->stop();
-        
-        if ($this->logErrorsTo !== 'php://stderr') {
-            fclose($this->errorStream);
+    function start() {
+        if (!$this->isStarted) {
+            $this->errorStream = fopen($this->logErrorsTo, 'ab+');
+            $this->reactor->repeat(function() { $this->autoWrite(); }, $this->autoWriteInterval);
+            /*
+            $this->reactor->repeat(function() {
+                echo time(), " :: ", $this->cachedClientCount, "\n";
+            }, 1);
+            */
+            parent::start();
         }
     }
     
-    private function autoWrite() {
-        foreach ($this->pipelinesRequiringWrite as $pipeline) {
-            $this->write($pipeline);
+    protected function accept($server) {
+        while ($clientSock = @stream_socket_accept($server, $timeout = 0)) {
+            if (++$this->cachedClientCount === $this->maxConnections) {
+                $this->pause();
+            }
+            $this->onClient($clientSock);
         }
     }
     
-    private function write(Pipeline $pipeline) {
-        try {
-            $pipelineWriteResult = $pipeline->write();
+    protected function acceptTls($server) {
+        $serverId = (int) $server;
+        
+        while ($clientSock = @stream_socket_accept($server, $timeout = 0)) {
+            if (++$this->cachedClientCount === $this->maxConnections) {
+                $this->pause();
+            }
+            $clientId = (int) $clientSock;
+            $this->pendingTlsClients[$clientId] = NULL;
             
-            if ($pipelineWriteResult === 0) {
-                $this->afterResponse($pipeline);
-                $pipelineId = $pipeline->getId();
-                unset($this->pipelinesRequiringWrite[$pipelineId]);
-            } elseif ($pipelineWriteResult > 0) {
-                $this->afterResponse($pipeline);
+            if (!$this->doTlsHandshake($clientSock, $trigger = NULL)) {
+                $handshakeSub = $this->reactor->onReadable($clientSock, function ($clientSock, $trigger) {
+                    $this->doTlsHandshake($clientSock, $trigger);
+                }, $this->tlsHandshakeTimeout);
+                
+                $this->pendingTlsClients[$clientId] = $handshakeSub;
             }
-        } catch (Writing\ResourceWriteException $e) {
-            $this->close($pipeline);
         }
     }
     
-    private function accept($connection) {
+    protected function failTlsConnection($clientSock) {
+        if ($this->cachedClientCount-- === $this->maxConnections) {
+            $this->resume();
+        }
+        parent::failTlsConnection($clientSock);
+    }
+    
+    protected function onClient($socket) {
+        $pipeline = $this->pipelineFactory->makePipeline($socket);
         
-        $clientSock = $connection->getSocket();
+        $readSubscription = $this->reactor->onReadable($socket, function($socket, $trigger) use ($pipeline) {
+            $this->onReadable($pipeline, $trigger);
+        }, $this->keepAliveTimeout);
         
-        $pipeline = $this->pipelineFactory->makePipeline($connection);
-        
-        $onHeaders = function(array $parsedRequest) use ($pipeline) {
-            $this->onHeaders($pipeline, $parsedRequest);
-        };
-        
-        $pipeline->setParseOptions([
-            'maxStartLineBytes' => $this->maxStartLineSize,
-            'maxHeaderBytes' => $this->maxHeadersSize,
-            'maxBodyBytes' => $this->maxEntityBodySize,
-            'onHeadersCallback' => $onHeaders
-        ]);
-        
-        $pipelineId = $pipeline->getId();
-        $this->pipelines[$pipelineId] = $pipeline;
-        
-        $this->readSubscriptions[$pipelineId] = $this->reactor->onReadable($clientSock,
-            function ($clientSock, $trigger) use ($pipeline) {
-                $this->onReadable($trigger, $pipeline);
-            },
-            $this->keepAliveTimeout
-        );
-        
-        if ($this->pipelinesRequiringWrite) {
-            $this->autoWrite();
+        $this->pipelines->attach($pipeline, [$readSubscription, $socket]);
+    }
+    
+    private function onReadable(Pipeline $pipeline, $trigger) {
+        return ($trigger === Reactor::TIMEOUT) ? $this->timeout($pipeline) : $this->read($pipeline);
+    }
+    
+    private function timeout($pipeline) {
+        if ($pipeline->isParseInProgress() || !$pipeline->hasRequestsAwaitingResponse()) {
+            $this->closePipeline($pipeline);
         }
     }
     
-    private function onReadable($triggeredBy, Pipeline $pipeline) {
-        if ($triggeredBy == Reactor::TIMEOUT) {
-            return $this->handleReadTimeout($pipeline);
-        }
-        
+    private function read(Pipeline $pipeline) {
         try {
-            if ($parsedRequest = $pipeline->parse()) {
-                $this->onRequest($pipeline, $parsedRequest);
+            if ($requestArr = $pipeline->read()) {
+                return $requestArr['headersOnly']
+                    ? $this->onPreBodyHeaders($pipeline, $requestArr)
+                    : $this->onRequest($pipeline, $requestArr);
             }
-        } catch (Parsing\ResourceReadException $e) {
-            $this->close($pipeline);
-        } catch (Parsing\StartLineSizeException $e) {
-            $this->handleRequestParseError($pipeline, Status::REQUEST_URI_TOO_LONG);
-        } catch (Parsing\HeaderSizeException $e) {
-            $this->handleRequestParseError($pipeline, Status::REQUEST_HEADER_FIELDS_TOO_LARGE);
-        } catch (Parsing\EntitySizeException $e) {
-            $this->handleRequestParseError($pipeline, Status::REQUEST_ENTITY_TOO_LARGE);
-        } catch (Parsing\ProtocolNotSupportedException $e) {
-            $this->handleRequestParseError($pipeline, Status::HTTP_VERSION_NOT_SUPPORTED);
-        } catch (Parsing\ParseException $e) {
-            $this->handleRequestParseError($pipeline, Status::BAD_REQUEST);
-        }
-        
-        if ($this->pipelinesRequiringWrite) {
-            $this->autoWrite();
+        } catch (ParseException $e) {
+            $this->onParseError($pipeline, $e->getCode());
+        } catch (ResourceReadException $e) {
+            $this->closePipeline($pipeline);
         }
     }
     
-    private function handleReadTimeout(Pipeline $pipeline) {
-        if ($pipeline->hasUnfinishedRead() || !$pipeline->hasRequestsAwaitingResponse()) {
-            $this->close($pipeline);
-        }
-    }
-    
-    private function handleRequestParseError(Pipeline $pipeline, $status) {
-        $requestId = ++$this->lastRequestId;
-        $this->requestIdPipelineMap[$requestId] = $pipeline;
-        
-        // Generate a stand-in parsed request since there was a problem with the real one
-        $parsedRequest = [
-            'method'   => self::UNKNOWN,
-            'uri'      => self::UNKNOWN,
-            'protocol' => '1.0',
-            'headers'  => []
-        ];
-        
-        // Generate a placeholder $asgiEnv from our stand-in parsed request
-        $asgiEnv = $this->generateAsgiEnv($pipeline, '?', $parsedRequest);
-        
-        $pipeline->setRequest($requestId, $asgiEnv);
-        
-        $reason = $this->getReasonPhrase($status);
-        $heading = $status . ' ' . $reason;
-        $body = '<html><body><h1>'.$heading.'</h1></body></html>';
-        $headers = [
-            'Date' => date(self::HTTP_DATE),
-            'Content-Type' => 'text/html; charset=iso-8859-1',
-            'Content-Length' => strlen($body),
-            'Connection' => 'close'
-        ];
-        
-        $this->setResponse($requestId, [$status, $reason, $headers, $body]);
-    }
-    
-    private function onHeaders(Pipeline $pipeline, array $parsedRequest) {
-        if (!$requestStruct = $this->initializeNewRequest($pipeline, $parsedRequest)) {
+    private function onPreBodyHeaders(Pipeline $pipeline, array $requestArr) {
+        if (!$requestInitArr = $this->initializeRequest($pipeline, $requestArr)) {
             return;
         }
         
-        list($requestId, $asgiEnv, $host) = $requestStruct;
+        list($requestId, $asgiEnv, $host) = $requestInitArr;
         
-        $tempEntityPath = tempnam($this->tempEntityDir, 'aerys');
-        $tempEntityWriter = new TempEntityWriter($tempEntityPath);
-        $pipeline->setTempEntityWriter($tempEntityWriter);
-        $this->tempEntityWriters[$requestId] = $tempEntityWriter;
+        if ($this->requireBodyLength && empty($asgiEnv['CONTENT_LENGTH'])) {
+            $this->setResponse($requestId, [Status::LENGTH_REQUIRED, Reason::HTTP_411, [], NULL]);
+            return;
+        }
         
-        $asgiEnv['ASGI_INPUT'] = $tempEntityWriter->getResource();
-        $asgiEnv['ASGI_LAST_CHANCE'] = FALSE;
+        $hasExpectHeader = !empty($asgiEnv['HTTP_EXPECT']);
+        $needsContinue = $hasExpectHeader && !strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue');
+        $pipeline->setPreBodyRequest($requestId, $asgiEnv, $requestArr['trace'], $host, $needsContinue);
+        $this->invokeOnHeadersMods($host->getId(), $requestId);
         
-        $needs100Continue = isset($asgiEnv['HTTP_EXPECT']) && !strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue');
-        
-        $pipeline->addPreBodyRequest($requestId, $asgiEnv, $host, $needs100Continue);
-        
-        $this->invokeOnRequestMods($host->getId(), $requestId);
-        
-        if ($pipeline->hasResponse($requestId)) {
-            $pipeline->incrementRequestCount();
-        } elseif ($this->handleBeforeBody
-            && !$this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler())
-            && $needs100Continue
-        ) {
+        if ($needsContinue && !$pipeline->hasResponse($requestId)) {
             $this->setResponse($requestId, [Status::CONTINUE_100, Reason::HTTP_100, [], NULL]);
-        } elseif (!$this->handleBeforeBody && $needs100Continue) {
-            $this->setResponse($requestId, [Status::CONTINUE_100, Reason::HTTP_100, [], NULL]);
+        } else {
+            $this->read($pipeline);
         }
     }
     
-    private function initializeNewRequest(Pipeline $pipeline, array $parsedRequest) {
+    private function initializeRequest(Pipeline $pipeline, array $requestArr) {
         $requestId = ++$this->lastRequestId;
         $this->requestIdPipelineMap[$requestId] = $pipeline;
         
-        $response = NULL;
+        $requestArr['method'] = $this->normalizeMethodCase
+            ? strtoupper($requestArr['method'])
+            : $requestArr['method'];
         
-        if ($this->normalizeMethodCase) {
-            $parsedRequest['method'] = strtoupper($parsedRequest['method']);
+        $method = $requestArr['method'];
+        
+        if (!$host = $this->selectRequestHost($requestArr)) {
+            $asgiEnv = $this->generateAsgiEnv($pipeline, $serverName = '?', $requestArr);
+            $pipeline->setRequest($requestId, $asgiEnv, $requestArr['trace']);
+            $response = $this->generateInvalidHostNameResponse();
+            return NULL;
         }
         
-        $method = $parsedRequest['method'];
+        $asgiEnv = $this->generateAsgiEnv($pipeline, $host->getName(), $requestArr);
+        $pipeline->setRequest($requestId, $asgiEnv, $requestArr['trace']);
         
         if (!isset($this->allowedMethods[$method])) {
-            $headers = ['Allow' => implode(',', array_keys($this->allowedMethods))];
-            $response = [Status::METHOD_NOT_ALLOWED, Reason::HTTP_405, $headers, NULL];
-            
-        } elseif ($method == Method::TRACE) {
-            $headers = [
-                'Content-Length' => strlen($parsedRequest['trace']), 
-                'Content-Type' => 'text/plain; charset=iso-8859-1'
-            ];
-            $response = [Status::OK, Reason::HTTP_200, $headers, $parsedRequest['trace']];
-            
-        } elseif ($method == Method::OPTIONS && $parsedRequest['uri'] == self::WILDCARD) {
-            $headers = ['Allow' => implode(',', array_keys($this->allowedMethods))];
-            $response = [Status::OK, Reason::HTTP_200, $headers, NULL];
-        }
-        
-        if ($host = $this->selectRequestHost($parsedRequest)) {
-            $asgiEnv = $this->generateAsgiEnv($pipeline, $host->getName(), $parsedRequest);
+            $response = $this->generateMethodNotAllowedResponse();
+        } elseif ($method === Method::TRACE) {
+            $response = $this->generateTraceResponse($requestArr['trace']);
+        } elseif ($method === Method::OPTIONS && $requestArr['uri'] === '*') {
+            $response = $this->generateOptionsResponse();
         } else {
-            $asgiEnv = $this->generateAsgiEnv($pipeline, self::UNKNOWN, $parsedRequest);
-            
-            $status = Status::BAD_REQUEST;
-            $reason = Reason::HTTP_400 . ': Invalid Host';
-            $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
-            $headers = [
-                'Content-Type' => 'text/html; charset=iso-8859-1',
-                'Content-Length' => strlen($body)
-            ];
-            $response = [$status, $reason, $headers, $body];
+            $response = NULL;
         }
-        
-        $pipeline->setRequest($requestId, $asgiEnv);
         
         if ($response) {
-            $this->setResponse($requestId, $response);
-            return NULL;
+            $pipeline->setResponse($requestId, $response);
+            $result = NULL;
         } else {
-            return [$requestId, $asgiEnv, $host];
+            $result = [$requestId, $asgiEnv, $host];
         }
+        
+        return $result;
+    }
+    
+    private function generateInvalidHostNameResponse() {
+        $status = Status::BAD_REQUEST;
+        $reason = Reason::HTTP_400 . ': Invalid Host';
+        $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
+        $headers = [
+            'Content-Type' => 'text/html; charset=iso-8859-1',
+            'Content-Length' => strlen($body)
+        ];
+        
+        return [$status, $reason, $headers, $body];
+    }
+    
+    private function generateMethodNotAllowedResponse() {
+        return [
+            $status = Status::METHOD_NOT_ALLOWED,
+            $reason = Reason::HTTP_405,
+            $headers = ['Allow' => implode(',', array_keys($this->allowedMethods))],
+            $body = NULL
+        ];
+    }
+    
+    private function generateTraceResponse($body) {
+        $headers = [
+            'Content-Length' => strlen($body), 
+            'Content-Type' => 'text/plain; charset=utf-8'
+        ];
+        
+        return [
+            $status = Status::OK,
+            $reason = Reason::HTTP_200,
+            $headers,
+            $body
+        ];
+    }
+    
+    private function generateOptionsResponse() {
+        return [
+            $status = Status::OK,
+            $reason = Reason::HTTP_200,
+            $headers = ['Allow' => implode(',', array_keys($this->allowedMethods))],
+            $body = NULL
+        ];
     }
     
     /**
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
-     * 
-     * 1. If Request-URI is an absoluteURI, the host is part of the Request-URI. Any Host header field
-     *    value in the request MUST be ignored.
-     * 2. If the Request-URI is not an absoluteURI, and the request includes a Host header field, the
-     *    host is determined by the Host header field value.
-     * 3. If the host as determined by rule 1 or 2 is not a valid host on the server, the response MUST
-     *    be a 400 (Bad Request) error message.
-     * 
-     * Recipients of an HTTP/1.0 request that lacks a Host header field MAY attempt to use heuristics 
-     * (e.g., examination of the URI path for something unique to a particular host) in order to 
-     * determine what exact resource is being requested.
      */
-    private function selectRequestHost(array $parsedRequest) {
-        $protocol = $parsedRequest['protocol'];
-        $requestUri = $parsedRequest['uri'];
-        $headers = $parsedRequest['headers'];
-        $hostHeader = isset($headers['HOST'])
-            ? strtolower($headers['HOST'])
-            : NULL;
+    private function selectRequestHost(array $requestArr) {
+        $protocol = $requestArr['protocol'];
+        $requestUri = $requestArr['uri'];
+        $headers = $requestArr['headers'];
+        $hostHeader = isset($headers['HOST']) ? strtolower($headers['HOST']) : NULL;
         
         if (0 === stripos($requestUri, 'http://') || stripos($requestUri, 'https://') === 0) {
             $host = $this->selectHostByAbsoluteUri($requestUri);
@@ -354,7 +280,7 @@ class Server {
     }
     
     /**
-     * @TODO Figure out how best to allow for proxy servers here
+     * @TODO Determine how best to allow for forward proxies specifying absolute URIs
      */
     private function selectHostByAbsoluteUri($uri) {
         $urlParts = parse_url($requestUri);
@@ -389,89 +315,46 @@ class Server {
         return $host;
     }
     
-    private function invokeOnRequestMods($hostId, $requestId) {
-        if (empty($this->onRequestMods[$hostId])) {
-            return FALSE;
-        }
-        
-        foreach ($this->onRequestMods[$hostId] as $mod) {
-            try {
-                $mod->onRequest($requestId);
-            } catch (\Exception $e) {
-                $asgiEnv = $this->getRequest($requestId);
-                $serverName = $asgiEnv['SERVER_NAME'];
-                $requestUri = $asgiEnv['REQUEST_URI'];
-                
-                $this->logUserlandError($e, $serverName, $requestUri);
-            }
-        }
-        
-        return TRUE;
-    }
-    
-    private function invokeRequestHandler($requestId, array $asgiEnv, callable $handler) {
-        try {
-            if ($asgiResponse = $handler($asgiEnv, $requestId)) {
-                $this->setResponse($requestId, $asgiResponse);
-                $result = TRUE;
-            } else {
-                $result = FALSE;
-            }
-        } catch (\Exception $e) {
-            $serverName = $asgiEnv['SERVER_NAME'];
-            $requestUri = $asgiEnv['REQUEST_URI'];
-            
-            $this->logUserlandError($e, $serverName, $requestUri);
-            $this->setResponse($requestId, [Status::INTERNAL_SERVER_ERROR, '', [], NULL]);
-            
-            $result = TRUE;
-        }
-        
-        return $result;
-    }
-    
-    private function getReasonPhrase($statusCode) {
-        $reasonConst = 'Aerys\\Http\\Reason::HTTP_' . $statusCode;
-        return defined($reasonConst) ? constant($reasonConst) : '';
-    }
-    
-    private function generateAsgiEnv(Pipeline $pipeline, $serverName, $parsedRequest) {
-        $uri = $parsedRequest['uri'];
+    private function generateAsgiEnv(Pipeline $pipeline, $serverName, $requestArr) {
+        $uri = $requestArr['uri'];
         $queryString =  ($uri == '/' || $uri == '*') ? '' : parse_url($uri, PHP_URL_QUERY);
-        $method = $this->normalizeMethodCase ? strtoupper($parsedRequest['method']) : $parsedRequest['method'];
         $scheme = $pipeline->isEncrypted() ? 'https' : 'http';
+        $body = $requestArr['body'] ?: NULL;
         
         $asgiEnv = [
             'ASGI_VERSION'      => '0.1',
-            'ASGI_URL_SCHEME'   => $scheme,
-            'ASGI_INPUT'        => NULL,
-            'ASGI_ERROR'        => $this->errorStream,
             'ASGI_CAN_STREAM'   => TRUE,
             'ASGI_NON_BLOCKING' => TRUE,
-            'ASGI_LAST_CHANCE'  => TRUE,
+            'ASGI_LAST_CHANCE'  => !$requestArr['headersOnly'],
+            'ASGI_ERROR'        => $this->errorStream,
+            'ASGI_INPUT'        => $body,
+            'ASGI_URL_SCHEME'   => $scheme,
             'SERVER_NAME'       => $serverName,
             'SERVER_PORT'       => $pipeline->getPort(),
-            'SERVER_PROTOCOL'   => $parsedRequest['protocol'],
+            'SERVER_PROTOCOL'   => $requestArr['protocol'],
             'REMOTE_ADDR'       => $pipeline->getPeerAddress(),
             'REMOTE_PORT'       => $pipeline->getPeerPort(),
-            'REQUEST_METHOD'    => $method,
+            'REQUEST_METHOD'    => $requestArr['method'],
             'REQUEST_URI'       => $uri,
             'QUERY_STRING'      => $queryString
         ];
         
-        $headers = $parsedRequest['headers'];
+        if ($headers = $requestArr['headers']) {
+            $headers = array_change_key_case($headers, CASE_UPPER);
+        }
         
         if (isset($headers['CONTENT-TYPE'])) {
             $asgiEnv['CONTENT_TYPE'] = $headers['CONTENT-TYPE'];
+            unset($headers['CONTENT-TYPE']);
         }
         
         if (isset($headers['CONTENT-LENGTH'])) {
             $asgiEnv['CONTENT_LENGTH'] = $headers['CONTENT-LENGTH'];
+            unset($headers['CONTENT-LENGTH']);
         }
         
         foreach ($headers as $field => $value) {
-            $field = strtoupper($field);
-            $field = 'HTTP_' . str_replace('-',  '_', $field);
+            $field = 'HTTP_' . str_replace('-', '_', $field);
             $value = ($value === (array) $value) ? implode(',', $value) : $value;
             $asgiEnv[$field] = $value;
         }
@@ -479,187 +362,124 @@ class Server {
         return $asgiEnv;
     }
     
-    private function onRequest(Pipeline $pipeline, array $parsedRequest) {
-        if ($hasPreBodyRequest = $pipeline->hasPreBodyRequest()) {
-            list($requestId, $asgiEnv, $host, $needsNewRequestId) = $pipeline->shiftPreBodyRequest();
-            $asgiEnv['ASGI_LAST_CHANCE'] = TRUE;
-            rewind($asgiEnv['ASGI_INPUT']);
-        } elseif ($requestStruct = $this->initializeNewRequest($pipeline, $parsedRequest)) {
-            list($requestId, $asgiEnv, $host) = $requestStruct;
-        } else {
+    private function invokeOnHeadersMods($hostId, $requestId) {
+        if (isset($this->onHeadersMods[$hostId])) {
+            foreach ($this->onHeadersMods[$hostId] as $mod) {
+                $mod->onHeaders($requestId);
+            }
+        }
+    }
+    
+    private function onRequest(Pipeline $pipeline, array $requestArr) {
+        if ($pipeline->hasPreBodyRequest()) {
+            return $this->finalizePreBodyRequest($pipeline, $requestArr);
+        } elseif (!$requestInitArr = $this->initializeRequest($pipeline, $requestArr)) {
             return;
         }
         
-        if ($hasPreBodyRequest && $needsNewRequestId) {
+        list($requestId, $asgiEnv, $host) = $requestInitArr;
+        
+        $this->invokeOnHeadersMods($host->getId(), $requestId);
+        
+        if (!$pipeline->hasResponse($requestId)) {
+            $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
+        }
+    }
+    
+    private function finalizePreBodyRequest(Pipeline $pipeline, $requestArr) {
+        list($requestId, $asgiEnv, $host, $needsNewRequestId) = $pipeline->shiftPreBodyRequest();
+        
+        if ($needsNewRequestId) {
             $requestId = ++$this->lastRequestId;
             $this->requestIdPipelineMap[$requestId] = $pipeline;
         }
         
-        $pipeline->incrementRequestCount();
-        
-        // Headers may have changed in the presence of trailers, so regenerate the request environment
-        $hasTrailerHeader = !empty($asgiEnv['HTTP_TRAILER']);
-        if ($hasPreBodyRequest && $hasTrailerHeader) {
-            $asgiEnv = $this->generateAsgiEnv($pipeline, $host->getName(), $parsedRequest);
-            $pipeline->setRequest($requestId, $asgiEnv);
+        if ($hasTrailer = !empty($asgiEnv['HTTP_TRAILER'])) {
+            $asgiEnv = $this->generateAsgiEnv($pipeline, $host->getName(), $requestArr);
         }
         
-        if (!$hasPreBodyRequest || $hasTrailerHeader) {
-            $this->invokeOnRequestMods($host->getId(), $requestId);
+        if ($needsNewRequestId || $hasTrailer) {
+            $pipeline->setRequest($requestId, $asgiEnv, $requestArr['trace']);
         }
         
         $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
     }
     
-    private function afterResponse(Pipeline $pipeline) {
-        list($requestId, $asgiEnv, $asgiResponse) = $pipeline->getFront();
-        
-        $hostId = $asgiEnv['SERVER_NAME'] . ':' . $pipeline->getPort();
-        $this->invokeAfterResponseMods($hostId, $requestId);
-        
-        if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
-            $upgradeCallback = $asgiResponse[4];
-            $clientSock = $this->export($pipeline);
-            
-            try {
-                $upgradeCallback($clientSock, $asgiEnv);
-            } catch (\Exception $e) {
-                $serverName = $asgiEnv['SERVER_NAME'];
-                $requestUri = $asgiEnv['REQUEST_URI'];
-                
-                $this->logUserlandError($e, $serverName, $requestUri);
+    private function invokeRequestHandler($requestId, array $asgiEnv, callable $handler) {
+        try {
+            if ($asgiResponse = $handler($asgiEnv, $requestId)) {
+                $this->setResponse($requestId, $asgiResponse);
             }
-        } elseif ($this->shouldCloseAfterResponse($asgiEnv, $asgiResponse)) {
-            $this->close($pipeline);
-        } else {
-            $pipeline->shiftFront();
-            unset(
-                $this->requestIdPipelineMap[$requestId],
-                $this->tempEntityWriters[$requestId]
-            );
+        } catch (\Exception $e) {
+            $this->setResponse($requestId, [
+                $status = Status::INTERNAL_SERVER_ERROR,
+                $reason = Reason::HTTP_500,
+                $headers = [],
+                $body = (string) $e
+            ]);
         }
     }
     
-    private function shouldCloseAfterResponse(array $asgiEnv, array $asgiResponse) {
-        $headers = $asgiResponse[2];
+    private function onParseError(Pipeline $pipeline, $status) {
+        $reason = $this->getReasonPhrase($status);
+        $body = '<html><body><h1>'. $status . ' '. $reason .'</h1></body></html>';
+        $headers = [
+            'Date' => date(self::HTTP_DATE),
+            'Content-Type' => 'text/html; charset=utf-8',
+            'Content-Length' => strlen($body),
+            'Connection' => 'close'
+        ];
         
-        if (isset($headers['CONNECTION']) && !strcasecmp('close', $headers['CONNECTION'])) {
-            return TRUE;
-        } elseif (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
-            return TRUE;
-        } elseif ($asgiEnv['SERVER_PROTOCOL'] == '1.0' && !isset($asgiEnv['HTTP_CONNECTION'])) {
-            return TRUE;
-        } else {
-            return FALSE;
-        }
+        $requestArr = [
+            'method'   => '?',
+            'uri'      => '?',
+            'protocol' => '1.0',
+            'headers'  => []
+        ];
+        
+        $requestId = ++$this->lastRequestId;
+        $this->requestIdPipelineMap[$requestId] = $pipeline;
+        $asgiEnv = $this->generateAsgiEnv($pipeline, $serverName = '?', $requestArr);
+        $pipeline->setRequest($requestId, $asgiEnv, '?');
+        $this->setResponse($requestId, [$status, $reason, $headers, $body]);
     }
     
-    private function invokeAfterResponseMods($hostId, $requestId) {
-        if (!isset($this->afterResponseMods[$hostId])) {
-            return;
-        }
-        
-        $this->insideAfterResponseModLoop = TRUE;
-        
-        foreach ($this->afterResponseMods[$hostId] as $mod) {
-            try {
-                $mod->afterResponse($requestId);
-            } catch (\Exception $e) {
-                $serverName = $asgiEnv['SERVER_NAME'];
-                $requestUri = $asgiEnv['REQUEST_URI'];
-                
-                $this->logUserlandError($e, $serverName, $requestUri);
-            }
-        }
-        
-        $this->insideAfterResponseModLoop = FALSE;
-    }
-    
-    private function close(Pipeline $pipeline) {
-        $connection = $this->export($pipeline);
-        $connection->close();
-    }
-    
-    private function export(Pipeline $pipeline) {
-        if ($requestIds = $pipeline->getRequestIds()) {
-            foreach ($requestIds as $requestId) {
-                unset(
-                    $this->requestIdPipelineMap[$requestId],
-                    $this->tempEntityWriters[$requestId]
-                );
-            }
-        }
-        
-        $pipelineId = $pipeline->getId();
-        
-        $readSubscription = $this->readSubscriptions[$pipelineId];
-        $readSubscription->cancel();
-        
-        unset(
-            $this->pipelines[$pipelineId],
-            $this->pipelinesRequiringWrite[$pipelineId],
-            $this->readSubscriptions[$pipelineId]
-        );
-        
-        return $pipeline->getConnection();
+    private function getReasonPhrase($statusCode) {
+        $reasonConst = 'Aerys\\Reason::HTTP_' . $statusCode;
+        return defined($reasonConst) ? constant($reasonConst) : '';
     }
     
     function setResponse($requestId, array $asgiResponse) {
-        if (!isset($this->requestIdPipelineMap[$requestId])) {
-            return;
-        } elseif ($this->insideAfterResponseModLoop) {
+        if ($this->insideAfterResponseModLoop) {
             throw new \LogicException(
-                'Cannot modify response; message already sent'
+                'Cannot modify response inside AfterResponseMod loop'
             );
         }
         
-        $pipeline = $this->requestIdPipelineMap[$requestId];
+        if (!isset($this->requestIdPipelineMap[$requestId])) {
+            return;
+        }
         
+        $pipeline = $this->requestIdPipelineMap[$requestId];
         $asgiEnv = $pipeline->getRequest($requestId);
         $asgiResponse = $this->normalizeResponse($asgiEnv, $asgiResponse);
         
-        $is100Continue = ($asgiResponse[0] == Status::CONTINUE_100);
-        
-        if ($this->disableKeepAlive || (
-            !$is100Continue
-            && $this->maxRequestsPerSession
-            && $pipeline->getRequestCount() >= $this->maxRequestsPerSession
-        )) {
+        if ($this->disableKeepAlive
+            || ($this->maxRequests && $pipeline->getRequestCount() >= $this->maxRequests)
+        ) {
             $asgiResponse[2]['CONNECTION'] = 'close';
         }
         
         $pipeline->setResponse($requestId, $asgiResponse);
         
-        if ($this->insideBeforeResponseModLoop) {
-            return;
-        }
-        
-        $hostId = $asgiEnv['SERVER_NAME'] . ':' . $pipeline->getPort();
-        
-        // Reload the response array in case it was altered by beforeResponse mods ...
-        if ($this->invokeBeforeResponseMods($hostId, $requestId)) {
-            $asgiResponse = $pipeline->getResponse($requestId);
-        }
-        
-        if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
-            $asgiResponse = $this->prepForProtocolUpgrade($asgiResponse);
-            $pipeline->setResponse($requestId, $asgiResponse);
-        }
-        
-        if (!$pipeline->enqueueResponsesForWrite()) {
-            return;
-        }
-        
-        $pipelineId = $pipeline->getId();
-        $writeResult = $pipeline->write();
-        
-        if ($writeResult < 0) {
-            $this->pipelinesRequiringWrite[$pipelineId] = $pipeline;
-        } elseif ($writeResult === 0) {
-            unset($this->pipelinesRequiringWrite[$pipelineId]);
-            $this->afterResponse($pipeline);
-        } else {
-            $this->afterResponse($pipeline);
+        // The second isset() check for the $requestId's existence is not an accident. Third-party
+        // code may have exported the socket while executing mods and if so, we shouldn't proceed.
+        // DON'T REMOVE THE ISSET CHECK BELOW!
+        if (!$this->insideBeforeResponseModLoop && isset($this->requestIdPipelineMap[$requestId])) {
+            $hostId = $asgiEnv['SERVER_NAME'] . ':' . $asgiEnv['SERVER_PORT'];
+            $this->invokeBeforeResponseMods($hostId, $requestId);
+            $pipeline->enqueueResponsesForWrite();
+            $this->write($pipeline);
         }
     }
     
@@ -682,7 +502,7 @@ class Server {
             $headers['CONNECTION'] = 'keep-alive';
         }
         
-        if (!isset($headers['DATE'])) {
+        if (!isset($headers['DATE']) && $status != Status::CONTINUE_100) {
             $headers['DATE'] = date(self::HTTP_DATE);
         }
         
@@ -718,9 +538,7 @@ class Server {
         $isChunked = isset($headers['TRANSFER-ENCODING']) && !strcasecmp($headers['TRANSFER-ENCODING'], 'chunked');
         $isIterator = ($body instanceof \Iterator && !$body instanceof Http\MultiPartByteRangeBody);
         
-        $protocol = ($asgiEnv['SERVER_PROTOCOL'] == self::UNKNOWN)
-            ? '1.0'
-            : $asgiEnv['SERVER_PROTOCOL'];
+        $protocol = ($asgiEnv['SERVER_PROTOCOL'] === '?') ? '1.0' : $asgiEnv['SERVER_PROTOCOL'];
         
         if ($hasBody && !$hasContentLength && is_string($body)) {
             $headers['CONTENT-LENGTH'] = strlen($body);
@@ -744,106 +562,182 @@ class Server {
     }
     
     private function invokeBeforeResponseMods($hostId, $requestId) {
-        if (!isset($this->beforeResponseMods[$hostId])) {
-            return 0;
-        }
-        
-        $modInvocationCount = 0;
-        
-        $this->insideBeforeResponseModLoop = TRUE;
-        
-        foreach ($this->beforeResponseMods[$hostId] as $mod) {
-            try {
+        if (isset($this->beforeResponseMods[$hostId])) {
+            $this->insideBeforeResponseModLoop = TRUE;
+            foreach ($this->beforeResponseMods[$hostId] as $mod) {
                 $mod->beforeResponse($requestId);
-            } catch (\Exception $e) {
-                $asgiEnv = $this->getRequest($requestId);
-                $serverName = $asgiEnv['SERVER_NAME'];
-                $requestUri = $asgiEnv['REQUEST_URI'];
-                
-                $this->logUserlandError($e, $serverName, $requestUri);
             }
-            
-            $modInvocationCount++;
-        }
-        
-        $this->insideBeforeResponseModLoop = FALSE;
-        
-        return $modInvocationCount;
-    }
-    
-    private function prepForProtocolUpgrade($asgiResponse) {
-        if (isset($asgiResponse[4]) && is_callable($asgiResponse[4])) {
-            return $asgiResponse;
-        } else {
-            $status = Status::INTERNAL_SERVER_ERROR;
-            $reason = Reason::HTTP_500;
-            $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
-            $headers = [
-                'Content-Type' => 'text/html; charset=iso-8859-1',
-                'Content-Length' => strlen($body),
-                'Connection' => 'close'
-            ];
-            
-            return [$status, $reason, $headers, $body];
+            $this->insideBeforeResponseModLoop = FALSE;
         }
     }
     
-    function getResponse($requestId) {
-        if (!isset($this->requestIdPipelineMap[$requestId])) {
-            throw new \DomainException(
-                'Request ID does not exist: ' . $requestId
-            );
+    private function autoWrite() {
+        foreach ($this->writablePipelines as $pipeline) {
+            $this->write($pipeline);
         }
-        
-        $pipeline = $this->requestIdPipelineMap[$requestId];
-        
-        if ($pipeline->hasResponse($requestId)) {
-            return $pipeline->getResponse($requestId);
+    }
+    
+    private function write(Pipeline $pipeline) {
+        if ($completedRequestId = $pipeline->write()) {
+            $this->afterResponse($pipeline, $completedRequestId);
         } else {
-            throw new \DomainException(
-                "Request ID $requestId does not exist or has no assigned response"
-            );
+            $this->writablePipelines->attach($pipeline);
         }
+    }
+    
+    private function afterResponse(Pipeline $pipeline, $requestId) {
+        $asgiEnv = $pipeline->getRequest($requestId);
+        $asgiResponse = $pipeline->getResponse($requestId);
+        
+        $hostId = $asgiEnv['SERVER_NAME'] . ':' . $asgiEnv['SERVER_PORT'];
+        $this->invokeAfterResponseMods($hostId, $requestId);
+        
+        if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
+            $this->upgradeConnection($pipeline, $asgiResponse[4], $asgiEnv);
+        } elseif ($this->shouldCloseAfterResponse($asgiEnv, $asgiResponse)) {
+            $this->closePipeline($pipeline);
+        } else {
+            $this->finalizeKeepAliveResponse($pipeline, $requestId);
+        }
+    }
+    
+    private function invokeAfterResponseMods($hostId, $requestId) {
+        if (isset($this->afterResponseMods[$hostId])) {
+            $this->insideAfterResponseModLoop = TRUE;
+            foreach ($this->afterResponseMods[$hostId] as $mod) {
+                $mod->afterResponse($requestId);
+            }
+            $this->insideAfterResponseModLoop = FALSE;
+        }
+    }
+    
+    private function upgradeConnection($pipeline, callable $callback, array $asgiEnv) {
+        $socket = $this->clearPipeline($pipeline);
+        $callback($socket, $asgiEnv);
+    }
+    
+    private function shouldCloseAfterResponse(array $asgiEnv, array $asgiResponse) {
+        $headers = $asgiResponse[2];
+        
+        if (isset($headers['CONNECTION']) && !strcasecmp('close', $headers['CONNECTION'])) {
+            $result = TRUE;
+        } elseif (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
+            $result = TRUE;
+        } elseif ($asgiEnv['SERVER_PROTOCOL'] == '1.0' && !isset($asgiEnv['HTTP_CONNECTION'])) {
+            $result = TRUE;
+        } else {
+            $result = FALSE;
+        }
+        
+        return $result;
+    }
+    
+    private function finalizeKeepAliveResponse($pipeline, $requestId) {
+        $pipeline->clearRequest($requestId);
+        
+        if ($pipeline->canWrite()) {
+            $this->writablePipelines->attach($pipeline);
+        } else {
+            $this->writablePipelines->detach($pipeline);
+        }
+        
+        unset($this->requestIdPipelineMap[$requestId]);
+    }
+    
+    private function clearPipeline(Pipeline $pipeline) {
+        if ($requestIds = $pipeline->getRequestIds()) {
+            foreach ($requestIds as $requestId) {
+                unset($this->requestIdPipelineMap[$requestId]);
+            }
+        }
+        
+        list($readSubscription, $socket) = $this->pipelines->offsetGet($pipeline);
+        $readSubscription->cancel();
+        $this->pipelines->detach($pipeline);
+        $this->writablePipelines->detach($pipeline);
+        
+        if ($this->cachedClientCount-- === $this->maxConnections) {
+            $this->resume();
+        }
+        
+        return $socket;
+    }
+    
+    private function closePipeline(Pipeline $pipeline) {
+        $socket = $this->clearPipeline($pipeline);
+        if (is_resource($socket)) {
+            $this->closeSocket($socket);
+        }
+    }
+    
+    private function closeSocket($socket) {
+        if ($this->socketSoLinger !== NULL) {
+            $this->closeSocketWithSoLinger($socket);
+        } else {
+            @stream_socket_shutdown($socket, STREAM_SHUT_RDWR);
+        }
+    }
+    
+    private function closeSocketWithSoLinger($socket) {
+        @stream_socket_enable_crypto($socket, FALSE);
+        
+        $socket = socket_import_stream($socket);
+        
+        if ($this->socketSoLinger) {
+            socket_set_block($socket);
+        }
+        
+        socket_set_option($socket, SOL_SOCKET, SO_LINGER, [
+            'l_onoff' => 1,
+            'l_linger' => $this->socketSoLinger
+        ]);
+        
+        socket_close($socket);
     }
     
     function getRequest($requestId) {
-        if (!isset($this->requestIdPipelineMap[$requestId])) {
-            throw new \DomainException(
-                'Request ID does not exist: ' . $requestId
-            );
-        }
-        
-        $pipeline = $this->requestIdPipelineMap[$requestId];
-        
-        if ($pipeline->hasRequest($requestId)) {
-            return $pipeline->getRequest($requestId);
+        if (isset($this->requestIdPipelineMap[$requestId])) {
+            $pipeline = $this->requestIdPipelineMap[$requestId];
         } else {
             throw new \DomainException(
                 'Request ID does not exist: ' . $requestId
             );
         }
+        
+        return $pipeline->getRequest($requestId);
+    }
+    
+    function getResponse($requestId) {
+        if (isset($this->requestIdPipelineMap[$requestId])) {
+            $pipeline = $this->requestIdPipelineMap[$requestId];
+        } else {
+            throw new \DomainException(
+                'Request ID does not exist: ' . $requestId
+            );
+        }
+        
+        return $pipeline->getResponse($requestId);
+    }
+    
+    function getTrace($requestId) {
+        if (isset($this->requestIdPipelineMap[$requestId])) {
+            $pipeline = $this->requestIdPipelineMap[$requestId];
+        } else {
+            throw new \DomainException(
+                'Request ID does not exist: ' . $requestId
+            );
+        }
+        
+        return $pipeline->getTrace($requestId);
     }
     
     function getErrorStream() {
         return $this->errorStream;
     }
     
-    private function logUserlandError(\Exception $e, $host, $requestUri) {
-        fwrite(
-            $this->errorStream,
-            '------------------------------------' . PHP_EOL .
-            'Handler/Mod Exception' . PHP_EOL .
-            'When: ' . date(self::HTTP_DATE) . PHP_EOL .
-            'Host: ' . $host . PHP_EOL .
-            'Request URI: ' . $requestUri .  PHP_EOL .
-            $e . PHP_EOL .
-            '------------------------------------' . PHP_EOL
-        );
-    }
-    
     function setOption($option, $value) {
         $setter = 'set' . ucfirst($option);
-        if (property_exists($this, $option) && method_exists($this, $setter)) {
+        if (method_exists($this, $setter)) {
             $this->$setter($value);
         } else {
             throw new \DomainException(
@@ -853,11 +747,11 @@ class Server {
     }
     
     private function setMaxConnections($maxConns) {
-        $this->tcpServer->setMaxConnections($maxConns);
+        $this->maxConnections = (int) $maxConns;
     }
     
-    private function setMaxRequestsPerSession($maxRequests) {
-        $this->maxRequestsPerSession = (int) $maxRequests;
+    private function setMaxRequests($maxRequests) {
+        $this->maxRequests = (int) $maxRequests;
     }
     
     private function setKeepAliveTimeout($seconds) {
@@ -867,24 +761,32 @@ class Server {
         ]]);
     }
     
+    private function setDisableKeepAlive($boolFlag) {
+        $this->disableKeepAlive = (bool) $boolFlag;
+    }
+    
     private function setMaxStartLineSize($bytes) {
-        $this->maxStartLineSize = (int) $bytes;
+        $this->pipelineFactory->setParserMaxStartLineSize($bytes);
     }
     
     private function setMaxHeadersSize($bytes) {
-        $this->maxHeadersSize = (int) $bytes;
+        $this->pipelineFactory->setParserMaxHeadersSize($bytes);
     }
     
     private function setMaxEntityBodySize($bytes) {
-        $this->maxEntityBodySize = (int) $bytes;
+        $this->pipelineFactory->setParserMaxEntityBodySize($bytes);
     }
     
-    private function setTempEntityDir($dir) {
-        $this->tempEntityDir = $dir ?: sys_get_temp_dir();
+    private function setBodySwapSize($bytes) {
+        $this->pipelineFactory->setParserBodySwapSize($bytes);
     }
     
     private function setDefaultContentType($mimeType) {
         $this->defaultContentType = $mimeType;
+    }
+    
+    private function setDefaultCharset($charset) {
+        $this->defaultCharset = $charset;
     }
     
     private function setAutoReasonPhrase($boolFlag) {
@@ -895,28 +797,20 @@ class Server {
         $this->logErrorsTo = $filePath;
     }
     
-    private function setHandleBeforeBody($boolFlag) {
-        $this->handleBeforeBody = (bool) $boolFlag;
-    }
-    
-    private function setDefaultCharset($charset) {
-        $this->defaultCharset = $charset;
-    }
-    
     private function setSendServerToken($boolFlag) {
         $this->sendServerToken = (bool) $boolFlag;
-    }
-    
-    private function setDisableKeepAlive($boolFlag) {
-        $this->disableKeepAlive = (bool) $boolFlag;
     }
     
     private function setNormalizeMethodCase($boolFlag) {
         $this->normalizeMethodCase = (bool) $boolFlag;
     }
     
-    private function setSoLinger($seconds) {
-        $this->soLinger = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
+    private function setRequireBodyLength($boolFlag) {
+        $this->requireBodyLength = (bool) $boolFlag;
+    }
+    
+    private function setSocketSoLinger($seconds) {
+        $this->socketSoLinger = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
             'default' => NULL
         ]]);
@@ -933,7 +827,7 @@ class Server {
             $this->defaultHost = $this->hosts[$hostId];
         } else {
             throw new \DomainException(
-                'Cannot assign default host: no registered host match: ' . $hostId
+                'Cannot assign default host: no hosts match: ' . $hostId
             );
         }
     }
@@ -942,21 +836,23 @@ class Server {
         foreach ($this->selectApplicableModHosts($hostId) as $host) {
             $hostId = $host->getId();
             
-            if ($mod instanceof Mods\OnRequestMod) {
-                $this->onRequestMods[$hostId][] = $mod;
-                usort($this->onRequestMods[$hostId], [$this, 'onRequestModPrioritySort']);
+            if ($mod instanceof OnHeadersMod) {
+                $this->onHeadersMods[$hostId][] = $mod;
+                usort($this->onHeadersMods[$hostId], [$this, 'onHeadersModPrioritySort']);
             }
             
-            if ($mod instanceof Mods\BeforeResponseMod) {
+            if ($mod instanceof BeforeResponseMod) {
                 $this->beforeResponseMods[$hostId][] = $mod;
                 usort($this->beforeResponseMods[$hostId], [$this, 'beforeResponseModPrioritySort']);
             }
             
-            if ($mod instanceof Mods\AfterResponseMod) {
+            if ($mod instanceof AfterResponseMod) {
                 $this->afterResponseMods[$hostId][] = $mod;
                 usort($this->afterResponseMods[$hostId], [$this, 'afterResponseModPrioritySort']);
             }
         }
+        
+        return $this;
     }
     
     private function selectApplicableModHosts($hostId) {
@@ -985,21 +881,21 @@ class Server {
         return ($a != $b) ? ($a - $b) : 0;
     }
     
-    private function onRequestModPrioritySort(Mods\OnRequestMod $modA, Mods\OnRequestMod $modB) {
-        $a = $modA->getOnRequestPriority();
-        $b = $modB->getOnRequestPriority();
+    private function onHeadersModPrioritySort(OnHeadersMod $modA, OnHeadersMod $modB) {
+        $a = $modA->getOnHeadersPriority();
+        $b = $modB->getOnHeadersPriority();
         
         return $this->modPrioritySort($a, $b);
     }
     
-    private function beforeResponseModPrioritySort(Mods\BeforeResponseMod $modA, Mods\BeforeResponseMod $modB) {
+    private function beforeResponseModPrioritySort(BeforeResponseMod $modA, BeforeResponseMod $modB) {
         $a = $modA->getBeforeResponsePriority();
         $b = $modB->getBeforeResponsePriority();
         
         return $this->modPrioritySort($a, $b);
     }
     
-    private function afterResponseModPrioritySort(Mods\AfterResponseMod $modA, Mods\AfterResponseMod $modB) {
+    private function afterResponseModPrioritySort(AfterResponseMod $modA, AfterResponseMod $modB) {
         $a = $modA->getAfterResponsePriority();
         $b = $modB->getAfterResponsePriority();
         

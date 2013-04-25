@@ -42,11 +42,11 @@ use Aerys\Server,
  * ]
  * ```
  */
-class ModExpect implements OnRequestMod {
+class ModExpect implements OnHeadersMod {
     
     private $httpServer;
     private $callbacks = [];
-    private $onRequestPriority = 50;
+    private $onHeadersPriority = 50;
     
     private $response100 = [
         Status::CONTINUE_100,
@@ -82,8 +82,8 @@ class ModExpect implements OnRequestMod {
         }
     }
     
-    function getOnRequestPriority() {
-        return $this->onRequestPriority;
+    function getOnHeadersPriority() {
+        return $this->onHeadersPriority;
     }
     
     /**
@@ -93,7 +93,7 @@ class ModExpect implements OnRequestMod {
      * @param int $requestId
      * @return void
      */
-    function onRequest($requestId) {
+    function onHeaders($requestId) {
         $asgiEnv = $this->httpServer->getRequest($requestId);
         
         if (!isset($asgiEnv['HTTP_EXPECT'])) {

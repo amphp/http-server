@@ -16,7 +16,7 @@ class ModLimitTest extends PHPUnit_Framework_TestCase {
         $mod = new ModLimit($server, []);
     }
     
-    function testOnRequest() {
+    function testOnHeaders() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         
@@ -42,12 +42,12 @@ class ModLimitTest extends PHPUnit_Framework_TestCase {
         
         $mod = new ModLimit($server, $config);
         
-        $mod->onRequest($requestId);
-        $mod->onRequest($requestId);
-        $mod->onRequest($requestId);
+        $mod->onHeaders($requestId);
+        $mod->onHeaders($requestId);
+        $mod->onHeaders($requestId);
     }
     
-    function testOnRequestRateLimitsExcessiveRequests() {
+    function testOnHeadersRateLimitsExcessiveRequests() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         
@@ -74,8 +74,8 @@ class ModLimitTest extends PHPUnit_Framework_TestCase {
         
         $mod = new ModLimit($server, $config);
         
-        $mod->onRequest($requestId);
-        $mod->onRequest($requestId);
+        $mod->onHeaders($requestId);
+        $mod->onHeaders($requestId);
     }
     
 }

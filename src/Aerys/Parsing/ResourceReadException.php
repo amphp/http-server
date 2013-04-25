@@ -2,5 +2,5 @@
 
 namespace Aerys\Parsing;
 
-class ResourceReadException extends ParseException {}
+class ResourceReadException extends \Exception {}
 

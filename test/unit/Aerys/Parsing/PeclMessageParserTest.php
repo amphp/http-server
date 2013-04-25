@@ -18,34 +18,29 @@ class PeclMessageParserTest extends PHPUnit_Framework_TestCase {
     public function testParseHeaders($msg, $method, $uri, $protocol, $headers, $body) {
         $this->skipIfMissingExtHttp();
         
-        $inputStream = fopen('php://memory', 'r+');
-        fwrite($inputStream, $msg);
-        rewind($inputStream);
+        $msgParser = new PeclMessageParser;
+        $parsedRequestArr = $msgParser->parse($msg);
         
-        $msgParser = new PeclMessageParser($inputStream);
-        $parsedRequestArr = $msgParser->parse();
+        $actualBody = $parsedRequestArr['body']
+            ? stream_get_contents($parsedRequestArr['body'])
+            : $parsedRequestArr['body'];
         
         $this->assertEquals($method, $parsedRequestArr['method']);
         $this->assertEquals($uri, $parsedRequestArr['uri']);
         $this->assertEquals($protocol, $parsedRequestArr['protocol']);
         $this->assertEquals($headers, $parsedRequestArr['headers']);
-        $this->assertEquals($body, $parsedRequestArr['body']);
+        $this->assertEquals($body, $actualBody);
     }
     
     /**
-     * @expectedException Aerys\Parsing\HeaderSyntaxException
+     * @expectedException Aerys\Parsing\ParseException
      */
     public function testParseHeadersThrowsExceptionOnFailure() {
         $this->skipIfMissingExtHttp();
         
         $msg = "GET / HTTP/1.1" . "\r\n" . "Not-Complete\r\n\r\n";
-        
-        $inputStream = fopen('php://memory', 'r+');
-        fwrite($inputStream, $msg);
-        rewind($inputStream);
-        
-        $msgParser = new PeclMessageParser($inputStream);
-        $parsedRequestArr = $msgParser->parse();
+        $msgParser = new PeclMessageParser;
+        $parsedRequestArr = $msgParser->parse($msg);
     }
     
     

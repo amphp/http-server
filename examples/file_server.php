@@ -49,5 +49,5 @@ date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
         'memoryCacheMaxSize'        => 67108864,
         'memoryCacheMaxFileSize'    => 1048576
     ])
-]])->listen();
+]])->start();
 

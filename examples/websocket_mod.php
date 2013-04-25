@@ -40,5 +40,5 @@ date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
             '/chat' => new ExampleChatEndpoint // <-- class file was required manually above
         ]
     ]
-]])->listen();
+]])->start();
 

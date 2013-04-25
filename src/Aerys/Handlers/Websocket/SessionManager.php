@@ -34,8 +34,7 @@ class SessionManager implements \Countable {
         $reactor->repeat([$this, 'autoClose'], $this->autoCloseInterval);
     }
     
-    function open($connection, Endpoint $endpoint, EndpointOptions $endpointOpts, array $asgiEnv) {
-        $socket = $connection->getSocket();
+    function open($socket, Endpoint $endpoint, EndpointOptions $endpointOpts, array $asgiEnv) {
         $session = $this->sessionFactory->make($socket, $this, $endpoint, $asgiEnv);
         
         $requestUri = $asgiEnv['REQUEST_URI'];
@@ -52,7 +51,7 @@ class SessionManager implements \Countable {
             : $this->readTimeout;
         
         $subscription = $this->reactor->onReadable($socket, [$session, 'read'], $readTimeout);
-        $this->sessions->attach($session, [$connection, $subscription]);
+        $this->sessions->attach($session, [$socket, $subscription]);
         
         $session->setOptions($endpointOpts);
         $session->open();
@@ -71,15 +70,13 @@ class SessionManager implements \Countable {
     }
     
     function shutdownRead(Session $session) {
-        list($connection, $subscription) = $this->sessions->offsetGet($session);
-        $socket = $connection->getSocket();
+        list($socket, $subscription) = $this->sessions->offsetGet($session);
         $subscription->cancel();
         @stream_socket_shutdown($socket, STREAM_SHUT_RD);
     }
     
     function awaitClose(Session $session) {
-        $connection = $this->sessions->offsetGet($session)[0];
-        $socket = $connection->getSocket();
+        $socket = $this->sessions->offsetGet($session)[0];
         @stream_socket_shutdown($socket, STREAM_SHUT_WR);
         $this->awaitingClose->attach($session, time());
     }
@@ -99,10 +96,10 @@ class SessionManager implements \Countable {
     }
     
     function close(Session $session) {
-        list($connection, $subscription) = $this->sessions->offsetGet($session);
+        list($socket, $subscription) = $this->sessions->offsetGet($session);
         
         $subscription->cancel();
-        $connection->close();
+        @fclose($socket);
         
         $requestUri = $session->getAsgiEnv()['REQUEST_URI'];
         $this->clientCounts[$requestUri]--;

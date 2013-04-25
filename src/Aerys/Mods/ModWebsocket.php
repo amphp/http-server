@@ -6,22 +6,22 @@ use Aerys\Status,
     Aerys\Server,
     Aerys\Handlers\Websocket\Handler;
 
-class ModWebsocket implements OnRequestMod {
+class ModWebsocket implements OnHeadersMod {
     
     private $server;
     private $wsHandler;
-    private $onRequestPriority = 50;
+    private $onHeadersPriority = 50;
     
     function __construct(Server $server, Handler $wsHandler) {
         $this->server = $server;
         $this->wsHandler = $wsHandler;
     }
     
-    function getOnRequestPriority() {
-        return $this->onRequestPriority;
+    function getOnHeadersPriority() {
+        return $this->onHeadersPriority;
     }
     
-    function onRequest($requestId) {
+    function onHeaders($requestId) {
         $asgiEnv = $this->server->getRequest($requestId);
         $asgiResponse = $this->wsHandler->__invoke($asgiEnv);
         

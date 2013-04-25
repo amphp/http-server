@@ -24,7 +24,7 @@ class ModExpectTest extends PHPUnit_Framework_TestCase {
         $mod = new ModExpect($server, ['/uri', "something that isn't callable"]);
     }
     
-    function testOnRequestTakesNoActionIfExpectHeaderNotPresent() {
+    function testOnHeadersTakesNoActionIfExpectHeaderNotPresent() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         
@@ -47,10 +47,10 @@ class ModExpectTest extends PHPUnit_Framework_TestCase {
         ];
         
         $mod = new ModExpect($server, $callbacks);
-        $mod->onRequest($requestId);
+        $mod->onHeaders($requestId);
     }
     
-    function testOnRequestTakesNoActionIfExpectHeaderDoesntMatch100Continue() {
+    function testOnHeadersTakesNoActionIfExpectHeaderDoesntMatch100Continue() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         
@@ -74,10 +74,10 @@ class ModExpectTest extends PHPUnit_Framework_TestCase {
         ];
         
         $mod = new ModExpect($server, $callbacks);
-        $mod->onRequest($requestId);
+        $mod->onHeaders($requestId);
     }
     
-    function testOnRequestSets100ContinueResponseIfNoCallbackRegisteredForThisUri() {
+    function testOnHeadersSets100ContinueResponseIfNoCallbackRegisteredForThisUri() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         
@@ -109,10 +109,10 @@ class ModExpectTest extends PHPUnit_Framework_TestCase {
         ];
         
         $mod = new ModExpect($server, $callbacks);
-        $mod->onRequest($requestId);
+        $mod->onHeaders($requestId);
     }
     
-    function testOnRequestSets100ContinueResponseOnTruthyUserCallbackReturn() {
+    function testOnHeadersSets100ContinueResponseOnTruthyUserCallbackReturn() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         
@@ -144,10 +144,10 @@ class ModExpectTest extends PHPUnit_Framework_TestCase {
         ];
         
         $mod = new ModExpect($server, $callbacks);
-        $mod->onRequest($requestId);
+        $mod->onHeaders($requestId);
     }
     
-    function testOnRequestSets417ExpectationFailedResponseOnFalsyUserCallbackReturn() {
+    function testOnHeadersSets417ExpectationFailedResponseOnFalsyUserCallbackReturn() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         
@@ -179,10 +179,10 @@ class ModExpectTest extends PHPUnit_Framework_TestCase {
         ];
         
         $mod = new ModExpect($server, $callbacks);
-        $mod->onRequest($requestId);
+        $mod->onHeaders($requestId);
     }
     
-    function testOnRequestRemovesQueryStringForUriPathComparison() {
+    function testOnHeadersRemovesQueryStringForUriPathComparison() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         
@@ -214,7 +214,7 @@ class ModExpectTest extends PHPUnit_Framework_TestCase {
         ];
         
         $mod = new ModExpect($server, $callbacks);
-        $mod->onRequest($requestId);
+        $mod->onHeaders($requestId);
     }
     
 }

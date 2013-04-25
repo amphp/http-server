@@ -2,14 +2,14 @@
 
 namespace Aerys\Parsing;
 
+use Aerys\Status;
+
 class MessageParser {
     
     const MODE_REQUEST = 0;
     const MODE_RESPONSE = 1;
     
-    const START_LINE = 0;
-    const HEADERS_START = 100;
-    const HEADERS = 200;
+    const START = 0;
     const BODY_IDENTITY = 300;
     const BODY_IDENTITY_EOF = 400;
     const BODY_CHUNKS_SIZE_START = 500;
@@ -19,7 +19,6 @@ class MessageParser {
     const BODY_CHUNKS_DATA_TERMINATOR = 540;
     const BODY_CHUNKS_ALMOST_DONE = 550;
     const TRAILER_START = 600;
-    const AWAITING_ENTITY_DELEGATE = 700;
     
     const STATUS_LINE_PATTERN = "#^
         HTTP/(?P<protocol>\d+\.\d+)[\x20\x09]+
@@ -32,12 +31,8 @@ class MessageParser {
         (?P<value>[^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
     /x";
     
-    protected $input;
     protected $mode;
-    protected $state = self::START_LINE;
-    protected $onHeadersCallback;
-    protected $onBodyCallback;
-    
+    protected $state = self::START;
     protected $buffer = '';
     protected $traceBuffer;
     protected $protocol;
@@ -51,19 +46,19 @@ class MessageParser {
     protected $remainingBodyBytes;
     protected $currentChunkSize;
     protected $bodyBytesConsumed = 0;
-    protected $awaitingEntityDelegate = FALSE;
     
     protected $maxStartLineBytes = 2048;
     protected $maxHeaderBytes = 8192;
-    protected $maxBodyBytes = 2097152;
+    protected $maxBodyBytes = 10485760;
+    protected $bodySwapSize = 2097152;
+    protected $returnHeadersBeforeBody = FALSE;
     protected $hexCharMap = [
         'a' => 1, 'b' => 1, 'c' => 1, 'd' => 1, 'e' => 1, 'f' => 1,
         'A' => 1, 'B' => 1, 'C' => 1, 'D' => 1, 'E' => 1, 'F' => 1,
         0 => 1, 1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 1, 6 => 1, 7 => 1, 8 => 1, 9 => 1
     ];
     
-    function __construct($inputStream, $mode = self::MODE_REQUEST) {
-        $this->inputStream = $inputStream;
+    function __construct($mode = self::MODE_REQUEST) {
         $this->mode = $mode;
     }
     
@@ -79,12 +74,12 @@ class MessageParser {
         $this->maxBodyBytes = (int) $bytes;
     }
     
-    function setOnHeadersCallback(callable $callback) {
-        $this->onHeadersCallback = $callback;
+    function setBodySwapSize($bytes) {
+        $this->bodySwapSize = (int) $bytes;
     }
     
-    function setOnBodyCallback(callable $callback) {
-        $this->onBodyCallback = $callback;
+    function setReturnHeadersBeforeBody($boolFlag) {
+        $this->returnHeadersBeforeBody = (bool) $boolFlag;
     }
     
     function setAllOptions(array $options) {
@@ -97,28 +92,16 @@ class MessageParser {
         return ($this->state || $this->buffer || $this->buffer === '0');
     }
     
-    function parse() {
-        $data = @fread($this->inputStream, 8192);
-        
-        if (!$data
-            && $data !== '0'
-            && $this->buffer === ''
-            && (!is_resource($this->inputStream) || feof($this->inputStream))
-        ) {
-            throw new ResourceReadException(
-                'Failed reading from input stream'
-            );
-        } else {
-            $this->buffer .= $data;
-        }
+    function hasBuffer() {
+        return trim($this->buffer) || $this->buffer === '0';
+    }
+    
+    function parse($data) {
+        $this->buffer .= $data;
         
         switch ($this->state) {
-            case self::START_LINE:
-                goto start_line;
-            case self::HEADERS_START:
-                goto headers_start;
-            case self::HEADERS:
-                goto headers;
+            case self::START:
+                goto start;
             case self::BODY_IDENTITY:
                 goto body_identity;
             case self::BODY_IDENTITY_EOF:
@@ -137,79 +120,53 @@ class MessageParser {
                 goto body_chunks;
             case self::TRAILER_START:
                 goto trailer_start;
-            case self::AWAITING_ENTITY_DELEGATE:
-                goto awaiting_entity_delegate_completion;
         }
         
-        start_line: {
-            $startLine = $this->shiftStartLineFromMessageBuffer();
+        start: {
+            $startLineAndHeaders = $this->shiftHeadersFromMessageBuffer();
             
-            if (NULL === $startLine) {
+            if (NULL === $startLineAndHeaders) {
                 goto more_data_needed;
-            } elseif ($this->mode === self::MODE_REQUEST) {
-                $this->parseRequestLine($startLine);
             } else {
-                $this->parseStatusLine($startLine);
+                $this->parseStartLineAndHeaders($startLineAndHeaders);
             }
             
-            $this->state = self::HEADERS_START;
-            $this->traceBuffer = $startLine;
+            $this->traceBuffer = $startLineAndHeaders;
             
-            goto headers_start;
-        }
-        
-        headers_start: {
-            if ($this->buffer === '' || $this->buffer === FALSE) {
-                goto more_data_needed;
-            } elseif ($this->buffer[0] == "\n") {
-                $this->traceBuffer .= "\n";
-                $this->buffer = substr($this->buffer, 1);
-                goto complete;
-            } elseif (substr($this->buffer, 0, 2) == "\r\n") {
-                $this->traceBuffer .= "\r\n";
-                $this->buffer = substr($this->buffer, 2);
-                goto complete;
-            } else {
-                $this->state = self::HEADERS;
-                goto headers;
-            }
-        }
-        
-        headers: {
-            $rawHeaders = $this->shiftHeadersFromMessageBuffer();
-            
-            if (NULL !== $rawHeaders) {
-                $this->traceBuffer .= $rawHeaders;
-                $this->headers = $this->parseHeaders($rawHeaders);
-                goto transition_from_headers_to_body;
-            } else {
-                goto more_data_needed;
-            }
+            goto transition_from_headers_to_body;
         }
         
         transition_from_headers_to_body: {
             if (!$this->allowsEntityBody()) {
                 goto complete;
             } elseif ($this->isChunkEncoded()) {
-                if ($this->onHeadersCallback) {
-                    $parsedMsgArr = $this->getParsedMessageArray();
-                    $callback = $this->onHeadersCallback;
-                    $callback($parsedMsgArr);
-                }
                 $this->state = self::BODY_CHUNKS_SIZE_START;
-                goto body_chunks;
+                goto headers_complete_before_body;
             } elseif ($this->determineBodyLength()) {
-                if ($this->onHeadersCallback) {
-                    $parsedMsgArr = $this->getParsedMessageArray();
-                    $callback = $this->onHeadersCallback;
-                    $callback($parsedMsgArr);
-                }
                 $this->state = self::BODY_IDENTITY;
-                goto body_identity;
+                goto headers_complete_before_body;
             } elseif ($this->mode === self::MODE_RESPONSE) {
-                goto body_identity_eof;
+                $this->state = self::BODY_IDENTITY_EOF;
+                goto headers_complete_before_body;
             } else {
                 goto complete;
+            }
+        }
+        
+        headers_complete_before_body: {
+            $uri = 'php://temp/maxmemory:' . $this->bodySwapSize;
+            $this->body = fopen($uri, 'r+');
+            
+            if ($this->returnHeadersBeforeBody) {
+                $parsedMsgArr = $this->getParsedMessageArray();
+                $parsedMsgArr['headersOnly'] = TRUE;
+                return $parsedMsgArr;
+            } elseif ($this->state == self::BODY_CHUNKS_SIZE_START) {
+                goto body_chunks;
+            } elseif ($this->state == self::BODY_IDENTITY) {
+                goto body_identity;
+            } elseif ($this->state == self::BODY_IDENTITY_EOF) {
+                goto body_identity_eof;
             }
         }
         
@@ -239,23 +196,9 @@ class MessageParser {
             goto complete;
         }
         
-        awaiting_entity_delegate_completion: {
-            $this->state = self::AWAITING_ENTITY_DELEGATE;
-            $callback = $this->onBodyCallback;
-            if ($this->awaitingEntityDelegate = $callback()) {
-                return NULL;
-            } else {
-                $this->onBodyCallback = NULL;
-                goto complete;
-            }
-        }
-        
         complete: {
-            if ($this->awaitingEntityDelegate) {
-                goto awaiting_entity_delegate_completion;
-            }
-            
             $parsedMsgArr = $this->getParsedMessageArray();
+            $parsedMsgArr['headersOnly'] = FALSE;
             
             $this->resetForNextMessage();
             
@@ -265,24 +208,6 @@ class MessageParser {
         more_data_needed: {
             return NULL;
         }
-    }
-    
-    protected function shiftStartLineFromMessageBuffer() {
-        $this->buffer = ltrim($this->buffer);
-        
-        if ($startLineSize = strpos($this->buffer, "\n")) {
-            $startLine = substr($this->buffer, 0, $startLineSize + 1);
-            $this->buffer = substr($this->buffer, $startLineSize + 1);
-        } else {
-            $startLineSize = strlen($this->buffer);
-            $startLine = NULL;
-        }
-        
-        if ($startLineSize > $this->maxStartLineBytes) {
-            throw new StartLineSizeException;
-        }
-        
-        return $startLine;
     }
     
     protected function shiftHeadersFromMessageBuffer() {
@@ -298,14 +223,27 @@ class MessageParser {
         }
         
         if ($headersSize > $this->maxHeaderBytes) {
-            throw new HeaderSizeException;
-        }
-        
-        if ($headers !== NULL) {
+            throw new ParseException(NULL, Status::REQUEST_HEADER_FIELDS_TOO_LARGE);
+        } elseif ($headers !== NULL) {
             $this->buffer = substr($this->buffer, $headersSize + $terminatorSize);
         }
         
         return $headers;
+    }
+    
+    protected function parseStartLineAndHeaders($startLineAndHeaders) {
+        $startLineEndPos = strpos($startLineAndHeaders, "\n");
+        $startLine = substr($startLineAndHeaders, 0, $startLineEndPos);
+        
+        if ($this->mode === self::MODE_REQUEST) {
+            $this->parseRequestLine($startLine);
+        } else {
+            $this->parseStatusLine($startLine);
+        }
+        
+        if ($rawHeaders = substr($startLineAndHeaders, $startLineEndPos + 1)) {
+            $this->parseHeaders($rawHeaders);
+        }
     }
     
     protected function parseRequestLine($rawStartLine) {
@@ -314,23 +252,23 @@ class MessageParser {
         if (isset($parts[0]) && ($method = trim($parts[0]))) {
             $this->requestMethod = $method;
         } else {
-            throw new StartLineSyntaxException;
+            throw new ParseException(NULL, Status::BAD_REQUEST);
         }
         
         if (isset($parts[1]) && ($uri = trim($parts[1]))) {
             $this->requestUri = $uri;
         } else {
-            throw new StartLineSyntaxException;
+            throw new ParseException(NULL, Status::BAD_REQUEST);
         }
         
         if (isset($parts[2]) && ($protocol = str_ireplace('HTTP/', '', trim($parts[2])))) {
             $this->protocol = $protocol;
         } else {
-            throw new StartLineSyntaxException;
+            throw new ParseException(NULL, Status::BAD_REQUEST);
         }
         
         if (!($protocol === '1.0' || '1.1' === $protocol)) {
-            throw new ProtocolNotSupportedException;
+            throw new ParseException(NULL, Status::HTTP_VERSION_NOT_SUPPORTED);
         }
     }
     
@@ -340,7 +278,7 @@ class MessageParser {
             $this->responseCode = $m['status'];
             $this->responseReason = $m['reason'];
         } else {
-            throw new StartLineSyntaxException;
+            throw new ParseException(NULL, Status::BAD_REQUEST);
         }
     }
     
@@ -350,10 +288,10 @@ class MessageParser {
         }
         
         if (!preg_match_all(self::HEADERS_PATTERN, $rawHeaders, $matches)) {
-            throw new HeaderSyntaxException;
+            throw new ParseException(NULL, Status::BAD_REQUEST);
         }
         
-        $result = [];
+        $headers = [];
         
         $matchedHeaders = '';
         
@@ -361,14 +299,14 @@ class MessageParser {
             $matchedHeaders .= $matches[0][$i];
             $field = strtoupper($matches['field'][$i]);
             $value = $matches['value'][$i];
-            $result[$field][] = $value;
+            $headers[$field][] = $value;
         }
         
         if (strlen($rawHeaders) !== strlen($matchedHeaders)) {
-            throw new HeaderSyntaxException;
+            throw new ParseException(NULL, Status::BAD_REQUEST);
         }
         
-        return $result;
+        $this->headers = $headers;
     }
     
     protected function allowsEntityBody() {
@@ -389,6 +327,10 @@ class MessageParser {
         
         foreach ($this->headers as $key => $arr) {
             $headers[$key] = isset($arr[1]) ? $arr : $arr[0];
+        }
+        
+        if ($this->body) {
+            rewind($this->body);
         }
         
         $result = [
@@ -470,9 +412,7 @@ class MessageParser {
                         $this->currentChunkSize .= $c;
                         $this->state = self::BODY_CHUNKS_SIZE;
                     } else {
-                        throw new ChunkSyntaxException(
-                            'Expected [HEX] value'
-                        );
+                        throw new ParseException('Expected [HEX] value', Status::BAD_REQUEST);
                     }
                     
                     ++$i;
@@ -486,9 +426,7 @@ class MessageParser {
                     } elseif ($c === "\r") {
                         $this->state = self::BODY_CHUNKS_SIZE_ALMOST_DONE;
                     } else {
-                        throw new ChunkSyntaxException(
-                            'Expected [CR] chunk terminator'
-                        );
+                        throw new ParseException('Expected [CR] chunk terminator', Status::BAD_REQUEST);
                     }
                     
                     ++$i;
@@ -508,9 +446,7 @@ class MessageParser {
                             $this->state = self::BODY_CHUNKS_DATA;
                         }
                     } else {
-                        throw new ChunkSyntaxException(
-                            'Expected [LF] chunk terminator'
-                        );
+                        throw new ParseException('Expected [LF] chunk terminator', Status::BAD_REQUEST);
                     }
                     
                     ++$i;
@@ -538,9 +474,7 @@ class MessageParser {
                     if ($this->buffer[$i] === "\r") {
                         $this->state = self::BODY_CHUNKS_ALMOST_DONE;
                     } else {
-                        throw new ChunkSyntaxException(
-                            'Expected [CR] chunk terminator'
-                        );
+                        throw new ParseException('Expected [CR] chunk terminator', Status::BAD_REQUEST);
                     }
                     
                     ++$i;
@@ -551,9 +485,7 @@ class MessageParser {
                         $this->currentChunkSize = NULL;
                         $this->state = self::BODY_CHUNKS_SIZE_START;
                     } else {
-                        throw new ChunkSyntaxException(
-                            'Expected [LF] chunk terminator'
-                        );
+                        throw new ParseException('Expected [LF] chunk terminator', Status::BAD_REQUEST);
                     }
                     
                     ++$i;
@@ -575,16 +507,15 @@ class MessageParser {
         $this->bodyBytesConsumed += strlen($data);
         
         if ($this->maxBodyBytes && $this->bodyBytesConsumed > $this->maxBodyBytes) {
-            throw new EntitySizeException;
-        } elseif ($onBodyCallback = $this->onBodyCallback) {
-            $this->awaitingEntityDelegate = !$onBodyCallback($data);
+            throw new ParseException(NULL, Status::REQUEST_ENTITY_TOO_LARGE);
         } else {
-            $this->body .= $data;
+            fseek($this->body, 0, SEEK_END);
+            fwrite($this->body, $data);
         }
     }
     
     protected function resetForNextMessage() {
-        $this->state = self::START_LINE;
+        $this->state = self::START;
         $this->traceBuffer = NULL;
         $this->headers = [];
         $this->body = NULL;

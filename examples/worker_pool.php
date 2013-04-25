@@ -45,5 +45,5 @@ $workerCmd = $phpBin . ' ' . $worker . ' ' . $handler;
         'responseTimeout'   => 5,
         'workerCwd'         => NULL
     ])
-]])->listen();
+]])->start();
 

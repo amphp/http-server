@@ -34,7 +34,7 @@ use Aerys\Server,
  * ];
  * ```
  */
-class ModLimit implements OnRequestMod {
+class ModLimit implements OnHeadersMod {
     
     private $httpServer;
     
@@ -44,7 +44,7 @@ class ModLimit implements OnRequestMod {
     private $rateAllowances = [];
     private $lastRateCheckedAt = [];
     private $maxRatePeriod;
-    private $onRequestPriority = 10;
+    private $onHeadersPriority = 10;
     
     function __construct(Server $httpServer, array $config) {
         $this->httpServer = $httpServer;
@@ -65,8 +65,8 @@ class ModLimit implements OnRequestMod {
         $this->ratePeriods[] = array_keys($config['limits']);
     }
     
-    function getOnRequestPriority() {
-        return $this->onRequestPriority;
+    function getOnHeadersPriority() {
+        return $this->onHeadersPriority;
     }
     
     /**
@@ -76,7 +76,7 @@ class ModLimit implements OnRequestMod {
      * @param int $requestId
      * @return void
      */
-    function onRequest($requestId) {
+    function onHeaders($requestId) {
         $asgiEnv = $this->httpServer->getRequest($requestId);
         
         if ($this->ipProxyHeader) {

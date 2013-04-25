@@ -46,11 +46,12 @@ class Configurator {
             $port = $host->getPort();
             $interfaceId = $addr . ':' . $port;
             
-            $servers[$interfaceId] = [$interfaceId, $tls];
+            $servers[$interfaceId] = $tls;
         }
         
-        $tcpServer = new TcpServer($reactor, $servers);
-        $httpServer->setTcpServer($tcpServer);
+        foreach ($servers as $name => $tls) {
+            $httpServer->defineBinding($name, $tls);
+        }
         
         foreach ($hosts as $host) {
             $httpServer->addHost($host);
@@ -69,19 +70,23 @@ class Configurator {
     }
     
     private function listConfigSections(array $config) {
-        $reactor = $opts = $tls = $mods = $hosts = [];
+        $reactor = $opts = $mods = $hosts = [];
         
-        if (isset($config['globals']['reactor'])) {
-            $reactor = $config['globals']['reactor'];
+        if (!empty($config['reactor'])) {
+            $reactor = $config['reactor'];
         }
-        if (isset($config['globals']['opts'])) {
-            $opts = $config['globals']['opts'];
+        if (isset($config['options'])) {
+            $opts = $config['options'];
         }
-        if (isset($config['globals']['mods'])) {
-            $mods = $config['globals']['mods'];
+        if (isset($config['mods'])) {
+            $mods = $config['mods'];
         }
         
-        unset($config['globals']);
+        unset(
+            $config['reactor'],
+            $config['options'],
+            $config['mods']
+        );
         
         $hostConfs = $config;
         
@@ -103,7 +108,7 @@ class Configurator {
     private function generateHostDefinitions(array $hosts) {
         $hostDefinitions = [];
         
-        foreach ($hosts as $hostDefinitionArr) {
+        foreach ($hosts as $key => $hostDefinitionArr) {
             if (empty($hostDefinitionArr['listenOn']) || empty($hostDefinitionArr['application'])) {
                 throw new ConfigException(
                     'Invalid host config; `listenOn` and `application` keys required'

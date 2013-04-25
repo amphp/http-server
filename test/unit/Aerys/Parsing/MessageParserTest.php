@@ -8,46 +8,45 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
      * @dataProvider provideParseExpectations
      */
     public function testParse($msg, $method, $uri, $protocol, $headers, $body) {
-        $inputStream = fopen('php://memory', 'r+');
-        fwrite($inputStream, $msg);
-        rewind($inputStream);
+        $msgParser = new MessageParser;
+        $parsedRequestArr = $msgParser->parse($msg);
         
-        $msgParser = new MessageParser($inputStream);
-        $parsedRequestArr = $msgParser->parse();
+        $actualBody = $parsedRequestArr['body']
+            ? stream_get_contents($parsedRequestArr['body'])
+            : $parsedRequestArr['body'];
         
         $this->assertEquals($method, $parsedRequestArr['method']);
         $this->assertEquals($uri, $parsedRequestArr['uri']);
         $this->assertEquals($protocol, $parsedRequestArr['protocol']);
         $this->assertEquals($headers, $parsedRequestArr['headers']);
-        $this->assertEquals($body, $parsedRequestArr['body']);
+        $this->assertEquals($body, $actualBody);
     }
     
     /**
      * @dataProvider provideParseExpectations
      */
     public function testIncrementalParse($msg, $method, $uri, $protocol, $headers, $body) {
-        $inputStream = fopen('php://memory', 'r+');
-        $msgParser = new MessageParser($inputStream);
+        $msgParser = new MessageParser;
         
         $byteIncrement = 1;
         $msgLen = strlen($msg);
         for ($i=0; $i < $msgLen; $i+=$byteIncrement) {
-            $msgPart = substr($msg, $i);
-            $currentPos = ftell($inputStream);
-            fwrite($inputStream, $msgPart);
-            fseek($inputStream, $currentPos);
-            
-            $parsedRequestArr = $msgParser->parse();
+            $msgPart = $msg[$i];
+            $parsedRequestArr = $msgParser->parse($msgPart);
             if (NULL !== $parsedRequestArr) {
                 break;
             }
         }
         
+        $actualBody = $parsedRequestArr['body']
+            ? stream_get_contents($parsedRequestArr['body'])
+            : $parsedRequestArr['body'];
+        
         $this->assertEquals($method, $parsedRequestArr['method']);
         $this->assertEquals($uri, $parsedRequestArr['uri']);
         $this->assertEquals($protocol, $parsedRequestArr['protocol']);
         $this->assertEquals($headers, $parsedRequestArr['headers']);
-        $this->assertEquals($body, $parsedRequestArr['body']);
+        $this->assertEquals($body, $actualBody);
     }
     
     public function provideParseExpectations() {

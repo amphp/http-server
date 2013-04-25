@@ -29,7 +29,7 @@ class ModWebsocketTest extends PHPUnit_Framework_TestCase {
                   ->will($this->returnValue($fakeAsgiResponse));
         
         $mod = new ModWebsocket($server, $wsHandler);
-        $mod->onRequest($requestId);
+        $mod->onHeaders($requestId);
     }
     
 }
