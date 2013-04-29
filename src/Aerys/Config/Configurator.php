@@ -64,8 +64,7 @@ class Configurator {
         }
         
         $this->registerMods($httpServer, $globalMods, $mods);
-        $this->registerErrorHandler($httpServer);
-        
+                
         return $httpServer;
     }
     
@@ -255,35 +254,5 @@ class Configurator {
             ':wsHandler' => $wsHandler
         ]);
     }
-    
-    private function registerErrorHandler(Server $server) {
-        error_reporting(E_ALL);
-        set_error_handler(function($errNo, $errStr, $errFile, $errLine) use ($server) {
-            if (error_reporting()) {
-                switch ($errNo) {
-                    case 1:     $errType = 'E_ERROR'; break;
-                    case 2:     $errType = 'E_WARNING'; break;
-                    case 4:     $errType = 'E_PARSE'; break;
-                    case 8:     $errType = 'E_NOTICE'; break;
-                    case 256:   $errType = 'E_USER_ERROR'; break;
-                    case 512:   $errType = 'E_USER_WARNING'; break;
-                    case 1024:  $errType = 'E_USER_NOTICE'; break;
-                    case 2048:  $errType = 'E_STRICT'; break;
-                    case 4096:  $errType = 'E_RECOVERABLE_ERROR'; break;
-                    case 8192:  $errType = 'E_DEPRECATED'; break;
-                    case 16384: $errType = 'E_USER_DEPRECATED'; break;
-                    
-                    default:    $errType = 'PHP ERROR'; break;
-                }
-                
-                $msg = "[$errType]: $errStr in $errFile on line $errLine" . PHP_EOL;
-                
-                $errorStream = $server->getErrorStream();
-                fwrite($errorStream, $msg);
-                //throw new \ErrorException($msg);
-            }
-        });
-    }
-    
 }
 
