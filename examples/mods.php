@@ -1,26 +1,16 @@
 <?php
 
-/**
- * examples/mods.php
- * 
- * @TODO Add some description here. To run this example:
- * 
- * $ php mods.php
- * 
- * Once the server has started, request http://127.0.0.1:1337/ in your browser or client of choice.
- */
+// To run, execute this script and request http://127.0.0.1:1337/ in your browser
 
 use Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
 require __DIR__ . '/support_files/ExampleBeforeResponseMod.php'; // our example mod class
 
-date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
-
 $myApp = function(array $asgiEnv) {
-    return [200, '', [], '<html><body><h1>Hello, World.</h1></body></html>'];
+    $body = '<html><body><h1>Hello, World.</h1></body></html>';
+    return [$status = 200, $reason = 'OK', $headers = [], $body];
 };
-
 
 $config = [
     'mods' => [
@@ -40,7 +30,7 @@ $config = [
             ],
             'limit' => [
                 'limits' => [
-                    30 => 10, // send a 429 if client has made > 10 requests in the past 30 seconds
+                    30 => 10
                 ]
             ],
         ]
@@ -50,10 +40,13 @@ $config = [
 
 $server = (new Configurator)->createServer($config);
 $exampleMod = new ExampleBeforeResponseMod($server); // <-- class file included above!
-$server->registerMod('*', $exampleMod); // register the mod for all virtual hosts (*)
+$server->registerMod('*', $exampleMod); // register the custom mod for all virtual hosts (*)
 
-// this would register the mod only for a specific host:
+// register the mod for a specific host:
 // $server->registerMod('mysite.com:80', $exampleMod);
+
+// register the mod for all hosts on port 80:
+// $server->registerMod('*:80', $exampleMod);
 
 $server->start(); // start the server
 

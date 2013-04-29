@@ -1,21 +1,10 @@
 <?php
 
-/**
- * examples/options.php
- * 
- * Need moar options? Assign HTTP server options in the 'options' config array. To run
- * this example:
- * 
- * $ php options.php
- * 
- * Once the server has started, request http://127.0.0.1:1337/ in your browser or client of choice.
- */
+// To run, execute this script and request http://127.0.0.1:1337/ in your browser
 
 use Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
-
-date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
 
 $myApp = function(array $asgiEnv) {
     $status = 200;
@@ -46,7 +35,7 @@ $config = [
         'defaultHost'           => NULL,
         'requireBodyLength'     => FALSE,
         'allowedMethods'        => ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'TRACE', 'DELETE'],
-        'socketSoLinger'        => NULL, // Requires PHP ext/sockets
+        'socketSoLinger'        => NULL, // Requires PHP sockets extension
     ],
     
     'reactor' => NULL, // Optionally specify your own Amp\Reactor instance
