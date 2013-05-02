@@ -160,7 +160,7 @@ class Configurator {
             return $handler;
         } else {
             throw new ConfigException(
-                'Invalid host handler; callable or AppLauncher instance required'
+                'Invalid host handler; callable or Aerys\Config\AppLauncher instance required'
             );
         }
     }
@@ -218,12 +218,8 @@ class Configurator {
     }
     
     private function buildModLog(array $config) {
-        $logs = $config['logs'];
-        unset($config['logs']);
-        
         return $this->injector->make('Aerys\\Mods\\ModLog', [
-            ':logs' => $logs,
-            ':options' => $config
+            ':logs' => $config
         ]);
     }
     
