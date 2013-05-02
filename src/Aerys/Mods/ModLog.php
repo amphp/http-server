@@ -11,19 +11,20 @@ class ModLog implements AfterResponseMod {
     private $resourceFormatMap = [];
     private $buffers = [];
     private $msgGenerationCache = [];
-    private $flushSize = 0;
-    private $logTime;
     private $afterResponsePriority = 75;
     
-    function __construct(Server $httpServer, array $logs, array $options = NULL) {
+    function __construct(Server $httpServer, array $logs) {
         $this->httpServer = $httpServer;
-        
-        if (empty($logs)) {
+        if ($logs) {
+            $this->setLogs($logs);
+        } else {
             throw new \InvalidArgumentException(
                 __CLASS__ . '::__construct expects a non-empty $logs array at Argument 2'
             );
         }
-        
+    }
+    
+    private function setLogs(array $logs) {
         foreach ($logs as $path => $format) {
             if (!$resource = fopen($path, 'a+')) {
                 continue;
@@ -36,10 +37,6 @@ class ModLog implements AfterResponseMod {
             $this->resources[$resourceId] = $resource;
             $this->resourceFormatMap[$resourceId] = $format;
         }
-        
-        if (isset($options['flushSize'])) {
-            $this->flushSize = (int) $options['flushSize'];
-        }
     }
     
     function getAfterResponsePriority() {
@@ -47,8 +44,6 @@ class ModLog implements AfterResponseMod {
     }
     
     function afterResponse($requestId) {
-        $this->logTime = time();
-        
         foreach ($this->resources as $resourceId => $resource) {
             $asgiEnv = $this->httpServer->getRequest($requestId);
             $asgiResponse = $this->httpServer->getResponse($requestId);
@@ -68,11 +63,9 @@ class ModLog implements AfterResponseMod {
             $buffer = $this->buffers[$resourceId][0] . $msg;
             $bufferSize = strlen($buffer);
             
-            if ($bufferSize > $this->flushSize) {
-                $bytesWritten = fwrite($resource, $buffer);
-                $this->buffers[$resourceId][0] = substr($buffer, $bytesWritten);
-                $this->buffers[$resourceId][1] -= $bytesWritten;
-            }
+            $bytesWritten = fwrite($resource, $buffer);
+            $this->buffers[$resourceId][0] = substr($buffer, $bytesWritten);
+            $this->buffers[$resourceId][1] -= $bytesWritten;
         }
         
         $this->msgGenerationCache = [];
@@ -98,7 +91,7 @@ class ModLog implements AfterResponseMod {
         $referer = empty($asgiEnv['HTTP_REFERER']) ? '-' : $asgiEnv['HTTP_REFERER'];
         
         $userAgent = empty($asgiEnv['HTTP_USER_AGENT']) ? '-' : '"' . $asgiEnv['HTTP_USER_AGENT'] . '"';
-        $time = date('d/M/Y:H:i:s O', $this->logTime);
+        $time = date('d/M/Y:H:i:s O');
         
         $msg = "$ip - - [$time] $requestLine $statusCode $bodySize $referer $userAgent" . PHP_EOL;
         
@@ -124,7 +117,7 @@ class ModLog implements AfterResponseMod {
         $statusCode = $asgiResponse[0];
         $headers = $asgiResponse[2];
         $bodySize = empty($headers['CONTENT-LENGTH']) ? '-' : $headers['CONTENT-LENGTH'];
-        $time = date('d/M/Y:H:i:s O', $this->logTime);
+        $time = date('d/M/Y:H:i:s O');
         
         $msg = "$ip - - [$time] $requestLine $statusCode $bodySize" . PHP_EOL;
         
@@ -155,7 +148,7 @@ class ModLog implements AfterResponseMod {
         $search = ['%h', '%t', '%r', '%s', '%b'];
         $replace = [
             $asgiEnv['REMOTE_ADDR'],
-            date('d/M/Y:H:i:s O', $this->logTime),
+            date('d/M/Y:H:i:s O'),
             $requestLine,
             $asgiResponse[0],
             $bytes

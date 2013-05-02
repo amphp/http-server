@@ -24,13 +24,11 @@ $config = [
         
         'mods' => [
             'log'   =>  [
-                'logs' => [
-                    'php://stdout' => 'common',
-                ]
+                'php://stdout' => 'common'
             ],
             'limit' => [
                 'limits' => [
-                    30 => 10
+                    30 => 10 // limit to 10 requests every 30 seconds
                 ]
             ],
         ]
@@ -40,12 +38,14 @@ $config = [
 
 $server = (new Configurator)->createServer($config);
 $exampleMod = new ExampleBeforeResponseMod($server); // <-- class file included above!
-$server->registerMod('*', $exampleMod); // register the custom mod for all virtual hosts (*)
 
-// register the mod for a specific host:
+// register the custom mod for all virtual hosts (*)
+$server->registerMod('*', $exampleMod);
+
+// register mod for a specific host:
 // $server->registerMod('mysite.com:80', $exampleMod);
 
-// register the mod for all hosts on port 80:
+// register mod for all hosts on port 80:
 // $server->registerMod('*:80', $exampleMod);
 
 $server->start(); // start the server
