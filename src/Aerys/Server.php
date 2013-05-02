@@ -32,7 +32,7 @@ class Server extends TcpServer {
     private $logErrorsTo = 'php://stderr';
     private $maxConnections = 2500;
     private $maxRequests = 150;
-    private $keepAliveTimeout = 5;
+    private $keepAliveTimeout = 95;
     private $defaultContentType = 'text/html';
     private $defaultCharset = 'utf-8';
     private $autoReasonPhrase = TRUE;
@@ -139,7 +139,7 @@ class Server extends TcpServer {
     
     private function read(Pipeline $pipeline) {
         try {
-            if ($requestArr = $pipeline->read()) {
+            while ($requestArr = $pipeline->read()) {
                 return $requestArr['headersOnly']
                     ? $this->onPreBodyHeaders($pipeline, $requestArr)
                     : $this->onRequest($pipeline, $requestArr);
@@ -495,7 +495,9 @@ class Server extends TcpServer {
             $reason = $this->getReasonPhrase($status);
         }
         
-        if (isset($asgiEnv['HTTP_CONNECTION'])
+        if ($asgiEnv['SERVER_PROTOCOL'] == '1.0' && empty($asgiEnv['HTTP_CONNECTION'])) {
+            $headers['CONNECTION'] = 'close';
+        } elseif (isset($asgiEnv['HTTP_CONNECTION'])
             && empty($headers['CONNECTION'])
             && !strcasecmp($asgiEnv['HTTP_CONNECTION'], 'keep-alive')
         ) {
@@ -674,7 +676,7 @@ class Server extends TcpServer {
         if ($this->socketSoLinger !== NULL) {
             $this->closeSocketWithSoLinger($socket);
         } else {
-            @stream_socket_shutdown($socket, STREAM_SHUT_RDWR);
+            @fclose($socket);
         }
     }
     
@@ -755,10 +757,12 @@ class Server extends TcpServer {
     }
     
     private function setKeepAliveTimeout($seconds) {
-        $this->keepAliveTimeout = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
-            'min_range' => 2,
+        if (!$this->keepAliveTimeout = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
+            'min_range' => 0,
             'default' => 10
-        ]]);
+        ]])) {
+            $this->keepAliveTimeout = -1;
+        }
     }
     
     private function setDisableKeepAlive($boolFlag) {
