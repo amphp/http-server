@@ -16,6 +16,7 @@ class Pipeline {
     private $writing = [];
     private $preBodyRequest;
     private $requestCount = 0;
+    private $ioGranularity = 262144;
     
     function __construct($socket, MessageParser $parser, WriterFactory $wf = NULL) {
         $this->setSocket($socket);
@@ -196,10 +197,10 @@ class Pipeline {
     }
     
     function read() {
-        $data = @fread($this->socket, 8192);
+        $data = @fread($this->socket, $this->ioGranularity);
         
         if ($data || $data === '0' || $this->parser->hasBuffer()) {
-            return $this->parser->parse($data) ?: NULL;
+            return $this->parser->parse($data);
         } elseif (!is_resource($this->socket) || feof($this->socket)) {
             throw new ResourceReadException;
         }
