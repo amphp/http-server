@@ -47,8 +47,7 @@ $myApp = function(array $asgiEnv) {
         $status = 200;
         $reason = 'OK';
         $body = '<html><body style="font-family: Sans-Serif;"><h1>Hello, world.</h1><hr/>';
-        $body.= '<img src="http://static.aerys:1337/allofthethings.gif" width="480" height="335" alt="PHP! ALL OF THE THINGS!" /><hr/><br/>';
-        $body.= 'Woah, dang! ^ That image came from a different domain!';
+        $body.= '<img src="http://static.aerys:1337/allofthethings.gif" width="480" height="335" /><hr/><br/>';
         $body.= '</body></html>';
         $response = [$status, $reason, $headers = [], $body];
     }
