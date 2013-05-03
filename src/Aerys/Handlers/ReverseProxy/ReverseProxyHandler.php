@@ -7,95 +7,126 @@ use Amp\Reactor,
     Aerys\Status,
     Aerys\Reason,
     Aerys\Parsing\MessageParser,
-    Aerys\Parsing\PeclMessageParser,
-    Aerys\Writing\Writer,
-    Aerys\Writing\StreamWriter;
+    Aerys\Parsing\PeclMessageParser;
 
+/**
+ * @TODO Implement non-blocking connection attempts for backend sockets
+ * @TODO Implement optional TLS for backend socket connections
+ * @TODO Implement exponential backoff for socket connection attempts
+ */
 class ReverseProxyHandler {
     
     private $reactor;
     private $server;
     private $backends = [];
-    private $backendParsers = [];
-    private $backendSubscriptions = [];
-    private $pendingRequestCounts = [];
-    private $requestQueue = [];
-    private $responseQueue = [];
-    
+    private $writableBackends;
+    private $backendSubscriptions;
     private $maxPendingRequests = 1500;
-    private $ioGranularity = 262144;
     private $autoWriteInterval = 0.05;
-    private $reconnectInterval = 5;
+    private $ioGranularity = 262144;
     
     function __construct(Reactor $reactor, Server $server, array $backends) {
         $this->reactor = $reactor;
         $this->server = $server;
+        $this->writableBackends = new \SplObjectStorage;
+        $this->backendSubscriptions = new \SplObjectStorage;
+        $this->canUsePeclParser = extension_loaded('http');
         
         foreach ($backends as $backendUri) {
-            $this->connectBackend($backendUri);
+            $this->connect($backendUri);
         }
         
         $reactor->repeat(function() { $this->autoWrite(); }, $this->autoWriteInterval);
-        $this->canUsePeclParser = extension_loaded('http');
     }
     
-    private function connectBackend($uri) {
+    private function connect($uri) {
         if ($socket = @stream_socket_client($uri, $errNo, $errStr)) {
             stream_set_blocking($socket, FALSE);
-            
-            $sockId = (int) $socket;
-            $this->backends[$sockId] = $socket;
-            $this->pendingRequestCounts[$sockId] = 0;
-            $this->requestQueue[$backendId] = [];
-            
-            $portStartPos = strrpos($uri, ':');
-            $port = substr($uri, $portStartPos + 1);
-            $this->backendPortMap[$sockId] = $port;
             
             $parser = $this->canUsePeclParser
                 ? new PeclMessageParser(MessageParser::MODE_RESPONSE)
                 : new MessageParser(MessageParser::MODE_RESPONSE);
             
-            $this->backendParsers[$sockId] = $parser;
-            $this->backendSubscriptions[$sockId] = $this->reactor->onReadable($socket, function($socket) {
-                $this->read($socket);
+            $backend = new Backend($this->server, $parser, $socket);
+            $readSubscription = $this->reactor->onReadable($socket, function() use ($backend) {
+                $this->read($backend);
             });
             
-        } else {
-            $msg = "Socket connect failure: $uri";
-            $msg .= $errNo ? "; [Error# $errNo] $errStr" : '';
+            $this->backends[$uri] = $backend;
+            $this->backendSubscriptions->attach($backend, $readSubscription);
             
-            throw new \RuntimeException($msg);
+            $result = TRUE;
+            
+        } else {
+            $errMsg = "Socket connect failure: $uri" . ($errNo ? "; [Error# $errNo] $errStr" : '');
+            $stderr = $this->server->getErrorStream();
+            fwrite($stderr, $errMsg);
+            
+            $result = FALSE;
+        }
+        
+        return $result;
+    }
+    
+    private function read(Backend $backend) {
+        try {
+            $backend->read();
+        } catch (BackendGoneException $e) {
+            $this->onDeadBackend($backend);
+        }
+    }
+    
+    private function onDeadBackend(Backend $backend) {
+        $readSubscription = $this->backendSubscriptions->offsetGet($backend);
+        $readSubscription->cancel();
+        $this->backendSubscriptions->detach($backend);
+        $this->writableBackends->detach($backend);
+        $uri = $backend->getUri();
+        unset($this->backends[$uri]);
+        $this->connect($uri);
+    }
+    
+    private function autoWrite() {
+        foreach ($this->writableBackends as $backend) {
+            $this->write($backend);
+        }
+    }
+    
+    private function write(Backend $backend) {
+        try {
+            if ($backend->write()) {
+                $this->writableBackends->detach($backend);
+            }
+        } catch (BackendGoneException $e) {
+            $this->onDeadBackend($backend);
         }
     }
     
     function __invoke($asgiEnv, $requestId) {
-        asort($this->pendingRequestCounts);
-        $backendId = key($this->pendingRequestCounts);
-        
-        if ($this->pendingRequestCounts[$backendId] >= $this->maxPendingRequests) {
-            return $this->generateServiceUnavailableResponse($asgiEnv['REQUEST_URI']);
+        if (!$this->backends) {
+            $asgiResponse = $this->generateServiceUnavailableResponse();
+            $this->server->setResponse($requestId, $asgiResponse);
+            return;
         }
         
-        $this->pendingRequestCounts[$backendId]++;
+        $backends = array_map([$this, 'mapBackendQueueSize'], $this->backends);
+        asort($backends);
         
-        $backendSock = $this->backends[$backendId];
-        $backendPort = $this->backendPortMap[$backendId];
-        
-        $headers = $this->generateRawHeadersFromEnvironment($asgiEnv, $backendPort);
-        
-        $writer = $asgiEnv['ASGI_INPUT']
-            ? new StreamWriter($backendSock, $headers, $asgiEnv['ASGI_INPUT'])
-            : new Writer($backendSock, $headers);
-        
-        $this->requestQueue[$backendId][$requestId] = $writer;
-        $this->autoWrite();
+        if (current($backends) < $this->maxPendingRequests) {
+            $uri = key($backends);
+            $backend = $this->backends[$uri];
+            $backend->enqueueRequest($requestId, $asgiEnv);
+            $this->write($backend);
+        } else {
+            $asgiResponse = $this->generateServiceUnavailableResponse();
+            $this->server->setResponse($requestId, $asgiResponse);
+        }
     }
     
-    private function generateServiceUnavailableResponse($requestUri) {
+    private function generateServiceUnavailableResponse() {
         $status = Status::SERVICE_UNAVAILABLE;
         $reason = Reason::HTTP_503;
-        $body = "<html><body><h1>$status $reason</h1><hr /><p>$requestUri</p></body></html>";
+        $body = "<html><body><h1>$status $reason</h1><hr /></body></html>";
         $headers = [
             'Content-Type' => 'text/html; charset=utf-8',
             'Content-Length' => strlen($body)
@@ -104,97 +135,8 @@ class ReverseProxyHandler {
         return [$status, $reason, $headers, $body];
     }
     
-    private function generateRawHeadersFromEnvironment(array $asgiEnv, $backendPort) {
-        $headerStr = $asgiEnv['REQUEST_METHOD'] . ' ' . $asgiEnv['REQUEST_URI'] . " HTTP/1.1\r\n";
-        
-        $headerArr = [];
-        foreach ($asgiEnv as $key => $value) {
-            if (strpos($key, 'HTTP_') === 0) {
-                $key = str_replace('_', '-', substr($key, 5));
-                $headerArr[$key] = $value;
-            }
-        }
-        
-        $headerArr['HOST'] = $asgiEnv['SERVER_NAME'] . ':' . $backendPort;
-        $headerArr['CONNECTION'] = 'keep-alive';
-        $headerArr['X-FORWARDED-FOR'] = $asgiEnv['REMOTE_ADDR'];
-        
-        foreach ($headerArr as $field => $value) {
-            if ($value === (array) $value) {
-                foreach ($value as $nestedValue) {
-                    $headerStr .= "$field: $nestedValue\r\n";
-                }
-            } else {
-                $headerStr .= "$field: $value\r\n";
-            }
-        }
-        
-        $headerStr .= "\r\n";
-        
-        return $headerStr;
-    }
-    
-    private function autoWrite() {
-        foreach ($this->requestQueue as $backendId => $writerArr) {
-            foreach ($writerArr as $requestId => $writer) {
-                if ($writer->write()) {
-                    $this->responseQueue[$backendId][] = $requestId;
-                    unset($this->requestQueue[$backendId][$requestId]);
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-    
-    private function read($backendSock) {
-        $backendId = (int) $backendSock;
-        
-        $data = @fread($backendSock, $this->ioGranularity);
-        
-        if ($data || $data === '0') {
-            $this->parse($backendId, $data);
-        } elseif (!is_resource($backendSock) || feof($backendSock)) {
-            $this->handleDeadBackendSocket($backendId);
-        }
-    }
-    
-    private function parse($backendId, $data) {
-        $parser = $this->backendParsers[$backendId];
-        while ($responseArr = $parser->parse($data)) {
-            $this->onResponse($backendId, $responseArr);
-            $data = '';
-        }
-    }
-    
-    private function onResponse($backendId, array $responseArr) {
-        $requestId = array_shift($this->responseQueue[$backendId]);
-        $this->pendingRequestCounts[$backendId]--;
-        
-        unset(
-            $responseArr['headers']['CONNECTION'],
-            $responseArr['headers']['TRANSFER-ENCODING']
-        );
-        
-        $asgiResponse = [
-            $responseArr['status'],
-            $responseArr['reason'],
-            $responseArr['headers'],
-            $responseArr['body']
-        ];
-        
-        $this->server->setResponse($requestId, $asgiResponse);
-    }
-    
-    /**
-     * @TODO Handle dead backend socket
-     * @TODO Respond with 502 Bad Gateway to all pending requests for this backend
-     * @TODO Attempt periodic reconnection to backend
-     */
-    private function handleDeadBackendSocket($backendId) {
-        throw new \RuntimeException(
-            'Backend socket has gone away'
-        );
+    private function mapBackendQueueSize(Backend $backend) {
+        return $backend->getQueueSize();
     }
     
     function setMaxPendingRequests($count) {
@@ -202,6 +144,12 @@ class ReverseProxyHandler {
             'min_range' => 1,
             'default' => 1500
         ]]);
+    }
+    
+    function __destruct() {
+        foreach ($this->backendSubscriptions as $sub) {
+            $sub->cancel();
+        }
     }
 }
 

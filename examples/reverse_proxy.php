@@ -20,7 +20,7 @@
  * KeepAliveTimeout 86400
  * 
  * If using an Aerys backend server, the following options should be set in the backend config
- * array to allow long-lived keep-alive connections:
+ * array to allow long-lived keep-alive connections to the front-facing reverse proxy:
  * 
  * $config = [
  *     'options' => [
