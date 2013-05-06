@@ -3,17 +3,17 @@
 namespace Aerys\Mods;
 
 use Aerys\Server,
-    Aerys\Handlers\StaticFiles\Handler;
+    Aerys\Handlers\DocRoot\DocRootHandler;
 
 class ModSendFile implements BeforeResponseMod {
     
     private $server;
-    private $filesysHandler;
+    private $docRootHandler;
     private $beforeResponsePriority = 45;
     
-    function __construct(Server $server, Handler $filesysHandler) {
+    function __construct(Server $server, DocRootHandler $docRootHandler) {
         $this->server = $server;
-        $this->filesysHandler = $filesysHandler;
+        $this->docRootHandler = $docRootHandler;
     }
     
     function getBeforeResponsePriority() {
@@ -36,11 +36,11 @@ class ModSendFile implements BeforeResponseMod {
         
         $asgiEnv = $this->server->getRequest($requestId);
         
-        $filesysHandlerResponse    = $this->filesysHandler->__invoke($asgiEnv);
-        $filesysHandlerHeaders     = array_change_key_case($filesysHandlerResponse[2], CASE_UPPER);
-        $filesysHandlerResponse[2] = array_merge($filesysHandlerHeaders, $originalHeaders);
+        $docRootHandlerResponse    = $this->docRootHandler->__invoke($asgiEnv);
+        $docRootHandlerHeaders     = array_change_key_case($docRootHandlerResponse[2], CASE_UPPER);
+        $docRootHandlerResponse[2] = array_merge($docRootHandlerHeaders, $originalHeaders);
         
-        $this->server->setResponse($requestId, $filesysHandlerResponse);
+        $this->server->setResponse($requestId, $docRootHandlerResponse);
     }
 }
 

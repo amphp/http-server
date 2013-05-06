@@ -222,7 +222,7 @@ class Session {
             return ['', ''];
         }
         
-        $code = unpack('Nstatus', substr($payload, 0, 2))['status'];
+        $code = unpack('nstatus', substr($payload, 0, 2))['status'];
         $code = filter_var($code, FILTER_VALIDATE_INT, ['options' => [
             'default' => Codes::NONE,
             'min_range' => 1000,

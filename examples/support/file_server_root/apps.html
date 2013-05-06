@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Aerys</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="Daniel Lowrey">
+
+    <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.min.css" rel="stylesheet">
+    <link href="/favicon.ico" rel="icon" type="image/x-icon" />
+    <link href="/css/additional.css" rel="stylesheet" type="text/css">
+      
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="../assets/js/html5shiv.js"></script>
+    <![endif]-->
+  </head>
+
+  <body>
+
+    <div class="container">
+
+      <div class="masthead">
+        <div class="navbar">
+          <div class="navbar-inner">
+            <div class="container">
+              <ul class="nav">
+                <li><a href="/">Home</a></li>
+                <li class="active"><a href="/apps.html">Applications</a></li>
+                <li><a href="/static.html">Static Files</a></li>
+                <li><a href="/websockets/">Websockets</a></li>
+                <li><a href="/mods/">Mods</a></li>
+                <li><a href="/asgi.html">ASGI</a></li>
+              </ul>
+            </div>
+          </div>
+        </div><!-- /.navbar -->
+      </div>
+      
+      <h1>Dynamic Web Applications</h1>
+      <p class="lead">Aerys makes RESTful PHP applications a reality.</p>
+      <hr />
+      
+      <h3>Why? Doesn't Core PHP Already Do This?</h3>
+      <p>@TODO: PHP's HTTP abstractions kind of suck, actually.</p>
+      
+      <h3>Host-Based vs. File-Based Apps</h3>
+      
+      <p>
+        In the early days of the web HTTP was used primarily to share static files between clients and
+        servers. Naturally, major HTTP server applications over the years have catered to static file
+        serving while bolting support for dynamically generated applications on top of this
+        <i>"file-centric"</i> model. In traditional servers (like Apache), dynamic files
+        are treated like static files with the twist that they are executed and not served verbatim
+        to the client.
+      </p>
+      <p>
+        Aerys takes a different approach to dynamic HTTP applications in that it views each individual
+        named host as its own <i>"application."</i> Each host must define a primary
+        <a href="/asgi.html" title="ASGI specification">ASGI application handler</a> to which the
+        environment array will be passed upon the receipt of a client request. It is the application's
+        job, then, to respond programmatically to the request based on the request's environment values.
+      </p>
+      <p>
+        The Aerys server acts as a simple clearing-house for requests and responses passing them to
+        and from the application handler for each host on the server. Additionally, Aerys exposes
+        <a href="/mods/" title="Aerys modding and customization">mod event hooks</a> allowing 
+        customization and extensibility at specific points during the lifecycle of a request-response pair.
+      </p>
+      
+      <h3>Built-in Application Handlers</h3>
+      <p>
+        Aerys comes pre-packaged with a small number of handlers for standard use-cases. These
+        handlers are listed below ...
+      </p>
+      
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>Handler</th><th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+          <tr>
+            <td>Reverse Proxy</td>
+            <td>
+              Proxy all requests for the host to any one of several backend servers identified by
+              IP and port. Uses HTTP/1.1 keep-alive for long-lived connections to backend servers.
+              This handler is extremely useful for layering websocket endpoints and application-specific
+              content caching rules on top of a preexisting application behind an Apache/Nginx/etc server.
+            </td>
+          </tr>
+          
+          <tr>
+            <td>Static Files</td>
+            <td>
+              Despite the dynamic nature of modern web applications static file serving remains an
+              important aspect of any HTTP app. Aerys provides a performant HTTP/1.1 compliant static
+              file application handler to address this need. Prime your app for scalability by hosting
+              static files from a named subdomain such as <i>http://static.mysite.com</i> to allow
+              a seamless transition down the road to a CDN or server optimized for file serving
+              (like Nginx) as your needs change.<br />
+              
+              <a href="/static.html">Read more about the static file handler ...</a>
+            </td>
+          </tr>
+          
+          <tr>
+            <td>Websockets</td>
+            <td>
+              OMG can PHP really solve the <a href="http://www.kegel.com/c10k.html">C10K PROBLEM</a>
+              and do <i>webscale</i>? Yes. Yes it can. Aerys makes websockets as outlined in
+              <a href="http://tools.ietf.org/html/rfc6455" title="RFC 6455"> RFC 6455</a> a first
+              class citizen. Traditional PHP websocket solutions require a proxy server because the
+              real front-facing server -- be it Lighttpd, Apache, Nginx, etc -- is already taking up
+              the ports (80/443) on which the websocket protocol listens. Aerys <i>is its own</i>
+              event-driven server and does not run behind a traditional PHP SAPI layer. This means
+              that it can delegate control of the appropriate client sockets as needed to its own
+              websocket handling mechanism after negotiating the websocket handshake. Note that Aerys
+              allows Websocket handler usage over both standard and TLS-encrypted connections.<br />
+              
+              <a href="/websockets.html">Read more about the websocket handler ...</a>
+            </td>
+          </tr>
+          
+        </tbody>
+      </table>
+      
+      
+      <h3>User Defined Applications</h3>
+      <p>@TODO</p>
+      
+      
+      <h3>Example Host Configurations</h3>
+      <p>@TODO</p>
+      
+      <hr />
+      
+      <div class="footer">
+        <p>&copy; <a href="http://chat.stackoverflow.com/transcript/message/7857491#7857491">Lusitanian's Mom</a> 2013</p>
+      </div>
+
+    </div> <!-- /container -->
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/js/bootstrap.min.js"></script>
+
+  </body>
+</html>

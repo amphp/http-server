@@ -22,22 +22,23 @@
  * the websocket application!
  */
 
-use Aerys\Config\StaticFilesApp,
+use Aerys\Config\DocRootLauncher,
     Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
-require __DIR__ . '/support_files/ExampleChatEndpoint.php'; // <-- example endpoint class file
-
-date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
+require __DIR__ . '/support/ExampleChatEndpoint.php'; // <-- example endpoint class file
 
 (new Configurator)->createServer([[
-    'listenOn'      => '127.0.0.1:1337',
-    'application'   => new StaticFilesApp([
-        'docRoot'   => __DIR__ . '/support_files/websocket_mod_root'
+    'listenOn'      => '*:1337',
+    'application'   => new DocRootLauncher([
+        'docRoot'   => __DIR__ . '/support/websocket_mod_root'
     ]),
     'mods' => [
         'websocket' => [
             '/chat' => new ExampleChatEndpoint // <-- class file was required manually above
+        ],
+        'log' => [
+            'php://stdout' => 'common'
         ]
     ]
 ]])->start();

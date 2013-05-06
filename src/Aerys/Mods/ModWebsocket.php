@@ -4,17 +4,17 @@ namespace Aerys\Mods;
 
 use Aerys\Status,
     Aerys\Server,
-    Aerys\Handlers\Websocket\Handler;
+    Aerys\Handlers\Websocket\WebsocketHandler;
 
 class ModWebsocket implements OnHeadersMod {
     
     private $server;
-    private $wsHandler;
+    private $websocketHandler;
     private $onHeadersPriority = 50;
     
-    function __construct(Server $server, Handler $wsHandler) {
+    function __construct(Server $server, WebsocketHandler $websocketHandler) {
         $this->server = $server;
-        $this->wsHandler = $wsHandler;
+        $this->websocketHandler = $websocketHandler;
     }
     
     function getOnHeadersPriority() {
@@ -23,7 +23,7 @@ class ModWebsocket implements OnHeadersMod {
     
     function onHeaders($requestId) {
         $asgiEnv = $this->server->getRequest($requestId);
-        $asgiResponse = $this->wsHandler->__invoke($asgiEnv);
+        $asgiResponse = $this->websocketHandler->__invoke($asgiEnv);
         
         // The Websocket handler returns a 404 if the requested resource path
         // isn't registered as an endpoint. If we get this back we don't need

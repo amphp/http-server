@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\Handlers\StaticFiles\Handler,
+use Aerys\Handlers\DocRoot\DocRootHandler,
     Amp\ReactorFactory;
 
 class StaticFileRelativePathAscensionTest extends PHPUnit_Framework_TestCase {
@@ -22,7 +22,7 @@ class StaticFileRelativePathAscensionTest extends PHPUnit_Framework_TestCase {
     function testRelativePathCantAscendPastDocumentRoot($requestUri) {
         $docRoot = FIXTURE_DIR . '/vfs/static_handler_root';
         $reactor = (new ReactorFactory)->select();
-        $handler = new Handler($reactor, $docRoot);
+        $handler = new DocRootHandler($reactor, $docRoot);
         
         $asgiEnv = [
             'REQUEST_METHOD' => 'GET',

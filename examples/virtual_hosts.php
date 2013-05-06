@@ -33,12 +33,10 @@
  * Once the server has started, request http://aerys:1337/ in your browser or client of choice.
  */
 
-use Aerys\Config\StaticFilesApp,
+use Aerys\Config\DocRootLauncher,
     Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
-
-date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
 
 $myApp = function(array $asgiEnv) {
     if ($asgiEnv['REQUEST_URI'] == '/favicon.ico') {
@@ -57,15 +55,15 @@ $myApp = function(array $asgiEnv) {
 
 $config = [
     'host.dynamic' => [
-        'listenOn'      => '127.0.0.1:1337',
+        'listenOn'      => '*:1337',
         'name'          => 'aerys', // <--- ADD NAME TO YOUR HOSTS FILE OR THE EXAMPLE WON'T WORK
         'application'   => $myApp
     ],
     'host.static' => [
-        'listenOn'      => '127.0.0.1:1337',
+        'listenOn'      => '*:1337',
         'name'          => 'static.aerys', // <--- ADD NAME TO YOUR HOSTS FILE OR THE EXAMPLE WON'T WORK
-        'application'   => new StaticFilesApp([
-            'docRoot'   => __DIR__ . '/support_files/file_server_root'
+        'application'   => new DocRootLauncher([
+            'docRoot'   => __DIR__ . '/support/file_server_root'
         ])
     ]
 ];

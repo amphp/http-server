@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Aerys Websocket Chat Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="Daniel Lowrey">
+
+    <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.min.css" rel="stylesheet">
+    <link href="/favicon.ico" rel="icon" type="image/x-icon" />
+    <link href="/css/additional.css" rel="stylesheet" type="text/css">
+    <link href="/css/chat.css" rel="stylesheet" type="text/css">
+  </head>
+
+  <body>
+
+    <div class="container">
+
+      <div class="masthead">
+        <div class="navbar">
+          <div class="navbar-inner">
+            <div class="container">
+              <ul class="nav">
+                <li><a href="/">Home</a></li>
+                <li><a href="/apps.html">Applications</a></li>
+                <li><a href="/static.html">Static Files</a></li>
+                <li class="active"><a href="/websockets/">Websockets</a></li>
+                <li><a href="/mods/">Mods</a></li>
+                <li><a href="/asgi.html">ASGI</a></li>
+              </ul>
+            </div>
+          </div>
+        </div><!-- /.navbar -->
+      </div>
+
+      <h1>Websocket Chat Demo</h1>
+      <p class="lead">It's a bird! It's a plane! No, it's RFC 6455!</p>
+      
+      <hr />
+      
+      <form id="theForm" class="form-inline">
+        <fieldset>
+          <input type="text" placeholder="Type something …" name="msg" id="txtbox">
+          <input class="btn" type="submit" value="Send" id="submit">
+        </fieldset>
+      </form>
+      
+      <div id="messages"></div>
+    
+    </div>
+
+    <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="/scripts/chat.js"></script>
+
+  </body>
+  
+</html>
+

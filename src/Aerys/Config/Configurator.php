@@ -4,8 +4,7 @@ namespace Aerys\Config;
 
 use Auryn\Injector,
     Auryn\Provider,
-    Amp\Reactor,
-    Amp\ReactorFactory,
+    Auryn\InjectionException,
     Amp\TcpServer,
     Aerys\Host,
     Aerys\Server;
@@ -13,43 +12,32 @@ use Auryn\Injector,
 class Configurator {
     
     private $injector;
-    private $reactorFactory;
     
-    function __construct(Injector $injector = NULL, ReactorFactory $reactorFactory = NULL) {
+    function __construct(Injector $injector = NULL) {
         $this->injector = $injector ?: new Provider;
-        $this->reactorFactory = $reactorFactory ?: new ReactorFactory;
     }
     
     function createServer(array $config) {
-        list($reactor, $opts, $globalMods, $hostConf) = $this->listConfigSections($config);
+        $tcpServers = $hosts = $mods = $options = [];
         
-        $reactor = $this->generateReactor($reactor);
-        $httpServer = new Server($reactor);
+        if (isset($config['options'])) {
+            $options = $config['options'];
+            unset($config['options']);
+        }
         
-        $this->injector->implement('Amp\\Reactor', get_class($reactor));
-        $this->injector->share($reactor);
-        $this->injector->share($httpServer);
-        
-        $servers = [];
-        $hosts = [];
-        $mods = [];
-        
-        $hostDefs = $this->generateHostDefinitions($hostConf);
+        $httpServer = $this->generateHttpServerInstance();
+        $hostDefs = $this->generateHostDefinitions($config);
         
         foreach ($hostDefs as $hostId => $hostStruct) {
-            list($host, $hostMods, $tls) = $hostStruct;
+            list($host, $hostMods, $hostTls) = $hostStruct;
             
             $hosts[$hostId] = $host;
             $mods[$hostId] = $hostMods;
-            
-            $addr = $host->getAddress();
-            $port = $host->getPort();
-            $interfaceId = $addr . ':' . $port;
-            
-            $servers[$interfaceId] = $tls;
+            $tcpId = $host->getAddress() . ':' . $host->getPort();
+            $tcpServers[$tcpId] = $hostTls;
         }
         
-        foreach ($servers as $name => $tls) {
+        foreach ($tcpServers as $name => $tls) {
             $httpServer->defineBinding($name, $tls);
         }
         
@@ -57,51 +45,28 @@ class Configurator {
             $httpServer->addHost($host);
         }
         
-        foreach ($opts as $key => $value) {
+        foreach ($options as $key => $value) {
             if (isset($value)) {
                 $httpServer->setOption($key, $value);
             }
         }
         
-        $this->registerMods($httpServer, $globalMods, $mods);
+        $this->registerMods($httpServer, $mods);
                 
         return $httpServer;
     }
     
-    private function listConfigSections(array $config) {
-        $reactor = $opts = $mods = $hosts = [];
+    private function generateHttpServerInstance() {
+        $this->injector->delegate('Amp\Reactor', 'Amp\ReactorFactory');
+        $reactor = $this->injector->make('Amp\Reactor');
         
-        if (!empty($config['reactor'])) {
-            $reactor = $config['reactor'];
-        }
-        if (isset($config['options'])) {
-            $opts = $config['options'];
-        }
-        if (isset($config['mods'])) {
-            $mods = $config['mods'];
-        }
+        $this->injector->alias('Amp\Reactor', get_class($reactor));
+        $this->injector->share($reactor);
         
-        unset(
-            $config['reactor'],
-            $config['options'],
-            $config['mods']
-        );
+        $httpServer = $this->injector->make('Aerys\Server');
+        $this->injector->share($httpServer);
         
-        $hostConfs = $config;
-        
-        return [$reactor, $opts, $mods, $hostConfs];
-    }
-    
-    private function generateReactor($reactor) {
-        if (!$reactor) {
-            return $this->reactorFactory->select();
-        } elseif ($reactor instanceof Reactor) {
-            return $reactor;
-        } else {
-            throw new ConfigException(
-                'Invalid global reactor specified; Aerys\\Reactor\\Reactor instance expected'
-            );
-        }
+        return $httpServer;
     }
     
     private function generateHostDefinitions(array $hosts) {
@@ -154,30 +119,22 @@ class Configurator {
     }
     
     private function generateHostHandler($handler) {
-        if ($handler instanceof AppLauncher) {
+        if ($handler instanceof Launcher) {
             return $handler->launchApp($this->injector);
         } elseif (is_callable($handler)) {
             return $handler;
         } else {
             throw new ConfigException(
-                'Invalid host handler; callable or Aerys\Config\AppLauncher instance required'
+                'Invalid host handler; callable or Launcher instance required'
             );
         }
     }
     
-    private function registerMods(Server $server, $globalMods, $hostMods) {
-        foreach ($globalMods as $modKey => $modDefinition) {
-            $globalMods[$modKey] = $this->buildMod($modKey, $modDefinition);
-        }
-        
+    private function registerMods(Server $httpServer, $hostMods) {
         foreach ($hostMods as $hostId => $hostModArr) {
-            $mods = [];
             foreach ($hostModArr as $modKey => $modDefinition) {
-                $mods[$modKey] = $this->buildMod($modKey, $modDefinition);
-            }
-            
-            foreach (array_merge($globalMods, $mods) as $mod) {
-                $server->registerMod($hostId, $mod);
+                $mod = $this->buildMod($modKey, $modDefinition);
+                $httpServer->registerMod($hostId, $mod);
             }
         }
     }
@@ -207,47 +164,47 @@ class Configurator {
         $docRoot = $config['docRoot'];
         unset($config['docRoot']);
         
-        $filesys = $this->injector->make('Aerys\\Handlers\\StaticFiles\\Handler', [
+        $handler = $this->injector->make('Aerys\Handlers\DocRoot\DocRootHandler', [
             ':docRoot' => $docRoot,
             ':options' => $config
         ]);
         
-        return $this->injector->make('Aerys\\Mods\\ModSendFile', [
-            ':filesys' => $filesys
+        return $this->injector->make('Aerys\Mods\ModSendFile', [
+            ':docRootHandler' => $handler
         ]);
     }
     
     private function buildModLog(array $config) {
-        return $this->injector->make('Aerys\\Mods\\ModLog', [
+        return $this->injector->make('Aerys\Mods\ModLog', [
             ':logs' => $config
         ]);
     }
     
     private function buildModErrorPages(array $config) {
-        return $this->injector->make('Aerys\\Mods\\ModErrorPages', [
+        return $this->injector->make('Aerys\Mods\ModErrorPages', [
             ':config' => $config
         ]);
     }
     
     private function buildModLimit(array $config) {
-        return $this->injector->make('Aerys\\Mods\\ModLimit', [
+        return $this->injector->make('Aerys\Mods\ModLimit', [
             ':config' => $config
         ]);
     }
     
     private function buildModExpect(array $config) {
-        return $this->injector->make('Aerys\\Mods\\ModExpect', [
+        return $this->injector->make('Aerys\Mods\ModExpect', [
             ':config' => $config
         ]);
     }
     
     private function buildModWebsocket(array $config) {
-        $wsHandler = $this->injector->make('Aerys\\Handlers\\Websocket\\Handler', [
+        $handler = $this->injector->make('Aerys\Handlers\Websocket\WebsocketHandler', [
             ':endpoints' => $config
         ]);
         
-        return $this->injector->make('Aerys\\Mods\\ModWebsocket', [
-            ':wsHandler' => $wsHandler
+        return $this->injector->make('Aerys\Mods\ModWebsocket', [
+            ':websocketHandler' => $handler
         ]);
     }
 }

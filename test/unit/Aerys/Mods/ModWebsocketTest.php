@@ -1,7 +1,7 @@
 <?php
 
 use Aerys\Mods\ModWebsocket,
-    Aerys\Handlers\Websocket\Handler;
+    Aerys\Handlers\Websocket\WebsocketHandler;
 
 class ModWebsocketTest extends PHPUnit_Framework_TestCase {
     
@@ -34,7 +34,7 @@ class ModWebsocketTest extends PHPUnit_Framework_TestCase {
     
 }
 
-class StubWebsocketHandler extends Aerys\Handlers\Websocket\Handler {
+class StubWebsocketHandler extends Aerys\Handlers\Websocket\WebsocketHandler {
     function __construct() {}
 }
 

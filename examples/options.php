@@ -35,17 +35,10 @@ $config = [
         'defaultHost'           => NULL,
         'requireBodyLength'     => FALSE,
         'allowedMethods'        => ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'TRACE', 'DELETE'],
-        'socketSoLinger'        => NULL, // Requires PHP sockets extension
+        'socketSoLinger'        => NULL, // Requires PHP's ext/sockets extension
     ],
     
-    'reactor' => NULL, // Optionally specify your own Amp\Reactor instance
-    
-    'mods' => [
-        // Any mods specified here are global to all hosts. A mod of the same type specified
-        // in a specific host container will override a matching global mod.
-    ],
-    
-    // --- ALL KEYS NOT NAMED "options," "mods," or "reactor" ARE CONSIDERED HOST CONTAINERS ---
+    // --- ALL KEYS NOT NAMED "options" ARE CONSIDERED HOST CONTAINERS ---
     
     'myHost'   => [
         'listenOn'      => '*:1337',

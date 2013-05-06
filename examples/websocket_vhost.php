@@ -29,23 +29,21 @@
  */
 
 use Aerys\Config\WebsocketApp,
-    Aerys\Config\StaticFilesApp,
+    Aerys\Config\DocRootLauncher,
     Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
-require __DIR__ . '/support_files/ExampleChatEndpoint.php'; // <-- example endpoint class file
-
-date_default_timezone_set(ini_get('date.timezone') ?: 'UTC');
+require __DIR__ . '/support/ExampleChatEndpoint.php'; // <-- example endpoint class file
 
 $config = [
-    'front-facing-static-files' => [
+    'my-primary-domain' => [
         'listenOn'      => '*:1337',
         'name'          => 'myhost', // <--- ADD NAME TO YOUR SYSTEM HOSTS FILE!
-        'application'   => new StaticFilesApp([
-            'docRoot'   => __DIR__ . '/support_files/websocket_vhost_root'
+        'application'   => new DocRootLauncher([
+            'docRoot'   => __DIR__ . '/support/websocket_vhost_root'
         ]),
     ],
-    'backend-websocket-host' => [
+    'my-websocket-subdomain' => [
         'listenOn'      => '*:1337',
         'name'          => 'websockets.myhost', // <--- ADD NAME TO YOUR SYSTEM HOSTS FILE!
         'application'   => new WebsocketApp([

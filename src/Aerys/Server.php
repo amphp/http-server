@@ -5,7 +5,6 @@ namespace Aerys;
 use Amp\Reactor,
     Amp\TcpServer,
     Aerys\Parsing\MessageParser,
-    Aerys\Parsing\PeclMessageParser,
     Aerys\Parsing\ParseException,
     Aerys\Parsing\ResourceReadException,
     Aerys\Mods\OnHeadersMod,

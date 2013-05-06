@@ -16,7 +16,7 @@ $myApp = function(array $asgiEnv) {
 };
 
 (new Configurator)->createServer([[
-    'listenOn'      => '127.0.0.1:1337',
+    'listenOn'      => '*:1337',
     'application'   => $myApp
 ]])->start();
 

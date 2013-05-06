@@ -96,16 +96,18 @@ class SessionManager implements \Countable {
     }
     
     function close(Session $session) {
-        list($socket, $subscription) = $this->sessions->offsetGet($session);
-        
-        $subscription->cancel();
-        @fclose($socket);
-        
-        $requestUri = $session->getAsgiEnv()['REQUEST_URI'];
-        $this->clientCounts[$requestUri]--;
-        
-        $this->sessions->detach($session);
-        $this->awaitingWrite->detach($session);
+        if ($this->sessions->contains($session)) {
+            list($socket, $subscription) = $this->sessions->offsetGet($session);
+            
+            $subscription->cancel();
+            @fclose($socket);
+            
+            $requestUri = $session->getAsgiEnv()['REQUEST_URI'];
+            $this->clientCounts[$requestUri]--;
+            
+            $this->sessions->detach($session);
+            $this->awaitingWrite->detach($session);
+        }
     }
     
     function count($endpointUri = NULL) {
