@@ -24,7 +24,7 @@ class ExampleAsyncApp {
         $callId = $this->dispatcher->call($onResultCallback, 'my_async_function', 'Zanzibar!');
         $this->callIdRequestMap[$callId] = $requestId;
         
-        return NULL; // Don't return an ASGI response now because we don't know what it is yet!
+        // We don't return a response now because we don't know what it is yet!
     }
     
     /**
