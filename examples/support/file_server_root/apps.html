@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>Aerys</title>
+    <title>Aerys and Dynamic Applications</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="">
     <meta name="author" content="Daniel Lowrey">
@@ -84,17 +84,7 @@
         <tbody>
           
           <tr>
-            <td>Reverse Proxy</td>
-            <td>
-              Proxy all requests for the host to any one of several backend servers identified by
-              IP and port. Uses HTTP/1.1 keep-alive for long-lived connections to backend servers.
-              This handler is extremely useful for layering websocket endpoints and application-specific
-              content caching rules on top of a preexisting application behind an Apache/Nginx/etc server.
-            </td>
-          </tr>
-          
-          <tr>
-            <td>Static Files</td>
+            <td>DocRoot</td>
             <td>
               Despite the dynamic nature of modern web applications static file serving remains an
               important aspect of any HTTP app. Aerys provides a performant HTTP/1.1 compliant static
@@ -104,6 +94,16 @@
               (like Nginx) as your needs change.<br />
               
               <a href="/static.html">Read more about the static file handler ...</a>
+            </td>
+          </tr>
+          
+          <tr>
+            <td>ReverseProxy</td>
+            <td>
+              Proxy all requests for the host to any one of several backend servers identified by
+              IP and port. Uses HTTP/1.1 keep-alive for long-lived connections to backend servers.
+              This handler is extremely useful for layering websocket endpoints and application-specific
+              content caching rules on top of a preexisting application behind an Apache/Nginx/etc server.
             </td>
           </tr>
           
