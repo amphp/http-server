@@ -15,10 +15,15 @@ class FrameWriter {
     private $currentFrame;
     private $buffer;
     private $bufferSize;
+    private $granularity = 65535;
     
     function __construct($destination) {
         $this->destination = $destination;
         $this->priorityFrameQueue = new FrameQueue;
+    }
+    
+    function setGranularity($bytes) {
+        $this->granularity = (int) $bytes;
     }
     
     function canWrite() {
@@ -49,7 +54,11 @@ class FrameWriter {
         }
         
         writing: {
-            $bytesWritten = @fwrite($this->destination, $this->buffer);
+            $byteWriteLimit = ($this->bufferSize > $this->granularity)
+                ? $this->granularity
+                : $this->bufferSize;
+            
+            $bytesWritten = @fwrite($this->destination, $this->buffer, $byteWriteLimit);
             
             if ($bytesWritten === $this->bufferSize) {
                 goto frame_complete;
