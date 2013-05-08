@@ -17,10 +17,8 @@ class EndpointOptionsTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals($expectations['msgSwapSize'], $opts->getMsgSwapSize());
         $this->assertEquals($expectations['maxFrameSize'], $opts->getMaxFrameSize());
         $this->assertEquals($expectations['autoFrameSize'], $opts->getAutoFrameSize());
-        $this->assertEquals($expectations['ioGranularity'], $opts->getIoGranularity());
         $this->assertEquals($expectations['queuedPingLimit'], $opts->getQueuedPingLimit());
         $this->assertEquals($expectations['heartbeatPeriod'], $opts->getHeartbeatPeriod());
-        $this->assertEquals($expectations['debugMode'], $opts->getDebugMode());
     }
     
     function provideOptionValues() {
@@ -36,10 +34,8 @@ class EndpointOptionsTest extends PHPUnit_Framework_TestCase {
             'maxFrameSize'     => 2097152,
             'maxMsgSize'       => 10485760,
             'autoFrameSize'    => 32768,
-            'ioGranularity'    => 8192,
             'queuedPingLimit'  => 3,
             'heartbeatPeriod'  => 10,
-            'debugMode'        => FALSE
         ];
         
         $expects = [
@@ -50,10 +46,8 @@ class EndpointOptionsTest extends PHPUnit_Framework_TestCase {
             'maxFrameSize'     => 2097152,
             'maxMsgSize'       => 10485760,
             'autoFrameSize'    => 32768,
-            'ioGranularity'    => 8192,
             'queuedPingLimit'  => 3,
             'heartbeatPeriod'  => 10,
-            'debugMode'        => FALSE
         ];
         
         $return[] = [$options, $expects];
