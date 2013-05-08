@@ -1,9 +1,10 @@
 <?php
 
-namespace Aerys\Mods;
+namespace Aerys\Mods\Websocket;
 
 use Aerys\Status,
     Aerys\Server,
+    Aerys\Mods\OnHeadersMod,
     Aerys\Handlers\Websocket\WebsocketHandler;
 
 class ModWebsocket implements OnHeadersMod {

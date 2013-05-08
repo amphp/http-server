@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\Mods\ModWebsocket,
+use Aerys\Mods\Websocket\ModWebsocket,
     Aerys\Handlers\Websocket\WebsocketHandler;
 
 class ModWebsocketTest extends PHPUnit_Framework_TestCase {

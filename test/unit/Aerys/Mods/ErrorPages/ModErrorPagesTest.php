@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\Mods\ModErrorPages,
+use Aerys\Mods\ErrorPages\ModErrorPages,
     org\bovigo\vfs\vfsStream;
 
 class ModErrorPagesTest extends PHPUnit_Framework_TestCase {

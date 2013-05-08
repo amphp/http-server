@@ -1,8 +1,9 @@
 <?php
 
-namespace Aerys\Mods;
+namespace Aerys\Mods\Log;
 
-use Aerys\Server;
+use Aerys\Server,
+    Aerys\Mods\AfterResponseMod;
 
 class ModLog implements AfterResponseMod {
     

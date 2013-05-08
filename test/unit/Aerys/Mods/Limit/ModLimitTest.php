@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\Mods\ModLimit,
+use Aerys\Mods\Limit\ModLimit,
     Aerys\Status,
     Aerys\Reason;
 

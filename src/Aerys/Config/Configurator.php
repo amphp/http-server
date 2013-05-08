@@ -169,31 +169,31 @@ class Configurator {
             ':options' => $config
         ]);
         
-        return $this->injector->make('Aerys\Mods\ModSendFile', [
+        return $this->injector->make('Aerys\Mods\SendFile\ModSendFile', [
             ':docRootHandler' => $handler
         ]);
     }
     
     private function buildModLog(array $config) {
-        return $this->injector->make('Aerys\Mods\ModLog', [
+        return $this->injector->make('Aerys\Mods\Log\ModLog', [
             ':logs' => $config
         ]);
     }
     
     private function buildModErrorPages(array $config) {
-        return $this->injector->make('Aerys\Mods\ModErrorPages', [
+        return $this->injector->make('Aerys\Mods\ErrorPages\ModErrorPages', [
             ':config' => $config
         ]);
     }
     
     private function buildModLimit(array $config) {
-        return $this->injector->make('Aerys\Mods\ModLimit', [
+        return $this->injector->make('Aerys\Mods\Limit\ModLimit', [
             ':config' => $config
         ]);
     }
     
     private function buildModExpect(array $config) {
-        return $this->injector->make('Aerys\Mods\ModExpect', [
+        return $this->injector->make('Aerys\Mods\Expect\ModExpect', [
             ':config' => $config
         ]);
     }
@@ -203,7 +203,7 @@ class Configurator {
             ':endpoints' => $config
         ]);
         
-        return $this->injector->make('Aerys\Mods\ModWebsocket', [
+        return $this->injector->make('Aerys\Mods\Websocket\ModWebsocket', [
             ':websocketHandler' => $handler
         ]);
     }

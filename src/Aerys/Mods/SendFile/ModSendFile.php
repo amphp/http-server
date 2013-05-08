@@ -1,8 +1,9 @@
 <?php
 
-namespace Aerys\Mods;
+namespace Aerys\Mods\SendFile;
 
 use Aerys\Server,
+    Aerys\Mods\BeforeResponseMod,
     Aerys\Handlers\DocRoot\DocRootHandler;
 
 class ModSendFile implements BeforeResponseMod {

@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\Mods\ModSendFile,
+use Aerys\Mods\SendFile\ModSendFile,
     org\bovigo\vfs\vfsStream;
 
 class ModSendFileTest extends PHPUnit_Framework_TestCase {

@@ -1,10 +1,11 @@
 <?php
 
-namespace Aerys\Mods;
+namespace Aerys\Mods\Expect;
 
 use Aerys\Server,
     Aerys\Status,
-    Aerys\Reason;
+    Aerys\Reason,
+    Aerys\Mods\OnHeadersMod;
 
 /**
  * By default Aerys will send a `100 Continue` response immediately to any requests specifying the

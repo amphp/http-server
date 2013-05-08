@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\Mods\ModExpect,
+use Aerys\Mods\Expect\ModExpect,
     Aerys\Status,
     Aerys\Reason;
 

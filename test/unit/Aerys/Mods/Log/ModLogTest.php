@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\Mods\ModLog,
+use Aerys\Mods\Log\ModLog,
     Aerys\Server;
 
 class ModLogTest extends PHPUnit_Framework_TestCase {

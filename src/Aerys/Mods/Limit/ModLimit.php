@@ -1,10 +1,11 @@
 <?php
 
-namespace Aerys\Mods;
+namespace Aerys\Mods\Limit;
 
 use Aerys\Server,
     Aerys\Status,
-    Aerys\Reason;
+    Aerys\Reason,
+    Aerys\Mods\OnHeadersMod;
 
 /**
  * Enforce request rate limits

@@ -1,8 +1,9 @@
 <?php
 
-namespace Aerys\Mods;
+namespace Aerys\Mods\ErrorPages;
 
-use Aerys\Server;
+use Aerys\Server,
+    Aerys\Mods\BeforeResponseMod;
 
 class ModErrorPages implements BeforeResponseMod {
     
