@@ -4,12 +4,6 @@ namespace Aerys\Handlers\Websocket\Io;
 
 use Aerys\Handlers\Websocket\Frame;
 
-/**
- * @TODO Don't use php://temp because we can't access the resource's filepath and that prevents
- * multiprocess handling of message payloads by downstream applications
- * 
- * @TODO Support "onFrame" callbacks to standardize extension transformations and frame logging/debugging
- */
 class FrameParser {
     
     const START = 0;
@@ -18,9 +12,7 @@ class FrameParser {
     const DETERMINE_MASKING_KEY = 15;
     const CONTROL_PAYLOAD = 20;
     const PAYLOAD = 25;
-    const PAYLOAD_WRITE = 30;
     
-    private $inputStream;
     private $state = self::START;
     
     private $fin;
@@ -37,22 +29,11 @@ class FrameParser {
     
     private $frameBytesRecd = 0;
     private $msgBytesRecd = 0;
-    private $writeBuffer;
-    private $writeBufferSize;
     
-    private $granularity = 8192;
-    private $maxFrameSize = 0;
+    private $maxFrameSize = 2097152;
     private $msgSwapSize = 2097152;
+    private $maxMsgSize = 10485760;
     private $requireMask = TRUE;
-    private $maxMsgSize = 0;
-    
-    function __construct($inputStream) {
-        $this->inputStream = $inputStream;
-    }
-    
-    function setGranularity($bytes) {
-        $this->granularity = (int) $bytes;
-    }
     
     function setMaxFrameSize($bytes) {
         $this->maxFrameSize = (int) $bytes;
@@ -70,18 +51,7 @@ class FrameParser {
         $this->requireMask = (bool) $boolFlag;
     }
     
-    function parse() {
-        $data = fread($this->inputStream, $this->granularity);
-        $emptyData = !($data || $data === '0');
-        
-        if ($emptyData && (!is_resource($this->inputStream) || feof($this->inputStream))) {
-            throw new ResourceException(
-                'Failed reading from input stream'
-            );
-        } elseif ($emptyData) {
-            goto more_data_needed;
-        }
-        
+    function parse($data) {
         $this->buffer .= $data;
         $this->bufferSize = strlen($this->buffer);
         
@@ -98,8 +68,6 @@ class FrameParser {
                 goto control_payload;
             case self::PAYLOAD:
                 goto payload;
-            case self::PAYLOAD_WRITE:
-                goto payload_write;
             default:
                 throw new \DomainException(
                     'Unexpected frame parsing state'
@@ -166,9 +134,7 @@ class FrameParser {
                 throw new PolicyException(
                     'Payload exceeds maximum allowable frame size'
                 );
-            } elseif ($this->maxMsgSize
-                && ($this->length + $this->msgBytesRecd) > $this->maxMsgSize
-            ) {
+            } elseif ($this->maxMsgSize && ($this->length + $this->msgBytesRecd) > $this->maxMsgSize) {
                 throw new PolicyException(
                     'Payload exceeds maximum allowable message size'
                 );
@@ -225,26 +191,12 @@ class FrameParser {
         
         payload: {
             $dataChunk = $this->generateFrameDataChunk();
-            $isFrameFullyRecd = ($this->frameBytesRecd == $this->length);
+            $this->writePayload($dataChunk);
             
-            $this->writeBufferSize += strlen($dataChunk);
-            $this->writeBuffer .= $dataChunk;
-            
-            if ($this->writePayload() && $isFrameFullyRecd) {
+            if ($this->frameBytesRecd === $this->length) {
                 goto frame_complete;
-            } elseif ($isFrameFullyRecd) {
-                $this->state = self::PAYLOAD_WRITE;
-                goto further_writing_required;
             } else {
                 goto more_data_needed;
-            }
-        }
-        
-        payload_write: {
-            if ($this->writePayload()) {
-                goto frame_complete;
-            } else {
-                goto further_writing_required;
             }
         }
         
@@ -313,23 +265,28 @@ class FrameParser {
         $this->bufferSize -= 8;
         
         if (PHP_INT_MAX === 0x7fffffff) {
-            if ($lengthLong32Pair[0] !== 0 || $lengthLong32Pair[1] < 0) {
-                throw new PolicyException(
-                    'Payload exceeds maximum allowable size'
-                );
-            }
-            
+            $this->validateFrameLengthFor32BitEnvironment($lengthLong32Pair);
             $this->length = $lengthLong32Pair[1];
-            
         } else {
-        
-            $this->length = ($lengthLong32Pair[0] << 32) | $lengthLong32Pair[1];
-            
-            if ($this->length < 0) {
-                throw new ParseException(
-                    'Most significant bit of 64-bit length field set'
-                );
-            }
+            $length = ($lengthLong32Pair[0] << 32) | $lengthLong32Pair[1];
+            $this->validateFrameLengthFor64BitEnvironment($length);
+            $this->length = $length;
+        }
+    }
+    
+    private function validateFrameLengthFor32BitEnvironment($lengthLong32Pair) {
+        if ($lengthLong32Pair[0] !== 0 || $lengthLong32Pair[1] < 0) {
+            throw new PolicyException(
+                'Payload exceeds maximum allowable size'
+            );
+        }
+    }
+    
+    private function validateFrameLengthFor64BitEnvironment($length) {
+        if ($length < 0) {
+            throw new ParseException(
+                'Most significant bit of 64-bit length field set'
+            );
         }
     }
     
@@ -355,22 +312,13 @@ class FrameParser {
         return $data;
     }
     
-    private function writePayload() {
+    private function writePayload($data) {
         if (!$this->payload) {
             $uri = 'php://temp/maxmemory:' . $this->msgSwapSize;
             $this->payload = fopen($uri, 'wb+');
         }
         
-        $bytesWritten = fwrite($this->payload, $this->writeBuffer);
-        
-        $this->writeBuffer = substr($this->writeBuffer, $bytesWritten);
-        $this->writeBufferSize -= $bytesWritten;
-        
-        if (!$this->writeBufferSize) {
-            return TRUE;
-        } elseif ($bytesWritten) {
-            return FALSE;
-        } elseif (!is_resource($this->payload)) {
+        if (FALSE === @fwrite($this->payload, $data)) {
             throw new \RuntimeException(
                 'Failed writing temporary frame data'
             );

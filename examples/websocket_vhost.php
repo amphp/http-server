@@ -46,7 +46,7 @@ $config = [
     'my-websocket-subdomain' => [
         'listenOn'      => '*:1337',
         'name'          => 'websockets.myhost', // <--- ADD NAME TO YOUR SYSTEM HOSTS FILE!
-        'application'   => new WebsocketApp([
+        'application'   => new WebsocketLauncher([
             '/chat'     => new ExampleChatEndpoint // Included in the require statement at the top
         ])
     ]

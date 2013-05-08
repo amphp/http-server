@@ -26,7 +26,7 @@ use Aerys\Config\DocRootLauncher,
     Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
-require __DIR__ . '/support/ExampleChatEndpoint.php'; // <-- example endpoint class file
+require __DIR__ . '/support/ExampleChatEndpoint.php';
 
 (new Configurator)->createServer([[
     'listenOn'      => '*:1337',
@@ -35,7 +35,7 @@ require __DIR__ . '/support/ExampleChatEndpoint.php'; // <-- example endpoint cl
     ]),
     'mods' => [
         'websocket' => [
-            '/chat' => new ExampleChatEndpoint // <-- class file was required manually above
+            '/chat' => new ExampleChatEndpoint
         ],
         'log' => [
             'php://stdout' => 'common'

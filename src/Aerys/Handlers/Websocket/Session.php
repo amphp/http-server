@@ -15,9 +15,6 @@ class Session {
     const CLOSE_RCVD = 0b01;
     const CLOSE_SENT = 0b10;
     
-    const DEBUG_INBOUND = 0;
-    const DEBUG_OUTBOUND = 1;
-    
     private $manager;
     private $parser;
     private $writer;
@@ -26,18 +23,14 @@ class Session {
     private $streamFactory;
     private $streamQueue = [];
     private $currentStream;
-    
+    private $pendingPingPayloads = [];
     private $closeState = self::CLOSE_NONE;
     private $closeCode;
     private $closeReason;
-    
-    private $pendingPingPayloads = [];
-    
     private $autoFrameSize = 32768;
-    private $ioGranularity = 8192;
+    private $ioGranularity = 32768;
     private $queuedPingLimit = 3;
     private $isHeartbeatEnabled = TRUE;
-    private $debugMode = FALSE;
     
     private $stats = [
         'bytesRead' => 0,
@@ -64,22 +57,16 @@ class Session {
         $this->asgiEnv = $asgiEnv;
         $this->streamFactory = $streamFactory;
         
-        $this->client = $clientFactory(new SessionFacade($this));
+        $this->client = $clientFactory->__invoke(new SessionFacade($this));
     }
     
     function setOptions(EndpointOptions $opts) {
         $this->autoFrameSize = $opts->getAutoFrameSize();
-        $this->ioGranularity = $opts->getIoGranularity();
         $this->queuedPingLimit = $opts->getQueuedPingLimit();
-        $this->isHeartbeatEnabled = (bool) $opts->getHeartbeatPeriod();
-        $this->debugMode = $opts->getDebugMode();
-        
-        $this->parser->setGranularity($this->ioGranularity);
+        $this->isHeartbeatEnabled = ($opts->getHeartbeatPeriod() > 0);
         $this->parser->setMsgSwapSize($opts->getMsgSwapSize());
         $this->parser->setMaxFrameSize($opts->getMaxFrameSize());
         $this->parser->setMaxMsgSize($opts->getMaxMsgSize());
-        
-        $this->writer->setGranularity($this->ioGranularity);
     }
     
     function open() {
@@ -92,19 +79,29 @@ class Session {
     }
     
     function read($sock, $trigger) {
-        $isTimeout = ($trigger == Reactor::TIMEOUT);
+        $isTimeout = ($trigger === Reactor::TIMEOUT);
         if ($isTimeout && $this->isHeartbeatEnabled) {
-            return $this->addPingFrame();
-        } elseif ($isTimeout) {
-            return;
+            $this->addPingFrame();
+        } elseif (!$isTimeout) {
+            $this->doRead($sock);
         }
-        
+    }
+    
+    private function doRead($sock) {
+        $data = @fread($sock, $this->ioGranularity);
+        if ($data || $data === '0') {
+            $this->parse($data);
+        } elseif (!is_resource($sock) || feof($sock)) {
+            $this->disconnect(Codes::ABNORMAL_CLOSE, 'Client went away');
+        }
+    }
+    
+    private function parse($data) {
         try {
-            if (!$parsedMsgArr = $this->parser->parse()) {
-                return;
+            while ($parsedMsgArr = $this->parser->parse($data)) {
+                $this->processParsedMessage($parsedMsgArr);
+                $data = '';
             }
-        } catch (ResourceException $e) {
-            return $this->disconnect(Codes::ABNORMAL_CLOSE, 'Client went away');
         } catch (ParseException $e) {
             return $this->addCloseFrame(Codes::PROTOCOL_ERROR);
         } catch (PolicyException $e) {
@@ -113,11 +110,9 @@ class Session {
             @fwrite($this->asgiEnv['ASGI_ERROR'], $e);
             return $this->addCloseFrame(Codes::UNEXPECTED_SERVER_ERROR);
         }
-        
-        if ($this->debugMode) {
-            $this->outputDebugInfo($parsedMsgArr, self::DEBUG_INBOUND);
-        }
-        
+    }
+    
+    private function processParsedMessage(array $parsedMsgArr) {
         list($opcode, $payload, $length, $componentFrames) = $parsedMsgArr;
         
         switch ($opcode) {
@@ -144,11 +139,9 @@ class Session {
     }
     
     /**
-     * According to RFC 6455 Section 5.5.2: 'A Ping frame MAY include "Application data"'
-     * 
-     * However, as of the time of this writing some browsers (I'm looking at you, Chrome) will not
-     * respond with a PONG to PING frames that don't carry application data in the frame payload.
-     * To correct for this, we ensure there is always a payload attached to each outbound PING.
+     * At the time of this writing some browsers (I'm looking at you, Chrome) will not respond
+     * to PING frames that don't carry application data in the frame payload. To correct for this,
+     * we ensure there is always a payload attached to each outbound PING frame.
      * 
      * @link http://tools.ietf.org/html/rfc6455#section-5.5.2
      */
@@ -175,7 +168,7 @@ class Session {
         $this->closeCode = $code ?: Codes::NONE;
         $this->closeReason = substr($reason, 0, 125);
         
-        $code = $code ? pack('n', $code) : ''; 
+        $code = $this->closeCode ? pack('n', $this->closeCode) : ''; 
         
         $payload = $code . $this->closeReason;
         $closeFrame = new Frame(Frame::FIN, Frame::RSV_NONE, Frame::OP_CLOSE, $payload);
@@ -243,18 +236,11 @@ class Session {
         }
     }
     
-    /**
-     * @return bool Returns TRUE if all queued frame data has been written, FALSE otherwise
-     */
     function write() {
         if ($this->closeState & self::CLOSE_SENT) {
             return TRUE;
         } elseif (!$frame = $this->writer->write()) {
             return FALSE;
-        }
-        
-        if ($this->debugMode) {
-            $this->outputDebugInfo($frame, self::DEBUG_OUTBOUND);
         }
         
         if ($this->currentStream) {
@@ -281,11 +267,6 @@ class Session {
         return !$this->writer->canWrite();
     }
     
-    /**
-     * Frame stream operations may throw an exception if the filesystem borks or a userland
-     * Iterator stream throws an exception. Stream iterator methods should always be wrapped inside
-     * a try/catch to avoid breakage.
-     */
     private function addNextFrameFromCurrentStream() {
         try {
             if (NULL === ($payload = $this->currentStream->current())) {
@@ -334,11 +315,6 @@ class Session {
         }
     }
     
-    /**
-     * Frame stream operations may throw an exception if the filesystem borks or a userland
-     * Iterator stream throws an exception. Stream iterator methods should always be wrapped inside
-     * a try/catch to avoid breakage.
-     */
     function addStreamData($data, $opcode) {
         try {
             $frameStream = $this->streamFactory->__invoke($data, $opcode);
@@ -366,54 +342,6 @@ class Session {
         $stats['allClients'] = $this->manager->count();
         
         return $stats;
-    }
-    
-
-
-
-
-    private function outputDebugInfo($data, $inOrOut) {
-        return ($inOrOut == self::DEBUG_INBOUND)
-            ? $this->debugInbound($data)
-            : $this->debugOutbound($data);
-    }
-    
-    private function debugInbound(array $parsedMsgArr) {
-        $uri = $this->asgiEnv['REQUEST_URI'];
-        
-        foreach ($parsedMsgArr[3] as $frameStruct) {
-            $length = $frameStruct['length'];
-            $opcode = $this->getOpcodeName($frameStruct['opcode']);
-            
-            echo time(), " | RCVD | $opcode | $length | $uri\n";
-        }
-    }
-    
-    private function getOpcodeName($opcode) {
-        switch ($opcode) {
-            case Frame::OP_CONT:
-                return 'CONT';
-            case Frame::OP_TEXT:
-                return 'TEXT';
-            case Frame::OP_BIN:
-                return 'BIN';
-            case Frame::OP_CLOSE:
-                return 'CLOSE';
-            case Frame::OP_PING:
-                return 'PING';
-            case Frame::OP_PONG:
-                return 'PONG';
-            default:
-                return 'UNKNOWN';
-        }
-    }
-    
-    private function debugOutbound(Frame $frame) {
-        $uri = $this->asgiEnv['REQUEST_URI'];
-        $length = $frame->getLength();
-        $opcode = $this->getOpcodeName($frame->getOpcode());
-        
-        echo time(), " | SENT | $opcode | $length | $uri\n";
     }
     
 }

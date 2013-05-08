@@ -17,7 +17,7 @@ class SessionFactory {
     }
     
     function make($socket, SessionManager $manager, Endpoint $endpoint, array $asgiEnv) {
-        $parser = new FrameParser($socket);
+        $parser = new FrameParser;
         $writer = new FrameWriter($socket);
         
         return new Session(
