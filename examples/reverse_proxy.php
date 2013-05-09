@@ -37,11 +37,11 @@ use Aerys\Config\Configurator,
 require dirname(__DIR__) . '/autoload.php';
 
 (new Configurator)->createServer([[
-    'listenOn'     => '*:80',
+    'listenOn'     => '*:1337',
     'application'  => new ReverseProxyLauncher([
         'maxPendingRequests' => 1500, // OPTIONAL (defaults to 1500 if not specified)
         'backends' => [
-            '127.0.0.1:1337',         // An array of backend server addresses
+            '127.0.0.1:80',         // An array of backend server addresses
         ],
     ])
 ]])->start();

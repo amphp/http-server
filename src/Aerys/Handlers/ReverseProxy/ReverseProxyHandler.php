@@ -9,11 +9,6 @@ use Amp\Reactor,
     Aerys\Parsing\MessageParser,
     Aerys\Parsing\PeclMessageParser;
 
-/**
- * @TODO Implement non-blocking connection attempts for backend sockets
- * @TODO Implement optional TLS for backend socket connections
- * @TODO Implement exponential backoff for socket connection attempts
- */
 class ReverseProxyHandler {
     
     private $reactor;
@@ -21,6 +16,9 @@ class ReverseProxyHandler {
     private $backends = [];
     private $writableBackends;
     private $backendSubscriptions;
+    private $pendingBackendSubscriptions = [];
+    private $connectionAttempts = [];
+    private $backendConnectTimeout = 5;
     private $maxPendingRequests = 1500;
     private $autoWriteInterval = 0.05;
     private $ioGranularity = 262144;
@@ -40,32 +38,90 @@ class ReverseProxyHandler {
     }
     
     private function connect($uri) {
-        if ($socket = @stream_socket_client($uri, $errNo, $errStr)) {
-            stream_set_blocking($socket, FALSE);
-            
-            $parser = $this->canUsePeclParser
-                ? new PeclMessageParser(MessageParser::MODE_RESPONSE)
-                : new MessageParser(MessageParser::MODE_RESPONSE);
-            
-            $backend = new Backend($this->server, $parser, $socket);
-            $readSubscription = $this->reactor->onReadable($socket, function() use ($backend) {
-                $this->read($backend);
-            });
-            
-            $this->backends[$uri] = $backend;
-            $this->backendSubscriptions->attach($backend, $readSubscription);
-            
-            $result = TRUE;
-            
+        $unusedTimeout = 42; // <--- not applicable in conjunction with STREAM_CLIENT_ASYNC_CONNECT flag
+        $flags = STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT;
+        $socket = @stream_socket_client($uri, $errNo, $errStr, $unusedTimeout, $flags);
+        
+        if ($socket || $errNo === SOCKET_EWOULDBLOCK) {
+            $this->schedulePendingBackendTimeout($uri, $socket);
         } else {
-            $errMsg = "Socket connect failure: $uri" . ($errNo ? "; [Error# $errNo] $errStr" : '');
-            $stderr = $this->server->getErrorStream();
-            fwrite($stderr, $errMsg);
-            
-            $result = FALSE;
+            $errMsg = "Connection to proxy backend {$uri} failed: [{$errNo}] {$errStr}\n";
+            fwrite($this->server->getErrorStream(), $errMsg);
+            $this->exponentialBackoff($uri);
+        }
+    }
+    
+    private function schedulePendingBackendTimeout($uri, $socket) {
+        $subscription = $this->reactor->onWritable($socket, function($socket, $trigger) use ($uri) {
+            $this->determinePendingConnectionResult($uri, $socket, $trigger);
+        }, $this->backendConnectTimeout);
+        
+        $this->pendingBackendSubscriptions[$uri] = $subscription;
+    }
+    
+    private function determinePendingConnectionResult($uri, $socket, $trigger) {
+        $subscription = $this->pendingBackendSubscriptions[$uri];
+        $subscription->cancel();
+        
+        unset($this->pendingBackendConnections[$uri]);
+        
+        if ($trigger === Reactor::TIMEOUT) {
+            $errMsg = "Connection to proxy backend {$uri} failed: connect attempt timed out\n";
+            fwrite($this->server->getErrorStream(), $errMsg);
+            $this->exponentialBackoff($uri);
+        } elseif ($this->workaroundAsyncConnectBug($socket)) {
+            $this->finalizeNewBackendConnection($uri, $socket);
+        } else {
+            $errMsg = "Connection to proxy backend {$uri} failed\n";
+            fwrite($this->server->getErrorStream(), $errMsg);
+            $this->exponentialBackoff($uri);
+        }
+    }
+    
+    /**
+     * This function exists to workaround asynchronously connected sockets that are erroneously
+     * reported as writable when the connection actually failed. RFC 2616 requires servers to ignore
+     * leading \r\n characters before the start of a message so we can get away with sending such
+     * characters as a connectivity test.
+     * 
+     * @link https://bugs.php.net/bug.php?id=64803
+     */
+    private function workaroundAsyncConnectBug($socket) {
+        return (@fwrite($socket, "\n") === 1);
+    }
+    
+    private function exponentialBackoff($uri) {
+        if (isset($this->connectionAttempts[$uri])) {
+            $maxWait = ($this->connectionAttempts[$uri] * 2) - 1;
+            $this->connectionAttempts[$uri]++;
+        } else {
+            $this->connectionAttempts[$uri] = $maxWait = 1;
         }
         
-        return $result;
+        if ($secondsUntilRetry = rand(0, $maxWait)) {
+            $reconnect = function() use ($uri) { $this->connect($uri); };
+            $this->reactor->once($reconnect, $secondsUntilRetry);
+        } else {
+            $this->connect($uri);
+        }
+    }
+    
+    private function finalizeNewBackendConnection($uri, $socket) {
+        stream_set_blocking($socket, FALSE);
+        
+        $parser = $this->canUsePeclParser
+            ? new PeclMessageParser(MessageParser::MODE_RESPONSE)
+            : new MessageParser(MessageParser::MODE_RESPONSE);
+        
+        $backend = new Backend($this->server, $parser, $socket, $uri);
+        $readSubscription = $this->reactor->onReadable($socket, function() use ($backend) {
+            $this->read($backend);
+        });
+        
+        $this->backends[$uri] = $backend;
+        $this->backendSubscriptions->attach($backend, $readSubscription);
+        
+        unset($this->connectionAttempts[$uri]);
     }
     
     private function read(Backend $backend) {
@@ -147,7 +203,8 @@ class ReverseProxyHandler {
     }
     
     function __destruct() {
-        foreach ($this->backendSubscriptions as $sub) {
+        foreach ($this->backendSubscriptions as $backend) {
+            $sub = $this->backendSubscriptions->offsetGet($backend);
             $sub->cancel();
         }
     }

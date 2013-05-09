@@ -13,14 +13,8 @@ if present in the entity body. This is a **MUST** fix.
 
 #### ReverseProxy
 
-- Though connections to backend servers are non-blocking once established, the connection attempt
-itself blocks execution. Ideally these connections need to be performed without blocking.
-- An exponential backoff algorithm should be used when reconnecting to dead backend sockets. Currently
-if a backend socket fails and the reconnection attempt is unsucessful the proxy router will stop
-using that backend altogether. If no other backends are specified in the proxy configuration this will
-lead to all requests receiving `503 Service Unavailable` response.
-- TLS currently cannot be used between the front-facing server and backend sockets. This is fairly
-low on the priority list and may not be necessary in the first place.
+- TLS currently cannot be used between the front-facing proxy server and backend sockets. This is fairly
+low on the priority list and may not even be necessary.
 
 #### Mods
 

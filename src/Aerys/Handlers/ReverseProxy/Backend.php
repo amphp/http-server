@@ -22,15 +22,14 @@ class Backend {
     private $queueSize = 0;
     private $ioGranularity = 262144;
     
-    function __construct(Server $server, MessageParser $parser, $socket) {
+    function __construct(Server $server, MessageParser $parser, $socket, $uri) {
         $this->server = $server;
         $this->parser = $parser;
         $this->socket = $socket;
         
-        $name = stream_socket_get_name($socket, TRUE);
-        $portStartPos = strrpos($name, ':');
-        $this->port = substr($name, $portStartPos + 1);
-        $this->uri = $name;
+        $portStartPos = strrpos($uri, ':');
+        $this->port = substr($uri, $portStartPos + 1);
+        $this->uri = $uri;
     }
     
     function getUri() {
