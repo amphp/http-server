@@ -7,15 +7,15 @@ use Aerys\Server,
 
 class ModLog implements AfterResponseMod {
     
-    private $httpServer;
+    private $server;
     private $resources = [];
     private $resourceFormatMap = [];
     private $buffers = [];
     private $msgGenerationCache = [];
     private $afterResponsePriority = 75;
     
-    function __construct(Server $httpServer, array $logs) {
-        $this->httpServer = $httpServer;
+    function __construct(Server $server, array $logs) {
+        $this->server = $server;
         if ($logs) {
             $this->setLogs($logs);
         } else {
@@ -27,17 +27,18 @@ class ModLog implements AfterResponseMod {
     
     private function setLogs(array $logs) {
         foreach ($logs as $path => $format) {
-            if (!$resource = fopen($path, 'a+')) {
-                continue;
+            if ($resource = $this->openLogResource($path)) {
+                stream_set_blocking($resource, FALSE);
+                $resourceId = (int) $resource;
+                $this->buffers[$resourceId] = ['', 0];
+                $this->resources[$resourceId] = $resource;
+                $this->resourceFormatMap[$resourceId] = $format;
             }
-            
-            stream_set_blocking($resource, FALSE);
-            
-            $resourceId = (int) $resource;
-            $this->buffers[$resourceId] = ['', 0];
-            $this->resources[$resourceId] = $resource;
-            $this->resourceFormatMap[$resourceId] = $format;
         }
+    }
+    
+    private function openLogResource($path) {
+        return ($path[0] === '|') ? popen(trim(substr($path, 1)), 'w') : fopen($path, 'a+');
     }
     
     function getAfterResponsePriority() {
@@ -46,8 +47,8 @@ class ModLog implements AfterResponseMod {
     
     function afterResponse($requestId) {
         foreach ($this->resources as $resourceId => $resource) {
-            $asgiEnv = $this->httpServer->getRequest($requestId);
-            $asgiResponse = $this->httpServer->getResponse($requestId);
+            $asgiEnv = $this->server->getRequest($requestId);
+            $asgiResponse = $this->server->getResponse($requestId);
             $format = $this->resourceFormatMap[$resourceId];
             
             switch ($format) {
