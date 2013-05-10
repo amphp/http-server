@@ -11,7 +11,7 @@ class ModLog implements AfterResponseMod {
     private $resources = [];
     private $resourceFormatMap = [];
     private $buffers = [];
-    private $msgGenerationCache = [];
+    private $flushSize = 0;
     private $afterResponsePriority = 75;
     
     function __construct(Server $server, array $logs) {
@@ -41,6 +41,13 @@ class ModLog implements AfterResponseMod {
         return ($path[0] === '|') ? popen(trim(substr($path, 1)), 'w') : fopen($path, 'a+');
     }
     
+    function setFlushSize($bytes) {
+        $this->flushSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
+            'min_range' => 0,
+            'default' => 0
+        ]]);
+    }
+    
     function getAfterResponsePriority() {
         return $this->afterResponsePriority;
     }
@@ -65,22 +72,26 @@ class ModLog implements AfterResponseMod {
             $buffer = $this->buffers[$resourceId][0] . $msg;
             $bufferSize = strlen($buffer);
             
-            $bytesWritten = fwrite($resource, $buffer);
-            $this->buffers[$resourceId][0] = substr($buffer, $bytesWritten);
-            $this->buffers[$resourceId][1] -= $bytesWritten;
+            if ($this->flushSize && $bufferSize < $this->flushSize) {
+                continue;
+            }
+            
+            $bytesWritten = @fwrite($resource, $buffer);
+            
+            if ($bytesWritten === $bufferSize) {
+                $this->buffers[$resourceId][0] = '';
+                $this->buffers[$resourceId][1] = 0;
+            } else {
+                $this->buffers[$resourceId][0] = substr($buffer, $bytesWritten);
+                $this->buffers[$resourceId][1] -= $bytesWritten;
+            }
         }
-        
-        $this->msgGenerationCache = [];
     }
     
     /**
      * @link http://httpd.apache.org/docs/2.2/logs.html#combined
      */
     private function doCombinedFormat(array $asgiEnv, array $asgiResponse) {
-        if (isset($this->msgGenerationCache['combined'])) {
-            return $this->msgGenerationCache['combined'];
-        }
-        
         $ip = $asgiEnv['REMOTE_ADDR'];
         
         $requestLine = '"' . $asgiEnv['REQUEST_METHOD'] . ' ';
@@ -97,8 +108,6 @@ class ModLog implements AfterResponseMod {
         
         $msg = "$ip - - [$time] $requestLine $statusCode $bodySize $referer $userAgent" . PHP_EOL;
         
-        $this->msgGenerationCache['combined'] = $msg;
-        
         return $msg;
     }
     
@@ -106,10 +115,6 @@ class ModLog implements AfterResponseMod {
      * @link http://httpd.apache.org/docs/2.2/logs.html#common
      */
     private function doCommonFormat(array $asgiEnv, array $asgiResponse) {
-        if (isset($this->msgGenerationCache['common'])) {
-            return $this->msgGenerationCache['common'];
-        }
-        
         $ip = $asgiEnv['REMOTE_ADDR'];
         
         $requestLine = '"' . $asgiEnv['REQUEST_METHOD'] . ' ';
@@ -122,8 +127,6 @@ class ModLog implements AfterResponseMod {
         $time = date('d/M/Y:H:i:s O');
         
         $msg = "$ip - - [$time] $requestLine $statusCode $bodySize" . PHP_EOL;
-        
-        $this->msgGenerationCache['common'] = $msg;
         
         return $msg;
     }
@@ -138,7 +141,6 @@ class ModLog implements AfterResponseMod {
      * %{HEADER-FIELD} - Any request header (case-insensitive, "-" if not available)
      */
     private function doCustomFormat(array $asgiEnv, array $asgiResponse, $format) {
-        
         $requestLine = '"' . $asgiEnv['REQUEST_METHOD'] . ' ';
         $requestLine.= $asgiEnv['REQUEST_URI'] . ' ';
         $requestLine.= 'HTTP/' . $asgiEnv['SERVER_PROTOCOL'] . '"';
@@ -174,13 +176,12 @@ class ModLog implements AfterResponseMod {
         foreach ($this->buffers as $resourceId => $bufferList) {
             $buffer = $bufferList[0];
             
-            if (!$buffer && $buffer !== '0') {
-                continue;
+            if ($buffer || $buffer === '0') {
+                $resource = $this->resources[$resourceId];
+                stream_set_blocking($resource, TRUE);
+                fwrite($resource, $buffer);
             }
             
-            $resource = $this->resources[$resourceId];
-            stream_set_blocking($resource, TRUE);
-            fwrite($resource, $buffer);
             fclose($resource);
         }
     }

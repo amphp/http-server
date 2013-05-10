@@ -175,9 +175,15 @@ class Configurator {
     }
     
     private function buildModLog(array $config) {
-        return $this->injector->make('Aerys\Mods\Log\ModLog', [
+        $flushSize = isset($config['flushSize']) ? $config['flushSize'] : 0;
+        unset($config['flushSize']);
+        $mod = $this->injector->make('Aerys\Mods\Log\ModLog', [
             ':logs' => $config
         ]);
+        
+        $mod->setFlushSize($flushSize);
+        
+        return $mod;
     }
     
     private function buildModErrorPages(array $config) {

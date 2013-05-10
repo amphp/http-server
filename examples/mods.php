@@ -17,7 +17,8 @@ $server = (new Configurator)->createServer([[
     'application'   => $myApp,
     'mods' => [
         'log'   =>  [
-            'php://stdout' => 'common'
+            'php://stdout' => 'common',
+            'flushSize' => 1024 // OPTIONAL
         ],
         'limit' => [
             'limits' => [
