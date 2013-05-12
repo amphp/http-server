@@ -4,7 +4,7 @@ namespace Aerys;
 
 use Aerys\Writing\WriterFactory,
     Aerys\Parsing\ResourceReadException,
-    Aerys\Parsing\MessageParser;
+    Aerys\Parsing\Parser;
 
 class Pipeline {
     
@@ -18,7 +18,7 @@ class Pipeline {
     private $requestCount = 0;
     private $ioGranularity = 262144;
     
-    function __construct($socket, MessageParser $parser, WriterFactory $wf = NULL) {
+    function __construct($socket, Parser $parser, WriterFactory $wf = NULL) {
         $this->setSocket($socket);
         $this->parser = $parser;
         $this->writerFactory = $wf ?: new WriterFactory;
@@ -193,7 +193,7 @@ class Pipeline {
     }
     
     function isParseInProgress() {
-        return $this->parser->hasInProgressMessage();
+        return $this->parser->hasUnfinishedMessage();
     }
     
     function read() {

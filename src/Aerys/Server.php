@@ -4,7 +4,6 @@ namespace Aerys;
 
 use Amp\Reactor,
     Amp\TcpServer,
-    Aerys\Parsing\MessageParser,
     Aerys\Parsing\ParseException,
     Aerys\Parsing\ResourceReadException,
     Aerys\Mods\OnHeadersMod,
@@ -51,7 +50,7 @@ class Server extends TcpServer {
         Method::DELETE  => 1
     ];
     
-    private $errorStream;
+    private $errorStream = STDERR;
     private $lastRequestId = 0;
     private $cachedClientCount = 0;
     
@@ -68,16 +67,26 @@ class Server extends TcpServer {
     }
     
     function start() {
-        if (!$this->isStarted) {
+        if ($this->canStart()) {
             $this->errorStream = fopen($this->logErrorsTo, 'ab+');
             $this->reactor->repeat(function() { $this->autoWrite(); }, $this->autoWriteInterval);
-            /*
-            $this->reactor->repeat(function() {
-                echo time(), " :: ", $this->cachedClientCount, "\n";
-            }, 1);
-            */
+            
             parent::start();
         }
+    }
+    
+    private function canStart() {
+        if ($this->isStarted) {
+            $result = FALSE;
+        } elseif (empty($this->hosts)) {
+            throw new \RuntimeException(
+                'Cannot start server: no hosts registered'
+            );
+        } else {
+            $result = TRUE;
+        }
+        
+        return $result;
     }
     
     protected function accept($server) {
@@ -420,6 +429,7 @@ class Server extends TcpServer {
     }
     
     private function onParseError(Pipeline $pipeline, $status) {
+        $status = $status ?: Status::BAD_REQUEST;
         $reason = $this->getReasonPhrase($status);
         $body = '<html><body><h1>'. $status . ' '. $reason .'</h1></body></html>';
         $headers = [
@@ -768,16 +778,12 @@ class Server extends TcpServer {
         $this->disableKeepAlive = (bool) $boolFlag;
     }
     
-    private function setMaxStartLineSize($bytes) {
-        $this->pipelineFactory->setParserMaxStartLineSize($bytes);
+    private function setMaxHeaderSize($bytes) {
+        $this->pipelineFactory->setParserMaxHeaderBytes($bytes);
     }
     
-    private function setMaxHeadersSize($bytes) {
-        $this->pipelineFactory->setParserMaxHeadersSize($bytes);
-    }
-    
-    private function setMaxEntityBodySize($bytes) {
-        $this->pipelineFactory->setParserMaxEntityBodySize($bytes);
+    private function setMaxBodySize($bytes) {
+        $this->pipelineFactory->setParserMaxBodyBytes($bytes);
     }
     
     private function setBodySwapSize($bytes) {

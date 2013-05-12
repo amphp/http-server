@@ -182,6 +182,33 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
         
         $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
         
+        // 6 -------------------------------------------------------------------------------------->
+        $msg = "" .
+            "GET /test HTTP/1.1\r\n" .
+            "Host: localhost\r\n" .
+            "Transfer-Encoding: chunked\r\n" .
+            "\r\n" .
+            "5\r\n" .
+            "woot!\r\n" .
+            "4\r\n" .
+            "test\r\n" .
+            "0\r\n" .
+            "My-Trailer: testval\r\n" .
+            "\r\n"
+        ;
+        
+        $method = 'GET';
+        $uri = '/test';
+        $protocol = '1.1';
+        $headers = [
+            'HOST' => 'localhost',
+            'TRANSFER-ENCODING' => 'chunked',
+            'MY-TRAILER' => 'testval'
+        ];
+        $body = 'woot!test';
+        
+        $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
+        
         // x -------------------------------------------------------------------------------------->
         
         return $return;

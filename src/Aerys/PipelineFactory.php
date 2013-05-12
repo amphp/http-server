@@ -2,16 +2,16 @@
 
 namespace Aerys;
 
-use Aerys\Writing\WriterFactory,
+use Aerys\Parsing\Parser,
     Aerys\Parsing\MessageParser,
-    Aerys\Parsing\PeclMessageParser;
+    Aerys\Parsing\PeclMessageParser,
+    Aerys\Writing\WriterFactory;
 
 class PipelineFactory {
     
     private $writerFactory;
-    private $maxStartLineSize = 2048;
-    private $maxHeadersSize = 8192;
-    private $maxEntityBodySize = 10485760;
+    private $maxHeaderBytes = 8192;
+    private $maxBodyBytes = 10485760;
     private $bodySwapSize = 2097152;
     
     function __construct(WriterFactory $writerFactory = NULL) {
@@ -25,30 +25,25 @@ class PipelineFactory {
     
     function makePipeline($socket) {
         $parser = $this->canUsePeclHttp
-            ? new PeclMessageParser(MessageParser::MODE_REQUEST)
-            : new MessageParser(MessageParser::MODE_REQUEST);
+            ? new PeclMessageParser(Parser::MODE_REQUEST)
+            : new MessageParser(Parser::MODE_REQUEST);
         
-        $parser->setAllOptions([
+        $parser->setOptions([
             'returnHeadersBeforeBody' => TRUE,
-            'maxStartLineBytes' => $this->maxStartLineSize,
-            'maxHeaderBytes' => $this->maxHeadersSize,
-            'maxBodyBytes' => $this->maxEntityBodySize,
+            'maxHeaderBytes' => $this->maxHeaderBytes,
+            'maxBodyBytes' => $this->maxBodyBytes,
             'bodySwapSize' => $this->bodySwapSize
         ]);
         
         return new Pipeline($socket, $parser, $this->writerFactory);
     }
     
-    function setParserMaxStartLineSize($bytes) {
-        $this->maxStartLineSize = (int) $bytes;
+    function setParserMaxHeaderBytes($bytes) {
+        $this->maxHeaderBytes = (int) $bytes;
     }
     
-    function setParserMaxHeadersSize($bytes) {
-        $this->maxHeadersSize = (int) $bytes;
-    }
-    
-    function setParserMaxEntityBodySize($bytes) {
-        $this->maxEntityBodySize = (int) $bytes;
+    function setParserMaxBodyBytes($bytes) {
+        $this->maxBodyBytes = (int) $bytes;
     }
     
     function setParserBodySwapSize($bytes) {
