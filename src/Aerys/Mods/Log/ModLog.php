@@ -175,9 +175,9 @@ class ModLog implements AfterResponseMod {
     function __destruct() {
         foreach ($this->buffers as $resourceId => $bufferList) {
             $buffer = $bufferList[0];
+            $resource = $this->resources[$resourceId];
             
             if ($buffer || $buffer === '0') {
-                $resource = $this->resources[$resourceId];
                 stream_set_blocking($resource, TRUE);
                 fwrite($resource, $buffer);
             }
