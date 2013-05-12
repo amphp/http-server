@@ -5,7 +5,6 @@ namespace Aerys;
 use Amp\Reactor,
     Amp\TcpServer,
     Aerys\Parsing\ParseException,
-    Aerys\Parsing\ResourceReadException,
     Aerys\Mods\OnHeadersMod,
     Aerys\Mods\BeforeResponseMod,
     Aerys\Mods\AfterResponseMod;
@@ -154,7 +153,7 @@ class Server extends TcpServer {
             }
         } catch (ParseException $e) {
             $this->onParseError($pipeline, $e->getCode());
-        } catch (ResourceReadException $e) {
+        } catch (ResourceException $e) {
             $this->closePipeline($pipeline);
         }
     }

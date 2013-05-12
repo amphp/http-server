@@ -3,7 +3,6 @@
 namespace Aerys;
 
 use Aerys\Writing\WriterFactory,
-    Aerys\Parsing\ResourceReadException,
     Aerys\Parsing\Parser;
 
 class Pipeline {
@@ -202,7 +201,7 @@ class Pipeline {
         if ($data || $data === '0' || $this->parser->hasBuffer()) {
             return $this->parser->parse($data);
         } elseif (!is_resource($this->socket) || feof($this->socket)) {
-            throw new ResourceReadException;
+            throw new ResourceException;
         }
     }
 }

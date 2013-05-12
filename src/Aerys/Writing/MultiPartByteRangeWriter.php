@@ -2,6 +2,8 @@
 
 namespace Aerys\Writing;
 
+use Aerys\ResourceException;
+
 class MultiPartByteRangeWriter extends Writer {
     
     const BOUNDARY = 0;
@@ -148,7 +150,7 @@ class MultiPartByteRangeWriter extends Writer {
         } elseif (is_resource($this->destination)) {
             $result = FALSE;
         } else {
-            throw new ResourceWriteException;
+            throw new ResourceException;
         }
         
         return $result;

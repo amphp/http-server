@@ -2,6 +2,8 @@
 
 namespace Aerys\Writing;
 
+use Aerys\ResourceException;
+
 class Writer {
     
     protected $destination;
@@ -37,7 +39,7 @@ class Writer {
         } elseif (is_resource($this->destination)) {
             $result = FALSE;
         } else {
-            throw new ResourceWriteException;
+            throw new ResourceException;
         }
         
         return $result;

@@ -2,6 +2,8 @@
 
 namespace Aerys\Writing;
 
+use Aerys\ResourceException;
+
 class StreamWriter extends Writer {
     
     protected $body;
@@ -53,7 +55,7 @@ class StreamWriter extends Writer {
         } elseif (is_resource($this->destination) && is_resource($this->body)) {
             $result = FALSE;
         } else {
-            throw new ResourceWriteException;
+            throw new ResourceException;
         }
         
         return $result;

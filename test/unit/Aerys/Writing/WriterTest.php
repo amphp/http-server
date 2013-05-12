@@ -5,7 +5,7 @@ use Aerys\Writing\Writer;
 class WriterTest extends PHPUnit_Framework_TestCase {
     
     /**
-     * @expectedException Aerys\Writing\ResourceWriteException
+     * @expectedException Aerys\ResourceException
      */
     function testWriteThrowsExceptionOnResourceWriteFailure() {
         $destination = 'will fail because this should be a resource';

@@ -8,7 +8,7 @@ use Aerys\Server,
     Aerys\Parsing\MessageParser,
     Aerys\Writing\Writer,
     Aerys\Writing\StreamWriter,
-    Aerys\Writing\ResourceWriteException;
+    Aerys\ResourceException;
 
 class Backend {
     
@@ -87,7 +87,7 @@ class Backend {
     function write() {
         try {
             return $this->doWrite();
-        } catch (ResourceWriteException $e) {
+        } catch (ResourceException $e) {
             $this->handleDeadSocket();
         }
     }
