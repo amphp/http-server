@@ -28,7 +28,7 @@
               <ul class="nav">
                 <li><a href="/">Home</a></li>
                 <li><a href="/apps.html">Applications</a></li>
-                <li><a href="/static.html">Static Files</a></li>
+                <li><a href="/static/">Static Files</a></li>
                 <li><a href="/websockets/">Websockets</a></li>
                 <li class="active"><a href="/mods/">Mods</a></li>
                 <li><a href="/asgi.html">ASGI</a></li>
@@ -40,35 +40,22 @@
 
       <h1>Modding and Customization</h1>
       <p class="lead">
-        Real-world applications have specific needs far exceeding simple file/application servers.
+        Real-world applications have needs beyond basic content delivery.
       </p>
       
       <hr />
       
-      <h3>Request-Response Cycle Event Hooks</h3>
+      <h3>Customization, Delivered</h3>
       
       <p>  
         One of the primary goals of the Aerys project is to make application-specific customization
-        as simple as possible. To accommodate this goal the following events are broadcast to
-        afford userland code the chance to modify the Aerys server's behavior:
-      </p>
-      
-      <ul>
-        <li>onHeaders</li>
-        <li>beforeResponse</li>
-        <li>afterResponse</li>
-      </ul>
-      
-      <p>
-        Mods registered for the relevant HTTP request's host are invoked at each step allowing
-        application developers to tailor solutions for project-specific needs.
+        as simple as possible. The server was written from the ground up to accommodate this goal.
+        Need to cache a specific CPU-intensive resource for five seconds each time it's generated?
+        No problem, just write a server mod to handle it. Want to rate-limit requests for your content?
+        Simply enable the built-in ModLimit feature.
       </p>
       
       <h3>Built-in Mods</h3>
-      <p>
-        As an example of what's possible on the Mod front (and because they're just really useful)
-        Aerys comes prepackaged with the following Mods:
-      </p>
       
       <table class="table table-striped">
         <thead>
@@ -109,7 +96,8 @@
               Customizable per-request logging to multiple files and/or processes with built-in
               support for standard logging formats such as the
               <a title="Common Log Format" href="http://en.wikipedia.org/wiki/Common_Log_Format">NCSA Common Log Format</a>
-              and the <a title="Combined Log Format" href="http://publib.boulder.ibm.com/tividd/td/ITWSA/ITWSA_info45/en_US/HTML/guide/c-logs.html">NCSA Combined Log Format</a>.
+              and the <a title="Combined Log Format" href="http://publib.boulder.ibm.com/tividd/td/ITWSA/ITWSA_info45/en_US/HTML/guide/c-logs.html">NCSA Combined Log Format</a>
+              as well as custom user-defined patterns.
             </td>
           </tr>
           
@@ -128,7 +116,7 @@
           <tr>
             <td>Websocket</td><td>onHeaders</td>
             <td>
-              While you'll often specify a Websocket handler on its own named virtual host, the 
+              While you'll often specify a Websocket handler as its own named virtual host, the 
               Websocket Mod allows applications to overlay websockets endpoint resources <i>on the
               same host</i> as another application handler (e.g. a static file or application server).
               For example, you might serve static files from <i>http://mysite.com/</i> but overlay a
@@ -142,34 +130,14 @@
       <h3>Registering Custom Mods</h3>
       <p>
         Aerys doesn't limit applications to built-in mods. Adhering to simple interfaces means you
-        can implement and deploy your own mods. The following interfaces are used to define Mod
-        functionality:
+        can implement and deploy your own mods. Let's look at a simple mod example. The below class,
+        when registered, will examine every response before it is output to the client. If the response
+        assigned for the givent request ID has a status code equal to 200, the mod replaces the body
+        with some HTML of its own.
       </p>
-      
-      <ul>
-        <li>
-            <a href="https://github.com/rdlowrey/Aerys/blob/master/src/Aerys/Mods/OnHeadersMod.php" title="OnHeadersMod source">
-            Aerys\Mods\OnHeadersMod
-            </a>
-        </li>
-        <li>
-            <a href="https://github.com/rdlowrey/Aerys/blob/master/src/Aerys/Mods/BeforeResponseMod.php" title="BeforeResponseMod source">
-            Aerys\Mods\BeforeResponseMod
-            </a>
-        </li>
-        <li>
-            <a href="https://github.com/rdlowrey/Aerys/blob/master/src/Aerys/Mods/AfterResponseMod.php" title="AfterResponseMod source">
-            Aerys\Mods\AfterResponseMod
-            </a>
-        </li>
-      </ul>
-      
-      <h3>Custom Mod Example</h3>
-      
       <p>
-        Let's look at a simple mod example. The below class, when registered, will examine every
-        response before it is output to the client. If the response assigned for the givent request
-        ID has a status code equal to 200, the mod replaces the body with some HTML of its own.
+        While this example is a bit spurious, it demonstrates what's possible using mod hooks. These
+        events make it trivial to alter, analyze, log or cache any requests or responses that run through the Aerys server.
       </p>
       
       <pre><code class="php">&lt;?php
@@ -201,19 +169,6 @@ class MyZanzibarMod implements BeforeResponseMod {
     }
 }
 </code></pre>
-      
-      <p>
-        While this example is a bit spurious, it demonstrates what's possible using mod hooks. These
-        events make it trivial to alter, analyze, log or cache any requests or responses that run
-        through the Aerys server.
-      </p> 
-      
-      
-      <h3>Mod Priorities</h3>
-      
-      <p>
-        @TODO
-      </p>
       
       <hr />
       

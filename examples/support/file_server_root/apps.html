@@ -28,7 +28,7 @@
               <ul class="nav">
                 <li><a href="/">Home</a></li>
                 <li class="active"><a href="/apps.html">Applications</a></li>
-                <li><a href="/static.html">Static Files</a></li>
+                <li><a href="/static/">Static Files</a></li>
                 <li><a href="/websockets/">Websockets</a></li>
                 <li><a href="/mods/">Mods</a></li>
                 <li><a href="/asgi.html">ASGI</a></li>
@@ -39,13 +39,11 @@
       </div>
       
       <h1>Dynamic Web Applications</h1>
-      <p class="lead">Aerys makes RESTful PHP applications a reality.</p>
+      <p class="lead">Aerys brings dynamic PHP web apps and websockets together in a single package.</p>
       <hr />
       
-      <h3>Why? Doesn't Core PHP Already Do This?</h3>
-      <p>@TODO: PHP's HTTP abstractions kind of suck, actually.</p>
       
-      <h3>Host-Based vs. File-Based Apps</h3>
+      <h2>A Host-Based Application Structure</h2>
       
       <p>
         In the early days of the web HTTP was used primarily to share static files between clients and
@@ -58,8 +56,8 @@
       <p>
         Aerys takes a different approach to dynamic HTTP applications in that it views each individual
         named host as its own <i>"application."</i> Each host must define a primary
-        <a href="/asgi.html" title="ASGI specification">ASGI application handler</a> to which the
-        environment array will be passed upon the receipt of a client request. It is the application's
+        <a href="/asgi.html" title="ASGI specification">application handler</a> to which the
+        environment array is passed upon the receipt of a client request. It is the application's
         job, then, to respond programmatically to the request based on the request's environment values.
       </p>
       <p>
@@ -93,7 +91,7 @@
               a seamless transition down the road to a CDN or server optimized for file serving
               (like Nginx) as your needs change.<br />
               
-              <a href="/static.html">Read more about the static file handler ...</a>
+              <a href="/static/">Read more about the static file handler ...</a>
             </td>
           </tr>
           
@@ -128,13 +126,67 @@
         </tbody>
       </table>
       
+      <hr />
       
-      <h3>User Defined Applications</h3>
-      <p>@TODO</p>
+      <h3>Why? For the Love of Lerdorf, Why?</h3>
+      <p>
+        PHP trivializes the creation of dynamic web applications by abstracting the underyling HTTP
+        protocol. This establishment of HTTP as a first-class language citizen makes PHP a formidable
+        development platform; anyone -- regardless of how little that person knows about HTTP -- can
+        use it to crank out dynamic web apps. Meanwhile, a funny thing happened as PHP's
+        popularity grew: it evolved into a language with a full suite of enterprise-grade features.
+        A robust object model, lambda functions, generators and more are all at the fingertips of the PHP
+        programmer. But as PHP has evolved into a full-fledged programming language, it has unfortunately
+        also clung tightly to its an unwavering dependence on third-party webservers.
+      </p>
       
+      <p>
+        Want to write a PHP web application? Well you had better snag a copy of Apache/Nginx/Lighttpd/etc.
+        This circa-1996 paradigm has historically served the language well, but the cracks are starting
+        to show. The repetitive request-response action on which standard PHP SAPIs rely is under fire;
+        cutting edge applications are moving to the newly standardized Websocket protocol to create
+        desktop-style applications in the browser. Buzzwords like <em>webscale</em> have driven
+        developers en masse to servers capable of long-lived concurrent connections numbering in the
+        thousands. And despite the winks and nudges we associate with words like <em>webscale</em>, 
+        they still carry some meaning (beyond pointless marketing-speak). The simple fact is that this
+        kind of development exceeds the reach of PHP running behind a third-party web server.
+      </p>
       
-      <h3>Example Host Configurations</h3>
-      <p>@TODO</p>
+      <blockquote>
+        <p class="lead">PHP behind a web SAPI is simply not "webscale."</p>
+      </blockquote>
+      
+      <p>
+        In addition to this problem the language carries some real warts. The first thing every programmer
+        learns (after "Hello, World," of course) is that <em>global state is evil</em>. But PHP 
+        blows right through that stop sign and gives us ... wait for it ... <em>SUPERGLOBALS!</em> Further, in an
+        effort to dumb down the HTTP protocol for the masses the language has created a whole horde
+        of disparate functions to send headers, set cookies, etc. Though well-meaning, these abstractions
+        make a real mess of the protocol. PHP is largely responsible for a generation of web developers
+        who don't know the first thing about how the actual web works.
+      </p>
+      
+      <p>
+        One would also expect a language in which HTTP is considered a first-class citizen to provide
+        full access to the protocol. Have you tried responding to an <code>Expect: 100-continue</code>
+        request header before the entity body arrives in a PHP app? <em>Hint: you can't</em>. Even worse,
+        names like <code>$_GET</code> and <code>$_POST</code> are outright misleading and don't actually
+        map to the GET/POST methods. Need to access the entity body of a PUT request in your RESTful
+        PHP app? It's in the <code>$_PUT</code> superglobal right? No? You mean it's in <code>php://input</code>?
+        Man, this abstraction got leaky fast...
+      </p>
+      
+      <h3>But This Is Not A Rant</h3>
+      
+      <p>
+        In spite of everything, PHP is still that furry purple elephant we all love. It's great. We can do
+        so many really cool things with it. And to that end the main goal of the Aerys project is to
+        help PHP move into the 21st century of web development. In service of that goal an Aerys
+        server exposes solid HTTP abstractions while still being easy to use if you don't
+        know anything about the actual HTTP protocol. Additionally, Aerys makes it trivial to serve
+        websocket applications alongside PHP web apps without the need for a proxy server. Oh, and
+        it's fast.
+      </p>
       
       <hr />
       

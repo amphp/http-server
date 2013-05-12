@@ -28,7 +28,7 @@
               <ul class="nav">
                 <li><a href="/">Home</a></li>
                 <li><a href="/apps.html">Applications</a></li>
-                <li><a href="/static.html">Static Files</a></li>
+                <li><a href="/static/">Static Files</a></li>
                 <li><a href="/websockets/">Websockets</a></li>
                 <li><a href="/mods/">Mods</a></li>
                 <li class="active"><a href="/asgi.html">ASGI</a></li>
@@ -42,6 +42,9 @@
       <h1>The ASGI Standard</h1>
       <p class="lead">An HTTP application standard to help PHP escape the shadow of third-party web servers.</p>
       <hr />
+      
+      <div class="row-fluid">
+        <div class="span6">
       
       <h2>The Application</h2>
       <p>
@@ -57,7 +60,16 @@
         <li>A string, stream resource or <code>Iterator</code> instance representing the response entity body</li>
       </ul>
       
-      <h3>Example ASGI Application Callable</h3>
+      <p>
+        While ASGI-compliant applications may optionally return more data beginning at index 4 of
+        the response array, it is not guaranteed to be supported across ASGI-compliant server
+        platforms.
+      </p>
+      
+      </div>
+      
+      <div class="span6">
+            <h2>Example Application</h5>
       
       <pre><code class="php">&lt;?php
 $asgiApp = function(array $asgiEnv) {
@@ -65,23 +77,24 @@ $asgiApp = function(array $asgiEnv) {
     $reason = 'OK';
     $headers = [
         'Content-Type' =&gt; 'text/plain'
+        'Content-Length' =&gt; 11
     ];
     $body = "Hello World";
     
     return [$status, $reason, $headers, $body];
 };</code></pre>
+        </div>
+    </div>
       
-      <p>
-        While ASGI-compliant applications may optionally return more data beginning at index 4 of
-        the response array, it is not guaranteed to be supported across ASGI-compliant server
-        platforms.
-      </p>
+      <hr />
+      
+      
       
       <h3>The ASGI Response</h3>
       
       <p>
-Applications <b>MUST</b> return a response as an indexed four element array. The array indexes <b>MUST</b> be
-ordered from 0 to 4 and associative keys <b>MUST NOT</b> be used. The response array consists of the following
+<em>The Application</em> <b>MUST</b> return a response as an indexed four element array. The array indexes <b>MUST</b> be
+ordered from 0 to 3 and associative keys <b>MUST NOT</b> be used. The response array consists of the following
 elements:
       </p>
       

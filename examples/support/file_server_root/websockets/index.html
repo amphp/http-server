@@ -28,7 +28,7 @@
               <ul class="nav">
                 <li><a href="/">Home</a></li>
                 <li><a href="/apps.html">Applications</a></li>
-                <li><a href="/static.html">Static Files</a></li>
+                <li><a href="/static/">Static Files</a></li>
                 <li class="active"><a href="/websockets">Websockets</a></li>
                 <li><a href="/mods/">Mods</a></li>
                 <li><a href="/asgi.html">ASGI</a></li>
@@ -45,7 +45,61 @@
       
       <hr />
       
-      <p>@TODO</p>
+      <h3>Websockets Your Way</h3>
+      
+      <p>
+        Aerys provides multiple options for structuring websocket endpoints in relation to the
+        non-websocket portions of an application:
+      </p>
+      
+      <ul>
+        <li>Host websocket endpoints exclusively on an Aerys host</li>
+        <li>Layer websocket endpoints over another Aerys host application (on top of static files or a dynamic app)</li>
+        <li>Use Aerys's reverse proxy feature to add ws:// and wss:// endpoints on top of existing applications <em>that don't use Aerys</em>.</li>
+      </ul>
+      
+      <hr />
+      
+      <h3>Proxies Aren't a Fix: They're A Band-Aid</h3>
+      
+      <p>
+        The Websocket protocol designers really got it right when they used HTTP's upgrade mechanism and
+        standard ports (80/443) to listen for traffic. Because these ports are guaranteed to be open in corporate
+        firewalls you can be sure of your application's ability to communicate with clients via
+        websockets. However, this creates a problem for PHP applications running behind traditional
+        SAPIs because the front-facing web server is already listening on these reserved ports. If
+        you want to run a normal PHP application behind say, Apache, you're forced to setup a proxy
+        server to direct regular traffic to the backend Apache server while routing websocket traffic
+        to your websocket server. Let's be clear: <em>this proxying approach is not a solution, it's
+        a band-aid.</em>
+      </p>
+      
+      <p>
+        This problem is nonexistent in an Aerys application because Aerys is it's own server; it can
+        seamlessly upgrade a connection from http:// to ws:// without skipping a beat.
+      </p>
+      
+      <hr />
+      
+      <h3>Full wss:// TLS and Modding Support</h3>
+      
+      <p>
+        Because Aerys provides full SSL/TLS encryption support you don't have to do any additional
+        setup to achieve secure websocket connections. Additionally, websocket endpoints have the
+        same access to modding functionality as any other Aerys application. This means your websocket
+        apps can log requests, rate-limit users and do anything else that's possible with Aerys mods.
+      </p>
+      
+      <hr />
+      
+      <h3>Add Websockets To Existing SAPI Applications</h3>
+      
+      <p>
+        Already have a PHP application running on FastCGI or Apache? No problem. You can add websocket
+        support in minutes by changing the port your existing server listens on. Aerys can then
+        reverse proxy requests to the primary application while intercepting and handling requests
+        for your websocket endpoints.
+      </p>
       
       <hr />
       
@@ -62,3 +116,30 @@
 
   </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

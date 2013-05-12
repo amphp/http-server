@@ -1,2 +1,0 @@
-Hello, World. This is text from test.txt!
-Notice how this file is served with a "Content-Type: text/plain" header.

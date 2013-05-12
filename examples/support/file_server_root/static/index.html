@@ -15,7 +15,7 @@
   <body>
 
     <div class="container">
-
+    
       <div class="masthead">
         <div class="navbar">
           <div class="navbar-inner">
@@ -23,7 +23,7 @@
               <ul class="nav">
                 <li><a href="/">Home</a></li>
                 <li><a href="/apps.html">Applications</a></li>
-                <li class="active"><a href="/static.html">Static Files</a></li>
+                <li class="active"><a href="/static/">Static Files</a></li>
                 <li><a href="/websockets/">Websockets</a></li>
                 <li><a href="/mods/">Mods</a></li>
                 <li><a href="/asgi.html">ASGI</a></li>
@@ -32,10 +32,14 @@
           </div>
         </div><!-- /.navbar -->
       </div>
-
+      
+      
       <h1>Serving Static Files</h1>
-      <p class="lead">HTTP file serving lets you use Aerys as a turnkey app solution.</p>
+      <p class="lead">HTTP/1.1 file serving makes Aerys a turnkey web app solution.</p>
       <hr />
+      
+      <div class="row-fluid">
+        <div class="span8">
       
       <h3>Caching and Conditional Retrieval</h3>
       <p>
@@ -64,8 +68,8 @@
       <pre><code class="php">&lt;?php // file_server.php
 
 (new Aerys\Config\Configurator)->createServer([[
-    'listenOn'      =&gt; '127.0.0.1:1337',
-    'application'   =&gt; new Aerys\Handlers\Static\StaticApp([
+    'listenOn'      =&gt; '*:1337',
+    'application'   =&gt; new Aerys\Config\DocRootLauncher([
         'docRoot'   =&gt; '/path/to/document/root',
     ])
 ]])-&gt;start();</code></pre>
@@ -85,13 +89,13 @@
       
       <dl class="dl-horizontal">
         
-        <dt>Indexes</dt>
+        <dt>Directory Indexes</dt>
         <dd>Specify custom file names to represent directory indexes.</dd>
         
         <dt>Index Redirection</dt>
         <dd>
           Automatically redirect index file requests like <i>/index.html</i> to the directory
-          root <i>/</i> to avoid search engine duplicate content penalties.
+          root <i>/</i> to avoid search engine duplicate content penalties. No more awful rewrite rules!
         </dd>
         
         <dt>ETag Customization</dt>
@@ -113,6 +117,25 @@
         
       </dl>
       
+      </div>
+      
+        <div class="span4" style="background-color:#f2f2f2;padding:20px;border-radius:6px;">
+            <h5>Planning for scalability</h5>
+            <p>
+            In the interest of scalability, it's best to host your static files on a subdomain such
+            as <em>static.mysite.com</em> unless the primary purpose of your server is to serve
+            these files. The logic here is that if you need to move your static files to a
+            content delivery network (CDN) or a server like Nginx that is optimized for file-serving
+            your transition will be seamless.
+            </p>
+            
+            <p>
+            Also note that serving static files from a different host than your primary application
+            will cause user-agents (browsers) to open more connections to your server when retrieving
+            resources. This generally improves the speed with which downstream browsers can render your pages.
+            </p>
+        </div>
+    </div>
       
       <hr />
       
@@ -126,3 +149,4 @@
     ================================================== -->
     <!-- Placed at the end of the document so the pages load faster -->
     <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/js/bootstrap.min.js"></script>
+    

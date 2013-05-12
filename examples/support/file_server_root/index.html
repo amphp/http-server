@@ -10,7 +10,9 @@
     <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.min.css" rel="stylesheet">
     <link href="/favicon.ico" rel="icon" type="image/x-icon" />
     <link href="/css/additional.css" rel="stylesheet" type="text/css">
-      
+    <style>
+    .container > hr { margin: 60px 0; }
+    </style>
     <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
     <!--[if lt IE 9]>
       <script src="../assets/js/html5shiv.js"></script>
@@ -28,7 +30,7 @@
               <ul class="nav">
                 <li class="active"><a href="/">Home</a></li>
                 <li><a href="/apps.html">Applications</a></li>
-                <li><a href="/static.html">Static Files</a></li>
+                <li><a href="/static/">Static Files</a></li>
                 <li><a href="/websockets/">Websockets</a></li>
                 <li><a href="/mods/">Mods</a></li>
                 <li><a href="/asgi.html">ASGI</a></li>
@@ -41,7 +43,7 @@
       <!-- Jumbotron -->
       <div class="jumbotron">
         <h1>OMG Aerys is <i>webscale</i>!</h1>
-        <p class="lead">Solve the C10K Problem for thousands of concurrent clients and serve dynamic applications, static files and websocket endpoints from a single PHP server instance.</p>
+        <p class="lead">Solve the C10K Problem for thousands of concurrent clients while serving dynamic applications, static files and websocket endpoints from a single PHP server instance.</p>
         <a class="btn btn-large btn-success" href="#">This link doesn't go anywhere</a>
       </div>
 
@@ -51,18 +53,18 @@
       <div class="row-fluid">
         <div class="span4">
           <h2>Applications</h2>
-          <p>An event-driven HTTP/1.1-compliant web server written in PHP. Features include name-based virtual hosting, built-in SSL/TLS support, request logging, rate-limiting, request lifecycle event hooks for caching/customization and an army of gnomes who exist to serve your every whim.</p>
+          <p>Aerys is an event-driven HTTP/1.1 web server written in PHP. Features include name-based virtual hosting, built-in SSL/TLS support, request logging, rate-limiting, request lifecycle event hooks for caching/customization and an army of gnomes who exist to serve your every whim.</p>
           <p><a class="btn" href="/apps.html">Learn More &raquo;</a></p>
         </div>
         <div class="span4">
           <h2>Static Files</h2>
           <p>Serve thousands of static files per second using Aerys's HTTP/1.1-compliant file server. Supports range requests, caching headers, etc. Host static files on their own subdomain to make future scaling and offloading to CDNs or optimized static servers painless.</p>
-          <p><a class="btn" href="/static.html">Learn More &raquo;</a></p>
+          <p><a class="btn" href="/static/">Learn More &raquo;</a></p>
        </div>
         <div class="span4">
           <h2>Websockets</h2>
-          <p>Host websocket endpoints from a dedicated domain (e.g. <i>chat.mysite.com</i>), layer them on top of your main application host (e.g. <i>mysite.com/chat</i>) or use Aerys's reverse proxy feature to overlay ws:// and wss:// endpoints over a pre-existing app.</p>
-          <p><a class="btn" href="/websockets.html">Learn More &raquo;</a></p>
+          <p>Host websocket endpoints from a dedicated domain (e.g. <i>chat.mysite.com</i>), layer them on top of your main application host (e.g. <i>mysite.com/chat</i>) or use Aerys's reverse proxy feature to overlay ws:// and wss:// (TLS!) endpoints on top of pre-existing applications.</p>
+          <p><a class="btn" href="/websockets/">Learn More &raquo;</a></p>
         </div>
       </div>
 
