@@ -258,9 +258,6 @@ class MessageParser implements Parser {
             } elseif ($firstTwoBytes === "\r\n") {
                 $this->buffer = substr($this->buffer, 2);
                 goto complete;
-            } elseif ($firstTwoBytes === "\n") {
-                $this->buffer = substr($this->buffer, 1);
-                goto complete;
             } else {
                 $this->state = self::TRAILERS;
                 goto trailers;
