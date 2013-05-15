@@ -15,7 +15,7 @@
  * 
  * From here it's little more than a hop, skip and a jump to generating complex responses
  * asynchronously in our non-blocking Aerys server. To see implementation details please peruse
- * the example async request handler located at ./examples/support_files/MyAsyncRequestHandler.php.
+ * the example handler class used for this example.
  * 
  * To run the example, execute this script and request http://127.0.0.1:1337/ in your browser
  */
