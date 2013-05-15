@@ -1,7 +1,7 @@
 <?php
 
 use Aerys\Server,
-    Amp\Async\Dispatcher,
+    Amp\Async\PhpDispatcher,
     Amp\Async\CallResult;
 
 class ExampleAsyncApp {
@@ -10,7 +10,12 @@ class ExampleAsyncApp {
     private $dispatcher;
     private $callIdRequestMap = [];
     
-    function __construct(Server $server, Dispatcher $dispatcher) {
+    /**
+     * These dependencies are automatically provisioned by the Aerys Configurator using the
+     * PhpDispatcher instance we shared in the main example file. The actual Server instance
+     * is created by the Configurator and shared during the bootstrap phase.
+     */
+    function __construct(Server $server, PhpDispatcher $dispatcher) {
         $this->server = $server;
         $this->dispatcher = $dispatcher;
     }
@@ -20,11 +25,12 @@ class ExampleAsyncApp {
      * appropriate response with the server when it completes.
      */
     function __invoke(array $asgiEnv, $requestId) {
-        $onResultCallback = [$this, 'onCallResult'];
-        $callId = $this->dispatcher->call($onResultCallback, 'my_async_function', 'Zanzibar!');
+        $onResult = [$this, 'onCallResult'];
+        $callId = $this->dispatcher->call($onResult, 'some_slow_io_function', 'Zanzibar!');
         $this->callIdRequestMap[$callId] = $requestId;
         
-        // We don't return a response now because we don't know what it is yet!
+        // Don't return a response now because we won't know how
+        // to respond appropriately until our async function returns.
     }
     
     /**

@@ -57,8 +57,12 @@ class Configurator {
     }
     
     private function generateHttpServerInstance() {
-        $this->injector->delegate('Amp\Reactor', 'Amp\ReactorFactory');
-        $reactor = $this->injector->make('Amp\Reactor');
+        try {
+            $reactor = $this->injector->make('Amp\Reactor');
+        } catch (InjectionException $e) {
+            $this->injector->delegate('Amp\Reactor', 'Amp\ReactorFactory');
+            $reactor = $this->injector->make('Amp\Reactor');
+        }
         
         $this->injector->alias('Amp\Reactor', get_class($reactor));
         $this->injector->share($reactor);
@@ -123,9 +127,23 @@ class Configurator {
             return $handler->launchApp($this->injector);
         } elseif (is_callable($handler)) {
             return $handler;
+        } elseif (is_string($handler)) {
+            return $this->provisionInjectableClass($handler);
         } else {
             throw new ConfigException(
-                'Invalid host handler; callable or Launcher instance required'
+                'Invalid host handler; callable, Launcher or injectable class name required'
+            );
+        }
+    }
+    
+    private function provisionInjectableClass($handler) {
+        try {
+            return $this->injector->make($handler);
+        } catch (InjectionException $e) {
+            throw new ConfigException(
+                'Failed instantiating handler class: ' . $handler,
+                NULL,
+                $e
             );
         }
     }
