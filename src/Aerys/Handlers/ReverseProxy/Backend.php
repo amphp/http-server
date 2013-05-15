@@ -5,7 +5,7 @@ namespace Aerys\Handlers\ReverseProxy;
 use Aerys\Server,
     Aerys\Status,
     Aerys\Reason,
-    Aerys\Parsing\MessageParser,
+    Aerys\Parsing\Parser,
     Aerys\Writing\Writer,
     Aerys\Writing\StreamWriter,
     Aerys\ResourceException;
@@ -22,7 +22,7 @@ class Backend {
     private $queueSize = 0;
     private $ioGranularity = 262144;
     
-    function __construct(Server $server, MessageParser $parser, $socket, $uri) {
+    function __construct(Server $server, Parser $parser, $socket, $uri) {
         $this->server = $server;
         $this->parser = $parser;
         $this->socket = $socket;
