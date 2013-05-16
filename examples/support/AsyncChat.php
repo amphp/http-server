@@ -1,123 +1,78 @@
-<?php // websocket endpoint
+<?php 
 
 use Aerys\Handlers\Websocket\Codes,
     Aerys\Handlers\Websocket\Client,
     Aerys\Handlers\Websocket\Message,
     Aerys\Handlers\Websocket\Endpoint,
-    Aerys\Handlers\Websocket\EndpointOptions,
-    Amp\Async\Dispatcher,
-    Amp\Async\CallResult;
+    Amp\MultiProcess\PhpDispatcher,
+    Amp\MultiProcess\CallResult;
 
 class AsyncChat implements Endpoint {
     
+    private $dispatcher;
     private $clients;
-    private $asyncDispatcher;
     
-    function __construct(Dispatcher $dispatcher) {
-        $this->asyncDispatcher = $dispatcher;
+    function __construct(PhpDispatcher $dispatcher) {
+        $this->dispatcher = $dispatcher;
         $this->clients = new \SplObjectStorage;
     }
     
     function onOpen(Client $client) {
         $this->clients->attach($client);
-        $this->loadRecentMessages($client);
+        $this->loadMessages($client);
     }
     
     function onMessage(Client $client, Message $msg) {
-        $this->storeChatMessage($client, $msg->getPayload());
+        $this->saveMessage($client, $msg->getPayload());
     }
     
     function onClose(Client $client, $code, $reason) {
         $this->clients->detach($client);
     }
     
-    // -------------------- ASYNC FUNCTIONALITY FOLLOWS --------------------------
+    // ---------------------------------- ASYNC FUNCTIONALITY --------------------------------------
+    // All websocket actions happen inside the server's non-blocking event loop. Any slow operation
+    // will totally hose your server's performance. It's IMPERATIVE that you execute IO operations
+    // without blocking. In the code below we use the Amp multiprocess dispatcher to asynchronously
+    // store and retrieve messages from the database without blocking the main process.
+    // ---------------------------------------------------------------------------------------------
     
-    private function loadRecentMessages(Client $client) {
-        $onResult = function(CallResult $callResult) use ($client) {
-            $this->onRecentMessagesLoadResult($callResult, $client);
-        };
-        $this->asyncDispatcher->call($onResult, 'loadRecentMessages'/*, $varArgs = NULL*/);
+    private function loadMessages(Client $client) {
+        $onResult = function(CallResult $r) use ($client) { $this->onMessageLoad($r, $client); };
+        $this->dispatcher->call($onResult, 'loadMessages', 50);
     }
     
-    private function onRecentMessageLoadResult(CallResult $callResult, Client $client) {
-        if ($callResult->isSuccess()) {
-            $recentMessages = $callResult->getResult();
+    private function onMessageLoad(CallResult $r, Client $client) {
+        if ($r->isSuccess()) {
+            $recentMessages = $r->getResult();
             $client->sendText($recentMessages);
         } else {
             // This example closes the client ws:// connection, but you could just as easily send
-            // your downstream .js app a message along the lines of "failed to load recent messages,
-            // please refresh your page to try again" (or something similar).
+            // your downstream .js app a message like "failed to load recent messages,
+            // please refresh your page to try again."
             $client->close(Codes::UNEXPECTED_SERVER_ERROR);
         }
     }
     
-    private function storeChatMessage(Client $client, $chatMsg) {
-        $onResult = function(CallResult $callResult) use ($client) {
-            $this->onStorageResult($callResult, $client);
-        };
-        $this->asyncDispatcher->call($onResult, 'storeChatMessageInDb', $chatMsg);
+    private function saveMessage(Client $client, $chatMsg) {
+        $onResult = function(CallResult $r) use ($client, $chatMsg) { $this->onMessageSave($r, $client, $chatMsg); };
+        $this->dispatcher->call($onResult, 'saveMessage', $chatMsg);
     }
     
-    private function onStorageResult(CallResult $callResult, Client $client) {
-        if ($callResult->isSuccess()) {
+    private function onMessageSave(CallResult $r, Client $client, $chatMsg) {
+        if ($r->isSuccess()) {
             // Our chat message was saved to the db! Now we can send it out to the other clients ...
             foreach ($this->clients as $c) {
                 if ($client !== $c) {
-                    $c->sendText($payload);
+                    $c->sendText($chatMsg);
                 }
             }
         } else {
-            // This example closes the client ws:// connection, but you could just as easily send
-            // your downstream .js app a message along the lines of "failed to save message, click
-            // here to retry" (or something similar).
+            // This example closes the client ws:// connection, but you could also send your downstream
+            // client a message along the lines of "failed to save message, please try again."
             $client->close(Codes::UNEXPECTED_SERVER_ERROR);
         }
     }
+    
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

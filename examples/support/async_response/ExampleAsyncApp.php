@@ -1,8 +1,8 @@
 <?php
 
 use Aerys\Server,
-    Amp\Async\PhpDispatcher,
-    Amp\Async\CallResult;
+    Amp\MultiProcess\PhpDispatcher,
+    Amp\MultiProcess\CallResult;
 
 class ExampleAsyncApp {
     

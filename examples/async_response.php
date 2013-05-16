@@ -22,7 +22,7 @@
 
 use Auryn\Provider,
     Amp\ReactorFactory,
-    Amp\Async\PhpDispatcher,
+    Amp\MultiProcess\PhpDispatcher,
     Aerys\Config\Configurator;
 
 require dirname(__DIR__) . '/autoload.php';
