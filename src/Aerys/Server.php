@@ -14,10 +14,9 @@ class Server extends TcpServer {
     const SERVER_SOFTWARE = 'Aerys/0.0.1';
     const HTTP_DATE = 'D, d M Y H:i:s T';
     
-    private $writablePipelines;
-    
     private $pipelineFactory;
     private $pipelines;
+    private $writablePipelines;
     private $hosts = [];
     private $requestIdPipelineMap = [];
     private $onHeadersMods = [];
@@ -584,6 +583,7 @@ class Server extends TcpServer {
     private function write(Pipeline $pipeline) {
         if ($completedRequestId = $pipeline->write()) {
             $this->afterResponse($pipeline, $completedRequestId);
+            $this->cancelWriteSubscription($pipeline);
         } elseif (!$this->writablePipelines->contains($pipeline)) {
             $subscription = $this->reactor->onWritable(function() use ($pipeline) {
                 $this->write($pipeline);
@@ -651,13 +651,21 @@ class Server extends TcpServer {
         list($readSubscription, $socket) = $this->pipelines->offsetGet($pipeline);
         $readSubscription->cancel();
         $this->pipelines->detach($pipeline);
-        $this->writablePipelines->detach($pipeline);
+        $this->cancelWriteSubscription($pipeline);
         
         if ($this->cachedClientCount-- === $this->maxConnections) {
             $this->resume();
         }
         
         return $socket;
+    }
+    
+    private function cancelWriteSubscription(Pipeline $pipeline) {
+        if ($this->writablePipelines->contains($pipeline)) {
+            $subscription = $this->writablePipelines->offsetGet($pipeline);
+            $subscription->cancel();
+            $this->writablePipelines->detach($pipeline);
+        }
     }
     
     private function closePipeline(Pipeline $pipeline) {
