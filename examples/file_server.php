@@ -10,7 +10,7 @@ require dirname(__DIR__) . '/autoload.php';
 require __DIR__ . '/support/ExampleChatEndpoint.php';
 
 (new Configurator)->createServer([[
-    'listenOn'      => '*:80',
+    'listenOn'      => '*:1337',
     'application'   => new DocRootLauncher([
         'docRoot'   => __DIR__ . '/support/file_server_root',
         
@@ -27,7 +27,7 @@ require __DIR__ . '/support/ExampleChatEndpoint.php';
         'memoryCacheMaxSize'        => 67108864,
         'memoryCacheMaxFileSize'    => 1048576
     ]),
-    
+    /*
     'mods' => [
         'log' => [
             'php://stdout' => 'common'
@@ -36,5 +36,6 @@ require __DIR__ . '/support/ExampleChatEndpoint.php';
             '/websockets/chat' => new ExampleChatEndpoint
         ],
     ]
+    */
 ]])->start();
 

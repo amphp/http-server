@@ -63,19 +63,18 @@
       <h3>Proxies Aren't a Fix: They're A Band-Aid</h3>
       
       <p>
-        The Websocket protocol designers really got it right when they used HTTP's upgrade mechanism and
+        The Websocket protocol designers got it right when they utilized HTTP's upgrade mechanism and
         standard ports (80/443) to listen for traffic. Because these ports are guaranteed to be open in corporate
         firewalls you can be sure of your application's ability to communicate with clients via
         websockets. However, this creates a problem for PHP applications running behind traditional
         SAPIs because the front-facing web server is already listening on these reserved ports. If
         you want to run a normal PHP application behind say, Apache, you're forced to setup a proxy
         server to direct regular traffic to the backend Apache server while routing websocket traffic
-        to your websocket server. Let's be clear: <em>this proxying approach is not a solution, it's
-        a band-aid.</em>
+        to your websocket server.
       </p>
       
       <p>
-        This problem is nonexistent in an Aerys application because Aerys is it's own server; it can
+        This problem doesn't exist in an Aerys application because Aerys is it's own server; it can
         seamlessly upgrade a connection from http:// to ws:// without skipping a beat.
       </p>
       
@@ -95,7 +94,7 @@
       <h3>Add Websockets To Existing SAPI Applications</h3>
       
       <p>
-        Already have a PHP application running on FastCGI or Apache? No problem. You can add websocket
+        Already have a PHP application running on FastCGI/Apache/Nginx/etc? No problem. You can add websocket
         support in minutes by changing the port your existing server listens on. Aerys can then
         reverse proxy requests to the primary application while intercepting and handling requests
         for your websocket endpoints.
