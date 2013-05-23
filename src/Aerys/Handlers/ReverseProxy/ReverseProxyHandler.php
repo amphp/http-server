@@ -34,7 +34,7 @@ class ReverseProxyHandler {
             $this->connect($backendUri);
         }
         
-        $reactor->repeat(function() { $this->autoWrite(); }, $this->autoWriteInterval);
+        $reactor->schedule(function() { $this->autoWrite(); }, $this->autoWriteInterval);
     }
     
     private function connect($uri) {

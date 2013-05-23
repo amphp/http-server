@@ -47,7 +47,7 @@ class DocRootHandler {
         $this->assignDefaultMimeTypes();
         $this->multipartBoundary = uniqid();
         
-        $this->staleCacheClearanceSubscription = $reactor->repeat(function() {
+        $this->staleCacheClearanceSubscription = $reactor->schedule(function() {
             $this->cleanCache();
         }, $interval = 1);
     }

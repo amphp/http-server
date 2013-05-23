@@ -14,10 +14,10 @@ class Server extends TcpServer {
     const SERVER_SOFTWARE = 'Aerys/0.0.1';
     const HTTP_DATE = 'D, d M Y H:i:s T';
     
+    private $writablePipelines;
+    
     private $pipelineFactory;
     private $pipelines;
-    private $writablePipelines;
-    private $autoWriteInterval = 0.04;
     private $hosts = [];
     private $requestIdPipelineMap = [];
     private $onHeadersMods = [];
@@ -29,7 +29,7 @@ class Server extends TcpServer {
     private $logErrorsTo = 'php://stderr';
     private $maxConnections = 2500;
     private $maxRequests = 150;
-    private $keepAliveTimeout = 95;
+    private $keepAliveTimeout = 5;
     private $defaultContentType = 'text/html';
     private $defaultCharset = 'utf-8';
     private $autoReasonPhrase = TRUE;
@@ -68,8 +68,6 @@ class Server extends TcpServer {
     function start() {
         if ($this->canStart()) {
             $this->errorStream = fopen($this->logErrorsTo, 'ab+');
-            $this->reactor->repeat(function() { $this->autoWrite(); }, $this->autoWriteInterval);
-            
             parent::start();
         }
     }
@@ -279,8 +277,10 @@ class Server extends TcpServer {
             $host = $this->selectHostByAbsoluteUri($requestUri);
         } elseif ($hostHeader !== NULL || $protocol >= 1.1) {
             $host = $this->selectHostByHeader($hostHeader);
-        } elseif ($protocol == '1.0') {
-            $host = $this->defaultHost ?: current($this->hosts);
+        } elseif ($this->defaultHost) {
+            $host = $this->defaultHost;
+        } else {
+            $host = current($this->hosts);
         }
         
         return $host;
@@ -581,17 +581,15 @@ class Server extends TcpServer {
         }
     }
     
-    private function autoWrite() {
-        foreach ($this->writablePipelines as $pipeline) {
-            $this->write($pipeline);
-        }
-    }
-    
     private function write(Pipeline $pipeline) {
         if ($completedRequestId = $pipeline->write()) {
             $this->afterResponse($pipeline, $completedRequestId);
-        } else {
-            $this->writablePipelines->attach($pipeline);
+        } elseif (!$this->writablePipelines->contains($pipeline)) {
+            $subscription = $this->reactor->onWritable(function() use ($pipeline) {
+                $this->write($pipeline);
+            });
+            
+            $this->writablePipelines->attach($pipeline, $subscription);
         }
     }
     
@@ -607,7 +605,8 @@ class Server extends TcpServer {
         } elseif ($this->shouldCloseAfterResponse($asgiEnv, $asgiResponse)) {
             $this->closePipeline($pipeline);
         } else {
-            $this->finalizeKeepAliveResponse($pipeline, $requestId);
+            $pipeline->clearRequest($requestId);
+            unset($this->requestIdPipelineMap[$requestId]);
         }
     }
     
@@ -640,18 +639,6 @@ class Server extends TcpServer {
         }
         
         return $result;
-    }
-    
-    private function finalizeKeepAliveResponse($pipeline, $requestId) {
-        $pipeline->clearRequest($requestId);
-        
-        if ($pipeline->canWrite()) {
-            $this->writablePipelines->attach($pipeline);
-        } else {
-            $this->writablePipelines->detach($pipeline);
-        }
-        
-        unset($this->requestIdPipelineMap[$requestId]);
     }
     
     private function clearPipeline(Pipeline $pipeline) {
