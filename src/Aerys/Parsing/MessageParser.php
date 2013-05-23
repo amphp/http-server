@@ -53,6 +53,10 @@ class MessageParser implements Parser {
         return ($this->buffer || $this->buffer === '0');
     }
     
+    function getState() {
+        return $this->state;
+    }
+    
     function parse($data) {
         $this->buffer .= $data;
         
@@ -358,7 +362,7 @@ class MessageParser implements Parser {
         }
     }
     
-    private function getParsedMessageArray() {
+    function getParsedMessageArray() {
         $headers = [];
         
         foreach ($this->headers as $key => $arr) {
