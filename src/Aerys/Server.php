@@ -289,7 +289,7 @@ class Server extends TcpServer {
      * @TODO Determine how best to allow for forward proxies specifying absolute URIs
      */
     private function selectHostByAbsoluteUri($uri) {
-        $urlParts = parse_url($requestUri);
+        $urlParts = parse_url($uri);
         $port = empty($urlParts['port']) ? '80' : $urlPorts['port'];
         $hostId = strtolower($urlParts['host']) . ':' . $port;
         
@@ -652,7 +652,6 @@ class Server extends TcpServer {
         $readSubscription->cancel();
         $this->pipelines->detach($pipeline);
         $this->cancelWriteSubscription($pipeline);
-        
         if ($this->cachedClientCount-- === $this->maxConnections) {
             $this->resume();
         }
