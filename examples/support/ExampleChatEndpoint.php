@@ -13,15 +13,21 @@ class ExampleChatEndpoint implements Endpoint {
     }
     
     function onOpen(Client $client) {
-        $asgiEnv = $client->getEnvironment();
-        $addr = $asgiEnv['REMOTE_ADDR'];
-        $this->clients->attach($client, $addr);
+        $this->clients->attach($client);
+        $this->sendUserCount();
+    }
+    
+    private function sendUserCount() {
+        $toSend = '0' . $this->clients->count();
+        foreach ($this->clients as $c) {
+            $c->sendText($toSend);
+        }
     }
     
     function onMessage(Client $client, Message $msg) {
         $addr = $this->clients->offsetGet($client);
         $payload = $msg->getPayload();
-        $toSend = $addr . ': ' . $payload;
+        $toSend = '1' . $payload;
         
         foreach ($this->clients as $c) {
             if ($client !== $c) {
@@ -32,6 +38,7 @@ class ExampleChatEndpoint implements Endpoint {
     
     function onClose(Client $client, $code, $reason) {
         $this->clients->detach($client);
+        $this->sendUserCount();
     }
     
 }

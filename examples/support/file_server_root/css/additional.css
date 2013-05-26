@@ -3,6 +3,10 @@ body {
     padding-bottom: 60px;
 }
 
+h1 {
+    margin-top: 60px;
+}
+
 /* Custom container */
 .container {
     margin: 0 auto;

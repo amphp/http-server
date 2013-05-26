@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Why You Need a PHP Server</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="Daniel Lowrey">
+
+    <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.min.css" rel="stylesheet">
+    <link href="/favicon.ico" rel="icon" type="image/x-icon" />
+    <link href="/css/additional.css" rel="stylesheet" type="text/css">
+      
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="../assets/js/html5shiv.js"></script>
+    <![endif]-->
+  </head>
+
+  <body>
+
+    <div class="container">
+
+      <div class="masthead">
+        <div class="navbar">
+          <div class="navbar-inner">
+            <div class="container">
+              <ul class="nav">
+                <li><a href="/">Home</a></li>
+                <li class="active"><a href="/why.html">Why?</a></li>
+                <li><a href="/features.html">Features</a></li>
+                <li><a href="/websockets.html">Websockets</a></li>
+                <li><a href="/mods/">Customization</a></li>
+                <li><a href="/asgi.html">ASGI</a></li>
+              </ul>
+            </div>
+          </div>
+        </div><!-- /.navbar -->
+      </div>
+      
+      <h1>Why Do I Need a PHP Server?</h1>
+      <p class="lead">Aerys cuts out the middle man and gives PHP apps full access to the HTTP protocol</p>
+      <hr />
+      
+      <p>
+        PHP earned its niche in the web development community by making HTTP a first-class citizen of
+        the language. If you're thinking that PHP is already a web framework, you'd be right. So why
+        should we reinvent the wheel and write a web server in PHP? Well ...
+      </p>
+      
+      <hr />
+      
+      <h3>Why? For the Love of Lerdorf, Why?</h3>
+      
+      <ul>
+        <li>PHP's process-per-request SAPI model doesn't scale well</li>
+        <li>PHP's Web SAPIs can't support the large number of concurrent client connections needed for websockets</li>
+        <li>PHP's dependence on third party webservers prevent websocket applications without an additional proxy server</li>
+        <li>PHP's HTTP abstractions are leaky and don't support advanced HTTP features like <code>Expect: 100-continue</code> headers</li>
+        <li>PHP's shared-nothing SAPI architecture makes opcode caching a requirement</li>
+        <li>PHP has superglobals (gag)</li>
+        <li>Third-party webservers mean you can't easily tailer the server to fit the needs of your application</li>
+      </ul>
+      
+      <hr />
+      
+      <h3>How Does Aerys Solve These Problems?</h3>
+      
+      <ul>
+        <li>Aerys is a single-process event-driven server capable of handling tens of thousands of concurrent connections at once</li>
+        <li>Aerys integrates full websocket support as a first-class citizen of the server</li>
+        <li>Aerys doesn't need a middle man; <i>it's your web server and application rolled into one</i>
+        <li>Because Aerys handles all requests in a single process there is no need for opcode caching</li>
+        <li>Aerys provides a simple modding interface to allow app-specific customization and resource caching</li>
+        <li>Aerys gives applications full access to all aspects of the HTTP/1.1 protocol</li>
+        <li><i>It's really fast;</i> as fast or faster than PHP apps behind Apache/Nginx/etc even if those apps use opcode caching</li>
+      </ul>
+      
+      <hr />
+      
+      <h3>What are the Drawbacks?</h3>
+      
+      <ul>
+        <li>Memory management requires a more hands on approach since each request isn't killed off when the process completes</li>
+        <li>Some form of multiprocessing is necessary to prevent blocking application IO</li>
+        <li>Error tolerance is lower; fatal application errors can bring down your entire server</li>
+        <li>Developers need slightly more knowledge of the HTTP protocol than with standard PHP.</li>
+      </ul>
+      
+      <hr />
+      
+      <div class="footer">
+        <p>&copy; <a href="http://chat.stackoverflow.com/transcript/message/7857491#7857491">Lusitanian's Mom</a> 2013</p>
+      </div>
+
+    </div> <!-- /container -->
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/js/bootstrap.min.js"></script>
+
+  </body>
+</html>
