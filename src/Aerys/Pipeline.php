@@ -26,6 +26,8 @@ class Pipeline {
     private function setSocket($socket) {
         $this->socket = $socket;
         
+        stream_set_blocking($this->socket, FALSE);
+        
         $name = stream_socket_get_name($socket, FALSE);
         list($this->address, $this->port) = $this->parseName($name);
         
