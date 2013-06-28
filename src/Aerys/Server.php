@@ -585,7 +585,8 @@ class Server extends TcpServer {
             $this->afterResponse($pipeline, $completedRequestId);
             $this->cancelWriteSubscription($pipeline);
         } elseif (!$this->writablePipelines->contains($pipeline)) {
-            $subscription = $this->reactor->onWritable(function() use ($pipeline) {
+            $socket = $pipeline->getSocket();
+            $subscription = $this->reactor->onWritable($socket, function() use ($pipeline) {
                 $this->write($pipeline);
             });
             
