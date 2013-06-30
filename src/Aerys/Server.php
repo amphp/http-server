@@ -318,8 +318,8 @@ class Server extends TcpServer {
     private function selectRequestHost(array $requestArr) {
         $protocol = $requestArr['protocol'];
         $requestUri = $requestArr['uri'];
-        $headers = $requestArr['headers'];
-        $hostHeader = isset($headers['HOST']) ? strtolower($headers['HOST']) : NULL;
+        $headers = array_change_key_case($requestArr['headers'], CASE_UPPER);
+        $hostHeader = empty($headers['HOST']) ? NULL : strtolower(current($headers['HOST']));
         
         if (0 === stripos($requestUri, 'http://') || stripos($requestUri, 'https://') === 0) {
             $host = $this->selectHostByAbsoluteUri($requestUri);
@@ -398,20 +398,19 @@ class Server extends TcpServer {
             $headers = array_change_key_case($headers, CASE_UPPER);
         }
         
-        if (isset($headers['CONTENT-TYPE'])) {
-            $asgiEnv['CONTENT_TYPE'] = $headers['CONTENT-TYPE'];
+        if (!empty($headers['CONTENT-TYPE'])) {
+            $asgiEnv['CONTENT_TYPE'] = current($headers['CONTENT-TYPE']);
             unset($headers['CONTENT-TYPE']);
         }
         
-        if (isset($headers['CONTENT-LENGTH'])) {
-            $asgiEnv['CONTENT_LENGTH'] = $headers['CONTENT-LENGTH'];
+        if (!empty($headers['CONTENT-LENGTH'])) {
+            $asgiEnv['CONTENT_LENGTH'] = current($headers['CONTENT-LENGTH']);
             unset($headers['CONTENT-LENGTH']);
         }
         
         foreach ($headers as $field => $value) {
             $field = 'HTTP_' . str_replace('-', '_', $field);
-            $value = ($value === (array) $value) ? implode(',', $value) : $value;
-            $asgiEnv[$field] = $value;
+            $asgiEnv[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
         }
         
         return $asgiEnv;

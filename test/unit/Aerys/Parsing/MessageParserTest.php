@@ -62,7 +62,7 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
         $method = 'GET';
         $uri = '/';
         $protocol = '1.1';
-        $headers = ['HOST' => 'localhost'];
+        $headers = ['Host' => ['localhost']];
         $body = NULL;
         
         $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
@@ -82,9 +82,9 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
         $uri = '/post-endpoint';
         $protocol = '1.0';
         $headers = [
-            'HOST' => 'localhost',
-            'COOKIE' => ['cookie1', 'cookie2'],
-            'CONTENT-LENGTH' => 3
+            'Host' => ['localhost'],
+            'Cookie' => ['cookie1', 'cookie2'],
+            'Content-Length' => [3]
         ];
         $body = '123';
         
@@ -117,8 +117,8 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
         $uri = '/test';
         $protocol = '1.1';
         $headers = [
-            'HOST' => 'localhost',
-            'TRANSFER-ENCODING' => 'chunked'
+            'Host' => ['localhost'],
+            'Transfer-Encoding' => ['chunked']
         ];
         $body = NULL;
         
@@ -147,14 +147,14 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
         $uri = '/test';
         $protocol = '1.1';
         $headers = [
-            'HOST' => 'localhost',
-            'CONNECTION' => 'keep-alive',
-            'USER-AGENT' => 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.97 Safari/537.11',
-            'ACCEPT' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'ACCEPT-ENCODING' => 'gzip,deflate,sdch',
-            'ACCEPT-LANGUAGE' => 'en-US,en;q=0.8',
-            'ACCEPT-CHARSET' => 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
-            'CONTENT-LENGTH' => $len
+            'Host' => ['localhost'],
+            'Connection' => ['keep-alive'],
+            'User-Agent' => ['Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.97 Safari/537.11'],
+            'Accept' => ['text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'],
+            'Accept-Encoding' => ['gzip,deflate,sdch'],
+            'Accept-Language' => ['en-US,en;q=0.8'],
+            'Accept-Charset' => ['ISO-8859-1,utf-8;q=0.7,*;q=0.3'],
+            'Content-Length' => [$len]
         ];
         
         $return[] = [$msg, $method, $uri, $protocol, $headers, $body];
@@ -175,8 +175,8 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
         $uri = '/test';
         $protocol = '1.1';
         $headers = [
-            'HOST' => 'localhost',
-            'HEADER-LWS-SPLIT' => 'line1 line2 line3 line4 line5'
+            'Host' => ['localhost'],
+            'Header-Lws-Split' => ['line1 line2 line3 line4 line5']
         ];
         $body = NULL;
         
@@ -201,9 +201,9 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
         $uri = '/test';
         $protocol = '1.1';
         $headers = [
-            'HOST' => 'localhost',
-            'TRANSFER-ENCODING' => 'chunked',
-            'MY-TRAILER' => 'testval'
+            'Host' => ['localhost'],
+            'Transfer-Encoding' => ['chunked'],
+            'My-Trailer' => ['testval']
         ];
         $body = 'woot!test';
         

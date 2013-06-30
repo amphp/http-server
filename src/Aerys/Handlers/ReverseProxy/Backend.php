@@ -165,15 +165,19 @@ class Backend {
     private function assignParsedResponse(array $responseArr) {
         $requestId = array_shift($this->responseQueue);
         
-        unset(
-            $responseArr['headers']['CONNECTION'],
-            $responseArr['headers']['TRANSFER-ENCODING']
-        );
+        $headers = array_change_key_case($responseArr['headers'], CASE_UPPER);
+        $asgiResponseHeaders = [];
+        
+        foreach ($headers as $key => $headerArr) {
+            if (!($key === 'CONNECTION' || $key === 'TRANSFER-ENCODING')) {
+                $asgiResponseHeaders[$key] = isset($headerArr[1]) ? implode(',', $headerArr) : $headerArr[0];
+            }
+        }
         
         $asgiResponse = [
             $responseArr['status'],
             $responseArr['reason'],
-            $responseArr['headers'],
+            $asgiResponseHeaders,
             $responseArr['body']
         ];
         
