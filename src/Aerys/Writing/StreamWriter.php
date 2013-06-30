@@ -2,8 +2,6 @@
 
 namespace Aerys\Writing;
 
-use Aerys\ResourceException;
-
 class StreamWriter extends Writer {
     
     protected $body;

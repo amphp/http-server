@@ -2,8 +2,6 @@
 
 namespace Aerys\Writing;
 
-use Aerys\ResourceException;
-
 class Writer {
     
     protected $destination;
