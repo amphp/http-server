@@ -22,7 +22,7 @@ class PeclMessageParser implements Parser {
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = 10485760;
     private $bodySwapSize = 2097152;
-    private $returnHeadersBeforeBody = FALSE;
+    private $preBodyHeadersCallback;
     
     function __construct($mode = self::MODE_REQUEST) {
         $this->mode = $mode;
@@ -34,12 +34,8 @@ class PeclMessageParser implements Parser {
         }
     }
     
-    function hasUnfinishedMessage() {
-        return $this->state || ltrim($this->buffer);
-    }
-    
-    function hasBuffer() {
-        return ($this->buffer || $this->buffer === '0');
+    function getBuffer() {
+        return $this->buffer;
     }
     
     function getState() {
@@ -48,6 +44,10 @@ class PeclMessageParser implements Parser {
     
     function parse($data) {
         $this->buffer .= $data;
+        
+        if (!($this->buffer || $this->buffer === '0')) {
+            goto more_data_needed;
+        }
         
         switch ($this->state) {
             case self::AWAITING_HEADERS:
@@ -147,11 +147,11 @@ class PeclMessageParser implements Parser {
             $uri = 'php://temp/maxmemory:' . $this->bodySwapSize;
             $this->body = fopen($uri, 'r+');
             
-            if ($this->returnHeadersBeforeBody) {
+            if ($callback = $this->preBodyHeadersCallback) {
                 $parsedMsgArr = $this->getParsedMessageArray();
                 $parsedMsgArr['headersOnly'] = TRUE;
                 
-                return $parsedMsgArr;
+                $callback($parsedMsgArr);
             }
             
             switch ($this->state) {

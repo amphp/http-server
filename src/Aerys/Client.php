@@ -15,7 +15,7 @@ class Client {
     public $requests = [];
     public $requestHeaderTraces = [];
     public $responses = [];
-    public $writing = [];
+    public $pipeline = [];
     public $requestCount;
     
     public $parser;

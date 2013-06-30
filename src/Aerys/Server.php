@@ -47,16 +47,7 @@ class Server extends TcpServer {
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = 10485760;
     private $bodySwapSize = 2097152;
-    private $allowedMethods = [
-        'GET'     => 1,
-        'HEAD'    => 1,
-        'OPTIONS' => 1,
-        'TRACE'   => 1,
-        'PUT'     => 1,
-        'POST'    => 1,
-        'PATCH'   => 1,
-        'DELETE'  => 1
-    ];
+    private $allowedMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE', 'PUT', 'POST', 'PATCH', 'DELETE'];
     
     private $errorStream;
     private $canUsePeclHttp;
@@ -68,6 +59,7 @@ class Server extends TcpServer {
         $this->clients = new \SplObjectStorage;
         
         $this->canUsePeclHttp = (extension_loaded('http') && function_exists('http_parse_headers'));
+        $this->allowedMethods = array_combine($this->allowedMethods, array_fill(0, count($this->allowedMethods), 1));
     }
     
     function addHost(Host $host) {
@@ -150,16 +142,19 @@ class Server extends TcpServer {
             ? new PeclMessageParser(Parser::MODE_REQUEST)
             : new MessageParser(Parser::MODE_REQUEST);
         
+        $onHeaders = function($requestArr) use ($client) { $this->onPreBodyHeaders($client, $requestArr); };
+        $onReadable = function($socket, $trigger) use ($client) {
+            return ($trigger === Reactor::READ) ? $this->read($client) : $this->timeout($client);
+        };
+        
         $client->parser->setOptions([
-            'returnHeadersBeforeBody' => TRUE,
             'maxHeaderBytes' => $this->maxHeaderBytes,
             'maxBodyBytes' => $this->maxBodyBytes,
-            'bodySwapSize' => $this->bodySwapSize
+            'bodySwapSize' => $this->bodySwapSize,
+            'preBodyHeadersCallback' => $onHeaders
         ]);
         
-        $client->readSubscription = $this->reactor->onReadable($socket, function($socket, $trigger) use ($client) {
-            $this->onReadable($client, $trigger);
-        }, $this->keepAliveTimeout);
+        $client->readSubscription = $this->reactor->onReadable($socket, $onReadable, $this->keepAliveTimeout);
         
         $this->clients->attach($client);
         $this->cachedClientCount++;
@@ -173,14 +168,8 @@ class Server extends TcpServer {
         return [$addr, $port];
     }
     
-    private function onReadable(Client $client, $trigger) {
-        return ($trigger === Reactor::READ)
-            ? $this->read($client)
-            : $this->timeout($client);
-    }
-    
     private function timeout(Client $client) {
-        if ($client->parser->hasUnfinishedMessage() || !$client->requests) {
+        if (!$client->requests || ltrim($client->parser->getBuffer(), "\r\n")) {
             $this->closeClient($client);
         }
     }
@@ -188,7 +177,7 @@ class Server extends TcpServer {
     private function read(Client $client) {
         $data = @fread($client->socket, $this->ioGranularity);
         
-        if ($data || $data === '0' || $client->parser->hasBuffer()) {
+        if ($data || $data === '0') {
             $this->parseClientData($client, $data);
         } elseif (!is_resource($client->socket) || @feof($client->socket)) {
             $this->closeClient($client);
@@ -198,9 +187,8 @@ class Server extends TcpServer {
     private function parseClientData(Client $client, $data) {
         try {
             while ($requestArr = $client->parser->parse($data)) {
-                return $requestArr['headersOnly']
-                    ? $this->onPreBodyHeaders($client, $requestArr)
-                    : $this->onRequest($client, $requestArr);
+                $this->onRequest($client, $requestArr);
+                $data = '';
             }
         } catch (ParseException $e) {
             $this->onParseError($client, $e->getCode());
@@ -224,14 +212,12 @@ class Server extends TcpServer {
         
         $client->preBodyRequest = [$requestId, $asgiEnv, $host, $needs100Continue];
         $client->requests[$requestId] = $asgiEnv;
-        $client->traces[$requestId] = $requestArr['trace'];
+        $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
         
         $this->invokeOnHeadersMods($host->getId(), $requestId);
         
         if ($needsContinue && !isset($client->responses[$requestId])) {
             $client->responses[$requestId] = [Status::CONTINUE_100, Reason::HTTP_100, [], NULL];
-        } elseif ($client->parser->hasBuffer()) {
-            $this->parseClientData($client, '');
         }
     }
     
@@ -249,9 +235,9 @@ class Server extends TcpServer {
             
             $client->requestCount += !isset($client->requests[$requestId]);
             $client->requests[$requestId] = $asgiEnv;
-            $client->traces[$requestId] = $trace;
+            $client->requestHeaderTraces[$requestId] = $trace;
             $client->responses[$requestId] = $asgiResponse;
-            $client->writing[$requestId] = NULL;
+            $client->pipeline[$requestId] = NULL;
             
             return NULL;
         }
@@ -260,7 +246,7 @@ class Server extends TcpServer {
         
         $client->requestCount += !isset($client->requests[$requestId]);
         $client->requests[$requestId] = $asgiEnv;
-        $client->traces[$requestId] = $requestArr['trace'];
+        $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
         
         if (!isset($this->allowedMethods[$method])) {
             $asgiResponse = $this->generateMethodNotAllowedResponse();
@@ -470,7 +456,7 @@ class Server extends TcpServer {
         
         if ($needsNewRequestId || $hasTrailer) {
             $client->requests[$requestId] = $asgiEnv;
-            $client->traces[$requestId] = $requestArr['trace'];
+            $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
         }
         
         $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
@@ -515,7 +501,7 @@ class Server extends TcpServer {
         $asgiEnv = $this->generateAsgiEnv($client, $serverName = '?', $requestArr);
         
         $client->requests[$requestId] = $asgiEnv;
-        $client->traces[$requestId] = '?';
+        $client->requestHeaderTraces[$requestId] = '?';
         
         $this->setResponse($requestId, [$status, $reason, $headers, $body]);
     }
@@ -558,14 +544,14 @@ class Server extends TcpServer {
     
     private function enqueueResponsesForWrite(Client $client) {
         foreach ($client->requests as $requestId => $asgiEnv) {
-            if (isset($client->writing[$requestId])) {
+            if (isset($client->pipeline[$requestId])) {
                 $canWrite = TRUE;
             } elseif (isset($client->responses[$requestId])) {
                 list($status, $reason, $headers, $body) = $client->responses[$requestId];
                 $protocol = $asgiEnv['SERVER_PROTOCOL'];
                 $rawHeaders = $this->generateRawHeaders($protocol, $status, $reason, $headers);
                 $responseWriter = $this->writerFactory->make($client->socket, $rawHeaders, $body, $protocol);
-                $client->writing[$requestId] = $responseWriter;
+                $client->pipeline[$requestId] = $responseWriter;
             } else {
                 break;
             }
@@ -692,16 +678,19 @@ class Server extends TcpServer {
     
     private function write(Client $client) {
         try {
-            while ($writer = current($client->writing)) {
-                if ($writer->write()) {
-                    $this->afterClientWriteCompletion($client);
-                    next($client->writing);
+            foreach ($client->pipeline as $requestId => $responseWriter) {
+                if (!$responseWriter) {
+                    // The next request in the pipeline doesn't have a response yet. We can't continue
+                    // because responses must be returned in the order in which they were received.
+                    break;
+                } elseif ($responseWriter->write()) {
+                    $this->afterResponse($client, $requestId);
                 } elseif ($client->writeSubscription) {
                     $client->writeSubscription->enable();
                     break;
                 } else {
                     $client->writeSubscription = $this->reactor->onWritable($client->socket, function() use ($client) {
-                        $this->doWrite($client);
+                        $this->write($client);
                     });
                     break;
                 }
@@ -711,16 +700,7 @@ class Server extends TcpServer {
         }
     }
     
-    private function afterClientWriteCompletion(Client $client) {
-        if ($client->writeSubscription) {
-            $client->writeSubscription->disable();
-        }
-        
-        $this->afterResponse($client);
-    }
-    
-    private function afterResponse(Client $client) {
-        $requestId = key($client->requests);
+    private function afterResponse(Client $client, $requestId) {
         $asgiEnv = $client->requests[$requestId];
         $asgiResponse = $client->responses[$requestId];
         
@@ -734,13 +714,22 @@ class Server extends TcpServer {
         } elseif ($this->shouldCloseAfterResponse($asgiEnv, $asgiResponse)) {
             $this->closeClient($client);
         } else {
-            unset(
-                $client->requests[$requestId],
-                $client->responses[$requestId],
-                $client->traces[$requestId],
-                $client->writing[$requestId],
-                $this->requestIdClientMap[$requestId]
-            );
+            $this->dequeueClientPipelineRequest($client, $requestId);
+        }
+    }
+    
+    private function dequeueClientPipelineRequest($client, $requestId) {
+        unset(
+            $client->pipeline[$requestId],
+            $client->requests[$requestId],
+            $client->responses[$requestId],
+            $client->requestHeaderTraces[$requestId],
+            $this->requestIdClientMap[$requestId]
+        );
+        
+        // Disable active onWritable stream subscriptions if the pipeline is now empty
+        if ($client->writeSubscription && !current($client->pipeline)) {
+            $client->writeSubscription->disable();
         }
     }
     
@@ -855,7 +844,7 @@ class Server extends TcpServer {
             );
         }
         
-        return $client->traces[$requestId];
+        return $client->requestHeaderTraces[$requestId];
     }
     
     function getErrorStream() {

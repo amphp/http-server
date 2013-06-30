@@ -73,7 +73,6 @@ class ModLimit implements OnHeadersMod {
     /**
      * Tracks request rates per-client and assigns a 429 response if the client is rate-limited
      * 
-     * @param Server $server
      * @param int $requestId
      * @return void
      */

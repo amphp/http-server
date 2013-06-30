@@ -17,7 +17,7 @@ interface Parser {
     function parse($data);
     function getParsedMessageArray();
     function setOptions(array $options);
-    function hasUnfinishedMessage();
-    function hasBuffer();
+    function getBuffer();
+    function getState();
     
 }

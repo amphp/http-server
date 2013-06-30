@@ -25,7 +25,7 @@ class Configurator {
             unset($config['options']);
         }
         
-        $httpServer = $this->generateHttpServerInstance();
+        $httpServer = $this->generateServerInstance();
         $hostDefs = $this->generateHostDefinitions($config);
         
         foreach ($hostDefs as $hostId => $hostStruct) {
@@ -56,7 +56,7 @@ class Configurator {
         return $httpServer;
     }
     
-    private function generateHttpServerInstance() {
+    private function generateServerInstance() {
         try {
             $reactor = $this->injector->make('Amp\Reactor');
         } catch (InjectionException $e) {
