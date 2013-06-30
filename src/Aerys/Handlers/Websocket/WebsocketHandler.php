@@ -89,7 +89,7 @@ class WebsocketHandler {
             return [FALSE, $result];
         }
         
-        if ($asgiEnv['REQUEST_METHOD'] != Method::GET) {
+        if ($asgiEnv['REQUEST_METHOD'] != 'GET') {
             return [FALSE, [Status::METHOD_NOT_ALLOWED, Reason::HTTP_405, [], NULL]];
         }
         

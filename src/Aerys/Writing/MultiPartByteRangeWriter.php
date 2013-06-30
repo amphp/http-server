@@ -2,8 +2,6 @@
 
 namespace Aerys\Writing;
 
-use Aerys\ResourceException;
-
 class MultiPartByteRangeWriter extends Writer {
     
     const BOUNDARY = 0;

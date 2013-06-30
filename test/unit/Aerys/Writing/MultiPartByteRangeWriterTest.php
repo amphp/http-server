@@ -53,7 +53,7 @@ class MultiPartByteRangeWriterTest extends PHPUnit_Framework_TestCase {
     }
     
     /**
-     * @expectedException Aerys\ResourceException
+     * @expectedException Aerys\Writing\ResourceException
      */
     function testWriteThrowsExceptionOnResourceFailure() {
         $resource = fopen('php://memory', 'r+');
@@ -74,7 +74,7 @@ class MultiPartByteRangeWriterTest extends PHPUnit_Framework_TestCase {
     }
     
     /**
-     * @expectedException Aerys\ResourceException
+     * @expectedException Aerys\Writing\ResourceException
      */
     function testWriteThrowsExceptionOnMidWriteResourceFailure() {
         $resource = fopen('php://memory', 'r+');
