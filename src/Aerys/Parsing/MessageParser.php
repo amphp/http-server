@@ -316,7 +316,7 @@ class MessageParser implements Parser {
             $headers = NULL;
         }
         
-        if ($headersSize > $this->maxHeaderBytes) {
+        if ($this->maxHeaderBytes > 0 && $headersSize > $this->maxHeaderBytes) {
             throw new ParseException(NULL, 431);
         }
         

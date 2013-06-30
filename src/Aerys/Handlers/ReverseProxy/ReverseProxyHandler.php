@@ -113,6 +113,11 @@ class ReverseProxyHandler {
             ? new PeclMessageParser(MessageParser::MODE_RESPONSE)
             : new MessageParser(MessageParser::MODE_RESPONSE);
         
+        $parser->setOptions([
+            'maxHeaderBytes' => 0,
+            'maxBodyBytes' => 0
+        ]);
+        
         $backend = new Backend($this->server, $parser, $socket, $uri);
         $readSubscription = $this->reactor->onReadable($socket, function() use ($backend) {
             $this->read($backend);

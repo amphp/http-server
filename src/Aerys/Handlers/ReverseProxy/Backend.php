@@ -153,7 +153,8 @@ class Backend {
     private function parse($data) {
         while ($responseArr = $this->parser->parse($data)) {
             $this->assignParsedResponse($responseArr);
-            if ($this->parser->hasBuffer()) {
+            $parseBuffer = ltrim($this->parser->getBuffer(), "\r\n");
+            if ($parseBuffer || $parseBuffer === '0') {
                 $data = '';
             } else {
                 break;
