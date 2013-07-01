@@ -25,9 +25,9 @@ class Server extends TcpServer {
     private $cachedClientCount = 0;
     private $lastRequestId = 0;
     
-    private $onHeadersMods = [];
-    private $beforeResponseMods = [];
-    private $afterResponseMods = [];
+    private $onHeadersMods;
+    private $beforeResponseMods;
+    private $afterResponseMods;
     private $insideBeforeResponseModLoop = FALSE;
     private $insideAfterResponseModLoop = FALSE;
     
@@ -52,6 +52,7 @@ class Server extends TcpServer {
     private $errorStream;
     private $canUsePeclHttp;
     private $ioGranularity = 262144;
+    private $errorPlaceholderHost;
     
     function __construct(Reactor $reactor, WriterFactory $wf = NULL) {
         $this->reactor = $reactor;
@@ -60,6 +61,11 @@ class Server extends TcpServer {
         
         $this->canUsePeclHttp = (extension_loaded('http') && function_exists('http_parse_headers'));
         $this->allowedMethods = array_combine($this->allowedMethods, array_fill(0, count($this->allowedMethods), 1));
+        $this->errorPlaceholderHost = new Host('?', '?', '?');
+        
+        $this->onHeadersMods = new \SplObjectStorage;
+        $this->beforeResponseMods = new \SplObjectStorage;
+        $this->afterResponseMods = new \SplObjectStorage;
     }
     
     function addHost(Host $host) {
@@ -214,7 +220,7 @@ class Server extends TcpServer {
         $client->requests[$requestId] = $asgiEnv;
         $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
         
-        $this->invokeOnHeadersMods($host->getId(), $requestId);
+        $this->invokeOnHeadersMods($host, $requestId);
         
         if ($needsContinue && !isset($client->responses[$requestId])) {
             $client->responses[$requestId] = [Status::CONTINUE_100, Reason::HTTP_100, [], NULL];
@@ -230,7 +236,7 @@ class Server extends TcpServer {
             : $requestArr['method'];
         
         if (!$host = $this->selectRequestHost($requestArr)) {
-            $asgiEnv = $this->generateAsgiEnv($client, $serverName = '?', $requestArr);
+            $asgiEnv = $this->generateAsgiEnv($client, $this->errorPlaceholderHost, $requestArr);
             $asgiResponse = $this->generateInvalidHostNameResponse();
             
             $client->requestCount += !isset($client->requests[$requestId]);
@@ -242,7 +248,7 @@ class Server extends TcpServer {
             return NULL;
         }
         
-        $asgiEnv = $this->generateAsgiEnv($client, $host->getName(), $requestArr);
+        $asgiEnv = $this->generateAsgiEnv($client, $host, $requestArr);
         
         $client->requestCount += !isset($client->requests[$requestId]);
         $client->requests[$requestId] = $asgiEnv;
@@ -370,15 +376,13 @@ class Server extends TcpServer {
         return $host;
     }
     
-    private function generateAsgiEnv(Client $client, $serverName, array $requestArr) {
+    private function generateAsgiEnv(Client $client, Host $host, array $requestArr) {
         $uri = $requestArr['uri'];
         $queryString =  ($uri === '/' || $uri === '*') ? '' : parse_url($uri, PHP_URL_QUERY);
         $scheme = $client->isEncrypted ? 'https' : 'http';
         $body = $requestArr['body'] ?: NULL;
         
-        if ($serverName === '*') {
-            $serverName = $client->serverAddress;
-        }
+        $serverName = $host->isWildcard() ? $client->serverAddress : $host->getName();
         
         $asgiEnv = [
             'ASGI_VERSION'      => '0.1',
@@ -388,6 +392,7 @@ class Server extends TcpServer {
             'ASGI_ERROR'        => $this->errorStream,
             'ASGI_INPUT'        => $body,
             'ASGI_URL_SCHEME'   => $scheme,
+            'AERYS_HOST_ID'     => $host->getId(),
             'SERVER_PORT'       => $client->serverPort,
             'SERVER_ADDR'       => $client->serverAddress,
             'SERVER_NAME'       => $serverName,
@@ -421,9 +426,9 @@ class Server extends TcpServer {
         return $asgiEnv;
     }
     
-    private function invokeOnHeadersMods($hostId, $requestId) {
-        if (isset($this->onHeadersMods[$hostId])) {
-            foreach ($this->onHeadersMods[$hostId] as $mod) {
+    private function invokeOnHeadersMods(Host $host, $requestId) {
+        if ($this->onHeadersMods->contains($host)) {
+            foreach ($this->onHeadersMods->offsetGet($host) as $mod) {
                 $mod->onHeaders($requestId);
             }
         }
@@ -438,7 +443,7 @@ class Server extends TcpServer {
         
         list($requestId, $asgiEnv, $host) = $requestInitArr;
         
-        $this->invokeOnHeadersMods($host->getId(), $requestId);
+        $this->invokeOnHeadersMods($host, $requestId);
         
         if (!isset($client->responses[$requestId])) {
             $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
@@ -455,7 +460,7 @@ class Server extends TcpServer {
         }
         
         if ($hasTrailer = !empty($asgiEnv['HTTP_TRAILER'])) {
-            $asgiEnv = $this->generateAsgiEnv($client, $host->getName(), $requestArr);
+            $asgiEnv = $this->generateAsgiEnv($client, $host, $requestArr);
         }
         
         if ($needsNewRequestId || $hasTrailer) {
@@ -502,7 +507,7 @@ class Server extends TcpServer {
         $requestId = ++$this->lastRequestId;
         $this->requestIdClientMap[$requestId] = $client;
         
-        $asgiEnv = $this->generateAsgiEnv($client, $serverName = '?', $requestArr);
+        $asgiEnv = $this->generateAsgiEnv($client, $this->errorPlaceholderHost, $requestArr);
         
         $client->requests[$requestId] = $asgiEnv;
         $client->requestHeaderTraces[$requestId] = '?';
@@ -536,12 +541,9 @@ class Server extends TcpServer {
         
         $client->responses[$requestId] = $asgiResponse;
         
-        // The second isset() check for the $requestId's existence is not an accident. Third-party
-        // code may have exported the socket while executing mods and if so, we shouldn't proceed.
-        // DON'T REMOVE THE ISSET CHECK BELOW!
-        if (!$this->insideBeforeResponseModLoop && isset($this->requestIdClientMap[$requestId])) {
-            $hostId = $asgiEnv['SERVER_NAME'] . ':' . $asgiEnv['SERVER_PORT'];
-            $this->invokeBeforeResponseMods($hostId, $requestId);
+        if (!$this->insideBeforeResponseModLoop) {
+            $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
+            $this->invokeBeforeResponseMods($host, $requestId);
             $this->enqueueResponsesForWrite($client);
         }
     }
@@ -670,10 +672,10 @@ class Server extends TcpServer {
             : [$status, $reason, $headers, $body];
     }
     
-    private function invokeBeforeResponseMods($hostId, $requestId) {
-        if (isset($this->beforeResponseMods[$hostId])) {
+    private function invokeBeforeResponseMods(Host $host, $requestId) {
+        if ($this->beforeResponseMods->contains($host)) {
             $this->insideBeforeResponseModLoop = TRUE;
-            foreach ($this->beforeResponseMods[$hostId] as $mod) {
+            foreach ($this->beforeResponseMods->offsetGet($host) as $mod) {
                 $mod->beforeResponse($requestId);
             }
             $this->insideBeforeResponseModLoop = FALSE;
@@ -708,8 +710,8 @@ class Server extends TcpServer {
         $asgiEnv = $client->requests[$requestId];
         $asgiResponse = $client->responses[$requestId];
         
-        $hostId = $asgiEnv['SERVER_NAME'] . ':' . $asgiEnv['SERVER_PORT'];
-        $this->invokeAfterResponseMods($hostId, $requestId);
+        $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
+        $this->invokeAfterResponseMods($host, $requestId);
         
         if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
             $this->clearClientReferences($client);
@@ -737,10 +739,10 @@ class Server extends TcpServer {
         }
     }
     
-    private function invokeAfterResponseMods($hostId, $requestId) {
-        if (isset($this->afterResponseMods[$hostId])) {
+    private function invokeAfterResponseMods(Host $host, $requestId) {
+        if ($this->afterResponseMods->contains($host)) {
             $this->insideAfterResponseModLoop = TRUE;
-            foreach ($this->afterResponseMods[$hostId] as $mod) {
+            foreach ($this->afterResponseMods->offsetGet($host) as $mod) {
                 $mod->afterResponse($requestId);
             }
             $this->insideAfterResponseModLoop = FALSE;
@@ -955,18 +957,30 @@ class Server extends TcpServer {
             $hostId = $host->getId();
             
             if ($mod instanceof OnHeadersMod) {
-                $this->onHeadersMods[$hostId][] = $mod;
-                usort($this->onHeadersMods[$hostId], [$this, 'onHeadersModPrioritySort']);
+                $onHeadersModArr = $this->onHeadersMods->contains($host)
+                    ? $this->onHeadersMods->offsetGet($host)
+                    : [];
+                $onHeadersModArr[] = $mod;
+                usort($onHeadersModArr, [$this, 'onHeadersModPrioritySort']);
+                $this->onHeadersMods->attach($host, $onHeadersModArr);
             }
             
             if ($mod instanceof BeforeResponseMod) {
-                $this->beforeResponseMods[$hostId][] = $mod;
-                usort($this->beforeResponseMods[$hostId], [$this, 'beforeResponseModPrioritySort']);
+                $beforeResponseModArr = $this->beforeResponseMods->contains($host)
+                    ? $this->beforeResponseMods->offsetGet($host)
+                    : [];
+                $beforeResponseModArr[] = $mod;
+                usort($beforeResponseModArr, [$this, 'beforeResponseModPrioritySort']);
+                $this->beforeResponseMods->attach($host, $beforeResponseModArr);
             }
             
             if ($mod instanceof AfterResponseMod) {
-                $this->afterResponseMods[$hostId][] = $mod;
-                usort($this->afterResponseMods[$hostId], [$this, 'afterResponseModPrioritySort']);
+                $afterResponseModArr = $this->afterResponseMods->contains($host)
+                    ? $this->afterResponseMods->offsetGet($host)
+                    : [];
+                $afterResponseModArr[] = $mod;
+                usort($afterResponseModArr, [$this, 'afterResponseModPrioritySort']);
+                $this->afterResponseMods->attach($host, $afterResponseModArr);
             }
         }
         

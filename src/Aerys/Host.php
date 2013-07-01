@@ -9,7 +9,7 @@ class Host {
     private $name;
     private $handler;
     
-    function __construct($address, $port, $name, callable $asgiAppHandler) {
+    function __construct($address, $port, $name, callable $asgiAppHandler = NULL) {
         $this->address = $address;
         $this->port = (int) $port;
         $this->name = strtolower($name);
@@ -34,6 +34,10 @@ class Host {
     
     function getHandler() {
         return $this->handler;
+    }
+    
+    function isWildcard() {
+        return ($this->name === '*');
     }
     
 }
