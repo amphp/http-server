@@ -61,6 +61,10 @@ class MessageParser implements Parser {
     function parse($data) {
         $this->buffer .= $data;
         
+        if (!($this->buffer || $this->buffer === '0')) {
+            goto more_data_needed;
+        }
+        
         switch ($this->state) {
             case self::AWAITING_HEADERS:
                 goto awaiting_headers;
