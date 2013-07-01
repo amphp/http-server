@@ -376,6 +376,10 @@ class Server extends TcpServer {
         $scheme = $client->isEncrypted ? 'https' : 'http';
         $body = $requestArr['body'] ?: NULL;
         
+        if ($serverName === '*') {
+            $serverName = $client->serverAddress;
+        }
+        
         $asgiEnv = [
             'ASGI_VERSION'      => '0.1',
             'ASGI_CAN_STREAM'   => TRUE,
@@ -384,8 +388,9 @@ class Server extends TcpServer {
             'ASGI_ERROR'        => $this->errorStream,
             'ASGI_INPUT'        => $body,
             'ASGI_URL_SCHEME'   => $scheme,
-            'SERVER_NAME'       => $serverName,
             'SERVER_PORT'       => $client->serverPort,
+            'SERVER_ADDR'       => $client->serverAddress,
+            'SERVER_NAME'       => $serverName,
             'SERVER_PROTOCOL'   => $requestArr['protocol'],
             'REMOTE_ADDR'       => $client->clientAddress,
             'REMOTE_PORT'       => $client->clientPort,

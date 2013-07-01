@@ -36,13 +36,20 @@ use Aerys\Config\Configurator,
 
 require dirname(__DIR__) . '/autoload.php';
 
+date_default_timezone_set('UTC');
+
 (new Configurator)->createServer([[
-    'listenOn'     => '*:1337',
+    'listenOn'     => '*:80',
     'application'  => new ReverseProxyLauncher([
-        'maxPendingRequests' => 1500, // OPTIONAL (defaults to 1500 if not specified)
         'backends' => [
-            '127.0.0.1:80',         // An array of backend server addresses
+            '127.0.0.1:1337',                   // REQUIRED: An array of backend server addresses
         ],
+        'proxyPassHeaders' => [                 // OPTIONAL: Add/override headers sent to backends
+            'Host'            => '$host',       // Any literal value or substitution variable
+            'X-Forwarded-For' => '$remoteAddr', // Available vars: [$host, $serverName, $serverAddr, $serverPort, $remoteAddr]
+            'X-Real-Ip'       => '$serverAddr'
+        ],
+        'maxPendingRequests' => 1500            // OPTIONAL: defaults to 1500 if not specified
     ])
 ]])->start();
 

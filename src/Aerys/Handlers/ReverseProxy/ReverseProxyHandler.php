@@ -20,6 +20,7 @@ class ReverseProxyHandler {
     private $connectionAttempts = [];
     private $backendConnectTimeout = 5;
     private $maxPendingRequests = 1500;
+    private $proxyPassHeaders = [];
     private $autoWriteInterval = 0.05;
     private $ioGranularity = 262144;
     
@@ -176,7 +177,7 @@ class ReverseProxyHandler {
         if (current($backends) < $this->maxPendingRequests) {
             $uri = key($backends);
             $backend = $this->backends[$uri];
-            $backend->enqueueRequest($requestId, $asgiEnv);
+            $backend->enqueueRequest($requestId, $asgiEnv, $this->proxyPassHeaders);
             $this->write($backend);
         } else {
             $asgiResponse = $this->generateServiceUnavailableResponse();
@@ -205,6 +206,10 @@ class ReverseProxyHandler {
             'min_range' => 1,
             'default' => 1500
         ]]);
+    }
+    
+    function setProxyPassHeaders(array $headers) {
+        $this->proxyPassHeaders = array_change_key_case($headers, CASE_UPPER);
     }
     
     function __destruct() {

@@ -9,7 +9,8 @@ class ReverseProxyLauncher implements Launcher {
     private $handlerClass = 'Aerys\Handlers\ReverseProxy\ReverseProxyHandler';
     private $options = [
         'backends' => NULL,
-        'maxPendingRequests' => NULL
+        'maxPendingRequests' => NULL,
+        'proxyPassHeaders' => NULL
     ];
     
     function __construct(array $options) {

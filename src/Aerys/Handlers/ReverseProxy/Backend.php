@@ -40,8 +40,8 @@ class Backend {
         return $this->queueSize;
     }
     
-    function enqueueRequest($requestId, array $asgiEnv) {
-        $headers = $this->generateRawHeadersFromEnvironment($asgiEnv);
+    function enqueueRequest($requestId, array $asgiEnv, array $proxyPassHeaders) {
+        $headers = $this->generateRawHeadersFromEnvironment($asgiEnv, $proxyPassHeaders);
         
         $writer = $asgiEnv['ASGI_INPUT']
             ? new StreamWriter($this->socket, $headers, $asgiEnv['ASGI_INPUT'])
@@ -51,7 +51,7 @@ class Backend {
         $this->queueSize++;
     }
     
-    private function generateRawHeadersFromEnvironment(array $asgiEnv) {
+    private function generateRawHeadersFromEnvironment(array $asgiEnv, $proxyPassHeaders) {
         $headerStr = $asgiEnv['REQUEST_METHOD'] . ' ' . $asgiEnv['REQUEST_URI'] . " HTTP/1.1\r\n";
         
         $headerArr = [];
@@ -62,9 +62,11 @@ class Backend {
             }
         }
         
-        $headerArr['HOST'] = $asgiEnv['SERVER_NAME'] . ':' . $this->port;
         $headerArr['CONNECTION'] = 'keep-alive';
-        $headerArr['X-FORWARDED-FOR'] = $asgiEnv['REMOTE_ADDR'];
+        
+        if ($proxyPassHeaders) {
+            $headerArr = $this->mergeProxyPassHeaders($asgiEnv, $headerArr, $proxyPassHeaders);
+        }
         
         foreach ($headerArr as $field => $value) {
             if ($value === (array) $value) {
@@ -79,6 +81,24 @@ class Backend {
         $headerStr .= "\r\n";
         
         return $headerStr;
+    }
+    
+    private function mergeProxyPassHeaders(array $asgiEnv, array $headerArr, array $proxyPassHeaders) {
+        $availableVars = [
+            '$host' => $asgiEnv['SERVER_NAME'] . ':' . $asgiEnv['SERVER_PORT'],
+            '$serverName' => $asgiEnv['SERVER_NAME'],
+            '$serverAddr' => $asgiEnv['SERVER_ADDR'],
+            '$serverPort' => $asgiEnv['SERVER_PORT'],
+            '$remoteAddr' => $asgiEnv['REMOTE_ADDR']
+        ];
+        
+        foreach ($proxyPassHeaders as $key => $value) {
+            if (isset($availableVars[$value])) {
+                $proxyPassHeaders[$key] = $availableVars[$value];
+            }
+        }
+        
+        return array_merge($headerArr, $proxyPassHeaders);
     }
     
     /**
