@@ -259,7 +259,7 @@ class Server extends TcpServer {
         }
         
         if ($asgiResponse) {
-            $client->responses[$requestId] = $asgiResponse;
+            $this->setResponse($requestId, $asgiResponse);
             $result = NULL;
         } else {
             $result = [$requestId, $asgiEnv, $host];
