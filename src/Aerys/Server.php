@@ -157,7 +157,7 @@ class Server extends TcpServer {
             'maxHeaderBytes' => $this->maxHeaderBytes,
             'maxBodyBytes' => $this->maxBodyBytes,
             'bodySwapSize' => $this->bodySwapSize,
-            'preBodyHeadersCallback' => $onHeaders
+            'beforeBody' => $onHeaders
         ]);
         
         $client->readSubscription = $this->reactor->onReadable($socket, $onReadable, $this->keepAliveTimeout);
@@ -241,8 +241,9 @@ class Server extends TcpServer {
             
             $client->requestCount += !isset($client->requests[$requestId]);
             $client->requests[$requestId] = $asgiEnv;
-            $client->requestHeaderTraces[$requestId] = $trace;
+            $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
             $client->responses[$requestId] = $asgiResponse;
+            $this->setResponse($requestId, $asgiResponse);
             $client->pipeline[$requestId] = NULL;
             
             return NULL;
@@ -380,7 +381,7 @@ class Server extends TcpServer {
         $uri = $requestArr['uri'];
         $queryString =  ($uri === '/' || $uri === '*') ? '' : parse_url($uri, PHP_URL_QUERY);
         $scheme = $client->isEncrypted ? 'https' : 'http';
-        $body = $requestArr['body'] ?: NULL;
+        $body = ($requestArr['body'] || $requestArr['body'] === '0') ? NULL : $requestArr['body'];
         
         $serverName = $host->isWildcard() ? $client->serverAddress : $host->getName();
         
@@ -388,7 +389,7 @@ class Server extends TcpServer {
             'ASGI_VERSION'      => '0.1',
             'ASGI_CAN_STREAM'   => TRUE,
             'ASGI_NON_BLOCKING' => TRUE,
-            'ASGI_LAST_CHANCE'  => !$requestArr['headersOnly'],
+            'ASGI_LAST_CHANCE'  => empty($requestArr['headersOnly']),
             'ASGI_ERROR'        => $this->errorStream,
             'ASGI_INPUT'        => $body,
             'ASGI_URL_SCHEME'   => $scheme,
@@ -501,7 +502,9 @@ class Server extends TcpServer {
             'method'   => '?',
             'uri'      => '?',
             'protocol' => '1.0',
-            'headers'  => []
+            'headers'  => [],
+            'body'     => NULL,
+            'headersOnly' => FALSE
         ];
         
         $requestId = ++$this->lastRequestId;
@@ -511,8 +514,9 @@ class Server extends TcpServer {
         
         $client->requests[$requestId] = $asgiEnv;
         $client->requestHeaderTraces[$requestId] = '?';
+        $client->responses[$requestId] = [$status, $reason, $headers, $body];
         
-        $this->setResponse($requestId, [$status, $reason, $headers, $body]);
+        $this->enqueueResponsesForWrite($client);
     }
     
     private function getReasonPhrase($statusCode) {
@@ -710,8 +714,10 @@ class Server extends TcpServer {
         $asgiEnv = $client->requests[$requestId];
         $asgiResponse = $client->responses[$requestId];
         
-        $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
-        $this->invokeAfterResponseMods($host, $requestId);
+        if ($asgiEnv['AERYS_HOST_ID'][0] !== '?') {
+            $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
+            $this->invokeAfterResponseMods($host, $requestId);
+        }
         
         if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
             $this->clearClientReferences($client);

@@ -38,15 +38,28 @@ class MessageParser implements Parser {
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = 10485760;
     private $bodySwapSize = 2097152;
-    private $preBodyHeadersCallback;
+    private $storeBody = TRUE;
+    private $beforeBody;
+    private $onBodyData;
+    
+    private static $availableOptions = [
+        'maxHeaderBytes' => 1,
+        'maxBodyBytes' => 1,
+        'bodySwapSize' => 1,
+        'storeBody' => 1,
+        'beforeBody' => 1,
+        'onBodyData' => 1
+    ];
     
     function __construct($mode = self::MODE_REQUEST) {
         $this->mode = $mode;
     }
     
     function setOptions(array $options) {
-        foreach ($options as $key => $value) {
-            $this->{$key} = $value;
+        if ($options = array_intersect_key($options, self::$availableOptions)) {
+            foreach ($options as $key => $value) {
+                $this->{$key} = $value;
+            }
         }
     }
     
@@ -190,11 +203,11 @@ class MessageParser implements Parser {
             $uri = 'php://temp/maxmemory:' . $this->bodySwapSize;
             $this->body = fopen($uri, 'r+');
             
-            if ($callback = $this->preBodyHeadersCallback) {
+            if ($beforeBody = $this->beforeBody) {
                 $parsedMsgArr = $this->getParsedMessageArray();
                 $parsedMsgArr['headersOnly'] = TRUE;
                 
-                $callback($parsedMsgArr);
+                $beforeBody($parsedMsgArr);
             }
             
             switch ($this->state) {
@@ -427,12 +440,11 @@ class MessageParser implements Parser {
         $ucKeyTrailerHeaders = array_change_key_case($trailerHeaders, CASE_UPPER);
         $ucKeyHeaders = array_change_key_case($this->headers, CASE_UPPER);
         
-        if (isset($ucKeyTrailerHeaders['TRANSFER-ENCODING'])
-            || isset($ucKeyTrailerHeaders['CONTENT-LENGTH'])
-            || isset($ucKeyTrailerHeaders['TRAILER'])
-        ) {
-            throw new ParseException(NULL, 400);
-        }
+        unset(
+            $ucKeyTrailerHeaders['TRANSFER-ENCODING'],
+            $ucKeyTrailerHeaders['CONTENT-LENGTH'],
+            $ucKeyTrailerHeaders['TRAILER']
+        );
         
         foreach (array_keys($this->headers) as $key) {
             $ucKey = strtoupper($key);
@@ -475,9 +487,15 @@ class MessageParser implements Parser {
     private function addToBody($data) {
         $this->bodyBytesConsumed += strlen($data);
         
-        if ($this->maxBodyBytes && $this->bodyBytesConsumed > $this->maxBodyBytes) {
+        if ($this->maxBodyBytes > 0 && $this->bodyBytesConsumed > $this->maxBodyBytes) {
             throw new ParseException(NULL, 413);
-        } else {
+        }
+        
+        if ($onBodyData = $this->onBodyData) {
+            $onBodyData($data);
+        }
+        
+        if ($this->storeBody) {
             fseek($this->body, 0, SEEK_END);
             fwrite($this->body, $data);
         }
