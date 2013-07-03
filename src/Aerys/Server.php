@@ -52,7 +52,6 @@ class Server extends TcpServer {
     private $errorStream;
     private $canUsePeclHttp;
     private $ioGranularity = 262144;
-    private $errorPlaceholderHost;
     
     function __construct(Reactor $reactor, WriterFactory $wf = NULL) {
         $this->reactor = $reactor;
@@ -61,7 +60,6 @@ class Server extends TcpServer {
         
         $this->canUsePeclHttp = (extension_loaded('http') && function_exists('http_parse_headers'));
         $this->allowedMethods = array_combine($this->allowedMethods, array_fill(0, count($this->allowedMethods), 1));
-        $this->errorPlaceholderHost = new Host('?', '?', '?');
         
         $this->onHeadersMods = new \SplObjectStorage;
         $this->beforeResponseMods = new \SplObjectStorage;
@@ -236,7 +234,8 @@ class Server extends TcpServer {
             : $requestArr['method'];
         
         if (!$host = $this->selectRequestHost($requestArr)) {
-            $asgiEnv = $this->generateAsgiEnv($client, $this->errorPlaceholderHost, $requestArr);
+            $host = $this->selectDefaultHost();
+            $asgiEnv = $this->generateAsgiEnv($client, $host, $requestArr);
             $asgiResponse = $this->generateInvalidHostNameResponse();
             
             $client->requestCount += !isset($client->requests[$requestId]);
@@ -332,10 +331,8 @@ class Server extends TcpServer {
             $host = $this->selectHostByAbsoluteUri($requestUri);
         } elseif ($hostHeader !== NULL || $protocol >= 1.1) {
             $host = $this->selectHostByHeader($hostHeader);
-        } elseif ($this->defaultHost) {
-            $host = $this->defaultHost;
         } else {
-            $host = current($this->hosts);
+            $host = $this->selectDefaultHost();
         }
         
         return $host;
@@ -375,6 +372,10 @@ class Server extends TcpServer {
         }
         
         return $host;
+    }
+    
+    private function selectDefaultHost() {
+        return $this->defaultHost ?: current($this->hosts);
     }
     
     private function generateAsgiEnv(Client $client, Host $host, array $requestArr) {
@@ -487,10 +488,38 @@ class Server extends TcpServer {
         }
     }
     
-    private function onParseError(Client $client, $status) {
-        $status = $status ?: Status::BAD_REQUEST;
+    private function onParseError(Client $client, ParseException $e) {
+        $requestId = ++$this->lastRequestId;
+        $this->requestIdClientMap[$requestId] = $client;
+        
+        $parsedMsgArr = $e->getParsedMsgArr();
+        $uri = $parsedMsgArr['uri'];
+        
+        if ((strpos($uri, 'http://') === 0 || strpos($uri, 'https://') === 0)) {
+            $host = $this->selectHostByAbsoluteUri($uri) ?: $this->selectDefaultHost();
+        } elseif ($parsedMsgArr['headers']
+            && ($headers = array_change_key_case($parsedMsgArr['headers']))
+            && isset($headers['HOST'])
+        ) {
+            $host = $this->selectHostByHeader($hostHeader) ?: $this->selectDefaultHost();
+        } else {
+            $host = $this->selectDefaultHost();
+        }
+        
+        $asgiEnv = $this->generateAsgiEnv($client, $host, $e->getParsedMsgArr());
+        
+        $client->requests[$requestId] = $asgiEnv;
+        $client->requestHeaderTraces[$requestId] = $parsedMsgArr['trace'] ?: '?';
+        $client->responses[$requestId] = $this->generateAsgiResponseFromParseException($e);
+        
+        $this->enqueueResponsesForWrite($client);
+    }
+    
+    private function generateAsgiResponseFromParseException(ParseException $e) {
+        $status = $e->getCode() ?: Status::BAD_REQUEST;
         $reason = $this->getReasonPhrase($status);
-        $body = '<html><body><h1>'. $status . ' '. $reason .'</h1></body></html>';
+        $msg = $e->getMessage();
+        $body = "<html><body><h1>{$status} {$reason}</h1><p>{$msg}</p></body></html>";
         $headers = [
             'Date' => date(self::HTTP_DATE),
             'Content-Type' => 'text/html; charset=utf-8',
@@ -498,25 +527,7 @@ class Server extends TcpServer {
             'Connection' => 'close'
         ];
         
-        $requestArr = [
-            'method'   => '?',
-            'uri'      => '?',
-            'protocol' => '1.0',
-            'headers'  => [],
-            'body'     => NULL,
-            'headersOnly' => FALSE
-        ];
-        
-        $requestId = ++$this->lastRequestId;
-        $this->requestIdClientMap[$requestId] = $client;
-        
-        $asgiEnv = $this->generateAsgiEnv($client, $this->errorPlaceholderHost, $requestArr);
-        
-        $client->requests[$requestId] = $asgiEnv;
-        $client->requestHeaderTraces[$requestId] = '?';
-        $client->responses[$requestId] = [$status, $reason, $headers, $body];
-        
-        $this->enqueueResponsesForWrite($client);
+        return [$status, $reason, $headers, $body];
     }
     
     private function getReasonPhrase($statusCode) {

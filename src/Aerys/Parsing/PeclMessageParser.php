@@ -100,7 +100,12 @@ class PeclMessageParser implements Parser {
             $msgObj = @http_parse_message($startLineAndHeaders);
             
             if (!($msgObj && $msgObj->type == self::MODE_REQUEST)) {
-                throw new ParseException;
+                throw new ParseException(
+                    $this->getParsedMessageArray(),
+                    $msg = 'Invalid request line and/or headers',
+                    $code = 400,
+                    $previousException = NULL
+                );
             }
             
             $this->protocol = $msgObj->httpVersion == 1 ? '1.0' : $msgObj->httpVersion;
@@ -130,7 +135,12 @@ class PeclMessageParser implements Parser {
             $msgObj = @http_parse_message($startLineAndHeaders);
             
             if (!($msgObj && $msgObj->type == self::MODE_RESPONSE)) {
-                throw new ParseException;
+                throw new ParseException(
+                    $this->getParsedMessageArray(),
+                    $msg = 'Invalid start line and/or headers',
+                    $code = 400,
+                    $previousException = NULL
+                );
             }
             
             $this->protocol = $msgObj->httpVersion == 1 ? '1.0' : $msgObj->httpVersion;
@@ -292,7 +302,12 @@ class PeclMessageParser implements Parser {
         }
         
         if ($this->maxHeaderBytes > 0 && $headersSize > $this->maxHeaderBytes) {
-            throw new ParseException(NULL, 431);
+            throw new ParseException(
+                $this->getParsedMessageArray(),
+                $msg = "Maximum allowable header size exceeded: {$this->maxHeaderBytes}",
+                $code = 431,
+                $previousException = NULL
+            );
         }
         
         return $headers;
@@ -331,7 +346,12 @@ class PeclMessageParser implements Parser {
             if (FALSE === ($lineEndPos = strpos($this->buffer, "\r\n"))) {
                 goto more_data_needed;
             } elseif ($lineEndPos === 0) {
-                throw new ParseException(NULL, 400);
+                throw new ParseException(
+                    $this->getParsedMessageArray(),
+                    $msg = 'Invalid new line; hexadecimal chunk size expected',
+                    $code = 400,
+                    $previousException = NULL
+                );
             }
             
             $line = substr($this->buffer, 0, $lineEndPos);
@@ -342,8 +362,10 @@ class PeclMessageParser implements Parser {
                 $this->chunkLenRemaining = $dec;
             } else {
                 throw new ParseException(
-                    'Invalid chunk size specified: ' . $line,
-                    400
+                    $this->getParsedMessageArray(),
+                    $msg = 'Invalid hexadecimal chunk size',
+                    $code = 400,
+                    $previousException = NULL
                 );
             }
             
@@ -446,7 +468,12 @@ class PeclMessageParser implements Parser {
         $this->bodyBytesConsumed += strlen($data);
         
         if ($this->maxBodyBytes > 0 && $this->bodyBytesConsumed > $this->maxBodyBytes) {
-            throw new ParseException(NULL, 413);
+            throw new ParseException(
+                $this->getParsedMessageArray(),
+                $msg = "Maximum allowable body size exceeded: {$this->maxBodyBytes}",
+                $code = 413,
+                $previousException = NULL
+            );
         }
         
         if ($onBodyData = $this->onBodyData) {

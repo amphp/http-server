@@ -120,23 +120,43 @@ class MessageParser implements Parser {
             if (isset($parts[0]) && ($method = trim($parts[0]))) {
                 $this->requestMethod = $method;
             } else {
-                throw new ParseException(NULL, 400);
+                throw new ParseException(
+                    $this->getParsedMessageArray(),
+                    $msg = 'Invalid request line',
+                    $code = 400,
+                    $previousException = NULL
+                );
             }
             
             if (isset($parts[1]) && ($uri = trim($parts[1]))) {
                 $this->requestUri = $uri;
             } else {
-                throw new ParseException(NULL, 400);
+                throw new ParseException(
+                    $this->getParsedMessageArray(),
+                    $msg = 'Invalid request line',
+                    $code = 400,
+                    $previousException = NULL
+                );
             }
             
             if (isset($parts[2]) && ($protocol = str_ireplace('HTTP/', '', trim($parts[2])))) {
                 $this->protocol = $protocol;
             } else {
-                throw new ParseException(NULL, 400);
+                throw new ParseException(
+                    $this->getParsedMessageArray(),
+                    $msg = 'Invalid request line',
+                    $code = 400,
+                    $previousException = NULL
+                );
             }
             
             if (!($protocol === '1.0' || '1.1' === $protocol)) {
-                throw new ParseException(NULL, 505);
+                throw new ParseException(
+                    $this->getParsedMessageArray(),
+                    $msg = 'Protocol not supported: {$protocol}',
+                    $code = 505,
+                    $previousException = NULL
+                );
             }
             
             if ($rawHeaders) {
@@ -152,7 +172,12 @@ class MessageParser implements Parser {
                 $this->responseCode = $m['status'];
                 $this->responseReason = $m['reason'];
             } else {
-                throw new ParseException(NULL, 400);
+                throw new ParseException(
+                    $this->getParsedMessageArray(),
+                    $msg = 'Invalid status line',
+                    $code = 400,
+                    $previousException = NULL
+                );
             }
             
             if ($rawHeaders) {
@@ -329,7 +354,12 @@ class MessageParser implements Parser {
         }
         
         if ($this->maxHeaderBytes > 0 && $headersSize > $this->maxHeaderBytes) {
-            throw new ParseException(NULL, 431);
+            throw new ParseException(
+                $this->getParsedMessageArray(),
+                $msg = "Maximum allowable header size exceeded: {$this->maxHeaderBytes}",
+                $code = 431,
+                $previousException = NULL
+            );
         }
         
         return $headers;
@@ -341,7 +371,12 @@ class MessageParser implements Parser {
         }
         
         if (!preg_match_all(self::HEADERS_PATTERN, $rawHeaders, $matches)) {
-            throw new ParseException(NULL, 400);
+            throw new ParseException(
+                $this->getParsedMessageArray(),
+                $msg = 'Invalid headers',
+                $code = 400,
+                $previousException = NULL
+            );
         }
         
         $headers = [];
@@ -355,7 +390,12 @@ class MessageParser implements Parser {
         }
         
         if (strlen($rawHeaders) !== strlen($aggregateMatchedHeaders)) {
-            throw new ParseException(NULL, 400);
+            throw new ParseException(
+                $this->getParsedMessageArray(),
+                $msg = 'Invalid headers',
+                $code = 400,
+                $previousException = NULL
+            );
         }
         
         $ucKeyHeaders = array_change_key_case($headers, CASE_UPPER);
@@ -380,7 +420,12 @@ class MessageParser implements Parser {
             if (FALSE === ($lineEndPos = strpos($this->buffer, "\r\n"))) {
                 goto more_data_needed;
             } elseif ($lineEndPos === 0) {
-                throw new ParseException(NULL, 400);
+                throw new ParseException(
+                    $this->getParsedMessageArray(),
+                    $msg = 'Invalid new line; hexadecimal chunk size expected',
+                    $code = 400,
+                    $previousException = NULL
+                );
             }
             
             $line = substr($this->buffer, 0, $lineEndPos);
@@ -390,7 +435,12 @@ class MessageParser implements Parser {
             if ($hex == dechex($dec)) {
                 $this->chunkLenRemaining = $dec;
             } else {
-                throw new ParseException(NULL, 400);
+                throw new ParseException(
+                    $this->getParsedMessageArray(),
+                    $msg = 'Invalid hexadecimal chunk size',
+                    $code = 400,
+                    $previousException = NULL
+                );
             }
             
             $this->buffer = substr($this->buffer, $lineEndPos + 2);
@@ -488,7 +538,12 @@ class MessageParser implements Parser {
         $this->bodyBytesConsumed += strlen($data);
         
         if ($this->maxBodyBytes > 0 && $this->bodyBytesConsumed > $this->maxBodyBytes) {
-            throw new ParseException(NULL, 413);
+            throw new ParseException(
+                $this->getParsedMessageArray(),
+                $msg = "Maximum allowable body size exceeded: {$this->maxBodyBytes}",
+                $code = 413,
+                $previousException = NULL
+            );
         }
         
         if ($onBodyData = $this->onBodyData) {
