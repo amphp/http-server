@@ -228,6 +228,10 @@ class Server extends TcpServer {
         if ($needs100Continue && empty($client->responses[$requestId])) {
             $client->responses[$requestId] = [Status::CONTINUE_100, Reason::HTTP_100, [], NULL];
         }
+        
+        if (isset($client->responses[$requestId])) {
+            $this->writePipelinedResponses($client);
+        }
     }
     
     /**
@@ -250,7 +254,7 @@ class Server extends TcpServer {
             $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
             $client->responses[$requestId] = $this->generateInvalidHostNameResponse();
             
-            $this->enqueueResponsesForWrite($client);
+            $this->writePipelinedResponses($client);
             
             return NULL;
         }
@@ -520,7 +524,7 @@ class Server extends TcpServer {
         $client->requestHeaderTraces[$requestId] = $parsedMsgArr['trace'] ?: '?';
         $client->responses[$requestId] = $this->generateAsgiResponseFromParseException($e);
         
-        $this->enqueueResponsesForWrite($client);
+        $this->writePipelinedResponses($client);
     }
     
     private function generateAsgiResponseFromParseException(ParseException $e) {
@@ -567,11 +571,11 @@ class Server extends TcpServer {
         if (!$this->insideBeforeResponseModLoop) {
             $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
             $this->invokeBeforeResponseMods($host, $requestId);
-            $this->enqueueResponsesForWrite($client);
+            $this->writePipelinedResponses($client);
         }
     }
     
-    private function enqueueResponsesForWrite(Client $client) {
+    private function writePipelinedResponses(Client $client) {
         foreach ($client->requests as $requestId => $asgiEnv) {
             if (isset($client->pipeline[$requestId])) {
                 continue;
