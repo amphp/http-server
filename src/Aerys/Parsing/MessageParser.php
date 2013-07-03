@@ -340,7 +340,7 @@ class MessageParser implements Parser {
     }
     
     private function shiftHeadersFromMessageBuffer() {
-        ltrim($this->buffer);
+        $this->buffer = ltrim($this->buffer, "\r\n");
         
         if ($headersSize = strpos($this->buffer, "\r\n\r\n")) {
             $headers = substr($this->buffer, 0, $headersSize + 2);
