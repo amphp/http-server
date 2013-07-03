@@ -32,11 +32,11 @@ class Server extends TcpServer {
     private $insideAfterResponseModLoop = FALSE;
     
     private $logErrorsTo;
-    private $maxConnections = 2500;
+    private $maxConnections = 1500;
     private $maxRequests = 150;
-    private $keepAliveTimeout = 5;
+    private $keepAliveTimeout = 10;
     private $defaultContentType = 'text/html';
-    private $defaultCharset = 'utf-8';
+    private $defaultTextCharset = 'utf-8';
     private $autoReasonPhrase = TRUE;
     private $sendServerToken = FALSE;
     private $disableKeepAlive = FALSE;
@@ -205,19 +205,19 @@ class Server extends TcpServer {
     }
     
     private function afterRequestHeaders(Client $client, array $requestArr) {
-        if (!$requestInitArr = $this->initializeRequest($client, $requestArr)) {
+        if (!$requestInitStruct = $this->initializeRequest($client, $requestArr)) {
+            // initializeRequest() returns NULL if the server has already responded to the request
             return;
         }
         
-        list($requestId, $asgiEnv, $host) = $requestInitArr;
+        list($requestId, $asgiEnv, $host) = $requestInitStruct;
         
         if ($this->requireBodyLength && empty($asgiEnv['CONTENT_LENGTH'])) {
-            $client->responses[$requestId] = [Status::LENGTH_REQUIRED, Reason::HTTP_411, [], NULL];
-            return;
+            $asgiResponse = [Status::LENGTH_REQUIRED, Reason::HTTP_411, ['Connection' => 'close'], NULL];
+            return $this->setResponse($requestId, $asgiResponse);
         }
         
-        $hasExpectHeader = !empty($asgiEnv['HTTP_EXPECT']);
-        $needs100Continue = $hasExpectHeader && !strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue');
+        $needs100Continue = isset($asgiEnv['HTTP_EXPECT']) && !strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue');
         
         $client->preBodyRequest = [$requestId, $asgiEnv, $host, $needs100Continue];
         $client->requests[$requestId] = $asgiEnv;
@@ -244,45 +244,34 @@ class Server extends TcpServer {
         $requestId = ++$this->lastRequestId;
         $this->requestIdClientMap[$requestId] = $client;
         
+        $client->requestCount += !isset($client->requests[$requestId]);
+        
         $method = $requestArr['method'] = $this->normalizeMethodCase
             ? strtoupper($requestArr['method'])
             : $requestArr['method'];
         
-        if (!$host = $this->selectRequestHost($requestArr)) {
-            $client->requestCount += !isset($client->requests[$requestId]);
+        if ($host = $this->selectRequestHost($requestArr)) {
+            $asgiEnv = $this->generateAsgiEnv($client, $host, $requestArr);
+            
+            $client->requests[$requestId] = $asgiEnv;
+            $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
+            
+            if (!isset($this->allowedMethods[$method])) {
+                return $this->setResponse($requestId, $this->generateMethodNotAllowedResponse());
+            } elseif ($method === 'TRACE') {
+                return $this->setResponse($requestId, $this->generateTraceResponse($requestArr['trace']));
+            } elseif ($method === 'OPTIONS' && $requestArr['uri'] === '*') {
+                return $this->setResponse($requestId, $this->generateOptionsResponse());
+            }
+            
+            return [$requestId, $asgiEnv, $host];
+            
+        } else {
             $client->requests[$requestId] = $this->generateAsgiEnv($client, $this->selectDefaultHost(), $requestArr);
             $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
-            $client->responses[$requestId] = $this->generateInvalidHostNameResponse();
             
-            $this->writePipelinedResponses($client);
-            
-            return NULL;
+            return $this->setResponse($requestId, $this->generateInvalidHostNameResponse());
         }
-        
-        $asgiEnv = $this->generateAsgiEnv($client, $host, $requestArr);
-        
-        $client->requestCount += !isset($client->requests[$requestId]);
-        $client->requests[$requestId] = $asgiEnv;
-        $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
-        
-        if (!isset($this->allowedMethods[$method])) {
-            $asgiResponse = $this->generateMethodNotAllowedResponse();
-        } elseif ($method === 'TRACE') {
-            $asgiResponse = $this->generateTraceResponse($requestArr['trace']);
-        } elseif ($method === 'OPTIONS' && $requestArr['uri'] === '*') {
-            $asgiResponse = $this->generateOptionsResponse();
-        } else {
-            $asgiResponse = NULL;
-        }
-        
-        if ($asgiResponse) {
-            $this->setResponse($requestId, $asgiResponse);
-            $result = NULL;
-        } else {
-            $result = [$requestId, $asgiEnv, $host];
-        }
-        
-        return $result;
     }
     
     private function generateInvalidHostNameResponse() {
@@ -456,11 +445,14 @@ class Server extends TcpServer {
     private function onRequest(Client $client, array $requestArr) {
         if ($client->preBodyRequest) {
             return $this->finalizePreBodyRequest($client, $requestArr);
-        } elseif (!$requestInitArr = $this->initializeRequest($client, $requestArr)) {
+        }
+        
+        if (!$requestInitStruct = $this->initializeRequest($client, $requestArr)) {
+            // initializeRequest() returns NULL if the server has already responded to the request
             return;
         }
         
-        list($requestId, $asgiEnv, $host) = $requestInitArr;
+        list($requestId, $asgiEnv, $host) = $requestInitStruct;
         
         $this->invokeOnHeadersMods($host, $requestId);
         
@@ -619,6 +611,28 @@ class Server extends TcpServer {
         return $msg;
     }
     
+    private function write(Client $client) {
+        try {
+            foreach ($client->pipeline as $requestId => $responseWriter) {
+                if (!$responseWriter) {
+                    break;
+                } elseif ($responseWriter->write()) {
+                    $this->afterResponse($client, $requestId);
+                } elseif ($client->writeSubscription) {
+                    $client->writeSubscription->enable();
+                    break;
+                } else {
+                    $client->writeSubscription = $this->reactor->onWritable($client->socket, function() use ($client) {
+                        $this->write($client);
+                    });
+                    break;
+                }
+            }
+        } catch (ResourceException $e) {
+            $this->closeClient($client);
+        }
+    }
+    
     private function normalizeResponse(array $asgiEnv, array $asgiResponse) {
         list($status, $reason, $headers, $body) = $asgiResponse;
         $exportCallback = isset($asgiResponse[4]) ? $asgiResponse[4] : NULL;
@@ -660,11 +674,11 @@ class Server extends TcpServer {
         }
         
         if ($hasBody
-            && $this->defaultCharset
+            && $this->defaultTextCharset
             && 0 === stripos($headers['CONTENT-TYPE'], 'text/')
             && !stristr($headers['CONTENT-TYPE'], 'charset=')
         ) {
-            $headers['CONTENT-TYPE'] = $headers['CONTENT-TYPE'] . '; charset=' . $this->defaultCharset;
+            $headers['CONTENT-TYPE'] = $headers['CONTENT-TYPE'] . '; charset=' . $this->defaultTextCharset;
         }
         
         $hasContentLength = isset($headers['CONTENT-LENGTH']);
@@ -709,28 +723,6 @@ class Server extends TcpServer {
         }
     }
     
-    private function write(Client $client) {
-        try {
-            foreach ($client->pipeline as $requestId => $responseWriter) {
-                if (!$responseWriter) {
-                    break;
-                } elseif ($responseWriter->write()) {
-                    $this->afterResponse($client, $requestId);
-                } elseif ($client->writeSubscription) {
-                    $client->writeSubscription->enable();
-                    break;
-                } else {
-                    $client->writeSubscription = $this->reactor->onWritable($client->socket, function() use ($client) {
-                        $this->write($client);
-                    });
-                    break;
-                }
-            }
-        } catch (ResourceException $e) {
-            $this->closeClient($client);
-        }
-    }
-    
     private function afterResponse(Client $client, $requestId) {
         $asgiEnv = $client->requests[$requestId];
         $asgiResponse = $client->responses[$requestId];
@@ -749,21 +741,6 @@ class Server extends TcpServer {
         }
     }
     
-    private function dequeueClientPipelineRequest($client, $requestId) {
-        unset(
-            $client->pipeline[$requestId],
-            $client->requests[$requestId],
-            $client->responses[$requestId],
-            $client->requestHeaderTraces[$requestId],
-            $this->requestIdClientMap[$requestId]
-        );
-        
-        // Disable active onWritable stream subscriptions if the pipeline is now empty
-        if ($client->writeSubscription && !current($client->pipeline)) {
-            $client->writeSubscription->disable();
-        }
-    }
-    
     private function invokeAfterResponseMods(Host $host, $requestId) {
         if ($this->afterResponseMods->contains($host)) {
             $this->insideAfterResponseModLoop = TRUE;
@@ -772,22 +749,6 @@ class Server extends TcpServer {
             }
             $this->insideAfterResponseModLoop = FALSE;
         }
-    }
-    
-    private function shouldCloseAfterResponse(array $asgiEnv, array $asgiResponse) {
-        $headers = $asgiResponse[2];
-        
-        if (isset($headers['CONNECTION']) && !strcasecmp('close', $headers['CONNECTION'])) {
-            $shouldClose = TRUE;
-        } elseif (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
-            $shouldClose = TRUE;
-        } elseif ($asgiEnv['SERVER_PROTOCOL'] == '1.0' && !isset($asgiEnv['HTTP_CONNECTION'])) {
-            $shouldClose = TRUE;
-        } else {
-            $shouldClose = FALSE;
-        }
-        
-        return $shouldClose;
     }
     
     private function clearClientReferences(Client $client) {
@@ -810,14 +771,25 @@ class Server extends TcpServer {
         }
     }
     
-    private function closeClient(Client $client) {
-        $this->clearClientReferences($client);
-        if (is_resource($client->socket)) {
-            $this->closeClientSocket($client);
+    private function shouldCloseAfterResponse(array $asgiEnv, array $asgiResponse) {
+        $responseHeaders = $asgiResponse[2];
+        
+        if (isset($responseHeaders['CONNECTION']) && !strcasecmp('close', $responseHeaders['CONNECTION'])) {
+            $shouldClose = TRUE;
+        } elseif (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
+            $shouldClose = TRUE;
+        } elseif ($asgiEnv['SERVER_PROTOCOL'] == '1.0' && !isset($asgiEnv['HTTP_CONNECTION'])) {
+            $shouldClose = TRUE;
+        } else {
+            $shouldClose = FALSE;
         }
+        
+        return $shouldClose;
     }
     
-    private function closeClientSocket(Client $client) {
+    private function closeClient(Client $client) {
+        $this->clearClientReferences($client);
+        
         if ($this->socketSoLinger !== NULL) {
             $this->closeSocketWithSoLinger($client->socket, $client->isEncrypted);
         } else {
@@ -842,6 +814,21 @@ class Server extends TcpServer {
         ]);
         
         socket_close($socket);
+    }
+    
+    private function dequeueClientPipelineRequest($client, $requestId) {
+        unset(
+            $client->pipeline[$requestId],
+            $client->requests[$requestId],
+            $client->responses[$requestId],
+            $client->requestHeaderTraces[$requestId],
+            $this->requestIdClientMap[$requestId]
+        );
+        
+        // Disable active onWritable stream subscriptions if the pipeline is no longer write-ready
+        if ($client->writeSubscription && !current($client->pipeline)) {
+            $client->writeSubscription->disable();
+        }
     }
     
     function getRequest($requestId) {
@@ -932,8 +919,8 @@ class Server extends TcpServer {
         $this->defaultContentType = $mimeType;
     }
     
-    private function setDefaultCharset($charset) {
-        $this->defaultCharset = $charset;
+    private function setDefaultTextCharset($charset) {
+        $this->defaultTextCharset = $charset;
     }
     
     private function setAutoReasonPhrase($boolFlag) {
