@@ -139,7 +139,7 @@ class Server extends TcpServer {
         list($client->serverAddress, $client->serverPort) = $this->parseSocketName($rawServerName);
         
         $rawClientName = stream_socket_get_name($socket, TRUE);
-        list($client->clientAddress, $client->clientPort) = $this->parseSocketName($rawServerName);
+        list($client->clientAddress, $client->clientPort) = $this->parseSocketName($rawClientName);
         
         $client->isEncrypted = isset(stream_context_get_options($socket)['ssl']);
         
