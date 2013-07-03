@@ -51,7 +51,7 @@ class Server extends TcpServer {
     
     private $errorStream;
     private $canUsePeclHttp;
-    private $ioGranularity = 262144;
+    private $socketReadGranularity = 262144;
     
     function __construct(Reactor $reactor, WriterFactory $wf = NULL) {
         $this->reactor = $reactor;
@@ -129,7 +129,8 @@ class Server extends TcpServer {
     }
     
     protected function onClient($socket) {
-        stream_set_blocking($socket, FALSE); // @TODO We may want to change this in AMP so that sockets are non-blocking when they arrive
+        // @TODO We may want to change this in AMP so that sockets are non-blocking when they arrive
+        stream_set_blocking($socket, FALSE);
         
         $client = new Client;
         $client->socket = $socket;
@@ -146,9 +147,13 @@ class Server extends TcpServer {
             ? new PeclMessageParser(Parser::MODE_REQUEST)
             : new MessageParser(Parser::MODE_REQUEST);
         
-        $onHeaders = function($requestArr) use ($client) { $this->onPreBodyHeaders($client, $requestArr); };
+        $onHeaders = function($requestArr) use ($client) {
+            $this->afterRequestHeaders($client, $requestArr);
+        };
         $onReadable = function($socket, $trigger) use ($client) {
-            return ($trigger === Reactor::READ) ? $this->read($client) : $this->timeout($client);
+            return ($trigger === Reactor::READ)
+                ? $this->onReadableSocket($client)
+                : $this->onReadableTimeout($client);
         };
         
         $client->parser->setOptions([
@@ -172,34 +177,34 @@ class Server extends TcpServer {
         return [$addr, $port];
     }
     
-    private function timeout(Client $client) {
-        if (!$client->requests || ltrim($client->parser->getBuffer(), "\r\n")) {
+    private function onReadableTimeout(Client $client) {
+        if (empty($client->requests) || ltrim($client->parser->getBuffer(), "\r\n")) {
             $this->closeClient($client);
         }
     }
     
-    private function read(Client $client) {
-        $data = @fread($client->socket, $this->ioGranularity);
+    private function onReadableSocket(Client $client) {
+        $data = @fread($client->socket, $this->socketReadGranularity);
         
         if ($data || $data === '0') {
-            $this->parseClientData($client, $data);
+            $this->parseDataReadFromSocket($client, $data);
         } elseif (!is_resource($client->socket) || @feof($client->socket)) {
             $this->closeClient($client);
         }
     }
     
-    private function parseClientData(Client $client, $data) {
+    private function parseDataReadFromSocket(Client $client, $data) {
         try {
             while ($requestArr = $client->parser->parse($data)) {
                 $this->onRequest($client, $requestArr);
                 $data = '';
             }
         } catch (ParseException $e) {
-            $this->onParseError($client, $e->getCode());
+            $this->onParseError($client, $e);
         }
     }
     
-    private function onPreBodyHeaders(Client $client, array $requestArr) {
+    private function afterRequestHeaders(Client $client, array $requestArr) {
         if (!$requestInitArr = $this->initializeRequest($client, $requestArr)) {
             return;
         }
@@ -212,7 +217,7 @@ class Server extends TcpServer {
         }
         
         $hasExpectHeader = !empty($asgiEnv['HTTP_EXPECT']);
-        $needsContinue = $hasExpectHeader && !strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue');
+        $needs100Continue = $hasExpectHeader && !strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue');
         
         $client->preBodyRequest = [$requestId, $asgiEnv, $host, $needs100Continue];
         $client->requests[$requestId] = $asgiEnv;
@@ -220,11 +225,17 @@ class Server extends TcpServer {
         
         $this->invokeOnHeadersMods($host, $requestId);
         
-        if ($needsContinue && !isset($client->responses[$requestId])) {
+        if ($needs100Continue && empty($client->responses[$requestId])) {
             $client->responses[$requestId] = [Status::CONTINUE_100, Reason::HTTP_100, [], NULL];
         }
     }
     
+    /**
+     * @TODO Clean up this mess. Right now a NULL return value signifies to afterRequestHeaders() 
+     * and onRequest() that the server has already assigned a response so that they stop after this
+     * return. This needs to be cleaned up (in addition to the two calling methods) for better
+     * readability.
+     */
     private function initializeRequest(Client $client, array $requestArr) {
         $requestId = ++$this->lastRequestId;
         $this->requestIdClientMap[$requestId] = $client;
@@ -234,16 +245,12 @@ class Server extends TcpServer {
             : $requestArr['method'];
         
         if (!$host = $this->selectRequestHost($requestArr)) {
-            $host = $this->selectDefaultHost();
-            $asgiEnv = $this->generateAsgiEnv($client, $host, $requestArr);
-            $asgiResponse = $this->generateInvalidHostNameResponse();
-            
             $client->requestCount += !isset($client->requests[$requestId]);
-            $client->requests[$requestId] = $asgiEnv;
+            $client->requests[$requestId] = $this->generateAsgiEnv($client, $this->selectDefaultHost(), $requestArr);
             $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
-            $client->responses[$requestId] = $asgiResponse;
-            $this->setResponse($requestId, $asgiResponse);
-            $client->pipeline[$requestId] = NULL;
+            $client->responses[$requestId] = $this->generateInvalidHostNameResponse();
+            
+            $this->enqueueResponsesForWrite($client);
             
             return NULL;
         }
@@ -280,7 +287,8 @@ class Server extends TcpServer {
         $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
         $headers = [
             'Content-Type' => 'text/html; charset=iso-8859-1',
-            'Content-Length' => strlen($body)
+            'Content-Length' => strlen($body),
+            'Connection' => 'close'
         ];
         
         return [$status, $reason, $headers, $body];
@@ -380,11 +388,16 @@ class Server extends TcpServer {
     
     private function generateAsgiEnv(Client $client, Host $host, array $requestArr) {
         $uri = $requestArr['uri'];
-        $queryString =  ($uri === '/' || $uri === '*') ? '' : parse_url($uri, PHP_URL_QUERY);
-        $scheme = $client->isEncrypted ? 'https' : 'http';
-        $body = ($requestArr['body'] || $requestArr['body'] === '0') ? NULL : $requestArr['body'];
+        if (!($uri === '/' || $uri === '*')) {
+            $queryString = ($qPos = strpos($uri, '?')) ? substr($uri, $qPos +1) : '';
+        } else {
+            $queryString = '';
+        }
         
-        $serverName = $host->isWildcard() ? $client->serverAddress : $host->getName();
+        $scheme = $client->isEncrypted ? 'https' : 'http';
+        $body = ($requestArr['body'] || $requestArr['body'] === '0') ? $requestArr['body'] : NULL;
+        
+        $serverName = $host->isWildcard() ? $client->clientAddress : $host->getName();
         
         $asgiEnv = [
             'ASGI_VERSION'      => '0.1',
@@ -411,12 +424,12 @@ class Server extends TcpServer {
         }
         
         if (!empty($headers['CONTENT-TYPE'])) {
-            $asgiEnv['CONTENT_TYPE'] = current($headers['CONTENT-TYPE']);
+            $asgiEnv['CONTENT_TYPE'] = $headers['CONTENT-TYPE'][0];
             unset($headers['CONTENT-TYPE']);
         }
         
         if (!empty($headers['CONTENT-LENGTH'])) {
-            $asgiEnv['CONTENT_LENGTH'] = current($headers['CONTENT-LENGTH']);
+            $asgiEnv['CONTENT_LENGTH'] = $headers['CONTENT-LENGTH'][0];
             unset($headers['CONTENT-LENGTH']);
         }
         
@@ -479,12 +492,7 @@ class Server extends TcpServer {
                 $this->setResponse($requestId, $asgiResponse);
             }
         } catch (\Exception $e) {
-            $this->setResponse($requestId, [
-                $status = Status::INTERNAL_SERVER_ERROR,
-                $reason = Reason::HTTP_500,
-                $headers = [],
-                $body = (string) $e
-            ]);
+            $this->setResponse($requestId, [Status::INTERNAL_SERVER_ERROR, Reason::HTTP_500, [], $e]);
         }
     }
     
@@ -566,7 +574,7 @@ class Server extends TcpServer {
     private function enqueueResponsesForWrite(Client $client) {
         foreach ($client->requests as $requestId => $asgiEnv) {
             if (isset($client->pipeline[$requestId])) {
-                $canWrite = TRUE;
+                continue;
             } elseif (isset($client->responses[$requestId])) {
                 list($status, $reason, $headers, $body) = $client->responses[$requestId];
                 $protocol = $asgiEnv['SERVER_PROTOCOL'];
@@ -595,10 +603,10 @@ class Server extends TcpServer {
         foreach ($headers as $header => $value) {
             if ($value === (array) $value) {
                 foreach ($value as $nestedValue) {
-                    $msg .= "$header: $nestedValue\r\n";
+                    $msg .= "{$header}: {$nestedValue}\r\n";
                 }
             } else {
-                $msg .= "$header: $value\r\n";
+                $msg .= "{$header}: {$value}\r\n";
             }
         }
         
@@ -701,8 +709,6 @@ class Server extends TcpServer {
         try {
             foreach ($client->pipeline as $requestId => $responseWriter) {
                 if (!$responseWriter) {
-                    // The next request in the pipeline doesn't have a response yet. We can't continue
-                    // because responses must be returned in the order in which they were received.
                     break;
                 } elseif ($responseWriter->write()) {
                     $this->afterResponse($client, $requestId);
@@ -725,10 +731,8 @@ class Server extends TcpServer {
         $asgiEnv = $client->requests[$requestId];
         $asgiResponse = $client->responses[$requestId];
         
-        if ($asgiEnv['AERYS_HOST_ID'][0] !== '?') {
-            $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
-            $this->invokeAfterResponseMods($host, $requestId);
-        }
+        $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
+        $this->invokeAfterResponseMods($host, $requestId);
         
         if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
             $this->clearClientReferences($client);
@@ -770,16 +774,16 @@ class Server extends TcpServer {
         $headers = $asgiResponse[2];
         
         if (isset($headers['CONNECTION']) && !strcasecmp('close', $headers['CONNECTION'])) {
-            $result = TRUE;
+            $shouldClose = TRUE;
         } elseif (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
-            $result = TRUE;
+            $shouldClose = TRUE;
         } elseif ($asgiEnv['SERVER_PROTOCOL'] == '1.0' && !isset($asgiEnv['HTTP_CONNECTION'])) {
-            $result = TRUE;
+            $shouldClose = TRUE;
         } else {
-            $result = FALSE;
+            $shouldClose = FALSE;
         }
         
-        return $result;
+        return $shouldClose;
     }
     
     private function clearClientReferences(Client $client) {
@@ -805,20 +809,22 @@ class Server extends TcpServer {
     private function closeClient(Client $client) {
         $this->clearClientReferences($client);
         if (is_resource($client->socket)) {
-            $this->closeSocket($client->socket);
+            $this->closeClientSocket($client);
         }
     }
     
-    private function closeSocket($socket) {
+    private function closeClientSocket(Client $client) {
         if ($this->socketSoLinger !== NULL) {
-            $this->closeSocketWithSoLinger($socket);
+            $this->closeSocketWithSoLinger($client->socket, $client->isEncrypted);
         } else {
-            @fclose($socket);
+            @fclose($client->socket);
         }
     }
     
-    private function closeSocketWithSoLinger($socket) {
-        @stream_socket_enable_crypto($socket, FALSE);
+    private function closeSocketWithSoLinger($socket, $isEncrypted) {
+        if ($isEncrypted) {
+            @stream_socket_enable_crypto($socket, FALSE);
+        }
         
         $socket = socket_import_stream($socket);
         

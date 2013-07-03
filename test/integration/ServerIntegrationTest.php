@@ -145,6 +145,30 @@ class ServerIntegrationTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals(400, $response->getStatus());
     }
     
+    function testPostBodyResponse() {
+        $this->skipIfServerHasDied();
+        
+        $client = new Client;
+        $uri = 'http://' . INTEGRATION_SERVER_ADDR . '/returns_post_body';
+        $request = (new Request)->setUri($uri)->setMethod('POST')->setBody('test POST body');
+        $response = $client->request($request);
+        
+        $this->assertEquals(200, $response->getStatus());
+        $this->assertEquals('test POST body', $response->getBody());
+    }
+    
+    function testPutBodyResponse() {
+        $this->skipIfServerHasDied();
+        
+        $client = new Client;
+        $uri = 'http://' . INTEGRATION_SERVER_ADDR . '/returns_put_body';
+        $request = (new Request)->setUri($uri)->setMethod('PUT')->setBody('test PUT body');
+        $response = $client->request($request);
+        
+        $this->assertEquals(200, $response->getStatus());
+        $this->assertEquals('test PUT body', $response->getBody());
+    }
+    
 }
 
 
