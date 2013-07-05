@@ -222,7 +222,7 @@ class WebsocketHandler {
         ];
     }
     
-    function importSocket($connection, array $asgiEnv) {
+    function importSocket($socket, array $asgiEnv) {
         $requestUri = $asgiEnv['REQUEST_URI'];
         
         if ($queryString = $asgiEnv['QUERY_STRING']) {
@@ -231,7 +231,7 @@ class WebsocketHandler {
         
         list($endpoint, $options) = $this->endpoints[$requestUri];
         
-        $this->sessionManager->open($connection, $endpoint, $options, $asgiEnv);
+        $this->sessionManager->open($socket, $endpoint, $options, $asgiEnv);
     }
     
 }

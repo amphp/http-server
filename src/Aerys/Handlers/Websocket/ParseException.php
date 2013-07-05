@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Handlers\Websocket\Io;
+namespace Aerys\Handlers\Websocket;
 
 class ParseException extends \RuntimeException {}
 

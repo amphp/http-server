@@ -1,16 +1,29 @@
 <?php
 
-namespace Aerys\Handlers\Websocket\Io;
+namespace Aerys\Handlers\Websocket;
 
-class Sequence extends Stream implements \Countable, \Iterator {
+class FrameStreamSequence extends FrameStream {
     
     private $sequence;
     private $currentCache;
     private $buffer;
     
-    function __construct(\Traversable $stream, $payloadType) {
-        parent::__construct($payloadType);
-        $this->sequence = $stream;
+    protected function setDataSource($dataSource) {
+        // We don't bother to validate here as the FrameStreamFactory already validates in practice
+        // $this->validateSeekableIterator($dataSource);
+        
+        $this->sequence = $dataSource;
+    }
+    
+    /**
+     * @codeCoverageIgnore
+     */
+    private function validateSeekableIterator($dataSource) {
+        if (!$dataSource instanceof \SeekableIterator) {
+            throw new \InvalidArgumentException(
+                'SeekableIterator instance required at '.__CLASS__.'::'.__METHOD__.' Argument 1'
+            );
+        }
     }
     
     function count() {
@@ -43,12 +56,12 @@ class Sequence extends Stream implements \Countable, \Iterator {
         $this->buffer .= $current;
         $bufferSize = strlen($this->buffer);
         
-        if (!$this->autoFrameSize || $this->autoFrameSize > $bufferSize) {
+        if (!$this->frameSize || $this->frameSize > $bufferSize) {
             $this->currentCache = $this->buffer;
             $this->buffer = NULL;
         } else {
-            $this->currentCache = substr($this->buffer, 0, $this->autoFrameSize);
-            $this->buffer = substr($this->buffer, $this->autoFrameSize);
+            $this->currentCache = substr($this->buffer, 0, $this->frameSize);
+            $this->buffer = substr($this->buffer, $this->frameSize);
         }
         
         return $this->currentCache;
@@ -59,4 +72,8 @@ class Sequence extends Stream implements \Countable, \Iterator {
         return $this->sequence->next();
     }
     
+    function seek($position) {
+        $this->currentCache = NULL;
+        return $this->sequence->seek($position);
+    }
 }

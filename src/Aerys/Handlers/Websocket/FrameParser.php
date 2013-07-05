@@ -1,8 +1,6 @@
 <?php
 
-namespace Aerys\Handlers\Websocket\Io;
-
-use Aerys\Handlers\Websocket\Frame;
+namespace Aerys\Handlers\Websocket;
 
 class FrameParser {
     
@@ -21,38 +19,45 @@ class FrameParser {
     private $isMasked;
     private $maskingKey;
     private $length;
-    private $payload;
-    
+    private $framePayloadBuffer;
+    private $msgPayload;
     private $controlPayload;
     private $isControlFrame;
     private $aggregatedFrames = [];
-    
     private $frameBytesRecd = 0;
     private $msgBytesRecd = 0;
     
-    private $maxFrameSize = 2097152;
+    private $maxFrameSize = 262144;
     private $msgSwapSize = 2097152;
     private $maxMsgSize = 10485760;
     private $requireMask = TRUE;
+    private $storePayload = TRUE;
+    private $onFrame;
     
-    function setMaxFrameSize($bytes) {
-        $this->maxFrameSize = (int) $bytes;
-    }
+    private static $availableOptions = [
+        'maxFrameSize' => 1,
+        'maxMsgSize' => 1,
+        'msgSwapSize' => 1,
+        'requireMask' => 1,
+        'storePayload' => 1,
+        'onFrame' => 1
+    ];
     
-    function setMaxMsgSize($bytes) {
-        $this->maxMsgSize = (int) $bytes;
-    }
-    
-    function setMsgSwapSize($bytes) {
-        $this->msgSwapSize = (int) $bytes;
-    }
-    
-    function requireMask($boolFlag) {
-        $this->requireMask = (bool) $boolFlag;
+    function setOptions(array $options) {
+        if ($options = array_intersect_key($options, self::$availableOptions)) {
+            foreach ($options as $key => $value) {
+                $this->{$key} = $value;
+            }
+        }
     }
     
     function parse($data) {
         $this->buffer .= $data;
+        
+        if (!($this->buffer || $this->buffer === '0')) {
+            goto more_data_needed;
+        }
+        
         $this->bufferSize = strlen($this->buffer);
         
         switch ($this->state) {
@@ -142,6 +147,10 @@ class FrameParser {
                 throw new ParseException(
                     'Payload mask required'
                 );
+            } elseif (!($this->opcode || $this->isControlFrame || $this->aggregatedFrames)) {
+                throw new ParseException(
+                    'Illegal CONTINUATION opcode; initial message data frame must be TEXT or BINARY'
+                );
             }
             
             if (!$this->length) {
@@ -190,8 +199,7 @@ class FrameParser {
         }
         
         payload: {
-            $dataChunk = $this->generateFrameDataChunk();
-            $this->writePayload($dataChunk);
+            $this->framePayloadBuffer .= $this->generateFrameDataChunk();
             
             if ($this->frameBytesRecd === $this->length) {
                 goto frame_complete;
@@ -209,8 +217,16 @@ class FrameParser {
                 'length'     => $this->length
             ];
             
+            if ($this->storePayload && !$this->isControlFrame) {
+                $this->addToMessagePayloadStream($this->framePayloadBuffer);
+            }
+            
+            if ($this->fin && !$this->isControlFrame && $this->msgPayload) {
+                rewind($this->msgPayload);
+            }
+            
             if ($this->isControlFrame) {
-                $payload = $this->controlPayload;
+                $msgPayload = $this->controlPayload;
                 $length = $this->length;
                 $this->controlPayload = NULL;
                 $opcode = $this->opcode;
@@ -220,15 +236,19 @@ class FrameParser {
                 $opcode = $this->aggregatedFrames ? $this->aggregatedFrames[0]['opcode'] : $this->opcode;
                 $componentFrames = $this->aggregatedFrames ?: [$frameStruct];
                 $this->aggregatedFrames = [];
-                $payload = $this->payload;
-                rewind($payload);
-                $this->payload = NULL;
+                $msgPayload = $this->msgPayload;
                 $length = $this->msgBytesRecd;
                 $this->msgBytesRecd = 0;
+                $this->msgPayload = NULL;
                 $isFinalFrame = TRUE;
             } else {
                 $this->aggregatedFrames[] = $frameStruct;
                 $isFinalFrame = FALSE;
+            }
+            
+            if ($onFrame = $this->onFrame) {
+                $frame = [$this->fin, $this->rsv, $this->opcode, $this->framePayloadBuffer, $this->maskingKey];
+                $onFrame($frame);
             }
             
             $this->state = self::START;
@@ -239,9 +259,10 @@ class FrameParser {
             $this->maskingKey = NULL;
             $this->length = NULL;
             $this->frameBytesRecd = 0;
+            $this->framePayloadBuffer = NULL;
             
             if ($isFinalFrame) {
-                return [$opcode, $payload, $length, $componentFrames];
+                return [$opcode, $msgPayload, $length, $componentFrames];
             } elseif ($this->bufferSize) {
                 goto start;
             } else {
@@ -312,13 +333,13 @@ class FrameParser {
         return $data;
     }
     
-    private function writePayload($data) {
-        if (!$this->payload) {
+    private function addToMessagePayloadStream($data) {
+        if (!$this->msgPayload) {
             $uri = 'php://temp/maxmemory:' . $this->msgSwapSize;
-            $this->payload = fopen($uri, 'wb+');
+            $this->msgPayload = fopen($uri, 'wb+');
         }
         
-        if (FALSE === @fwrite($this->payload, $data)) {
+        if (FALSE === @fwrite($this->msgPayload, $data)) {
             throw new \RuntimeException(
                 'Failed writing temporary frame data'
             );

@@ -3,11 +3,11 @@
 namespace Aerys\Handlers\Websocket;
 
 use Amp\Reactor,
-    Aerys\Handlers\Websocket\Io\FrameParser,
-    Aerys\Handlers\Websocket\Io\FrameWriter,
-    Aerys\Handlers\Websocket\Io\StreamFactory,
-    Aerys\Handlers\Websocket\Io\ParseException,
-    Aerys\Handlers\Websocket\Io\ResourceException;
+    Aerys\Handlers\Websocket\FrameParser,
+    Aerys\Handlers\Websocket\FrameWriter,
+    Aerys\Handlers\Websocket\FrameStreamFactory,
+    Aerys\Handlers\Websocket\ParseException,
+    Aerys\Handlers\Websocket\ResourceException;
 
 class Session {
     
@@ -20,14 +20,14 @@ class Session {
     private $writer;
     private $endpoint;
     private $asgiEnv;
-    private $streamFactory;
+    private $frameStreamFactory;
     private $streamQueue = [];
     private $currentStream;
     private $pendingPingPayloads = [];
     private $closeState = self::CLOSE_NONE;
     private $closeCode;
     private $closeReason;
-    private $autoFrameSize = 32768;
+    private $frameSize = 32768;
     private $ioGranularity = 32768;
     private $queuedPingLimit = 3;
     private $isHeartbeatEnabled = TRUE;
@@ -47,7 +47,7 @@ class Session {
         FrameWriter $writer,
         Endpoint $endpoint,
         array $asgiEnv,
-        StreamFactory $streamFactory,
+        FrameStreamFactory $frameStreamFactory,
         ClientFactory $clientFactory
     ) {
         $this->manager = $manager;
@@ -55,18 +55,20 @@ class Session {
         $this->writer = $writer;
         $this->endpoint = $endpoint;
         $this->asgiEnv = $asgiEnv;
-        $this->streamFactory = $streamFactory;
+        $this->frameStreamFactory = $frameStreamFactory;
         
         $this->client = $clientFactory->__invoke(new SessionFacade($this));
     }
     
     function setOptions(EndpointOptions $opts) {
-        $this->autoFrameSize = $opts->getAutoFrameSize();
+        $this->frameSize = $opts->getAutoFrameSize();
         $this->queuedPingLimit = $opts->getQueuedPingLimit();
         $this->isHeartbeatEnabled = ($opts->getHeartbeatPeriod() > 0);
-        $this->parser->setMsgSwapSize($opts->getMsgSwapSize());
-        $this->parser->setMaxFrameSize($opts->getMaxFrameSize());
-        $this->parser->setMaxMsgSize($opts->getMaxMsgSize());
+        $this->parser->setOptions([
+            'msgSwapSize' => $opts->getMsgSwapSize(),
+            'maxFrameSize' => $opts->getMaxFrameSize(),
+            'maxMsgSize' => $opts->getMaxMsgSize()
+        ]);
     }
     
     function open() {
@@ -317,8 +319,8 @@ class Session {
     
     function addStreamData($data, $opcode) {
         try {
-            $frameStream = $this->streamFactory->__invoke($data, $opcode);
-            $frameStream->setAutoFrameSize($this->autoFrameSize);
+            $frameStream = $this->frameStreamFactory->__invoke($opcode, $data);
+            $frameStream->setFrameSize($this->frameSize);
             
             if ($this->currentStream) {
                 $this->streamQueue[] = $frameStream;

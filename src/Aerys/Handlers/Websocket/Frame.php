@@ -2,6 +2,22 @@
 
 namespace Aerys\Handlers\Websocket;
 
+/**
+ * An immutable value object modeling websocket frames according to RFC 6455 Section 5
+ * 
+ * @link http://tools.ietf.org/html/rfc6455#section-5
+ * 
+ * @TODO Support > 32-bit Frame sizes (very low-priority)
+ * 
+ * Though the websocket protocol allows for up to 64-bit payload lengths we only support 
+ * a maximum of 32-bit lengths at this time. This is sensible because PHP's string type is
+ * limited to 32-bit sizes anyway and Aerys buffers Frame payloads as strings. We could expand
+ * this to support stream resources and/or Countable Iterators. This change would necessarily
+ * require the creation of a separate method (Frame::buffer()) to replace __toString() because
+ * __toString() is not allowed to throw exceptions. Streams/Iterators would necessarily need
+ * to be capable of throwing if something went wrong during the buffering of their respective
+ * content.
+ */
 class Frame {
     
     const FIN      = 0b1;
@@ -26,25 +42,25 @@ class Frame {
         $this->fin = $fin;
         $this->rsv = $rsv;
         $this->opcode = $opcode;
-        $this->length = strlen($payload);
+        $this->length = strlen($payload); // Limits payloads to 2.1GB
         $this->payload = $payload;
         $this->maskingKey = isset($maskingKey) ? $maskingKey : NULL;
     }
     
     function isFin() {
-        return $this->fin;
+        return (bool) $this->fin;
     }
 
-    function isRsv1() {
-        return (bool) $this->rsv & 0b001;
+    function hasRsv1() {
+        return (bool) ($this->rsv & 0b001);
     }
 
-    function isRsv2() {
-        return (bool) $this->rsv & 0b010;
+    function hasRsv2() {
+        return (bool) ($this->rsv & 0b010);
     }
 
-    function isRsv3() {
-        return (bool) $this->rsv & 0b100;
+    function hasRsv3() {
+        return (bool) ($this->rsv & 0b100);
     }
     
     function getOpcode() {
@@ -66,8 +82,7 @@ class Frame {
     function __toString() {
         if ($this->length > 0xFFFF) {
             $lengthHeader = 0x7F;
-            // This limits payload to 2.1GB
-            $lengthBody = "\x00\x00\x00\x00" . pack('N', $this->length);
+            $lengthBody = "\x00\x00\x00\x00" . pack('N', $this->length); // Limits payloads to 2.1GB
         } elseif ($this->length > 0x7D) {
             $lengthHeader = 0x7E;
             $lengthBody = pack('n', $this->length);
@@ -89,7 +104,7 @@ class Frame {
 
         if ($this->maskingKey || $this->maskingKey === '0') {
             $maskingKey = $this->maskingKey;
-            $payload = $this->payload
+            $payload = ($this->payload || $this->payload === '0')
                 ? $this->payload ^ str_pad('', $this->length, $maskingKey, STR_PAD_RIGHT)
                 : '';
         } else {

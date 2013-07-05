@@ -2,17 +2,13 @@
 
 namespace Aerys\Handlers\Websocket;
 
-use Aerys\Handlers\Websocket\Io\StreamFactory,
-    Aerys\Handlers\Websocket\Io\FrameParser,
-    Aerys\Handlers\Websocket\Io\FrameWriter;
-
 class SessionFactory {
     
     private $streamFactory;
     private $clientFactory;
     
-    function __construct(StreamFactory $streamFactory = NULL, ClientFactory $clientFactory = NULL) {
-        $this->streamFactory = $streamFactory ?: new StreamFactory;
+    function __construct(FrameStreamFactory $streamFactory = NULL, ClientFactory $clientFactory = NULL) {
+        $this->streamFactory = $streamFactory ?: new FrameStreamFactory;
         $this->clientFactory = $clientFactory ?: new ClientFactory;
     }
     

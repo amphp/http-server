@@ -9,51 +9,18 @@ class Message {
     private $bufferedPayload;
     private $streamifiedPayload;
     private $length;
-    private $frames;
     private $isStream;
     
-    function __construct($opcode, $payload, $length, array $frames) {
+    function __construct($opcode, $payload, $length) {
         $this->opcode = $opcode;
         $this->payload = $payload;
         $this->length = $length;
-        $this->frames = $frames;
         
         $this->isStream = is_resource($payload);
     }
     
-    function getPayload() {
-        return $this->isStream ? $this->getBufferedPayload() : $this->payload;
-    }
-    
-    private function getBufferedPayload() {
-        if (isset($this->bufferedPayload)) {
-            return $this->bufferedPayload;
-        }
-        
-        $startPos = ftell($this->payload);
-        rewind($this->payload);
-        if (FALSE === ($this->bufferedPayload = stream_get_contents($this->payload))) {
-            throw new \RuntimeException(
-                'Failed buffering payload data from stream resource'
-            );
-        }
-        
-        fseek($this->payload, $startPos);
-        
-        return $this->bufferedPayload;
-    }
-    
-    function getPayloadStream() {
-        return $this->isStream ? $this->payload : $this->getStreamifiedPayload();
-    }
-    
-    private function getStreamifiedPayload() {
-        if (isset($this->streamifiedPayload)) {
-            return $this->streamifiedPayload;
-        } else {
-            $uri = 'data://text/plain;base64,' . base64_encode($this->payload);
-            return $this->streamifiedPayload = fopen($uri, 'r');
-        }
+    function isStream() {
+        return $this->isStream;
     }
     
     function getType() {
@@ -64,12 +31,48 @@ class Message {
         return $this->length;
     }
     
-    function getFrames() {
-        return $this->frames;
+    function getPayload() {
+        return $this->isStream ? $this->bufferPayload() : $this->payload;
     }
     
-    function isStream() {
-        return $this->isStream;
+    private function bufferPayload() {
+        if (isset($this->bufferedPayload)) {
+            return $this->bufferedPayload;
+        }
+        
+        $startPos = ftell($this->payload);
+        if (!@rewind($this->payload)) {
+            throw new \RuntimeException(
+                'Failed seeking stream resource'
+            );
+        }
+        
+        if (FALSE === ($this->bufferedPayload = @stream_get_contents($this->payload))) {
+            throw new \RuntimeException(
+                'Failed buffering stream resource'
+            );
+        }
+        
+        if (@fseek($this->payload, $startPos)) {
+            throw new \RuntimeException(
+                'Failed seeking stream resource'
+            );
+        }
+        
+        return $this->bufferedPayload;
+    }
+    
+    function getPayloadStream() {
+        return $this->isStream ? $this->payload : $this->streamifyPayload();
+    }
+    
+    private function streamifyPayload() {
+        if (isset($this->streamifiedPayload)) {
+            return $this->streamifiedPayload;
+        } else {
+            $uri = 'data://text/plain;base64,' . base64_encode($this->payload);
+            return $this->streamifiedPayload = fopen($uri, 'r');
+        }
     }
     
 }

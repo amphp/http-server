@@ -1,7 +1,7 @@
 <?php
 
 use Aerys\Handlers\Websocket\Frame,
-    Aerys\Handlers\Websocket\Io\FrameParser;
+    Aerys\Handlers\Websocket\FrameParser;
 
 class FrameParserTest extends PHPUnit_Framework_TestCase {
     
@@ -65,12 +65,8 @@ class FrameParserTest extends PHPUnit_Framework_TestCase {
      * @dataProvider provideParseExpectations
      */
     public function testFrameParse(Frame $frame) {
-        $this->markTestSkipped();
+        list($opcode, $payload, $length) = (new FrameParser)->parse($frame);
         
-        $input = $this->generateParsableStream($frame);
-        $parser = new FrameParser($input);
-        
-        list($opcode, $length, $payload) = $parser->parse();
         if (is_resource($payload)) {
             $payload = stream_get_contents($payload);
         }
@@ -84,17 +80,16 @@ class FrameParserTest extends PHPUnit_Framework_TestCase {
      * @dataProvider provideParseExpectations
      */
     public function testMultiReadFrameParse(Frame $frame) {
-        $this->markTestSkipped();
+        $parser = new FrameParser;
         
-        $input = $this->generateParsableStream($frame);
-        $parser = new FrameParser($input);
-        $parser->setGranularity(1);
+        $rawFrameStr = $frame->__toString();
         
-        while (!$result = $parser->parse()) {
-            continue;
+        for ($i=0; $i<strlen($rawFrameStr); $i++) {
+            $result = $parser->parse($rawFrameStr[$i]);
         }
         
-        list($opcode, $length, $payload) = $result;
+        list($opcode, $payload, $length) = $result;
+        
         if (is_resource($payload)) {
             $payload = stream_get_contents($payload);
         }
@@ -105,48 +100,51 @@ class FrameParserTest extends PHPUnit_Framework_TestCase {
     }
     
     public function testMultiFrameMessageParse() {
-        $this->markTestSkipped();
-        
         $frames = [];
         
-        $fin = 0;
-        $rsv = 0;
-        $opcode = Frame::OP_TEXT;
-        $payload = 'Frame 1';
-        $frames[] = new Frame($fin, $rsv, $opcode, $payload, $this->generateMaskingKey());
+        $frames[] = new Frame(
+            $fin = 0,
+            $rsv = 0,
+            $opcode = Frame::OP_TEXT,
+            $payload = 'Frame 1',
+            $this->generateMaskingKey()
+        );
         
-        $fin = 0;
-        $rsv = 0;
-        $opcode = Frame::OP_CONT;
-        $payload = ' ';
-        $frames[] = new Frame($fin, $rsv, $opcode, $payload, $this->generateMaskingKey());
+        $frames[] = new Frame(
+            $fin = 0,
+            $rsv = 0,
+            $opcode = Frame::OP_CONT,
+            $payload = ' ',
+            $this->generateMaskingKey()
+        );
         
-        $fin = 1;
-        $rsv = 0;
-        $opcode = Frame::OP_TEXT;
-        $payload = 'Frame 2';
-        $frames[] = new Frame($fin, $rsv, $opcode, $payload, $this->generateMaskingKey());
+        $frames[] = new Frame(
+            $fin = 1,
+            $rsv = 0,
+            $opcode = Frame::OP_TEXT,
+            $payload = 'Frame 2',
+            $this->generateMaskingKey()
+        );
         
         $expectedOpcode = $frames[0]->getOpcode();
         $expectedLength = 0;
         $expectedPayload = '';
         
-        $stream = fopen('php://memory', 'r+');
+        $rawFrameData = '';
         foreach ($frames as $frame) {
-            fwrite($stream, $frame);
             $expectedLength += $frame->getLength();
             $expectedPayload .= $frame->getPayload();
-        }
-        rewind($stream);
-        
-        $parser = new FrameParser($stream);
-        $parser->setGranularity(1);
-        
-        while (!$result = $parser->parse()) {
-            continue;
+            $rawFrameData .= $frame->__toString();
         }
         
-        list($opcode, $length, $payload) = $result;
+        $parser = new FrameParser;
+        
+        for ($i=0; $i<strlen($rawFrameData); $i++) {
+            $result = $parser->parse($rawFrameData[$i]);
+        }
+        
+        list($opcode, $payload, $length) = $result;
+        
         if (is_resource($payload)) {
             $payload = stream_get_contents($payload);
         }
