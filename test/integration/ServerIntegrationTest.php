@@ -28,8 +28,8 @@ class ServerIntegrationTest extends PHPUnit_Framework_TestCase {
         
         self::$serverProcess = proc_open($cmd, $descriptors, self::$serverPipes);
         
-        // If we don't give the server process time to boot up and bind its socket we risk getting
-        // a socket exception when we try to connect in our tests.
+        // If we don't give the server process a moment to boot up and bind its socket we risk
+        // getting a socket exception when we try to connect in our tests.
         usleep(100000);
     }
     
