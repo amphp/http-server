@@ -457,6 +457,8 @@ class Server extends TcpServer {
         $this->invokeOnHeadersMods($host, $requestId);
         
         if (!isset($client->responses[$requestId])) {
+            // Mods may have modified the request environment, so reload it.
+            $asgiEnv = $client->requests[$requestId];
             $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
         }
     }
@@ -829,6 +831,18 @@ class Server extends TcpServer {
         if ($client->writeSubscription && !current($client->pipeline)) {
             $client->writeSubscription->disable();
         }
+    }
+    
+    function setRequest($requestId, array $asgiEnv) {
+        if (isset($this->requestIdClientMap[$requestId])) {
+            $client = $this->requestIdClientMap[$requestId];
+        } else {
+            throw new \DomainException(
+                'Request ID does not exist: ' . $requestId
+            );
+        }
+        
+        $client->requests[$requestId] = $asgiEnv;
     }
     
     function getRequest($requestId) {
