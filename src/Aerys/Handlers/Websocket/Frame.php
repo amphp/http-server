@@ -102,13 +102,11 @@ class Frame {
 
         $firstWord = chr($firstByte) . chr($secondByte);
 
-        if ($this->maskingKey || $this->maskingKey === '0') {
-            $maskingKey = $this->maskingKey;
+        if ($maskingKey = $this->maskingKey) {
             $payload = ($this->payload || $this->payload === '0')
                 ? $this->payload ^ str_pad('', $this->length, $maskingKey, STR_PAD_RIGHT)
                 : '';
         } else {
-            $maskingKey = '';
             $payload = $this->payload;
         }
 

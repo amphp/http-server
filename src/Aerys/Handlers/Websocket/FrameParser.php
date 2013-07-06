@@ -12,7 +12,7 @@ class FrameParser {
     const PAYLOAD = 25;
     
     private $state = self::START;
-    
+    private $buffer;
     private $fin;
     private $rsv;
     private $opcode;
@@ -280,8 +280,7 @@ class FrameParser {
     }
     
     private function determineLength127() {
-        $lengthLong32Pair = unpack('NN', substr($this->buffer, 0, 8));
-        
+        $lengthLong32Pair = array_values(unpack('N2', substr($this->buffer, 0, 8)));
         $this->buffer = substr($this->buffer, 8);
         $this->bufferSize -= 8;
         

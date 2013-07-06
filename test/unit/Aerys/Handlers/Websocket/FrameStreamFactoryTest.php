@@ -49,14 +49,14 @@ class FrameStreamFactoryTest extends PHPUnit_Framework_TestCase {
     
     function testInvokeReturnsFrameStreamOnSeekableIterator() {
         $factory = new FrameStreamFactory;
-        $iter = $this->getMock('SeekableIterator');
+        $iter = $this->getMock('FrameStreamFactoryCountableSeekableIterator');
         $stream = $factory->__invoke(Frame::OP_TEXT, $iter);
         $this->assertInstanceOf('Aerys\Handlers\Websocket\FrameStreamSequence', $stream);
     }
     
     function testInvokeReturnsSameInstanceIfFrameStream() {
         $factory = new FrameStreamFactory;
-        $iter = $this->getMock('SeekableIterator');
+        $iter = $this->getMock('FrameStreamFactoryCountableSeekableIterator');
         $stream = $factory->__invoke(Frame::OP_TEXT, $iter);
         $this->assertInstanceOf('Aerys\Handlers\Websocket\FrameStreamSequence', $stream);
         
@@ -64,3 +64,5 @@ class FrameStreamFactoryTest extends PHPUnit_Framework_TestCase {
         $this->assertSame($stream, $nextStream);
     }
 }
+
+interface FrameStreamFactoryCountableSeekableIterator extends Countable, SeekableIterator {}

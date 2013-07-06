@@ -11,12 +11,12 @@ class FrameStreamFactory {
             $frameStream = new FrameStreamString($opcode, $dataSource);
         } elseif (is_resource($dataSource) && stream_get_meta_data($dataSource)['seekable']) {
             $frameStream = new FrameStreamResource($opcode, $dataSource);
-        } elseif ($dataSource instanceof \SeekableIterator) {
+        } elseif ($dataSource instanceof \SeekableIterator && $dataSource instanceof \Countable) {
             $frameStream = new FrameStreamSequence($opcode, $dataSource);
         } else {
             throw new \InvalidArgumentException(
                 'A FrameStream may only be generated from scalars, seekable resources or ' .
-                'SeekableIterator instances'
+                'Countable SeekableIterator instances'
             );
         }
         

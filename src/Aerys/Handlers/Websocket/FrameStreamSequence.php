@@ -19,9 +19,9 @@ class FrameStreamSequence extends FrameStream {
      * @codeCoverageIgnore
      */
     private function validateSeekableIterator($dataSource) {
-        if (!$dataSource instanceof \SeekableIterator) {
+        if (!($dataSource instanceof \SeekableIterator && $dataSource instanceof \Countable)) {
             throw new \InvalidArgumentException(
-                'SeekableIterator instance required at '.__CLASS__.'::'.__METHOD__.' Argument 1'
+                'Countable SeekableIterator instance required at '.__CLASS__.'::'.__METHOD__.' Argument 1'
             );
         }
     }

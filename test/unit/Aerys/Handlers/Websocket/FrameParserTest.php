@@ -17,6 +17,21 @@ class FrameParserTest extends PHPUnit_Framework_TestCase {
         return $stream;
     }
     
+    /**
+     * @dataProvider provideParseExpectations
+     */
+    public function testFrameParse(Frame $frame) {
+        list($opcode, $payload, $length) = (new FrameParser)->parse($frame);
+        
+        if (is_resource($payload)) {
+            $payload = stream_get_contents($payload);
+        }
+        
+        $this->assertEquals($frame->getOpcode(), $opcode);
+        $this->assertEquals($frame->getLength(), $length);
+        $this->assertEquals($frame->getPayload(), $payload);
+    }
+    
     public function provideParseExpectations() {
         $returnArr = [];
         
@@ -33,21 +48,12 @@ class FrameParserTest extends PHPUnit_Framework_TestCase {
         $fin = 1;
         $rsv = 0;
         $opcode = Frame::OP_BIN;
-        $payload = pack('C', 'When in the chronicle of wasted time');
+        $payload = 'When in the chronicle of wasted time';
         $frame = new Frame($fin, $rsv, $opcode, $payload, $this->generateMaskingKey());
         
         $returnArr[] = [$frame];
         
         // 2 -------------------------------------------------------------------------------------->
-        $fin = 1;
-        $rsv = 0;
-        $opcode = Frame::OP_PING;
-        $payload = 'Yo my name is Humpty, pronounced with an "umpty"';
-        $frame = new Frame($fin, $rsv, $opcode, $payload, $this->generateMaskingKey());
-        
-        $returnArr[] = [$frame];
-        
-        // 3 -------------------------------------------------------------------------------------->
         $fin = 1;
         $rsv = 0;
         $opcode = Frame::OP_PONG;
@@ -56,24 +62,27 @@ class FrameParserTest extends PHPUnit_Framework_TestCase {
         
         $returnArr[] = [$frame];
         
+        // 3 -------------------------------------------------------------------------------------->
+        $fin = 1;
+        $rsv = 0;
+        $opcode = Frame::OP_TEXT;
+        $payload = str_repeat('x', 200);
+        $frame = new Frame($fin, $rsv, $opcode, $payload, $this->generateMaskingKey());
+        
+        $returnArr[] = [$frame];
+        
+        // 4 -------------------------------------------------------------------------------------->
+        $fin = 1;
+        $rsv = 0;
+        $opcode = Frame::OP_TEXT;
+        $payload = str_repeat('x', 65536);
+        $frame = new Frame($fin, $rsv, $opcode, $payload, $this->generateMaskingKey());
+        
+        $returnArr[] = [$frame];
+        
         // x -------------------------------------------------------------------------------------->
         
         return $returnArr;
-    }
-    
-    /**
-     * @dataProvider provideParseExpectations
-     */
-    public function testFrameParse(Frame $frame) {
-        list($opcode, $payload, $length) = (new FrameParser)->parse($frame);
-        
-        if (is_resource($payload)) {
-            $payload = stream_get_contents($payload);
-        }
-        
-        $this->assertEquals($frame->getOpcode(), $opcode);
-        $this->assertEquals($frame->getLength(), $length);
-        $this->assertEquals($frame->getPayload(), $payload);
     }
     
     /**
@@ -155,30 +164,4 @@ class FrameParserTest extends PHPUnit_Framework_TestCase {
     }
     
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
