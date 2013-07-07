@@ -41,5 +41,8 @@ class ExampleChatEndpoint implements Endpoint {
         $this->sendUserCount();
     }
     
+    function getOptions() {
+        return NULL;
+    }
 }
 

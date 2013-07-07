@@ -21,7 +21,6 @@ namespace Aerys\Handlers\Websocket;
 class Frame {
     
     const FIN      = 0b1;
-    const MORE     = 0b0;
     const RSV_NONE = 0b000;
     
     const OP_CONT  = 0x00;

@@ -9,20 +9,7 @@ class FrameStreamResource extends FrameStream {
     private $currentCache;
     
     protected function setDataSource($dataSource) {
-        // We don't bother to validate here as the FrameStreamFactory already validates in practice
-        // $this->validateResource($dataSource);
         $this->resource = $dataSource;
-    }
-    
-    /**
-     * @codeCoverageIgnore
-     */
-    private function validateResource($dataSource) {
-        if (!(is_resource($dataSource) && stream_get_meta_data($dataSource)['seekable'])) {
-            throw new \InvalidArgumentException(
-                'Seekable resource required at '.__CLASS__.'::'.__METHOD__.' Argument 1'
-            );
-        }
     }
     
     function count() {

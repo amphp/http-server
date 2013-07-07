@@ -637,7 +637,7 @@ class Server extends TcpServer {
     
     private function normalizeResponse(array $asgiEnv, array $asgiResponse) {
         list($status, $reason, $headers, $body) = $asgiResponse;
-        $exportCallback = isset($asgiResponse[4]) ? $asgiResponse[4] : NULL;
+        $upgradeCallback = isset($asgiResponse[4]) ? $asgiResponse[4] : NULL;
         
         if ($headers) {
             $headers = array_change_key_case($headers, CASE_UPPER);
@@ -710,8 +710,8 @@ class Server extends TcpServer {
             $headers['SERVER'] = self::SERVER_SOFTWARE;
         }
         
-        return $exportCallback
-            ? [$status, $reason, $headers, $body, $exportCallback]
+        return $upgradeCallback
+            ? [$status, $reason, $headers, $body, $upgradeCallback]
             : [$status, $reason, $headers, $body];
     }
     
@@ -735,7 +735,7 @@ class Server extends TcpServer {
         if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
             $this->clearClientReferences($client);
             $upgradeCallback = $asgiResponse[4];
-            $upgradeCallback($client->socket, $asgiEnv);
+            $upgradeCallback($client->socket);
         } elseif ($this->shouldCloseAfterResponse($asgiEnv, $asgiResponse)) {
             $this->closeClient($client);
         } else {

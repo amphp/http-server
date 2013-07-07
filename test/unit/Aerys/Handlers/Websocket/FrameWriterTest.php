@@ -28,7 +28,7 @@ class FrameWriterTest extends PHPUnit_Framework_TestCase {
     }
     
     /**
-     * @expectedException Aerys\Handlers\Websocket\ResourceException
+     * @expectedException Aerys\Handlers\Websocket\FrameWriteException
      */
     function testWriteThrowsExceptionIfDestinationStreamGoesAway() {
         $destination = fopen('php://memory', 'w+');

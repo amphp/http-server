@@ -9,6 +9,7 @@ class FrameWriter {
     private $currentFrame;
     private $buffer;
     private $bufferSize;
+    private $frameBytesWritten = 0;
     
     function __construct($destination) {
         $this->destination = $destination;
@@ -24,31 +25,38 @@ class FrameWriter {
     }
     
     function write() {
-        if (!($this->currentFrame || $this->framePriorityQueue->count())) {
-            return;
-        } elseif (!$this->currentFrame) {
+        if ($this->currentFrame) {
+            $completedFrame = $this->doWrite();
+        } elseif ($this->framePriorityQueue->count()) {
             $this->currentFrame = $this->framePriorityQueue->extract();
             $this->buffer = $this->currentFrame->__toString();
             $this->bufferSize = strlen($this->buffer);
+            $completedFrame = $this->doWrite();
+        } else {
+            $completedFrame = NULL;
         }
         
-        return $this->doWrite();
+        return $completedFrame;
     }
     
     private function doWrite() {
         $bytesWritten = @fwrite($this->destination, $this->buffer);
-        $completedFrame = NULL;
+        $this->frameBytesWritten += $bytesWritten;
         
         if ($bytesWritten === $this->bufferSize) {
             $completedFrame = $this->currentFrame;
             $this->buffer = NULL;
             $this->bufferSize = NULL;
             $this->currentFrame = NULL;
+            $this->frameBytesWritten = 0;
         } elseif ($bytesWritten) {
+            $completedFrame = NULL;
             $this->buffer = substr($this->buffer, $bytesWritten);
             $this->bufferSize -= $bytesWritten;
         } elseif (!is_resource($this->destination)) {
-            throw new ResourceException(
+            throw new FrameWriteException(
+                $this->currentFrame,
+                $this->frameBytesWritten,
                 'Failed writing to destination'
             );
         }
