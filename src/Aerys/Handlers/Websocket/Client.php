@@ -4,33 +4,37 @@ namespace Aerys\Handlers\Websocket;
 
 class Client {
     
-    private $sessionFacade;
+    private $handler;
+    private $session;
     
-    function __construct(SessionFacade $sessionFacade) {
-        $this->sessionFacade = $sessionFacade;
+    function __construct(WebsocketHandler $handler, ClientSession $session) {
+        $this->handler = $handler;
+        $this->session = $session;
     }
     
     /**
-     * Send UTF-8 text to the client
+     * Send UTF-8 text data to the client
      * 
-     * @param mixed|[string|resource|Traversable] $data
+     * @param mixed [string|resource] $data UTF-8 string
+     * @param callable Optional callback to invoke on send completion
      * @return void
      */
-    function sendText($data) {
+    function sendText($data, callable $afterSend = NULL) {
         if ($data || $data === '0') {
-            $this->sessionFacade->send($data, Frame::OP_TEXT);
+            $this->handler->broadcast($this->session, Frame::OP_TEXT, $data, $afterSend);
         }
     }
     
     /**
      * Send binary data to the client
      * 
-     * @param mixed|[string|resource|Traversable] $data
+     * @param mixed [string|resource] $data Binary data string
+     * @param callable Optional callback to invoke on send completion
      * @return void
      */
-    function sendBinary($data) {
+    function sendBinary($data, callable $afterSend = NULL) {
         if ($data || $data === '0') {
-            $this->sessionFacade->send($data, Frame::OP_BIN);
+            $this->handler->broadcast($this->session, Frame::OP_BIN, $data, $afterSend);
         }
     }
     
@@ -42,36 +46,40 @@ class Client {
      * @return void
      */
     function close($code = Codes::NORMAL_CLOSE, $reason = '') {
-        $this->sessionFacade->close($code, $reason);
+        $this->handler->close($this->session, $code, $reason);
     }
     
     /**
-     * Retrieve the ASGI request environment used to open the websocket connection
+     * Retrieve the ASGI request environment used to originate the client connection
      * 
      * @return array
      */
     function getEnvironment() {
-        return $this->sessionFacade->getEnvironment();
+        return $this->session->asgiEnv;
     }
     
     /**
-     * Retrieve aggregate IO statistics for the current session
-     * 
-     * The returned array contains the following keys:
-     * 
-     * - bytesRead
-     * - bytesWritten
-     * - msgReadCount
-     * - msgWriteCount
-     * - frameReadCount
-     * - frameWriteCount
-     * 
-     * The byte totals only count payload data; frame header bytes are not included in the total.
+     * Retrieve aggregate IO statistics for the current client session
      * 
      * @return array
      */
     function getStats() {
-        return $this->sessionFacade->getStats();
+        return [
+            'dataBytesRead'     => $this->session->dataBytesRead,
+            'dataBytesSent'     => $this->session->dataBytesSent,
+            'dataFramesRead'    => $this->session->dataFramesRead,
+            'dataFramesSent'    => $this->session->dataFramesSent,
+            'dataMessagesRead'  => $this->session->dataMessagesRead,
+            'dataMessagesSent'  => $this->session->dataMessagesSent,
+            'controlBytesRead'  => $this->session->controlBytesRead,
+            'controlBytesSent'  => $this->session->controlBytesSent,
+            'controlFramesRead' => $this->session->controlFramesRead,
+            'controlFramesSent' => $this->session->controlFramesSent,
+            'dataLastReadAt'    => $this->session->dataLastReadAt,
+            'connectedAt'       => $this->session->connectedAt,
+            'allClients'        => $this->handler->count(),
+            'endpointClients'   => $this->handler->count($this->session->endpointUri)
+        ];
     }
     
 }

@@ -49,6 +49,8 @@ class FrameParser {
                 $this->{$key} = $value;
             }
         }
+        
+        return $this;
     }
     
     function parse($data) {

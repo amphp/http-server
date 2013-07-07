@@ -26,3 +26,6 @@ spl_autoload_register(function($class) {
         }
     }
 });
+
+require __DIR__ . '/SingleByteWriteFilter.php';
+stream_filter_register("single_byte_write", "SingleByteWriteFilter");
