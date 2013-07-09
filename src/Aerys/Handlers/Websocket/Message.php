@@ -6,8 +6,6 @@ class Message {
     
     private $opcode;
     private $payload;
-    private $bufferedPayload;
-    private $streamifiedPayload;
     private $length;
     private $isStream;
     
@@ -15,7 +13,6 @@ class Message {
         $this->opcode = $opcode;
         $this->payload = $payload;
         $this->length = $length;
-        
         $this->isStream = is_resource($payload);
     }
     
@@ -23,7 +20,7 @@ class Message {
         return $this->isStream;
     }
     
-    function getType() {
+    function getOpcode() {
         return $this->opcode;
     }
     
@@ -36,10 +33,6 @@ class Message {
     }
     
     private function bufferPayload() {
-        if (isset($this->bufferedPayload)) {
-            return $this->bufferedPayload;
-        }
-        
         $startPos = ftell($this->payload);
         if (!@rewind($this->payload)) {
             throw new \RuntimeException(
@@ -47,7 +40,9 @@ class Message {
             );
         }
         
-        if (FALSE === ($this->bufferedPayload = @stream_get_contents($this->payload))) {
+        $bufferedPayload = @stream_get_contents($this->payload);
+        
+        if ($bufferedPayload === FALSE) {
             throw new \RuntimeException(
                 'Failed buffering stream resource'
             );
@@ -59,21 +54,17 @@ class Message {
             );
         }
         
-        return $this->bufferedPayload;
+        return $bufferedPayload;
     }
     
     function getPayloadStream() {
-        return $this->isStream ? $this->payload : $this->streamifyPayload();
-    }
-    
-    private function streamifyPayload() {
-        if (isset($this->streamifiedPayload)) {
-            return $this->streamifiedPayload;
+        if ($this->isStream) {
+            $payloadStream = $this->payload;
         } else {
-            $uri = 'data://text/plain;base64,' . base64_encode($this->payload);
-            return $this->streamifiedPayload = fopen($uri, 'r');
+            $payloadStream = fopen('data://text/plain;base64,' . base64_encode($this->payload), 'r');
         }
+        
+        return $payloadStream;
     }
-    
 }
 

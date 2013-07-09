@@ -34,14 +34,14 @@ class ClientSession {
     
     public $controlBytesRead = 0;
     public $controlFramesRead = 0;
-    public $controlBytesWritten = 0;
-    public $controlFramesWritten = 0;
+    public $controlBytesSent = 0;
+    public $controlFramesSent = 0;
     public $dataMessagesRead = 0;
     public $dataFramesRead = 0;
     public $dataBytesRead = 0;
-    public $dataMessagesWritten = 0;
-    public $dataFramesWritten = 0;
-    public $dataBytesWritten = 0;
+    public $dataMessagesSent = 0;
+    public $dataFramesSent = 0;
+    public $dataBytesSent = 0;
     public $dataLastReadAt;
     public $connectedAt;
     

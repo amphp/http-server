@@ -528,8 +528,8 @@ class WebsocketHandler implements \Countable {
     }
     
     private function afterCloseFrameWrite(ClientSession $session, Frame $frame) {
-        $session->controlFramesWritten++;
-        $session->controlBytesWritten += $frame->getLength();
+        $session->controlFramesSent++;
+        $session->controlBytesSent += $frame->getLength();
         $session->closeState |= ClientSession::CLOSE_FRAME_SENT;
         
         if ($session->closeState & ClientSession::CLOSE_HANDSHAKE_COMPLETE) {
@@ -547,8 +547,8 @@ class WebsocketHandler implements \Countable {
     }
     
     private function afterPingFrameWrite(ClientSession $session, Frame $frame) {
-        $session->controlFramesWritten++;
-        $session->controlBytesWritten += $frame->getLength();
+        $session->controlFramesSent++;
+        $session->controlBytesSent += $frame->getLength();
         
         // Punish naughty clients who don't respond to PINGs; we can't store these payloads forever.
         if (array_push($session->pendingPingPayloads, $frame->getPayload()) > $this->queuedPingLimit) {
@@ -561,20 +561,20 @@ class WebsocketHandler implements \Countable {
     }
     
     private function afterPongFrameWrite(ClientSession $session, Frame $frame) {
-        $session->controlFramesWritten++;
-        $session->controlBytesWritten += $frame->getLength();
+        $session->controlFramesSent++;
+        $session->controlBytesSent += $frame->getLength();
         
         return ($isWritingComplete = !$session->frameWriter->canWrite());
     }
     
     private function afterDataFrameWrite(ClientSession $session, Frame $frame) {
-        $session->dataFramesWritten++;
-        $session->dataBytesWritten += $frame->getLength();
+        $session->dataFramesSent++;
+        $session->dataBytesSent += $frame->getLength();
         
         $wasLastFrameInMsg = $frame->isFin();
         
         if ($wasLastFrameInMsg) {
-            $session->dataMessagesWritten++;
+            $session->dataMessagesSent++;
             $this->afterMessageSend($session);
         }
                 
@@ -641,9 +641,9 @@ class WebsocketHandler implements \Countable {
         $isControlFrame = ($frame->getOpcode() >= Frame::OP_CLOSE);
         
         if ($isControlFrame) {
-            $session->controlBytesWritten += $bytesCompleted;
+            $session->controlBytesSent += $bytesCompleted;
         } else {
-            $session->dataBytesWritten += $bytesCompleted;
+            $session->dataBytesSent += $bytesCompleted;
         }
         
         $code = Codes::ABNORMAL_CLOSE;
