@@ -21,6 +21,5 @@ class Client {
     public $parser;
     public $readSubscription;
     public $writeSubscription;
-    
 }
 

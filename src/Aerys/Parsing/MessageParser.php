@@ -37,7 +37,6 @@ class MessageParser implements Parser {
     
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = 10485760;
-    private $bodySwapSize = 2097152;
     private $storeBody = TRUE;
     private $beforeBody;
     private $onBodyData;
@@ -45,7 +44,6 @@ class MessageParser implements Parser {
     private static $availableOptions = [
         'maxHeaderBytes' => 1,
         'maxBodyBytes' => 1,
-        'bodySwapSize' => 1,
         'storeBody' => 1,
         'beforeBody' => 1,
         'onBodyData' => 1
@@ -120,6 +118,7 @@ class MessageParser implements Parser {
             if (isset($parts[0]) && ($method = trim($parts[0]))) {
                 $this->requestMethod = $method;
             } else {
+                $this->requestMethod = $this->requestUri = $this->protocol = '?';
                 throw new ParseException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid request line',
@@ -131,6 +130,7 @@ class MessageParser implements Parser {
             if (isset($parts[1]) && ($uri = trim($parts[1]))) {
                 $this->requestUri = $uri;
             } else {
+                $this->requestUri = $this->protocol = '?';
                 throw new ParseException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid request line',
@@ -142,6 +142,7 @@ class MessageParser implements Parser {
             if (isset($parts[2]) && ($protocol = str_ireplace('HTTP/', '', trim($parts[2])))) {
                 $this->protocol = $protocol;
             } else {
+                $this->protocol = '?';
                 throw new ParseException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid request line',
@@ -225,8 +226,7 @@ class MessageParser implements Parser {
                 goto complete;
             }
             
-            $uri = 'php://temp/maxmemory:' . $this->bodySwapSize;
-            $this->body = fopen($uri, 'r+');
+            $this->body = fopen('php://memory', 'r+');
             
             if ($beforeBody = $this->beforeBody) {
                 $parsedMsgArr = $this->getParsedMessageArray();
@@ -354,7 +354,7 @@ class MessageParser implements Parser {
         }
         
         if ($this->maxHeaderBytes > 0 && $headersSize > $this->maxHeaderBytes) {
-            throw new ParseException(
+            throw new PolicyException(
                 $this->getParsedMessageArray(),
                 $msg = "Maximum allowable header size exceeded: {$this->maxHeaderBytes}",
                 $code = 431,
@@ -538,7 +538,7 @@ class MessageParser implements Parser {
         $this->bodyBytesConsumed += strlen($data);
         
         if ($this->maxBodyBytes > 0 && $this->bodyBytesConsumed > $this->maxBodyBytes) {
-            throw new ParseException(
+            throw new PolicyException(
                 $this->getParsedMessageArray(),
                 $msg = "Maximum allowable body size exceeded: {$this->maxBodyBytes}",
                 $code = 413,

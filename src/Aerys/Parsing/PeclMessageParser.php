@@ -26,7 +26,6 @@ class PeclMessageParser implements Parser {
     
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = 10485760;
-    private $bodySwapSize = 2097152;
     private $storeBody = TRUE;
     private $beforeBody;
     private $onBodyData;
@@ -34,7 +33,6 @@ class PeclMessageParser implements Parser {
     private static $availableOptions = [
         'maxHeaderBytes' => 1,
         'maxBodyBytes' => 1,
-        'bodySwapSize' => 1,
         'storeBody' => 1,
         'beforeBody' => 1,
         'onBodyData' => 1
@@ -100,6 +98,7 @@ class PeclMessageParser implements Parser {
             $msgObj = @http_parse_message($startLineAndHeaders);
             
             if (!($msgObj && $msgObj->type == self::MODE_REQUEST)) {
+                $this->requestMethod = $this->requestUri = $this->protocol = '?';
                 throw new ParseException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid request line and/or headers',
@@ -174,8 +173,7 @@ class PeclMessageParser implements Parser {
                 goto complete;
             }
             
-            $uri = 'php://temp/maxmemory:' . $this->bodySwapSize;
-            $this->body = fopen($uri, 'r+');
+            $this->body = fopen('php://memory', 'r+');
             
             if ($beforeBody = $this->beforeBody) {
                 $parsedMsgArr = $this->getParsedMessageArray();
@@ -302,7 +300,7 @@ class PeclMessageParser implements Parser {
         }
         
         if ($this->maxHeaderBytes > 0 && $headersSize > $this->maxHeaderBytes) {
-            throw new ParseException(
+            throw new PolicyException(
                 $this->getParsedMessageArray(),
                 $msg = "Maximum allowable header size exceeded: {$this->maxHeaderBytes}",
                 $code = 431,
@@ -468,7 +466,7 @@ class PeclMessageParser implements Parser {
         $this->bodyBytesConsumed += strlen($data);
         
         if ($this->maxBodyBytes > 0 && $this->bodyBytesConsumed > $this->maxBodyBytes) {
-            throw new ParseException(
+            throw new PolicyException(
                 $this->getParsedMessageArray(),
                 $msg = "Maximum allowable body size exceeded: {$this->maxBodyBytes}",
                 $code = 413,
@@ -481,7 +479,6 @@ class PeclMessageParser implements Parser {
         }
         
         if ($this->storeBody) {
-            fseek($this->body, 0, SEEK_END);
             fwrite($this->body, $data);
         }
     }

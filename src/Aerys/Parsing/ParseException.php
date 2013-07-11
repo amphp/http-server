@@ -2,8 +2,14 @@
 
 namespace Aerys\Parsing;
 
+/**
+ * An exception thrown to denote a malformed HTTP message.
+ */
 class ParseException extends \RuntimeException {
     
+    /**
+     * @var array
+     */
     private $parsedMsgArr;
     
     /**

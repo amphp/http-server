@@ -45,8 +45,7 @@ class Server extends TcpServer {
     private $normalizeMethodCase = TRUE;
     private $requireBodyLength = FALSE;
     private $maxHeaderBytes = 8192;
-    private $maxBodyBytes = 10485760;
-    private $bodySwapSize = 2097152;
+    private $maxBodyBytes = 0;
     private $allowedMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE', 'PUT', 'POST', 'PATCH', 'DELETE'];
     
     private $errorStream;
@@ -159,7 +158,6 @@ class Server extends TcpServer {
         $client->parser->setOptions([
             'maxHeaderBytes' => $this->maxHeaderBytes,
             'maxBodyBytes' => $this->maxBodyBytes,
-            'bodySwapSize' => $this->bodySwapSize,
             'beforeBody' => $onHeaders
         ]);
         
@@ -197,7 +195,11 @@ class Server extends TcpServer {
         try {
             while ($requestArr = $client->parser->parse($data)) {
                 $this->onRequest($client, $requestArr);
-                $data = '';
+                if ($client->parser && $client->parser->getBuffer()) {
+                    $data = '';
+                } else {
+                    break;
+                }
             }
         } catch (ParseException $e) {
             $this->onParseError($client, $e);
@@ -389,7 +391,7 @@ class Server extends TcpServer {
         
         $scheme = $client->isEncrypted ? 'https' : 'http';
         $body = ($requestArr['body'] || $requestArr['body'] === '0') ? $requestArr['body'] : NULL;
-        
+        $protocol = ($requestArr['protocol'] === '?') ? '1.0' : $requestArr['protocol'];
         $serverName = $host->isWildcard() ? $client->clientAddress : $host->getName();
         
         $asgiEnv = [
@@ -404,7 +406,7 @@ class Server extends TcpServer {
             'SERVER_PORT'       => $client->serverPort,
             'SERVER_ADDR'       => $client->serverAddress,
             'SERVER_NAME'       => $serverName,
-            'SERVER_PROTOCOL'   => $requestArr['protocol'],
+            'SERVER_PROTOCOL'   => $protocol,
             'REMOTE_ADDR'       => $client->clientAddress,
             'REMOTE_PORT'       => $client->clientPort,
             'REQUEST_METHOD'    => $requestArr['method'],
@@ -456,7 +458,7 @@ class Server extends TcpServer {
         
         $this->invokeOnHeadersMods($host, $requestId);
         
-        if (!isset($client->responses[$requestId])) {
+        if (isset($client->requests[$requestId]) && !isset($client->responses[$requestId])) {
             // Mods may have modified the request environment, so reload it.
             $asgiEnv = $client->requests[$requestId];
             $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
@@ -478,7 +480,6 @@ class Server extends TcpServer {
         
         if ($needsNewRequestId || $hasTrailer) {
             $client->requests[$requestId] = $asgiEnv;
-            $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
         }
         
         $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
@@ -513,12 +514,12 @@ class Server extends TcpServer {
         }
         
         $asgiEnv = $this->generateAsgiEnv($client, $host, $e->getParsedMsgArr());
+        $asgiResponse = $this->generateAsgiResponseFromParseException($e);
         
         $client->requests[$requestId] = $asgiEnv;
         $client->requestHeaderTraces[$requestId] = $parsedMsgArr['trace'] ?: '?';
-        $client->responses[$requestId] = $this->generateAsgiResponseFromParseException($e);
         
-        $this->writePipelinedResponses($client);
+        $this->setResponse($requestId, $asgiResponse);
     }
     
     private function generateAsgiResponseFromParseException(ParseException $e) {
@@ -771,6 +772,8 @@ class Server extends TcpServer {
         if ($this->cachedClientCount-- === $this->maxConnections) {
             $this->resume();
         }
+        
+        $client->parser = NULL;
     }
     
     private function shouldCloseAfterResponse(array $asgiEnv, array $asgiResponse) {
@@ -923,10 +926,6 @@ class Server extends TcpServer {
     
     private function setMaxBodyBytes($bytes) {
         $this->maxBodyBytes = (int) $bytes;
-    }
-    
-    private function setBodySwapSize($bytes) {
-        $this->bodySwapSize = (int) $bytes;
     }
     
     private function setDefaultContentType($mimeType) {
