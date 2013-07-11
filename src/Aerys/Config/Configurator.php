@@ -223,8 +223,13 @@ class Configurator {
     }
     
     private function buildModWebsocket(array $config) {
+        $endpoints = [];
+        foreach ($config as $uri => $endpoint) {
+            $endpoints[$uri] = is_string($endpoint) ? $this->injector->make($endpoint) : $endpoint;
+        }
+        
         $handler = $this->injector->make('Aerys\Handlers\Websocket\WebsocketHandler', [
-            ':endpoints' => $config
+            ':endpoints' => $endpoints
         ]);
         
         return $this->injector->make('Aerys\Mods\Websocket\ModWebsocket', [
