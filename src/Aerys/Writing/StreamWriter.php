@@ -26,6 +26,8 @@ class StreamWriter extends Writer {
             return FALSE;
         }
         
+        // stream_copy_to_stream will error out if we ask it to write more bytes than remain
+        // in the source stream so we can't blindly use the granularity setting.
         $byteWriteLimit = ($this->bytesRemaining > $this->granularity)
             ? $this->granularity
             : $this->bytesRemaining;
