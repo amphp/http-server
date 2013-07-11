@@ -88,15 +88,33 @@ class ModLog implements AfterResponseMod {
         }
     }
     
+    private function wasRequestLineMalformed(array $asgiEnv, array $asgiResponse) {
+        if ($asgiResponse[0] != 400) {
+            $wasMalformed = FALSE;
+        } elseif ($asgiEnv['REQUEST_URI'] === '?') {
+            $wasMalformed = TRUE;
+        } elseif ($asgiEnv['REQUEST_METHOD'] === '?') {
+            $wasMalformed = TRUE;
+        } else {
+            $wasMalformed = FALSE;
+        }
+        
+        return $wasMalformed;
+    }
+    
     /**
      * @link http://httpd.apache.org/docs/2.2/logs.html#combined
      */
     private function doCombinedFormat(array $asgiEnv, array $asgiResponse) {
         $ip = $asgiEnv['REMOTE_ADDR'];
         
-        $requestLine = '"' . $asgiEnv['REQUEST_METHOD'] . ' ';
-        $requestLine.= $asgiEnv['REQUEST_URI'] . ' ';
-        $requestLine.= 'HTTP/' . $asgiEnv['SERVER_PROTOCOL'] . '"';
+        if ($this->wasRequestLineMalformed($asgiEnv, $asgiResponse)) {
+            $requestLine = '-';
+        } else {
+            $requestLine = '"' . $asgiEnv['REQUEST_METHOD'] . ' ';
+            $requestLine.= $asgiEnv['REQUEST_URI'] . ' ';
+            $requestLine.= 'HTTP/' . $asgiEnv['SERVER_PROTOCOL'] . '"';
+        }
         
         $statusCode = $asgiResponse[0];
         $headers = $asgiResponse[2];
@@ -117,9 +135,13 @@ class ModLog implements AfterResponseMod {
     private function doCommonFormat(array $asgiEnv, array $asgiResponse) {
         $ip = $asgiEnv['REMOTE_ADDR'];
         
-        $requestLine = '"' . $asgiEnv['REQUEST_METHOD'] . ' ';
-        $requestLine.= $asgiEnv['REQUEST_URI'] . ' ';
-        $requestLine.= 'HTTP/' . $asgiEnv['SERVER_PROTOCOL'] . '"';
+        if ($this->wasRequestLineMalformed($asgiEnv, $asgiResponse)) {
+            $requestLine = '-';
+        } else {
+            $requestLine = '"' . $asgiEnv['REQUEST_METHOD'] . ' ';
+            $requestLine.= $asgiEnv['REQUEST_URI'] . ' ';
+            $requestLine.= 'HTTP/' . $asgiEnv['SERVER_PROTOCOL'] . '"';
+        }
         
         $statusCode = $asgiResponse[0];
         $headers = $asgiResponse[2];
@@ -141,9 +163,13 @@ class ModLog implements AfterResponseMod {
      * %{HEADER-FIELD} - Any request header (case-insensitive, "-" if not available)
      */
     private function doCustomFormat(array $asgiEnv, array $asgiResponse, $format) {
-        $requestLine = '"' . $asgiEnv['REQUEST_METHOD'] . ' ';
-        $requestLine.= $asgiEnv['REQUEST_URI'] . ' ';
-        $requestLine.= 'HTTP/' . $asgiEnv['SERVER_PROTOCOL'] . '"';
+        if ($this->wasRequestLineMalformed($asgiEnv, $asgiResponse)) {
+            $requestLine = '-';
+        } else {
+            $requestLine = '"' . $asgiEnv['REQUEST_METHOD'] . ' ';
+            $requestLine.= $asgiEnv['REQUEST_URI'] . ' ';
+            $requestLine.= 'HTTP/' . $asgiEnv['SERVER_PROTOCOL'] . '"';
+        }
         
         $headers = $asgiResponse[2];
         
