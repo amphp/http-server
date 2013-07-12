@@ -23,9 +23,8 @@ $config = [
         'maxRequests'           => 150,
         'keepAliveTimeout'      => 5,
         'disableKeepAlive'      => FALSE,
-        'maxHeaderSize'         => 8192,
-        'maxBodySize'           => 10485760,
-        'bodySwapSize'          => 2097152,
+        'maxHeaderBytes'        => 8192,
+        'maxBodyBytes'          => 10485760,
         'defaultContentType'    => 'text/html',
         'defaultCharset'        => 'utf-8',
         'sendServerToken'       => FALSE,
@@ -33,7 +32,7 @@ $config = [
         'autoReasonPhrase'      => TRUE,
         'defaultHost'           => NULL,
         'requireBodyLength'     => FALSE,
-        'allowedMethods'        => ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'TRACE', 'DELETE'],
+        'allowedMethods'        => ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'TRACE', 'DELETE'],
         'socketSoLinger'        => NULL, // Requires PHP's ext/sockets extension
     ],
     
