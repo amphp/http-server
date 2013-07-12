@@ -24,19 +24,17 @@ class WebsocketHandler implements \Countable {
     private $socketReadGranularity = 65365;
     private $defaultEndpointOptions = [
         'subprotocol'      => NULL,
-        'allowedOrigins'   => [], // <-- empty array means all origins are allowed
-        'msgSwapSize'      => 2097152,
+        'allowedOrigins'   => [],
         'maxFrameSize'     => 2097152,
-        // @TODO add minimum average frame size threshold to prevent single-byte-per-frame DoS traffic
         'maxMsgSize'       => 10485760,
         'heartbeatPeriod'  => 10
+        // @TODO add minimum average frame size threshold to prevent really-small-frame DoS
     ];
     
     function __construct(Reactor $reactor, array $endpoints, FrameStreamFactory $frameStreamFactory = NULL) {
         $this->reactor = $reactor;
         $this->frameStreamFactory = $frameStreamFactory ?: new FrameStreamFactory;
         $this->sessions = new \SplObjectStorage;
-        
         $this->setEndpoints($endpoints);
     }
     
@@ -47,22 +45,26 @@ class WebsocketHandler implements \Countable {
             );
         }
         
-        foreach ($endpoints as $requestUri => $endpoint) {
-            if ($endpoint instanceof Endpoint) {
-                $endpointOptions = $this->normalizeEndpointOptions($endpoint);
-                $this->endpoints[$requestUri] = [$endpoint, $endpointOptions];
+        foreach ($endpoints as $requestUri => $config) {
+            if ($requestUri[0] !== '/') {
+                throw new \InvalidArgumentException(
+                    'Endpoint URI must begin with a backslash /'
+                );
+            } elseif (isset($config['endpoint']) && $config['endpoint'] instanceof Endpoint) {
+                $endpoint = $config['endpoint'];
+                unset($config['endpoint']);
+                $options = $this->normalizeEndpointOptions($config);
+                $this->endpoints[$requestUri] = [$endpoint, $options];
                 $this->endpointClientMap[$requestUri] = [];
             } else {
                 throw new \InvalidArgumentException(
-                    'Endpoint instance expected at index: ' . $requestUri
+                    "Endpoint instance required at ['{$requestUri}']['endpoint']"
                 );
             }
         }
     }
     
-    private function normalizeEndpointOptions(Endpoint $endpoint) {
-        $userOptions = $endpoint->getOptions();
-        
+    private function normalizeEndpointOptions(array $userOptions) {
         if (!$userOptions) {
             $endpointOptions = $this->defaultEndpointOptions;
         } elseif (is_array($userOptions)) {
@@ -72,10 +74,6 @@ class WebsocketHandler implements \Countable {
                 $normalizer = 'normalize' . ucfirst($key);
                 $endpointOptions[$key] = $this->$normalizer($value);
             }
-        } else {
-            throw new \UnexpectedValueException(
-                'Endpoint::getOptions() must return an array'
-            );
         }
         
         return $endpointOptions;
@@ -87,13 +85,6 @@ class WebsocketHandler implements \Countable {
     
     private function normalizeAllowedOrigins(array $origins) {
         return array_map('strtolower', $origins);
-    }
-    
-    private function normalizeMsgSwapSize($bytes) {
-        return filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
-            'default' => 2097152,
-            'min_range' => 0
-        ]]);
     }
     
     private function normalizeMaxFrameSize($bytes) {
@@ -289,7 +280,6 @@ class WebsocketHandler implements \Countable {
         $session->clientProxy = new Client($this, $session);
         $session->frameWriter = new FrameWriter($socket);
         $session->frameParser = (new FrameParser)->setOptions([
-            'msgSwapSize' => $session->endpointOptions['msgSwapSize'],
             'maxFrameSize' => $session->endpointOptions['maxFrameSize'],
             'maxMsgSize' => $session->endpointOptions['maxMsgSize']
         ]);

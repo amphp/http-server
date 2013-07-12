@@ -223,18 +223,35 @@ class Configurator {
     }
     
     private function buildModWebsocket(array $config) {
-        $endpoints = [];
-        foreach ($config as $uri => $endpoint) {
-            $endpoints[$uri] = is_string($endpoint) ? $this->injector->make($endpoint) : $endpoint;
+        try {
+            foreach ($config as $requestUri => $endpointArr) {
+                if (isset($endpointArr['endpoint']) && is_string($endpointArr['endpoint'])) {
+                    $endpointArr['endpoint'] = $this->injector->make($endpointArr['endpoint']);
+                    $config[$requestUri] = $endpointArr;
+                }
+            }
+            
+            $handler = $this->injector->make('Aerys\Handlers\Websocket\WebsocketHandler', [
+                ':endpoints' => $config
+            ]);
+            
+            return $this->injector->make('Aerys\Mods\Websocket\ModWebsocket', [
+                ':websocketHandler' => $handler
+            ]);
+            
+        } catch (\InvalidArgumentException $handlerError) {
+            throw new ConfigException(
+                'Invalid websocket mod configuration', 
+                $errorCode = 0,
+                $handlerError
+            );
+        } catch (InjectionException $injectionError) {
+            throw new ConfigException(
+                'Failed injecting websocket dependencies', 
+                $errorCode = 0,
+                $injectionError
+            );
         }
-        
-        $handler = $this->injector->make('Aerys\Handlers\Websocket\WebsocketHandler', [
-            ':endpoints' => $endpoints
-        ]);
-        
-        return $this->injector->make('Aerys\Mods\Websocket\ModWebsocket', [
-            ':websocketHandler' => $handler
-        ]);
     }
+    
 }
-
