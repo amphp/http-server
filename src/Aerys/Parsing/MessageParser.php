@@ -540,7 +540,7 @@ class MessageParser implements Parser {
         if ($this->maxBodyBytes > 0 && $this->bodyBytesConsumed > $this->maxBodyBytes) {
             throw new PolicyException(
                 $this->getParsedMessageArray(),
-                $msg = "Maximum allowable body size exceeded: {$this->maxBodyBytes}",
+                $msg = 'Maximum allowable body size exceeded',
                 $code = 413,
                 $previousException = NULL
             );
