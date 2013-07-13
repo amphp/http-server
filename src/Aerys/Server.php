@@ -45,7 +45,7 @@ class Server extends TcpServer {
     private $normalizeMethodCase = TRUE;
     private $requireBodyLength = FALSE;
     private $maxHeaderBytes = 8192;
-    private $maxBodyBytes = 0;
+    private $maxBodyBytes = 2097152;
     private $allowedMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE', 'PUT', 'POST', 'PATCH', 'DELETE'];
     
     private $errorStream;
@@ -391,7 +391,6 @@ class Server extends TcpServer {
         
         $scheme = $client->isEncrypted ? 'https' : 'http';
         $body = ($requestArr['body'] || $requestArr['body'] === '0') ? $requestArr['body'] : NULL;
-        $protocol = ($requestArr['protocol'] === '?') ? '1.0' : $requestArr['protocol'];
         $serverName = $host->isWildcard() ? $client->clientAddress : $host->getName();
         
         $asgiEnv = [
@@ -406,7 +405,7 @@ class Server extends TcpServer {
             'SERVER_PORT'       => $client->serverPort,
             'SERVER_ADDR'       => $client->serverAddress,
             'SERVER_NAME'       => $serverName,
-            'SERVER_PROTOCOL'   => $protocol,
+            'SERVER_PROTOCOL'   => $requestArr['protocol'],
             'REMOTE_ADDR'       => $client->clientAddress,
             'REMOTE_PORT'       => $client->clientPort,
             'REQUEST_METHOD'    => $requestArr['method'],
@@ -496,10 +495,20 @@ class Server extends TcpServer {
     }
     
     private function onParseError(Client $client, ParseException $e) {
+        $requestId = $client->preBodyRequest
+            ? $client->preBodyRequest[0]
+            : $this->generateParseErrorEnvironment($client, $e);
+        
+        $asgiResponse = $this->generateAsgiResponseFromParseException($e);
+        $this->setResponse($requestId, $asgiResponse);
+    }
+    
+    private function generateParseErrorEnvironment(Client $client, ParseException $e) {
         $requestId = ++$this->lastRequestId;
         $this->requestIdClientMap[$requestId] = $client;
-        
         $parsedMsgArr = $e->getParsedMsgArr();
+        $client->requestHeaderTraces[$requestId] = $parsedMsgArr['trace'] ?: '?';
+        
         $uri = $parsedMsgArr['uri'];
         
         if ((strpos($uri, 'http://') === 0 || strpos($uri, 'https://') === 0)) {
@@ -514,12 +523,10 @@ class Server extends TcpServer {
         }
         
         $asgiEnv = $this->generateAsgiEnv($client, $host, $e->getParsedMsgArr());
-        $asgiResponse = $this->generateAsgiResponseFromParseException($e);
-        
+        $asgiEnv['SERVER_PROTOCOL'] = '1.0';
         $client->requests[$requestId] = $asgiEnv;
-        $client->requestHeaderTraces[$requestId] = $parsedMsgArr['trace'] ?: '?';
         
-        $this->setResponse($requestId, $asgiResponse);
+        return $requestId;
     }
     
     private function generateAsgiResponseFromParseException(ParseException $e) {
