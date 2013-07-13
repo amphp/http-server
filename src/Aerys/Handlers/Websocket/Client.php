@@ -77,8 +77,7 @@ class Client {
             'controlFramesSent' => $this->session->controlFramesSent,
             'dataLastReadAt'    => $this->session->dataLastReadAt,
             'connectedAt'       => $this->session->connectedAt,
-            'allClients'        => $this->handler->count(),
-            'endpointClients'   => $this->handler->count($this->session->endpointUri)
+            'totalClientCount'  => $this->handler->count()
         ];
     }
     

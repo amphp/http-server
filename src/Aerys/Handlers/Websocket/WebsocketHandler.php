@@ -28,7 +28,7 @@ class WebsocketHandler implements \Countable {
         'maxFrameSize'     => 2097152,
         'maxMsgSize'       => 10485760,
         'heartbeatPeriod'  => 10
-        // @TODO add minimum average frame size threshold to prevent really-small-frame DoS
+        // @TODO add minimum average frame size rate threshold to prevent really-small-frame DoS
     ];
     
     function __construct(Reactor $reactor, array $endpoints, FrameStreamFactory $frameStreamFactory = NULL) {
@@ -49,6 +49,10 @@ class WebsocketHandler implements \Countable {
             if ($requestUri[0] !== '/') {
                 throw new \InvalidArgumentException(
                     'Endpoint URI must begin with a backslash /'
+                );
+            } elseif (!is_array($config)) {
+                throw new \InvalidArgumentException(
+                    "Endpoint definition must specify a configuration array at key {$requestUri}"
                 );
             } elseif (isset($config['endpoint']) && $config['endpoint'] instanceof Endpoint) {
                 $endpoint = $config['endpoint'];
@@ -702,12 +706,6 @@ class WebsocketHandler implements \Countable {
     }
     
     function count($endpointUri = NULL) {
-        if (isset($endpointUri, $this->endpointClientMap[$endpointUri])) {
-            $clientCount = count($this->endpointClientMap[$endpointUri]);
-        } else {
-            $clientCount = $this->sessions->count();
-        }
-        
-        return $clientCount;
+        return $this->sessions->count();
     }
 }
