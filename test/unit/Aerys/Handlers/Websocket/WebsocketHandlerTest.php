@@ -47,7 +47,7 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
         $reactor = $this->getMock('Amp\Reactor');
         
         $endpoints = [
-            '/chat' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')
+            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
@@ -72,7 +72,7 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
         $reactor = $this->getMock('Amp\Reactor');
         
         $endpoints = [
-            '/chat' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')
+            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
@@ -92,7 +92,7 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     function test405ReturnedIfNotHttpGetRequest() {
         $reactor = $this->getMock('Amp\Reactor');
         $endpoints = [
-            '/chat' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')
+            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
@@ -111,7 +111,7 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     function test505ReturnedIfBadHttpProtocol() {
         $reactor = $this->getMock('Amp\Reactor');
         $endpoints = [
-            '/chat' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')
+            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
@@ -134,7 +134,7 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     function test426ReturnedOnInvalidUpgradeHeader($asgiEnv) {
         $reactor = $this->getMock('Amp\Reactor');
         $endpoints = [
-            '/chat' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')
+            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
@@ -180,7 +180,7 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     function test400ReturnedOnInvalidConnectionHeader($asgiEnv) {
         $reactor = $this->getMock('Amp\Reactor');
         $endpoints = [
-            '/chat' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')
+            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
@@ -225,7 +225,7 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     function test400ReturnedOnMissingSecWebsocketKeyHeader() {
         $reactor = $this->getMock('Amp\Reactor');
         $endpoints = [
-            '/chat' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')
+            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
@@ -247,7 +247,7 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     function test400ReturnedOnEmptySecWebsocketVersionHeader() {
         $reactor = $this->getMock('Amp\Reactor');
         $endpoints = [
-            '/chat' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')
+            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
@@ -270,7 +270,7 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     function test400ReturnedOnUnmatchedSecWebsocketVersionHeader() {
         $reactor = $this->getMock('Amp\Reactor');
         $endpoints = [
-            '/chat' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')
+            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
@@ -293,12 +293,11 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     
     function test403ReturnedOnUnmatchedOriginHeader() {
         $reactor = $this->getMock('Amp\Reactor');
-        $mockEndpoint = $this->getMock('Aerys\Handlers\Websocket\Endpoint');
-        $mockEndpoint->expects($this->any())
-                     ->method('getOptions')
-                     ->will($this->returnValue(['allowedOrigins' => ['http://site.com']]));
         $endpoints = [
-            '/chat' => $mockEndpoint
+            '/chat' => [
+                'endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint'),
+                'allowedOrigins' => ['site.com']
+            ]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
@@ -322,12 +321,11 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     
     function test400ReturnedOnUnmatchedSecWebsocketProtocolHeader() {
         $reactor = $this->getMock('Amp\Reactor');
-        $mockEndpoint = $this->getMock('Aerys\Handlers\Websocket\Endpoint');
-        $mockEndpoint->expects($this->any())
-                     ->method('getOptions')
-                     ->will($this->returnValue(['subprotocol' => 'some-protocol']));
         $endpoints = [
-            '/chat' => $mockEndpoint
+            '/chat' => [
+                'endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint'),
+                'subprotocol' => 'some-protocol'
+            ]
         ];
         
         $handler = new WebsocketHandler($reactor, $endpoints);
