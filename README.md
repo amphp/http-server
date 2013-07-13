@@ -23,6 +23,8 @@ without it
 the HTTP extension enabled
 - [vfsStream](https://github.com/mikey179/vfsStream) Required to execute the full unit test suite 
 without skipping some cases
+- [Artax](https://github.com/rdlowrey/Artax) Required to execute the full integration test suite
+without skipping some cases
 
 > **NOTE:** Windows users can find DLLs for both ext/libevent and ext/http at the
 > [windows.php.net download index](http://windows.php.net/downloads/pecl/releases/).
