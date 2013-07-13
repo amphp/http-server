@@ -21,7 +21,6 @@ use Aerys\Config\Configurator,
     Aerys\Handlers\DocRoot\DocRootHandler;
 
 require dirname(__DIR__) . '/autoload.php';
-require __DIR__ . '/support/ExampleChatEndpoint.php';
 
 (new Configurator)->createServer([[
     'listenOn'      => '*:80',
