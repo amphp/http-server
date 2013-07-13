@@ -25,7 +25,7 @@ class PeclMessageParser implements Parser {
     ];
     
     private $maxHeaderBytes = 8192;
-    private $maxBodyBytes = 10485760;
+    private $maxBodyBytes = -1;
     private $storeBody = TRUE;
     private $beforeBody;
     private $onBodyData;
