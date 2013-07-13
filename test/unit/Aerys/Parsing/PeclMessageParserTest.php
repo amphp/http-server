@@ -43,6 +43,51 @@ class PeclMessageParserTest extends PHPUnit_Framework_TestCase {
         $parsedRequestArr = $msgParser->parse($msg);
     }
     
+    /**
+     * @expectedException Aerys\Parsing\PolicyException
+     */
+    function testPolicyExceptionThrownIfMessageBodyIsTooLarge() {
+        $this->skipIfMissingExtHttp();
+        
+        $msgParser = new PeclMessageParser;
+        $msgParser->setOptions([
+            'maxBodyBytes' => 1
+        ]);
+        
+        $body = "This should result in an exception because it exceeds our allowable body size";
+        $contentLength = strlen($body);
+        
+        $rawMsg = "" .
+            "POST /someurl.html HTTP/1.0\r\n" . 
+            "Host: localhost\r\n" . 
+            "Content-Length: {$contentLength}\r\n" .
+            "\r\n" .
+            $body
+        ;
+        
+        $msgParser->parse($rawMsg);
+    }
+    
+    /**
+     * @expectedException Aerys\Parsing\PolicyException
+     */
+    function testPolicyExceptionThrownIfHeadersAreTooLarge() {
+        $this->skipIfMissingExtHttp();
+        
+        $msgParser = new PeclMessageParser;
+        $msgParser->setOptions([
+            'maxHeaderBytes' => 1024
+        ]);
+        
+        $rawMsg = "" .
+            "GET /someurl.html HTTP/1.0\r\n" . 
+            "Host: localhost\r\n" . 
+            "X-My-Header: " . str_repeat('x', 1024) . "r\n" .
+            "\r\n"
+        ;
+        
+        $msgParser->parse($rawMsg);
+    }
     
     public function provideParseExpectations() {
         $return = [];

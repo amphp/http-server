@@ -7,7 +7,7 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
     /**
      * @dataProvider provideParseExpectations
      */
-    public function testParse($msg, $method, $uri, $protocol, $headers, $body) {
+    function testParse($msg, $method, $uri, $protocol, $headers, $body) {
         $msgParser = new MessageParser;
         $parsedRequestArr = $msgParser->parse($msg);
         
@@ -25,7 +25,7 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
     /**
      * @dataProvider provideParseExpectations
      */
-    public function testIncrementalParse($msg, $method, $uri, $protocol, $headers, $body) {
+    function testIncrementalParse($msg, $method, $uri, $protocol, $headers, $body) {
         $msgParser = new MessageParser;
         
         $byteIncrement = 1;
@@ -49,7 +49,49 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals($body, $actualBody);
     }
     
-    public function provideParseExpectations() {
+    /**
+     * @expectedException Aerys\Parsing\PolicyException
+     */
+    function testPolicyExceptionThrownIfMessageBodyIsTooLarge() {
+        $msgParser = new MessageParser;
+        $msgParser->setOptions([
+            'maxBodyBytes' => 1
+        ]);
+        
+        $body = "This should result in an exception because it exceeds our allowable body size";
+        $contentLength = strlen($body);
+        
+        $rawMsg = "" .
+            "POST /someurl.html HTTP/1.0\r\n" . 
+            "Host: localhost\r\n" . 
+            "Content-Length: {$contentLength}\r\n" .
+            "\r\n" .
+            $body
+        ;
+        
+        $msgParser->parse($rawMsg);
+    }
+    
+    /**
+     * @expectedException Aerys\Parsing\PolicyException
+     */
+    function testPolicyExceptionThrownIfHeadersAreTooLarge() {
+        $msgParser = new MessageParser;
+        $msgParser->setOptions([
+            'maxHeaderBytes' => 1024
+        ]);
+        
+        $rawMsg = "" .
+            "GET /someurl.html HTTP/1.0\r\n" . 
+            "Host: localhost\r\n" . 
+            "X-My-Header: " . str_repeat('x', 1024) . "r\n" .
+            "\r\n"
+        ;
+        
+        $msgParser->parse($rawMsg);
+    }
+    
+    function provideParseExpectations() {
         $return = [];
         
         // 0 -------------------------------------------------------------------------------------->
