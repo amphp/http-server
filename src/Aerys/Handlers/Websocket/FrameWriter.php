@@ -59,6 +59,8 @@ class FrameWriter {
                 $this->frameBytesWritten,
                 'Failed writing to destination'
             );
+        } else {
+            $completedFrame = NULL;
         }
         
         return $completedFrame;
