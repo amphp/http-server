@@ -462,7 +462,7 @@ class Server {
             ? strtoupper($requestArr['method'])
             : $requestArr['method'];
         
-        if ($host = $this->selectRequestHost($requestArr)) {
+        if ($host = $this->selectRequestHost($requestArr, $client->isEncrypted)) {
             $asgiEnv = $this->generateAsgiEnv($client, $host, $requestArr);
             
             $client->requests[$requestId] = $asgiEnv;
@@ -534,7 +534,7 @@ class Server {
     /**
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
      */
-    private function selectRequestHost(array $requestArr) {
+    private function selectRequestHost(array $requestArr, $isSocketEncrypted) {
         $protocol = $requestArr['protocol'];
         $requestUri = $requestArr['uri'];
         $headers = array_change_key_case($requestArr['headers'], CASE_UPPER);
@@ -543,7 +543,7 @@ class Server {
         if (0 === stripos($requestUri, 'http://') || stripos($requestUri, 'https://') === 0) {
             $host = $this->selectHostByAbsoluteUri($requestUri);
         } elseif ($hostHeader !== NULL || $protocol >= 1.1) {
-            $host = $this->selectHostByHeader($hostHeader);
+            $host = $this->selectHostByHeader($hostHeader, $isSocketEncrypted);
         } else {
             $host = $this->selectDefaultHost();
         }
@@ -564,17 +564,17 @@ class Server {
             : NULL;
     }
     
-    private function selectHostByHeader($hostHeader) {
+    private function selectHostByHeader($hostHeader, $isSocketEncrypted) {
         $hostHeader = strtolower($hostHeader);
         
         if ($portStartPos = strrpos($hostHeader , ':')) {
             $port = substr($hostHeader, $portStartPos + 1);
         } else {
-            $port = '80';
-            $hostHeader .= ':' . $port;
+            $port = $isSocketEncrypted ? '443' : '80';
+            $hostHeader .= ":{$port}";
         }
         
-        $wildcardHost = '*:' . $port;
+        $wildcardHost = "*:{$port}";
         
         if (isset($this->hosts[$hostHeader])) {
             $host = $this->hosts[$hostHeader];
@@ -954,7 +954,7 @@ class Server {
         if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
             $this->clearClientReferences($client);
             $upgradeCallback = $asgiResponse[4];
-            $upgradeCallback($client->socket);
+            $upgradeCallback($client->socket, $asgiEnv);
         } elseif ($this->shouldCloseAfterResponse($asgiEnv, $asgiResponse)) {
             $this->closeClient($client);
         } else {
