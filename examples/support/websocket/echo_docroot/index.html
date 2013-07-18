@@ -25,10 +25,12 @@
         <div class="span8">
           <h1>Websocket Echo Demo</h1>
           <p>This demo simply echoes your messages to all connected websocket clients.</p>
+          <form id="theForm" onsubmit="return doSubmit();">
           <div class="input-append">
             <input class="span2" id="appendedInputButton" type="text" placeholder="Send a websocket message" style="min-width:300px;">
             <button class="btn btn-info" type="button" id="submitButton">Send!</button>
           </div>
+          </form>
           
         </div>
         

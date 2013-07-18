@@ -10,6 +10,7 @@ var cachedRowCount;
 
 var messageTableBody = document.getElementById('messageTableBody');
 var submitButton = document.getElementById('submitButton');
+var theForm = document.getElementById('theform');
 var clientCount = document.getElementById('clientCount');
 
 connection.onopen = function(event) {
@@ -82,6 +83,9 @@ var doSubmit = function(event) {
         submitTextBox.value = '';
         submitTextBox.focus();
     }
+    
+    return false;
 };
 
 submitButton.onclick = doSubmit;
+theForm.onSubmit = doSubmit;
