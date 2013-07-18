@@ -41,13 +41,13 @@
  * all connected clients.
  */
 
-use Aerys\Config\DocRootLauncher,
-    Aerys\Config\Configurator;
+use Aerys\Config\Bootstrapper,
+    Aerys\Handlers\DocRoot\DocRootLauncher;
 
 require dirname(__DIR__) . '/autoload.php';
 require __DIR__ . '/support/websocket/EchoEndpoint.php'; // <-- our websocket endpoint class
 
-(new Configurator)->createServer([[
+(new Bootstrapper)->createServer([[
     'listenOn'      => '*:1337',
     'application'   => new DocRootLauncher([
         'docRoot'   => __DIR__ . '/support/websocket/echo_docroot' // <-- serves our HTML + JS

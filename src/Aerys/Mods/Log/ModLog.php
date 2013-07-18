@@ -14,13 +14,13 @@ class ModLog implements AfterResponseMod {
     private $flushSize = 0;
     private $afterResponsePriority = 75;
     
-    function __construct(Server $server, array $logs) {
+    function __construct(Server $server, array $config) {
         $this->server = $server;
-        if ($logs) {
-            $this->setLogs($logs);
+        if ($config) {
+            $this->setLogs($config);
         } else {
             throw new \InvalidArgumentException(
-                __CLASS__ . '::__construct expects a non-empty $logs array at Argument 2'
+                __CLASS__ . '::__construct expects a non-empty $config array at Argument 2'
             );
         }
     }

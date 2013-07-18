@@ -3,35 +3,37 @@
 namespace Aerys;
 
 use Amp\Reactor,
-    Amp\TcpServer,
     Aerys\Parsing\Parser,
     Aerys\Parsing\MessageParser,
     Aerys\Parsing\PeclMessageParser,
     Aerys\Parsing\ParseException,
     Aerys\Writing\WriterFactory,
-    Aerys\Writing\ResourceException,
-    Aerys\Mods\OnHeadersMod,
-    Aerys\Mods\BeforeResponseMod,
-    Aerys\Mods\AfterResponseMod;
+    Aerys\Writing\ResourceException;
 
-class Server extends TcpServer {
+class Server {
     
     const SERVER_SOFTWARE = 'Aerys/0.1.0-devel';
     const HTTP_DATE = 'D, d M Y H:i:s T';
+    const SILENT = 0;
+    const QUIET = 1;
+    const LOUD = 2;
     
+    private $reactor;
     private $hosts = [];
+    private $serverSockets = [];
+    private $serverAcceptSubscriptions = [];
+    private $pendingTlsClients = [];
+    private $isServerRunning = FALSE;
+    private $isServerPaused = FALSE;
+    private $isInsideBeforeResponseModLoop = FALSE;
+    private $isInsideAfterResponseModLoop = FALSE;
     private $clients;
     private $requestIdClientMap = [];
     private $cachedClientCount = 0;
     private $lastRequestId = 0;
     
-    private $onHeadersMods;
-    private $beforeResponseMods;
-    private $afterResponseMods;
-    private $insideBeforeResponseModLoop = FALSE;
-    private $insideAfterResponseModLoop = FALSE;
-    
-    private $logErrorsTo;
+    private $verbosity = self::LOUD;
+    private $logErrorsTo = 'php://stderr';
     private $maxConnections = 1500;
     private $maxRequests = 150;
     private $keepAliveTimeout = 10;
@@ -40,16 +42,23 @@ class Server extends TcpServer {
     private $autoReasonPhrase = TRUE;
     private $sendServerToken = FALSE;
     private $disableKeepAlive = FALSE;
-    private $socketSoLinger = NULL;
-    private $defaultHost;
+    private $socketSoLingerZero = FALSE;
     private $normalizeMethodCase = TRUE;
-    private $requireBodyLength = FALSE;
+    private $requireBodyLength = TRUE;
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = 2097152;
     private $allowedMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE', 'PUT', 'POST', 'PATCH', 'DELETE'];
+    private $defaultHost;
+    
+    // @TODO Add option setters for the following settings
+    private $tlsHandshakeTimeout = 3;
+    private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER;
+    // ------------------------- //
     
     private $errorStream;
-    private $canUsePeclHttp;
+    private $isExtHttpEnabled;
+    private $isExtSocketsEnabled;
+    private $isExtOpensslEnabled;
     private $socketReadGranularity = 262144;
     
     function __construct(Reactor $reactor, WriterFactory $wf = NULL) {
@@ -57,42 +66,205 @@ class Server extends TcpServer {
         $this->writerFactory = $wf ?: new WriterFactory;
         $this->clients = new \SplObjectStorage;
         
-        $this->canUsePeclHttp = (extension_loaded('http') && function_exists('http_parse_headers'));
-        $this->allowedMethods = array_combine($this->allowedMethods, array_fill(0, count($this->allowedMethods), 1));
+        $this->isExtHttpEnabled = extension_loaded('http');
+        $this->isExtSocketsEnabled = extension_loaded('sockets');
+        $this->isExtOpensslEnabled = extension_loaded('openssl');
         
-        $this->onHeadersMods = new \SplObjectStorage;
-        $this->beforeResponseMods = new \SplObjectStorage;
-        $this->afterResponseMods = new \SplObjectStorage;
+        $this->allowedMethods = array_combine($this->allowedMethods, array_fill(0, count($this->allowedMethods), 1));
     }
     
-    function addHost(Host $host) {
+    /**
+     * Register a Host to handle requests to a given address or host name
+     * 
+     * @param Host $host A host definition for responding to client requests
+     * @return void
+     */
+    function registerHost(Host $host) {
         $hostId = $host->getId();
         $this->hosts[$hostId] = $host;
     }
     
-    function start() {
-        if ($this->canStart()) {
-            $this->errorStream = $this->logErrorsTo ? fopen($this->logErrorsTo, 'ab+') : STDERR;
-            parent::start();
+    /**
+     * Register a Mod for all hosts matching the specified $hostId
+     * 
+     * Host IDs can match in multiple different ways:
+     * 
+     * - *              Applies mod to ALL currently registered hosts
+     * - *:80           Applies mod to ALL currently registered hosts listening on port 80
+     * - 127.0.0.1:*    Applies mod to ALL currently registered hosts listening on any port at 127.0.0.1
+     * - mysite.com:80  Applies mod to ONLY mysite.com on port 80
+     * 
+     * @param string $hostId The Host ID matching string
+     * @param \Aerys\Mods\Mod $mod The mod instance to register
+     * @param array $priorityMap Optionally specify mod invocation priority values
+     * @throws \DomainException If no registered hosts match the specified $hostId
+     * @return void
+     */
+    function registerMod($hostId, $mod, array $priorityMap = []) {
+        foreach ($this->selectApplicableHostsById($hostId) as $host) {
+            $host->registerMod($mod, $priorityMap);
         }
     }
     
-    private function canStart() {
-        if ($this->isStarted) {
-            $result = FALSE;
-        } elseif (empty($this->hosts)) {
-            throw new \RuntimeException(
-                'Cannot start server: no hosts registered'
-            );
+    private function selectApplicableHostsById($hostId) {
+        if ($hostId === '*') {
+            $applicableHosts = $this->hosts;
+        } elseif (substr($hostId, 0, 2) === '*:') {
+            $port = substr($hostId, 2);
+            $applicableHosts = array_filter($this->hosts, function($host) use ($port) {
+                return ($port === '*' || $host->getPort() == $port);
+            });
+        } elseif (substr($hostId, -2) === ':*') {
+            $addr = substr($hostId, 0, -2);
+            $applicableHosts = array_filter($this->hosts, function($host) use ($addr) {
+                return ($addr === '*' || $host->getAddress() === $addr);
+            });
+        } elseif (isset($this->hosts[$hostId])) {
+            $applicableHosts = [$this->hosts[$hostId]];
         } else {
-            $result = TRUE;
+            // @TODO Determine most appropriate exception to throw here
+            throw new \DomainException(
+                "No currently registered Hosts match the specified ID: {$hostId}"
+            );
         }
         
-        return $result;
+        return $applicableHosts;
     }
     
-    protected function accept($server) {
-        while ($clientSock = @stream_socket_accept($server, $timeout = 0)) {
+    /**
+     * Temporarily stop accepting new connections but do not unbind the socket servers
+     * 
+     * @return void
+     */
+    function pause() {
+        if ($this->isServerRunning && !$this->isServerPaused) {
+            foreach ($this->serverAcceptSubscriptions as $subscription) {
+                $subscription->disable();
+            }
+            $this->isServerPaused = TRUE;
+        }
+    }
+    
+    /**
+     * Resume accepting new connections on all bound socket servers
+     * 
+     * @return void
+     */
+    function resume() {
+        if ($this->isServerRunning && $this->isServerPaused) {
+            foreach ($this->serverAcceptSubscriptions as $subscription) {
+                $subscription->enable();
+            }
+            $this->isServerPaused = FALSE;
+        }
+    }
+    
+    /**
+     * Stop accepting client connections and unbind any socket servers
+     * 
+     * @return void
+     */
+    function stop() {
+        if ($this->isServerRunning) {
+            $this->cancelServerAcceptSubscriptions();
+            $this->closeServerSockets();
+            $this->isServerRunning = FALSE;
+            $this->isServerPaused = FALSE;
+        }
+    }
+    
+    private function cancelServerAcceptSubscriptions() {
+        foreach ($this->serverAcceptSubscriptions as $subscription) {
+            $subscription->cancel();
+        }
+        
+        $this->serverAcceptSubscriptions = [];
+    }
+    
+    private function closeServerSockets() {
+        foreach ($this->serverSockets as $socket) {
+            if (is_resource($socket)) {
+                @fclose($socket);
+            }
+        }
+        
+        $this->serverSockets = [];
+    }
+    
+    /**
+     * Release the hounds!
+     * 
+     * @throws \LogicException If no hosts have been registered to listen for requests
+     * @return void
+     */
+    function start() {
+        if (!$this->isServerRunning && $this->hosts) {
+            $this->errorStream = $this->logErrorsTo ? fopen($this->logErrorsTo, 'ab+') : STDERR;
+            $this->bindListeningSockets();
+            $this->isServerRunning = TRUE;
+            $this->reactor->run();
+            $this->isServerRunning = FALSE;
+        } elseif (!$this->hosts) {
+            throw new \LogicException(
+                'Cannot start server: no hosts registered'
+            );
+        }
+    }
+    
+    /**
+     * @TODO Track which addresses have TLS enabled and prevent conflicts in multi-host environments
+     */
+    private function bindListeningSockets() {
+        $boundServers = [];
+        $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+        
+        foreach ($this->hosts as $host) {
+            $context = $host->getTlsContext();
+            $isEncrypted = $host->hasTlsDefinition();
+            $onAcceptableClient = $isEncrypted
+                ? function($serverSocket) { $this->acceptTls($serverSocket); }
+                : function($serverSocket) { $this->accept($serverSocket); };
+                
+            $isWildcardIp = $host->isWildcard();
+            
+            // @TODO Allow for IPV6 wildcard host, replace literal wildcard address w/ constant
+            $ip = $isWildcardIp ? '0.0.0.0' : $host->getAddress();
+            $port = $host->getPort();
+            $address = "tcp://{$ip}:{$port}";
+            
+            if ($isEncrypted && !$this->isExtOpensslEnabled) {
+                throw new \RuntimeException(
+                    'Cannot enable crypto on ' . $host->getId() .'; openssl extension not loaded'
+                );
+            }
+            
+            if (isset($boundServers[$address])) {
+                continue;
+            } elseif ($serverSocket = @stream_socket_server($address, $errNo, $errStr, $flags, $context)) {
+                stream_set_blocking($serverSocket, FALSE);
+                $serverId = (int) $serverSocket;
+                $this->serverSockets[$serverId] = $serverSocket;
+                $acceptSubscription = $this->reactor->onReadable($serverSocket, $onAcceptableClient);
+                $this->serverAcceptSubscriptions[$serverId] = $acceptSubscription;
+            } else {
+                throw new \RuntimeException(
+                    "Failed binding server to $address: [Error# $errNo] $errStr"
+                );
+            }
+            
+            if ($this->verbosity && !isset($boundServers[$address])) {
+                $userFriendlyAddress = substr(str_replace('0.0.0.0', '*', $address), 6);
+                echo 'Listening for HTTP traffic on ', $userFriendlyAddress, PHP_EOL;
+            }
+            
+            $boundServers[$address] = TRUE;
+        }
+        
+        reset($this->hosts);
+    }
+    
+    private function accept($serverSocket) {
+        while ($clientSock = @stream_socket_accept($serverSocket, $timeout = 0)) {
             if (++$this->cachedClientCount === $this->maxConnections) {
                 $this->pause();
             }
@@ -100,13 +272,14 @@ class Server extends TcpServer {
         }
     }
     
-    protected function acceptTls($server) {
-        $serverId = (int) $server;
+    private function acceptTls($serverSocket) {
+        $serverId = (int) $serverSocket;
         
-        while ($clientSock = @stream_socket_accept($server, $timeout = 0)) {
+        while ($clientSock = @stream_socket_accept($serverSocket, $timeout = 0)) {
             if (++$this->cachedClientCount === $this->maxConnections) {
                 $this->pause();
             }
+            
             $clientId = (int) $clientSock;
             $this->pendingTlsClients[$clientId] = NULL;
             
@@ -120,15 +293,44 @@ class Server extends TcpServer {
         }
     }
     
-    protected function failTlsConnection($clientSock) {
+    private function doTlsHandshake($clientSock, $trigger) {
+        if ($trigger === Reactor::TIMEOUT) {
+            $this->failTlsConnection($clientSock);
+            $result = FALSE;
+        } elseif ($cryptoResult = @stream_socket_enable_crypto($clientSock, TRUE, $this->cryptoType)) {
+            $this->clearPendingTlsClient($clientSock);
+            $this->onClient($clientSock);
+            $result = TRUE;
+        } elseif (FALSE === $cryptoResult) {
+            $this->failTlsConnection($clientSock);
+            $result = FALSE;
+        } else {
+            $result = FALSE;
+        }
+        
+        return $result;
+    }
+    
+    private function failTlsConnection($clientSock) {
+        $this->clearPendingTlsClient($clientSock);
+        
+        if (is_resource($clientSock)) {
+            @fclose($clientSock);
+        }
         if ($this->cachedClientCount-- === $this->maxConnections) {
             $this->resume();
         }
-        parent::failTlsConnection($clientSock);
     }
     
-    protected function onClient($socket) {
-        // @TODO We may want to change this in AMP so that sockets are non-blocking when they arrive
+    private function clearPendingTlsClient($clientSock) {
+        $clientId = (int) $clientSock;
+        if ($handshakeSubscription = $this->pendingTlsClients[$clientId]) {
+            $handshakeSubscription->cancel();
+        }
+        unset($this->pendingTlsClients[$clientId]);
+    }
+    
+    private function onClient($socket) {
         stream_set_blocking($socket, FALSE);
         
         $client = new Client;
@@ -142,7 +344,7 @@ class Server extends TcpServer {
         
         $client->isEncrypted = isset(stream_context_get_options($socket)['ssl']);
         
-        $client->parser = $this->canUsePeclHttp
+        $client->parser = $this->isExtHttpEnabled
             ? new PeclMessageParser(Parser::MODE_REQUEST)
             : new MessageParser(Parser::MODE_REQUEST);
         
@@ -151,8 +353,8 @@ class Server extends TcpServer {
         };
         $onReadable = function($socket, $trigger) use ($client) {
             return ($trigger === Reactor::READ)
-                ? $this->onReadableSocket($client)
-                : $this->onReadableTimeout($client);
+                ? $this->onReadableClientSocket($client)
+                : $this->onReadableClientSocketTimeout($client);
         };
         
         $client->parser->setOptions([
@@ -161,10 +363,14 @@ class Server extends TcpServer {
             'beforeBody' => $onHeaders
         ]);
         
-        $client->readSubscription = $this->reactor->onReadable($socket, $onReadable, $this->keepAliveTimeout);
+        $readSubscription = $this->reactor->onReadable($socket, $onReadable, $this->keepAliveTimeout);
+        $client->readSubscription = $readSubscription;
         
         $this->clients->attach($client);
-        $this->cachedClientCount++;
+        
+        if ($this->verbosity & self::LOUD) {
+            echo 'CON: ', $client->clientAddress, ':', $client->clientPort, ' | (', $this->cachedClientCount, ')', PHP_EOL;
+        }
     }
     
     private function parseSocketName($name) {
@@ -175,13 +381,13 @@ class Server extends TcpServer {
         return [$addr, $port];
     }
     
-    private function onReadableTimeout(Client $client) {
+    private function onReadableClientSocketTimeout(Client $client) {
         if (empty($client->requests) || ltrim($client->parser->getBuffer(), "\r\n")) {
             $this->closeClient($client);
         }
     }
     
-    private function onReadableSocket(Client $client) {
+    private function onReadableClientSocket(Client $client) {
         $data = @fread($client->socket, $this->socketReadGranularity);
         
         if ($data || $data === '0') {
@@ -245,6 +451,10 @@ class Server extends TcpServer {
     private function initializeRequest(Client $client, array $requestArr) {
         $requestId = ++$this->lastRequestId;
         $this->requestIdClientMap[$requestId] = $client;
+        
+        if ($this->verbosity & self::LOUD) {
+            echo 'REQ: ', $client->clientAddress, ':', $client->clientPort, ' | ', rtrim(array_filter(explode("\n", $requestArr['trace']))[0]), PHP_EOL;
+        }
         
         $client->requestCount += !isset($client->requests[$requestId]);
         
@@ -436,10 +646,8 @@ class Server extends TcpServer {
     }
     
     private function invokeOnHeadersMods(Host $host, $requestId) {
-        if ($this->onHeadersMods->contains($host)) {
-            foreach ($this->onHeadersMods->offsetGet($host) as $mod) {
-                $mod->onHeaders($requestId);
-            }
+        foreach ($host->getOnHeadersMods() as $mod) {
+            $mod->onHeaders($requestId);
         }
     }
     
@@ -512,6 +720,7 @@ class Server extends TcpServer {
         $uri = $parsedMsgArr['uri'];
         
         if ((strpos($uri, 'http://') === 0 || strpos($uri, 'https://') === 0)) {
+            
             $host = $this->selectHostByAbsoluteUri($uri) ?: $this->selectDefaultHost();
         } elseif ($parsedMsgArr['headers']
             && ($headers = array_change_key_case($parsedMsgArr['headers']))
@@ -550,9 +759,9 @@ class Server extends TcpServer {
     }
     
     function setResponse($requestId, array $asgiResponse) {
-        if ($this->insideAfterResponseModLoop) {
+        if ($this->isInsideAfterResponseModLoop) {
             throw new \LogicException(
-                'Cannot modify response inside AfterResponseMod loop'
+                'Cannot modify response isInside AfterResponseMod loop'
             );
         }
         
@@ -570,11 +779,19 @@ class Server extends TcpServer {
         
         $client->responses[$requestId] = $asgiResponse;
         
-        if (!$this->insideBeforeResponseModLoop) {
+        if (!$this->isInsideBeforeResponseModLoop) {
             $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
             $this->invokeBeforeResponseMods($host, $requestId);
             $this->writePipelinedResponses($client);
         }
+    }
+    
+    private function invokeBeforeResponseMods(Host $host, $requestId) {
+        $this->isInsideBeforeResponseModLoop = TRUE;
+        foreach ($host->getBeforeResponseMods() as $mod) {
+            $mod->beforeResponse($requestId);
+        }
+        $this->isInsideBeforeResponseModLoop = FALSE;
     }
     
     private function writePipelinedResponses(Client $client) {
@@ -702,7 +919,7 @@ class Server extends TcpServer {
         
         $protocol = ($asgiEnv['SERVER_PROTOCOL'] === '?') ? '1.0' : $asgiEnv['SERVER_PROTOCOL'];
         
-        if ($hasBody && !$hasContentLength && is_string($body)) {
+        if ($hasBody && is_string($body)) {
             $headers['CONTENT-LENGTH'] = strlen($body);
         } elseif ($hasBody && !$hasContentLength && is_resource($body)) {
             fseek($body, 0, SEEK_END);
@@ -723,19 +940,13 @@ class Server extends TcpServer {
             : [$status, $reason, $headers, $body];
     }
     
-    private function invokeBeforeResponseMods(Host $host, $requestId) {
-        if ($this->beforeResponseMods->contains($host)) {
-            $this->insideBeforeResponseModLoop = TRUE;
-            foreach ($this->beforeResponseMods->offsetGet($host) as $mod) {
-                $mod->beforeResponse($requestId);
-            }
-            $this->insideBeforeResponseModLoop = FALSE;
-        }
-    }
-    
     private function afterResponse(Client $client, $requestId) {
         $asgiEnv = $client->requests[$requestId];
         $asgiResponse = $client->responses[$requestId];
+        
+        if ($this->verbosity & self::LOUD) {
+            echo 'RES: ', $client->clientAddress, ':', $client->clientPort, ' | HTTP/',  $asgiEnv['SERVER_PROTOCOL'], ' ', $asgiResponse[0], ' ', $asgiResponse[1], PHP_EOL;
+        }
         
         $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
         $this->invokeAfterResponseMods($host, $requestId);
@@ -752,13 +963,11 @@ class Server extends TcpServer {
     }
     
     private function invokeAfterResponseMods(Host $host, $requestId) {
-        if ($this->afterResponseMods->contains($host)) {
-            $this->insideAfterResponseModLoop = TRUE;
-            foreach ($this->afterResponseMods->offsetGet($host) as $mod) {
-                $mod->afterResponse($requestId);
-            }
-            $this->insideAfterResponseModLoop = FALSE;
+        $this->isInsideAfterResponseModLoop = TRUE;
+        foreach ($host->getAfterResponseMods() as $mod) {
+            $mod->afterResponse($requestId);
         }
+        $this->isInsideAfterResponseModLoop = FALSE;
     }
     
     private function clearClientReferences(Client $client) {
@@ -802,10 +1011,14 @@ class Server extends TcpServer {
     private function closeClient(Client $client) {
         $this->clearClientReferences($client);
         
-        if ($this->socketSoLinger !== NULL) {
+        if ($this->socketSoLingerZero) {
             $this->closeSocketWithSoLinger($client->socket, $client->isEncrypted);
         } else {
             @fclose($client->socket);
+        }
+        
+        if ($this->verbosity & self::LOUD) {
+            echo 'DIS: ', $client->clientAddress, ':', $client->clientPort, ' | (', $this->cachedClientCount, ')', PHP_EOL;
         }
     }
     
@@ -815,14 +1028,9 @@ class Server extends TcpServer {
         }
         
         $socket = socket_import_stream($socket);
-        
-        if ($this->socketSoLinger) {
-            socket_set_block($socket);
-        }
-        
         socket_set_option($socket, SOL_SOCKET, SO_LINGER, [
             'l_onoff' => 1,
-            'l_linger' => $this->socketSoLinger
+            'l_linger' => 0
         ]);
         
         socket_close($socket);
@@ -891,18 +1099,74 @@ class Server extends TcpServer {
         return $client->requestHeaderTraces[$requestId];
     }
     
+    // @TODO I hate this method. Try to kill it.
     function getErrorStream() {
         return $this->errorStream;
     }
     
+    /**
+     * Set multiple server options at one time
+     * 
+     * @param array $options
+     * @throws \DomainException On unrecognized option key
+     * @return void
+     */
+    function setAllOptions(array $options) {
+        foreach ($options as $key => $value) {
+            $this->setOption($key, $value);
+        }
+    }
+    
+    /**
+     * Set an individual server option directive
+     * 
+     * @param string $option The option key (case-INsensitve)
+     * @param mixed $value The option value to assign
+     * @throws \DomainException On unrecognized option key
+     * @return void
+     */
     function setOption($option, $value) {
-        $setter = 'set' . ucfirst($option);
-        if (method_exists($this, $setter)) {
-            $this->$setter($value);
-        } else {
-            throw new \DomainException(
-                'Invalid server option: ' . $option
-            );
+        $option = strtolower($option);
+        
+        switch ($option) {
+            case 'maxconnections':
+                $this->setMaxConnections($value); break;
+            case 'maxrequests':
+                $this->setMaxRequests($value); break;
+            case 'keepalivetimeout':
+                $this->setKeepAliveTimeout($value); break;
+            case 'disablekeepalive':
+                $this->setDisableKeepAlive($value); break;
+            case 'maxheaderbytes':
+                $this->setMaxHeaderBytes($value); break;
+            case 'maxbodybytes':
+                $this->setMaxBodyBytes($value); break;
+            case 'defaultcontenttype':
+                $this->setDefaultContentType($value); break;
+            case 'defaulttextcharset':
+                $this->setDefaultTextCharset($value); break;
+            case 'autoreasonphrase':
+                $this->setAutoReasonPhrase($value); break;
+            case 'logerrorsto':
+                $this->setLogErrorsTo($value); break;
+            case 'sendservertoken':
+                $this->setSendServerToken($value); break;
+            case 'normalizemethodcase':
+                $this->setNormalizeMethodCase($value); break;
+            case 'requirebodylength':
+                $this->setRequireBodyLength($value); break;
+            case 'socketsolingerzero':
+                $this->setSocketSoLingerZero($value); break;
+            case 'allowedmethods':
+                $this->setAllowedMethods($value); break;
+            case 'defaulthost':
+                $this->setDefaultHost($value); break;
+            case 'verbosity':
+                $this->setVerbosity($value); break;
+            default:
+                throw new \DomainException(
+                    "Unknown server option: {$option}"
+                );
         }
     }
     
@@ -944,7 +1208,7 @@ class Server extends TcpServer {
     }
     
     private function setAutoReasonPhrase($boolFlag) {
-        $this->autoReasonPhrase = (bool) $boolFlag;
+        $this->autoReasonPhrase = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
     
     private function setLogErrorsTo($filePath) {
@@ -952,22 +1216,27 @@ class Server extends TcpServer {
     }
     
     private function setSendServerToken($boolFlag) {
-        $this->sendServerToken = (bool) $boolFlag;
+        $this->sendServerToken = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
     
     private function setNormalizeMethodCase($boolFlag) {
-        $this->normalizeMethodCase = (bool) $boolFlag;
+        $this->normalizeMethodCase = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
     
     private function setRequireBodyLength($boolFlag) {
-        $this->requireBodyLength = (bool) $boolFlag;
+        $this->requireBodyLength = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
     
-    private function setSocketSoLinger($seconds) {
-        $this->socketSoLinger = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
-            'min_range' => 0,
-            'default' => NULL
-        ]]);
+    private function setSocketSoLingerZero($boolFlag) {
+        $boolFlag = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
+        
+        if ($boolFlag && !$this->isExtSocketsEnabled) {
+            throw new \RuntimeException(
+                'Cannot enable socketSoLingerZero option; PHP sockets extension required'
+            );
+        }
+        
+        $this->socketSoLingerZero = $boolFlag;
     }
     
     private function setAllowedMethods(array $methods) {
@@ -979,94 +1248,20 @@ class Server extends TcpServer {
     private function setDefaultHost($hostId) {
         if (isset($this->hosts[$hostId])) {
             $this->defaultHost = $this->hosts[$hostId];
-        } else {
+        } elseif ($hostId !== NULL) {
             throw new \DomainException(
-                'Cannot assign default host: no hosts match: ' . $hostId
+                "Cannot assign default host; no hosts match specifed host ID: {$hostId}"
             );
         }
     }
     
-    function registerMod($hostId, $mod) {
-        foreach ($this->selectApplicableModHosts($hostId) as $host) {
-            $hostId = $host->getId();
-            
-            if ($mod instanceof OnHeadersMod) {
-                $onHeadersModArr = $this->onHeadersMods->contains($host)
-                    ? $this->onHeadersMods->offsetGet($host)
-                    : [];
-                $onHeadersModArr[] = $mod;
-                usort($onHeadersModArr, [$this, 'onHeadersModPrioritySort']);
-                $this->onHeadersMods->attach($host, $onHeadersModArr);
-            }
-            
-            if ($mod instanceof BeforeResponseMod) {
-                $beforeResponseModArr = $this->beforeResponseMods->contains($host)
-                    ? $this->beforeResponseMods->offsetGet($host)
-                    : [];
-                $beforeResponseModArr[] = $mod;
-                usort($beforeResponseModArr, [$this, 'beforeResponseModPrioritySort']);
-                $this->beforeResponseMods->attach($host, $beforeResponseModArr);
-            }
-            
-            if ($mod instanceof AfterResponseMod) {
-                $afterResponseModArr = $this->afterResponseMods->contains($host)
-                    ? $this->afterResponseMods->offsetGet($host)
-                    : [];
-                $afterResponseModArr[] = $mod;
-                usort($afterResponseModArr, [$this, 'afterResponseModPrioritySort']);
-                $this->afterResponseMods->attach($host, $afterResponseModArr);
-            }
-        }
-        
-        return $this;
-    }
-    
-    private function selectApplicableModHosts($hostId) {
-        if ($hostId == '*') {
-            $hosts = $this->hosts;
-        } elseif (substr($hostId, 0, 2) == '*:') {
-            $port = substr($hostId, 2);
-            $hosts = array_filter($this->hosts, function($host) use ($port) {
-                return ($port == '*' || $host->getPort() == $port);
-            });
-        } elseif (substr($hostId, -2) == ':*') {
-            $addr = substr($hostId, 0, -2);
-            $hosts = array_filter($this->hosts, function($host) use ($addr) {
-                return ($addr == '*' || $host->getAddress() == $addr);
-            });
-        } elseif (isset($this->hosts[$hostId])) {
-            $hosts = [$this->hosts[$hostId]];
+    private function setVerbosity($verbosity) {
+        if (in_array($verbosity, [self::SILENT, self::QUIET, self::LOUD])) {
+            $this->verbosity = (int) $verbosity;
         } else {
-            $hosts = [];
+            throw new \DomainException(
+                "Invalid verbosity level: {$verbosity}"
+            );
         }
-        
-        return $hosts;
     }
-    
-    private function modPrioritySort($a, $b) {
-        return ($a != $b) ? ($a - $b) : 0;
-    }
-    
-    private function onHeadersModPrioritySort(OnHeadersMod $modA, OnHeadersMod $modB) {
-        $a = $modA->getOnHeadersPriority();
-        $b = $modB->getOnHeadersPriority();
-        
-        return $this->modPrioritySort($a, $b);
-    }
-    
-    private function beforeResponseModPrioritySort(BeforeResponseMod $modA, BeforeResponseMod $modB) {
-        $a = $modA->getBeforeResponsePriority();
-        $b = $modB->getBeforeResponsePriority();
-        
-        return $this->modPrioritySort($a, $b);
-    }
-    
-    private function afterResponseModPrioritySort(AfterResponseMod $modA, AfterResponseMod $modB) {
-        $a = $modA->getAfterResponsePriority();
-        $b = $modB->getAfterResponsePriority();
-        
-        return $this->modPrioritySort($a, $b);
-    }
-    
 }
-

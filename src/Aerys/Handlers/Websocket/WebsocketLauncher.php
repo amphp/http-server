@@ -1,26 +1,23 @@
 <?php
 
-namespace Aerys\Config;
+namespace Aerys\Handlers\Websocket;
 
 use Auryn\Injector,
-    Aerys\Handlers\Websocket\Endpoint,
-    Aerys\Handlers\Websocket\EndpointOptions;
+    Auryn\InjectionException,
+    Aerys\Config\ConfigLauncher,
+    Aerys\Config\ConfigException;
 
-class WebsocketLauncher implements Launcher {
+class WebsocketLauncher extends ConfigLauncher {
     
-    private $endpoints;
     private $handlerClass = 'Aerys\Handlers\Websocket\WebsocketHandler';
     
-    function __construct(array $endpoints) {
-        $this->endpoints = $endpoints;
-    }
-    
-    function launchApp(Injector $injector) {
-        $this->makeEndpoints($injector);
+    function launch(Injector $injector) {
+        $config = $this->getConfig();
+        $endpoints = $this->makeEndpoints($injector, $config);
         
         try {
             return $injector->make('Aerys\Handlers\Websocket\WebsocketHandler', [
-                ':endpoints' => $this->endpoints
+                ':endpoints' => $endpoints
             ]);
         } catch (\InvalidArgumentException $handlerError) {
             throw new ConfigException(
@@ -29,17 +26,21 @@ class WebsocketLauncher implements Launcher {
                 $handlerError
             );
         }
-        
     }
     
-    private function makeEndpoints(Injector $injector) {
+    private function makeEndpoints(Injector $injector, array $config) {
         try {
-            foreach ($this->endpoints as $requestUri => $endpointArr) {
+            $endpoints = [];
+            
+            foreach ($config as $requestUri => $endpointArr) {
                 if (isset($endpointArr['endpoint']) && is_string($endpointArr['endpoint'])) {
                     $endpointArr['endpoint'] = $injector->make($endpointArr['endpoint']);
-                    $this->endpoints[$requestUri] = $endpointArr;
+                    $endpoints[$requestUri] = $endpointArr;
                 }
             }
+            
+            return $endpoints;
+            
         } catch (InjectionException $injectionError) {
             throw new ConfigException(
                 'Failed injecting websocket dependencies', 

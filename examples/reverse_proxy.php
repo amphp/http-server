@@ -1,9 +1,8 @@
 <?php
 
-// To run, execute this script and request http://127.0.0.1:1337/ in your browser
-
 /**
- * IMPORTANT
+ * IMPORTANT:
+ * ----------
  * 
  * The ReverseProxy functionality relies on backend servers to correctly implement two very
  * important HTTP/1.1 features:
@@ -29,16 +28,25 @@
  *     ]
  * ];
  * 
+ * HOW TO RUN THIS DEMO:
+ * ---------------------
+ * 
+ * $ php examples/reverse_proxy.php
+ * 
+ * Once the server has started, request http://127.0.0.1/ in your browser or client of choice.
+ * You'll see that the request is proxied and responded to by the backend server running on :1337.
+ * Note that for this demo to work you must have an http backend server running on port 1337. Also,
+ * in *nix environments you will likely need sudo or root privileges to start a server on port 80.
  */
 
-use Aerys\Config\Configurator,
-    Aerys\Config\ReverseProxyLauncher;
+use Aerys\Config\Bootstrapper,
+    Aerys\Handlers\ReverseProxy\ReverseProxyLauncher;
 
 require dirname(__DIR__) . '/autoload.php';
 
 date_default_timezone_set('UTC');
 
-(new Configurator)->createServer([[
+(new Bootstrapper)->createServer([[
     'listenOn'     => '*:80',
     'application'  => new ReverseProxyLauncher([
         'backends' => [

@@ -86,31 +86,12 @@ class TestingApp {
     }
 }
 
-(new Aerys\Config\Configurator)->createServer([[
-    'listenOn'      => '*:1500',
-    'application'   => new TestingApp
-]])->start();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+(new Aerys\Config\Bootstrapper)->createServer([
+    'options' => [
+        'verbosity' => 0
+    ],
+    'test-server' => [
+        'listenOn'      => '*:1500',
+        'application'   => new TestingApp
+    ]
+])->start();

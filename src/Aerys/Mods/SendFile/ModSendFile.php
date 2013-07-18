@@ -10,7 +10,6 @@ class ModSendFile implements BeforeResponseMod {
     
     private $server;
     private $docRootHandler;
-    private $beforeResponsePriority = 45;
     
     function __construct(Server $server, DocRootHandler $docRootHandler) {
         $this->server = $server;

@@ -34,13 +34,13 @@
  * 
  */
 
-use Aerys\Config\Configurator,
-    Aerys\Config\WebsocketLauncher;
+use Aerys\Config\Bootstrapper,
+    Aerys\Handlers\Websocket\WebsocketLauncher;
 
 require dirname(__DIR__) . '/autoload.php';
 require __DIR__ . '/support/websocket/EchoEndpoint.php'; // <-- our websocket endpoint class
 
-(new Configurator)->createServer([[
+(new Bootstrapper)->createServer([[
     'listenOn'      => '*:1337',
     'application'   => new WebsocketLauncher([
         '/echo' => [

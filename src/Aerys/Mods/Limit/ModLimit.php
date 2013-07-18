@@ -37,18 +37,16 @@ use Aerys\Server,
  */
 class ModLimit implements OnHeadersMod {
     
-    private $httpServer;
-    
+    private $server;
     private $ipProxyHeader;
     private $rateLimits = [];
     private $ratePeriods = [];
     private $rateAllowances = [];
     private $lastRateCheckedAt = [];
     private $maxRatePeriod;
-    private $onHeadersPriority = 10;
     
-    function __construct(Server $httpServer, array $config) {
-        $this->httpServer = $httpServer;
+    function __construct(Server $server, array $config) {
+        $this->server = $server;
         
         if (empty($config['limits'])) {
             throw new \InvalidArgumentException(
@@ -66,10 +64,6 @@ class ModLimit implements OnHeadersMod {
         $this->ratePeriods[] = array_keys($config['limits']);
     }
     
-    function getOnHeadersPriority() {
-        return $this->onHeadersPriority;
-    }
-    
     /**
      * Tracks request rates per-client and assigns a 429 response if the client is rate-limited
      * 
@@ -77,7 +71,7 @@ class ModLimit implements OnHeadersMod {
      * @return void
      */
     function onHeaders($requestId) {
-        $asgiEnv = $this->httpServer->getRequest($requestId);
+        $asgiEnv = $this->server->getRequest($requestId);
         
         if ($this->ipProxyHeader) {
             $clientIp = isset($asgiEnv[$this->ipProxyHeader])
@@ -138,7 +132,7 @@ class ModLimit implements OnHeadersMod {
         ];
         $asgiResponse = [Status::TOO_MANY_REQUESTS, Reason::HTTP_429, $headers, $body];
         
-        $this->httpServer->setResponse($requestId, $asgiResponse);
+        $this->server->setResponse($requestId, $asgiResponse);
     }
     
     private function clearExpiredRateLimitData($now) {

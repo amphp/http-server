@@ -107,7 +107,7 @@ class ServerBadRequestIntegrationTest extends PHPUnit_Framework_TestCase {
          * @TODO Add StartLine message parsing
          */
         $this->fail(
-            'This definitely fails right now'
+            'This test case is expected to fail: it tests for an as yet unimplemented feature'
         );
         
         $rawRequest = "some nonsense \r\nin which the headers never finish";

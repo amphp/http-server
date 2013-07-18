@@ -2,7 +2,7 @@
 
 // To run, execute this script and request http://127.0.0.1:1337/ in your browser
 
-use Aerys\Config\Configurator;
+use Aerys\Config\Bootstrapper;
 
 require dirname(__DIR__) . '/autoload.php';
 
@@ -15,7 +15,7 @@ $myApp = function(array $asgiEnv) {
     return [$status = 200, $reason = 'OK', $headers = [], $body];
 };
 
-(new Configurator)->createServer([[
+(new Bootstrapper)->createServer([[
     'listenOn'      => '*:1337',
     'application'   => $myApp
 ]])->start();

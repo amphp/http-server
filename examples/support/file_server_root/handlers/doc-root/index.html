@@ -67,7 +67,7 @@
       
       <pre><code class="php">&lt;?php // file_server.php
 
-(new Aerys\Config\Configurator)->createServer([[
+(new Aerys\Config\Bootstrapper)->createServer([[
     'listenOn'      =&gt; '*:1337',
     'application'   =&gt; new Aerys\Config\DocRootLauncher([
         'docRoot'   =&gt; '/path/to/document/root',

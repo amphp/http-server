@@ -2,11 +2,12 @@
 
 require dirname(__DIR__) . '/bootstrap.php';
 
-(new Aerys\Config\Configurator)->createServer([
+(new Aerys\Config\Bootstrapper)->createServer([
     'options' => [
         'maxHeaderBytes' => 512,
         'maxBodyBytes' => 1,
-        'defaultContentType' => 'text/plain'
+        'defaultContentType' => 'text/plain',
+        'verbosity' => 0
     ],
     'server' => [
         'listenOn'    => '*:1500',

@@ -2,7 +2,7 @@
 
 // To run, execute this script and request http://127.0.0.1:1337/ in your browser
 
-use Aerys\Config\Configurator;
+use Aerys\Config\Bootstrapper;
 
 require dirname(__DIR__) . '/autoload.php';
 
@@ -15,7 +15,6 @@ $myApp = function(array $asgiEnv) {
     return [$status, $reason, $headers, $body];
 };
 
-
 $config = [
     'options' => [
         'logErrorsTo'           => 'php://stderr',
@@ -26,24 +25,23 @@ $config = [
         'maxHeaderBytes'        => 8192,
         'maxBodyBytes'          => 10485760,
         'defaultContentType'    => 'text/html',
-        'defaultCharset'        => 'utf-8',
+        'defaultTextCharset'    => 'utf-8',
         'sendServerToken'       => FALSE,
         'normalizeMethodCase'   => TRUE,
         'autoReasonPhrase'      => TRUE,
-        'defaultHost'           => NULL,
-        'requireBodyLength'     => FALSE,
+        'requireBodyLength'     => TRUE,
         'allowedMethods'        => ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'TRACE', 'DELETE'],
-        'socketSoLinger'        => NULL, // Requires PHP's ext/sockets extension
+        'socketSoLingerZero'    => FALSE, // Requires PHP's ext/sockets extension
+        'verbosity'             => 1,     // Server::SILENT (0), Server::QUIET (1), Server::LOUD (2)
+        'defaultHost'           => NULL   // Must match a registered Host ID, e.g. mysite.com:80 or *:1337
     ],
     
-    // --- ALL KEYS NOT NAMED "options" ARE CONSIDERED HOST CONTAINERS ---
+    // --- ALL KEYS NOT NAMED "options" or "dependencies" ARE CONSIDERED HOST CONTAINERS ---
     
     'myHost'   => [
-        'listenOn'      => '*:1337',
-        'application'   => $myApp
+        'listenOn' => '*:1337',
+        'application' => $myApp
     ]
 ];
 
-
-(new Configurator)->createServer($config)->start();
-
+(new Bootstrapper)->createServer($config)->start();

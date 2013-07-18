@@ -3,9 +3,8 @@
 /**
  * examples/virtual_hosts.php
  * 
- * 
- * 
- * !!!!!!!! IMPORTANT !!!!!!
+ * IMPORTANT:
+ * ----------
  * 
  * This example utilizes Aerys's name-based virtual hosting capability to serve the front-facing
  * static files from one host (myhost) and the backend websocket host on a separate host (websockets.myhost).
@@ -28,13 +27,13 @@
  * 
  * To run this example:
  * 
- * $ php virtual_hosts.php
+ * $ php examples/virtual_hosts.php
  * 
- * Once the server has started, request http://aerys:1337/ in your browser or client of choice.
+ * Once the server has started, request http://aerys/ in your browser or client of choice.
  */
 
-use Aerys\Config\DocRootLauncher,
-    Aerys\Config\Configurator;
+use Aerys\Config\Bootstrapper,
+    Aerys\Handlers\DocRoot\DocRootLauncher;
 
 require dirname(__DIR__) . '/autoload.php';
 
@@ -44,8 +43,8 @@ $myApp = function(array $asgiEnv) {
     } else {
         $status = 200;
         $reason = 'OK';
-        $body = '<html><body style="font-family: Sans-Serif;"><h1>Hello, world.</h1><hr/>';
-        $body.= '<img src="http://static.aerys:1337/allofthethings.gif" width="480" height="335" /><hr/><br/>';
+        $body = '<html><body style="font-family: Sans-Serif;"><h1>Hello, world.</h1>';
+        $body.= '<img src="http://static.aerys/allofthethings.gif" width="480" height="335" /><br/>';
         $body.= '</body></html>';
         $response = [$status, $reason, $headers = [], $body];
     }
@@ -55,18 +54,17 @@ $myApp = function(array $asgiEnv) {
 
 $config = [
     'host.dynamic' => [
-        'listenOn'      => '*:1337',
+        'listenOn'      => '*:80',
         'name'          => 'aerys', // <--- ADD NAME TO YOUR HOSTS FILE OR THE EXAMPLE WON'T WORK
         'application'   => $myApp
     ],
     'host.static' => [
-        'listenOn'      => '*:1337',
+        'listenOn'      => '*:80',
         'name'          => 'static.aerys', // <--- ADD NAME TO YOUR HOSTS FILE OR THE EXAMPLE WON'T WORK
         'application'   => new DocRootLauncher([
-            'docRoot'   => __DIR__ . '/support/file_server_root'
+            'docRoot'   => __DIR__ . '/support/vhost/static.aerys_root'
         ])
     ]
 ];
 
-(new Configurator)->createServer($config)->start();
-
+(new Bootstrapper)->createServer($config)->start();

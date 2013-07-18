@@ -2,8 +2,7 @@
 
 namespace Aerys\Mods\Websocket;
 
-use Aerys\Status,
-    Aerys\Server,
+use Aerys\Server,
     Aerys\Mods\OnHeadersMod,
     Aerys\Handlers\Websocket\WebsocketHandler;
 
@@ -11,15 +10,10 @@ class ModWebsocket implements OnHeadersMod {
     
     private $server;
     private $websocketHandler;
-    private $onHeadersPriority = 50;
     
     function __construct(Server $server, WebsocketHandler $websocketHandler) {
         $this->server = $server;
         $this->websocketHandler = $websocketHandler;
-    }
-    
-    function getOnHeadersPriority() {
-        return $this->onHeadersPriority;
     }
     
     function onHeaders($requestId) {
@@ -30,9 +24,8 @@ class ModWebsocket implements OnHeadersMod {
         // isn't registered as an endpoint. If we get this back we don't need
         // to take any action. Otherwise, an endpoint match was found and the
         // result should be assigned as the response to this request.
-        if ($asgiResponse[0] != Status::NOT_FOUND) {
+        if ($asgiResponse[0] != 404) {
             $this->server->setResponse($requestId, $asgiResponse);
         }
     }
 }
-

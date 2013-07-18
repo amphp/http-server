@@ -21,6 +21,8 @@ employ the libevent extension -- PHP struggles to handle more 200-300 simultaneo
 without it
 - [ext/http](http://pecl.php.net/package/pecl_http) Benchmarks demonstrate ~10% speed increase with
 the HTTP extension enabled
+- _ext/openssl_ OpenSSL support is needed if you wish to TLS-encrypt socket connections to your
+server. This extension is compiled into most PHP distributions by default.
 - [vfsStream](https://github.com/mikey179/vfsStream) Required to execute the full unit test suite 
 without skipping some cases
 - [Artax](https://github.com/rdlowrey/Artax) Required to execute the full integration test suite
@@ -39,7 +41,7 @@ $ php -d date.timezone=UTC Aerys/examples/hello_world.php
 #### HELLO WORLD
 
 ```php
-require '/hard/path/to/autoload.php'; // <-- change for your local environment
+require '/hard/path/to/aerys/autoload.php'; // <-- change for your local environment
 
 $myApp = function(array $asgiEnv) {
     return [
@@ -50,7 +52,7 @@ $myApp = function(array $asgiEnv) {
     ];
 };
 
-(new Aerys\Config\Configurator)->createServer([[
+(new Aerys\Config\Bootstrapper)->createServer([[
     'listenOn'      => '*:1337',
     'application'   => $myApp
 ]])->start();

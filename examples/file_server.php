@@ -16,13 +16,13 @@
  * Once the server has started, request http://127.0.0.1:80/ in your browser or client of choice.
  */
 
-use Aerys\Config\Configurator,
-    Aerys\Config\DocRootLauncher,
+use Aerys\Config\Bootstrapper,
+    Aerys\Handlers\DocRoot\DocRootLauncher,
     Aerys\Handlers\DocRoot\DocRootHandler;
 
 require dirname(__DIR__) . '/autoload.php';
 
-(new Configurator)->createServer([[
+(new Bootstrapper)->createServer([[
     'listenOn'      => '*:80',
     'application'   => new DocRootLauncher([
         'docRoot'   => __DIR__ . '/support/file_server_root',
@@ -45,6 +45,5 @@ require dirname(__DIR__) . '/autoload.php';
             'php://stdout' => 'common'
         ]
     ]
-    
 ]])->start();
 

@@ -45,9 +45,8 @@ use Aerys\Server,
  */
 class ModExpect implements OnHeadersMod {
     
-    private $httpServer;
+    private $server;
     private $callbacks = [];
-    private $onHeadersPriority = 50;
     
     private $response100 = [
         Status::CONTINUE_100,
@@ -63,8 +62,8 @@ class ModExpect implements OnHeadersMod {
         NULL
     ];
     
-    function __construct(Server $httpServer, array $config) {
-        $this->httpServer = $httpServer;
+    function __construct(Server $server, array $config) {
+        $this->server = $server;
         
         if (empty($config)) {
             throw new \UnexpectedValueException(
@@ -83,10 +82,6 @@ class ModExpect implements OnHeadersMod {
         }
     }
     
-    function getOnHeadersPriority() {
-        return $this->onHeadersPriority;
-    }
-    
     /**
      * Assign an appropriate response for `Expect: 100-continue` requests based on the boolean
      * return value of a user-specified callback
@@ -95,7 +90,7 @@ class ModExpect implements OnHeadersMod {
      * @return void
      */
     function onHeaders($requestId) {
-        $asgiEnv = $this->httpServer->getRequest($requestId);
+        $asgiEnv = $this->server->getRequest($requestId);
         
         if (!isset($asgiEnv['HTTP_EXPECT'])) {
             return;
@@ -108,15 +103,15 @@ class ModExpect implements OnHeadersMod {
         $requestUriPath = str_replace($asgiEnv['QUERY_STRING'], '', $asgiEnv['REQUEST_URI']);
         
         if (!isset($this->callbacks[$requestUriPath])) {
-            return $this->httpServer->setResponse($requestId, $this->response100);
+            return $this->server->setResponse($requestId, $this->response100);
         }
         
         $userCallback = $this->callbacks[$requestUriPath];
         
         if ($userCallback($asgiEnv)) {
-            $this->httpServer->setResponse($requestId, $this->response100);
+            $this->server->setResponse($requestId, $this->response100);
         } else {
-            $this->httpServer->setResponse($requestId, $this->response417);
+            $this->server->setResponse($requestId, $this->response417);
         }
     }
     
