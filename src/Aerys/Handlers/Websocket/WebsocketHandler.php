@@ -252,18 +252,16 @@ class WebsocketHandler implements \Countable {
             $headers['Sec-WebSocket-Extensions'] = implode(',', $extensions);
         }
         
-        $importCallback = function($socket) use ($asgiEnv) { $this->importSocket($socket, $asgiEnv); };
-        
         return [
             Status::SWITCHING_PROTOCOLS,
             Reason::HTTP_101,
             $headers,
             $body = NULL,
-            $importCallback
+            [$this, 'importSocket']
         ];
     }
     
-    private function importSocket($socket, array $asgiEnv) {
+    function importSocket($socket, array $asgiEnv) {
         $requestUri = $asgiEnv['REQUEST_URI'];
         
         if (($queryString = $asgiEnv['QUERY_STRING']) || $queryString === '0') {
