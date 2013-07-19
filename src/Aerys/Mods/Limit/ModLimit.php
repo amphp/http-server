@@ -54,14 +54,32 @@ class ModLimit implements OnHeadersMod {
             );
         }
         
+        $this->validateRateLimits($config['limits']);
+        
         if (!empty($config['ipProxyHeader'])) {
-            $this->ipProxyHeader = 'HTTP_' . strtoupper($config['ipProxyHeader']);
+            $ipProxyHeader = strtoupper($config['ipProxyHeader']);
+            $ipProxyHeader = str_replace('-', '_', $ipProxyHeader);
+            $this->ipProxyHeader = 'HTTP_' . $ipProxyHeader;
         }
         
         ksort($config['limits']);
         $this->maxRatePeriod = max(array_keys($config['limits']));
         $this->rateLimits = $config['limits'];
         $this->ratePeriods[] = array_keys($config['limits']);
+    }
+    
+    private function validateRateLimits(array $rateLimits) {
+        foreach ($rateLimits as $timePeriod => $allowance) {
+            if (!filter_var($timePeriod, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])) {
+                throw new \InvalidArgumentException(
+                    'ModLimit time period must be greater than zero'
+                );
+            } elseif (!filter_var($allowance, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])) {
+                throw new \InvalidArgumentException(
+                    'ModLimit rate allowance must be greater than zero'
+                );
+            }
+        }
     }
     
     /**

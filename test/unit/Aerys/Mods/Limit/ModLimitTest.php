@@ -7,13 +7,61 @@ use Aerys\Mods\Limit\ModLimit,
 class ModLimitTest extends PHPUnit_Framework_TestCase {
     
     /**
-     * @expectedException InvalidArgumentException
+     * @expectedException \InvalidArgumentException
      */
     function testConstructorThrowsOnEmptyLimitsArray() {
         $reactor = $this->getMock('Amp\Reactor');
         $server = $this->getMock('Aerys\Server', NULL, [$reactor]);
         
         $mod = new ModLimit($server, []);
+    }
+    
+    /**
+     * @expectedException \InvalidArgumentException
+     * @dataProvider provideInvalidConfigArrays
+     */
+    function testConstructorThrowsExceptionOnInvalidConfig($badArrayConfig) {
+        $reactor = $this->getMock('Amp\Reactor');
+        $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
+        $mod = new ModLimit($server, $badArrayConfig);
+    }
+    
+    function provideInvalidConfigArrays() {
+        $return  = [];
+        
+        // 0 -------------------------------------------------------------------------------------->
+        
+        $return[] = [['limits' => [
+            0 => 100
+        ]]];
+        
+        // 1 -------------------------------------------------------------------------------------->
+        
+        $return[] = [['limits' => [
+            '-1' => 100
+        ]]];
+        
+        // 2 -------------------------------------------------------------------------------------->
+        
+        $return[] = [['limits' => [
+            42 => 0
+        ]]];
+        
+        // 3 -------------------------------------------------------------------------------------->
+        
+        $return[] = [['limits' => [
+            'test' => 50
+        ]]];
+        
+        // 4 -------------------------------------------------------------------------------------->
+        
+        $return[] = [['limits' => [
+            60 => -1
+        ]]];
+        
+        // x -------------------------------------------------------------------------------------->
+        
+        return $return;
     }
     
     function testOnHeaders() {
@@ -62,13 +110,13 @@ class ModLimitTest extends PHPUnit_Framework_TestCase {
                ->method('getRequest')
                ->with($requestId)
                ->will($this->returnValue($asgiEnv));
-        $server->expects($this->exactly(2))
+        $server->expects($this->exactly(1))
                ->method('setResponse');
         
         $config = [
             'ipProxyHeader' => 'X-FORWARDED-FOR',
             'limits' => [
-                1 => 0
+                60 => 1
             ]
         ];
         
