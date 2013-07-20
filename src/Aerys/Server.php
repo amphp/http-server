@@ -225,7 +225,7 @@ class Server {
                 ? function($serverSocket) { $this->acceptTls($serverSocket); }
                 : function($serverSocket) { $this->accept($serverSocket); };
                 
-            $isWildcardIp = $host->isWildcard();
+            $isWildcardIp = $host->hasWildcardAddress();
             
             // @TODO Allow for IPV6 wildcard host, replace literal wildcard address w/ constant
             $ip = $isWildcardIp ? '0.0.0.0' : $host->getAddress();
@@ -601,7 +601,7 @@ class Server {
         
         $scheme = $client->isEncrypted ? 'https' : 'http';
         $body = ($requestArr['body'] || $requestArr['body'] === '0') ? $requestArr['body'] : NULL;
-        $serverName = $host->isWildcard() ? $client->clientAddress : $host->getName();
+        $serverName = $host->hasVhostName() ? $host->getName() : $client->serverAddress;
         
         $asgiEnv = [
             'ASGI_VERSION'      => '0.1',

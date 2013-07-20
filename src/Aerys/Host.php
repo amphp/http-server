@@ -61,8 +61,12 @@ class Host {
         return $this->handler;
     }
     
-    function isWildcard() {
+    function hasWildcardAddress() {
         return ($this->address === '*');
+    }
+    
+    function hasVhostName() {
+        return ($this->name !== '*');
     }
     
     function registerTlsDefinition(array $tlsDefinition) {
