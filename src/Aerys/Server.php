@@ -615,9 +615,9 @@ class Server {
             'SERVER_PORT'       => $client->serverPort,
             'SERVER_ADDR'       => $client->serverAddress,
             'SERVER_NAME'       => $serverName,
-            'SERVER_PROTOCOL'   => $requestArr['protocol'],
+            'SERVER_PROTOCOL'   => (string) $requestArr['protocol'],
             'REMOTE_ADDR'       => $client->clientAddress,
-            'REMOTE_PORT'       => $client->clientPort,
+            'REMOTE_PORT'       => (string) $client->clientPort,
             'REQUEST_METHOD'    => $requestArr['method'],
             'REQUEST_URI'       => $uri,
             'QUERY_STRING'      => $queryString
