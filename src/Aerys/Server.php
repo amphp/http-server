@@ -32,7 +32,7 @@ class Server {
     private $cachedClientCount = 0;
     private $lastRequestId = 0;
     
-    private $verbosity = self::LOUD;
+    private $verbosity = self::QUIET;
     private $logErrorsTo = 'php://stderr';
     private $maxConnections = 1500;
     private $maxRequests = 150;
