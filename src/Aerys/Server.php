@@ -556,7 +556,7 @@ class Server {
      */
     private function selectHostByAbsoluteUri($uri) {
         $urlParts = parse_url($uri);
-        $port = empty($urlParts['port']) ? '80' : $urlPorts['port'];
+        $port = empty($urlParts['port']) ? '80' : $urlParts['port'];
         $hostId = strtolower($urlParts['host']) . ':' . $port;
         
         return isset($this->hosts[$hostId])
