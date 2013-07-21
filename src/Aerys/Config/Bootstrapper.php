@@ -4,9 +4,7 @@ namespace Aerys\Config;
 
 use Auryn\Injector,
     Auryn\Provider,
-    Auryn\InjectorBuilder,
-    Auryn\InjectionException,
-    Auryn\BuilderException;
+    Auryn\InjectionException;
 
 class Bootstrapper {
     
@@ -15,9 +13,9 @@ class Bootstrapper {
     const HOST_CLASS = 'Aerys\Host';
     
     private $injector;
-    private $injectorBuilder;
     private $modLauncherClassMap = [
         'log' => '\Aerys\Mods\Log\ModLogLauncher',
+        'upgrade' => '\Aerys\Mods\Upgrade\ModUpgradeLauncher',
         'websocket' => '\Aerys\Mods\Websocket\ModWebsocketLauncher',
         'send-file' => '\Aerys\Mods\SendFile\ModSendFileLauncher',
         'error-pages' => '\Aerys\Mods\ErrorPages\ModErrorPagesLauncher',
@@ -30,14 +28,8 @@ class Bootstrapper {
         'afterResponse'
     ];
     
-    function __construct(Injector $injector = NULL, InjectorBuilder $injectorBuilder = NULL) {
+    function __construct(Injector $injector = NULL) {
         $this->injector = $injector ?: new Provider;
-        $this->injectorBuilder = $injectorBuilder ?: new InjectorBuilder;
-        
-        $this->injector->delegate('Amp\Reactor', ['Amp\ReactorFactory', 'select']);
-        $this->injector->share('Amp\Reactor');
-        $this->injector->make('Amp\Reactor');
-        $this->injector->share(self::SERVER_CLASS);
     }
     
     /**
@@ -51,10 +43,10 @@ class Bootstrapper {
     function mapModLauncher($modKey, $launcherClassName) {
         if (!(is_string($modKey) && strlen($modKey))) {
             throw new \InvalidArgumentException(
-                'String mod  key required at Argument 1 of ' .
+                'String mod key required at Argument 1 of ' .
                 __CLASS__ . '::' . __METHOD__ 
             );
-        } elseif (!class_exists($launcherClassName)) {
+        } elseif (!(is_string($launcherClassName) && class_exists($launcherClassName))) {
             throw new \InvalidArgumentException(
                 'Loadable ModConfigLauncher class name required at Argument 2 of ' .
                 __CLASS__ . '::' . __METHOD__ 
@@ -62,6 +54,8 @@ class Bootstrapper {
         } else {
             $this->modLauncherClassMap[$modKey] = $launcherClassName;
         }
+        
+        return $this;
     }
     
     /**
@@ -71,17 +65,13 @@ class Bootstrapper {
      * @return \Aerys\Server A ready-to-run server instance
      */
     function createServer(array $config) {
-        $dependencies = isset($config['dependencies']) ? $config['dependencies'] : [];
         $serverOptions = isset($config['options']) ? $config['options'] : [];
+        unset($config['options']);
         
-        unset(
-            $config['dependencies'],
-            $config['options']
-        );
-        
-        $this->populateInjectorSettings($dependencies);
+        $this->makeEventReactor();
         
         $server = $this->injector->make(self::SERVER_CLASS);
+        $this->injector->share($server);
         
         foreach ($this->generateHostDefinitions($config) as $host) {
             $server->registerHost($host);
@@ -94,16 +84,16 @@ class Bootstrapper {
         return $server;
     }
     
-    private function populateInjectorSettings($dependencyConfig) {
+    private function makeEventReactor() {
         try {
-            return $this->injectorBuilder->fromArray($dependencyConfig, $this->injector);
-        } catch (BuilderException $builderError) {
-            throw new ConfigException(
-                'Failed populating injection container with supplied dependencies', 
-                0,
-                $builderError
-            );
+            $reactor = $this->injector->make('Amp\Reactor');
+        } catch (InjectionException $e) {
+            $this->injector->delegate('Amp\Reactor', ['Amp\ReactorFactory', 'select']);
+            $reactor = $this->injector->make('Amp\Reactor');
         }
+        
+        $this->injector->alias('Amp\Reactor', get_class($reactor));
+        $this->injector->share('Amp\Reactor');
     }
     
     private function generateHostDefinitions(array $hosts) {
