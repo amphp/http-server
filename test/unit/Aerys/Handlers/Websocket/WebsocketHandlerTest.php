@@ -5,52 +5,10 @@ use Aerys\Handlers\Websocket\WebsocketHandler,
 
 class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     
-    /**
-     * @dataProvider provideInvalidEndpointArrays
-     * @expectedException InvalidArgumentException
-     */
-    function testConstructorThrowsExceptionOnInvalidEndpointArray($endpoints) {
-        $reactor = $this->getMock('Amp\Reactor');
-        $handler = new WebsocketHandler($reactor, $endpoints);
-    }
-    
-    function provideInvalidEndpointArrays() {
-        $return = [];
-        
-        // 0 ---------------------------------------------------------------------------------------
-        
-        $endpoints = [];
-        $return[] = [$endpoints];
-        
-        // 1 ---------------------------------------------------------------------------------------
-        
-        $endpoints = [
-            '/chat' => new StdClass
-        ];
-        
-        $return[] = [$endpoints];
-        
-        // 2 ---------------------------------------------------------------------------------------
-        
-        $endpoints = [
-            '/chat' => ['there should be an Endpoint instance here', $opts = []]
-        ];
-        
-        $return[] = [$endpoints];
-        
-        // x ---------------------------------------------------------------------------------------
-        
-        return $return;
-    }
-    
     function test101ReturnedOnSuccessfulHandshake() {
         $reactor = $this->getMock('Amp\Reactor');
-        
-        $endpoints = [
-            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
-        ];
-        
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $this->getMock('Aerys\Handlers\Websocket\Endpoint'));
         
         $asgiEnv = [
             'SERVER_PROTOCOL' => '1.1',
@@ -71,11 +29,8 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     function test404ReturnedIfNoEndpointMatchesRequestUri() {
         $reactor = $this->getMock('Amp\Reactor');
         
-        $endpoints = [
-            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
-        ];
-        
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $this->getMock('Aerys\Handlers\Websocket\Endpoint'));
         
         $asgiEnv = [
             'REQUEST_METHOD' => 'GET',
@@ -91,11 +46,8 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     
     function test405ReturnedIfNotHttpGetRequest() {
         $reactor = $this->getMock('Amp\Reactor');
-        $endpoints = [
-            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
-        ];
-        
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $this->getMock('Aerys\Handlers\Websocket\Endpoint'));
         
         $asgiEnv = [
             'REQUEST_METHOD' => 'POST',
@@ -110,11 +62,8 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     
     function test505ReturnedIfBadHttpProtocol() {
         $reactor = $this->getMock('Amp\Reactor');
-        $endpoints = [
-            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
-        ];
-        
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $this->getMock('Aerys\Handlers\Websocket\Endpoint'));
         
         $asgiEnv = [
             'SERVER_PROTOCOL' => '1.0',
@@ -133,11 +82,8 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
      */
     function test426ReturnedOnInvalidUpgradeHeader($asgiEnv) {
         $reactor = $this->getMock('Amp\Reactor');
-        $endpoints = [
-            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
-        ];
-        
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $this->getMock('Aerys\Handlers\Websocket\Endpoint'));
         
         $asgiResponse = $handler->__invoke($asgiEnv);
         
@@ -179,11 +125,8 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
      */
     function test400ReturnedOnInvalidConnectionHeader($asgiEnv) {
         $reactor = $this->getMock('Amp\Reactor');
-        $endpoints = [
-            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
-        ];
-        
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $this->getMock('Aerys\Handlers\Websocket\Endpoint'));
         
         $asgiResponse = $handler->__invoke($asgiEnv);
         
@@ -224,11 +167,8 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     
     function test400ReturnedOnMissingSecWebsocketKeyHeader() {
         $reactor = $this->getMock('Amp\Reactor');
-        $endpoints = [
-            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
-        ];
-        
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $this->getMock('Aerys\Handlers\Websocket\Endpoint'));
         
         $asgiEnv = [
             'SERVER_PROTOCOL' => '1.1',
@@ -246,11 +186,8 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     
     function test400ReturnedOnEmptySecWebsocketVersionHeader() {
         $reactor = $this->getMock('Amp\Reactor');
-        $endpoints = [
-            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
-        ];
-        
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $this->getMock('Aerys\Handlers\Websocket\Endpoint'));
         
         $asgiEnv = [
             'SERVER_PROTOCOL' => '1.1',
@@ -269,11 +206,8 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     
     function test400ReturnedOnUnmatchedSecWebsocketVersionHeader() {
         $reactor = $this->getMock('Amp\Reactor');
-        $endpoints = [
-            '/chat' => ['endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint')]
-        ];
-        
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $this->getMock('Aerys\Handlers\Websocket\Endpoint'));
         
         $asgiEnv = [
             'SERVER_PROTOCOL' => '1.1',
@@ -293,14 +227,12 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     
     function test403ReturnedOnUnmatchedOriginHeader() {
         $reactor = $this->getMock('Amp\Reactor');
-        $endpoints = [
-            '/chat' => [
-                'endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint'),
-                'allowedOrigins' => ['site.com']
-            ]
-        ];
         
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $endpoint = $this->getMock('Aerys\Handlers\Websocket\Endpoint');
+        $options = ['allowedOrigins' => ['site.com']];
+        
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $endpoint, $options);
         
         $asgiEnv = [
             'SERVER_PROTOCOL' => '1.1',
@@ -321,14 +253,12 @@ class WebsocketHandlerTest extends PHPUnit_Framework_TestCase {
     
     function test400ReturnedOnUnmatchedSecWebsocketProtocolHeader() {
         $reactor = $this->getMock('Amp\Reactor');
-        $endpoints = [
-            '/chat' => [
-                'endpoint' => $this->getMock('Aerys\Handlers\Websocket\Endpoint'),
-                'subprotocol' => 'some-protocol'
-            ]
-        ];
         
-        $handler = new WebsocketHandler($reactor, $endpoints);
+        $endpoint = $this->getMock('Aerys\Handlers\Websocket\Endpoint');
+        $options = ['subprotocol' => 'some-protocol'];
+        
+        $handler = new WebsocketHandler($reactor);
+        $handler->registerEndpoint('/chat', $endpoint, $options);
         
         $asgiEnv = [
             'SERVER_PROTOCOL' => '1.1',

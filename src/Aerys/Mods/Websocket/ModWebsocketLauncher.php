@@ -28,9 +28,13 @@ class ModWebsocketLauncher extends ModConfigLauncher {
             }
         }
         
-        $handler = $injector->make($this->websocketHandlerClass, [
-            ':endpoints' => $config
-        ]);
+        $handler = $injector->make($this->websocketHandlerClass);
+        
+        foreach ($config as $requestUri => $options) {
+            $endpoint = $options['endpoint'];
+            unset($options['endpoint']);
+            $handler->registerEndpoint($requestUri, $endpoint, $options);
+        }
         
         return $injector->make($this->modClass, [
             ':websocketHandler' => $handler

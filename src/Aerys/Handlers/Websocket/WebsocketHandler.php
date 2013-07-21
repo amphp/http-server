@@ -31,56 +31,38 @@ class WebsocketHandler implements \Countable {
         // @TODO add minimum average frame size rate threshold to prevent really-small-frame DoS
     ];
     
-    function __construct(Reactor $reactor, array $endpoints, FrameStreamFactory $frameStreamFactory = NULL) {
+    // @TODO add property setting to limit the maximum number of simultaneous connections allowed
+    
+    function __construct(Reactor $reactor, FrameStreamFactory $frameStreamFactory = NULL) {
         $this->reactor = $reactor;
         $this->frameStreamFactory = $frameStreamFactory ?: new FrameStreamFactory;
         $this->sessions = new \SplObjectStorage;
-        $this->setEndpoints($endpoints);
     }
     
-    private function setEndpoints(array $endpoints) {
-        if (empty($endpoints)) {
-             throw new \InvalidArgumentException(
-                'Endpoint array must not be empty'
+    function registerEndpoint($requestUri, Endpoint $endpoint, array $options = []) {
+        if ($requestUri[0] !== '/') {
+            throw new \InvalidArgumentException(
+                'Endpoint URI must begin with a backslash /'
             );
         }
         
-        foreach ($endpoints as $requestUri => $config) {
-            if ($requestUri[0] !== '/') {
-                throw new \InvalidArgumentException(
-                    'Endpoint URI must begin with a backslash /'
-                );
-            } elseif (!is_array($config)) {
-                throw new \InvalidArgumentException(
-                    "Endpoint definition must specify a configuration array at key {$requestUri}"
-                );
-            } elseif (isset($config['endpoint']) && $config['endpoint'] instanceof Endpoint) {
-                $endpoint = $config['endpoint'];
-                unset($config['endpoint']);
-                $options = $this->normalizeEndpointOptions($config);
-                $this->endpoints[$requestUri] = [$endpoint, $options];
-                $this->endpointClientMap[$requestUri] = [];
-            } else {
-                throw new \InvalidArgumentException(
-                    "Endpoint instance required at ['{$requestUri}']['endpoint']"
-                );
-            }
-        }
+        $options = $options ? $this->normalizeEndpointOptions($options) : $this->defaultEndpointOptions;
+        
+        $this->endpoints[$requestUri] = [$endpoint, $options];
+        $this->endpointClientMap[$requestUri] = [];
     }
     
     private function normalizeEndpointOptions(array $userOptions) {
-        if (!$userOptions) {
-            $endpointOptions = $this->defaultEndpointOptions;
-        } elseif (is_array($userOptions)) {
-            $mergedOptions = array_merge($this->defaultEndpointOptions, $userOptions);
-            $endpointOptions = array_intersect_key($mergedOptions, $this->defaultEndpointOptions);
-            foreach ($endpointOptions as $key => $value) {
-                $normalizer = 'normalize' . ucfirst($key);
-                $endpointOptions[$key] = $this->$normalizer($value);
-            }
-        }
+        $mergedOptions = array_merge($this->defaultEndpointOptions, $userOptions);
+        $opts = array_intersect_key($mergedOptions, $this->defaultEndpointOptions);
         
-        return $endpointOptions;
+        $opts['subprotocol'] = $this->normalizeSubprotocol($opts['subprotocol']);
+        $opts['allowedOrigins'] = $this->normalizeAllowedOrigins($opts['allowedOrigins']);
+        $opts['maxFrameSize'] = $this->normalizeMaxFrameSize($opts['maxFrameSize']);
+        $opts['maxMsgSize'] = $this->normalizeMaxMsgSize($opts['maxMsgSize']);
+        $opts['heartbeatPeriod'] = $this->normalizeHeartbeatPeriod($opts['heartbeatPeriod']);
+        
+        return $opts;
     }
     
     private function normalizeSubprotocol($subprotocol) {
@@ -127,7 +109,8 @@ class WebsocketHandler implements \Countable {
     
     private function validateClientHandshake(array $asgiEnv) {
         $requestUri = $asgiEnv['REQUEST_URI'];
-        if (($queryString = $asgiEnv['QUERY_STRING']) || $queryString === '0') {
+        $queryString = $asgiEnv['QUERY_STRING'];
+        if ($queryString || $queryString === '0') {
             $requestUri = str_replace("?{$queryString}", '', $requestUri);
         }
         
