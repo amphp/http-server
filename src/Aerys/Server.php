@@ -14,6 +14,7 @@ class Server {
     
     const SERVER_SOFTWARE = 'Aerys/0.1.0-devel';
     const HTTP_DATE = 'D, d M Y H:i:s T';
+    
     const SILENT = 0;
     const QUIET = 1;
     const LOUD = 2;
@@ -31,6 +32,7 @@ class Server {
     private $requestIdClientMap = [];
     private $cachedClientCount = 0;
     private $lastRequestId = 0;
+    private $exportedSocketIds = [];
     
     private $verbosity = self::QUIET;
     private $logErrorsTo = 'php://stderr';
@@ -1010,20 +1012,26 @@ class Server {
     
     private function closeClient(Client $client) {
         $this->clearClientReferences($client);
-        
-        if ($this->socketSoLingerZero) {
-            $this->closeSocketWithSoLinger($client->socket, $client->isEncrypted);
-        } else {
-            @fclose($client->socket);
-        }
-        
+        $this->doSocketClose($client->socket);
         if ($this->verbosity & self::LOUD) {
             echo 'DIS: ', $client->clientAddress, ':', $client->clientPort, ' | (', $this->cachedClientCount, ')', PHP_EOL;
         }
     }
     
-    private function closeSocketWithSoLinger($socket, $isEncrypted) {
-        if ($isEncrypted) {
+    private function doSocketClose($socket) {
+        if ($this->socketSoLingerZero) {
+            $this->closeSocketWithSoLingerZero($socket);
+        } elseif (is_resource($socket)) {
+            stream_socket_shutdown($socket, STREAM_SHUT_WR); 
+            stream_set_blocking($socket, FALSE);
+            while(@fgets($socket) !== FALSE);
+            @fclose($socket);
+        }
+    }
+    
+    private function closeSocketWithSoLingerZero($socket) {
+        if (isset(stream_context_get_options($socket)['ssl'])) {
+            // ext/sockets can't import stream with crypto enabled
             @stream_socket_enable_crypto($socket, FALSE);
         }
         
@@ -1056,7 +1064,7 @@ class Server {
             $client = $this->requestIdClientMap[$requestId];
         } else {
             throw new \DomainException(
-                'Request ID does not exist: ' . $requestId
+                "Unknown request ID: {$requestId}"
             );
         }
         
@@ -1068,7 +1076,7 @@ class Server {
             $client = $this->requestIdClientMap[$requestId];
         } else {
             throw new \DomainException(
-                'Request ID does not exist: ' . $requestId
+                "Unknown request ID: {$requestId}"
             );
         }
         
@@ -1080,7 +1088,7 @@ class Server {
             $client = $this->requestIdClientMap[$requestId];
         } else {
             throw new \DomainException(
-                'Request ID does not exist: ' . $requestId
+                "Unknown request ID: {$requestId}"
             );
         }
         
@@ -1092,14 +1100,62 @@ class Server {
             $client = $this->requestIdClientMap[$requestId];
         } else {
             throw new \DomainException(
-                'Request ID does not exist: ' . $requestId
+                "Unknown request ID: {$requestId}"
             );
         }
         
         return $client->requestHeaderTraces[$requestId];
     }
     
-    // @TODO I hate this method. Try to kill it.
+    /**
+     * Export a socket from the HTTP server
+     * 
+     * Note that exporting a socket removes all references to its existince from the HTTP server.
+     * If any HTTP requests remain outstanding in the client's pipeline the will go unanswered. As
+     * far as the HTTP server is concerned the socket no longer exists. The only exception to this
+     * rule is the Server::$cachedClientCount variable: _IT WILL NOT BE DECREMENTED_. This is a
+     * safety measure. When code that exports sockets is ready to close those sockets IT MUST
+     * pass the relevant socket resource back to `Server::closeExportedSocket()` or the server
+     * will eventually max out it's allowed client slots. This requirement also allows exported
+     * sockets to take advantage of HTTP server options such as socketSoLingerZero.
+     * 
+     * @param int $requestId
+     * @throws \DomainException On unknown request ID
+     * @return resource Returns the socket stream associated with the specified request ID
+     */
+    function exportSocket($requestId) {
+        if (isset($this->requestIdClientMap[$requestId])) {
+            $client = $this->requestIdClientMap[$requestId];
+        } else {
+            throw new \DomainException(
+                "Unknown request ID: {$requestId}"
+            );
+        }
+        
+        $this->clearClientReferences($client);
+        $socketId = (int) $client->socket;
+        $this->exportedSocketIds[$socketId] = TRUE;
+        $this->cachedClientCount++; // It was decremented when references were cleared, take it back.
+        
+        return $client->socket;
+    }
+    
+    /**
+     * Must be called to close/unload the socket once exporting code is finished with the resource
+     * 
+     * @param resource $socket An exported socket resource
+     * @return void
+     */
+    function closeExportedSocket($socket) {
+        if (isset($this->exportedSocketIds[$socketId])) {
+            unset($this->exportedSocketIds[$socketId]);
+            $this->cachedClientCount--;
+        }
+    }
+    
+    /**
+     * @TODO Add documentation
+     */
     function getErrorStream() {
         return $this->errorStream;
     }
