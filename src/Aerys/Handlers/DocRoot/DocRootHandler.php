@@ -41,6 +41,7 @@ class DocRootHandler {
     private $staleCacheClearanceSubscription;
     
     function __construct(Reactor $reactor, $docRoot) {
+        $docRoot = str_replace('\\', '/', $docRoot);
         $this->validateDocRoot($docRoot);
         
         $this->docRoot = rtrim($docRoot, '/');
@@ -189,7 +190,14 @@ class DocRootHandler {
     protected function validateFilePath($filePath) {
         if (!$realPath = realpath($filePath)) {
             return FALSE;
-        } elseif (0 !== strpos($realPath, $this->docRoot)) {
+        }
+        
+        // We have to perform the strpos check to ensure the requested URI is not outside the
+        // allowed document root. This causes problems for windows so we normalize all path
+        // separators to forward slashes to match the normalization performed on the docRoot.
+        $realPath = str_replace('\\', '/', $realPath);
+        
+        if (0 !== strpos($realPath, $this->docRoot)) {
             return FALSE;
         } else {
             return $realPath;
