@@ -235,7 +235,7 @@ class ReverseProxyHandler {
         
         unset($this->backends[$backend->uri]);
         
-        $this->connect($uri);
+        $this->connect($backend->uri);
     }
     
     /**
