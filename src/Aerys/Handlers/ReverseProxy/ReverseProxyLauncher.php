@@ -33,15 +33,21 @@ class ReverseProxyLauncher extends ConfigLauncher {
             ':backends' => $backends
         ]);
         
-        foreach ($config as $key => $value) {
-            $method = 'set' . ucfirst($key);
-            if (isset($value) && is_callable([$handler, $method])) {
-                $handler->$method($value);
-            }
-        }
+        $this->setHandlerOptions($handler, $config);
         
         return $handler;
     }
     
+    private function setHandlerOptions(ReverseProxyHandler $handler, array $config) {
+        try {
+            $handler->setAllOptions($config);
+        } catch (\DomainException $optionError) {
+            throw new ConfigException(
+                'Error encountered launching ReverseProxyHandler',
+                $errorNo = 0,
+                $optionError
+            );
+        }
+    }
+    
 }
-

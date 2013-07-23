@@ -4,51 +4,81 @@ namespace Aerys\Handlers\ReverseProxy;
 
 use Amp\Reactor,
     Aerys\Server,
-    Aerys\Status,
-    Aerys\Reason,
     Aerys\Parsing\MessageParser,
-    Aerys\Parsing\PeclMessageParser;
+    Aerys\Parsing\PeclMessageParser,
+    Aerys\Writing\Writer,
+    Aerys\Writing\StreamWriter,
+    Aerys\Writing\ResourceException;
 
 class ReverseProxyHandler {
     
     private $reactor;
     private $server;
     private $backends = [];
-    private $writableBackends;
-    private $backendSubscriptions;
-    private $pendingBackendSubscriptions = [];
     private $connectionAttempts = [];
     private $backendConnectTimeout = 5;
     private $maxPendingRequests = 1500;
     private $proxyPassHeaders = [];
-    private $autoWriteInterval = 0.05;
     private $ioGranularity = 262144;
+    private $pendingRequests = 0;
+    private $badGatewayResponse;
+    private $serviceUnavailableResponse;
     
     function __construct(Reactor $reactor, Server $server, array $backends) {
         $this->reactor = $reactor;
         $this->server = $server;
-        $this->writableBackends = new \SplObjectStorage;
-        $this->backendSubscriptions = new \SplObjectStorage;
         $this->canUsePeclParser = extension_loaded('http');
+        $this->badGatewayResponse = $this->generateBadGatewayResponse();
+        $this->serviceUnavailableResponse = $this->generateServiceUnavailableResponse();
         
         foreach ($backends as $backendUri) {
             $this->connect($backendUri);
         }
-        
-        $reactor->schedule(function() { $this->autoWrite(); }, $this->autoWriteInterval);
+    }
+    
+    function setAllOptions(array $options) {
+        foreach ($options as $key => $value) {
+            $this->setOption($key, $value);
+        }
+    }
+    
+    function setOption($option, $value) {
+        switch (strtolower($option)) {
+            case 'maxpendingrequests':
+                $this->setMaxPendingRequests($value);
+                break;
+            case 'proxypassheaders':
+                $this->setProxyPassHeaders($value);
+                break;
+            default:
+                throw new \DomainException(
+                    "Unrecognized option: {$option}"
+                );
+        }
+    }
+    
+    private function setMaxPendingRequests($count) {
+        $this->maxPendingRequests = filter_var($count, FILTER_VALIDATE_INT, ['options' => [
+            'min_range' => 1,
+            'default' => 1500
+        ]]);
+    }
+    
+    private function setProxyPassHeaders(array $headers) {
+        $this->proxyPassHeaders = array_change_key_case($headers, CASE_UPPER);
     }
     
     private function connect($uri) {
-        $unusedTimeout = 42; // <--- not applicable in conjunction with STREAM_CLIENT_ASYNC_CONNECT flag
+        $timeout = 42; // <--- not applicable with STREAM_CLIENT_ASYNC_CONNECT
         $flags = STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT;
-        $socket = @stream_socket_client($uri, $errNo, $errStr, $unusedTimeout, $flags);
+        $socket = @stream_socket_client($uri, $errNo, $errStr, $timeout, $flags);
         
         if ($socket || $errNo === SOCKET_EWOULDBLOCK) {
             $this->schedulePendingBackendTimeout($uri, $socket);
         } else {
             $errMsg = "Connection to proxy backend {$uri} failed: [{$errNo}] {$errStr}\n";
             fwrite($this->server->getErrorStream(), $errMsg);
-            $this->exponentialBackoff($uri);
+            $this->doExponentialBackoff($uri);
         }
     }
     
@@ -69,13 +99,13 @@ class ReverseProxyHandler {
         if ($trigger === Reactor::TIMEOUT) {
             $errMsg = "Connection to proxy backend {$uri} failed: connect attempt timed out\n";
             fwrite($this->server->getErrorStream(), $errMsg);
-            $this->exponentialBackoff($uri);
+            $this->doExponentialBackoff($uri);
         } elseif ($this->workaroundAsyncConnectBug($socket)) {
             $this->finalizeNewBackendConnection($uri, $socket);
         } else {
             $errMsg = "Connection to proxy backend {$uri} failed\n";
             fwrite($this->server->getErrorStream(), $errMsg);
-            $this->exponentialBackoff($uri);
+            $this->doExponentialBackoff($uri);
         }
     }
     
@@ -91,7 +121,7 @@ class ReverseProxyHandler {
         return (@fwrite($socket, "\n") === 1);
     }
     
-    private function exponentialBackoff($uri) {
+    private function doExponentialBackoff($uri) {
         if (isset($this->connectionAttempts[$uri])) {
             $maxWait = ($this->connectionAttempts[$uri] * 2) - 1;
             $this->connectionAttempts[$uri]++;
@@ -108,7 +138,13 @@ class ReverseProxyHandler {
     }
     
     private function finalizeNewBackendConnection($uri, $socket) {
+        unset($this->connectionAttempts[$uri]);
+        
         stream_set_blocking($socket, FALSE);
+        
+        $backend = new Backend;
+        $backend->uri = $uri;
+        $backend->socket = $socket;
         
         $parser = $this->canUsePeclParser
             ? new PeclMessageParser(MessageParser::MODE_RESPONSE)
@@ -119,76 +155,230 @@ class ReverseProxyHandler {
             'maxBodyBytes' => 0
         ]);
         
-        $backend = new Backend($this->server, $parser, $socket, $uri);
+        $backend->parser = $parser;
+        
         $readSubscription = $this->reactor->onReadable($socket, function() use ($backend) {
-            $this->read($backend);
+            $this->readFromBackend($backend);
         });
         
-        $this->backends[$uri] = $backend;
-        $this->backendSubscriptions->attach($backend, $readSubscription);
+        $backend->readSubscription = $readSubscription;
         
-        unset($this->connectionAttempts[$uri]);
+        $this->backends[$uri] = $backend;
     }
     
-    private function read(Backend $backend) {
-        try {
-            $backend->read();
-        } catch (BackendGoneException $e) {
+    private function readFromBackend(Backend $backend) {
+        $data = @fread($backend->socket, $this->ioGranularity);
+        
+        if ($data || $data === '0') {
+            $this->parseBackendData($backend, $data);
+        } elseif (!is_resource($backend->socket) || @feof($backend->socket)) {
             $this->onDeadBackend($backend);
         }
+    }
+    
+    private function parseBackendData(Backend $backend, $data) {
+        while ($responseArr = $backend->parser->parse($data)) {
+            $this->assignParsedResponse($backend, $responseArr);
+            
+            $parseBuffer = ltrim($backend->parser->getBuffer(), "\r\n");
+            
+            if ($parseBuffer || $parseBuffer === '0') {
+                $data = '';
+            } else {
+                break;
+            }
+        }
+    }
+    
+    private function assignParsedResponse(Backend $backend, array $responseArr) {
+        $requestId = array_shift($backend->responseQueue);
+        $headers = array_change_key_case($responseArr['headers'], CASE_UPPER);
+        $asgiResponseHeaders = [];
+        
+        foreach ($headers as $key => $headerArr) {
+            if (!($key === 'CONNECTION' || $key === 'TRANSFER-ENCODING')) {
+                $asgiResponseHeaders[$key] = isset($headerArr[1])
+                    ? implode(',', $headerArr)
+                    : $headerArr[0];
+            }
+        }
+        
+        $asgiResponse = [
+            $responseArr['status'],
+            $responseArr['reason'],
+            $asgiResponseHeaders,
+            $responseArr['body']
+        ];
+        
+        $this->pendingRequests--;
+        
+        $this->server->setResponse($requestId, $asgiResponse);
     }
     
     private function onDeadBackend(Backend $backend) {
-        $readSubscription = $this->backendSubscriptions->offsetGet($backend);
-        $readSubscription->cancel();
-        $this->backendSubscriptions->detach($backend);
-        $this->writableBackends->detach($backend);
-        $uri = $backend->getUri();
-        unset($this->backends[$uri]);
+        $unsentRequestIds = $backend->requestQueue ? array_keys($backend->requestQueue) : [];
+        $proxiedRequestIds = $backend->responseQueue;
+        $requestIds = array_merge($unsentRequestIds, $proxiedRequestIds);
+        
+        if ($requestIds) {
+            foreach ($requestIds as $requestId) {
+                $this->server->setResponse($requestId, $this->badGatewayResponse);
+                $this->pendingRequests--;
+            }
+        }
+        
+        $backend->readSubscription->cancel();
+        
+        if ($backend->writeSubscription) {
+            $backend->writeSubscription->cancel();
+        }
+        
+        unset($this->backends[$backend->uri]);
+        
         $this->connect($uri);
     }
     
-    private function autoWrite() {
-        foreach ($this->writableBackends as $backend) {
-            $this->write($backend);
+    /**
+     * Proxy requests to backend servers
+     * 
+     * @param array $asgiEnv
+     * @param int $requestId
+     * @return void
+     */
+    function __invoke($asgiEnv, $requestId) {
+        if (!$this->backends || $this->maxPendingRequests < $this->pendingRequests) {
+            $this->server->setResponse($requestId, $this->serviceUnavailableResponse);
+        } else {
+            $backend = $this->selectBackend();
+            $this->enqueueRequest($backend, $requestId, $asgiEnv);
+            $this->writeRequestsToBackend($backend);
         }
     }
     
-    private function write(Backend $backend) {
-        try {
-            if ($backend->write()) {
-                $this->writableBackends->detach($backend);
+    private function selectBackend() {
+        if (!$backend = current($this->backends)) {
+            reset($this->backends);
+            $backend = current($this->backends);
+        }
+        
+        next($this->backends);
+        
+        return $backend;
+    }
+    
+    function enqueueRequest(Backend $backend, $requestId, array $asgiEnv) {
+        $headers = $this->generateRawHeadersFromEnvironment($asgiEnv);
+        
+        $writer = $asgiEnv['ASGI_INPUT']
+            ? new StreamWriter($backend->socket, $headers, $asgiEnv['ASGI_INPUT'])
+            : new Writer($backend->socket, $headers);
+        
+        $backend->requestQueue[$requestId] = $writer;
+        
+        $this->pendingRequests++;
+    }
+    
+    private function generateRawHeadersFromEnvironment(array $asgiEnv) {
+        $headerStr = $asgiEnv['REQUEST_METHOD'] . ' ' . $asgiEnv['REQUEST_URI'] . " HTTP/1.1\r\n";
+        
+        $headerArr = [];
+        foreach ($asgiEnv as $key => $value) {
+            if (strpos($key, 'HTTP_') === 0) {
+                $key = str_replace('_', '-', substr($key, 5));
+                $headerArr[$key] = $value;
             }
-        } catch (BackendGoneException $e) {
+        }
+        
+        $headerArr['CONNECTION'] = 'keep-alive';
+        
+        if ($this->proxyPassHeaders) {
+            $headerArr = $this->mergeProxyPassHeaders($asgiEnv, $headerArr, $this->proxyPassHeaders);
+        }
+        
+        foreach ($headerArr as $field => $value) {
+            if ($value === (array) $value) {
+                foreach ($value as $nestedValue) {
+                    $headerStr .= "$field: $nestedValue\r\n";
+                }
+            } else {
+                $headerStr .= "$field: $value\r\n";
+            }
+        }
+        
+        $headerStr .= "\r\n";
+        
+        return $headerStr;
+    }
+    
+    private function mergeProxyPassHeaders(array $asgiEnv, array $headerArr, array $proxyPassHeaders) {
+        $host = $asgiEnv['SERVER_NAME'];
+        $port = $asgiEnv['SERVER_PORT'];
+        
+        if (!($port == 80 || $port == 443)) {
+            $host .= ":{$port}";
+        }
+        
+        $availableVars = [
+            '$host' => $host,
+            '$serverName' => $asgiEnv['SERVER_NAME'],
+            '$serverAddr' => $asgiEnv['SERVER_ADDR'],
+            '$serverPort' => $asgiEnv['SERVER_PORT'],
+            '$remoteAddr' => $asgiEnv['REMOTE_ADDR']
+        ];
+        
+        foreach ($proxyPassHeaders as $key => $value) {
+            if (isset($availableVars[$value])) {
+                $proxyPassHeaders[$key] = $availableVars[$value];
+            }
+        }
+        
+        return array_merge($headerArr, $proxyPassHeaders);
+    }
+    
+    private function writeRequestsToBackend(Backend $backend) {
+        try {
+            $didAllWritesComplete = TRUE;
+            
+            foreach ($backend->requestQueue as $requestId => $writer) {
+                if ($writer->write()) {
+                    unset($backend->requestQueue[$requestId]);
+                    $backend->responseQueue[] = $requestId;
+                } elseif ($backend->writeSubscription) {
+                    $didAllWritesComplete = FALSE;
+                    $backend->writeSubscription->enable();
+                    break;
+                } else {
+                    $didAllWritesComplete = FALSE;
+                    $writeSub = $this->reactor->onWritable($backend->socket, function() use ($backend) {
+                        $this->writeRequestsToBackend($backend);
+                    });
+                    $backend->writeSubscription = $writeSub;
+                    break;
+                }
+            }
+            
+            if ($didAllWritesComplete && $backend->writeSubscription) {
+                $backend->writeSubscription->disable();
+            }
+            
+        } catch (ResourceException $e) {
             $this->onDeadBackend($backend);
         }
     }
     
-    function __invoke($asgiEnv, $requestId) {
-        if (!$this->backends) {
-            $asgiResponse = $this->generateServiceUnavailableResponse();
-            $this->server->setResponse($requestId, $asgiResponse);
-            return;
-        }
-        
-        $backends = array_map([$this, 'mapBackendQueueSize'], $this->backends);
-        asort($backends);
-        
-        if (current($backends) < $this->maxPendingRequests) {
-            $uri = key($backends);
-            $backend = $this->backends[$uri];
-            $backend->enqueueRequest($requestId, $asgiEnv, $this->proxyPassHeaders);
-            $this->write($backend);
-        } else {
-            $asgiResponse = $this->generateServiceUnavailableResponse();
-            $this->server->setResponse($requestId, $asgiResponse);
+    function __destruct() {
+        foreach ($this->backends as $backend) {
+            $backend->readSubscription->cancel();
+            if ($backend->writeSubscription) {
+                $backend->writeSubscription->cancel();
+            }
         }
     }
     
-    private function generateServiceUnavailableResponse() {
-        $status = Status::SERVICE_UNAVAILABLE;
-        $reason = Reason::HTTP_503;
-        $body = "<html><body><h1>$status $reason</h1><hr /></body></html>";
+    private function generateBadGatewayResponse() {
+        $status = 502;
+        $reason = 'Bad Gateway';
+        $body = "<html><body><h1>{$status} {$reason}</h1></body></html>";
         $headers = [
             'Content-Type' => 'text/html; charset=utf-8',
             'Content-Length' => strlen($body)
@@ -197,26 +387,16 @@ class ReverseProxyHandler {
         return [$status, $reason, $headers, $body];
     }
     
-    private function mapBackendQueueSize(Backend $backend) {
-        return $backend->getQueueSize();
+    private function generateServiceUnavailableResponse() {
+        $status = 503;
+        $reason = 'Service Unavailable';
+        $body = "<html><body><h1>{$status} {$reason}</h1><hr /></body></html>";
+        $headers = [
+            'Content-Type' => 'text/html; charset=utf-8',
+            'Content-Length' => strlen($body)
+        ];
+        
+        return [$status, $reason, $headers, $body];
     }
     
-    function setMaxPendingRequests($count) {
-        $this->maxPendingRequests = filter_var($count, FILTER_VALIDATE_INT, ['options' => [
-            'min_range' => 1,
-            'default' => 1500
-        ]]);
-    }
-    
-    function setProxyPassHeaders(array $headers) {
-        $this->proxyPassHeaders = array_change_key_case($headers, CASE_UPPER);
-    }
-    
-    function __destruct() {
-        foreach ($this->backendSubscriptions as $backend) {
-            $sub = $this->backendSubscriptions->offsetGet($backend);
-            $sub->cancel();
-        }
-    }
 }
-

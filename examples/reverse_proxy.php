@@ -48,6 +48,7 @@ date_default_timezone_set('UTC');
 
 (new Bootstrapper)->createServer([[
     'listenOn'     => '*:80',
+    'name'         => 'localhost',
     'application'  => new ReverseProxyLauncher([
         'backends' => [
             '127.0.0.1:1337',                   // REQUIRED: An array of backend server addresses
