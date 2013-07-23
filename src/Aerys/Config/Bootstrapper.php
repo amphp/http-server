@@ -15,7 +15,6 @@ class Bootstrapper {
     private $injector;
     private $modLauncherClassMap = [
         'log' => '\Aerys\Mods\Log\ModLogLauncher',
-        'upgrade' => '\Aerys\Mods\Upgrade\ModUpgradeLauncher',
         'protocol' => '\Aerys\Mods\Protocol\ModProtocolLauncher',
         'websocket' => '\Aerys\Mods\Websocket\ModWebsocketLauncher',
         'send-file' => '\Aerys\Mods\SendFile\ModSendFileLauncher',

@@ -1151,6 +1151,7 @@ class Server {
      * @return void
      */
     function closeExportedSocket($socket) {
+        $socketId = (int) $socket;
         if (isset($this->exportedSocketIds[$socketId])) {
             unset($this->exportedSocketIds[$socketId]);
             $this->cachedClientCount--;
