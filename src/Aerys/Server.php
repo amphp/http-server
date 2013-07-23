@@ -1145,6 +1145,30 @@ class Server {
     }
     
     /**
+     * Retrieve information about the socket associated with a given request ID
+     * 
+     * @param $requestId
+     * @return array Returns an array of information about the socket underlying the request ID
+     */
+    function querySocket($requestId) {
+        if (isset($this->requestIdClientMap[$requestId])) {
+            $client = $this->requestIdClientMap[$requestId];
+        } else {
+            throw new \DomainException(
+                "Unknown request ID: {$requestId}"
+            );
+        }
+        
+        return [
+            'clientAddress' => $client->clientAddress,
+            'clientPort' => $client->clientPort,
+            'serverAddress' => $client->serverAddress,
+            'serverPort' => $client->serverPort,
+            'isEncrypted' => $client->isEncrypted
+        ];
+    }
+    
+    /**
      * Must be called to close/unload the socket once exporting code is finished with the resource
      * 
      * @param resource $socket An exported socket resource

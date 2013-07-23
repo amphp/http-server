@@ -89,8 +89,10 @@ class ModProtocol implements BeforeResponseMod {
     }
     
     private function performHandlerNegotiation($requestId, $rejectedHttpTrace) {
+        $socketInfo = $this->server->querySocket($requestId);
+        
         foreach ($this->handlers as $handler) {
-            if ($handler->negotiate($rejectedHttpTrace)) {
+            if ($handler->negotiate($rejectedHttpTrace, $socketInfo)) {
                 $socket = $this->server->exportSocket($requestId);
                 $this->importSocket($handler, $socket);
                 break;

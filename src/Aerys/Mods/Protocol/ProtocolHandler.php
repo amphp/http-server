@@ -18,8 +18,9 @@ interface ProtocolHandler {
      * method will be invoked with an identifying reference to the exported socket.
      * 
      * @param string $rejectedHttpMessage
+     * @param array $socketInfo An array of data about the socket connection responsible for the request
      */
-    function negotiate($rejectedHttpMessage);
+    function negotiate($rejectedHttpMessage, array $socketInfo);
     
     /**
      * Invoked with the raw socket on successful protocol initiation

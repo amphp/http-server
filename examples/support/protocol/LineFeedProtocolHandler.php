@@ -22,7 +22,7 @@ class LineFeedProtocolHandler implements ProtocolHandler {
     
     // ------------------------ REQUIRED PROTOCOL HANDLER INTERFACE METHODS ----------------------//
     
-    function negotiate($rejectedHttpMessage) {
+    function negotiate($rejectedHttpMessage, array $socketInfo) {
         $msg = trim($rejectedHttpMessage);
         
         // Import the connection only if the client sent "line-feed" as its "HTTP request"
