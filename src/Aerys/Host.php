@@ -28,9 +28,9 @@ class Host {
     private $beforeResponseMods = [];
     private $afterResponseMods = [];
     private static $defaultModPriorities = [
-        'mod.priority.onHeaders' => 50,
-        'mod.priority.beforeResponse' => 50,
-        'mod.priority.afterResponse' => 50
+        'onHeaders' => 50,
+        'beforeResponse' => 50,
+        'afterResponse' => 50
     ];
     
     function __construct($address, $port, $name, callable $asgiAppHandler) {
@@ -112,13 +112,13 @@ class Host {
             $priorities = $this->modPriorityMap->offsetGet($mod);
             
             if ($mod instanceof OnHeadersMod) {
-                $onHeadersMods[] = [$mod, $priorities['mod.priority.onHeaders']];
+                $onHeadersMods[] = [$mod, $priorities['onHeaders']];
             }
             if ($mod instanceof BeforeResponseMod) {
-                $beforeResponseMods[] = [$mod, $priorities['mod.priority.beforeResponse']];
+                $beforeResponseMods[] = [$mod, $priorities['beforeResponse']];
             }
             if ($mod instanceof AfterResponseMod) {
-                $afterResponseMods[] = [$mod, $priorities['mod.priority.afterResponse']];
+                $afterResponseMods[] = [$mod, $priorities['afterResponse']];
             }
         }
         
