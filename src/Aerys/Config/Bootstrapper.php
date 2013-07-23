@@ -16,6 +16,7 @@ class Bootstrapper {
     private $modLauncherClassMap = [
         'log' => '\Aerys\Mods\Log\ModLogLauncher',
         'upgrade' => '\Aerys\Mods\Upgrade\ModUpgradeLauncher',
+        'protocol' => '\Aerys\Mods\Protocol\ModProtocolLauncher',
         'websocket' => '\Aerys\Mods\Websocket\ModWebsocketLauncher',
         'send-file' => '\Aerys\Mods\SendFile\ModSendFileLauncher',
         'error-pages' => '\Aerys\Mods\ErrorPages\ModErrorPagesLauncher',
@@ -93,7 +94,7 @@ class Bootstrapper {
         }
         
         $this->injector->alias('Amp\Reactor', get_class($reactor));
-        $this->injector->share('Amp\Reactor');
+        $this->injector->share($reactor);
     }
     
     private function generateHostDefinitions(array $hosts) {
