@@ -18,22 +18,24 @@ interface ProtocolHandler {
      * method will be invoked with an identifying reference to the exported socket.
      * 
      * @param string $rejectedHttpMessage
-     * @param array $socketInfo An array of data about the socket connection responsible for the request
+     * @param array $socketInfo Informational data about the socket connection responsible for the request
      */
     function negotiate($rejectedHttpMessage, array $socketInfo);
     
     /**
      * Invoked with the raw socket on successful protocol initiation
      * 
-     * @param string $socketId
+     * @param int $socketId A unique socket identifier
+     * @param string $openingMessage The raw data used to negotiate the protocol connection
+     * @param array $socketInfo Informational data about the connected socket
      */
-    function onOpen($socketId);
+    function onOpen($socketId, $openingMessage, array $socketInfo);
     
     /**
      * Invoked when new data is read from the socket
      * 
      * @param string $socketId
-     * @param string $data
+     * @param string $data 
      */
     function onData($socketId, $data);
     

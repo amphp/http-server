@@ -94,13 +94,13 @@ class ModProtocol implements BeforeResponseMod {
         foreach ($this->handlers as $handler) {
             if ($handler->negotiate($rejectedHttpTrace, $socketInfo)) {
                 $socket = $this->server->exportSocket($requestId);
-                $this->importSocket($handler, $socket);
+                $this->importSocket($handler, $socket, $rejectedHttpTrace, $socketInfo);
                 break;
             }
         }
     }
     
-    private function importSocket(ProtocolHandler $handler, $socket) {
+    private function importSocket(ProtocolHandler $handler, $socket, $openingMsg, array $socketInfo) {
         $conn = new Connection;
         
         $socketId = (int) $socket;
@@ -108,10 +108,12 @@ class ModProtocol implements BeforeResponseMod {
         $conn->id = $socketId;
         $conn->socket = $socket;
         $conn->handler = $handler;
-        $conn->clientName = stream_socket_get_name($socket, TRUE);
-        $conn->serverName = stream_socket_get_name($socket, FALSE);
-        $conn->isEncrypted = isset(stream_context_get_options($socket)['ssl']);
-        $conn->importedAt = microtime(TRUE);
+        $conn->clientAddress = $socketInfo['clientAddress'];
+        $conn->clientPort = $socketInfo['clientPort'];
+        $conn->serverAddress = $socketInfo['serverAddress'];
+        $conn->serverPort = $socketInfo['serverPort'];
+        $conn->isEncrypted = $socketInfo['isEncrypted'];
+        $conn->importedAt = $socketInfo['importedAt'] = microtime(TRUE);
         
         $timeout = $this->socketReadTimeout;
         $onReadable = function($socket, $trigger) use ($conn) {
@@ -120,12 +122,12 @@ class ModProtocol implements BeforeResponseMod {
         
         $conn->readSubscription = $this->reactor->onReadable($socket, $onReadable, $timeout);
         $this->connections[$socketId] = $conn;
-        $this->doHandlerOnOpen($conn);
+        $this->doHandlerOnOpen($conn, $openingMsg, $socketInfo);
     }
     
-    private function doHandlerOnOpen(Connection $conn) {
+    private function doHandlerOnOpen(Connection $conn, $openingMsg, array $socketInfo) {
         try {
-            $conn->handler->onOpen($conn->id);
+            $conn->handler->onOpen($conn->id, $openingMsg, $socketInfo);
         } catch (\Exception $e) {
             $this->logError($e);
             $this->doSocketClose($conn, self::CLOSE_USER_ERROR);
@@ -307,8 +309,10 @@ class ModProtocol implements BeforeResponseMod {
     private function generateSocketInfoArray(Connection $conn) {
         return [
             'importedAt' => $conn->importedAt,
-            'clientName' => $conn->clientName,
-            'serverName' => $conn->serverName,
+            'clientAddress' => $conn->clientAddress,
+            'clientPort' => $conn->clientPort,
+            'serverAddress' => $conn->serverAddress,
+            'serverPort' => $conn->serverPort,
             'bytesRead' => $conn->bytesRead,
             'bytesSent' => $conn->bytesSent
         ];

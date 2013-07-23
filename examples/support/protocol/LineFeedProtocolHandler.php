@@ -29,7 +29,7 @@ class LineFeedProtocolHandler implements ProtocolHandler {
         return !strcasecmp($msg, 'line-feed');
     }
     
-    function onOpen($socketId) {
+    function onOpen($socketId, $openingMsg, array $socketInfo) {
         $chatId = $this->chatMediator->registerUser();
         
         $this->socketIdMap[$socketId] = $chatId;
