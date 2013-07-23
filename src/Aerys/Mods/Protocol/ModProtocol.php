@@ -1,30 +1,5 @@
 <?php
 
-/**
- * $config = [
- *     'my-app' => [
- *         'listenOn'      => '*:80',
- *         'name'          => 'mysite.com',
- *         'application'   => new DocRootLauncher([
- *             'docRoot'   => '/path/to/doc/root'
- *         ]),
- *         'mods' => [
- *             'protocol'   => [
- *                 'options' => [
- *                     'socketReadTimeout' => -1,
- *                     'socketReadGranularity' => 65535
- *                 ],
- *                 'handlers' => [ // Negotiations attempted in the order in which they're specified
- *                     'Handler1',
- *                     'Handler2',
- *                     'Handler3'
- *                 ]
- *             ]
- *         ]
- *     ]
- * ];
- */
-
 namespace Aerys\Mods\Protocol;
 
 use Amp\Reactor,
