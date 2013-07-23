@@ -722,7 +722,6 @@ class Server {
         $uri = $parsedMsgArr['uri'];
         
         if ((strpos($uri, 'http://') === 0 || strpos($uri, 'https://') === 0)) {
-            
             $host = $this->selectHostByAbsoluteUri($uri) ?: $this->selectDefaultHost();
         } elseif ($parsedMsgArr['headers']
             && ($headers = array_change_key_case($parsedMsgArr['headers']))
@@ -784,7 +783,12 @@ class Server {
         if (!$this->isInsideBeforeResponseModLoop) {
             $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
             $this->invokeBeforeResponseMods($host, $requestId);
-            $this->writePipelinedResponses($client);
+            
+            // We need to make another isset check in case a BeforeResponseMod has exported the socket
+            // @TODO clean this up to get rid of the ugly nested if statement
+            if (isset($this->requestIdClientMap[$requestId])) {
+                $this->writePipelinedResponses($client);
+            }
         }
     }
     
