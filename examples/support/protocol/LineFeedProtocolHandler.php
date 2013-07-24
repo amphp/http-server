@@ -48,7 +48,13 @@ class LineFeedProtocolHandler implements ProtocolHandler {
             $line = trim(substr($data, 0, $eolPos));
             $data = substr($data, $eolPos + 2);
             
-            if ($line !== '') {
+            if ($line === '') {
+                continue;
+            }
+            
+            if (!$isUtf8 = preg_match('//u', $line)) {
+                $this->handleInvalidUtf8Data($socketId);
+            } else {
                 $this->chatMediator->broadcast($chatId, $line);
             }
         }
@@ -56,6 +62,14 @@ class LineFeedProtocolHandler implements ProtocolHandler {
         if ($data !== FALSE) {
             $this->socketParseBuffers[$socketId] = $data;
         }
+    }
+    
+    private function handleInvalidUtf8Data($socketId) {
+        $msg = "UTF-8 data is required; we're shutting you down\r\n";
+        $this->modProtocol->stopReading($socketId);
+        $this->modProtocol->write($socketId, $msg, $afterWrite = function($socketId) {
+            $this->modProtocol->close($socketId);
+        });
     }
     
     function onTimeout($socketId) {
