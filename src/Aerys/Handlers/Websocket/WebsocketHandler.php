@@ -28,7 +28,8 @@ class WebsocketHandler implements \Countable {
         'allowedOrigins'   => [],
         'maxFrameSize'     => 2097152,
         'maxMsgSize'       => 10485760,
-        'heartbeatPeriod'  => 10
+        'heartbeatPeriod'  => 10,
+        'validateUtf8Text' => TRUE
         // @TODO add minimum average frame size rate threshold to prevent really-small-frame DoS
     ];
     
@@ -396,7 +397,8 @@ class WebsocketHandler implements \Countable {
         $session->frameWriter = new FrameWriter($socket);
         $session->frameParser = (new FrameParser)->setOptions([
             'maxFrameSize' => $session->endpointOptions['maxFrameSize'],
-            'maxMsgSize' => $session->endpointOptions['maxMsgSize']
+            'maxMsgSize' => $session->endpointOptions['maxMsgSize'],
+            'validateUtf8Text' => $session->endpointOptions['validateUtf8Text']
         ]);
         
         $readTimeout = $session->endpointOptions['heartbeatPeriod'] ?: $this->socketReadTimeout;
@@ -470,6 +472,10 @@ class WebsocketHandler implements \Countable {
             } else {
                 $this->close($session, $code, $reason);
             }
+        } catch (\RuntimeException $e) {
+            $code = Codes::UNEXPECTED_SERVER_ERROR;
+            $reason = $e->getMessage();
+            $this->close($session, $code, $reason);
         }
     }
     

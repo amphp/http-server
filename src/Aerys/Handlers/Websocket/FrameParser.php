@@ -27,6 +27,7 @@ class FrameParser {
     private $frameBytesRecd = 0;
     private $msgBytesRecd = 0;
     
+    private $validateUtf8Text = TRUE;
     private $maxFrameSize = 262144;
     private $msgSwapSize = 2097152;
     private $maxMsgSize = 10485760;
@@ -40,7 +41,8 @@ class FrameParser {
         'msgSwapSize' => 1,
         'requireMask' => 1,
         'storePayload' => 1,
-        'onFrame' => 1
+        'onFrame' => 1,
+        'validateUtf8Text' => 1
     ];
     
     function setOptions(array $options) {
@@ -326,6 +328,15 @@ class FrameParser {
             }
         }
         
+        if ($this->opcode === Frame::OP_TEXT
+            && $this->validateUtf8Text
+            && !preg_match('//u', $data)
+        ) {
+            throw new ParseException(
+                'Invalid TEXT data; UTF-8 required'
+            );
+        }
+        
         $this->frameBytesRecd += $dataLen;
         $this->msgBytesRecd += $dataLen;
         $this->buffer = substr($this->buffer, $dataLen);
@@ -342,7 +353,7 @@ class FrameParser {
         
         if (FALSE === @fwrite($this->msgPayload, $data)) {
             throw new \RuntimeException(
-                'Failed writing temporary frame data'
+                'Failed writing frame data to temporary stream'
             );
         }
     }
