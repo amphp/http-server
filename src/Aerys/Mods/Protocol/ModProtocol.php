@@ -28,16 +28,37 @@ class ModProtocol implements BeforeResponseMod {
         $this->canUseExtSockets = extension_loaded('sockets');
     }
     
+    /**
+     * Register a protocol handler implementation
+     * 
+     * @param ProtocolHander $handler
+     * @return void
+     */
     function registerProtocolHandler(ProtocolHandler $handler) {
         $this->handlers->attach($handler);
     }
     
+    /**
+     * Set multiple option values at once
+     * 
+     * @param array $options A key value array mapping option keys to their values
+     * @throws \DomainException On unknown option key
+     * @return void
+     */
     function setAllOptions(array $options) {
         foreach ($options as $key => $value) {
             $this->setOption($key, $value);
         }
     }
     
+    /**
+     * Set an option value
+     * 
+     * @param string $option
+     * @param mixed $value
+     * @throws \DomainException On unknown option key
+     * @return void
+     */
     function setOption($option, $value) {
         switch (strtolower($option)) {
             case 'socketreadtimeout':
@@ -203,15 +224,18 @@ class ModProtocol implements BeforeResponseMod {
      * @return void
      */
     function write($socketId, $data, callable $onCompletion = NULL) {
-        if (isset($this->connections[$socketId])) {
-            $writeBuffer = [$data, $bytesRemaining = strlen($data), $onCompletion];
-            $conn = $this->connections[$socketId];
-            $conn->writeBuffer[] = $writeBuffer;
-            $this->writeConnectionBuffer($conn, $data, $onCompletion);
-        } else {
+        if (!isset($this->connections[$socketId])) {
             throw new \DomainException(
                 "Unknown socket ID {$socketId}"
             );
+        }
+        
+        $conn = $this->connections[$socketId];
+        
+        if (!$conn->isShutdownForWriting) {
+            $writeBuffer = [$data, $bytesRemaining = strlen($data), $onCompletion];
+            $conn->writeBuffer[] = $writeBuffer;
+            $this->writeConnectionBuffer($conn, $data, $onCompletion);
         }
     }
     
@@ -247,7 +271,7 @@ class ModProtocol implements BeforeResponseMod {
         
         if ($onCompletion) {
             // @TODO Maybe protect against uncaught exceptions with try/catch?
-            $onCompletion();
+            $onCompletion($conn->id);
         }
     }
     
@@ -298,7 +322,15 @@ class ModProtocol implements BeforeResponseMod {
     function query($socketId) {
         if (isset($this->connections[$socketId])) {
             $conn = $this->connections[$socketId];
-            return $this->generateSocketInfoArray($conn);
+            return [
+                'importedAt' => $conn->importedAt,
+                'clientAddress' => $conn->clientAddress,
+                'clientPort' => $conn->clientPort,
+                'serverAddress' => $conn->serverAddress,
+                'serverPort' => $conn->serverPort,
+                'bytesRead' => $conn->bytesRead,
+                'bytesSent' => $conn->bytesSent
+            ];
         } else {
             throw new \DomainException(
                 "Unknown socket ID {$socketId}"
@@ -306,16 +338,47 @@ class ModProtocol implements BeforeResponseMod {
         }
     }
     
-    private function generateSocketInfoArray(Connection $conn) {
-        return [
-            'importedAt' => $conn->importedAt,
-            'clientAddress' => $conn->clientAddress,
-            'clientPort' => $conn->clientPort,
-            'serverAddress' => $conn->serverAddress,
-            'serverPort' => $conn->serverPort,
-            'bytesRead' => $conn->bytesRead,
-            'bytesSent' => $conn->bytesSent
-        ];
+    /**
+     * Shutdown the socket for all reading going forward (cannot be reenabled)
+     * 
+     * @param int $socketId
+     * @throws \DomainException on Unknown socket ID
+     * @return void
+     */
+    function stopReading($socketId) {
+        if (isset($this->connections[$socketId])) {
+            $conn = $this->connections[$socketId];
+            $conn->readSubscription->disable();
+            stream_socket_shutdown($conn->socket, STREAM_SHUT_RD);
+        } else {
+            throw new \DomainException(
+                "Unknown socket ID {$socketId}"
+            );
+        }
+    }
+    
+    /**
+     * Shutdown the socket for all writing going forward (cannot be reenabled)
+     * 
+     * @param int $socketId
+     * @throws \DomainException on Unknown socket ID
+     * @return void
+     */
+    function stopWriting($socketId) {
+        if (!isset($this->connections[$socketId])) {
+            throw new \DomainException(
+                "Unknown socket ID {$socketId}"
+            );
+        }
+        
+        $conn = $this->connections[$socketId];
+        $conn->isShutdownForWriting = TRUE;
+        
+        if ($conn->writeSubscription) {
+            $conn->writeSubscription->disable();
+        }
+        
+        stream_socket_shutdown($conn->socket, STREAM_SHUT_WR);
     }
     
 }

@@ -16,5 +16,6 @@ class Connection {
     public $readSubscription;
     public $writeSubscription;
     public $writeBuffer = [];
+    public $isShutdownForWriting = FALSE;
     
 }
