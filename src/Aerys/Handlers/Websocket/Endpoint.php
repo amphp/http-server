@@ -4,9 +4,8 @@ namespace Aerys\Handlers\Websocket;
 
 interface Endpoint {
     
-    function onOpen(Client $client);
-    function onMessage(Client $client, Message $msg);
-    function onClose(Client $client, $code, $reason);
+    function onOpen($socketId);
+    function onMessage($socketId, Message $msg);
+    function onClose($socketId, $code, $reason);
     
 }
-

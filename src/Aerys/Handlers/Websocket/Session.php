@@ -2,7 +2,7 @@
 
 namespace Aerys\Handlers\Websocket;
 
-class ClientSession {
+class Session {
     
     const CLOSE_NOT_INITIALIZED = 0b00;
     const CLOSE_FRAME_RECEIVED = 0b01;
@@ -11,21 +11,18 @@ class ClientSession {
     
     public $id;
     public $socket;
-    public $socketReadSubscription;
-    public $socketWriteSubscription;
-    public $closeTimeoutSubscription;
-    
     public $asgiEnv;
-    public $clientProxy;
+    
     public $endpoint;
     public $endpointOptions;
     public $endpointUri;
+    
     public $frameParser;
     public $frameWriter;
     
-    public $outboundFrameStream;
-    public $outboundFrameStreamPosition;
-    public $outboundFrameStreamQueue = [];
+    public $frameStream;
+    public $frameStreamPosition;
+    public $frameStreamQueue = [];
     public $pendingPingPayloads = [];
     
     public $closeState = self::CLOSE_NOT_INITIALIZED;
@@ -45,4 +42,7 @@ class ClientSession {
     public $dataLastReadAt;
     public $connectedAt;
     
+    public $readSubscription;
+    public $writeSubscription;
+    public $closeTimeoutSubscription;
 }

@@ -17,6 +17,9 @@ class ModWebsocketLauncher extends ModConfigLauncher {
     function launch(Injector $injector) {
         $config = $this->getConfig();
         
+        $handler = $injector->make($this->websocketHandlerClass);
+        $injector->share($handler);
+        
         foreach ($config as $requestUri => $endpointArr) {
             if (!isset($endpointArr['endpoint'])) {
                 throw new ConfigException(
@@ -28,17 +31,19 @@ class ModWebsocketLauncher extends ModConfigLauncher {
             }
         }
         
-        $handler = $injector->make($this->websocketHandlerClass);
-        
         foreach ($config as $requestUri => $options) {
             $endpoint = $options['endpoint'];
             unset($options['endpoint']);
             $handler->registerEndpoint($requestUri, $endpoint, $options);
         }
         
-        return $injector->make($this->modClass, [
+        $mod = $injector->make($this->modClass, [
             ':websocketHandler' => $handler
         ]);
+        
+        $injector->unshare(get_class($handler));
+        
+        return $mod;
     }
     
     function getModPriorityMap() {

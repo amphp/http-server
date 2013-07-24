@@ -13,10 +13,11 @@ class WebsocketHandler implements \Countable {
     const ACCEPT_CONCAT = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
     
     private $reactor;
+    private $server;
     private $frameStreamFactory;
-    private $sessions;
+    private $sessions = [];
     private $endpoints = [];
-    private $endpointClientMap = [];
+    
     private $socketReadTimeout = 30;
     private $queuedPingLimit = 3;
     private $closeResponseTimeout = 5;
@@ -31,12 +32,91 @@ class WebsocketHandler implements \Countable {
         // @TODO add minimum average frame size rate threshold to prevent really-small-frame DoS
     ];
     
-    // @TODO add property setting to limit the maximum number of simultaneous connections allowed
-    
-    function __construct(Reactor $reactor, FrameStreamFactory $frameStreamFactory = NULL) {
+    function __construct(Reactor $reactor, Server $server, FrameStreamFactory $frameStreamFactory = NULL) {
         $this->reactor = $reactor;
+        $this->server = $server;
         $this->frameStreamFactory = $frameStreamFactory ?: new FrameStreamFactory;
-        $this->sessions = new \SplObjectStorage;
+    }
+    
+    /**
+     * Send UTF-8 text to one or more connected sockets
+     * 
+     * @param mixed $socketIdOrArray A socket ID or array of socket IDs
+     * @param string $data The data to be sent
+     * @param callable $afterSend An optional callback to invoke after the non-blocking send completes
+     */
+    function sendText($socketIdOrArray, $data, callable $afterSend = NULL) {
+        $this->broadcast($socketIdOrArray, Frame::OP_TEXT, $data, $afterSend);
+    }
+    
+    /**
+     * Send binary data to one or more connected sockets
+     * 
+     * @param mixed $socketIdOrArray A socket ID or array of socket IDs
+     * @param string $data The data to be sent
+     * @param callable $afterSend An optional callback to invoke after the non-blocking send completes
+     */
+    function sendBinary($socketIdOrArray, $data, callable $afterSend = NULL) {
+        $this->broadcast($socketIdOrArray, Frame::OP_BIN, $data, $afterSend);
+    }
+    
+    /**
+     * Retrieve the ASGI request environment used to originate the user's websocket connection
+     * 
+     * @param int $socketId
+     * @throws \DomainException On unknown socket ID
+     * @return array The ASGI request environment used to initiate the specified ID's websocket session
+     */
+    function getEnvironment($socketId) {
+        if (isset($this->sessions[$socketId])) {
+            $session = $this->sessions[$socketId];
+            return $session->asgiEnv;
+        } else {
+            throw new \DomainException(
+                "Unknown socket ID: {$socketId}"
+            );
+        }
+    }
+    
+    /**
+     * Retrieve aggregate IO statistics for the specified socket ID
+     * 
+     * @param int $socketId
+     * @throws \DomainException On unknown socket ID
+     * @return array A map of numeric stats for the specified socket ID
+     */
+    function getStats($socketId) {
+        if (isset($this->sessions[$socketId])) {
+            $session = $this->sessions[$socketId];
+        } else {
+            throw new \DomainException(
+                "Unknown socket ID: {$socketId}"
+            );
+        }
+        
+        return [
+            'dataBytesRead'     => $session->dataBytesRead,
+            'dataBytesSent'     => $session->dataBytesSent,
+            'dataFramesRead'    => $session->dataFramesRead,
+            'dataFramesSent'    => $session->dataFramesSent,
+            'dataMessagesRead'  => $session->dataMessagesRead,
+            'dataMessagesSent'  => $session->dataMessagesSent,
+            'controlBytesRead'  => $session->controlBytesRead,
+            'controlBytesSent'  => $session->controlBytesSent,
+            'controlFramesRead' => $session->controlFramesRead,
+            'controlFramesSent' => $session->controlFramesSent,
+            'dataLastReadAt'    => $session->dataLastReadAt,
+            'connectedAt'       => $session->connectedAt
+        ];
+    }
+    
+    /**
+     * How many total websocket connections are currently open?
+     * 
+     * @return int
+     */
+    function count() {
+        return count($this->sessions);
     }
     
     function registerEndpoint($requestUri, Endpoint $endpoint, array $options = []) {
@@ -49,7 +129,6 @@ class WebsocketHandler implements \Countable {
         $options = $options ? $this->normalizeEndpointOptions($options) : $this->defaultEndpointOptions;
         
         $this->endpoints[$requestUri] = [$endpoint, $options];
-        $this->endpointClientMap[$requestUri] = [];
     }
     
     private function normalizeEndpointOptions(array $userOptions) {
@@ -94,6 +173,12 @@ class WebsocketHandler implements \Countable {
         ]]);
     }
     
+    /**
+     * Determine from an ASGI request environment whether a request can be upgraded to websocket
+     * 
+     * @param array $asgiEnv The HTTP request environment
+     * @return array Returns an ASGI response array
+     */
     function __invoke(array $asgiEnv) {
         list($isAccepted, $handshakeResult) = $this->validateClientHandshake($asgiEnv);
         
@@ -245,49 +330,49 @@ class WebsocketHandler implements \Countable {
     }
     
     function importSocket($socket, array $asgiEnv) {
+        $socketId = (int) $socket;
+        
         $requestUri = $asgiEnv['REQUEST_URI'];
         
         if (($queryString = $asgiEnv['QUERY_STRING']) || $queryString === '0') {
             $requestUri = str_replace("?{$queryString}", '', $requestUri);
         }
         
-        $session = new ClientSession;
+        list($endpoint, $endpointOptions) = $this->endpoints[$requestUri];
         
-        $session->id = spl_object_hash($session);
-        $this->endpointClientMap[$requestUri][$session->id] = $session;
+        $session = new Session;
         
-        list($session->endpoint, $session->endpointOptions) = $this->endpoints[$requestUri];
-        
-        $session->endpointUri = $requestUri;
+        $session->id = $socketId;
         $session->socket = $socket;
         $session->asgiEnv = $asgiEnv;
         $session->connectedAt = time();
-        $session->clientProxy = new Client($this, $session);
+        $session->endpoint = $endpoint;
+        $session->endpointOptions = $endpointOptions;
+        $session->endpointUri = $requestUri;
         $session->frameWriter = new FrameWriter($socket);
         $session->frameParser = (new FrameParser)->setOptions([
             'maxFrameSize' => $session->endpointOptions['maxFrameSize'],
             'maxMsgSize' => $session->endpointOptions['maxMsgSize']
         ]);
         
-        $socketReadTimeout = $session->endpointOptions['heartbeatPeriod'] ?: $this->socketReadTimeout;
+        $readTimeout = $session->endpointOptions['heartbeatPeriod'] ?: $this->socketReadTimeout;
+        $onReadable = function($socket, $trigger) use ($session) { $this->read($session, $trigger); };
+        $session->readSubscription = $this->reactor->onReadable($socket, $onReadable, $readTimeout);
         
-        $session->socketReadSubscription = $this->reactor->onReadable($socket,
-            function($socket, $trigger) use ($session) { $this->read($session, $trigger); }
-        , $socketReadTimeout);
+        $this->sessions[$socketId] = $session;
         
-        $this->sessions->attach($session);
         $this->onOpen($session);
     }
     
-    private function onOpen(ClientSession $session) {
+    private function onOpen(Session $session) {
         try {
-            $session->endpoint->onOpen($session->clientProxy);
+            $session->endpoint->onOpen($session->id);
         } catch (\Exception $e) {
             $this->onEndpointError($session, $e);
         }
     }
     
-    private function read(ClientSession $session, $trigger) {
+    private function read(Session $session, $trigger) {
         if ($trigger === Reactor::READ) {
             $this->doSocketRead($session);
         } elseif ($session->endpointOptions['heartbeatPeriod']) {
@@ -302,29 +387,29 @@ class WebsocketHandler implements \Countable {
      * 
      * @link http://tools.ietf.org/html/rfc6455#section-5.5.2
      */
-    private function doHeartbeat(ClientSession $session) {
+    private function doHeartbeat(Session $session) {
         $data = pack('S', rand(0, 32768));
         $pingFrame = new Frame(Frame::FIN, Frame::RSV_NONE, Frame::OP_PING, $data);
         $session->frameWriter->enqueue($pingFrame);
-        $this->write($session);
+        $this->doSessionWrite($session);
     }
     
-    private function doSocketRead(ClientSession $session) {
+    private function doSocketRead(Session $session) {
         $data = @fread($session->socket, $this->socketReadGranularity);
         
         if ($data || $data === '0') {
             $session->dataLastReadAt = time();
-            $this->parse($session, $data);
+            $this->parseSocketData($session, $data);
         } elseif (!is_resource($session->socket) || @feof($session->socket)) {
             $this->onClose($session, Codes::ABNORMAL_CLOSE, 'Client went away');
         }
     }
     
-    private function parse(ClientSession $session, $parsableData) {
+    private function parseSocketData(Session $session, $data) {
         try {
-            while ($parsedMsgArr = $session->frameParser->parse($parsableData)) {
+            while ($parsedMsgArr = $session->frameParser->parse($data)) {
                 $this->onParsedMessage($session, $parsedMsgArr);
-                $parsableData = '';
+                $data = '';
             }
         } catch (PolicyException $e) {
             $this->close($session, Codes::POLICY_VIOLATION, $e->getMessage());
@@ -339,7 +424,7 @@ class WebsocketHandler implements \Countable {
         }
     }
     
-    private function onParsedMessage(ClientSession $session, array $parsedMsgArr) {
+    private function onParsedMessage(Session $session, array $parsedMsgArr) {
         list($opcode, $payload, $length, $frames) = $parsedMsgArr;
         
         if ($opcode < Frame::OP_CLOSE) {
@@ -357,15 +442,15 @@ class WebsocketHandler implements \Countable {
         }
     }
     
-    private function onMessage(ClientSession $session, Message $msg) {
+    private function onMessage(Session $session, Message $msg) {
         try {
-            $session->endpoint->onMessage($session->clientProxy, $msg);
+            $session->endpoint->onMessage($session->id, $msg);
         } catch (\Exception $e) {
             $this->onEndpointError($session, $e);
         }
     }
     
-    private function afterControlFrameRead(ClientSession $session, $opcode, $payload) {
+    private function afterControlFrameRead(Session $session, $opcode, $payload) {
         switch ($opcode) {
             case Frame::OP_PING:
                 $this->afterPingFrameRead($session, $payload);
@@ -379,13 +464,13 @@ class WebsocketHandler implements \Countable {
         }
     }
     
-    private function afterPingFrameRead(ClientSession $session, $payload) {
+    private function afterPingFrameRead(Session $session, $payload) {
         $pongFrame = new Frame(Frame::FIN, Frame::RSV_NONE, Frame::OP_PONG, $payload);
         $session->frameWriter->enqueue($pongFrame);
-        $this->write($session);
+        $this->doSessionWrite($session);
     }
     
-    private function afterPongFrameRead(ClientSession $session, $payload) {
+    private function afterPongFrameRead(Session $session, $payload) {
         for ($i=count($session->pendingPingPayloads)-1; $i>=0; $i--) {
             if ($session->pendingPingPayloads[$i] == $payload) {
                 $session->pendingPingPayloads = array_slice($session->pendingPingPayloads, $i+1);
@@ -394,10 +479,10 @@ class WebsocketHandler implements \Countable {
         }
     }
     
-    private function afterCloseFrameRead(ClientSession $session, $payload) {
-        $session->closeState |= ClientSession::CLOSE_FRAME_RECEIVED;
+    private function afterCloseFrameRead(Session $session, $payload) {
+        $session->closeState |= Session::CLOSE_FRAME_RECEIVED;
         
-        if ($session->closeState & ClientSession::CLOSE_HANDSHAKE_COMPLETE) {
+        if ($session->closeState & Session::CLOSE_HANDSHAKE_COMPLETE) {
             $this->onClose($session, $session->pendingCloseCode, $session->pendingCloseReason);
         } else {
             @stream_socket_shutdown($session->socket, STREAM_SHUT_RD);
@@ -422,16 +507,17 @@ class WebsocketHandler implements \Countable {
         return $codeAndReason;
     }
     
-    function broadcast($recipients, $opcode, $data, callable $afterSend = NULL) {
+    private function broadcast($recipients, $opcode, $data, callable $afterSend = NULL) {
         try {
             $frameStream = $this->frameStreamFactory->__invoke($opcode, $data);
             $frameStream->setFrameSize($this->autoFrameSize);
-            $recipients = $recipients instanceof ClientSession ? [$recipients] : $recipients;
+            $recipients = is_array($recipients) ? $recipients : [$recipients];
             
-            foreach ($recipients as $session) {
-                $session->outboundFrameStreamQueue[] = [$frameStream, $afterSend];
+            foreach ($recipients as $socketId) {
+                $session = $this->sessions[$socketId];
+                $session->frameStreamQueue[] = [$frameStream, $afterSend];
                 $this->enqueueNextDataFrame($session);
-                $this->write($session);
+                $this->doSessionWrite($session);
             }
             
         } catch (\InvalidArgumentException $e) {
@@ -443,19 +529,20 @@ class WebsocketHandler implements \Countable {
         $payload = pack('n', $code) . substr($reason, 0, 125);
         $frame = new Frame(Frame::FIN, Frame::RSV_NONE, Frame::OP_CLOSE, $payload);
         
-        $recipients = $recipients instanceof ClientSession ? [$recipients] : $recipients;
+        $recipients = is_array($recipients) ? $recipients : [$recipients];
         
-        foreach ($recipients as $session) {
+        foreach ($recipients as $socketId) {
+            $session = $this->sessions[$socketId];
             $session->pendingCloseCode = $code;
             $session->pendingCloseReason = $reason;
             $session->frameWriter->enqueue($frame);
-            $this->write($session);
+            $this->doSessionWrite($session);
         }
     }
     
-    private function write(ClientSession $session) {
+    private function doSessionWrite(Session $session) {
         try {
-            if ($session->closeState & ClientSession::CLOSE_FRAME_SENT) {
+            if ($session->closeState & Session::CLOSE_FRAME_SENT) {
                 $isWritingComplete = TRUE;
             } elseif ($frame = $session->frameWriter->write()) {
                 $isWritingComplete = $this->afterFrameWrite($session, $frame);
@@ -475,7 +562,7 @@ class WebsocketHandler implements \Countable {
         }
     }
     
-    private function afterFrameWrite(ClientSession $session, Frame $frame) {
+    private function afterFrameWrite(Session $session, Frame $frame) {
         switch ($frame->getOpcode()) {
             case Frame::OP_TEXT:
                 $isWritingComplete = $this->afterDataFrameWrite($session, $frame);
@@ -502,12 +589,12 @@ class WebsocketHandler implements \Countable {
         return $isWritingComplete;
     }
     
-    private function afterCloseFrameWrite(ClientSession $session, Frame $frame) {
+    private function afterCloseFrameWrite(Session $session, Frame $frame) {
         $session->controlFramesSent++;
         $session->controlBytesSent += $frame->getLength();
-        $session->closeState |= ClientSession::CLOSE_FRAME_SENT;
+        $session->closeState |= Session::CLOSE_FRAME_SENT;
         
-        if ($session->closeState & ClientSession::CLOSE_HANDSHAKE_COMPLETE) {
+        if ($session->closeState & Session::CLOSE_HANDSHAKE_COMPLETE) {
             $this->onClose($session, $session->pendingCloseCode, $session->pendingCloseReason);
         } else {
             @stream_socket_shutdown($session->socket, STREAM_SHUT_WR);
@@ -521,7 +608,7 @@ class WebsocketHandler implements \Countable {
         return $isWritingComplete = TRUE;
     }
     
-    private function afterPingFrameWrite(ClientSession $session, Frame $frame) {
+    private function afterPingFrameWrite(Session $session, Frame $frame) {
         $session->controlFramesSent++;
         $session->controlBytesSent += $frame->getLength();
         
@@ -535,14 +622,14 @@ class WebsocketHandler implements \Countable {
         return ($isWritingComplete = !$session->frameWriter->canWrite());
     }
     
-    private function afterPongFrameWrite(ClientSession $session, Frame $frame) {
+    private function afterPongFrameWrite(Session $session, Frame $frame) {
         $session->controlFramesSent++;
         $session->controlBytesSent += $frame->getLength();
         
         return ($isWritingComplete = !$session->frameWriter->canWrite());
     }
     
-    private function afterDataFrameWrite(ClientSession $session, Frame $frame) {
+    private function afterDataFrameWrite(Session $session, Frame $frame) {
         $session->dataFramesSent++;
         $session->dataBytesSent += $frame->getLength();
         
@@ -553,7 +640,7 @@ class WebsocketHandler implements \Countable {
             $this->afterMessageSend($session);
         }
                 
-        if ($session->outboundFrameStream || $session->outboundFrameStreamQueue) {
+        if ($session->frameStream || $session->frameStreamQueue) {
             $this->enqueueNextDataFrame($session);
             $isWritingComplete = FALSE;
         } else {
@@ -563,39 +650,45 @@ class WebsocketHandler implements \Countable {
         return $isWritingComplete;
     }
     
-    private function afterMessageSend(ClientSession $session) {
+    private function afterMessageSend(Session $session) {
         try {
             if ($callback = $session->afterMessageSend) {
                 $session->afterMessageSend = NULL;
-                $callback($session->clientProxy);
+                $callback($session->id);
             }
         } catch (\Exception $userlandException) {
             throw new EndpointException(
                 'afterMessage callback threw :(',
-                NULL,
+                $errorCode = 0,
                 $userlandException
             );
         }
     }
     
-    private function enqueueNextDataFrame(ClientSession $session) {
-        if (!$session->outboundFrameStream) {
-            list($nextStream, $afterSend) = array_shift($session->outboundFrameStreamQueue);
-            $session->outboundFrameStream = $nextStream;
+    private function enqueueNextDataFrame(Session $session) {
+        if (!$session->frameStream) {
+            list($nextStream, $afterSend) = array_shift($session->frameStreamQueue);
+            
+            // This rewind() call is not an accident. If the same frame stream is being sent to
+            // multiple clients the stream may not be at the start position. We need to rewind it
+            // in the same way we seek on preexisting frame streams.
+            $nextStream->rewind();
+            
+            $session->frameStream = $nextStream;
             $session->afterMessageSend = $afterSend;
         } else {
-            $session->outboundFrameStream->seek($session->outboundFrameStreamPosition);
+            $session->frameStream->seek($session->frameStreamPosition);
         }
         
         try {
-            $opcode = $session->outboundFrameStream->isBinary() ? Frame::OP_BIN : Frame::OP_TEXT;
-            $payload = $session->outboundFrameStream->current();
+            $opcode = $session->frameStream->isBinary() ? Frame::OP_BIN : Frame::OP_TEXT;
+            $payload = $session->frameStream->current();
             
-            $session->outboundFrameStream->next();
-            $session->outboundFrameStreamPosition = $session->outboundFrameStream->key();
+            $session->frameStream->next();
+            $session->frameStreamPosition = $session->frameStream->key();
             
-            if ($isFin = !$session->outboundFrameStream->valid()) {
-                $session->outboundFrameStream = $session->outboundFrameStreamPosition = NULL;
+            if ($isFin = !$session->frameStream->valid()) {
+                $session->frameStream = $session->frameStreamPosition = NULL;
             }
             
             $frame = new Frame($isFin, Frame::RSV_NONE, $opcode, $payload);
@@ -610,7 +703,7 @@ class WebsocketHandler implements \Countable {
         }
     }
     
-    private function onWriteFailure(ClientSession $session, FrameWriteException $e) {
+    private function onWriteFailure(Session $session, FrameWriteException $e) {
         $frame = $e->getFrame();
         $bytesCompleted = $e->getBytesCompleted();
         $isControlFrame = ($frame->getOpcode() >= Frame::OP_CLOSE);
@@ -626,7 +719,7 @@ class WebsocketHandler implements \Countable {
         $this->onClose($session, $code, $reason);
     }
     
-    private function onEndpointError(ClientSession $session, $e) {
+    private function onEndpointError(Session $session, $e) {
         @fwrite($session->asgiEnv['ASGI_ERROR'], $e);
         
         $code = Codes::UNEXPECTED_SERVER_ERROR;
@@ -634,59 +727,46 @@ class WebsocketHandler implements \Countable {
         $this->close($session, $code, $reason);
     }
     
-    private function onClose(ClientSession $session, $code, $reason) {
+    private function onClose(Session $session, $code, $reason) {
         try {
             $this->unloadSession($session);
-            $session->endpoint->onClose($session->clientProxy, $code, $reason);
+            $session->endpoint->onClose($session->id, $code, $reason);
         } catch (\Exception $e) {
             // The client has already disconnected so the only thing to do here is log the error
             @fwrite($session->asgiEnv['ASGI_ERROR'], $e);
         }
     }
     
-    /**
-     * @TODO Allow the use of SO_LINGER = 0 on closes
-     */
-    private function unloadSession(ClientSession $session) {
-        if (is_resource($session->socket)) {
-            @fclose($session->socket);
-        }
+    private function unloadSession(Session $session) {
+        $this->server->closeExportedSocket($session->socket);
         
-        if ($session->socketReadSubscription) {
-            $session->socketReadSubscription->cancel();
-        }
-        
-        if ($session->socketWriteSubscription) {
-            $session->socketWriteSubscription->cancel();
+        $session->readSubscription->cancel();
+        if ($session->writeSubscription) {
+            $session->writeSubscription->cancel();
         }
         
         if ($session->closeTimeoutSubscription) {
             $session->closeTimeoutSubscription->cancel();
         }
         
-        unset($this->endpointClientMap[$session->endpointUri][$session->id]);
-        
-        $this->sessions->detach($session);
+        unset($this->sessions[$session->id]);
     }
     
-    private function enableWriteSubscription(ClientSession $session) {
-        if ($session->socketWriteSubscription) {
-            $session->socketWriteSubscription->enable();
+    private function enableWriteSubscription(Session $session) {
+        if ($session->writeSubscription) {
+            $session->writeSubscription->enable();
         } else {
             $subscription = $this->reactor->onWritable($session->socket, function() use ($session) {
-                $this->write($session);
+                $this->doSessionWrite($session);
             });
-            $session->socketWriteSubscription = $subscription;
+            $session->writeSubscription = $subscription;
         }
     }
     
-    private function disableWriteSubscription(ClientSession $session) {
-        if ($session->socketWriteSubscription) {
-            $session->socketWriteSubscription->disable();
+    private function disableWriteSubscription(Session $session) {
+        if ($session->writeSubscription) {
+            $session->writeSubscription->disable();
         }
     }
     
-    function count($endpointUri = NULL) {
-        return $this->sessions->count();
-    }
 }

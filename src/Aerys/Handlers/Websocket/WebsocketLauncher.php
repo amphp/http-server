@@ -12,27 +12,18 @@ class WebsocketLauncher extends ConfigLauncher {
     private $handlerClass = 'Aerys\Handlers\Websocket\WebsocketHandler';
     
     function launch(Injector $injector) {
-        $config = $this->getConfig();
-        $endpoints = $this->makeEndpoints($injector, $config);
         
-        try {
-            return $injector->make('Aerys\Handlers\Websocket\WebsocketHandler', [
-                ':endpoints' => $endpoints
-            ]);
-        } catch (\InvalidArgumentException $handlerError) {
-            throw new ConfigException(
-                'Invalid websocket mod configuration', 
-                $errorCode = 0,
-                $handlerError
-            );
-        }
+        $handler = $injector->make($this->handlerClass);
+        $injector->share($handler);
+        $endpoints = $this->makeEndpoints($injector, $config);
+        $injector->unshare(get_class($handler));
     }
     
-    private function makeEndpoints(Injector $injector, array $config) {
+    private function makeEndpoints(Injector $injector) {
         try {
             $endpoints = [];
             
-            foreach ($config as $requestUri => $endpointArr) {
+            foreach ($this->getConfig() as $requestUri => $endpointArr) {
                 if (isset($endpointArr['endpoint']) && is_string($endpointArr['endpoint'])) {
                     $endpointArr['endpoint'] = $injector->make($endpointArr['endpoint']);
                     $endpoints[$requestUri] = $endpointArr;
