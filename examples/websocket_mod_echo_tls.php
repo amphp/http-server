@@ -31,7 +31,7 @@ require __DIR__ . '/support/websocket/EchoEndpoint.php'; // <-- our websocket en
 (new Bootstrapper)->createServer([[
     'listenOn'      => '*:1443',
     'application'   => new DocRootLauncher([
-        'docRoot'   => __DIR__ . '/support/websocket/echo_docroot' // <-- serves our HTML + JS
+        'docRoot'   => __DIR__ . '/support/websocket/docroot' // <-- serves our HTML + JS
     ]),
     'tls' => [
         'local_cert' => __DIR__ . '/support/localhost_cert.pem',

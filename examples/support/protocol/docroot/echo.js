@@ -18,15 +18,13 @@ connection.onopen = function(event) {
 };
 
 connection.onerror = function(event) {
-    console.log(event);
-    alert(event);
+    console.log(event.data);
+    alert(event.data);
 }
 
 connection.onmessage = function(event) {
     var dataType = event.data[0];
     var data = event.data.substring(1);
-    
-    console.log('Msg rcvd: ' + data);
     
     if (dataType === RECENT_ECHOES_PREFIX) {
         var recentEchoes = JSON.parse(data);
@@ -34,8 +32,10 @@ connection.onmessage = function(event) {
         for (i=0; i<recentEchoes.length; i++) {
             appendRow(createMessageRow(recentEchoes[i]));
         }
+        console.log('Recent Msgs rcvd: ' + data);
     } else if (dataType === USER_ECHO_PREFIX) {
         prependRow(createMessageRow(data));
+        console.log('Msg rcvd: ' + data);
     } else if (dataType === USER_COUNT_PREFIX) {
         updateClientCount(data);
     }
@@ -68,6 +68,7 @@ var updateClientCount = function(data) {
     clientCount.removeChild(clientCount.firstChild);
     var text = document.createTextNode(data);
     clientCount.insertBefore(text, clientCount.firstChild);
+    console.log('User Count: ' + data);
 };
 
 var doSubmit = function(event) {

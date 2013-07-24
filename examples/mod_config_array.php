@@ -13,7 +13,7 @@ $config = [
     'my-chat-app' => [
         'listenOn'      => '*:1337',
         'application'   => new DocRootLauncher([
-            'docRoot'   => __DIR__ . '/support/websocket/echo_docroot'
+            'docRoot'   => __DIR__ . '/support/file_server_root'
         ]),
         
         'mods' => [
@@ -23,7 +23,7 @@ $config = [
             ],
             'websocket' => [
                 '/echo' => [
-                    'endpointClass'   => 'MultiProtocolChat', // *required
+                    'endpointClass'   => 'SomeChat', // *required
                     'allowedOrigins'  => [],
                     'maxFrameSize'    => 2097152,
                     'maxMsgSize'      => 10485760,
