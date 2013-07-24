@@ -81,7 +81,7 @@ class LineFeedProtocolHandler implements ProtocolHandler {
         $recipients = $this->chatIdMap;
         unset($recipients[$authorId]);
         
-        $msg = "$msg\r\n";
+        $msg .= "\r\n";
         
         foreach ($recipients as $socketId) {
             $this->modProtocol->write($socketId, $msg);
