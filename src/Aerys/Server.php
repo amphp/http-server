@@ -1264,12 +1264,10 @@ class Server {
     }
     
     private function setKeepAliveTimeout($seconds) {
-        if (!$this->keepAliveTimeout = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
-            'min_range' => 0,
+        $this->keepAliveTimeout = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
+            'min_range' => -1,
             'default' => 10
-        ]])) {
-            $this->keepAliveTimeout = -1;
-        }
+        ]]);
     }
     
     private function setDisableKeepAlive($boolFlag) {
@@ -1317,7 +1315,7 @@ class Server {
         
         if ($boolFlag && !$this->isExtSocketsEnabled) {
             throw new \RuntimeException(
-                'Cannot enable socketSoLingerZero option; PHP sockets extension required'
+                'Cannot enable socketSoLingerZero; PHP sockets extension required'
             );
         }
         
@@ -1335,13 +1333,13 @@ class Server {
             $this->defaultHost = $this->hosts[$hostId];
         } elseif ($hostId !== NULL) {
             throw new \DomainException(
-                "Cannot assign default host; no hosts match specifed host ID: {$hostId}"
+                "Invalid default host; unknown host ID: {$hostId}"
             );
         }
     }
     
     private function setVerbosity($verbosity) {
-        if (in_array($verbosity, [self::SILENT, self::QUIET, self::LOUD])) {
+        if (in_array($verbosity, [self::SILENT, self::QUIET, self::LOUD], $strict = TRUE)) {
             $this->verbosity = (int) $verbosity;
         } else {
             throw new \DomainException(
@@ -1349,4 +1347,57 @@ class Server {
             );
         }
     }
+    
+    /**
+     * Retrieve a server option value
+     * 
+     * @param string $option The (case-insensitive) server option key
+     * @throws \DomainException On unknown option
+     * @return mixed The value of the requested server option
+     */
+    function getOption($option) {
+        $option = strtolower($option);
+        
+        switch ($option) {
+            case 'maxconnections':
+                return $this->maxConnections; break;
+            case 'maxrequests':
+                return $this->maxRequests; break;
+            case 'keepalivetimeout':
+                return $this->keepAliveTimeout; break;
+            case 'disablekeepalive':
+                return $this->disableKeepAlive; break;
+            case 'maxheaderbytes':
+                return $this->maxHeaderBytes; break;
+            case 'maxbodybytes':
+                return $this->maxBodyBytes; break;
+            case 'defaultcontenttype':
+                return $this->defaultContentType; break;
+            case 'defaulttextcharset':
+                return $this->defaultTextCharset; break;
+            case 'autoreasonphrase':
+                return $this->autoReasonPhrase; break;
+            case 'logerrorsto':
+                return $this->logErrorsTo; break;
+            case 'sendservertoken':
+                return $this->sendServerToken; break;
+            case 'normalizemethodcase':
+                return $this->normalizeMethodCase; break;
+            case 'requirebodylength':
+                return $this->requireBodyLength; break;
+            case 'socketsolingerzero':
+                return $this->socketSoLingerZero; break;
+            case 'allowedmethods':
+                return array_keys($this->allowedMethods); break;
+            case 'defaulthost':
+                return $this->defaultHost ? $this->defaultHost->getId() : NULL; break;
+            case 'verbosity':
+                return $this->verbosity; break;
+            default:
+                throw new \DomainException(
+                    "Unknown server option: {$option}"
+                );
+        }
+    }
+    
 }
