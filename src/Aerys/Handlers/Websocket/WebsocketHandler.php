@@ -113,10 +113,54 @@ class WebsocketHandler implements \Countable {
     /**
      * How many total websocket connections are currently open?
      * 
+     * Note that this returns the total for ALL endpoints.
+     * 
      * @return int
      */
     function count() {
         return count($this->sessions);
+    }
+    
+    /**
+     * Manually initiate a websocket close handshake
+     * 
+     * @param mixed $socketIdOrArray A socket ID or array of socket IDs
+     * @return void
+     */
+    function close($socketIdOrArray, $code, $reason) {
+        try {
+            $recipients = $this->generateRecipientList($socketIdOrArray);
+            
+            $payload = pack('n', $code) . substr($reason, 0, 125);
+            $frame = new Frame(Frame::FIN, Frame::RSV_NONE, Frame::OP_CLOSE, $payload);
+            
+            foreach ($recipients as $socketId) {
+                $session = $this->sessions[$socketId];
+                $session->pendingCloseCode = $code;
+                $session->pendingCloseReason = $reason;
+                $session->frameWriter->enqueue($frame);
+                $this->doSessionWrite($session);
+            }
+        } catch (UnknownSocketException $e) {
+            $this->onEndpointError($e);
+            
+            if ($recipients = array_diff($recipients, $e->getUnknownSocketIds())) {
+                $this->close($recipients, $code, $reason);
+            }
+        }
+    }
+    
+    private function generateRecipientList($socketIdOrArray) {
+        $recipients = is_array($socketIdOrArray) ? $socketIdOrArray : [$socketIdOrArray];
+        
+        if ($unknownSocketIds = array_diff_key(array_flip($recipients), $this->sessions)) {
+            throw new UnknownSocketException(
+                $unknownSocketIds,
+                'Unknown socket ID(s): ' . implode(', ', $unknownSocketIds)
+            );
+        }
+        
+        return $recipients;
     }
     
     function registerEndpoint($requestUri, Endpoint $endpoint, array $options = []) {
@@ -367,8 +411,13 @@ class WebsocketHandler implements \Countable {
     private function onOpen(Session $session) {
         try {
             $session->endpoint->onOpen($session->id);
-        } catch (\Exception $e) {
-            $this->onEndpointError($session, $e);
+        } catch (\Exception $userlandException) {
+            $endpointError = new EndpointException(
+                get_class($session->endpoint) . '::onOpen() threw an uncaught exception',
+                $errorCode = 0,
+                $userlandException
+            );
+            $this->onEndpointError($endpointError);
         }
     }
     
@@ -445,8 +494,13 @@ class WebsocketHandler implements \Countable {
     private function onMessage(Session $session, Message $msg) {
         try {
             $session->endpoint->onMessage($session->id, $msg);
-        } catch (\Exception $e) {
-            $this->onEndpointError($session, $e);
+        } catch (\Exception $userlandException) {
+            $endpointError = new EndpointException(
+                get_class($session->endpoint) . '::onMessage() threw an uncaught exception',
+                $errorCode = 0,
+                $userlandException
+            );
+            $this->onEndpointError($endpointError);
         }
     }
     
@@ -509,9 +563,16 @@ class WebsocketHandler implements \Countable {
     
     private function broadcast($recipients, $opcode, $data, callable $afterSend = NULL) {
         try {
+            $recipients = $this->generateRecipientList($recipients);
+            
             $frameStream = $this->frameStreamFactory->__invoke($opcode, $data);
             $frameStream->setFrameSize($this->autoFrameSize);
-            $recipients = is_array($recipients) ? $recipients : [$recipients];
+            
+            if ($unknownSocketIds = array_diff_key(array_flip($recipients), $this->sessions)) {
+                throw new \DomainException(
+                    'Unknown socket ID(s): ' . implode(', ', $unknownSocketIds)
+                );
+            }
             
             foreach ($recipients as $socketId) {
                 $session = $this->sessions[$socketId];
@@ -521,22 +582,17 @@ class WebsocketHandler implements \Countable {
             }
             
         } catch (\InvalidArgumentException $e) {
-            $this->onEndpointError($session, $e);
-        }
-    }
-    
-    function close($recipients, $code, $reason) {
-        $payload = pack('n', $code) . substr($reason, 0, 125);
-        $frame = new Frame(Frame::FIN, Frame::RSV_NONE, Frame::OP_CLOSE, $payload);
-        
-        $recipients = is_array($recipients) ? $recipients : [$recipients];
-        
-        foreach ($recipients as $socketId) {
-            $session = $this->sessions[$socketId];
-            $session->pendingCloseCode = $code;
-            $session->pendingCloseReason = $reason;
-            $session->frameWriter->enqueue($frame);
-            $this->doSessionWrite($session);
+            $endpointError = new EndpointException(
+                'Invalid broadcast data type; string or seekable stream resource required',
+                $errorCode = 0,
+                $previousException = $e
+            );
+            $this->onEndpointError($endpointError);
+        } catch (UnknownSocketException $e) {
+            $this->onEndpointError($e);
+            if ($recipients = array_diff($recipients, $e->getUnknownSocketIds())) {
+                $this->broadcast($recipients, $opcode, $data, $afterSend);
+            }
         }
     }
     
@@ -557,8 +613,6 @@ class WebsocketHandler implements \Countable {
             }
         } catch (FrameWriteException $e) {
             $this->onWriteFailure($session, $e);
-        } catch (EndpointException $e) {
-            $this->onEndpointError($session, $e);
         }
     }
     
@@ -657,11 +711,12 @@ class WebsocketHandler implements \Countable {
                 $callback($session->id);
             }
         } catch (\Exception $userlandException) {
-            throw new EndpointException(
-                'afterMessage callback threw :(',
+            $endpointError = new EndpointException(
+                get_class($session->endpoint) . ' afterWrite callback threw an uncaught exception',
                 $errorCode = 0,
                 $userlandException
             );
+            $this->onEndpointError($endpointError);
         }
     }
     
@@ -719,21 +774,22 @@ class WebsocketHandler implements \Countable {
         $this->onClose($session, $code, $reason);
     }
     
-    private function onEndpointError(Session $session, $e) {
-        @fwrite($session->asgiEnv['ASGI_ERROR'], $e);
-        
-        $code = Codes::UNEXPECTED_SERVER_ERROR;
-        $reason = 'Unexpected internal error :(';
-        $this->close($session, $code, $reason);
+    private function onEndpointError(EndpointException $e) {
+        // @TODO Incorporate throwing vs. logging according to Server::$verbosity level
+        @fwrite($this->server->getErrorStream(), $e);
     }
     
     private function onClose(Session $session, $code, $reason) {
         try {
             $this->unloadSession($session);
             $session->endpoint->onClose($session->id, $code, $reason);
-        } catch (\Exception $e) {
-            // The client has already disconnected so the only thing to do here is log the error
-            @fwrite($session->asgiEnv['ASGI_ERROR'], $e);
+        } catch (\Exception $userlandException) {
+            $endpointError = new EndpointException(
+                get_class($session->endpoint) . '::onClose() threw an uncaught exception',
+                $errorCode = 0,
+                $userlandException
+            );
+            $this->onEndpointError($endpointError);
         }
     }
     
