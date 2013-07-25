@@ -267,10 +267,11 @@ class Server {
     
     private function accept($serverSocket) {
         while ($clientSock = @stream_socket_accept($serverSocket, $timeout = 0)) {
-            if (++$this->cachedClientCount === $this->maxConnections) {
-                $this->pause();
-            }
             $this->onClient($clientSock);
+            if (++$this->cachedClientCount >= $this->maxConnections) {
+                $this->pause();
+                break;
+            }
         }
     }
     
@@ -774,7 +775,7 @@ class Server {
         $asgiEnv = $client->requests[$requestId];
         $asgiResponse = $this->normalizeResponse($asgiEnv, $asgiResponse);
         
-        if ($this->disableKeepAlive || ($this->maxRequests && $client->requestCount >= $this->maxRequests)) {
+        if ($this->disableKeepAlive || ($this->maxRequests > 0 && $client->requestCount >= $this->maxRequests)) {
             $asgiResponse[2]['CONNECTION'] = 'close';
         }
         
