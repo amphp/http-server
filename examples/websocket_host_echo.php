@@ -52,7 +52,8 @@ require __DIR__ . '/support/websocket/EchoEndpoint.php'; // <-- our websocket en
             'maxFrameSize'     => 2097152,  // Maximum allowed frame size
             'maxMsgSize'       => 10485760, // Maximum allowed message size
             'heartbeatPeriod'  => 10,       // If greater than zero Aerys will auto-heartbeat
-            'subprotocol'      => NULL      // Optional websocket subprotocol name
+            'subprotocol'      => NULL,     // Optional websocket subprotocol name
+            'validateUtf8Text' => TRUE      // Should text frames be validated for UTF-8?
         ]
     ])
 ]])->start();
