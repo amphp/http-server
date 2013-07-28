@@ -46,6 +46,7 @@ class Server {
     private $disableKeepAlive = FALSE;
     private $socketSoLingerZero = FALSE;
     private $normalizeMethodCase = TRUE;
+    private $alwaysAddDateHeader = FALSE;
     private $requireBodyLength = TRUE;
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = 2097152;
@@ -267,8 +268,9 @@ class Server {
     
     private function accept($serverSocket) {
         while ($clientSock = @stream_socket_accept($serverSocket, $timeout = 0)) {
+            $this->cachedClientCount++;
             $this->onClient($clientSock);
-            if (++$this->cachedClientCount >= $this->maxConnections) {
+            if ($this->cachedClientCount >= $this->maxConnections) {
                 $this->pause();
                 break;
             }
@@ -424,7 +426,7 @@ class Server {
         list($requestId, $asgiEnv, $host) = $requestInitStruct;
         
         if ($this->requireBodyLength && empty($asgiEnv['CONTENT_LENGTH'])) {
-            $asgiResponse = [Status::LENGTH_REQUIRED, Reason::HTTP_411, ['Connection' => 'close'], NULL];
+            $asgiResponse = [Status::LENGTH_REQUIRED, Reason::HTTP_411, ['Connection: close'], NULL];
             return $this->setResponse($requestId, $asgiResponse);
         }
         
@@ -494,9 +496,9 @@ class Server {
         $reason = Reason::HTTP_400 . ': Invalid Host';
         $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
         $headers = [
-            'Content-Type' => 'text/html; charset=iso-8859-1',
-            'Content-Length' => strlen($body),
-            'Connection' => 'close'
+            'Content-Type: text/html; charset=iso-8859-1',
+            'Content-Length: ' . strlen($body),
+            'Connection: close'
         ];
         
         return [$status, $reason, $headers, $body];
@@ -506,15 +508,15 @@ class Server {
         return [
             $status = Status::METHOD_NOT_ALLOWED,
             $reason = Reason::HTTP_405,
-            $headers = ['Allow' => implode(',', array_keys($this->allowedMethods))],
+            $headers = ['Allow: ' . implode(',', array_keys($this->allowedMethods))],
             $body = NULL
         ];
     }
     
     private function generateTraceResponse($body) {
         $headers = [
-            'Content-Length' => strlen($body), 
-            'Content-Type' => 'text/plain; charset=utf-8'
+            'Content-Length: ' . strlen($body), 
+            'Content-Type: text/plain; charset=utf-8'
         ];
         
         return [
@@ -529,7 +531,7 @@ class Server {
         return [
             $status = Status::OK,
             $reason = Reason::HTTP_200,
-            $headers = ['Allow' => implode(',', array_keys($this->allowedMethods))],
+            $headers = ['Allow: ' . implode(',', array_keys($this->allowedMethods))],
             $body = NULL
         ];
     }
@@ -555,7 +557,7 @@ class Server {
     }
     
     /**
-     * @TODO Determine how best to allow for forward proxies specifying absolute URIs
+     * @TODO Figure out how best to allow for forward proxy applications with absolute URIs
      */
     private function selectHostByAbsoluteUri($uri) {
         $urlParts = parse_url($uri);
@@ -596,14 +598,13 @@ class Server {
     
     private function generateAsgiEnv(Client $client, Host $host, array $requestArr) {
         $uri = $requestArr['uri'];
-        if (!($uri === '/' || $uri === '*')) {
-            $queryString = ($qPos = strpos($uri, '?')) ? substr($uri, $qPos +1) : '';
-        } else {
+        if ($uri === '/' || $uri === '*') {
             $queryString = '';
+        } else {
+            $queryString = ($qPos = strpos($uri, '?')) ? substr($uri, $qPos + 1) : '';
         }
         
-        $scheme = $client->isEncrypted ? 'https' : 'http';
-        $body = ($requestArr['body'] || $requestArr['body'] === '0') ? $requestArr['body'] : NULL;
+        $urlScheme = $client->isEncrypted ? 'https' : 'http';
         $serverName = $host->hasVhostName() ? $host->getName() : $client->serverAddress;
         
         $asgiEnv = [
@@ -612,8 +613,8 @@ class Server {
             'ASGI_NON_BLOCKING' => TRUE,
             'ASGI_LAST_CHANCE'  => empty($requestArr['headersOnly']),
             'ASGI_ERROR'        => $this->errorStream,
-            'ASGI_INPUT'        => $body,
-            'ASGI_URL_SCHEME'   => $scheme,
+            'ASGI_INPUT'        => $requestArr['body'],
+            'ASGI_URL_SCHEME'   => $urlScheme,
             'AERYS_HOST_ID'     => $host->getId(),
             'SERVER_PORT'       => $client->serverPort,
             'SERVER_ADDR'       => $client->serverAddress,
@@ -669,7 +670,7 @@ class Server {
         $this->invokeOnHeadersMods($host, $requestId);
         
         if (isset($client->requests[$requestId]) && !isset($client->responses[$requestId])) {
-            // Mods may have modified the request environment, so reload it.
+            // Mods may have altered the request environment, so reload it.
             $asgiEnv = $client->requests[$requestId];
             $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
         }
@@ -746,10 +747,10 @@ class Server {
         $msg = $e->getMessage();
         $body = "<html><body><h1>{$status} {$reason}</h1><p>{$msg}</p></body></html>";
         $headers = [
-            'Date' => date(self::HTTP_DATE),
-            'Content-Type' => 'text/html; charset=utf-8',
-            'Content-Length' => strlen($body),
-            'Connection' => 'close'
+            'Date: ' . date(self::HTTP_DATE),
+            'Content-Type: text/html; charset=utf-8',
+            'Content-Length: ' . strlen($body),
+            'Connection: close'
         ];
         
         return [$status, $reason, $headers, $body];
@@ -773,12 +774,6 @@ class Server {
         
         $client = $this->requestIdClientMap[$requestId];
         $asgiEnv = $client->requests[$requestId];
-        $asgiResponse = $this->normalizeResponse($asgiEnv, $asgiResponse);
-        
-        if ($this->disableKeepAlive || ($this->maxRequests > 0 && $client->requestCount >= $this->maxRequests)) {
-            $asgiResponse[2]['CONNECTION'] = 'close';
-        }
-        
         $client->responses[$requestId] = $asgiResponse;
         
         if (!$this->isInsideBeforeResponseModLoop) {
@@ -806,11 +801,7 @@ class Server {
             if (isset($client->pipeline[$requestId])) {
                 continue;
             } elseif (isset($client->responses[$requestId])) {
-                list($status, $reason, $headers, $body) = $client->responses[$requestId];
-                $protocol = $asgiEnv['SERVER_PROTOCOL'];
-                $rawHeaders = $this->generateRawHeaders($protocol, $status, $reason, $headers);
-                $responseWriter = $this->writerFactory->make($client->socket, $rawHeaders, $body, $protocol);
-                $client->pipeline[$requestId] = $responseWriter;
+                $this->queuePipelineResponseWriter($client, $requestId, $asgiEnv);
             } else {
                 break;
             }
@@ -818,34 +809,42 @@ class Server {
         
         reset($client->requests);
         
-        $this->write($client);
+        $this->doClientWrite($client);
     }
     
-    private function generateRawHeaders($protocol, $status, $reason, array $headers) {
-        $msg = "HTTP/$protocol $status";
-        
+    private function queuePipelineResponseWriter(Client $client, $requestId, array $asgiEnv) {
+        $asgiResponse = $client->responses[$requestId];
+        $asgiResponse = $this->doResponseNormalization($client, $asgiEnv, $asgiResponse);
+        $client->responses[$requestId] = $asgiResponse;
+        list($status, $reason, $headers, $body) = $asgiResponse;
+        $protocol = $asgiEnv['SERVER_PROTOCOL'];
+        $rawHeaders = "HTTP/$protocol $status";
         if ($reason || $reason === '0') {
-            $msg .= " $reason";
+            $rawHeaders .= " {$reason}";
         }
-        
-        $msg .= "\r\n";
-        
-        foreach ($headers as $header => $value) {
-            if ($value === (array) $value) {
-                foreach ($value as $nestedValue) {
-                    $msg .= "{$header}: {$nestedValue}\r\n";
-                }
-            } else {
-                $msg .= "{$header}: {$value}\r\n";
-            }
-        }
-        
-        $msg .= "\r\n";
-        
-        return $msg;
+        $rawHeaders .= "\r\n{$headers}\r\n\r\n";
+        $responseWriter = $this->writerFactory->make($client->socket, $rawHeaders, $body, $protocol);
+        $client->pipeline[$requestId] = $responseWriter;
     }
     
-    private function write(Client $client) {
+    private function doResponseNormalization($client, $asgiEnv, $asgiResponse) {
+        try {
+            $asgiResponse = $this->normalizeResponseForSend($client, $asgiEnv, $asgiResponse);
+        } catch (\UnexpectedValueException $e) {
+            $status = 500;
+            $reason = 'Internal Server Error';
+            $body = $e->getMessage();
+            $headers = 'Content-Length: ' . strlen($body) .
+                "\r\nContent-Type: text/plain;charset=utf-8" .
+                "\r\nConnection: close";
+            
+            $asgiResponse = [$status, $reason, $headers, $body];
+        }
+        
+        return $asgiResponse;
+    }
+    
+    private function doClientWrite(Client $client) {
         try {
             foreach ($client->pipeline as $requestId => $responseWriter) {
                 if (!$responseWriter) {
@@ -857,7 +856,7 @@ class Server {
                     break;
                 } else {
                     $client->writeSubscription = $this->reactor->onWritable($client->socket, function() use ($client) {
-                        $this->write($client);
+                        $this->doClientWrite($client);
                     });
                     break;
                 }
@@ -867,102 +866,217 @@ class Server {
         }
     }
     
-    private function normalizeResponse(array $asgiEnv, array $asgiResponse) {
+    /**
+     * @throws \UnexpectedValueException On bad ASGI response array
+     */
+    private function normalizeResponseForSend(Client $client, array $asgiEnv, array $asgiResponse) {
         list($status, $reason, $headers, $body) = $asgiResponse;
-        $upgradeCallback = isset($asgiResponse[4]) ? $asgiResponse[4] : NULL;
         
-        if ($headers) {
-            $headers = array_change_key_case($headers, CASE_UPPER);
-        }
+        $status = $this->filterResponseStatus($status);
         
-        if ($this->autoReasonPhrase && (string) $reason === '') {
+        if ($this->autoReasonPhrase && !$reason) {
             $reason = $this->getReasonPhrase($status);
         }
         
-        if ($asgiEnv['SERVER_PROTOCOL'] == '1.0' && empty($asgiEnv['HTTP_CONNECTION'])) {
-            $headers['CONNECTION'] = 'close';
-        } elseif (isset($asgiEnv['HTTP_CONNECTION'])
-            && empty($headers['CONNECTION'])
-            && !strcasecmp($asgiEnv['HTTP_CONNECTION'], 'keep-alive')
-        ) {
-            $headers['CONNECTION'] = 'keep-alive';
-        }
+        $headers = $this->stringifyResponseHeaders($headers);
         
-        if (!isset($headers['DATE']) && $status != Status::CONTINUE_100) {
-            $headers['DATE'] = date(self::HTTP_DATE);
-        }
-        
-        if ($asgiEnv['REQUEST_METHOD'] == 'HEAD') {
-            $body = NULL;
-            $hasBody = FALSE;
+        if ($status >= 200) {
+            $isHttp11 = ($asgiEnv['SERVER_PROTOCOL'] === '1.1');
+            list($headers, $close) = $this->normalizeConnectionHeader($headers, $asgiEnv, $client);
+            list($headers, $close) = $this->normalizeEntityHeaders($headers, $body, $isHttp11, $close);
         } else {
-            $hasBody = ($body || $body === '0');
+            $close = FALSE;
         }
         
-        if ($hasBody && $body instanceof \Exception) {
-            $body = (string) $body;
+        if ($this->sendServerToken && (($serverTokenPos = stripos($headers, "\r\nServer:")) === FALSE)) {
+            $headers .= "\r\nServer: " . self::SERVER_SOFTWARE;
         }
         
-        if ($hasBody && empty($headers['CONTENT-TYPE'])) {
-            $headers['CONTENT-TYPE'] = $this->defaultContentType;
+        if ($this->alwaysAddDateHeader && (stripos($headers, "\r\nDate:") === FALSE)) {
+            $headers .= "\r\nDate: " . gmdate('D, d M Y H:i:s') . ' UTC';
         }
         
-        if ($hasBody
-            && $this->defaultTextCharset
-            && 0 === stripos($headers['CONTENT-TYPE'], 'text/')
-            && !stristr($headers['CONTENT-TYPE'], 'charset=')
-        ) {
-            $headers['CONTENT-TYPE'] = $headers['CONTENT-TYPE'] . '; charset=' . $this->defaultTextCharset;
+        // This MUST happen AFTER content-length/body normalization or headers won't be correct
+        $requestMethod = $asgiEnv['REQUEST_METHOD'];
+        if ($requestMethod === 'HEAD') {
+            $body = NULL;
         }
         
-        $hasContentLength = isset($headers['CONTENT-LENGTH']);
+        $headers = ltrim($headers);
         
-        if (!$hasBody && $status >= Status::OK && !$hasContentLength) {
-            $headers['CONTENT-LENGTH'] = 0;
-        }
+        $client->closeAfterSend[] = $close;
         
-        $isChunked = isset($headers['TRANSFER-ENCODING']) && !strcasecmp($headers['TRANSFER-ENCODING'], 'chunked');
-        $isIterator = ($body instanceof \Iterator && !$body instanceof Http\MultiPartByteRangeBody);
-        
-        $protocol = ($asgiEnv['SERVER_PROTOCOL'] === '?') ? '1.0' : $asgiEnv['SERVER_PROTOCOL'];
-        
-        if ($hasBody && is_string($body)) {
-            $headers['CONTENT-LENGTH'] = strlen($body);
-        } elseif ($hasBody && !$hasContentLength && is_resource($body)) {
-            fseek($body, 0, SEEK_END);
-            $headers['CONTENT-LENGTH'] = ftell($body);
-            rewind($body);
-        } elseif ($hasBody && $protocol >= 1.1 && !$isChunked && $isIterator) {
-            $headers['TRANSFER-ENCODING'] = 'chunked';
-        } elseif ($hasBody && !$hasContentLength && $protocol < 1.1 && $isIterator) {
-            $headers['CONNECTION'] = 'close';
-        }
-        
-        if ($this->sendServerToken) {
-            $headers['SERVER'] = self::SERVER_SOFTWARE;
-        }
-        
-        return $upgradeCallback
-            ? [$status, $reason, $headers, $body, $upgradeCallback]
+        $asgiResponse = isset($asgiResponse[4])
+            ? [$status, $reason, $headers, $body, $asgiResponse[4]]
             : [$status, $reason, $headers, $body];
+        
+        return $asgiResponse;
+    }
+    
+    private function filterResponseStatus($status) {
+        $status = (int) $status;
+        
+        if ($status < 100 || $status > 599) {
+            throw new \UnexpectedValueException(
+                'Invalid response status code'
+            );
+        }
+        
+        return $status;
+    }
+    
+    private function stringifyResponseHeaders($headers) {
+        if (!$headers) {
+            $headers = '';
+        } elseif (is_array($headers)) {
+            $headers = implode("\r\n", array_map('trim', $headers));
+        } elseif (is_string($headers)) {
+            $headers = implode("\r\n", array_map('trim', explode("\n", $headers)));
+        } else {
+            throw new \UnexpectedValueException(
+                'Invalid response headers'
+            );
+        }
+        
+        return $headers;
+    }
+    
+    private function normalizeConnectionHeader($headers, $asgiEnv, Client $client) {
+        if ($this->disableKeepAlive) {
+            $valueToAssign = 'close';
+        } elseif ($this->maxRequests > 0 && $client->requestCount >= $this->maxRequests) {
+            $valueToAssign = 'close';
+        } elseif (isset($asgiEnv['HTTP_CONNECTION'])) {
+            $valueToAssign = stristr($asgiEnv['HTTP_CONNECTION'], 'keep-alive') ? 'keep-alive' : 'close';
+        } elseif ($asgiEnv['SERVER_PROTOCOL'] !== '1.1') {
+            $valueToAssign = 'close';
+        } else {
+            $valueToAssign = 'keep-alive';
+        }
+        
+        $currentHeaderPos = stripos($headers, "\r\nConnection:");
+        $newConnectionHeader = "\r\nConnection: {$valueToAssign}";
+        
+        if ($currentHeaderPos === FALSE) {
+            $headers .= $newConnectionHeader;
+        } else {
+            $lineEndPos = strpos($headers, "\r\n", $currentHeaderPos + 2);
+            $start = substr($headers, 0, $currentHeaderPos);
+            $end = substr($headers, $lineEndPos);
+            $headers = $start . $newConnectionHeader . $end;
+        }
+        
+        $willClose = ($valueToAssign === 'close');
+        
+        if (!$willClose) {
+            $remainingRequests = $this->maxRequests - $client->requestCount;
+            $headers .= "\r\nKeep-Alive: timeout={$this->keepAliveTimeout}, max={$remainingRequests}";
+        }
+        
+        return [$headers, $willClose];
+    }
+    
+    private function normalizeEntityHeaders($headers, $body, $isHttp11, $willClose) {
+        $hasBody = ($body || $body === '0');
+        
+        if (!$hasBody || is_scalar($body)) {
+            $headers = $this->normalizeScalarContentLength($headers, $body);
+        } elseif (is_resource($body)) {
+            $headers = $this->normalizeResourceContentLength($headers, $body);
+        } elseif ($body instanceof Writing\MultiPartByteRangeBody) {
+            // Headers from the static DocRoot handler are assumed to be correct; no change needed.
+        } elseif ($body instanceof \Iterator) {
+            $willClose = !$isHttp11;
+            $headers = $isHttp11
+                ? $this->normalizeIteratorHeadersForChunking($headers)
+                : $this->normalizeIteratorHeadersForClose($headers);
+        } else {
+            throw new \UnexpectedValueException(
+                'Invalid response body'
+            );
+        }
+        
+        if (stripos($headers, "\r\nContent-Type:") === FALSE) {
+            $headers .= "\r\nContent-Type: {$this->defaultContentType}; charset={$this->defaultTextCharset}";
+        }
+        
+        return [$headers, $willClose];
+    }
+    
+    private function normalizeScalarContentLength($headers, $body) {
+        $headers = $this->removeContentLengthAndTransferEncodingHeaders($headers);
+        $headers .= "\r\nContent-Length: " . strlen($body);
+        
+        return $headers;
+    }
+    
+    private function normalizeResourceContentLength($headers, $body) {
+        fseek($body, 0, SEEK_END);
+        $bodyLen = ftell($body);
+        rewind($body);
+        
+        $headers = $this->removeContentLengthAndTransferEncodingHeaders($headers);
+        $headers .= "\r\nContent-Length: {$bodyLen}";
+        
+        return $headers;
+    }
+    
+    private function normalizeIteratorHeadersForChunking($headers) {
+        $headers = $this->removeContentLengthAndTransferEncodingHeaders($headers);
+        $headers.= "\r\nTransfer-Encoding: chunked";
+        
+        return $headers;
+    }
+    
+    private function normalizeIteratorHeadersForClose($headers) {
+        $headers = $this->removeContentLengthAndTransferEncodingHeaders($headers);
+        
+        $connPos = strpos($headers, "\r\nConnection:");
+        $lineEndPos = strpos($headers, "\r\n", $connPos + 2);
+        $start = substr($headers, 0, $connPos);
+        $end = substr($headers, $lineEndPos);
+        $headers = $start . "\r\nConnection: close" . $end;
+        
+        return $headers;
+    }
+    
+    private function removeContentLengthAndTransferEncodingHeaders($headers) {
+        $clPos = stripos($headers, "\r\nContent-Length:");
+        $tePos = stripos($headers, "\r\nTransfer-Encoding:");
+        
+        if ($clPos !== FALSE) {
+            $lineEndPos = strpos($headers, "\r\n", $clPos + 2);
+            $start = substr($headers, 0, $clPos);
+            $end = substr($headers, $lineEndPos);
+            $headers = $start . $end;
+        }
+        
+        if ($tePos !== FALSE) {
+            $lineEndPos = strpos($headers, "\r\n", $tePos + 2);
+            $start = substr($headers, 0, $tePos);
+            $end = substr($headers, $lineEndPos);
+            $headers = $start . $end;
+        }
+        
+        return $headers;
     }
     
     private function afterResponse(Client $client, $requestId) {
         $asgiEnv = $client->requests[$requestId];
         $asgiResponse = $client->responses[$requestId];
-        
+        list($status, $reason) = $asgiResponse;
         if ($this->verbosity & self::LOUD) {
-            echo 'RES: ', $client->clientAddress, ':', $client->clientPort, ' | HTTP/',  $asgiEnv['SERVER_PROTOCOL'], ' ', $asgiResponse[0], ' ', $asgiResponse[1], PHP_EOL;
+            echo 'RES: ', $client->clientAddress, ':', $client->clientPort, ' | HTTP/',  $asgiEnv['SERVER_PROTOCOL'], " {$status} {$reason}\n";
         }
         
         $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
         $this->invokeAfterResponseMods($host, $requestId);
         
-        if ($asgiResponse[0] == Status::SWITCHING_PROTOCOLS) {
+        if ($status === Status::SWITCHING_PROTOCOLS) {
             $this->clearClientReferences($client);
             $upgradeCallback = $asgiResponse[4];
             $upgradeCallback($client->socket, $asgiEnv);
-        } elseif ($this->shouldCloseAfterResponse($asgiEnv, $asgiResponse)) {
+        } elseif (array_shift($client->closeAfterSend)) {
             $this->closeClient($client);
         } else {
             $this->dequeueClientPipelineRequest($client, $requestId);
@@ -997,22 +1111,6 @@ class Server {
         }
         
         $client->parser = NULL;
-    }
-    
-    private function shouldCloseAfterResponse(array $asgiEnv, array $asgiResponse) {
-        $responseHeaders = $asgiResponse[2];
-        
-        if (isset($responseHeaders['CONNECTION']) && !strcasecmp('close', $responseHeaders['CONNECTION'])) {
-            $shouldClose = TRUE;
-        } elseif (isset($asgiEnv['HTTP_CONNECTION']) && !strcasecmp('close', $asgiEnv['HTTP_CONNECTION'])) {
-            $shouldClose = TRUE;
-        } elseif ($asgiEnv['SERVER_PROTOCOL'] == '1.0' && !isset($asgiEnv['HTTP_CONNECTION'])) {
-            $shouldClose = TRUE;
-        } else {
-            $shouldClose = FALSE;
-        }
-        
-        return $shouldClose;
     }
     
     private function closeClient(Client $client) {
@@ -1239,6 +1337,8 @@ class Server {
                 $this->setSendServerToken($value); break;
             case 'normalizemethodcase':
                 $this->setNormalizeMethodCase($value); break;
+            case 'alwaysadddateHeader':
+                $this->setAlwaysAddDateHeader($value); break;
             case 'requirebodylength':
                 $this->setRequireBodyLength($value); break;
             case 'socketsolingerzero':
@@ -1305,6 +1405,10 @@ class Server {
     
     private function setNormalizeMethodCase($boolFlag) {
         $this->normalizeMethodCase = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
+    }
+    
+    private function setAlwaysAddDateHeader($boolFlag) {
+        $this->alwaysAddDateHeader = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
     
     private function setRequireBodyLength($boolFlag) {
@@ -1384,6 +1488,8 @@ class Server {
                 return $this->sendServerToken; break;
             case 'normalizemethodcase':
                 return $this->normalizeMethodCase; break;
+            case 'alwaysadddateHeader':
+                return $this->alwaysAddDateHeader; break;
             case 'requirebodylength':
                 return $this->requireBodyLength; break;
             case 'socketsolingerzero':

@@ -79,24 +79,6 @@ class ServerIntegrationTest extends PHPUnit_Framework_TestCase {
         
         $this->assertEquals(strlen($expectedBody), current($response->getHeader('Content-Length')));
         $this->assertEquals('text/html; charset=utf-8', current($response->getHeader('Content-Type')));
-        $this->assertTrue($response->hasHeader('Date'));
-    }
-    
-    function testServerAddsMissingContentTypeCharset() {
-        $this->skipIfServerHasDied();
-        
-        $client = new Client;
-        $uri = 'http://' . INTEGRATION_SERVER_ADDR . '/adds_missing_content_type_charset';
-        $response = $client->request($uri);
-        
-        $expectedBody = 'Hello, World.';
-        
-        $this->assertEquals(200, $response->getStatus());
-        $this->assertEquals('OK', $response->getReason());
-        $this->assertEquals($expectedBody, $response->getBody());
-        $this->assertEquals(strlen($expectedBody), current($response->getHeader('Content-Length')));
-        $this->assertEquals('text/plain; charset=utf-8', current($response->getHeader('Content-Type')));
-        $this->assertTrue($response->hasHeader('Date'));
     }
     
     function testTraceResponse() {

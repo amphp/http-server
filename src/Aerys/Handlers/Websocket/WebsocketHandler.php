@@ -288,7 +288,7 @@ class WebsocketHandler implements \Countable {
         
         if (!$version) {
             $reason = 'Bad Request: Requested WebSocket version(s) unavailable';
-            $headers = ['Sec-WebSocket-Version' => 13];
+            $headers = ['Sec-WebSocket-Version: 13'];
             return [FALSE, [Status::BAD_REQUEST, $reason, $headers, NULL]];
         }
         
@@ -352,17 +352,17 @@ class WebsocketHandler implements \Countable {
         $secWebSocketAccept = base64_encode(sha1($concatenatedKeyStr, TRUE));
         
         $headers = [
-            'Upgrade' => 'websocket',
-            'Connection' => 'Upgrade',
-            'Sec-WebSocket-Accept' => $secWebSocketAccept
+            'Upgrade: websocket',
+            'Connection: Upgrade',
+            "Sec-WebSocket-Accept: {$secWebSocketAccept}"
         ];
         
         if ($subprotocol || $subprotocol === '0') {
-            $headers['Sec-WebSocket-Protocol'] = $subprotocol;
+            $headers[] = "Sec-WebSocket-Protocol: {$subprotocol}";
         }
         
         if ($extensions) {
-            $headers['Sec-WebSocket-Extensions'] = implode(',', $extensions);
+            $headers[] = 'Sec-WebSocket-Extensions: ' . implode(',', $extensions);
         }
         
         return [

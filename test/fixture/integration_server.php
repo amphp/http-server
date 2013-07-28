@@ -10,8 +10,6 @@ class TestingApp {
                 return $this->baseResponse($asgiEnv, $requestId);
             case '/adds_missing_headers':
                 return $this->addsMissingHeaders($asgiEnv, $requestId);
-            case '/adds_missing_content_type_charset':
-                return $this->addsMissingContentTypeCharset($asgiEnv, $requestId);
             case '/returns_post_body':
                 return $this->returnsPostBody($asgiEnv, $requestId);
             case '/returns_put_body':
@@ -39,20 +37,6 @@ class TestingApp {
      */
     function addsMissingHeaders() {
         return $this->baseResponse();
-    }
-    
-    /**
-     * @expectedHeader Content-Type: text/plain; charset=utf-8
-     */
-    function addsMissingContentTypeCharset() {
-        return [
-            $status = 200,
-            $reason = 'OK',
-            $headers = [
-                'Content-Type' => 'text/plain'
-            ],
-            $body = 'Hello, World.'
-        ];
     }
     
     function returnsPostBody(array $asgiEnv) {

@@ -192,21 +192,19 @@ class ReverseProxyHandler {
     
     private function assignParsedResponse(Backend $backend, array $responseArr) {
         $requestId = array_shift($backend->responseQueue);
-        $headers = array_change_key_case($responseArr['headers'], CASE_UPPER);
-        $asgiResponseHeaders = [];
-        
-        foreach ($headers as $key => $headerArr) {
-            if (!($key === 'CONNECTION' || $key === 'TRANSFER-ENCODING')) {
-                $asgiResponseHeaders[$key] = isset($headerArr[1])
-                    ? implode(',', $headerArr)
-                    : $headerArr[0];
+        $responseHeaders = [];
+        foreach ($responseArr['headers'] as $key => $headerArr) {
+            if (strcasecmp($key,'Keep-Alive')) {
+                foreach ($headerArr as $value) {
+                    $responseHeaders[] = "{$key}: $value";
+                }
             }
         }
         
         $asgiResponse = [
             $responseArr['status'],
             $responseArr['reason'],
-            $asgiResponseHeaders,
+            $responseHeaders,
             $responseArr['body']
         ];
         
@@ -296,13 +294,7 @@ class ReverseProxyHandler {
         }
         
         foreach ($headerArr as $field => $value) {
-            if ($value === (array) $value) {
-                foreach ($value as $nestedValue) {
-                    $headerStr .= "$field: $nestedValue\r\n";
-                }
-            } else {
-                $headerStr .= "$field: $value\r\n";
-            }
+            $headerStr .= "$field: $value\r\n";
         }
         
         $headerStr .= "\r\n";
@@ -380,8 +372,8 @@ class ReverseProxyHandler {
         $reason = 'Bad Gateway';
         $body = "<html><body><h1>{$status} {$reason}</h1></body></html>";
         $headers = [
-            'Content-Type' => 'text/html; charset=utf-8',
-            'Content-Length' => strlen($body)
+            'Content-Type: text/html; charset=utf-8',
+            'Content-Length: ' . strlen($body)
         ];
         
         return [$status, $reason, $headers, $body];
@@ -392,8 +384,8 @@ class ReverseProxyHandler {
         $reason = 'Service Unavailable';
         $body = "<html><body><h1>{$status} {$reason}</h1><hr /></body></html>";
         $headers = [
-            'Content-Type' => 'text/html; charset=utf-8',
-            'Content-Length' => strlen($body)
+            'Content-Type: text/html; charset=utf-8',
+            'Content-Length: ' . strlen($body)
         ];
         
         return [$status, $reason, $headers, $body];

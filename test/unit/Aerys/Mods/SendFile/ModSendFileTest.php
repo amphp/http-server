@@ -49,9 +49,9 @@ class ModSendFileTest extends PHPUnit_Framework_TestCase {
             $status = 200,
             $reason = 'OK',
             $headers = [
-                'CONTENT-LENGTH' => 42,
-                'X-SENDFILE' => '/test.txt',
-                'SOME-OTHER-HEADER' => 'custom value'
+                'CONTENT-LENGTH:  42',
+                'X-SENDFILE: /test.txt',
+                'SOME-OTHER-HEADER: custom value'
             ],
             $body = NULL
         ];
@@ -62,19 +62,8 @@ class ModSendFileTest extends PHPUnit_Framework_TestCase {
             $status = 200,
             $reason = 'OK',
             $headers = [
-                'CONTENT-LENGTH' => 999,
-                'CONTENT-TYPE' => 'text/plain'
-            ],
-            $body = 'test placeholder value'
-        ];
-        
-        $mergedAsgiResponse = [
-            $status = 200,
-            $reason = 'OK',
-            $headers = [
-                'CONTENT-LENGTH' => 999,
-                'CONTENT-TYPE' => 'text/plain',
-                'SOME-OTHER-HEADER' => 'custom value'
+                'CONTENT-LENGTH: 999',
+                'CONTENT-TYPE: text/plain'
             ],
             $body = 'test placeholder value'
         ];
@@ -96,7 +85,7 @@ class ModSendFileTest extends PHPUnit_Framework_TestCase {
         
         $server->expects($this->once())
                ->method('setResponse')
-               ->with($requestId, $mergedAsgiResponse);
+               ->with($requestId, $filesysAsgiResponse);
         
         $mod = new ModSendFile($server, $filesysHandler);
         $mod->beforeResponse($requestId);

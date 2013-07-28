@@ -220,10 +220,10 @@ class DocRootHandler {
         $reason = Reason::HTTP_301;
         $body = '<html><body><h1>Moved!</h1></body></html>';
         $headers = [
-            'Date' => date(Server::HTTP_DATE),
-            'Location' => $redirectToIndex,
-            'Content-Type' => 'text/html',
-            'Content-Length' => strlen($body),
+            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
+            "Location: {$redirectToIndex}",
+            'Content-Type: text/html; charset=utf-8',
+            'Content-Length: ' . strlen($body),
         ];
         
         return [$status, $reason, $headers, $body];
@@ -339,21 +339,21 @@ class DocRootHandler {
         $now = time();
         
         $headers = [
-            'Date' => date(Server::HTTP_DATE, $now),
-            'Cache-Control' => 'public',
-            'Content-Length' => $fileSize,
-            'Last-Modified' => date(Server::HTTP_DATE, $mTime),
-            'Accept-Ranges' => 'bytes'
+            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
+            'Cache-Control: public',
+            "Content-Length: {$fileSize}",
+            'Last-Modified: ' . gmdate('D, d M Y H:i:s', $mTime) . ' UTC',
+            'Accept-Ranges: bytes'
         ];
         
-        $headers['Expires'] = ($this->expiresHeaderPeriod > 0)
-            ? date(Server::HTTP_DATE, $now + $this->expiresHeaderPeriod)
-            : $headers['Date'];
+        $headers[] = ($this->expiresHeaderPeriod > 0)
+            ? 'Expires: ' . gmdate('D, d M Y H:i:s', $now + $this->expiresHeaderPeriod) . ' UTC'
+            : 'Expires: 0';
         
-        $headers['Content-Type'] = $this->generateContentTypeHeader($filePath);
+        $headers[] = $this->generateContentTypeHeader($filePath);
         
         if ($eTag) {
-            $headers['ETag'] = $eTag;
+            $headers[] = "ETag: {$eTag}";
         }
         
         if ($method !== 'GET') {
@@ -413,7 +413,7 @@ class DocRootHandler {
             $contentType .= '; charset=' . $this->defaultTextCharset;
         }
         
-        return $contentType;
+        return "Content-Type: {$contentType}";
     }
     
     private function doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag) {
@@ -426,33 +426,33 @@ class DocRootHandler {
         $status = Status::PARTIAL_CONTENT;
         $reason = Reason::HTTP_206;
         $headers = [
-            'Date' => date(Server::HTTP_DATE, $now),
-            'Cache-Control' => 'public',
-            'Last-Modified' => date(Server::HTTP_DATE, $mTime)
+            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
+            'Cache-Control: public',
+            'Last-Modified: ' . gmdate('D, d M Y H:i:s', $mTime) . ' UTC'
         ];
         
-        $headers['Expires'] = ($this->expiresHeaderPeriod > 0)
-            ? date(Server::HTTP_DATE, $now + $this->expiresHeaderPeriod)
-            : $headers['Date'];
+        if ($this->expiresHeaderPeriod > 0) {
+            $time =  $now + $this->expiresHeaderPeriod;
+            $headers[] = 'Expires: ' .  gmdate('D, d M Y H:i:s', $time) . ' UTC';
+        }
         
         if ($eTag) {
-            $headers['ETag'] = $eTag;
+            $headers[] = "ETag: {$eTag}";
         }
         
         $contentType = $this->generateContentTypeHeader($filePath);
         
         if ($isMultiPart = (count($ranges) > 1)) {
-            $headers['Content-Type'] = 'multipart/byteranges; boundary=' . $this->multipartBoundary;
-            
-            $body = ($method == 'GET')
+            $headers[] = "Content-Type: multipart/byteranges; boundary={$this->multipartBoundary}";
+            $body = ($method === 'GET')
                 ? new MultiPartByteRangeBody($body, $ranges, $this->multipartBoundary, $contentType, $fileSize)
                 : NULL;
             
         } else {
             list($startPos, $endPos) = $ranges[0];
-            $headers['Content-Length'] = $endPos - $startPos;
-            $headers['Content-Range'] = "bytes $startPos-$endPos/$fileSize";
-            $headers['Content-Type'] = $contentType;
+            $headers[] = 'Content-Length: ' . ($endPos - $startPos);
+            $headers[] = 'Content-Range: bytes ' . ($startPos - $endPos) . "/{$fileSize}";
+            $headers[] = "Content-Type: {$contentType}";
             $body = ($method == 'GET')
                 ? new ByteRangeBody($body, $startPos, $endPos)
                 : NULL;
@@ -544,9 +544,9 @@ class DocRootHandler {
         $status = Status::OK;
         $reason = Reason::HTTP_200;
         $headers = [
-            'Date' => date(Server::HTTP_DATE),
-            'Allow' => 'GET, HEAD, OPTIONS',
-            'Accept-Ranges' => 'bytes'
+            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
+            'Allow: GET, HEAD, OPTIONS',
+            'Accept-Ranges: bytes'
         ];
         
         return [$status, $reason, $headers, NULL];
@@ -556,8 +556,8 @@ class DocRootHandler {
         $status = Status::METHOD_NOT_ALLOWED;
         $reason = Reason::HTTP_405;
         $headers = [
-            'Date' => date(Server::HTTP_DATE),
-            'Allow' => 'GET, HEAD, OPTIONS'
+            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
+            'Allow: GET, HEAD, OPTIONS'
         ];
         
         return [$status, $reason, $headers, NULL];
@@ -567,8 +567,8 @@ class DocRootHandler {
         $status = Status::REQUESTED_RANGE_NOT_SATISFIABLE;
         $reason = Reason::HTTP_416;
         $headers = [
-            'Date' => date(Server::HTTP_DATE, time()),
-            'Content-Range' => '*/' . $fileSize
+            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
+            "Content-Range: */{$fileSize}"
         ];
         
         return [$status, $reason, $headers, NULL];
@@ -578,12 +578,12 @@ class DocRootHandler {
         $status = Status::NOT_MODIFIED;
         $reason = Reason::HTTP_304;
         $headers = [
-            'Date' => date(Server::HTTP_DATE),
-            'Last-Modified' => date(Server::HTTP_DATE, $lastModified)
+            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
+            'Last-Modified: ' . gmdate('D, d M Y H:i:s', $lastModified) . ' UTC'
         ];
         
         if ($eTag) {
-            $headers['ETag'] = $eTag;
+            $headers[] = "ETag: {$eTag}";
         }
         
         return [$status, $reason, $headers, NULL];
@@ -593,7 +593,7 @@ class DocRootHandler {
         $status = Status::PRECONDITION_FAILED;
         $reason = Reason::HTTP_412;
         $headers = [
-            'Date' => date(Server::HTTP_DATE)
+            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
         ];
         
         return [$status, $reason, $headers, NULL];
@@ -604,9 +604,9 @@ class DocRootHandler {
         $reason = Reason::HTTP_404;
         $body = '<html><body><h1>404 Not Found</h1></body></html>';
         $headers = [
-            'Date' => date(Server::HTTP_DATE),
-            'Content-Type' => 'text/html',
-            'Content-Length' => strlen($body),
+            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
+            'Content-Type: text/html',
+            'Content-Length: ' . strlen($body),
         ];
         
         return [$status, $reason, $headers, $body];

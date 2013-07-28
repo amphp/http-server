@@ -118,7 +118,7 @@ class ModLog implements AfterResponseMod {
         
         $statusCode = $asgiResponse[0];
         $headers = $asgiResponse[2];
-        $bodySize = empty($headers['CONTENT-LENGTH']) ? '-' : $headers['CONTENT-LENGTH'];
+        $bodySize = $this->getContentLengthFromResponseHeaders($headers);
         $referer = empty($asgiEnv['HTTP_REFERER']) ? '-' : $asgiEnv['HTTP_REFERER'];
         
         $userAgent = empty($asgiEnv['HTTP_USER_AGENT']) ? '-' : '"' . $asgiEnv['HTTP_USER_AGENT'] . '"';
@@ -127,6 +127,20 @@ class ModLog implements AfterResponseMod {
         $msg = "$ip - - [$time] $requestLine $statusCode $bodySize $referer $userAgent" . PHP_EOL;
         
         return $msg;
+    }
+    
+    private function getContentLengthFromResponseHeaders($headers) {
+        $clPos = stripos($headers, "\r\nContent-Length:");
+        
+        if ($clPos === FALSE) {
+            $contentLength = '-';
+        } else {
+            $lineEndPos = strpos($headers, "\r\n", $clPos + 2);
+            $headerLine = substr($headers, $clPos + 2, $lineEndPos - $clPos);
+            $contentLength = trim(explode(':', $headerLine, 2)[1]);
+        }
+        
+        return $contentLength;
     }
     
     /**
@@ -145,7 +159,7 @@ class ModLog implements AfterResponseMod {
         
         $statusCode = $asgiResponse[0];
         $headers = $asgiResponse[2];
-        $bodySize = empty($headers['CONTENT-LENGTH']) ? '-' : $headers['CONTENT-LENGTH'];
+        $bodySize = $this->getContentLengthFromResponseHeaders($headers);
         $time = date('d/M/Y:H:i:s O');
         
         $msg = "$ip - - [$time] $requestLine $statusCode $bodySize" . PHP_EOL;
@@ -173,7 +187,7 @@ class ModLog implements AfterResponseMod {
         
         $headers = $asgiResponse[2];
         
-        $bytes = empty($headers['CONTENT-LENGTH']) ? '-' : $headers['CONTENT-LENGTH'];
+        $bytes = $this->getContentLengthFromResponseHeaders($headers);
         
         $search = ['%h', '%t', '%r', '%s', '%b'];
         $replace = [

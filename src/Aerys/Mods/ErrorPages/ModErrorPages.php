@@ -19,8 +19,7 @@ class ModErrorPages implements BeforeResponseMod {
             
             if (is_readable($filePath) && is_file($filePath)) {
                 $content = file_get_contents($filePath);
-                $contentLength = strlen($content);
-                $this->errorPages[$statusCode] = [$content, $contentLength, $contentType];
+                $this->errorPages[$statusCode] = [$content, $contentType];
             } else {
                 throw new \RuntimeException(
                     "The specified file path could not be read: $filePath"
@@ -33,14 +32,47 @@ class ModErrorPages implements BeforeResponseMod {
         list($status, $reason, $headers, $body) = $this->httpServer->getResponse($requestId);
         
         if ($status >= 400 && isset($this->errorPages[$status])) {
-            list($body, $contentLength, $contentType) = $this->errorPages[$status];
-            $headers['CONTENT-LENGTH'] = $contentLength;
-            if (NULL !== $contentType) {
-                $headers['CONTENT-TYPE'] = $contentType;
+            list($body, $contentType) = $this->errorPages[$status];
+            if ($contentType) {
+                $headers = $this->assignContentTypeHeader($headers, $contentType);
             }
             
             $this->httpServer->setResponse($requestId, [$status, $reason, $headers, $body]);
         }
+    }
+    
+    private function assignContentTypeHeader($headers, $contentType) {
+        $headers = $this->stringifyResponseHeaders($headers);
+        $ctPos = stripos($headers, "\r\nContent-Type:");
+        
+        $newHeader = "\r\nContent-Type: {$contentType}";
+        
+        if ($ctPos === FALSE) {
+            $headers .= $newHeader;
+        } else {
+            $lineEndPos = strpos($headers, "\r\n", $ctPos + 2);
+            $start = substr($headers, 0, $ctPos);
+            $end = substr($headers, $lineEndPos);
+            $headers = $start . $newHeader . $end;
+        }
+        
+        return ltrim($headers);
+    }
+    
+    private function stringifyResponseHeaders($headers) {
+        if (!$headers) {
+            $headers = '';
+        } elseif (is_array($headers)) {
+            $headers = implode("\r\n", array_map('trim', $headers));
+        } elseif (is_string($headers)) {
+            $headers = implode("\r\n", array_map('trim', explode("\n", $headers)));
+        } else {
+            throw new \UnexpectedValueException(
+                'Invalid response headers'
+            );
+        }
+        
+        return $headers;
     }
 }
 

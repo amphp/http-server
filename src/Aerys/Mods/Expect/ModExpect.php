@@ -92,15 +92,11 @@ class ModExpect implements OnHeadersMod {
     function onHeaders($requestId) {
         $asgiEnv = $this->server->getRequest($requestId);
         
-        if (!isset($asgiEnv['HTTP_EXPECT'])) {
+        if (empty($asgiEnv['HTTP_EXPECT']) || strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue')) {
             return;
         }
         
-        if (strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue')) {
-            return;
-        }
-        
-        $requestUriPath = str_replace($asgiEnv['QUERY_STRING'], '', $asgiEnv['REQUEST_URI']);
+        $requestUriPath = str_replace('?' . $asgiEnv['QUERY_STRING'], '', $asgiEnv['REQUEST_URI']);
         
         if (!isset($this->callbacks[$requestUriPath])) {
             return $this->server->setResponse($requestId, $this->response100);

@@ -8,6 +8,11 @@ use Aerys\Handlers\DocRoot\DocRootHandler,
 
 class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
     
+    const HEADERS_PATTERN = "/
+        (?P<field>[^\(\)<>@,;:\\\"\/\[\]\?\={}\x20\x09\x01-\x1F\x7F]+):[\x20\x09]*
+        (?P<value>[^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
+    /x";
+    
     private static $root;
     
     static function setUpBeforeClass() {
@@ -18,6 +23,19 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
     
     static function tearDownAfterClass() {
         self::$root = NULL;
+    }
+    
+    private function parseHeadersIntoMap($headersArr) {
+        $results = [];
+        foreach ($headersArr as $header) {
+            $colonPos = strpos($header, ':');
+            $field = substr($header, 0, $colonPos);
+            $value = ltrim(substr($header, $colonPos + 1), ' ');
+            
+            $results[$field] = $value;
+        }
+        
+        return $results;
     }
     
     /**
@@ -105,7 +123,8 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         $handler = new VfsRealpathHandler('vfs://root');
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $headers = $asgiResponse[2];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
+        
         $date = strtotime($headers['Date']);
         $expires = strtotime($headers['Expires']);
         
@@ -114,8 +133,8 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         $handler->setExpiresHeaderPeriod(-1);
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $headers = $asgiResponse[2];
-        $this->assertEquals($headers['Date'], $headers['Expires']);
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
+        $this->assertSame('0', $headers['Expires']);
     }
     
     function testSetCustomMimeTypes() {
@@ -129,7 +148,7 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         $handler = new VfsRealpathHandler('vfs://root');
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $headers = $asgiResponse[2];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         
         $this->assertEquals('text/plain; charset=utf-8', $headers['Content-Type']);
         
@@ -138,7 +157,7 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         ]);
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $headers = $asgiResponse[2];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         
         $this->assertEquals('text/awesome; charset=utf-8', $headers['Content-Type']);
     }
@@ -154,14 +173,14 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         $handler = new VfsRealpathHandler('vfs://root');
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $headers = $asgiResponse[2];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         
         $this->assertEquals('text/plain; charset=utf-8', $headers['Content-Type']);
         
         $handler->setDefaultTextCharset('iso-8859-1');
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $headers = $asgiResponse[2];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         
         $this->assertEquals('text/plain; charset=iso-8859-1', $headers['Content-Type']);
     }
@@ -235,7 +254,8 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         ];
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        list($status, $reason, $headers, $body) = $asgiResponse;
+        $status = $asgiResponse[0];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         
         $this->assertEquals(200, $status);
         $this->assertEquals('GET, HEAD, OPTIONS', $headers['Allow']);
@@ -422,14 +442,14 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         $handler = new VfsRealpathHandler('vfs://root');
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $headers = $asgiResponse[2];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         
         $this->assertEquals('text/plain; charset=utf-8', $headers['Content-Type']);
         
         $handler->setDefaultMimeType('application/octet-stream');
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $headers = $asgiResponse[2];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         
         $this->assertEquals('application/octet-stream', $headers['Content-Type']);
         
@@ -439,7 +459,7 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         ];
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $headers = $asgiResponse[2];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         
         $this->assertEquals('application/octet-stream', $headers['Content-Type']);
     }
@@ -452,7 +472,8 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
             'REQUEST_URI' => '/'
         ];
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $eTag = $asgiResponse[2]['ETag'];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
+        $eTag = $headers['ETag'];
         
         $asgiEnv = [
             'REQUEST_METHOD' => 'GET',
@@ -488,7 +509,8 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
             'REQUEST_URI' => '/'
         ];
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $lastModified = $asgiResponse[2]['Last-Modified'];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
+        $lastModified = $headers['Last-Modified'];
         
         $asgiEnv = [
             'REQUEST_METHOD' => 'GET',
@@ -527,7 +549,8 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         ];
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $eTag = $asgiResponse[2]['ETag'];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
+        $eTag = $headers['ETag'];
         
         $asgiEnv = [
             'REQUEST_METHOD' => 'GET',
@@ -550,7 +573,8 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         ];
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $lastModified = $asgiResponse[2]['Last-Modified'];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
+        $lastModified = $headers['Last-Modified'];
         
         $asgiEnv = [
             'REQUEST_METHOD' => 'GET',
@@ -573,7 +597,8 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         ];
         
         $asgiResponse = $handler->__invoke($asgiEnv);
-        $lastModified = $asgiResponse[2]['Last-Modified'];
+        $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
+        $lastModified = $headers['Last-Modified'];
         
         $asgiEnv = [
             'REQUEST_METHOD' => 'GET',

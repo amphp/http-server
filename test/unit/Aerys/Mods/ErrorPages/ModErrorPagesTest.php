@@ -57,10 +57,7 @@ class ModErrorPagesTest extends PHPUnit_Framework_TestCase {
         $expectedResult = [
             $status = 404,
             $reason = 'Not Found',
-            $headers = [
-                'CONTENT-LENGTH' => $contentLength,
-                'CONTENT-TYPE' => $contentType
-            ],
+            $headers = "Content-Type: {$contentType}",
             $expectedBody
         ];
         

@@ -40,14 +40,14 @@ class ModLogTest extends PHPUnit_Framework_TestCase {
             'HTTP_REFERER' => 'http://www.google.com'
         ];
         
+        $headers = "\r\nDate: " . gmdate('D, d M Y H:i:s') . ' UTC' .
+            "\r\nContent-Length: 4" .
+            "\r\nContent-Type: text/plain; charset=iso-8859-1";
+        
         $asgiResponse = [
             $status = 200,
             $reason = 'OK',
-            $headers = [
-                'DATE' => date(Server::HTTP_DATE),
-                'CONTENT-LENGTH' => 4,
-                'CONTENT-TYPE' => 'text/plain; charset=iso-8859-1'
-            ],
+            $headers,
             $body = 'test'
         ];
         
@@ -59,10 +59,7 @@ class ModLogTest extends PHPUnit_Framework_TestCase {
         $expectedOutput = 
             $asgiEnv['REMOTE_ADDR'] . ' - - [$$$time$$$] "' .
             $asgiEnv['REQUEST_METHOD'] . ' ' . $asgiEnv['REQUEST_URI'] . ' HTTP/' .
-            $asgiEnv['SERVER_PROTOCOL'] . '" ' . $asgiResponse[0] . ' ';
-        
-        $expectedOutput.= $asgiResponse[2]['CONTENT-LENGTH'];
-        $expectedOutput.= PHP_EOL;
+            $asgiEnv['SERVER_PROTOCOL'] . '" ' . $asgiResponse[0] . ' 4' . PHP_EOL;
         
         $return[] = [$logs, $asgiEnv, $asgiResponse, $expectedOutput];
         
@@ -103,35 +100,4 @@ class ModLogTest extends PHPUnit_Framework_TestCase {
     }
     
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

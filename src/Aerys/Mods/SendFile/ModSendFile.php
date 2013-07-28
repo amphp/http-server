@@ -21,26 +21,45 @@ class ModSendFile implements BeforeResponseMod {
     }
     
     function beforeResponse($requestId) {
-        $originalHeaders = $this->server->getResponse($requestId)[2];
+        $headers = $this->server->getResponse($requestId)[2];
+        $headers = $this->stringifyResponseHeaders($headers);
         
-        if (empty($originalHeaders['X-SENDFILE'])) {
-            return;
+        $sfPos = stripos($headers, "\r\nX-SendFile:");
+        
+        if ($sfPos !== FALSE) {
+            $lineEndPos = strpos($headers, "\r\n", $sfPos + 2);
+            $headerLine = substr($headers, $sfPos + 2, $lineEndPos - $sfPos);
+            $filePath = '/' . trim(explode(':', $headerLine, 2)[1], "\r\n/\\ ");
+            
+            /*
+            // @TODO Retain original headers and merge them with the new headers from DocRoot
+            $start = substr($headers, 0, $sfPos);
+            $end = substr($headers, $lineEndPos);
+            $headers = $start . $end;
+            */
+            
+            $asgiEnv = $this->server->getRequest($requestId);
+            
+            $asgiResponse = $this->docRootHandler->__invoke($asgiEnv);
+            
+            $this->server->setResponse($requestId, $asgiResponse);
+        }
+    }
+    
+    private function stringifyResponseHeaders($headers) {
+        if (!$headers) {
+            $headers = '';
+        } elseif (is_array($headers)) {
+            $headers = implode("\r\n", array_map('trim', $headers));
+        } elseif (is_string($headers)) {
+            $headers = implode("\r\n", array_map('trim', explode("\n", $headers)));
+        } else {
+            throw new \UnexpectedValueException(
+                'Invalid response headers'
+            );
         }
         
-        $filePath = '/' . ltrim($originalHeaders['X-SENDFILE'], '/\\');
-        
-        // Prevent the X-SENDFILE header from showing up in the final response. We also need to
-        // zap pre-existing Content-Length headers so they don't override the new values; all other
-        // headers will override the file system handler's ASGI response values.
-        unset($originalHeaders['X-SENDFILE'], $originalHeaders['CONTENT-LENGTH']);
-        
-        $asgiEnv = $this->server->getRequest($requestId);
-        
-        $docRootHandlerResponse    = $this->docRootHandler->__invoke($asgiEnv);
-        $docRootHandlerHeaders     = array_change_key_case($docRootHandlerResponse[2], CASE_UPPER);
-        $docRootHandlerResponse[2] = array_merge($docRootHandlerHeaders, $originalHeaders);
-        
-        $this->server->setResponse($requestId, $docRootHandlerResponse);
+        return $headers;
     }
+    
 }
-

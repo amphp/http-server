@@ -145,8 +145,8 @@ class ModLimit implements OnHeadersMod {
     private function limit($requestId) {
         $body = "<html><body><h1>429 Too Many Requests</h1></body></html>";
         $headers = [
-            'Content-Type' => 'text\html',
-            'Content-Length' => strlen($body)
+            'Content-Type: text\html',
+            'Content-Length: ' . strlen($body)
         ];
         $asgiResponse = [Status::TOO_MANY_REQUESTS, Reason::HTTP_429, $headers, $body];
         
