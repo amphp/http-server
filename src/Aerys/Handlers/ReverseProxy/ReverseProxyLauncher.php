@@ -12,7 +12,9 @@ class ReverseProxyLauncher extends ConfigLauncher {
     private $configDefaults = [
         'backends' => NULL,
         'proxyPassHeaders' => NULL,
-        'maxPendingRequests' => NULL
+        'maxPendingRequests' => NULL,
+        'debug' => NULL,
+        'debugColors' => NULL
     ];
     
     function launch(Injector $injector) {

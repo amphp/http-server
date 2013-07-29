@@ -58,7 +58,18 @@ date_default_timezone_set('UTC');
             'X-Forwarded-For' => '$remoteAddr', // Available vars: [$host, $serverName, $serverAddr, $serverPort, $remoteAddr]
             'X-Real-Ip'       => '$serverAddr'
         ],
-        'maxPendingRequests' => 1500            // OPTIONAL: defaults to 1500 if not specified
+        'maxPendingRequests'  => 1500,            // OPTIONAL: defaults to 1500 if not specified
+        'debug' => TRUE,
+        'debugColors' => TRUE
     ])
 ]])->start();
+
+
+
+
+
+
+
+
+
 

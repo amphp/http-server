@@ -14,15 +14,23 @@ class ReverseProxyHandler {
     
     private $reactor;
     private $server;
-    private $backends = [];
-    private $connectionAttempts = [];
+    private $backends = array();
+    private $connectionAttempts = array();
     private $backendConnectTimeout = 5;
     private $maxPendingRequests = 1500;
-    private $proxyPassHeaders = [];
+    private $proxyPassHeaders = array();
     private $ioGranularity = 262144;
     private $pendingRequests = 0;
+    private $debug = FALSE;
+    private $debugColors = FALSE;
+    private $ansiColors = array(
+        'red' => '1;31',
+        'yellow' => '1;33',
+        'green' => '1;32'
+    );
     private $badGatewayResponse;
     private $serviceUnavailableResponse;
+    
     
     function __construct(Reactor $reactor, Server $server, array $backends) {
         $this->reactor = $reactor;
@@ -44,6 +52,12 @@ class ReverseProxyHandler {
     
     function setOption($option, $value) {
         switch (strtolower($option)) {
+            case 'debug':
+                $this->setDebug($value);
+                break;
+            case 'debugcolors':
+                $this->setDebugColors($value);
+                break;
             case 'maxpendingrequests':
                 $this->setMaxPendingRequests($value);
                 break;
@@ -55,6 +69,14 @@ class ReverseProxyHandler {
                     "Unrecognized option: {$option}"
                 );
         }
+    }
+    
+    private function setDebug($boolFlag) {
+        $this->debug = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
+    }
+    
+    private function setDebugColors($boolFlag) {
+        $this->debugColors = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
     
     private function setMaxPendingRequests($count) {
@@ -74,12 +96,20 @@ class ReverseProxyHandler {
         $socket = @stream_socket_client($uri, $errNo, $errStr, $timeout, $flags);
         
         if ($socket || $errNo === SOCKET_EWOULDBLOCK) {
+            $debugMsg = NULL;
             $this->schedulePendingBackendTimeout($uri, $socket);
         } else {
-            $errMsg = "Connection to proxy backend {$uri} failed: [{$errNo}] {$errStr}\n";
-            fwrite($this->server->getErrorStream(), $errMsg);
+            $debugMsg = "PRX: Backend proxy connect failed ({$uri}): [{$errNo}] {$errStr}";
             $this->doExponentialBackoff($uri);
         }
+        
+        if ($debugMsg && $this->debug) {
+            $this->debug($debugMsg, 'yellow');
+        }
+    }
+    
+    private function debug($msg, $color = NULL) {
+        echo ($this->debugColors && $color) ? "\033[{$this->ansiColors[$color]}m{$msg}\n\033[0m" : $msg;
     }
     
     private function schedulePendingBackendTimeout($uri, $socket) {
@@ -97,15 +127,18 @@ class ReverseProxyHandler {
         unset($this->pendingBackendConnections[$uri]);
         
         if ($trigger === Reactor::TIMEOUT) {
-            $errMsg = "Connection to proxy backend {$uri} failed: connect attempt timed out\n";
-            fwrite($this->server->getErrorStream(), $errMsg);
+            $debugMsg = "PRX: Backend proxy connect failed ({$uri}): connect attempt timed out";
             $this->doExponentialBackoff($uri);
         } elseif ($this->workaroundAsyncConnectBug($socket)) {
+            $debugMsg = NULL;
             $this->finalizeNewBackendConnection($uri, $socket);
         } else {
-            $errMsg = "Connection to proxy backend {$uri} failed\n";
-            fwrite($this->server->getErrorStream(), $errMsg);
+            $debugMsg = "PRX: Backend proxy connect failed ({$uri}): could not connect";
             $this->doExponentialBackoff($uri);
+        }
+        
+        if ($debugMsg && $this->debug) {
+            $this->debug($debugMsg, 'yellow');
         }
     }
     
@@ -118,7 +151,7 @@ class ReverseProxyHandler {
      * @link https://bugs.php.net/bug.php?id=64803
      */
     private function workaroundAsyncConnectBug($socket) {
-        return (@fwrite($socket, "\n") === 1);
+        return (@fwrite($socket, "\n") === 1) && !@feof($socket);
     }
     
     private function doExponentialBackoff($uri) {
@@ -139,6 +172,11 @@ class ReverseProxyHandler {
     
     private function finalizeNewBackendConnection($uri, $socket) {
         unset($this->connectionAttempts[$uri]);
+        
+        if ($this->debug) {
+            $debugMsg = "Connected to backend server: {$uri}";
+            $this->debug($debugMsg, 'green');
+        }
         
         stream_set_blocking($socket, FALSE);
         
@@ -179,9 +217,7 @@ class ReverseProxyHandler {
     private function parseBackendData(Backend $backend, $data) {
         while ($responseArr = $backend->parser->parse($data)) {
             $this->assignParsedResponse($backend, $responseArr);
-            
             $parseBuffer = ltrim($backend->parser->getBuffer(), "\r\n");
-            
             if ($parseBuffer || $parseBuffer === '0') {
                 $data = '';
             } else {
@@ -210,18 +246,31 @@ class ReverseProxyHandler {
         
         $this->pendingRequests--;
         
+        if ($this->debug) {
+            $requestUri = $this->server->getRequest($requestId)['REQUEST_URI'];
+            $msg = "PRX: Backend response ({$backend->uri}): {$requestUri}\n";
+            $msg.= "-------------------------------------------------------\n";
+            $msg.= $responseArr['trace'];
+            $msg.= "-------------------------------------------------------\n";
+            $this->debug($msg);
+        }
+        
         $this->server->setResponse($requestId, $asgiResponse);
     }
     
     private function onDeadBackend(Backend $backend) {
+        if ($this->debug) {
+            $debugMsg = "PRX: Backend server closed connection: {$backend->uri}";
+            $this->debug($debugMsg, 'red');
+        }
+        
         $unsentRequestIds = $backend->requestQueue ? array_keys($backend->requestQueue) : [];
         $proxiedRequestIds = $backend->responseQueue;
         $requestIds = array_merge($unsentRequestIds, $proxiedRequestIds);
         
         if ($requestIds) {
             foreach ($requestIds as $requestId) {
-                $this->server->setResponse($requestId, $this->badGatewayResponse);
-                $this->pendingRequests--;
+                $this->doBadGatewayResponse($requestId);
             }
         }
         
@@ -234,6 +283,15 @@ class ReverseProxyHandler {
         unset($this->backends[$backend->uri]);
         
         $this->connect($backend->uri);
+    }
+    
+    private function doBadGatewayResponse($requestId) {
+        if ($this->debug) {
+            $debugMsg = "PRX: Sending 502 for request ID {$requestId} (lost backend connection)";
+            $this->debug($debugMsg);
+        }
+        $this->server->setResponse($requestId, $this->badGatewayResponse);
+        $this->pendingRequests--;
     }
     
     /**
