@@ -4,6 +4,7 @@ namespace Aerys\Handlers\ReverseProxy;
 
 use Amp\Reactor,
     Aerys\Server,
+    Aerys\Parsing\Parser,
     Aerys\Parsing\MessageParser,
     Aerys\Parsing\PeclMessageParser,
     Aerys\Writing\Writer,
@@ -14,33 +15,37 @@ class ReverseProxyHandler {
     
     private $reactor;
     private $server;
-    private $backends = array();
-    private $connectionAttempts = array();
+    private $backends;
+    private $pendingBackends;
+    private $connectAttemptCounts = [];
     private $backendConnectTimeout = 5;
     private $maxPendingRequests = 1500;
-    private $proxyPassHeaders = array();
+    private $proxyPassHeaders = [];
     private $ioGranularity = 262144;
     private $pendingRequests = 0;
     private $debug = FALSE;
     private $debugColors = FALSE;
-    private $ansiColors = array(
+    private $ansiColors = [
         'red' => '1;31',
-        'yellow' => '1;33',
-        'green' => '1;32'
-    );
+        'green' => '1;32',
+        'yellow' => '1;33'
+    ];
     private $badGatewayResponse;
     private $serviceUnavailableResponse;
-    
     
     function __construct(Reactor $reactor, Server $server, array $backends) {
         $this->reactor = $reactor;
         $this->server = $server;
+        $this->backends = new \SplObjectStorage;
+        $this->pendingBackends = new \SplObjectStorage;
         $this->canUsePeclParser = extension_loaded('http');
         $this->badGatewayResponse = $this->generateBadGatewayResponse();
         $this->serviceUnavailableResponse = $this->generateServiceUnavailableResponse();
         
         foreach ($backends as $backendUri) {
-            $this->connect($backendUri);
+            for ($i=0;$i<4;$i++) {
+                $this->connect($backendUri);
+            }
         }
     }
     
@@ -97,7 +102,10 @@ class ReverseProxyHandler {
         
         if ($socket || $errNo === SOCKET_EWOULDBLOCK) {
             $debugMsg = NULL;
-            $this->schedulePendingBackendTimeout($uri, $socket);
+            $backend = new Backend;
+            $backend->uri = $uri;
+            $backend->socket = $socket;
+            $this->schedulePendingBackendTimeout($backend);
         } else {
             $debugMsg = "PRX: Backend proxy connect failed ({$uri}): [{$errNo}] {$errStr}";
             $this->doExponentialBackoff($uri);
@@ -109,29 +117,35 @@ class ReverseProxyHandler {
     }
     
     private function debug($msg, $color = NULL) {
-        echo ($this->debugColors && $color) ? "\033[{$this->ansiColors[$color]}m{$msg}\n\033[0m" : $msg;
+        echo ($this->debugColors && $color)
+            ? "\033[{$this->ansiColors[$color]}m{$msg}\n\033[0m"
+            : "{$msg}\n";
     }
     
-    private function schedulePendingBackendTimeout($uri, $socket) {
-        $subscription = $this->reactor->onWritable($socket, function($socket, $trigger) use ($uri) {
-            $this->determinePendingConnectionResult($uri, $socket, $trigger);
+    private function schedulePendingBackendTimeout(Backend $backend) {
+        $sock = $backend->socket;
+        $subscription = $this->reactor->onWritable($sock, function($sock, $trigger) use ($backend) {
+            $this->determinePendingConnectionResult($backend, $trigger);
         }, $this->backendConnectTimeout);
         
-        $this->pendingBackendSubscriptions[$uri] = $subscription;
+        $this->pendingBackends->attach($backend, $subscription);
     }
     
-    private function determinePendingConnectionResult($uri, $socket, $trigger) {
-        $subscription = $this->pendingBackendSubscriptions[$uri];
+    private function determinePendingConnectionResult(Backend $backend, $trigger) {
+        $subscription = $this->pendingBackends->offsetGet($backend);
         $subscription->cancel();
         
-        unset($this->pendingBackendConnections[$uri]);
+        $this->pendingBackends->detach($backend);
+        
+        $uri = $backend->uri;
+        $socket = $backend->socket;
         
         if ($trigger === Reactor::TIMEOUT) {
             $debugMsg = "PRX: Backend proxy connect failed ({$uri}): connect attempt timed out";
             $this->doExponentialBackoff($uri);
         } elseif ($this->workaroundAsyncConnectBug($socket)) {
             $debugMsg = NULL;
-            $this->finalizeNewBackendConnection($uri, $socket);
+            $this->finalizeNewBackendConnection($backend);
         } else {
             $debugMsg = "PRX: Backend proxy connect failed ({$uri}): could not connect";
             $this->doExponentialBackoff($uri);
@@ -155,11 +169,11 @@ class ReverseProxyHandler {
     }
     
     private function doExponentialBackoff($uri) {
-        if (isset($this->connectionAttempts[$uri])) {
-            $maxWait = ($this->connectionAttempts[$uri] * 2) - 1;
-            $this->connectionAttempts[$uri]++;
+        if (isset($this->connectAttemptCounts[$uri])) {
+            $maxWait = ($this->connectAttemptCounts[$uri] * 2) - 1;
+            $this->connectAttemptCounts[$uri]++;
         } else {
-            $this->connectionAttempts[$uri] = $maxWait = 1;
+            $this->connectAttemptCounts[$uri] = $maxWait = 1;
         }
         
         if ($secondsUntilRetry = rand(0, $maxWait)) {
@@ -170,19 +184,15 @@ class ReverseProxyHandler {
         }
     }
     
-    private function finalizeNewBackendConnection($uri, $socket) {
-        unset($this->connectionAttempts[$uri]);
+    private function finalizeNewBackendConnection(Backend $backend) {
+        unset($this->connectAttemptCounts[$backend->uri]);
         
         if ($this->debug) {
-            $debugMsg = "Connected to backend server: {$uri}";
+            $debugMsg = "PRX: Connected to backend server: {$backend->uri}";
             $this->debug($debugMsg, 'green');
         }
         
-        stream_set_blocking($socket, FALSE);
-        
-        $backend = new Backend;
-        $backend->uri = $uri;
-        $backend->socket = $socket;
+        stream_set_blocking($backend->socket, FALSE);
         
         $parser = $this->canUsePeclParser
             ? new PeclMessageParser(MessageParser::MODE_RESPONSE)
@@ -195,13 +205,13 @@ class ReverseProxyHandler {
         
         $backend->parser = $parser;
         
-        $readSubscription = $this->reactor->onReadable($socket, function() use ($backend) {
+        $readSubscription = $this->reactor->onReadable($backend->socket, function() use ($backend) {
             $this->readFromBackend($backend);
         });
         
         $backend->readSubscription = $readSubscription;
         
-        $this->backends[$uri] = $backend;
+        $this->backends->attach($backend);
     }
     
     private function readFromBackend(Backend $backend) {
@@ -248,10 +258,11 @@ class ReverseProxyHandler {
         
         if ($this->debug) {
             $requestUri = $this->server->getRequest($requestId)['REQUEST_URI'];
-            $msg = "PRX: Backend response ({$backend->uri}): {$requestUri}\n";
-            $msg.= "-------------------------------------------------------\n";
+            $msg = "PRX: Backend response ({$backend->uri}): {$requestUri}";
+            $this->debug($msg, 'green');
+            $msg = "-------------------------------------------------------\n";
             $msg.= $responseArr['trace'];
-            $msg.= "-------------------------------------------------------\n";
+            $msg.= "-------------------------------------------------------";
             $this->debug($msg);
         }
         
@@ -264,15 +275,7 @@ class ReverseProxyHandler {
             $this->debug($debugMsg, 'red');
         }
         
-        $unsentRequestIds = $backend->requestQueue ? array_keys($backend->requestQueue) : [];
-        $proxiedRequestIds = $backend->responseQueue;
-        $requestIds = array_merge($unsentRequestIds, $proxiedRequestIds);
-        
-        if ($requestIds) {
-            foreach ($requestIds as $requestId) {
-                $this->doBadGatewayResponse($requestId);
-            }
-        }
+        $this->backends->detach($backend);
         
         $backend->readSubscription->cancel();
         
@@ -280,9 +283,35 @@ class ReverseProxyHandler {
             $backend->writeSubscription->cancel();
         }
         
-        unset($this->backends[$backend->uri]);
+        if ($backend->parser->getState() === Parser::BODY_IDENTITY_EOF) {
+            $responseArr = $backend->parser->getParsedMessageArray();
+            $this->assignParsedResponse($backend, $responseArr);
+        }
+        
+        $requestIdsToFail = $backend->responseQueue;
+        $hasUnsentRequests = (bool) $backend->requestQueue;
+        
+        if ($hasUnsentRequests && $this->backends->count()) {
+            $this->reallocateRequestsFromDeadBackend($backend);
+        } elseif ($hasUnsentRequests) {
+            $requestIdsToFail = array_merge($backend->requestQueue, $proxiedRequestIds);
+        }
+        
+        foreach ($requestIdsToFail as $requestId) {
+            $this->doBadGatewayResponse($requestId);
+        }
         
         $this->connect($backend->uri);
+    }
+    
+    private function reallocateRequests(Backend $deadBackend) {
+        if ($this->backends->count()) {
+            foreach ($deadBackend->requestQueue as $requestId => $asgiEnv) {
+                $backend = $this->selectBackend();
+                $this->enqueueRequest($backend, $requestId, $asgiEnv);
+                $this->writeRequestsToBackend($backend);
+            }
+        }
     }
     
     private function doBadGatewayResponse($requestId) {
@@ -302,7 +331,7 @@ class ReverseProxyHandler {
      * @return void
      */
     function __invoke($asgiEnv, $requestId) {
-        if (!$this->backends || $this->maxPendingRequests < $this->pendingRequests) {
+        if (!$this->backends->count() || $this->maxPendingRequests < $this->pendingRequests) {
             $this->server->setResponse($requestId, $this->serviceUnavailableResponse);
         } else {
             $backend = $this->selectBackend();
@@ -312,12 +341,12 @@ class ReverseProxyHandler {
     }
     
     private function selectBackend() {
-        if (!$backend = current($this->backends)) {
-            reset($this->backends);
-            $backend = current($this->backends);
+        if (!$backend = $this->backends->current()) {
+            $this->backends->rewind();
+            $backend = $this->backends->current();
         }
         
-        next($this->backends);
+        $this->backends->next();
         
         return $backend;
     }
