@@ -56,7 +56,7 @@ class ModSendFileTest extends PHPUnit_Framework_TestCase {
             $body = NULL
         ];
         
-        $fakeAsgiEnv = ['placeholder for a real ASGI environment array'];
+        $fakeAsgiEnv = ['REQUEST_URI' => '/test.txt'];
         
         $filesysAsgiResponse = [
             $status = 200,

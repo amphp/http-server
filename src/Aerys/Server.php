@@ -823,6 +823,7 @@ class Server {
             $rawHeaders .= " {$reason}";
         }
         $rawHeaders .= "\r\n{$headers}\r\n\r\n";
+        
         $responseWriter = $this->writerFactory->make($client->socket, $rawHeaders, $body, $protocol);
         $client->pipeline[$requestId] = $responseWriter;
     }
@@ -902,7 +903,7 @@ class Server {
             $body = NULL;
         }
         
-        $headers = ltrim($headers);
+        $headers = trim($headers);
         
         $client->closeAfterSend[] = $close;
         
@@ -929,9 +930,9 @@ class Server {
         if (!$headers) {
             $headers = '';
         } elseif (is_array($headers)) {
-            $headers = implode("\r\n", array_map('trim', $headers));
+            $headers = "\r\n" . implode("\r\n", array_map('trim', $headers));
         } elseif (is_string($headers)) {
-            $headers = implode("\r\n", array_map('trim', explode("\n", $headers)));
+            $headers = "\r\n" . implode("\r\n", array_map('trim', explode("\n", $headers)));
         } else {
             throw new \UnexpectedValueException(
                 'Invalid response headers'

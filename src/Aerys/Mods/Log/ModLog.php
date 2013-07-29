@@ -136,7 +136,10 @@ class ModLog implements AfterResponseMod {
             $contentLength = '-';
         } else {
             $lineEndPos = strpos($headers, "\r\n", $clPos + 2);
-            $headerLine = substr($headers, $clPos + 2, $lineEndPos - $clPos);
+            $headerLine = $lineEndPos
+                ? substr($headers, $clPos + 2, $lineEndPos - $clPos)
+                : substr($headers, $clPos + 2);
+            
             $contentLength = trim(explode(':', $headerLine, 2)[1]);
         }
         

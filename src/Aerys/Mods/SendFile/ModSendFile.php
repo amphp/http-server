@@ -39,6 +39,9 @@ class ModSendFile implements BeforeResponseMod {
             */
             
             $asgiEnv = $this->server->getRequest($requestId);
+            $oldRequestUri = $asgiEnv['REQUEST_URI'];
+            $newRequestUri = '/' . ltrim($filePath, '/');
+            $asgiEnv['REQUEST_URI'] = $newRequestUri;
             
             $asgiResponse = $this->docRootHandler->__invoke($asgiEnv);
             
@@ -50,9 +53,9 @@ class ModSendFile implements BeforeResponseMod {
         if (!$headers) {
             $headers = '';
         } elseif (is_array($headers)) {
-            $headers = implode("\r\n", array_map('trim', $headers));
+            $headers = "\r\n" . implode("\r\n", array_map('trim', $headers)) . "\r\n";
         } elseif (is_string($headers)) {
-            $headers = implode("\r\n", array_map('trim', explode("\n", $headers)));
+            $headers = "\r\n" . implode("\r\n", array_map('trim', explode("\n", $headers))) .  "\r\n";
         } else {
             throw new \UnexpectedValueException(
                 'Invalid response headers'
