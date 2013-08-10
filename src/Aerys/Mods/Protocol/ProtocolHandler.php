@@ -40,16 +40,6 @@ interface ProtocolHandler {
     function onData($socketId, $data);
     
     /**
-     * Invoked if no data arrives on the socket for an optionally specified length of time
-     * 
-     * The method is only used if ModProtocol is assigned a value greater than -1 via the
-     * 'socketReadTimeout' option.
-     * 
-     * @param string $socketId
-     */
-    function onTimeout($socketId);
-    
-    /**
      * Invoked after a socket connection has been closed
      * 
      * A connection is autmatically closed if the socket connection is severed. This method will

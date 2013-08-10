@@ -1,7 +1,7 @@
 <?php
 
 require __DIR__ . '/vendor/Auryn/autoload.php';
-require __DIR__ . '/vendor/Amp/autoload.php';
+require __DIR__ . '/vendor/Alert/autoload.php';
 
 spl_autoload_register(function($class) {
     if (0 === strpos($class, 'Aerys\\')) {

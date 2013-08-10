@@ -100,6 +100,7 @@ class ServerIntegrationTest extends PHPUnit_Framework_TestCase {
             "Content-Length: 4\r\n" .
             "Content-Type: text/plain; charset=utf-8\r\n" .
             "Host: " . INTEGRATION_SERVER_ADDR . "\r\n" .
+            "Expect: 100-continue\r\n" .
             "Accept-Encoding: gzip, identity\r\n";
         
         $this->assertEquals($expectedResponseBody, $response->getBody());

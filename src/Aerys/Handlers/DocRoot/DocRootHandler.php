@@ -2,7 +2,7 @@
 
 namespace Aerys\Handlers\DocRoot;
 
-use Amp\Reactor,
+use Alert\Reactor,
     Aerys\Server,
     Aerys\Status,
     Aerys\Reason,
@@ -38,7 +38,7 @@ class DocRootHandler {
     private $memoryCacheMaxSize = 67108864;    // 64 MiB
     private $memoryCacheMaxFileSize = 1048576; //  1 MiB
     private $memoryCacheCurrentSize = 0;
-    private $staleCacheClearanceSubscription;
+    private $staleCacheWatcher;
     
     function __construct(Reactor $reactor, $docRoot) {
         $docRoot = str_replace('\\', '/', $docRoot);
@@ -48,7 +48,7 @@ class DocRootHandler {
         $this->assignDefaultMimeTypes();
         $this->multipartBoundary = uniqid('', TRUE);
         
-        $this->staleCacheClearanceSubscription = $reactor->schedule(function() {
+        $this->staleCacheWatcher = $reactor->repeat(function() {
             $this->cleanCache();
         }, $interval = 1);
     }

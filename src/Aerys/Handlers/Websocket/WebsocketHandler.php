@@ -2,7 +2,7 @@
 
 namespace Aerys\Handlers\Websocket;
 
-use Amp\Reactor,
+use Alert\Reactor,
     Aerys\Status,
     Aerys\Reason,
     Aerys\Method,
@@ -17,8 +17,10 @@ class WebsocketHandler implements \Countable {
     private $frameStreamFactory;
     private $sessions = [];
     private $endpoints = [];
+    private $heartbeats = [];
+    private $heartbeatWatcher;
+    private $heartbeatWatchInterval = 1;
     
-    private $socketReadTimeout = 30;
     private $queuedPingLimit = 3;
     private $closeResponseTimeout = 5;
     private $autoFrameSize = 65365;
@@ -37,6 +39,10 @@ class WebsocketHandler implements \Countable {
         $this->reactor = $reactor;
         $this->server = $server;
         $this->frameStreamFactory = $frameStreamFactory ?: new FrameStreamFactory;
+        
+        $this->heartbeatWatcher = $reactor->repeat(function() {
+            $this->sendHeartbeats();
+        }, $this->heartbeatWatchInterval);
     }
     
     /**
@@ -164,6 +170,9 @@ class WebsocketHandler implements \Countable {
         return $recipients;
     }
     
+    /**
+     * @TODO Add documentation
+     */
     function registerEndpoint($requestUri, Endpoint $endpoint, array $options = []) {
         if ($requestUri[0] !== '/') {
             throw new \InvalidArgumentException(
@@ -401,11 +410,17 @@ class WebsocketHandler implements \Countable {
             'validateUtf8Text' => $session->endpointOptions['validateUtf8Text']
         ]);
         
-        $readTimeout = $session->endpointOptions['heartbeatPeriod'] ?: $this->socketReadTimeout;
-        $onReadable = function($socket, $trigger) use ($session) { $this->read($session, $trigger); };
-        $session->readSubscription = $this->reactor->onReadable($socket, $onReadable, $readTimeout);
+        $onReadable = function() use ($session) { $this->doSocketRead($session); };
+        $session->readWatcher = $this->reactor->onReadable($socket, $onReadable);
+        
+        $onWritable = function() use ($session) { $this->doSessionWrite($session); };
+        $session->writeWatcher = $this->reactor->onWritable($socket, $onWritable, $enableNow = FALSE);
         
         $this->sessions[$socketId] = $session;
+        
+        $heartbeatPeriod = $endpointOptions['heartbeatPeriod'];
+        $session->heartbeatPeriod = $heartbeatPeriod > 0 ? $heartbeatPeriod : 0;
+        $this->renewHeartbeat($session);
         
         $this->onOpen($session);
     }
@@ -423,30 +438,9 @@ class WebsocketHandler implements \Countable {
         }
     }
     
-    private function read(Session $session, $trigger) {
-        if ($trigger === Reactor::READ) {
-            $this->doSocketRead($session);
-        } elseif ($session->endpointOptions['heartbeatPeriod']) {
-            $this->doHeartbeat($session);
-        }
-    }
-    
-    /**
-     * At the time of this writing some browsers (I'm looking at you, Chrome) will not respond
-     * to PING frames that don't carry application data in the frame payload. To correct for this,
-     * we ensure there is always a payload attached to each outbound PING frame.
-     * 
-     * @link http://tools.ietf.org/html/rfc6455#section-5.5.2
-     */
-    private function doHeartbeat(Session $session) {
-        $data = pack('S', rand(0, 32768));
-        $pingFrame = new Frame(Frame::FIN, Frame::RSV_NONE, Frame::OP_PING, $data);
-        $session->frameWriter->enqueue($pingFrame);
-        $this->doSessionWrite($session);
-    }
-    
     private function doSocketRead(Session $session) {
         $data = @fread($session->socket, $this->socketReadGranularity);
+        $this->renewHeartbeat($session);
         
         if ($data || $data === '0') {
             $session->dataLastReadAt = time();
@@ -613,10 +607,13 @@ class WebsocketHandler implements \Countable {
             }
             
             if ($isWritingComplete) {
-                $this->disableWriteSubscription($session);
+                $this->reactor->disable($session->writeWatcher);
             } else {
-                $this->enableWriteSubscription($session);
+                $this->reactor->enable($session->writeWatcher);
             }
+            
+            $this->renewHeartbeat($session);
+            
         } catch (FrameWriteException $e) {
             $this->onWriteFailure($session, $e);
         }
@@ -658,7 +655,7 @@ class WebsocketHandler implements \Countable {
             $this->onClose($session, $session->pendingCloseCode, $session->pendingCloseReason);
         } else {
             @stream_socket_shutdown($session->socket, STREAM_SHUT_WR);
-            $session->closeTimeoutSubscription = $this->reactor->once(function() use ($session) {
+            $session->closeTimeoutWatcher = $this->reactor->once(function() use ($session) {
                 $code = Codes::POLICY_VIOLATION;
                 $reason = 'CLOSE response not received from client within the allowed time period';
                 $this->onClose($session, $code, $reason);
@@ -781,7 +778,7 @@ class WebsocketHandler implements \Countable {
     }
     
     private function onEndpointError(EndpointException $e) {
-        // @TODO Incorporate throwing vs. logging according to Server::$verbosity level
+        // @TODO Incorporate throwing vs. logging according to Server::$verbosity level (maybe)
         @fwrite($this->server->getErrorStream(), $e);
     }
     
@@ -802,32 +799,52 @@ class WebsocketHandler implements \Countable {
     private function unloadSession(Session $session) {
         $this->server->closeExportedSocket($session->socket);
         
-        $session->readSubscription->cancel();
-        if ($session->writeSubscription) {
-            $session->writeSubscription->cancel();
+        $this->reactor->cancel($session->readWatcher);
+        $this->reactor->cancel($session->writeWatcher);
+        
+        if ($session->closeTimeoutWatcher) {
+            $this->reactor->cancel($session->closeTimeoutWatcher);
         }
         
-        if ($session->closeTimeoutSubscription) {
-            $session->closeTimeoutSubscription->cancel();
-        }
+        $socketId = $session->id;
         
-        unset($this->sessions[$session->id]);
+        unset(
+            $this->sessions[$socketId],
+            $this->heartbeats[$socketId]
+        );
     }
     
-    private function enableWriteSubscription(Session $session) {
-        if ($session->writeSubscription) {
-            $session->writeSubscription->enable();
-        } else {
-            $subscription = $this->reactor->onWritable($session->socket, function() use ($session) {
-                $this->doSessionWrite($session);
-            });
-            $session->writeSubscription = $subscription;
+    private function sendHeartbeats() {
+        $now = time();
+        foreach ($this->heartbeats as $socketId => $expiryTime) {
+            if ($expiryTime <= $now) {
+                $session = $this->sessions[$socketId];
+                $this->sendHeartbeatPing($session);
+            } else {
+                break;
+            }
         }
     }
     
-    private function disableWriteSubscription(Session $session) {
-        if ($session->writeSubscription) {
-            $session->writeSubscription->disable();
+    /**
+     * At the time of this writing some browsers (I'm looking at you, Chrome) will not respond
+     * to PING frames that don't carry application data in the frame payload. To correct for this,
+     * we ensure there is always a payload attached to each outbound PING frame.
+     * 
+     * @link http://tools.ietf.org/html/rfc6455#section-5.5.2
+     */
+    private function sendHeartbeatPing(Session $session) {
+        $data = pack('S', rand(0, 32768));
+        $pingFrame = new Frame(Frame::FIN, Frame::RSV_NONE, Frame::OP_PING, $data);
+        $session->frameWriter->enqueue($pingFrame);
+        $this->doSessionWrite($session);
+    }
+    
+    private function renewHeartbeat(Session $session) {
+        if ($session->heartbeatPeriod) {
+            $socketId = $session->id;
+            unset($this->heartbeats[$socketId]);
+            $this->heartbeats[$socketId] = time() + $session->heartbeatPeriod;
         }
     }
     

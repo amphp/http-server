@@ -18,7 +18,7 @@ class ModSendFileTest extends PHPUnit_Framework_TestCase {
     }
     
     function testBeforeResponseTakesNoActionIfMissingSendFileHeader() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', ['getResponse'], [$reactor]);
         $filesysHandler = $this->getMock('Aerys\Handlers\DocRoot\DocRootHandler', NULL, [$reactor, 'vfs://root']);
         
@@ -40,7 +40,7 @@ class ModSendFileTest extends PHPUnit_Framework_TestCase {
     }
     
     function testBeforeResponseAssignsFileResourceOnSendFileHeaderMatch() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'getResponse', 'setResponse'], [$reactor]);
         $filesysHandler = $this->getMock('Aerys\Handlers\DocRoot\DocRootHandler', ['__invoke'], [$reactor, 'vfs://root']);
         

@@ -10,7 +10,7 @@ class ModLimitTest extends PHPUnit_Framework_TestCase {
      * @expectedException \InvalidArgumentException
      */
     function testConstructorThrowsOnEmptyLimitsArray() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', NULL, [$reactor]);
         
         $mod = new ModLimit($server, []);
@@ -21,7 +21,7 @@ class ModLimitTest extends PHPUnit_Framework_TestCase {
      * @dataProvider provideInvalidConfigArrays
      */
     function testConstructorThrowsExceptionOnInvalidConfig($badArrayConfig) {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         $mod = new ModLimit($server, $badArrayConfig);
     }
@@ -65,7 +65,7 @@ class ModLimitTest extends PHPUnit_Framework_TestCase {
     }
     
     function testOnHeaders() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         
         $requestId = 42;
@@ -96,7 +96,7 @@ class ModLimitTest extends PHPUnit_Framework_TestCase {
     }
     
     function testOnHeadersRateLimitsExcessiveRequests() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         
         $requestId = 42;

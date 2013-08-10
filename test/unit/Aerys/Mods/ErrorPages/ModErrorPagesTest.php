@@ -22,7 +22,7 @@ class ModErrorPagesTest extends PHPUnit_Framework_TestCase {
      * @expectedException RuntimeException
      */
     function testConstructorThrowsExceptionOnUnreadableFile($filePath) {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', NULL, [$reactor]);
         $options = [404 => [$filePath, 'text/html']];
         $mod = new ModErrorPages($server, $options);
@@ -36,7 +36,7 @@ class ModErrorPagesTest extends PHPUnit_Framework_TestCase {
     }
     
     function testBeforeResponse() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', ['getResponse', 'setResponse'], [$reactor]);
         
         $replacementFilePath = 'vfs://root/404.html';

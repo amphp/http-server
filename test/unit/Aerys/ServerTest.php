@@ -6,7 +6,7 @@ use Aerys\Server,
 class ServerTest extends PHPUnit_Framework_TestCase {
     
     function testOptionAccessors() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
         
         $options = [
@@ -40,7 +40,7 @@ class ServerTest extends PHPUnit_Framework_TestCase {
      * @expectedException DomainException
      */
     function testOptionAssignmentThrowsOnUnknownOption() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
         $server->setOption('some-totally-invalid-and-nonexistent-option', 42);
     }
@@ -49,7 +49,7 @@ class ServerTest extends PHPUnit_Framework_TestCase {
      * @expectedException DomainException
      */
     function testOptionRetrievalThrowsOnUnknownOption() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
         $server->getOption('some-totally-invalid-and-nonexistent-option');
     }
@@ -59,7 +59,7 @@ class ServerTest extends PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Invalid verbosity level: some-value
      */
     function testOptionAssignmentThrowsOnBadVerbosity() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
         $server->setOption('verbosity', 'some-value');
     }
@@ -69,13 +69,13 @@ class ServerTest extends PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Invalid default host; unknown host ID: some-value
      */
     function testOptionAssignmentThrowsOnBadDefaultHost() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
         $server->setOption('defaultHost', 'some-value');
     }
     
     function testOptionAssignmentDefaultHost() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
         
         $address = '127.0.0.1';
@@ -93,7 +93,7 @@ class ServerTest extends PHPUnit_Framework_TestCase {
     }
     
     function testOptionAssignmentKeepAliveTimeoutAssignsDefaultOnInvalidValue() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
         $server->setOption('keepAliveTimeout', 'some-value');
         
@@ -105,7 +105,7 @@ class ServerTest extends PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot enable socketSoLingerZero; PHP sockets extension required
      */
     function testOptionAssignmentSocketSoLingerZeroFailsIfNoSocketsExtension() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
         
         $reflObject = new ReflectionObject($server);

@@ -6,7 +6,7 @@ use Aerys\Mods\Websocket\ModWebsocket,
 class ModWebsocketTest extends PHPUnit_Framework_TestCase {
     
     function testOnRequestDelegatesCallsToWebsocketHandler() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'setResponse'], [$reactor]);
         $wsHandler = $this->getMock('StubWebsocketHandler', ['__invoke']);
         

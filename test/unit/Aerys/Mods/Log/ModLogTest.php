@@ -9,7 +9,7 @@ class ModLogTest extends PHPUnit_Framework_TestCase {
      * @expectedException InvalidArgumentException
      */
     function testConstructorThrowsOnEmptyLogsArray() {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', NULL, [$reactor]);
         $mod = new ModLog($server, $logs = []);
     }
@@ -72,7 +72,7 @@ class ModLogTest extends PHPUnit_Framework_TestCase {
      * @dataProvider provideAfterResponseExpectations
      */
     function testAfterResponse($logs, $asgiEnv, $asgiResponse, $expectedOutput) {
-        $reactor = $this->getMock('Amp\Reactor');
+        $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', ['getRequest', 'getResponse'], [$reactor]);
         
         $requestId = 42;

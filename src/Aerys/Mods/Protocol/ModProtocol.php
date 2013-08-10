@@ -2,7 +2,7 @@
 
 namespace Aerys\Mods\Protocol;
 
-use Amp\Reactor,
+use Alert\Reactor,
     Aerys\Server,
     Aerys\Mods\BeforeResponseMod;
 
@@ -18,7 +18,6 @@ class ModProtocol implements BeforeResponseMod {
     private $connections = [];
     
     private $canUseExtSockets;
-    private $socketReadTimeout = -1;
     private $socketReadGranularity = 65535;
     
     function __construct(Reactor $reactor, Server $server) {
@@ -61,9 +60,6 @@ class ModProtocol implements BeforeResponseMod {
      */
     function setOption($option, $value) {
         switch (strtolower($option)) {
-            case 'socketreadtimeout':
-                $this->setSocketReadTimeout($value);
-                break;
             case 'socketreadgranularity':
                 $this->setSocketReadGranularity($value);
                 break;
@@ -72,13 +68,6 @@ class ModProtocol implements BeforeResponseMod {
                     "Unkown option: {$option}"
                 );
         }
-    }
-    
-    private function setSocketReadTimeout($seconds) {
-        $this->socketReadTimeout = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
-            'default' => -1,
-            'min_range' => -1
-        ]]);
     }
     
     private function setSocketReadGranularity($bytes) {
@@ -136,12 +125,11 @@ class ModProtocol implements BeforeResponseMod {
         $conn->isEncrypted = $socketInfo['isEncrypted'];
         $conn->importedAt = $socketInfo['importedAt'] = microtime(TRUE);
         
-        $timeout = $this->socketReadTimeout;
-        $onReadable = function($socket, $trigger) use ($conn) {
-            $this->onReadableSocket($conn, $trigger);
-        };
+        $onReadable = function() use ($conn) { $this->onReadableSocket($conn); };
+        $onWritable = function() use ($conn) { $this->writeConnectionBuffer(($conn); };
         
-        $conn->readSubscription = $this->reactor->onReadable($socket, $onReadable, $timeout);
+        $conn->readWatcher = $this->reactor->onReadable($socket, $onReadable);
+        $conn->writeWatcher = $this->reactor->onWritable($socket, $onWritable, $enableNow = FALSE);
         $this->connections[$socketId] = $conn;
         $this->doHandlerOnOpen($conn, $openingMsg, $socketInfo);
     }
@@ -163,25 +151,14 @@ class ModProtocol implements BeforeResponseMod {
     private function doSocketClose(Connection $conn, $closeReason) {
         unset($this->connections[$conn->id]);
         
-        $conn->readSubscription->cancel();
-        
-        if ($conn->writeSubscription) {
-            $conn->writeSubscription->cancel();
-        }
+        $this->reactor->cancel($conn->readWatcher);
+        $this->reactor->cancel($conn->writeWatcher);
         
         $this->server->closeExportedSocket($conn->socket);
         $conn->handler->onClose($conn->id, $closeReason);
     }
     
-    private function onReadableSocket(Connection $conn, $trigger) {
-        if ($trigger === Reactor::READ) {
-            $this->doSocketRead($conn);
-        } else {
-            $this->doHandlerOnTimeout($conn);
-        }
-    }
-    
-    private function doSocketRead(Connection $conn) {
+    private function onReadableSocket(Connection $conn,) {
         $data = @fread($conn->socket, $this->socketReadGranularity);
         
         if ($data || $data === '0') {
@@ -195,15 +172,6 @@ class ModProtocol implements BeforeResponseMod {
     private function doHandlerOnData(Connection $conn, $data) {
         try {
             $conn->handler->onData($conn->id, $data);
-        } catch (\Exception $e) {
-            $this->logError($e);
-            $this->doSocketClose($conn, self::CLOSE_USER_ERROR);
-        }
-    }
-    
-    private function doHandlerOnTimeout(Connection $conn) {
-        try {
-            $conn->handler->onTimeout($conn->id);
         } catch (\Exception $e) {
             $this->logError($e);
             $this->doSocketClose($conn, self::CLOSE_USER_ERROR);
@@ -248,13 +216,11 @@ class ModProtocol implements BeforeResponseMod {
         
         if ($bytesWritten === $bytesRemaining) {
             $this->finalizeBufferWrite($conn, $onCompletion);
-        } elseif ($bytesWritten) {
+        } elseif (is_resource($client->socket)) {
             $data = substr($data, $bytesWritten);
             $bytesRemaining -= $bytesWritten;
             $conn->writeBuffer[0] = [$data, $bytesRemaining, $onCompletion];
-            $this->enableWriteSubscription($client);
-        } elseif (is_resource($client->socket)) {
-            $this->enableWriteSubscription($client);
+            $this->reactor->enable($conn->writeWatcher);
         } else {
             $this->doSocketClose($conn, self::CLOSE_SOCKET_GONE);
         }
@@ -264,9 +230,9 @@ class ModProtocol implements BeforeResponseMod {
         array_shift($conn->writeBuffer);
         
         if ($conn->writeBuffer) {
-            $this->enableWriteSubscription($client);
-        } elseif ($conn->writeSubscription) {
-            $conn->writeSubscription->disable();
+            $this->reactor->enable($conn->writeWatcher);
+        } else {
+            $this->reactor->disable($conn->writeWatcher);
         }
         
         if ($onCompletion) {
@@ -281,17 +247,6 @@ class ModProtocol implements BeforeResponseMod {
         } catch (\Exception $e) {
             $this->logError($e);
             $this->doSocketClose($conn, self::CLOSE_USER_ERROR);
-        }
-    }
-    
-    private function enableWriteSubscription(Connection $conn) {
-        if ($conn->writeSubscription) {
-            $conn->writeSubscription->enable();
-        } else {
-            $subscription = $this->reactor->onWritable($conn->socket, function() use ($conn) {
-                $this->writeConnectionBuffer($conn);
-            });
-            $conn->writeSubscription = $subscription;
         }
     }
     
@@ -348,7 +303,7 @@ class ModProtocol implements BeforeResponseMod {
     function stopReading($socketId) {
         if (isset($this->connections[$socketId])) {
             $conn = $this->connections[$socketId];
-            $conn->readSubscription->disable();
+            $this->reactor->disable($conn->readWatcher);
             stream_socket_shutdown($conn->socket, STREAM_SHUT_RD);
         } else {
             throw new \DomainException(
@@ -373,10 +328,7 @@ class ModProtocol implements BeforeResponseMod {
         
         $conn = $this->connections[$socketId];
         $conn->isShutdownForWriting = TRUE;
-        
-        if ($conn->writeSubscription) {
-            $conn->writeSubscription->disable();
-        }
+        $this->reactor->disable($conn->writeWatcher);
         
         stream_socket_shutdown($conn->socket, STREAM_SHUT_WR);
     }

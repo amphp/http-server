@@ -2,7 +2,7 @@
 
 namespace Aerys\Handlers\ReverseProxy;
 
-use Amp\Reactor,
+use Alert\Reactor,
     Aerys\Server,
     Aerys\Parsing\Parser,
     Aerys\Parsing\MessageParser,
@@ -103,9 +103,15 @@ class ReverseProxyHandler {
         if ($socket || $errNo === SOCKET_EWOULDBLOCK) {
             $debugMsg = NULL;
             $backend = new Backend;
+            $this->pendingBackends->attach($backend);
+            
             $backend->uri = $uri;
             $backend->socket = $socket;
-            $this->schedulePendingBackendTimeout($backend);
+            $connectWatcher = $this->reactor->onWritable($socket, function($socket) use ($backend) {
+                $this->determinePendingConnectionResult($backend);
+            });
+            $backend->connectWatcher = $connectWatcher;
+            
         } else {
             $debugMsg = "PRX: Backend proxy connect failed ({$uri}): [{$errNo}] {$errStr}";
             $this->doExponentialBackoff($uri);
@@ -122,31 +128,17 @@ class ReverseProxyHandler {
             : "{$msg}\n";
     }
     
-    private function schedulePendingBackendTimeout(Backend $backend) {
-        $sock = $backend->socket;
-        $subscription = $this->reactor->onWritable($sock, function($sock, $trigger) use ($backend) {
-            $this->determinePendingConnectionResult($backend, $trigger);
-        }, $this->backendConnectTimeout);
-        
-        $this->pendingBackends->attach($backend, $subscription);
-    }
-    
-    private function determinePendingConnectionResult(Backend $backend, $trigger) {
-        $subscription = $this->pendingBackends->offsetGet($backend);
-        $subscription->cancel();
-        
+    private function determinePendingConnectionResult(Backend $backend) {
+        $this->reactor->cancel($backend->connectWatcher);
         $this->pendingBackends->detach($backend);
         
-        $uri = $backend->uri;
         $socket = $backend->socket;
         
-        if ($trigger === Reactor::TIMEOUT) {
-            $debugMsg = "PRX: Backend proxy connect failed ({$uri}): connect attempt timed out";
-            $this->doExponentialBackoff($uri);
-        } elseif ($this->workaroundAsyncConnectBug($socket)) {
+        if ($this->workaroundAsyncConnectBug($socket)) {
             $debugMsg = NULL;
             $this->finalizeNewBackendConnection($backend);
         } else {
+            $uri = $backend->uri;
             $debugMsg = "PRX: Backend proxy connect failed ({$uri}): could not connect";
             $this->doExponentialBackoff($uri);
         }
@@ -165,7 +157,7 @@ class ReverseProxyHandler {
      * @link https://bugs.php.net/bug.php?id=64803
      */
     private function workaroundAsyncConnectBug($socket) {
-        return (@fwrite($socket, "\n") === 1) && !@feof($socket);
+        return (!@feof($socket) && @fwrite($socket, "\n") === 1);
     }
     
     private function doExponentialBackoff($uri) {
@@ -205,11 +197,16 @@ class ReverseProxyHandler {
         
         $backend->parser = $parser;
         
-        $readSubscription = $this->reactor->onReadable($backend->socket, function() use ($backend) {
+        $readWatcher = $this->reactor->onReadable($backend->socket, function() use ($backend) {
             $this->readFromBackend($backend);
         });
         
-        $backend->readSubscription = $readSubscription;
+        $writeWatcher = $this->reactor->onWritable($backend->socket, function() use ($backend) {
+            $this->writeToBackend($backend);
+        }, $enableNow = FALSE);
+        
+        $backend->readWatcher = $readWatcher;
+        $backend->writeWatcher = $writeWatcher;
         
         $this->backends->attach($backend);
     }
@@ -277,11 +274,8 @@ class ReverseProxyHandler {
         
         $this->backends->detach($backend);
         
-        $backend->readSubscription->cancel();
-        
-        if ($backend->writeSubscription) {
-            $backend->writeSubscription->cancel();
-        }
+        $this->reactor->cancel($backend->readWatcher)
+        $this->reactor->cancel($backend->writeWatcher);
         
         if ($backend->parser->getState() === Parser::BODY_IDENTITY_EOF) {
             $responseArr = $backend->parser->getParsedMessageArray();
@@ -309,7 +303,7 @@ class ReverseProxyHandler {
             foreach ($deadBackend->requestQueue as $requestId => $asgiEnv) {
                 $backend = $this->selectBackend();
                 $this->enqueueRequest($backend, $requestId, $asgiEnv);
-                $this->writeRequestsToBackend($backend);
+                $this->writeToBackend($backend);
             }
         }
     }
@@ -336,7 +330,7 @@ class ReverseProxyHandler {
         } else {
             $backend = $this->selectBackend();
             $this->enqueueRequest($backend, $requestId, $asgiEnv);
-            $this->writeRequestsToBackend($backend);
+            $this->writeToBackend($backend);
         }
     }
     
@@ -414,7 +408,7 @@ class ReverseProxyHandler {
         return array_merge($headerArr, $proxyPassHeaders);
     }
     
-    private function writeRequestsToBackend(Backend $backend) {
+    private function writeToBackend(Backend $backend) {
         try {
             $didAllWritesComplete = TRUE;
             
@@ -422,22 +416,15 @@ class ReverseProxyHandler {
                 if ($writer->write()) {
                     unset($backend->requestQueue[$requestId]);
                     $backend->responseQueue[] = $requestId;
-                } elseif ($backend->writeSubscription) {
-                    $didAllWritesComplete = FALSE;
-                    $backend->writeSubscription->enable();
-                    break;
                 } else {
                     $didAllWritesComplete = FALSE;
-                    $writeSub = $this->reactor->onWritable($backend->socket, function() use ($backend) {
-                        $this->writeRequestsToBackend($backend);
-                    });
-                    $backend->writeSubscription = $writeSub;
+                    $this->reactor->enable($backend->writeWatcher);
                     break;
                 }
             }
             
-            if ($didAllWritesComplete && $backend->writeSubscription) {
-                $backend->writeSubscription->disable();
+            if ($didAllWritesComplete) {
+                $this->reactor->disable($backend->writeWatcher);
             }
             
         } catch (ResourceException $e) {
@@ -447,10 +434,9 @@ class ReverseProxyHandler {
     
     function __destruct() {
         foreach ($this->backends as $backend) {
-            $backend->readSubscription->cancel();
-            if ($backend->writeSubscription) {
-                $backend->writeSubscription->cancel();
-            }
+            $this->reactor->cancel($backend->readWatcher);
+            $this->reactor->cancel($backend->writeWatcher);
+            $this->reactor->cancel($backend->connectWatcher);
         }
     }
     

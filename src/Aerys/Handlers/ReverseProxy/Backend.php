@@ -9,7 +9,8 @@ class Backend {
     public $parser;
     public $requestQueue = [];
     public $responseQueue = [];
-    public $readSubscription;
-    public $writeSubscription;
+    public $readWatcher;
+    public $writeWatcher;
+    public $connectWatcher;
     
 }

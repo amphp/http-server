@@ -86,13 +86,13 @@ class Bootstrapper {
     
     private function makeEventReactor() {
         try {
-            $reactor = $this->injector->make('Amp\Reactor');
+            $reactor = $this->injector->make('Alert\Reactor');
         } catch (InjectionException $e) {
-            $this->injector->delegate('Amp\Reactor', ['Amp\ReactorFactory', 'select']);
-            $reactor = $this->injector->make('Amp\Reactor');
+            $this->injector->delegate('Alert\Reactor', ['Alert\ReactorFactory', 'select']);
+            $reactor = $this->injector->make('Alert\Reactor');
         }
         
-        $this->injector->alias('Amp\Reactor', get_class($reactor));
+        $this->injector->alias('Alert\Reactor', get_class($reactor));
         $this->injector->share($reactor);
     }
     

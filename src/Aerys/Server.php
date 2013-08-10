@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Amp\Reactor,
+use Alert\Reactor,
     Aerys\Parsing\Parser,
     Aerys\Parsing\MessageParser,
     Aerys\Parsing\PeclMessageParser,
@@ -22,13 +22,13 @@ class Server {
     private $reactor;
     private $hosts = [];
     private $serverSockets = [];
-    private $serverAcceptSubscriptions = [];
-    private $pendingTlsClients = [];
+    private $serverAcceptWatchers = [];
+    private $pendingTlsWatchers = [];
     private $isServerRunning = FALSE;
     private $isServerPaused = FALSE;
     private $isInsideBeforeResponseModLoop = FALSE;
     private $isInsideAfterResponseModLoop = FALSE;
-    private $clients;
+    private $clients = [];
     private $requestIdClientMap = [];
     private $cachedClientCount = 0;
     private $lastRequestId = 0;
@@ -54,7 +54,6 @@ class Server {
     private $defaultHost;
     
     // @TODO Add option setters for the following settings
-    private $tlsHandshakeTimeout = 3;
     private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER;
     // ------------------------- //
     
@@ -64,16 +63,46 @@ class Server {
     private $isExtOpensslEnabled;
     private $socketReadGranularity = 262144;
     
+    private $now;
+    private $keepAliveWatcher;
+    private $keepAliveTimeouts = [];
+    private $keepAliveWatcherInterval = 1;
+    
     function __construct(Reactor $reactor, WriterFactory $wf = NULL) {
         $this->reactor = $reactor;
         $this->writerFactory = $wf ?: new WriterFactory;
-        $this->clients = new \SplObjectStorage;
         
         $this->isExtHttpEnabled = extension_loaded('http');
         $this->isExtSocketsEnabled = extension_loaded('sockets');
         $this->isExtOpensslEnabled = extension_loaded('openssl');
         
         $this->allowedMethods = array_combine($this->allowedMethods, array_fill(0, count($this->allowedMethods), 1));
+        
+        $this->registerKeepAliveWatcher();
+    }
+    
+    private function registerKeepAliveWatcher() {
+        $this->now = time();
+        $this->keepAliveWatcher = $this->reactor->repeat(function() {
+            $this->timeoutKeepAlives();
+        }, $this->keepAliveWatcherInterval);
+    }
+    
+    private function timeoutKeepAlives() {
+        $this->now = $now = time();
+        foreach ($this->keepAliveTimeouts as $socketId => $expiryTime) {
+            if ($expiryTime <= $now) {
+                $client = $this->clients[$socketId];
+                $this->closeClient($client);
+            } else {
+                break;
+            }
+        }
+    }
+    
+    private function renewKeepAliveTimeout($socketId) {
+        unset($this->keepAliveTimeouts[$socketId]);
+        $this->keepAliveTimeouts[$socketId] = $this->now + $this->keepAliveTimeout;
     }
     
     /**
@@ -141,8 +170,8 @@ class Server {
      */
     function pause() {
         if ($this->isServerRunning && !$this->isServerPaused) {
-            foreach ($this->serverAcceptSubscriptions as $subscription) {
-                $subscription->disable();
+            foreach ($this->serverAcceptWatchers as $watcher) {
+                $this->reactor->disable($watcher);
             }
             $this->isServerPaused = TRUE;
         }
@@ -155,8 +184,8 @@ class Server {
      */
     function resume() {
         if ($this->isServerRunning && $this->isServerPaused) {
-            foreach ($this->serverAcceptSubscriptions as $subscription) {
-                $subscription->enable();
+            foreach ($this->serverAcceptWatchers as $watcher) {
+                $this->reactor->enable($watcher);
             }
             $this->isServerPaused = FALSE;
         }
@@ -169,19 +198,19 @@ class Server {
      */
     function stop() {
         if ($this->isServerRunning) {
-            $this->cancelServerAcceptSubscriptions();
+            $this->cancelServerAcceptWatchers();
             $this->closeServerSockets();
             $this->isServerRunning = FALSE;
             $this->isServerPaused = FALSE;
         }
     }
     
-    private function cancelServerAcceptSubscriptions() {
-        foreach ($this->serverAcceptSubscriptions as $subscription) {
-            $subscription->cancel();
+    private function cancelServerAcceptWatchers() {
+        foreach ($this->serverAcceptWatchers as $watcher) {
+            $this->reactor->cancel($watcher);
         }
         
-        $this->serverAcceptSubscriptions = [];
+        $this->serverAcceptWatchers = [];
     }
     
     private function closeServerSockets() {
@@ -225,8 +254,8 @@ class Server {
             $context = $host->getTlsContext();
             $isEncrypted = $host->hasTlsDefinition();
             $onAcceptableClient = $isEncrypted
-                ? function($serverSocket) { $this->acceptTls($serverSocket); }
-                : function($serverSocket) { $this->accept($serverSocket); };
+                ? function($watcherId, $serverSocket) { $this->acceptTls($serverSocket); }
+                : function($watcherId, $serverSocket) { $this->accept($serverSocket); };
                 
             $isWildcardIp = $host->hasWildcardAddress();
             
@@ -247,8 +276,8 @@ class Server {
                 stream_set_blocking($serverSocket, FALSE);
                 $serverId = (int) $serverSocket;
                 $this->serverSockets[$serverId] = $serverSocket;
-                $acceptSubscription = $this->reactor->onReadable($serverSocket, $onAcceptableClient);
-                $this->serverAcceptSubscriptions[$serverId] = $acceptSubscription;
+                $acceptWatcher = $this->reactor->onReadable($serverSocket, $onAcceptableClient);
+                $this->serverAcceptWatchers[$serverId] = $acceptWatcher;
             } else {
                 throw new \RuntimeException(
                     "Failed binding server to $address: [Error# $errNo] $errStr"
@@ -278,37 +307,36 @@ class Server {
     }
     
     private function acceptTls($serverSocket) {
-        $serverId = (int) $serverSocket;
+        $acceptTimeout = 0;
         
-        while ($clientSock = @stream_socket_accept($serverSocket, $timeout = 0)) {
+        while ($clientSock = @stream_socket_accept($serverSocket, $acceptTimeout)) {
             if (++$this->cachedClientCount === $this->maxConnections) {
                 $this->pause();
             }
             
             $clientId = (int) $clientSock;
-            $this->pendingTlsClients[$clientId] = NULL;
+            $this->pendingTlsWatchers[$clientId] = NULL;
             
-            if (!$this->doTlsHandshake($clientSock, $trigger = NULL)) {
-                $handshakeSub = $this->reactor->onReadable($clientSock, function ($clientSock, $trigger) {
-                    $this->doTlsHandshake($clientSock, $trigger);
-                }, $this->tlsHandshakeTimeout);
+            if (!$this->doTlsHandshake($clientSock)) {
+                $watcher = $this->reactor->onReadable($clientSock, function() use ($clientSock) {
+                    $this->doTlsHandshake($clientSock);
+                });
                 
-                $this->pendingTlsClients[$clientId] = $handshakeSub;
+                $this->pendingTlsWatchers[$clientId] = $watcher;
             }
         }
     }
     
-    private function doTlsHandshake($clientSock, $trigger) {
-        if ($trigger === Reactor::TIMEOUT) {
-            $this->failTlsConnection($clientSock);
-            $result = FALSE;
-        } elseif ($cryptoResult = @stream_socket_enable_crypto($clientSock, TRUE, $this->cryptoType)) {
+    private function doTlsHandshake($clientSock) {
+        $isSuccess = @stream_socket_enable_crypto($clientSock, TRUE, $this->cryptoType);
+        
+        if ($isSuccess) {
             $this->clearPendingTlsClient($clientSock);
             $this->onClient($clientSock);
             $result = TRUE;
-        } elseif (FALSE === $cryptoResult) {
+        } elseif ($isSuccess === FALSE) {
             $this->failTlsConnection($clientSock);
-            $result = FALSE;
+            $result = TRUE;
         } else {
             $result = FALSE;
         }
@@ -329,16 +357,19 @@ class Server {
     
     private function clearPendingTlsClient($clientSock) {
         $clientId = (int) $clientSock;
-        if ($handshakeSubscription = $this->pendingTlsClients[$clientId]) {
-            $handshakeSubscription->cancel();
+        if ($handshakeWatcher = $this->pendingTlsWatchers[$clientId]) {
+            $this->reactor->cancel($handshakeWatcher);
         }
-        unset($this->pendingTlsClients[$clientId]);
+        unset($this->pendingTlsWatchers[$clientId]);
     }
     
     private function onClient($socket) {
         stream_set_blocking($socket, FALSE);
         
+        $socketId = (int) $socket;
+        
         $client = new Client;
+        $client->id = $socketId;
         $client->socket = $socket;
         
         $rawServerName = stream_socket_get_name($socket, FALSE);
@@ -356,11 +387,6 @@ class Server {
         $onHeaders = function($requestArr) use ($client) {
             $this->afterRequestHeaders($client, $requestArr);
         };
-        $onReadable = function($socket, $trigger) use ($client) {
-            return ($trigger === Reactor::READ)
-                ? $this->onReadableClientSocket($client)
-                : $this->onReadableClientSocketTimeout($client);
-        };
         
         $client->parser->setOptions([
             'maxHeaderBytes' => $this->maxHeaderBytes,
@@ -368,10 +394,13 @@ class Server {
             'beforeBody' => $onHeaders
         ]);
         
-        $readSubscription = $this->reactor->onReadable($socket, $onReadable, $this->keepAliveTimeout);
-        $client->readSubscription = $readSubscription;
+        $onReadable = function() use ($client) { $this->doClientRead($client); };
+        $client->readWatcher = $this->reactor->onReadable($socket, $onReadable);
         
-        $this->clients->attach($client);
+        $onWritable = function() use ($client) { $this->doClientWrite($client); };
+        $client->writeWatcher = $this->reactor->onWritable($socket, $onWritable, $enableNow = FALSE);
+        
+        $this->clients[$socketId] = $client;
         
         if ($this->verbosity & self::LOUD) {
             echo 'CON: ', $client->clientAddress, ':', $client->clientPort, ' | (', $this->cachedClientCount, ')', PHP_EOL;
@@ -386,16 +415,11 @@ class Server {
         return [$addr, $port];
     }
     
-    private function onReadableClientSocketTimeout(Client $client) {
-        if (empty($client->requests) || ltrim($client->parser->getBuffer(), "\r\n")) {
-            $this->closeClient($client);
-        }
-    }
-    
-    private function onReadableClientSocket(Client $client) {
+    private function doClientRead(Client $client) {
         $data = @fread($client->socket, $this->socketReadGranularity);
         
         if ($data || $data === '0') {
+            $this->renewKeepAliveTimeout($client->id);
             $this->parseDataReadFromSocket($client, $data);
         } elseif (!is_resource($client->socket) || @feof($client->socket)) {
             $this->closeClient($client);
@@ -656,6 +680,8 @@ class Server {
     }
     
     private function onRequest(Client $client, array $requestArr) {
+        unset($this->keepAliveTimeouts[$client->id]);
+        
         if ($client->preBodyRequest) {
             return $this->finalizePreBodyRequest($client, $requestArr);
         }
@@ -852,13 +878,9 @@ class Server {
                     break;
                 } elseif ($responseWriter->write()) {
                     $this->afterResponse($client, $requestId);
-                } elseif ($client->writeSubscription) {
-                    $client->writeSubscription->enable();
-                    break;
+                    // writeWatchers are disabled during afterResponse() processing as needed
                 } else {
-                    $client->writeSubscription = $this->reactor->onWritable($client->socket, function() use ($client) {
-                        $this->doClientWrite($client);
-                    });
+                    $this->reactor->enable($client->writeWatcher);
                     break;
                 }
             }
@@ -1099,19 +1121,19 @@ class Server {
             }
         }
         
-        $client->readSubscription->cancel();
+        $this->reactor->cancel($client->readWatcher);
+        $this->reactor->cancel($client->writeWatcher);
+        $client->parser = NULL;
+        $socketId = $client->id;
         
-        if ($client->writeSubscription) {
-            $client->writeSubscription->cancel();
-        }
-        
-        $this->clients->detach($client);
+        unset(
+            $this->clients[$socketId],
+            $this->keepAliveTimeouts[$socketId]
+        );
         
         if ($this->cachedClientCount-- === $this->maxConnections) {
             $this->resume();
         }
-        
-        $client->parser = NULL;
     }
     
     private function closeClient(Client $client) {
@@ -1157,9 +1179,10 @@ class Server {
             $this->requestIdClientMap[$requestId]
         );
         
-        // Disable active onWritable stream subscriptions if the pipeline is no longer write-ready
-        if ($client->writeSubscription && !current($client->pipeline)) {
-            $client->writeSubscription->disable();
+        // Disable active onWritable stream watchers if the pipeline is no longer write-ready
+        if (!current($client->pipeline)) {
+            $this->reactor->disable($client->writeWatcher);
+            $this->renewKeepAliveTimeout($client->id);
         }
     }
     

@@ -4,6 +4,7 @@ namespace Aerys;
 
 class Client {
     
+    public $id;
     public $socket;
     public $clientAddress;
     public $clientPort;
@@ -20,7 +21,7 @@ class Client {
     public $requestCount;
     
     public $parser;
-    public $readSubscription;
-    public $writeSubscription;
+    public $readWatcher;
+    public $writeWatcher;
 }
 

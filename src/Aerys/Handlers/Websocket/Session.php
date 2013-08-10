@@ -42,7 +42,9 @@ class Session {
     public $dataLastReadAt;
     public $connectedAt;
     
-    public $readSubscription;
-    public $writeSubscription;
-    public $closeTimeoutSubscription;
+    public $heartbeatPeriod;
+    
+    public $readWatcher;
+    public $writeWatcher;
+    public $closeTimeoutWatcher;
 }

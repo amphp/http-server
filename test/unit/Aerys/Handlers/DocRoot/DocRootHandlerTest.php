@@ -1,7 +1,7 @@
 <?php
 
 use Aerys\Handlers\DocRoot\DocRootHandler,
-    Amp\ReactorFactory,
+    Alert\ReactorFactory,
     Aerys\Status,
     Aerys\Server,
     org\bovigo\vfs\vfsStream;

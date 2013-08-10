@@ -12,10 +12,10 @@ class Connection {
     public $bytesRead = 0;
     public $importedAt;
     public $isEncrypted;
-    public $handler;
-    public $readSubscription;
-    public $writeSubscription;
+    public $readWatcher;
+    public $writeWatcher;
     public $writeBuffer = [];
     public $isShutdownForWriting = FALSE;
+    public $handler;
     
 }

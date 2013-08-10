@@ -1,7 +1,7 @@
 <?php
 
 use Aerys\Handlers\DocRoot\DocRootHandler,
-    Amp\ReactorFactory;
+    Alert\ReactorFactory;
 
 class StaticFileRelativePathAscensionTest extends PHPUnit_Framework_TestCase {
     
