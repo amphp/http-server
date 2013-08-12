@@ -274,7 +274,7 @@ class ReverseProxyHandler {
         
         $this->backends->detach($backend);
         
-        $this->reactor->cancel($backend->readWatcher)
+        $this->reactor->cancel($backend->readWatcher);
         $this->reactor->cancel($backend->writeWatcher);
         
         if ($backend->parser->getState() === Parser::BODY_IDENTITY_EOF) {
