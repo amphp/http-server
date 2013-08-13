@@ -23,13 +23,15 @@
 require dirname(__DIR__) . '/autoload.php';
 
 try {
-    $optionLoader = new Aerys\Config\OptionLoader;
-    if ($optionLoader->loadOptions()) {
-        $bootstrapper = new Aerys\Config\Bootstrapper;
-        $config = $optionLoader->getConfig();
+    $bootstrapper = new Aerys\Config\Bootstrapper;
+    if ($config = $bootstrapper->loadConfigFromCommandLine()) {
         $server = $bootstrapper->createServer($config);
         $server->start();
+    } else {
+        $bootstrapper->displayHelp();
     }
+} catch (Aerys\Config\ConfigException $e){
+    echo $e->getMessage(), "\n", $bootstrapper->displayHelp();
 } catch (Exception $e) {
-    echo $e->getMessage(), "\n";
+    echo $e, "\n";
 }

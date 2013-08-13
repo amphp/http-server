@@ -13,6 +13,22 @@ class Bootstrapper {
     const HOST_CLASS = 'Aerys\Host';
     
     private $injector;
+    private $beforeStartCallbacks;
+    private $shortOpts = 'c:b:n:d:h';
+    private $longOpts = [
+        'config:',
+        'bind:',
+        'name:',
+        'docroot:',
+        'help'
+    ];
+    private $shortOptNameMap = [
+        'c' => 'config',
+        'b' => 'bind',
+        'n' => 'name',
+        'd' => 'docroot',
+        'h' => 'help'
+    ];
     private $modLauncherClassMap = [
         'log' => '\Aerys\Mods\Log\ModLogLauncher',
         'protocol' => '\Aerys\Mods\Protocol\ModProtocolLauncher',
@@ -33,40 +49,173 @@ class Bootstrapper {
     }
     
     /**
-     * Complement or override the built-in mod configuration launchers
+     * Generate a server configuration array from CLI options
      * 
-     * @param string $modKey The reference mod configuration key name to use inside host mod blocks
-     * @param string $launcherClassName The name of the ModConfigLauncher class to use for mod instantiation
-     * @throws \InvalidArgumentException On bad arguments
-     * @return void
+     * @throws \Aerys\Config\ConfigException
+     * @return mixed Returns a server config array or NULL if -h or --help switches specified
      */
-    function mapModLauncher($modKey, $launcherClassName) {
-        if (!(is_string($modKey) && strlen($modKey))) {
-            throw new \InvalidArgumentException(
-                'String mod key required at Argument 1 of ' .
-                __CLASS__ . '::' . __METHOD__ 
-            );
-        } elseif (!(is_string($launcherClassName) && class_exists($launcherClassName))) {
-            throw new \InvalidArgumentException(
-                'Loadable ModConfigLauncher class name required at Argument 2 of ' .
-                __CLASS__ . '::' . __METHOD__ 
-            );
-        } else {
-            $this->modLauncherClassMap[$modKey] = $launcherClassName;
-        }
-        
-        return $this;
+    function loadConfigFromCommandLine() {
+        $options = getopt($this->shortOpts, $this->longOpts);
+
+        return (isset($options['h']) || isset($options['help']))
+            ? NULL
+            : $this->loadConfig($options);
     }
     
     /**
-     * Generate a runnable server using the specified configuration
+     * Display a help screen
+     * 
+     * @return void
+     */
+    function displayHelp() {
+        $helpLines = [
+            PHP_EOL,
+            'php aerys.php --config="/path/to/server/config.php"',
+            'php aerys.php --bind="*:80" --name="mysite.com" --root="/path/to/document/root"',
+            PHP_EOL,
+            '-c, --config     Use a config file to bootstrap the server',
+            '-b, --bind       The server\'s address and port (e.g. 127.0.0.1:80 or *:80)',
+            '-n, --name       Optional host (domain) name',
+            '-d, --docroot    The filesystem directory from which to serve static files',
+            '-h, --help       Display help screen',
+            PHP_EOL
+        ];
+        
+        echo implode(PHP_EOL, $helpLines);
+        
+        return FALSE;
+    }
+    
+    private function loadConfig(array $options) {
+        $options = $this->normalizeOptionKeys($options);
+        
+        return $options['config']
+            ? $this->generateConfigFromFile($options)
+            : $this->generateDocRootConfig($options);
+    }
+
+    private function normalizeOptionKeys(array $options) {
+        $normalizedOptions = [
+            'config' => NULL,
+            'bind' => NULL,
+            'name' => NULL,
+            'docroot' => NULL
+        ];
+        
+        foreach ($options as $key => $value) {
+            if (isset($this->shortOptNameMap[$key])) {
+                $normalizedOptions[$this->shortOptNameMap[$key]] = $value;
+            } else {
+                $normalizedOptions[$key] = $value;
+            }
+        }
+        
+        return $normalizedOptions;
+    }
+    
+    private function generateConfigFromFile(array $options) {
+        $configFile = realpath($options['config']);
+        
+        if (!(is_file($configFile) && is_readable($configFile))) {
+            throw new ConfigException(
+                "Config file could not be read: {$configFile}"
+            );
+        }
+        
+        $cmd = PHP_BINARY . ' -l ' . $configFile . '  && exit';
+        exec($cmd, $outputLines, $exitCode);
+
+        if ($exitCode) {
+            throw new ConfigException(
+                "Config file failed lint test" . PHP_EOL . implode(PHP_EOL, $outputLines)
+            );
+        }
+        
+        $nonEmptyOpts = array_filter($options);
+        
+        unset($nonEmptyOpts['config']);
+        
+        if ($nonEmptyOpts) {
+            throw new ConfigException(
+                "Config incompatible with other directives: " . implode(', ', array_keys($nonEmptyOpts))
+            );
+        }
+        
+        $configFile = $options['config'];
+        
+        if (!@include $configFile) {
+            throw new ConfigException(
+                "Config file inclusion failure: {$configFile}"
+            );
+        }
+        
+        if (!(isset($config) && is_array($config))) {
+            throw new ConfigException(
+                'Config file must specify a $config array'
+            );
+        }
+        
+        return $config;
+    }
+
+    private function generateDocRootConfig(array $options) {
+        if (empty($options['bind'])) {
+            throw new ConfigException(
+                'Bind address required (e.g. --bind=*:80 or -b"127.0.0.1:80")'
+            );
+        }
+        
+        $bind = $options['bind'];
+        
+        if ($bind[0] === '*') {
+            $bind = str_replace('*', '0.0.0.0', $bind);
+        } elseif (!filter_var($bind, FILTER_VALIDATE_IP)) {
+            throw new ConfigException(
+                "Invalid bind address: {$bind}"
+            );
+        }
+        
+        if (empty($options['docroot'])) {
+            throw new ConfigException(
+                'Document root directive required (e.g. -d="/path/to/files", --docroot)'
+            );
+        }
+        
+        $docroot = realpath($options['docroot']);
+        
+        if (!(is_dir($docroot) && is_readable($docroot))) {
+            throw new ConfigException(
+                'Document root directive must specify a readable directory path'
+            );
+        }
+        
+        $configArr = [
+            'listenOn' => $options['bind'],
+            'application' => new DocRootLauncher([
+                'docRoot' => $docroot
+            ])
+        ];
+        
+        if ($this->loadedConfig['name']) {
+            $configArr['name'] = $name;
+        }
+        
+        return [$configArr];
+    }
+    
+    /**
+     * Generate a runnable server from an associative array of configuration settings
      * 
      * @param array $config A formatted server configuration array
+     * @throws \Aerys\Config\ConfigException
      * @return \Aerys\Server A ready-to-run server instance
      */
     function createServer(array $config) {
-        $serverOptions = isset($config['options']) ? $config['options'] : [];
-        unset($config['options']);
+        $serverOptions = isset($config['aerys.options']) ? $config['aerys.options'] : [];
+        unset($config['aerys.options']);
+        
+        $beforeStartCallbacks = isset($config['aerys.beforeStart']) ? $config['aerys.beforeStart'] : [];
+        unset($config['aerys.beforeStart']);
         
         $this->makeEventReactor();
         
@@ -79,6 +228,16 @@ class Bootstrapper {
         
         foreach ($serverOptions as $key => $value) {
             $server->setOption($key, $value);
+        }
+        
+        foreach ($beforeStartCallbacks as $key => $callback) {
+            if (is_callable($callback)) {
+                $callback($server);
+            } else {
+                throw new ConfigException(
+                    "Invalid aerys.beforeStart callback at key {$key}"
+                );
+            }
         }
         
         return $server;
