@@ -4,7 +4,7 @@ var USER_COUNT_PREFIX = '1';
 var USER_ECHO_PREFIX = '2';
 
 var uriScheme = (window.location.protocol === 'http:') ? 'ws' : 'wss';
-var endpointUri = uriScheme + '://ws.aerys/echo';
+var endpointUri = uriScheme + '://' + window.location.host + '/echo';
 var connection = new WebSocket(endpointUri);
 var cachedRowCount;
 

@@ -1,21 +1,22 @@
 <?php
 
-// To run, execute this script and request http://127.0.0.1:1337/ in your browser
-
-use Aerys\Config\Bootstrapper;
-
-require dirname(__DIR__) . '/autoload.php';
+/**
+ * There is only one reserved name key in an Aerys configuration array: "options" ... You may
+ * specify any value you like to internally identify individual host blocks in your config array but
+ * the "options" key is ALWAYS interpreted as an array of key => value server settings. Use this
+ * array to define server-wide configuration directives.
+ */
 
 $myApp = function(array $asgiEnv) {
-    $status = 200;
-    $reason = 'OK';
-    $headers = [];
-    $body = '<html><body><h1>Hello, World.</h1></body></html>';
-    
-    return [$status, $reason, $headers, $body];
+    $body = '<html><body><h1>Hello, world.</h1></body></html>';
+    return [$status = 200, $reason = 'OK', $headers = [], $body];
 };
 
 $config = [
+    'my-site' => [
+        'listenOn' => '*:1337',
+        'application' => $myApp
+    ],
     'options' => [
         'logErrorsTo'           => 'php://stderr',
         'maxConnections'        => 2500,
@@ -35,14 +36,5 @@ $config = [
         'socketSoLingerZero'    => FALSE, // Requires PHP's ext/sockets extension
         'verbosity'             => 1,     // Server::SILENT (0), Server::QUIET (1), Server::LOUD (2)
         'defaultHost'           => NULL   // Must match a registered Host ID, e.g. mysite.com:80 or *:1337
-    ],
-    
-    // --- ALL KEYS NOT NAMED "options" or "dependencies" ARE CONSIDERED HOST CONTAINERS ---
-    
-    'myHost'   => [
-        'listenOn' => '*:1337',
-        'application' => $myApp
     ]
 ];
-
-(new Bootstrapper)->createServer($config)->start();
