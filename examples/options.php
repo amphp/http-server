@@ -1,10 +1,20 @@
 <?php
 
 /**
- * There is only one reserved name key in an Aerys configuration array: "options" ... You may
- * specify any value you like to internally identify individual host blocks in your config array but
- * the "options" key is ALWAYS interpreted as an array of key => value server settings. Use this
- * array to define server-wide configuration directives.
+ * There are currently two reserved keys in an Aerys configuration array:
+ * 
+ * - "aerys.options"
+ * - "aerys.beforeStart"
+ * 
+ * All other keys are considered host blocks. Applications should avoid prefixing their host block
+ * keys with "aerys.*" to avoid potential conflicts with future reserved keys. Otherwise,
+ * applications may specify any value they like to internally differentiate individual hosts in the
+ * config array.
+ * 
+ * Server-wide configuration directives directives can be assigned using the "aerys.options"
+ * key-value array as demonstrated below. The "aerys.beforeStart" key is used to map an array of
+ * callbacks to which the instantiated Aerys\Server instance will be passed prior to starting the
+ * server; it's usage is not material to this example.
  */
 
 $myApp = function(array $asgiEnv) {
@@ -13,11 +23,11 @@ $myApp = function(array $asgiEnv) {
 };
 
 $config = [
-    'my-site' => [
+    'my-site' => [ // <-- All unreserved keys are treated as host definitions
         'listenOn' => '*:1337',
         'application' => $myApp
     ],
-    'options' => [
+    'aerys.options' => [ // <-- Reserved key used to set server options
         'logErrorsTo'           => 'php://stderr',
         'maxConnections'        => 2500,
         'maxRequests'           => 150,

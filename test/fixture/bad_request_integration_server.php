@@ -3,7 +3,7 @@
 require dirname(__DIR__) . '/bootstrap.php';
 
 (new Aerys\Config\Bootstrapper)->createServer([
-    'options' => [
+    'aerys.options' => [
         'maxHeaderBytes' => 512,
         'maxBodyBytes' => 1,
         'defaultContentType' => 'text/plain',

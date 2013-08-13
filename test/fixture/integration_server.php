@@ -33,7 +33,7 @@ class TestingApp {
     /**
      * @expectedHeader Content-Type: text/html; charset=utf-8
      * @expectedHeader Content-Length: strlen($body)
-     * @expectedHeader Date: date(Server::HTTP_DATE)
+     * @expectedHeader Date: HTTP_DATE
      */
     function addsMissingHeaders() {
         return $this->baseResponse();
@@ -71,7 +71,7 @@ class TestingApp {
 }
 
 (new Aerys\Config\Bootstrapper)->createServer([
-    'options' => [
+    'aerys.options' => [
         'verbosity' => 0
     ],
     'test-server' => [
