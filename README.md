@@ -8,11 +8,11 @@ HTTP/1.1 webserver written in PHP. Awesomeness ensues. See `./examples` director
 
 - PHP 5.4+
 - [Auryn](https://github.com/rdlowrey/Auryn) A dependency injection container used to bootstrap the
-HTTP server using a basic configuration array
-- [Amp](https://github.com/rdlowrey/Amp) Provides the event reactor and base TCP server
+HTTP server from a basic configuration array
+- [Alert](https://github.com/rdlowrey/Alert) Provides the event reactor underlying everything
 
-Both Auryn and Amp dependencies are linked to the Aerys repository as git submodules. They will be
-fetched automatically as long as you pass the `--recursive` options when cloning the repo.
+Both the Auryn and Alert dependencies are linked to the Aerys repository as git submodules. They
+will be fetched automatically as long as you pass the `--recursive` options when cloning the repo.
 
 #### OPTIONAL DEPENDENCIES
 
@@ -35,25 +35,6 @@ without skipping some cases
 
 ```bash
 $ git clone --recursive https://github.com/rdlowrey/Aerys.git
-$ php -d date.timezone=UTC Aerys/examples/hello_world.php
-```
-
-#### HELLO WORLD
-
-```php
-require '/hard/path/to/aerys/autoload.php'; // <-- change for your local environment
-
-$myApp = function(array $asgiEnv) {
-    return [
-        $status = 200,
-        $reason = 'OK',
-        $headers = [],
-        $body = '<html><body><h1>Hello, World.</h1></body></html>';
-    ];
-};
-
-(new Aerys\Config\Bootstrapper)->createServer([[
-    'listenOn'      => '*:1337',
-    'application'   => $myApp
-]])->start();
+$ cd Aerys/bin
+$ php aerys.php --config="../examples/hello_world.php"
 ```
