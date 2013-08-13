@@ -126,7 +126,7 @@ class ModProtocol implements BeforeResponseMod {
         $conn->importedAt = $socketInfo['importedAt'] = microtime(TRUE);
         
         $onReadable = function() use ($conn) { $this->onReadableSocket($conn); };
-        $onWritable = function() use ($conn) { $this->writeConnectionBuffer(($conn); };
+        $onWritable = function() use ($conn) { $this->writeConnectionBuffer($conn); };
         
         $conn->readWatcher = $this->reactor->onReadable($socket, $onReadable);
         $conn->writeWatcher = $this->reactor->onWritable($socket, $onWritable, $enableNow = FALSE);
@@ -158,7 +158,7 @@ class ModProtocol implements BeforeResponseMod {
         $conn->handler->onClose($conn->id, $closeReason);
     }
     
-    private function onReadableSocket(Connection $conn,) {
+    private function onReadableSocket(Connection $conn) {
         $data = @fread($conn->socket, $this->socketReadGranularity);
         
         if ($data || $data === '0') {
