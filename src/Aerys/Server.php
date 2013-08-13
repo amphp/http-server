@@ -13,7 +13,6 @@ use Alert\Reactor,
 class Server {
     
     const SERVER_SOFTWARE = 'Aerys/0.1.0-devel';
-    const HTTP_DATE = 'D, d M Y H:i:s T';
     
     const SILENT = 0;
     const QUIET = 1;
@@ -64,6 +63,7 @@ class Server {
     
     private $now;
     private $httpDateNow;
+    private $httpDateFormat = 'D, d M Y H:i:s';
     private $keepAliveWatcher;
     private $keepAliveTimeouts = [];
     private $keepAliveWatcherInterval = 1;
@@ -77,29 +77,6 @@ class Server {
         $this->isExtOpensslEnabled = extension_loaded('openssl');
         
         $this->allowedMethods = array_combine($this->allowedMethods, array_fill(0, count($this->allowedMethods), 1));
-        
-        $this->registerKeepAliveWatcher();
-    }
-    
-    private function registerKeepAliveWatcher() {
-        $this->now = $now = time();
-        $this->httpDateNow = gmdate('D, d M Y H:i:s', $now) . ' UTC';
-        $this->keepAliveWatcher = $this->reactor->repeat(function() {
-            $this->timeoutKeepAlives();
-        }, $this->keepAliveWatcherInterval);
-    }
-    
-    private function timeoutKeepAlives() {
-        $this->now = $now = time();
-        $this->httpDateNow = gmdate('D, d M Y H:i:s', $now) . ' UTC';
-        foreach ($this->keepAliveTimeouts as $socketId => $expiryTime) {
-            if ($expiryTime <= $now) {
-                $client = $this->clients[$socketId];
-                $this->closeClient($client);
-            } else {
-                break;
-            }
-        }
     }
     
     private function renewKeepAliveTimeout($socketId) {
@@ -235,6 +212,7 @@ class Server {
         if (!$this->isServerRunning && $this->hosts) {
             $this->errorStream = $this->logErrorsTo ? fopen($this->logErrorsTo, 'ab+') : STDERR;
             $this->bindListeningSockets();
+            $this->registerKeepAliveWatcher();
             $this->isServerRunning = TRUE;
             $this->reactor->run();
             $this->isServerRunning = FALSE;
@@ -242,6 +220,27 @@ class Server {
             throw new \LogicException(
                 'Cannot start server: no hosts registered'
             );
+        }
+    }
+    
+    private function registerKeepAliveWatcher() {
+        $this->now = $now = time();
+        $this->httpDateNow = gmdate($this->httpDateFormat, $now) . ' UTC';
+        $this->keepAliveWatcher = $this->reactor->repeat(function() {
+            $this->timeoutKeepAlives();
+        }, $this->keepAliveWatcherInterval);
+    }
+    
+    private function timeoutKeepAlives() {
+        $this->now = $now = time();
+        $this->httpDateNow = gmdate('D, d M Y H:i:s', $now) . ' UTC';
+        foreach ($this->keepAliveTimeouts as $socketId => $expiryTime) {
+            if ($expiryTime <= $now) {
+                $client = $this->clients[$socketId];
+                $this->closeClient($client);
+            } else {
+                break;
+            }
         }
     }
     
@@ -775,7 +774,7 @@ class Server {
         $msg = $e->getMessage();
         $body = "<html><body><h1>{$status} {$reason}</h1><p>{$msg}</p></body></html>";
         $headers = [
-            'Date: ' . date(self::HTTP_DATE),
+            "Date: {$this->httpDateNow}",
             'Content-Type: text/html; charset=utf-8',
             'Content-Length: ' . strlen($body),
             'Connection: close'

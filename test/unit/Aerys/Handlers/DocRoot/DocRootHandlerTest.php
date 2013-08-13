@@ -125,10 +125,9 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
         $asgiResponse = $handler->__invoke($asgiEnv);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         
-        $date = strtotime($headers['Date']);
         $expires = strtotime($headers['Expires']);
         
-        $this->assertEquals(300, $expires - $date);
+        $this->assertEquals(300, $expires - time());
         
         $handler->setExpiresHeaderPeriod(-1);
         
@@ -527,7 +526,7 @@ class DocRootHandlerTest extends PHPUnit_Framework_TestCase {
     function testPreconditionFailedResponseOnIfUnmodifiedSinceFailure() {
         $handler = new VfsRealpathHandler('vfs://root');
         
-        $ifUnmodifiedSince = date(Server::HTTP_DATE, 1);
+        $ifUnmodifiedSince = gmdate('D, d M Y H:i:s', 1);
         
         $asgiEnv = [
             'REQUEST_METHOD' => 'GET',
