@@ -598,9 +598,11 @@ class Server {
         $hostHeader = strtolower($hostHeader);
         
         if ($portStartPos = strrpos($hostHeader , ':')) {
+            $ipComparison = substr($hostHeader, 0, $portStartPos);
             $port = substr($hostHeader, $portStartPos + 1);
         } else {
             $port = $isSocketEncrypted ? '443' : '80';
+            $ipComparison = $hostHeader;
             $hostHeader .= ":{$port}";
         }
         
@@ -610,7 +612,21 @@ class Server {
             $host = $this->hosts[$hostHeader];
         } elseif (isset($this->hosts[$wildcardHost])) {
             $host = $this->hosts[$wildcardHost];
-        } else {
+        } elseif (!($host = $this->attemptIpHostSelection($hostHeader, $ipComparison))) {
+            $host = NULL;
+        }
+        
+        return $host;
+    }
+    
+    private function attemptIpHostSelection($hostHeader, $ipComparison) {
+        if (count($this->hosts) !== 1) {
+            $host = NULL;
+        } elseif (!filter_var($ipComparison, FILTER_VALIDATE_IP)) {
+            $host = NULL;
+        } elseif (!(($host = current($this->hosts))
+            && ($host->getAddress() === $ipComparison || $host->hasWildcardAddress())
+        )) {
             $host = NULL;
         }
         
