@@ -1361,7 +1361,7 @@ class Server {
                 $this->setSendServerToken($value); break;
             case 'normalizemethodcase':
                 $this->setNormalizeMethodCase($value); break;
-            case 'alwaysadddateHeader':
+            case 'alwaysadddateheader':
                 $this->setAlwaysAddDateHeader($value); break;
             case 'requirebodylength':
                 $this->setRequireBodyLength($value); break;
