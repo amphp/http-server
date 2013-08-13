@@ -1,6 +1,6 @@
 <?php
 
-use Amp\Reactor;
+use Alert\Reactor;
 
 class ChatMediator {
     

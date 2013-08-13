@@ -4,9 +4,9 @@ use Aerys\Handlers\Websocket\WebsocketLauncher,
     Aerys\Handlers\DocRoot\DocRootLauncher;
 
 /**
- * **NOTE:** This example demonstrates how to serve websocket endpoints from a given host. If you
- * wish to layer websocket endpoints on top of another host please check the `examples/mods`
- * directory for the appropriate file.
+ * **NOTE:** This example demonstrates how to serve *ONLY* websocket endpoints on a host. If you
+ * wish to layer websocket endpoints on top of another host please check the relevant 
+ * "examples/mod_websocket.php" file for appropriate instruction.
  * 
  * On websockets ...
  * 
