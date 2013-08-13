@@ -220,7 +220,6 @@ class DocRootHandler {
         $reason = Reason::HTTP_301;
         $body = '<html><body><h1>Moved!</h1></body></html>';
         $headers = [
-            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
             "Location: {$redirectToIndex}",
             'Content-Type: text/html; charset=utf-8',
             'Content-Length: ' . strlen($body),
@@ -339,7 +338,6 @@ class DocRootHandler {
         $now = time();
         
         $headers = [
-            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
             'Cache-Control: public',
             "Content-Length: {$fileSize}",
             'Last-Modified: ' . gmdate('D, d M Y H:i:s', $mTime) . ' UTC',
@@ -426,7 +424,6 @@ class DocRootHandler {
         $status = Status::PARTIAL_CONTENT;
         $reason = Reason::HTTP_206;
         $headers = [
-            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
             'Cache-Control: public',
             'Last-Modified: ' . gmdate('D, d M Y H:i:s', $mTime) . ' UTC'
         ];
@@ -544,7 +541,6 @@ class DocRootHandler {
         $status = Status::OK;
         $reason = Reason::HTTP_200;
         $headers = [
-            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
             'Allow: GET, HEAD, OPTIONS',
             'Accept-Ranges: bytes'
         ];
@@ -556,7 +552,6 @@ class DocRootHandler {
         $status = Status::METHOD_NOT_ALLOWED;
         $reason = Reason::HTTP_405;
         $headers = [
-            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
             'Allow: GET, HEAD, OPTIONS'
         ];
         
@@ -567,7 +562,6 @@ class DocRootHandler {
         $status = Status::REQUESTED_RANGE_NOT_SATISFIABLE;
         $reason = Reason::HTTP_416;
         $headers = [
-            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
             "Content-Range: */{$fileSize}"
         ];
         
@@ -578,7 +572,6 @@ class DocRootHandler {
         $status = Status::NOT_MODIFIED;
         $reason = Reason::HTTP_304;
         $headers = [
-            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
             'Last-Modified: ' . gmdate('D, d M Y H:i:s', $lastModified) . ' UTC'
         ];
         
@@ -592,11 +585,8 @@ class DocRootHandler {
     private function preconditionFailed() {
         $status = Status::PRECONDITION_FAILED;
         $reason = Reason::HTTP_412;
-        $headers = [
-            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
-        ];
         
-        return [$status, $reason, $headers, NULL];
+        return [$status, $reason, $headers = [], NULL];
     }
     
     private function notFound() {
@@ -604,7 +594,6 @@ class DocRootHandler {
         $reason = Reason::HTTP_404;
         $body = '<html><body><h1>404 Not Found</h1></body></html>';
         $headers = [
-            'Date: ' . gmdate('D, d M Y H:i:s') . ' UTC',
             'Content-Type: text/html',
             'Content-Length: ' . strlen($body),
         ];

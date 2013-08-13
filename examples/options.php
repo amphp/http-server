@@ -29,7 +29,6 @@ $config = [
         'defaultTextCharset'    => 'utf-8',
         'sendServerToken'       => FALSE,
         'normalizeMethodCase'   => TRUE,
-        'alwaysAddDateHeader'   => FALSE,
         'autoReasonPhrase'      => TRUE,
         'requireBodyLength'     => TRUE,
         'allowedMethods'        => ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'TRACE', 'DELETE'],

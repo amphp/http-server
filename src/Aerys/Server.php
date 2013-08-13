@@ -46,7 +46,6 @@ class Server {
     private $disableKeepAlive = FALSE;
     private $socketSoLingerZero = FALSE;
     private $normalizeMethodCase = TRUE;
-    private $alwaysAddDateHeader = FALSE;
     private $requireBodyLength = TRUE;
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = 2097152;
@@ -64,6 +63,7 @@ class Server {
     private $socketReadGranularity = 262144;
     
     private $now;
+    private $httpDateNow;
     private $keepAliveWatcher;
     private $keepAliveTimeouts = [];
     private $keepAliveWatcherInterval = 1;
@@ -82,7 +82,8 @@ class Server {
     }
     
     private function registerKeepAliveWatcher() {
-        $this->now = time();
+        $this->now = $now = time();
+        $this->httpDateNow = gmdate('D, d M Y H:i:s', $now) . ' UTC';
         $this->keepAliveWatcher = $this->reactor->repeat(function() {
             $this->timeoutKeepAlives();
         }, $this->keepAliveWatcherInterval);
@@ -90,6 +91,7 @@ class Server {
     
     private function timeoutKeepAlives() {
         $this->now = $now = time();
+        $this->httpDateNow = gmdate('D, d M Y H:i:s', $now) . ' UTC';
         foreach ($this->keepAliveTimeouts as $socketId => $expiryTime) {
             if ($expiryTime <= $now) {
                 $client = $this->clients[$socketId];
@@ -915,8 +917,8 @@ class Server {
             $headers .= "\r\nServer: " . self::SERVER_SOFTWARE;
         }
         
-        if ($this->alwaysAddDateHeader && (stripos($headers, "\r\nDate:") === FALSE)) {
-            $headers .= "\r\nDate: " . gmdate('D, d M Y H:i:s') . ' UTC';
+        if (stripos($headers, "\r\nDate:") === FALSE) {
+            $headers .= "\r\nDate: " . $this->httpDateNow;
         }
         
         // This MUST happen AFTER content-length/body normalization or headers won't be correct
@@ -1361,8 +1363,6 @@ class Server {
                 $this->setSendServerToken($value); break;
             case 'normalizemethodcase':
                 $this->setNormalizeMethodCase($value); break;
-            case 'alwaysadddateheader':
-                $this->setAlwaysAddDateHeader($value); break;
             case 'requirebodylength':
                 $this->setRequireBodyLength($value); break;
             case 'socketsolingerzero':
@@ -1429,10 +1429,6 @@ class Server {
     
     private function setNormalizeMethodCase($boolFlag) {
         $this->normalizeMethodCase = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
-    }
-    
-    private function setAlwaysAddDateHeader($boolFlag) {
-        $this->alwaysAddDateHeader = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
     
     private function setRequireBodyLength($boolFlag) {
@@ -1512,8 +1508,6 @@ class Server {
                 return $this->sendServerToken; break;
             case 'normalizemethodcase':
                 return $this->normalizeMethodCase; break;
-            case 'alwaysadddateHeader':
-                return $this->alwaysAddDateHeader; break;
             case 'requirebodylength':
                 return $this->requireBodyLength; break;
             case 'socketsolingerzero':
