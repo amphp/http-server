@@ -3,7 +3,7 @@
 namespace Aerys\Config;
 
 use Auryn\Injector,
-    Auryn\Provider,
+    Auryn\InjectorBuilder,
     Auryn\InjectionException;
 
 class Bootstrapper {
@@ -13,6 +13,7 @@ class Bootstrapper {
     const HOST_CLASS = 'Aerys\Host';
     
     private $injector;
+    private $injectorBuilder;
     private $beforeStartCallbacks;
     private $shortOpts = 'c:b:n:d:h';
     private $longOpts = [
@@ -44,8 +45,8 @@ class Bootstrapper {
         'afterResponse'
     ];
     
-    function __construct(Injector $injector = NULL) {
-        $this->injector = $injector ?: new Provider;
+    function __construct(InjectorBuilder $injectorBuilder = NULL) {
+        $this->injectorBuilder = $injectorBuilder ?: new InjectorBuilder;
     }
     
     /**
@@ -69,10 +70,13 @@ class Bootstrapper {
      */
     function displayHelp() {
         $helpLines = [
-            PHP_EOL,
+            'Example Usage:',
+            '--------------',
             'php aerys.php --config="/path/to/server/config.php"',
             'php aerys.php --bind="*:80" --name="mysite.com" --root="/path/to/document/root"',
             PHP_EOL,
+            'Options:',
+            '--------',
             '-c, --config     Use a config file to bootstrap the server',
             '-b, --bind       The server\'s address and port (e.g. 127.0.0.1:80 or *:80)',
             '-n, --name       Optional host (domain) name',
@@ -81,7 +85,7 @@ class Bootstrapper {
             PHP_EOL
         ];
         
-        echo implode(PHP_EOL, $helpLines);
+        echo PHP_EOL, implode(PHP_EOL, $helpLines);
         
         return FALSE;
     }
@@ -211,11 +215,10 @@ class Bootstrapper {
      * @return \Aerys\Server A ready-to-run server instance
      */
     function createServer(array $config) {
-        $serverOptions = isset($config['aerys.options']) ? $config['aerys.options'] : [];
-        unset($config['aerys.options']);
+        $reservedKeys = $this->extractReservedKeys($config);
+        list($config, $serverOptions, $definitions, $beforeStartCallbacks) = $reservedKeys;
         
-        $beforeStartCallbacks = isset($config['aerys.beforeStart']) ? $config['aerys.beforeStart'] : [];
-        unset($config['aerys.beforeStart']);
+        $this->injector = $this->injectorBuilder->fromArray($definitions);
         
         $this->makeEventReactor();
         
@@ -241,6 +244,19 @@ class Bootstrapper {
         }
         
         return $server;
+    }
+    
+    private function extractReservedKeys(array $config) {
+        $serverOptions = isset($config['aerys.options']) ? $config['aerys.options'] : [];
+        unset($config['aerys.options']);
+        
+        $definitions = isset($config['aerys.definitions']) ? $config['aerys.definitions'] : [];
+        unset($config['aerys.definitions']);
+        
+        $beforeStartCallbacks = isset($config['aerys.beforeStart']) ? $config['aerys.beforeStart'] : [];
+        unset($config['aerys.beforeStart']);
+        
+        return [$config, $serverOptions, $definitions, $beforeStartCallbacks];
     }
     
     private function makeEventReactor() {

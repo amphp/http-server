@@ -31,7 +31,7 @@ try {
         $bootstrapper->displayHelp();
     }
 } catch (Aerys\Config\ConfigException $e){
-    echo $e->getMessage(), "\n", $bootstrapper->displayHelp();
+    echo "\nConfig error: ", $e->getMessage(), "\n", $bootstrapper->displayHelp();
 } catch (Exception $e) {
     echo $e, "\n";
 }
