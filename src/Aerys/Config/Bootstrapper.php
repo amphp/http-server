@@ -4,7 +4,8 @@ namespace Aerys\Config;
 
 use Auryn\Injector,
     Auryn\InjectorBuilder,
-    Auryn\InjectionException;
+    Auryn\InjectionException,
+    Aerys\Handlers\DocRoot\DocRootLauncher;
 
 class Bootstrapper {
     
@@ -200,8 +201,8 @@ class Bootstrapper {
             ])
         ];
         
-        if ($this->loadedConfig['name']) {
-            $configArr['name'] = $name;
+        if ($options['name']) {
+            $configArr['name'] = $options['name'];
         }
         
         return [$configArr];
