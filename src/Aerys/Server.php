@@ -23,8 +23,6 @@ class Server {
     private $serverSockets = [];
     private $serverAcceptWatchers = [];
     private $pendingTlsWatchers = [];
-    private $isServerRunning = FALSE;
-    private $isServerPaused = FALSE;
     private $isInsideBeforeResponseModLoop = FALSE;
     private $isInsideAfterResponseModLoop = FALSE;
     private $clients = [];
@@ -68,6 +66,13 @@ class Server {
     private $keepAliveTimeouts = [];
     private $keepAliveWatcherInterval = 1;
     
+    private $partialInternalErrorResponse;
+    
+    private $runState;
+    private $stateStopped = 0;
+    private $statePaused = 1;
+    private $stateRunning = 2;
+    
     function __construct(Reactor $reactor, WriterFactory $wf = NULL) {
         $this->reactor = $reactor;
         $this->writerFactory = $wf ?: new WriterFactory;
@@ -76,7 +81,9 @@ class Server {
         $this->isExtSocketsEnabled = extension_loaded('sockets');
         $this->isExtOpensslEnabled = extension_loaded('openssl');
         
-        $this->allowedMethods = array_combine($this->allowedMethods, array_fill(0, count($this->allowedMethods), 1));
+        $this->partialInternalErrorResponse = [Status::INTERNAL_SERVER_ERROR, Reason::HTTP_500, []];
+        
+        $this->runState = $this->stateStopped;
     }
     
     private function renewKeepAliveTimeout($socketId) {
@@ -148,11 +155,11 @@ class Server {
      * @return void
      */
     function pause() {
-        if ($this->isServerRunning && !$this->isServerPaused) {
+        if ($this->runState === $this->stateRunning) {
             foreach ($this->serverAcceptWatchers as $watcher) {
                 $this->reactor->disable($watcher);
             }
-            $this->isServerPaused = TRUE;
+            $this->runState = $this->statePaused;
         }
     }
     
@@ -162,11 +169,11 @@ class Server {
      * @return void
      */
     function resume() {
-        if ($this->isServerRunning && $this->isServerPaused) {
+        if ($this->runState === $this->statePaused) {
             foreach ($this->serverAcceptWatchers as $watcher) {
                 $this->reactor->enable($watcher);
             }
-            $this->isServerPaused = FALSE;
+            $this->runState = $this->stateRunning;
         }
     }
     
@@ -176,11 +183,10 @@ class Server {
      * @return void
      */
     function stop() {
-        if ($this->isServerRunning) {
+        if ($this->runState === $this->stateRunning) {
             $this->cancelServerAcceptWatchers();
             $this->closeServerSockets();
-            $this->isServerRunning = FALSE;
-            $this->isServerPaused = FALSE;
+            $this->runState = $this->stateStopped;
         }
     }
     
@@ -209,13 +215,11 @@ class Server {
      * @return void
      */
     function start() {
-        if (!$this->isServerRunning && $this->hosts) {
+        if (($this->runState === $this->stateStopped) && $this->hosts) {
             $this->errorStream = $this->logErrorsTo ? fopen($this->logErrorsTo, 'ab+') : STDERR;
             $this->bindListeningSockets();
             $this->registerKeepAliveWatcher();
-            $this->isServerRunning = TRUE;
-            $this->reactor->run();
-            $this->isServerRunning = FALSE;
+            $this->runState = $this->stateRunning;
         } elseif (!$this->hosts) {
             throw new \LogicException(
                 'Cannot start server: no hosts registered'
@@ -488,28 +492,43 @@ class Server {
         
         $client->requestCount += !isset($client->requests[$requestId]);
         
+        $protocol = $requestArr['protocol'];
         $method = $requestArr['method'] = $this->normalizeMethodCase
             ? strtoupper($requestArr['method'])
             : $requestArr['method'];
         
-        if ($host = $this->selectRequestHost($requestArr, $client->isEncrypted)) {
+        $uriInfo = $this->getRequestUriInfo($requestArr['uri']);
+        $headers = array_change_key_case($requestArr['headers'], CASE_UPPER);
+        
+        $requestArr['uriInfo'] = $uriInfo;
+        $requestArr['headers'] = $headers;
+        
+        $hostHeader = empty($headers['HOST']) ? NULL : strtolower($headers['HOST'][0]);
+        
+        $host = $this->selectRequestHost($uriInfo, $hostHeader, $client->isEncrypted, $protocol);
+        
+        if ($host) {
             $asgiEnv = $this->generateAsgiEnv($client, $host, $requestArr);
             
             $client->requests[$requestId] = $asgiEnv;
             $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
             
-            if (!isset($this->allowedMethods[$method])) {
-                return $this->setResponse($requestId, $this->generateMethodNotAllowedResponse());
+            if (!in_array($method, $this->allowedMethods)) {
+                $asgiResponse = $this->generateMethodNotAllowedResponse();
+                return $this->setResponse($requestId, $asgiResponse);
             } elseif ($method === 'TRACE') {
-                return $this->setResponse($requestId, $this->generateTraceResponse($requestArr['trace']));
+                $asgiResponse = $this->generateTraceResponse($requestArr['trace']);
+                return $this->setResponse($requestId, $asgiResponse);
             } elseif ($method === 'OPTIONS' && $requestArr['uri'] === '*') {
-                return $this->setResponse($requestId, $this->generateOptionsResponse());
+                $asgiResponse = $this->generateOptionsResponse();
+                return $this->setResponse($requestId, $asgiResponse);
             }
             
             return [$requestId, $asgiEnv, $host];
             
         } else {
-            $client->requests[$requestId] = $this->generateAsgiEnv($client, $this->selectDefaultHost(), $requestArr);
+            $host = $this->selectDefaultHost();
+            $client->requests[$requestId] = $this->generateAsgiEnv($client, $host, $requestArr);
             $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
             
             return $this->setResponse($requestId, $this->generateInvalidHostNameResponse());
@@ -517,63 +536,69 @@ class Server {
     }
     
     private function generateInvalidHostNameResponse() {
-        $status = Status::BAD_REQUEST;
-        $reason = Reason::HTTP_400 . ': Invalid Host';
-        $body = '<html><body><h1>' . $status . ' ' . $reason . '</h1></body></html>';
+        $body = "<html><body><h1>400 Bad Request: Invalid Host</h1></body></html>";
         $headers = [
             'Content-Type: text/html; charset=iso-8859-1',
             'Content-Length: ' . strlen($body),
             'Connection: close'
         ];
         
-        return [$status, $reason, $headers, $body];
+        return [400, 'Bad Request: Invalid Host', $headers, $body];
     }
     
     private function generateMethodNotAllowedResponse() {
-        return [
-            $status = Status::METHOD_NOT_ALLOWED,
-            $reason = Reason::HTTP_405,
-            $headers = ['Allow: ' . implode(',', array_keys($this->allowedMethods))],
-            $body = NULL
-        ];
+        $headers = ['Allow: ' . implode(',', $this->allowedMethods)];
+        
+        return [405, 'Method Not Allowed', $headers, $body = NULL];
     }
     
     private function generateTraceResponse($body) {
-        $headers = [
-            'Content-Length: ' . strlen($body), 
-            'Content-Type: text/plain; charset=utf-8'
-        ];
+        $headers = ['Content-Type: message/http'];
         
-        return [
-            $status = Status::OK,
-            $reason = Reason::HTTP_200,
-            $headers,
-            $body
-        ];
+        return [Status::OK, Reason::HTTP_200, $headers, $body];
     }
     
     private function generateOptionsResponse() {
+        $headers = ['Allow: ' . implode(',', $this->allowedMethods)];
+        
+        return [200, 'OK', $headers, $body = NULL];
+    }
+    
+    private function getRequestUriInfo($requestUri) {
+        if (stripos($requestUri, 'http://') === 0 || stripos($requestUri, 'https://') === 0) {
+            $parts = parse_url($requestUri);
+            return [
+                'isAbsolute' => TRUE,
+                'query' => $parts['query'],
+                'path' => $parts['path'],
+                'port' => $parts['port']
+            ];
+        }
+        
+        if ($qPos = strpos($requestUri, '?')) {
+            $query = substr($requestUri, $qPos + 1);
+            $path = substr($requestUri, 0, $qPos);
+        } else {
+            $query = '';
+            $path = $requestUri;
+        }
+        
         return [
-            $status = Status::OK,
-            $reason = Reason::HTTP_200,
-            $headers = ['Allow: ' . implode(',', array_keys($this->allowedMethods))],
-            $body = NULL
+            'isAbsolute' => FALSE,
+            'query' => $query,
+            'path' => $path,
+            'port' => NULL
         ];
     }
     
     /**
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
      */
-    private function selectRequestHost(array $requestArr, $isSocketEncrypted) {
-        $protocol = $requestArr['protocol'];
-        $requestUri = $requestArr['uri'];
-        $headers = array_change_key_case($requestArr['headers'], CASE_UPPER);
-        $hostHeader = empty($headers['HOST']) ? NULL : strtolower(current($headers['HOST']));
-        
-        if (0 === stripos($requestUri, 'http://') || stripos($requestUri, 'https://') === 0) {
-            $host = $this->selectHostByAbsoluteUri($requestUri);
+    private function selectRequestHost(array $uriInfo, $hostHeader, $isEncrypted, $protocol) {
+        if ($uriInfo['isAbsolute']) {
+            $host = $this->selectHostByAbsoluteUri($uriInfo, $isEncrypted);
         } elseif ($hostHeader !== NULL || $protocol >= 1.1) {
-            $host = $this->selectHostByHeader($hostHeader, $isSocketEncrypted);
+            $host = $this->selectHostByHeader($hostHeader, $isEncrypted);
         } else {
             $host = $this->selectDefaultHost();
         }
@@ -582,26 +607,20 @@ class Server {
     }
     
     /**
-     * @TODO Figure out how best to allow for forward proxy applications with absolute URIs
+     * @TODO return default host for forward proxy use-cases
      */
-    private function selectHostByAbsoluteUri($uri) {
-        $urlParts = parse_url($uri);
-        $port = empty($urlParts['port']) ? '80' : $urlParts['port'];
-        $hostId = strtolower($urlParts['host']) . ':' . $port;
-        
-        return isset($this->hosts[$hostId])
-            ? $this->hosts[$hostId]
-            : NULL;
+    private function selectHostByAbsoluteUri(array $uriInfo, $isEncrypted) {
+        $port = $uriInfo['port'] ?: ($isEncrypted ? 443 : 80);
+        $hostId = $uriInfo['host'] . ':' . $port;
+        $host = isset($this->hosts[$hostId]) ? $this->hosts[$hostId] : NULL;
     }
     
-    private function selectHostByHeader($hostHeader, $isSocketEncrypted) {
-        $hostHeader = strtolower($hostHeader);
-        
+    private function selectHostByHeader($hostHeader, $isEncrypted) {
         if ($portStartPos = strrpos($hostHeader , ':')) {
             $ipComparison = substr($hostHeader, 0, $portStartPos);
             $port = substr($hostHeader, $portStartPos + 1);
         } else {
-            $port = $isSocketEncrypted ? '443' : '80';
+            $port = $isEncrypted ? '443' : '80';
             $ipComparison = $hostHeader;
             $hostHeader .= ":{$port}";
         }
@@ -638,14 +657,8 @@ class Server {
     }
     
     private function generateAsgiEnv(Client $client, Host $host, array $requestArr) {
-        $uri = $requestArr['uri'];
-        if ($uri === '/' || $uri === '*') {
-            $queryString = '';
-        } else {
-            $queryString = ($qPos = strpos($uri, '?')) ? substr($uri, $qPos + 1) : '';
-        }
-        
-        $urlScheme = $client->isEncrypted ? 'https' : 'http';
+        $uriInfo = $requestArr['uriInfo'];
+        $uriScheme = $client->isEncrypted ? 'https' : 'http';
         $serverName = $host->hasVhostName() ? $host->getName() : $client->serverAddress;
         
         $asgiEnv = [
@@ -655,7 +668,7 @@ class Server {
             'ASGI_LAST_CHANCE'  => empty($requestArr['headersOnly']),
             'ASGI_ERROR'        => $this->errorStream,
             'ASGI_INPUT'        => $requestArr['body'],
-            'ASGI_URL_SCHEME'   => $urlScheme,
+            'ASGI_URL_SCHEME'   => $uriScheme,
             'AERYS_HOST_ID'     => $host->getId(),
             'SERVER_PORT'       => $client->serverPort,
             'SERVER_ADDR'       => $client->serverAddress,
@@ -664,13 +677,12 @@ class Server {
             'REMOTE_ADDR'       => $client->clientAddress,
             'REMOTE_PORT'       => (string) $client->clientPort,
             'REQUEST_METHOD'    => $requestArr['method'],
-            'REQUEST_URI'       => $uri,
-            'QUERY_STRING'      => $queryString
+            'REQUEST_URI'       => $requestArr['uri'],
+            'REQUEST_URI_PATH'  => $uriInfo['path'],
+            'QUERY_STRING'      => $uriInfo['query']
         ];
         
-        if ($headers = $requestArr['headers']) {
-            $headers = array_change_key_case($headers, CASE_UPPER);
-        }
+        $headers = $requestArr['headers'];
         
         if (!empty($headers['CONTENT-TYPE'])) {
             $asgiEnv['CONTENT_TYPE'] = $headers['CONTENT-TYPE'][0];
@@ -719,7 +731,7 @@ class Server {
         }
     }
     
-    private function finalizePreBodyRequest(Client $client, $requestArr) {
+    private function finalizePreBodyRequest(Client $client, array $requestArr) {
         list($requestId, $asgiEnv, $host, $needsNewRequestId) = $client->preBodyRequest;
         $client->preBodyRequest = NULL;
         
@@ -728,15 +740,42 @@ class Server {
             $this->requestIdClientMap[$requestId] = $client;
         }
         
-        if ($hasTrailer = !empty($asgiEnv['HTTP_TRAILER'])) {
-            $asgiEnv = $this->generateAsgiEnv($client, $host, $requestArr);
+        if (!empty($asgiEnv['HTTP_TRAILER'])) {
+            $asgiEnv = $this->updateRequestEnvFromTrailers($asgiEnv, $requestArr);
         }
         
-        if ($needsNewRequestId || $hasTrailer) {
-            $client->requests[$requestId] = $asgiEnv;
-        }
+        $asgiEnv['ASGI_LAST_CHANCE'] = TRUE;
+        
+        $client->requests[$requestId] = $asgiEnv;
         
         $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
+    }
+    
+    private function updateRequestEnvFromTrailers(array $asgiEnv, array $finalRequestArr) {
+        $newHeaders = array_change_key_case($finalRequestArr['headers'], CASE_UPPER);
+        
+        // The Host header is ignored in trailers to prevent unsanitized values from bypassing the
+        // safety check when headers are originally received. The other values are expressly
+        // disallowed by RFC 2616 Section 14.40.
+        unset(
+            $newHeaders['TRANSFER-ENCODING'],
+            $newHeaders['CONTENT-LENGTH'],
+            $newHeaders['TRAILER'],
+            $newHeaders['HOST']
+        );
+        
+        $trailerExpectation = $asgiEnv['HTTP_TRAILER'];
+        $allowedTrailers = array_map('strtoupper', array_map('trim', explode(',', $trailerExpectation)));
+        
+        foreach ($allowedTrailers as $trailerField) {
+            if (isset($newHeaders[$trailerField])) {
+                $field = 'HTTP_' . str_replace('-', '_', $trailerField);
+                $value = $newHeaders[$trailerField];
+                $asgiEnv[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
+            }
+        }
+        
+        return $asgiEnv;
     }
     
     private function invokeRequestHandler($requestId, array $asgiEnv, callable $handler) {
@@ -745,46 +784,51 @@ class Server {
                 $this->setResponse($requestId, $asgiResponse);
             }
         } catch (\Exception $e) {
-            $this->setResponse($requestId, [Status::INTERNAL_SERVER_ERROR, Reason::HTTP_500, [], $e]);
+            $asgiResponse = $this->partialInternalErrorResponse;
+            $asgiResponse[] = $e->__toString();
+            $this->setResponse($requestId, $asgiResponse);
         }
     }
     
     private function onParseError(Client $client, ParseException $e) {
         $requestId = $client->preBodyRequest
             ? $client->preBodyRequest[0]
-            : $this->generateParseErrorEnvironment($client, $e);
+            : $this->generateParseErrorEnv($client, $e);
         
-        $asgiResponse = $this->generateAsgiResponseFromParseException($e);
+        $asgiResponse = $this->generateParseErrorResponse($e);
+        
         $this->setResponse($requestId, $asgiResponse);
     }
     
-    private function generateParseErrorEnvironment(Client $client, ParseException $e) {
+    private function generateParseErrorEnv(Client $client, ParseException $e) {
         $requestId = ++$this->lastRequestId;
         $this->requestIdClientMap[$requestId] = $client;
-        $parsedMsgArr = $e->getParsedMsgArr();
-        $client->requestHeaderTraces[$requestId] = $parsedMsgArr['trace'] ?: '?';
         
-        $uri = $parsedMsgArr['uri'];
+        $requestArr = $e->getParsedMsgArr();
+        $requestArr['protocol'] = $protocol = '1.0';
+        $requestArr['headersOnly'] = FALSE;
         
-        if ((strpos($uri, 'http://') === 0 || strpos($uri, 'https://') === 0)) {
-            $host = $this->selectHostByAbsoluteUri($uri) ?: $this->selectDefaultHost();
-        } elseif ($parsedMsgArr['headers']
-            && ($headers = array_change_key_case($parsedMsgArr['headers']))
-            && isset($headers['HOST'])
-        ) {
-            $host = $this->selectHostByHeader($hostHeader) ?: $this->selectDefaultHost();
+        if ($headers = $requestArr['headers']) {
+            $uriInfo = $this->getRequestUriInfo($requestArr['uri']);
+            $requestArr['uriInfo'] = $uriInfo;
+            $headers = array_change_key_case($requestArr['headers'], CASE_UPPER);
+            $hostHeader = empty($headers['HOST']) ? NULL : $headers['HOST'][0];
+            $host = $this->selectRequestHost($uriInfo, $hostHeader, $client->isEncrypted, $protocol);
         } else {
             $host = $this->selectDefaultHost();
+            $requestArr['uriInfo'] = [
+                'path' => '?',
+                'query' => '?'
+            ];
         }
         
-        $asgiEnv = $this->generateAsgiEnv($client, $host, $e->getParsedMsgArr());
-        $asgiEnv['SERVER_PROTOCOL'] = '1.0';
-        $client->requests[$requestId] = $asgiEnv;
+        $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
+        $client->requests[$requestId] = $this->generateAsgiEnv($client, $host, $requestArr);
         
         return $requestId;
     }
     
-    private function generateAsgiResponseFromParseException(ParseException $e) {
+    private function generateParseErrorResponse(ParseException $e) {
         $status = $e->getCode() ?: Status::BAD_REQUEST;
         $reason = $this->getReasonPhrase($status);
         $msg = $e->getMessage();
@@ -1002,7 +1046,7 @@ class Server {
         } else {
             $lineEndPos = strpos($headers, "\r\n", $currentHeaderPos + 2);
             $start = substr($headers, 0, $currentHeaderPos);
-            $end = substr($headers, $lineEndPos);
+            $end = $lineEndPos ? substr($headers, $lineEndPos) : '';
             $headers = $start . $newConnectionHeader . $end;
         }
         
@@ -1074,7 +1118,7 @@ class Server {
         $connPos = strpos($headers, "\r\nConnection:");
         $lineEndPos = strpos($headers, "\r\n", $connPos + 2);
         $start = substr($headers, 0, $connPos);
-        $end = substr($headers, $lineEndPos);
+        $end = $lineEndPos ? substr($headers, $lineEndPos) : '';
         $headers = $start . "\r\nConnection: close" . $end;
         
         return $headers;
@@ -1087,14 +1131,14 @@ class Server {
         if ($clPos !== FALSE) {
             $lineEndPos = strpos($headers, "\r\n", $clPos + 2);
             $start = substr($headers, 0, $clPos);
-            $end = substr($headers, $lineEndPos);
+            $end = $lineEndPos ? substr($headers, $lineEndPos) : '';
             $headers = $start . $end;
         }
         
         if ($tePos !== FALSE) {
             $lineEndPos = strpos($headers, "\r\n", $tePos + 2);
             $start = substr($headers, 0, $tePos);
-            $end = substr($headers, $lineEndPos);
+            $end = $lineEndPos ? substr($headers, $lineEndPos) : '';
             $headers = $start . $end;
         }
         
@@ -1463,9 +1507,15 @@ class Server {
     }
     
     private function setAllowedMethods(array $methods) {
-        $this->allowedMethods = array_map(function() { return 1; }, array_flip($methods));
-        $this->allowedMethods['GET'] = 1;
-        $this->allowedMethods['HEAD'] = 1;
+        if (!in_array('GET', $methods)) {
+            $methods[] = 'GET';
+        }
+        
+        if (!in_array('HEAD', $methods)) {
+            $methods[] = 'HEAD';
+        }
+        
+        $this->allowedMethods = $methods;
     }
     
     private function setDefaultHost($hostId) {
@@ -1528,7 +1578,7 @@ class Server {
             case 'socketsolingerzero':
                 return $this->socketSoLingerZero; break;
             case 'allowedmethods':
-                return array_keys($this->allowedMethods); break;
+                return $this->allowedMethods; break;
             case 'defaulthost':
                 return $this->defaultHost ? $this->defaultHost->getId() : NULL; break;
             case 'verbosity':
