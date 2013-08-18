@@ -25,8 +25,9 @@ require dirname(__DIR__) . '/autoload.php';
 try {
     $bootstrapper = new Aerys\Config\Bootstrapper;
     if ($config = $bootstrapper->loadConfigFromCommandLine()) {
-        $server = $bootstrapper->createServer($config);
+        list($reactor, $server) = $bootstrapper->createServer($config);
         $server->start();
+        $reactor->run();
     } else {
         $bootstrapper->displayHelp();
     }

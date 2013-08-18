@@ -221,8 +221,7 @@ class Bootstrapper {
         
         $this->injector = $this->injectorBuilder->fromArray($definitions);
         
-        $this->makeEventReactor();
-        
+        $reactor = $this->makeEventReactor();
         $server = $this->injector->make(self::SERVER_CLASS);
         $this->injector->share($server);
         
@@ -244,7 +243,7 @@ class Bootstrapper {
             }
         }
         
-        return $server;
+        return [$reactor, $server];
     }
     
     private function extractReservedKeys(array $config) {
@@ -270,6 +269,8 @@ class Bootstrapper {
         
         $this->injector->alias('Alert\Reactor', get_class($reactor));
         $this->injector->share($reactor);
+        
+        return $reactor;
     }
     
     private function generateHostDefinitions(array $hosts) {
