@@ -1,168 +1,251 @@
 <?php
 
-use Artax\Client,
-    Artax\Request;
+use Alert\Reactor,
+    Alert\NativeReactor,
+    Artax\Request,
+    Artax\AsyncClient,
+    Aerys\Server,
+    Aerys\Host;
 
-/**
- * These tests will not add any test coverage because the Aerys server executes in a separate
- * process. Instead, this code tests integration of the server as a whole by making requests over
- * the TCP stack to the server process and lets us know if the response we received differs from
- * what was expected.
- * 
- * Note also that the server process's STDERR is piped to the test process's STDERR stream. This
- * allows us to see exactly what went wrong in the event of runtime errors triggered by the server.
- */
-class ServerIntegrationTest extends PHPUnit_Framework_TestCase {
-    
-    private static $serverProcess;
-    private static $serverPipes;
-    
-    private $isServerDead = FALSE;
-    
-    static function setUpBeforeClass() {
-        $serverPath = FIXTURE_DIR . '/integration_server.php';
-        $cmd = self::generatePhpBinaryCmd($serverPath);
-        $descriptors = [
-           2 => ["pipe", STDERR, "w"] // pipe STDERR to this process's STDERR
-        ];
-        
-        self::$serverProcess = proc_open($cmd, $descriptors, self::$serverPipes);
-        
-        // If we don't give the server process a moment to boot up and bind its socket we risk
-        // getting a socket exception when we try to connect in our tests.
-        usleep(100000);
-    }
-    
-    private static function generatePhpBinaryCmd($serverPath) {
-        $cmd = [];
-        $cmd[] = PHP_BINARY;
-        if ($ini = get_cfg_var('cfg_file_path')) {
-            $cmd[] = "-c $ini";
-        }
-        $cmd[] = $serverPath;
-        
-        return implode(' ', $cmd);
-    }
-    
-    static function tearDownAfterClass() {
-        foreach (self::$serverPipes as $pipe) {
-            if (is_resource($pipe)) {
-                @fclose($pipe);
-            }
-        }
-        @proc_terminate(self::$serverProcess);
-    }
-    
-    function skipIfServerHasDied() {
-        if ($this->isServerDead || !proc_get_status(self::$serverProcess)['running']) {
-            $this->isServerDead = TRUE;
-            $this->markTestSkipped(
-                'Test skipped because the server process died'
-            );
+class IntegrationServerApp {
+
+    function __invoke(array $asgiEnv, $requestId) {
+        switch ($asgiEnv['REQUEST_URI']) {
+            case '/return_body':
+                return $this->returnBody($asgiEnv, $requestId);
+            default:
+                return $this->hello($asgiEnv, $requestId);
         }
     }
     
-    // ---------------------------------- START TESTS --------------------------------------------->
-    
-    function testServerAddsMissingHeaders() {
-        $this->skipIfServerHasDied();
-        
-        $client = new Client;
-        $uri = 'http://' . INTEGRATION_SERVER_ADDR . '/adds_missing_headers';
-        $response = $client->request($uri);
-        
-        $expectedBody = '<html><body><h1>Hello, World.</h1></body></html>';
-        
-        $this->assertEquals(200, $response->getStatus());
-        $this->assertEquals('OK', $response->getReason());
-        $this->assertEquals($expectedBody, $response->getBody());
-        
-        $this->assertEquals(strlen($expectedBody), current($response->getHeader('Content-Length')));
-        $this->assertEquals('text/html; charset=utf-8', current($response->getHeader('Content-Type')));
+    private function hello() {
+        $body = '<html><body><h1>Hello, World.</h1></body></html>';
+        return [200, 'OK', $headers = [], $body];
     }
     
-    function testTraceResponse() {
-        $this->skipIfServerHasDied();
-        
-        $client = new Client;
-        $uri = 'http://' . INTEGRATION_SERVER_ADDR . '/trace_response';
-        $request = (new Request)->setUri($uri)->setMethod('TRACE')->setAllHeaders([
-            'User-Agent' => 'My-User-Agent',
-            'Content-Length' => 4,
-            'Content-Type' => 'text/plain; charset=utf-8'
-        ])->setBody('test');
-        
-        $response = $client->request($request);
-        
-        $expectedResponseBody = '' .
-            "TRACE /trace_response HTTP/1.1\r\n" .
-            "User-Agent: My-User-Agent\r\n" .
-            "Content-Length: 4\r\n" .
-            "Content-Type: text/plain; charset=utf-8\r\n" .
-            "Host: " . INTEGRATION_SERVER_ADDR . "\r\n" .
-            "Expect: 100-continue\r\n" .
-            "Accept-Encoding: gzip, identity\r\n";
-        
-        $this->assertEquals($expectedResponseBody, $response->getBody());
-    }
-    
-    function testMethodNotAllowedResponse() {
-        $this->skipIfServerHasDied();
-        
-        $client = new Client;
-        $uri = 'http://' . INTEGRATION_SERVER_ADDR . '/';
-        $request = (new Request)->setUri($uri)->setMethod('ZANZIBAR');
-        $response = $client->request($request);
-        
-        $this->assertEquals(405, $response->getStatus());
-    }
-    
-    function testBadRequestResponseOnInvalidHttp11Host() {
-        $this->skipIfServerHasDied();
-        
-        $client = new Client;
-        $uri = 'http://' . INTEGRATION_SERVER_ADDR . '/';
-        $request = (new Request)->setUri($uri)->setMethod('GET')->setProtocol('1.1')->setHeader('Host', 'badhost');
-        $response = $client->request($request);
-        
-        $this->assertEquals(400, $response->getStatus());
-    }
-    
-    function testPostBodyResponse() {
-        $this->skipIfServerHasDied();
-        
-        $client = new Client;
-        $uri = 'http://' . INTEGRATION_SERVER_ADDR . '/returns_post_body';
-        $request = (new Request)->setUri($uri)->setMethod('POST')->setBody('test POST body');
-        $response = $client->request($request);
-        
-        $this->assertEquals(200, $response->getStatus());
-        $this->assertEquals('test POST body', $response->getBody());
-    }
-    
-    function testPostBodyResponseWithExpectContinue() {
-        $this->skipIfServerHasDied();
-        
-        $client = new Client;
-        $uri = 'http://' . INTEGRATION_SERVER_ADDR . '/returns_post_body';
-        $request = (new Request)->setUri($uri)->setMethod('POST')->setBody('test')->setHeader('Expect', '100-continue');
-        $response = $client->request($request);
-        
-        $this->assertEquals(200, $response->getStatus());
-        $this->assertEquals('test', $response->getBody());
-    }
-    
-    function testPutBodyResponse() {
-        $this->skipIfServerHasDied();
-        
-        $client = new Client;
-        $uri = 'http://' . INTEGRATION_SERVER_ADDR . '/returns_put_body';
-        $request = (new Request)->setUri($uri)->setMethod('PUT')->setBody('test PUT body');
-        $response = $client->request($request);
-        
-        $this->assertEquals(200, $response->getStatus());
-        $this->assertEquals('test PUT body', $response->getBody());
+    private function returnBody($asgiEnv) {
+        $body = stream_get_contents($asgiEnv['ASGI_INPUT']);
+        return [200, 'OK', $headers = [], $body];
     }
     
 }
+
+class ServerIntegrationTest extends PHPUnit_Framework_TestCase {
+    
+    private static $reactor;
+    private static $server;
+    private static $client;
+    private $onResponse;
+    
+    static function setUpBeforeClass() {
+        self::$reactor = new NativeReactor;
+        self::$server = new Server(self::$reactor);
+        self::$server->setOption('verbosity', 0);
+        
+        $host = new Host('127.0.0.1', 1500, '127.0.0.1', new IntegrationServerApp);
+        self::$server->registerHost($host);
+        self::$server->start();
+        self::$client = new AsyncClient(self::$reactor);
+    }
+    
+    function onArtaxClientError(\Exception $e) {
+        self::$reactor->stop();
+        $this->fail($e->getMessage());
+    }
+    
+    function testBasicResponse() {
+        $this->onResponse = function($response) {
+            $this->assertEquals(200, $response->getStatus());
+            $this->assertEquals('OK', $response->getReason());
+            $this->assertEquals('<html><body><h1>Hello, World.</h1></body></html>', $response->getBody());
+            $this->assertEquals(strlen($response->getBody()), current($response->getHeader('Content-Length')));
+            $this->assertEquals('text/html; charset=utf-8', current($response->getHeader('Content-Type')));
+            self::$reactor->stop();
+        };
+        
+        self::$reactor->immediately(function() {
+            $uri = 'http://127.0.0.1:1500/';
+            self::$client->request($uri, $this->onResponse, [$this, 'onArtaxClientError']);
+        });
+        
+        self::$reactor->run();
+    }
+    
+    function testRequestBody() {
+        $requestBody = 'test';
+        $this->onResponse = function($response) use ($requestBody) {
+            $this->assertEquals(200, $response->getStatus());
+            $this->assertEquals($requestBody, $response->getBody());
+            self::$reactor->stop();
+        };
+        
+        self::$reactor->immediately(function() use ($requestBody) {
+            $uri = 'http://127.0.0.1:1500/return_body';
+            $request = (new Request)->setUri($uri)->setMethod('POST')->setBody($requestBody);
+            self::$client->request($request, $this->onResponse, [$this, 'onArtaxClientError']);
+        });
+        
+        self::$reactor->run();
+    }
+    
+    function testDisallowedMethod() {
+        $this->onResponse = function($response) {
+            $this->assertEquals(405, $response->getStatus());
+            self::$reactor->stop();
+        };
+        
+        self::$reactor->immediately(function() {
+            $uri = 'http://127.0.0.1:1500/';
+            $request = (new Request)->setUri($uri)->setMethod('ZANZIBAR');
+            self::$client->request($request, $this->onResponse, [$this, 'onArtaxClientError']);
+        });
+        
+        self::$reactor->run();
+    }
+    
+    function testTraceResponse() {
+        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        
+        $request = "TRACE / HTTP/1.0\r\n";
+        $request.= "User-Agent: My-User-Agent\r\n";
+        $request.= "Host: 127.0.0.1:1500\r\n";
+        $request.= "\r\n";
+        
+        self::$reactor->immediately(function() use ($sock, $request) {
+            fwrite($sock, $request);
+        });
+        
+        $watcher = self::$reactor->onReadable($sock, function() use ($sock, $request) {
+            $responseLines = [];
+            while ($data = fgets($sock)) {
+                $responseLines[] = $data;
+            }
+            
+            $startLine = current($responseLines);
+            $response = implode($responseLines);
+            $body = substr($response, strpos($response, "\r\n\r\n") + 4);
+            
+            $this->assertEquals("HTTP/1.0 200 OK\r\n", $startLine);
+            $this->assertEquals($body, rtrim($request, "\r\n") . "\r\n");
+            
+            self::$reactor->stop();
+        });
+        
+        self::$reactor->run();
+        self::$reactor->cancel($watcher);
+        @fclose($sock);
+    }
+    
+    function testBadRequest() {
+        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        
+        $request = "some nonsense\r\nfas;fjdlfjadf;\najdlfaj\r\n\r\n";
+        
+        self::$reactor->immediately(function() use ($sock, $request) {
+            fwrite($sock, $request);
+        });
+        
+        $watcher = self::$reactor->onReadable($sock, function() use ($sock) {
+            $statusLine = rtrim(fgets($sock), "\r\n");
+            $this->assertEquals('HTTP/1.0 400 Bad Request', $statusLine);
+            self::$reactor->stop();
+        });
+        
+        self::$reactor->run();
+        self::$reactor->cancel($watcher);
+        @fclose($sock);
+    }
+    
+    function test431ResponseWhenHeadersTooLarge() {
+        $originalMaxHeaderBytes = self::$server->getOption('maxHeaderBytes');
+        self::$server->setOption('maxHeaderBytes', 256);
+        
+        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        
+        $request = "GET / HTTP/1.0\r\n";
+        $request.= "X-My-Too-Long-Header: " . str_repeat('x', 512) . "\r\n";
+        $request.= "\r\n";
+        
+        self::$reactor->immediately(function() use ($sock, $request) {
+            fwrite($sock, $request);
+        });
+        
+        $watcher = self::$reactor->onReadable($sock, function() use ($sock) {
+            $statusLine = rtrim(fgets($sock), "\r\n");
+            $this->assertEquals('HTTP/1.0 431 Request Header Fields Too Large', $statusLine);
+            self::$reactor->stop();
+        });
+        
+        self::$reactor->run();
+        self::$reactor->cancel($watcher);
+        @fclose($sock);
+        self::$server->setOption('maxHeaderBytes', $originalMaxHeaderBytes);
+    }
+    
+    function test413ResponseWhenEntityBodyTooLarge() {
+        $originalMaxBodyBytes = self::$server->getOption('maxBodyBytes');
+        self::$server->setOption('maxBodyBytes', 3);
+        
+        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        
+        $request = "POST / HTTP/1.0\r\n";
+        $request.= "Content-Length: 5\r\n";
+        $request.= "\r\n";
+        $request.= "woot!";
+        
+        self::$reactor->immediately(function() use ($sock, $request) {
+            fwrite($sock, $request);
+        });
+        
+        $watcher = self::$reactor->onReadable($sock, function() use ($sock) {
+            $statusLine = rtrim(fgets($sock), "\r\n");
+            $this->assertEquals('HTTP/1.0 413 Request Entity Too Large', $statusLine);
+            self::$reactor->stop();
+        });
+        
+        self::$reactor->run();
+        self::$reactor->cancel($watcher);
+        @fclose($sock);
+        self::$server->setOption('maxBodyBytes', $originalMaxBodyBytes);
+    }
+    
+    
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
