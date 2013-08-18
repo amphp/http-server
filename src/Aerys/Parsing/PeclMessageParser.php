@@ -18,7 +18,7 @@ class PeclMessageParser implements Parser {
     private $remainingBodyBytes;
     private $bodyBytesConsumed = 0;
     private $chunkLenRemaining;
-    
+    private $responseMethodMatch = [];
     private $parseFlowHeaders = [
         'TRANSFER-ENCODING' => NULL,
         'CONTENT-LENGTH' => NULL
@@ -48,6 +48,10 @@ class PeclMessageParser implements Parser {
                 $this->{$key} = $value;
             }
         }
+    }
+    
+    function enqueueResponseMethodMatch($method) {
+        $this->responseMethodMatch[] = $method;
     }
     
     function getBuffer() {
@@ -151,7 +155,13 @@ class PeclMessageParser implements Parser {
         }
         
         transition_from_response_headers_to_body: {
-            if ($this->responseCode == 204 || $this->responseCode == 304 || $this->responseCode < 200) {
+            $requestMethod = array_shift($this->responseMethodMatch);
+            
+            if ($this->responseCode == 204
+                || $this->responseCode == 304
+                || $this->responseCode < 200
+                || $requestMethod === 'HEAD'
+            ) {
                 goto complete;
             } elseif ($this->parseFlowHeaders['TRANSFER-ENCODING']) {
                 $this->state = self::BODY_CHUNKS;

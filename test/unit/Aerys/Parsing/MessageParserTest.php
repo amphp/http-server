@@ -22,6 +22,15 @@ class MessageParserTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals($body, $actualBody);
     }
     
+    function testKeepAliveHeadResponseParse() {
+        $request = "HTTP/1.1 200 OK\n\n";
+        $msgParser = new MessageParser(MessageParser::MODE_RESPONSE);
+        $msgParser->enqueueResponseMethodMatch('HEAD');
+        $parsedResponseArr = $msgParser->parse($request);
+        
+        $this->assertEquals(200, $parsedResponseArr['status']);
+    }
+    
     /**
      * @dataProvider provideParseExpectations
      */
