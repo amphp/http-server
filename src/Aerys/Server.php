@@ -516,7 +516,7 @@ class Server {
             if (!in_array($method, $this->allowedMethods)) {
                 $asgiResponse = $this->generateMethodNotAllowedResponse();
                 return $this->setResponse($requestId, $asgiResponse);
-            } elseif ($method === 'TRACE') {
+            } elseif ($method === 'TRACE' && empty($headers['MAX-FORWARDS'][0])) {
                 $asgiResponse = $this->generateTraceResponse($requestArr['trace']);
                 return $this->setResponse($requestId, $asgiResponse);
             } elseif ($method === 'OPTIONS' && $requestArr['uri'] === '*') {
@@ -535,6 +535,12 @@ class Server {
         }
     }
     
+    private function generateTraceResponse($body) {
+        $headers = ['Content-Type: message/http'];
+        
+        return [Status::OK, Reason::HTTP_200, $headers, $body];
+    }
+    
     private function generateInvalidHostNameResponse() {
         $body = "<html><body><h1>400 Bad Request: Invalid Host</h1></body></html>";
         $headers = [
@@ -550,12 +556,6 @@ class Server {
         $headers = ['Allow: ' . implode(',', $this->allowedMethods)];
         
         return [405, 'Method Not Allowed', $headers, $body = NULL];
-    }
-    
-    private function generateTraceResponse($body) {
-        $headers = ['Content-Type: message/http'];
-        
-        return [Status::OK, Reason::HTTP_200, $headers, $body];
     }
     
     private function generateOptionsResponse() {
