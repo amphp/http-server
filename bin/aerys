@@ -1,3 +1,4 @@
+#!/usr/bin/env php
 <?php
 
 /**
@@ -6,9 +7,9 @@
  * Example Usage:
  * ==============
  * 
- * php aerys.php --config /path/to/server/config.php
- * php aerys.php -b *:80 -d /path/to/document/root
- * php aerys.php --bind *:80 --name mysite.com --docroot /path/to/document/root
+ * php ./bin/aerys --config /path/to/server/config.php
+ * php ./bin/aerys -b *:80 -d /path/to/document/root
+ * php ./bin/aerys --bind *:80 --name mysite.com --docroot /path/to/document/root
  * 
  * Options:
  * ========
@@ -20,7 +21,7 @@
  * -h, --help       Display help screen
  */
 
-require dirname(__DIR__) . '/autoload.php';
+require __DIR__ . '/../vendor/autoload.php';
 
 try {
     $bootstrapper = new Aerys\Config\Bootstrapper;
