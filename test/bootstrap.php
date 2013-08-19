@@ -11,10 +11,10 @@ date_default_timezone_set('UTC');
 error_reporting(E_ALL);
 
 // Autoloader for Aerys libs
-require dirname(__DIR__) . '/autoload.php';
+require __DIR__ . '/../vendor/autoload.php';
 
 // Autoloader for Artax client (used for integration testing)
-require dirname(__DIR__) . '/vendor/Artax/autoload.php';
+require __DIR__ . '/../vendor/Artax/autoload.php';
 
 // Autoloader for vfsStream's ridiculous source directory structure (for mocking the filesystem)
 spl_autoload_register(function($class) {

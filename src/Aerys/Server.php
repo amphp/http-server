@@ -215,15 +215,11 @@ class Server {
      * @return void
      */
     function start() {
-        if (($this->runState === $this->stateStopped) && $this->hosts) {
+        if ($this->runState === $this->stateStopped) {
             $this->errorStream = $this->logErrorsTo ? fopen($this->logErrorsTo, 'ab+') : STDERR;
             $this->bindListeningSockets();
             $this->registerKeepAliveWatcher();
             $this->runState = $this->stateRunning;
-        } elseif (!$this->hosts) {
-            throw new \LogicException(
-                'Cannot start server: no hosts registered'
-            );
         }
     }
     
@@ -252,6 +248,12 @@ class Server {
      * @TODO Track which addresses have TLS enabled and prevent conflicts in multi-host environments
      */
     private function bindListeningSockets() {
+        if (!$this->hosts) {
+            throw new \LogicException(
+                'Cannot start server: no hosts registered'
+            );
+        }
+        
         $boundServers = [];
         $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
         
@@ -451,7 +453,6 @@ class Server {
             // initializeRequest() returns NULL if the server has already responded to the request
             return;
         }
-        
         list($requestId, $asgiEnv, $host) = $requestInitStruct;
         
         if ($this->requireBodyLength && empty($asgiEnv['CONTENT_LENGTH'])) {
@@ -1192,7 +1193,9 @@ class Server {
             $this->keepAliveTimeouts[$socketId]
         );
         
-        if ($this->cachedClientCount-- === $this->maxConnections) {
+        if ((--$this->cachedClientCount <= $this->maxConnections)
+            && ($this->runState === $this->statePaused)
+        ) {
             $this->resume();
         }
     }

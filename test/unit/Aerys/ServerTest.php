@@ -5,6 +5,15 @@ use Aerys\Server,
 
 class ServerTest extends PHPUnit_Framework_TestCase {
     
+    /**
+     * @expectedException \LogicException
+     */
+    function testStartThrowsIfNoHostsRegistered() {
+        $reactor = $this->getMock('Alert\Reactor');
+        $server = new Server($reactor);
+        $server->start();
+    }
+    
     function testOptionAccessors() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
