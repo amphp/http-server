@@ -1,10 +1,8 @@
 <?php
 
-define('TEST_DIR', __DIR__);
 define('FIXTURE_DIR', __DIR__ . '/fixture');
-define('INTEGRATION_SERVER_ADDR', '127.0.0.1:1500');
 
-// Derick Rethans hates good design.
+// Derick Rethans hates good design
 date_default_timezone_set('UTC');
 
 // Make sure we see errors
@@ -12,6 +10,17 @@ error_reporting(E_ALL);
 
 // Autoloader for Aerys libs
 require __DIR__ . '/../vendor/autoload.php';
+
+// Autoloader for Aerys test classes
+spl_autoload_register(function($class) {
+    if (0 === strpos($class, 'Artax\\Test\\')) {
+        $class = str_replace('\\', DIRECTORY_SEPARATOR, $class);
+        $file = __DIR__ . '/Aerys/Test/' . $class . '.php';
+        if (file_exists($file)) {
+            require $file;
+        }
+    }
+});
 
 // Autoloader for Artax client (used for integration testing)
 require __DIR__ . '/../vendor/Artax/autoload.php';
@@ -27,5 +36,5 @@ spl_autoload_register(function($class) {
     }
 });
 
-require __DIR__ . '/SingleByteWriteFilter.php';
-stream_filter_register("single_byte_write", "SingleByteWriteFilter");
+require __DIR__ . '/Aerys/Test/SingleByteWriteFilter.php';
+stream_filter_register("single_byte_write", "Aerys\Test\SingleByteWriteFilter");
