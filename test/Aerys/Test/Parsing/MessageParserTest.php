@@ -7,6 +7,33 @@ use Aerys\Parsing\MessageParser;
 class MessageParserTest extends \PHPUnit_Framework_TestCase {
     
     /**
+     * @expectedException \Aerys\Parsing\ParseException
+     * @expectedExceptionCode 400
+     * @expectedExceptionMessage Invalid request line
+     * @dataProvider provideBadRequestLineMessages
+     */
+    function testParseThrowsOnBadRequestLine($badMsg) {
+        $parser = new MessageParser;
+        $parsedRequestArr = $parser->parse($badMsg);
+    }
+    
+    function provideBadRequestLineMessages() {
+        return [
+            ["dajfalkjf jslfhalsdjf\r\n\r\n"],
+            ["test   \r\n\r\n"]
+        ];
+    }
+    
+    /**
+     * @expectedException \Aerys\Parsing\ParseException
+     * @expectedExceptionCode 505
+     */
+    function testProtocolNotSupported() {
+        $parser = new MessageParser;
+        $parsedRequestArr = $parser->parse("GET / HTTP/0.9\r\n\r\n");
+    }
+    
+    /**
      * @dataProvider provideParseExpectations
      */
     function testParse($msg, $method, $uri, $protocol, $headers, $body) {

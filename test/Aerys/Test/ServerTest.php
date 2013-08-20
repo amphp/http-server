@@ -33,13 +33,15 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             'normalizeMethodCase'   => TRUE,
             'autoReasonPhrase'      => TRUE,
             'requireBodyLength'     => TRUE,
-            'allowedMethods'        => ['GET', 'HEAD'],
+            'allowedMethods'        => [],
             'socketSoLingerZero'    => FALSE,
             'verbosity'             => Server::QUIET,
             'defaultHost'           => NULL
         ];
         
         $server->setAllOptions($options);
+        
+        $options['allowedMethods'] = ['GET', 'HEAD'];
         
         foreach ($options as $key => $value) {
             $this->assertEquals($value, $server->getOption($key));
