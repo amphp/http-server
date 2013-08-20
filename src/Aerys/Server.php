@@ -110,43 +110,25 @@ class Server {
      * - *              Applies mod to ALL currently registered hosts
      * - *:80           Applies mod to ALL currently registered hosts listening on port 80
      * - 127.0.0.1:*    Applies mod to ALL currently registered hosts listening on any port at 127.0.0.1
+     * - mysite.com:*   Applies mod to all hosts on any port with the name mysite.com
      * - mysite.com:80  Applies mod to ONLY mysite.com on port 80
      * 
      * @param string $hostId The Host ID matching string
      * @param \Aerys\Mods\Mod $mod The mod instance to register
      * @param array $priorityMap Optionally specify mod invocation priority values
      * @throws \DomainException If no registered hosts match the specified $hostId
-     * @return void
+     * @return int Returns the number of hosts to which the mod was successfully applied
      */
     function registerMod($hostId, $mod, array $priorityMap = []) {
-        foreach ($this->selectApplicableHostsById($hostId) as $host) {
-            $host->registerMod($mod, $priorityMap);
-        }
-    }
-    
-    private function selectApplicableHostsById($hostId) {
-        if ($hostId === '*') {
-            $applicableHosts = $this->hosts;
-        } elseif (substr($hostId, 0, 2) === '*:') {
-            $port = substr($hostId, 2);
-            $applicableHosts = array_filter($this->hosts, function($host) use ($port) {
-                return ($port === '*' || $host->getPort() == $port);
-            });
-        } elseif (substr($hostId, -2) === ':*') {
-            $addr = substr($hostId, 0, -2);
-            $applicableHosts = array_filter($this->hosts, function($host) use ($addr) {
-                return ($addr === '*' || $host->getAddress() === $addr);
-            });
-        } elseif (isset($this->hosts[$hostId])) {
-            $applicableHosts = [$this->hosts[$hostId]];
-        } else {
-            // @TODO Determine most appropriate exception to throw here
-            throw new \DomainException(
-                "No currently registered Hosts match the specified ID: {$hostId}"
-            );
+        $matchCount = 0;
+        foreach ($this->hosts as $hostId => $host) {
+            if ($host->matchesId($hostId)) {
+                $matchCount++;
+                $host->registerMod($mod, $priorityMap);
+            }
         }
         
-        return $applicableHosts;
+        return $matchCount;
     }
     
     /**
@@ -258,8 +240,8 @@ class Server {
         $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
         
         foreach ($this->hosts as $host) {
-            $context = $host->getTlsContext();
-            $isEncrypted = $host->hasTlsDefinition();
+            $context = $host->getContext();
+            $isEncrypted = $host->isEncrypted();
             $onAcceptableClient = $isEncrypted
                 ? function($watcherId, $serverSocket) { $this->acceptTls($serverSocket); }
                 : function($watcherId, $serverSocket) { $this->accept($serverSocket); };
@@ -660,7 +642,7 @@ class Server {
     private function generateAsgiEnv(Client $client, Host $host, array $requestArr) {
         $uriInfo = $requestArr['uriInfo'];
         $uriScheme = $client->isEncrypted ? 'https' : 'http';
-        $serverName = $host->hasVhostName() ? $host->getName() : $client->serverAddress;
+        $serverName = $host->hasName() ? $host->getName() : $client->serverAddress;
         
         $asgiEnv = [
             'ASGI_VERSION'      => '0.1',

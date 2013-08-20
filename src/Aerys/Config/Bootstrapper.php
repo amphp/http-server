@@ -291,6 +291,7 @@ class Bootstrapper {
             
             list($address, $port) = $this->splitHostAddressAndPort($definitionArr['listenOn']);
             $name = ($hasName = !empty($definitionArr['name'])) ? $definitionArr['name'] : $address;
+            $name = ($name === '*' || $name === '[::]') ? '' : $name;
             $handler = $this->generateHostHandler($definitionArr['application']);
             
             $injectionDefinition = [
@@ -303,7 +304,7 @@ class Bootstrapper {
             $host = $this->makeHost($injectionDefinition);
             
             if (!empty($definitionArr['tls'])) {
-                $host->registerTlsDefinition($definitionArr['tls']);
+                $host->setEncryptionContext($definitionArr['tls']);
             }
             
             if (!empty($definitionArr['mods'])) {
