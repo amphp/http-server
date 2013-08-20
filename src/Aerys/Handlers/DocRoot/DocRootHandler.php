@@ -22,6 +22,7 @@ class DocRootHandler {
     const PRECONDITION_IF_RANGE_FAILED = 400;
     const PRECONDITION_PASS = 999;
     
+    private $reactor;
     private $docRoot;
     private $indexes = ['index.html', 'index.htm'];
     private $eTagMode = self::ETAG_ALL;
@@ -38,109 +39,203 @@ class DocRootHandler {
     private $memoryCacheMaxSize = 67108864;    // 64 MiB
     private $memoryCacheMaxFileSize = 1048576; //  1 MiB
     private $memoryCacheCurrentSize = 0;
-    private $staleCacheWatcher;
+    private $cacheCleanInterval = 1;
+    private $cacheWatcher;
     
-    function __construct(Reactor $reactor, $docRoot) {
-        $docRoot = str_replace('\\', '/', $docRoot);
-        $this->validateDocRoot($docRoot);
-        
-        $this->docRoot = rtrim($docRoot, '/');
+    function __construct(Reactor $reactor) {
+        $this->reactor = $reactor;
         $this->assignDefaultMimeTypes();
         $this->multipartBoundary = uniqid('', TRUE);
-        
-        $this->staleCacheWatcher = $reactor->repeat(function() {
-            $this->cleanCache();
-        }, $interval = 1);
+        $this->cacheWatcher = $this->reactor->repeat([$this, 'clearStaleCache'], $this->cacheCleanInterval);
     }
     
-    private function validateDocRoot($docRoot) {
-        if (!(is_readable($docRoot) && is_dir($docRoot))) {
+    /**
+     * Set multiple DocRoot options
+     * 
+     * @param array $options Key-value array mapping option name keys to values
+     * @return \Aerys\Handlers\DocRoot\DocRootHandler Returns the current object instance
+     */
+    function setAllOptions(array $options) {
+        foreach ($options as $option => $value) {
+            $this->setOption($option, $value);
+        }
+        
+        return $this;
+    }
+    
+    /**
+     * Set a DocRoot option
+     * 
+     * @param string $option The option key (case-insensitve)
+     * @param mixed $value The option value to assign
+     * @throws \DomainException On unrecognized option key
+     * @return \Aerys\Handlers\DocRoot\DocRootHandler Returns the current object instance
+     */
+    function setOption($option, $value) {
+        switch(strtolower($option)) {
+            case 'docroot':
+                $this->setDocRoot($value);
+                break;
+            case 'indexes':
+                $this->setIndexes($value);
+                break;
+            case 'indexredirection':
+                $this->setIndexRedirection($value);
+                break;
+            case 'etagmode':
+                $this->setETagMode($value);
+                break;
+            case 'expiresheaderperiod':
+                $this->setExpiresHeaderPeriod($value);
+                break;
+            case 'defaultmimetype':
+                $this->setDefaultMimeType($value);
+                break;
+            case 'custommimetypes':
+                $this->setCustomMimeTypes($value);
+                break;
+            case 'defaulttextcharset':
+                $this->setDefaultTextCharset($value);
+                break;
+            case 'cachettl':
+                $this->setCacheTtl($value);
+                break;
+            case 'memorycachemaxsize':
+                $this->setMemoryCacheMaxSize($value);
+                break;
+            case 'memorycachemaxfilesize':
+                $this->setMemoryCacheMaxFileSize($value);
+                break;
+            default:
+                throw new \DomainException(
+                    "Unknown DocRoot option: {$option}"
+                );
+        }
+        
+        return $this;
+    }
+    
+    private function setDocRoot($path) {
+        $path = str_replace('\\', '/', $path);
+        
+        if (!(is_readable($path) && is_dir($path))) {
             throw new \InvalidArgumentException(
                 'Document root must be a readable directory'
             );
         }
+        
+        $this->docRoot = rtrim($path, '/');
     }
     
-    private function cleanCache() {
-        $now = time();
-        
-        if ($this->memoryCache) {
-            $this->clearStaleCacheEntries($now, $this->memoryCache);
-        }
-        
-        if ($this->fileDescriptorCache) {
-            $this->clearStaleCacheEntries($now, $this->fileDescriptorCache);
-        }
-        
-        clearstatcache();
-    }
-    
-    private function clearStaleCacheEntries($now, &$cache) {
-        foreach ($cache as $cacheId => $cacheArr) {
-            $cacheExpiry = $cacheArr[1];
-            if ($cacheExpiry <= $now) {
-                unset($cache[$cacheId]);
-            } else {
-                break;
-            }
-        }
-    }
-    
-    function setIndexes(array $indexes) {
+    private function setIndexes(array $indexes) {
         $this->indexes = $indexes;
     }
     
-    function setIndexRedirection($boolFlag) {
+    private function setIndexRedirection($boolFlag) {
         $this->indexRedirection = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
     
-    function setETagMode($mode) {
+    private function setETagMode($mode) {
         $this->eTagMode = (int) $mode;
     }
     
-    function setExpiresHeaderPeriod($seconds) {
+    private function setExpiresHeaderPeriod($seconds) {
         $this->expiresHeaderPeriod = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => -1,
             'default' => 300
         ]]);
     }
     
-    function setDefaultMimeType($mimeType) {
+    private function setDefaultMimeType($mimeType) {
         $this->defaultMimeType = $mimeType;
     }
     
-    function setCustomMimeTypes(array $mimeTypes) {
+    private function setCustomMimeTypes(array $mimeTypes) {
         foreach ($mimeTypes as $ext => $type) {
             $ext = strtolower(ltrim($ext, '.'));
             $this->customMimeTypes[$ext] = $type;
         }
     }
     
-    function setDefaultTextCharset($charset) {
+    private function setDefaultTextCharset($charset) {
         $this->defaultTextCharset = $charset;
     }
     
-    function setCacheTtl($seconds) {
+    private function setCacheTtl($seconds) {
         $this->cacheTtl = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
             'default' => 5
         ]]);
     }
     
-    function setMemoryCacheMaxSize($bytes) {
+    private function setMemoryCacheMaxSize($bytes) {
         $this->memoryCacheMaxSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
             'default' => 67108864
         ]]);
     }
     
-    function setMemoryCacheMaxFileSize($bytes) {
+    private function setMemoryCacheMaxFileSize($bytes) {
         $this->memoryCacheMaxFileSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
             'default' => 1048576
         ]]);
     }
     
+    /**
+     * Clear all cached file descriptors and memory-mapped files
+     * 
+     * @return void
+     */
+    function clearCache() {
+        $this->memoryCache = [];
+        $this->fileDescriptorCache = [];
+        $this->memoryCacheCurrentSize = 0;
+        clearstatcache();
+    }
+    
+    /**
+     * Clear only stale descriptors and memory-mapped files
+     * 
+     * @return void
+     */
+    function clearStaleCache() {
+        $now = time();
+        $this->clearStaleMemoryCacheEntries($now);
+        $this->clearStaleDescriptorCacheEntries($now);
+        clearstatcache();
+    }
+    
+    private function clearStaleMemoryCacheEntries($now) {
+        foreach ($this->memoryCache as $cacheId => $cacheArr) {
+            $cacheExpiry = $cacheArr[1];
+            if ($cacheExpiry <= $now) {
+                $cacheSizeDecrement = $cacheArr[2];
+                $this->memoryCacheSize -= $cacheSizeDecrement;
+                unset($this->memoryCache[$cacheId]);
+            } else {
+                break;
+            }
+        }
+    }
+    
+    private function clearStaleDescriptorCacheEntries($now) {
+        foreach ($this->fileDescriptorCache as $cacheId => $cacheArr) {
+            $cacheExpiry = $cacheArr[1];
+            if ($cacheExpiry <= $now) {
+                unset($this->fileDescriptorCache[$cacheId]);
+            } else {
+                break;
+            }
+        }
+    }
+    
+    /**
+     * Response to an ASGI request array
+     * 
+     * @param array $asgiEnv
+     * @return array Returns an ASGI response array appropriate to the request
+     */
     function __invoke(array $asgiEnv) {
         $requestUri = ltrim($asgiEnv['REQUEST_URI'], '/');
         
@@ -795,6 +890,10 @@ class DocRootHandler {
             "z"         => "application/x-compress",
             "zip"       => "application/zip"
         ];
+    }
+    
+    function __destruct() {
+        $this->reactor->cancel($this->cacheWatcher);
     }
 }
 
