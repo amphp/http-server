@@ -4,14 +4,14 @@ namespace Aerys\Mods\SendFile;
 
 use Aerys\Server,
     Aerys\Mods\BeforeResponseMod,
-    Aerys\Handlers\DocRoot\DocRootHandler;
+    Aerys\Responders\DocRoot\DocRootResponder;
 
 class ModSendFile implements BeforeResponseMod {
     
     private $server;
     private $docRootHandler;
     
-    function __construct(Server $server, DocRootHandler $docRootHandler) {
+    function __construct(Server $server, DocRootResponder $docRootHandler) {
         $this->server = $server;
         $this->docRootHandler = $docRootHandler;
     }
@@ -43,7 +43,7 @@ class ModSendFile implements BeforeResponseMod {
             $newRequestUri = '/' . ltrim($filePath, '/');
             $asgiEnv['REQUEST_URI'] = $newRequestUri;
             
-            $asgiResponse = $this->docRootHandler->__invoke($asgiEnv);
+            $asgiResponse = $this->docRootHandler->__invoke($asgiEnv, $requestId);
             
             $this->server->setResponse($requestId, $asgiResponse);
         }

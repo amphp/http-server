@@ -13,9 +13,9 @@ require __DIR__ . '/../vendor/autoload.php';
 
 // Autoloader for Aerys test classes
 spl_autoload_register(function($class) {
-    if (0 === strpos($class, 'Artax\\Test\\')) {
+    if (0 === strpos($class, 'Aerys\\Test\\')) {
         $class = str_replace('\\', DIRECTORY_SEPARATOR, $class);
-        $file = __DIR__ . '/Aerys/Test/' . $class . '.php';
+        $file = __DIR__ . '/' . $class . '.php';
         if (file_exists($file)) {
             require $file;
         }

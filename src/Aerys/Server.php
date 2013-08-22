@@ -95,11 +95,13 @@ class Server {
      * Register a Host to handle requests to a given address or host name
      * 
      * @param Host $host A host definition for responding to client requests
-     * @return void
+     * @return int Returns the new number of hosts registered with the server
      */
     function registerHost(Host $host) {
         $hostId = $host->getId();
         $this->hosts[$hostId] = $host;
+        
+        return count($this->hosts);
     }
     
     /**
