@@ -14,20 +14,20 @@ class CompositeResponder implements AsgiResponder {
     function __construct(array $responders) {
         if (empty($responders)) {
             throw new \InvalidArgumentException(
-                'Non-empty array of AsgiResponder instances required'
+                'Non-empty array of callables or AsgiResponder instances required'
             );
         }
 
         foreach ($responders as $key => $responder) {
-            if (!$responder instanceof AsgiResponder) {
+            if (!(is_callable($responder) || $responder instanceof AsgiResponder)) {
                 throw new \InvalidArgumentException(
-                    "AsgiResponder instance required at \$responder key {$key}"
+                    "Callable or AsgiResponder instance required at \$responder key {$key}"
                 );
             }
         }
 
         $this->responders = $responders;
-        
+
         $this->notFoundResponse = [
             $status = 404,
             $reason = 'Method Not Allowed',
