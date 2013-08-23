@@ -45,15 +45,17 @@ class Host {
     
     private function setAddress($address) {
         $address = trim($address, "[]");
-        if ($address === '*' || $address === '::') {
+        if ($address === '*') {
             $this->address = $address;
+        } elseif ($address === '::') {
+            $this->address = '[::]';
         } elseif (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
             $this->address = "[{$address}]";
         } elseif (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
             $this->address = $address;
         } else {
             throw new \InvalidArgumentException(
-                "Valid IPv4 or IPv6 address or wildcard required: {$address}"
+                "Valid IPv4/IPv6 address or wildcard required: {$address}"
             );
         }
     }
@@ -122,7 +124,7 @@ class Host {
      * @return bool
      */
     function hasWildcardAddress() {
-        return ($this->address === '*');
+        return ($this->address === '*' || $this->address === '[::]');
     }
     
     /**
