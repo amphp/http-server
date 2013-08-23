@@ -2,53 +2,253 @@
 
 namespace Aerys\Framework;
 
-use Auryn\Injector,
-    Auryn\InjectionException,
-    Auryn\Provider,
+use Alert\Reactor,
     Aerys\Host,
+    Aerys\Server,
     Aerys\Responders\CompositeResponder,
     Aerys\Responders\Routing\RoutingResponder,
     Aerys\Responders\DocRoot\DocRootResponder,
-    Aerys\Responders\Websocket\WebsocketResponder;
+    Aerys\Responders\Websocket\WebsocketResponder,
+    Auryn\Injector,
+    Auryn\Provider;
 
 class Bootstrapper {
 
     private $injector;
     private $reactor;
     private $server;
+    private $shortOpts;
+    private $longOpts;
+    private $shortOptNameMap;
+    private $responderOrder;
 
     /**
-     * @param \Auryn\Injector Optional injection container seeded with dependency definitions
+     * @param \Alert\Reactor The event reactor underlying the server
+     * @param \Aerys\Server The server we're bootstrapping
+     * @param \Auryn\Injector A dependency injection container used to provision user route handlers
      */
-    function __construct(Injector $injector = NULL) {
+    function __construct(Reactor $reactor, Server $server, Injector $injector = NULL) {
+        $this->reactor = $reactor;
+        $this->server = $server;
         $this->injector = $injector ?: new Provider;
-        $this->reactor = $this->makeEventReactor();
-        $this->server = $this->makeServer();
+        $this->shortOpts = 'c:p:i:n:d:h';
+        $this->longOpts = [
+            'config:',
+            'port:',
+            'ip:',
+            'name:',
+            'docroot:',
+            'help'
+        ];
+        $this->shortOptNameMap = [
+            'c' => 'config',
+            'p' => 'port',
+            'i' => 'ip',
+            'n' => 'name',
+            'd' => 'docroot',
+            'h' => 'help'
+        ];
+        $this->responderOrder = [
+            'websockets',
+            'routes',
+            'user',
+            'docroot',
+            'reverseproxy'
+        ];
     }
 
-    private function makeEventReactor() {
-        try {
-            $reactor = $this->injector->make('Alert\Reactor');
-        } catch (InjectionException $e) {
-            $this->injector->delegate('Alert\Reactor', ['Alert\ReactorFactory', 'select']);
-            $reactor = $this->injector->make('Alert\Reactor');
+    /**
+     * Load an array of CLI option switches and values
+     *
+     * @return array Returns an array of CLI getopt() switches and values
+     */
+    function getCommandLineOptions() {
+        return getopt($this->shortOpts, $this->longOpts);
+    }
+
+    /**
+     * Load server configuration from an array of command line option switches and values
+     *
+     * @param array $options An array of CLI getopt() switches and values
+     * @return bool Returns TRUE if the server can run using the specified config, FALSE otherwise
+     */
+    function loadCommandLineConfig(array $options) {
+        if (isset($options['h']) || isset($options['help'])) {
+            $this->displayHelp();
+            $canRun = FALSE;
+        } else {
+            $options = $this->normalizeGetoptKeys($options);
+            $canRun = $this->loadConfigFromGetoptArray($options);
         }
 
-        $this->injector->alias('Alert\Reactor', get_class($reactor));
-        $this->injector->share($reactor);
-
-        return $reactor;
+        return $canRun;
     }
 
-    private function makeServer() {
-        $this->injector->share('Aerys\Server');
+    private function displayHelp() {
+        $helpLines = [
+            'Options:',
+            '--------',
+            '-c, --config     Use a config file to bootstrap the server',
+            '-p, --port       Optional port on which to listen (default: 80)',
+            '-i, --ip         Optional IP on which to bind (default: all IPv4 interfaces)',
+            '-n, --name       Optional host/domain name',
+            '-d, --docroot    The filesystem directory from which to serve static files',
+            '-h, --help       Display help screen',
+            PHP_EOL,
+            'Example Usage:',
+            '--------------',
+            'aerys -c /path/to/app/config.php',
+            'aerys --config /path/to/app/config.php',
+            'aerys --name mysite.com --docroot /path/to/document/root',
+            'aerys -p 1337 -d /path/to/doc/root',
+            PHP_EOL
+        ];
 
-        return $this->injector->make('Aerys\Server');
+        echo PHP_EOL, implode(PHP_EOL, $helpLines);
+    }
+
+    private function normalizeGetoptKeys(array $options) {
+        $normalizedOptions = [
+            'config' => NULL,
+            'port' => NULL,
+            'ip' => NULL,
+            'name' => NULL,
+            'docroot' => NULL
+        ];
+
+        foreach ($options as $key => $value) {
+            if (isset($this->shortOptNameMap[$key])) {
+                $normalizedOptions[$this->shortOptNameMap[$key]] = $value;
+            } else {
+                $normalizedOptions[$key] = $value;
+            }
+        }
+
+        return $normalizedOptions;
+    }
+
+    private function loadConfigFromGetoptArray(array $options) {
+        try {
+            if ($options['config']) {
+                $this->loadFileConfig($options['config']);
+            } else {
+                $this->loadStaticAppFromGetoptArray($options);
+            }
+
+            $canRun = TRUE;
+
+        } catch (ConfigException $e) {
+            echo $e->getMessage(), PHP_EOL;
+            $canRun = FALSE;
+        }
+
+        return $canRun;
+    }
+
+    /**
+     * Load app and server configuration information from the specified file
+     *
+     * Configuration files must contain one or more app definitions (Aerys\Framework\App) and may
+     * optionally contain one or zero Aerys\Framework\ServerOption instances.
+     *
+     * @param string $filePath
+     * @throws \Aerys\Framework\ConfigException
+     * @return void
+     */
+    function loadFileConfig($filePath) {
+        $this->validateConfigFileLint($filePath);
+        
+        if (!@include $filePath) {
+            throw new ConfigException(
+                "Config file inclusion failed: {$filePath}"
+            );
+        }
+
+        $vars = get_defined_vars();
+
+        $apps = [];
+        $optionsCount = 0;
+        $injectorCount = 0;
+        foreach ($vars as $key => $value) {
+            if ($value instanceof App) {
+                $apps[] = $value;
+            } elseif ($value instanceof ServerOptions) {
+                $optionsCount++;
+                $opts = $value->getAllOptions();
+                $this->server->setAllOptions($opts);
+            } elseif ($value instanceof Injector) {
+                $injectorCount++;
+                $this->injector = $value;
+            }
+        }
+
+        if (!$apps) {
+            throw new ConfigException(
+                "No Aerys\Framework\App configuration objects found in {$filePath}"
+            );
+        } elseif ($optionsCount > 1) {
+            throw new ConfigException(
+                "Only one Aerys\Framework\ServerOptions instance allowed in {$filePath}"
+            );
+        } elseif ($injectorCount > 1) {
+            throw new ConfigException(
+                "Only one Auryn\Injector instance allowed in {$filePath}"
+            );
+        }
+
+        $this->seedInjector();
+
+        foreach ($apps as $app) {
+            $this->addApp($app);
+        }
+    }
+
+    private function validateConfigFileLint($filePath) {
+        $cmd = PHP_BINARY . ' -l ' . $filePath . '  && exit';
+        exec($cmd, $outputLines, $exitCode);
+
+        if ($exitCode) {
+            throw new ConfigException(
+                "Config file failed lint test" . PHP_EOL . implode(PHP_EOL, $outputLines)
+            );
+        }
+    }
+
+    private function seedInjector() {
+        $this->injector->alias('Alert\Reactor', get_class($this->reactor));
+        $this->injector->share($this->reactor);
+        $this->injector->share($this->server);
+    }
+
+    private function loadStaticAppFromGetoptArray(array $options) {
+        $docroot = realpath($options['docroot']);
+
+        if (!($docroot && is_dir($docroot) && is_readable($docroot))) {
+            throw new ConfigException(
+                'Invalid docroot path: ' . $options['docroot']
+            );
+        }
+
+        $app = (new App)->setDocumentRoot($docroot);
+
+        if ($port = $options['port']) {
+            $app->setPort($port);
+        }
+        if ($ip = $options['ip']) {
+            $app->setAddress($ip);
+        }
+        if ($name = $options['name']) {
+            $app->setName($name);
+        }
+
+        $this->seedInjector();
+
+        $this->addApp($app);
     }
 
     /**
      * Add a server application from the specified definition
-     * 
+     *
      * @param \Aerys\Framework\App An App definition
      * @throws \Aerys\Framework\ConfigException On invalid definition or handler build failure
      * @return \Aerys\Framework\Bootstrapper Returns the current object instance
@@ -72,73 +272,33 @@ class Bootstrapper {
         return $this;
     }
 
-    /**
-     * Set a server option
-     * 
-     * @param string $option The option key (case-INsensitve)
-     * @param mixed $value The option value to assign
-     * @throws \DomainException On unrecognized option key
-     * @return \Aerys\Framework\Bootstrapper Returns the current object instance
-     */
-    function setServerOption($option, $value) {
-        $this->server->setOption($option, $value);
-
-        return $this;
-    }
-
-    /**
-     * Set multiple server options at one time
-     * 
-     * @param array $options
-     * @throws \DomainException On unrecognized option key
-     * @return \Aerys\Framework\Bootstrapper Returns the current object instance
-     */
-    function setAllServerOptions(array $options) {
-        $this->server->setAllOptions($options);
-
-        return $this;
-    }
-
-    /**
-     * Run the bootstrapped server
-     * 
-     * @throws \Aerys\Framework\ConfigException If no App definitions registered
-     * @return void
-     */
-    function run() {
-        try {
-            $this->server->start();
-            $this->reactor->run();
-        } catch (\LogicException $previousException) {
-            throw new ConfigException(
-                'Cannot start server: no App definitions registered',
-                $errorCode = 0,
-                $previousException
-            );
-        }
-    }
-
     private function generateResponder(array $definitionArr) {
         $responders = [];
-        
-        $responders[] = ($websocketEndpoints = $definitionArr['websockets'])
+
+        $responders['websockets'] = ($websocketEndpoints = $definitionArr['websockets'])
             ? $this->generateWebsocketResponder($websocketEndpoints)
             : NULL;
-        
-        $responders[] = ($dynamicRoutes = $definitionArr['routes'])
+
+        $responders['routes'] = ($dynamicRoutes = $definitionArr['routes'])
             ? $this->generateRoutingResponder($dynamicRoutes)
             : NULL;
 
-        $responders[] = ($docRootOptions = $definitionArr['documentRoot'])
+        $responders['user'] = ($userResponders = $definitionArr['userResponders'])
+            ? $this->generateUserResponders($userResponders)
+            : NULL;
+
+        $responders['docroot'] = ($docRootOptions = $definitionArr['documentRoot'])
             ? $this->generateDocRootResponder($docRootOptions)
             : NULL;
 
-        $responders[] = ($reverseProxy = $definitionArr['reverseProxy'])
+        $responders['reverseproxy'] = ($reverseProxy = $definitionArr['reverseProxy'])
             ? $this->generateReverseProxyResponder($reverseProxy)
             : NULL;
 
+        $responders = $this->orderResponders($responders, $definitionArr['responderOrder']);
+
         $responders = array_filter($responders);
-        
+
         switch (count($responders)) {
             case 0:
                 throw new ConfigException(
@@ -158,18 +318,41 @@ class Bootstrapper {
         return $responder;
     }
 
+    private function orderResponders(array $responders, $userDefinedOrder) {
+        $order = array_map('strtolower', $userDefinedOrder);
+        
+        if ($diff = array_diff($order, $this->responderOrder)) {
+            throw new ConfigException(
+                'Invalid responder order values: ' . implode(', ', $diff)
+            );
+        }
+        
+        foreach ($this->responderOrder as $orderKey) {
+            if (!in_array($orderKey, $order)) {
+                $order[] = $orderKey;
+            }
+        }
+        
+        $orderedResponders = [];
+        foreach ($order as $orderKey) {
+            $orderedResponders[] = $responders[$orderKey];
+        }
+        
+        return $orderedResponders;
+    }
+
     private function generateWebsocketResponder(array $endpoints) {
         $responder = $this->injector->make('Aerys\Responders\Websocket\WebsocketResponder');
         $this->injector->share($responder);
-        
+
         foreach ($endpoints as $endpointArr) {
             list($uriPath, $websocketEndpointClass, $endpointOptions) = $endpointArr;
             $endpoint = $this->generateWebsocketEndpoint($websocketEndpointClass);
             $responder->registerEndpoint($uriPath, $endpoint, $endpointOptions);
         }
-        
+
         $this->injector->unshare($responder);
-        
+
         return $responder;
     }
 
@@ -178,7 +361,7 @@ class Bootstrapper {
             return $this->injector->make($endpointClass);
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                "Failed building websocket endpoint class: {$endpointClass}",
+                "Failed building websocket endpoint class {$endpointClass}: " . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
@@ -187,7 +370,7 @@ class Bootstrapper {
 
     private function generateRoutingResponder(array $dynamicRoutes) {
         $responder = new RoutingResponder;
-        
+
         foreach ($dynamicRoutes as $routeArr) {
             list($httpMethod, $uriPath, $routeHandler) = $routeArr;
 
@@ -199,16 +382,43 @@ class Bootstrapper {
 
             $responder->addRoute($httpMethod, $uriPath, $routeHandler);
         }
-        
+
         return $responder;
     }
 
-    private function generateExecutableRouteHandler($routeHandler) {
+    private function generateExecutableRouteHandler($handler) {
         try {
-            return $this->injector->getExecutable($routeHandler);
+            return $this->injector->getExecutable($handler);
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                'Failed building callable route handler',
+                'Failed building callable route handler: ' . $previousException->getMessage(),
+                $errorCode = 0,
+                $previousException
+            );
+        }
+    }
+
+    private function generateUserResponders(array $userResponders) {
+        $responders = [];
+        foreach ($userResponders as $responder) {
+            if (!($responder instanceof \Closure || (is_string($responder) && function_exists($responder)))) {
+                $responder = $this->generateExecutableUserResponder($responder);
+            }
+            
+            $responders[] = $responder;
+        }
+        
+        return (count($responders) === 1)
+            ? current($responders)
+            : new CompositeResponder($responders);
+    }
+    
+    private function generateExecutableUserResponder($responder) {
+        try {
+            return $this->injector->getExecutable($responder);
+        } catch (\Exception $previousException) {
+            throw new ConfigException(
+                'Failed building callable user responder: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
@@ -224,7 +434,7 @@ class Bootstrapper {
 
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                'DocRootResponder build failure',
+                'DocRootResponder build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
@@ -234,20 +444,20 @@ class Bootstrapper {
     private function generateReverseProxyResponder(array $reverseProxy) {
         try {
             $handler = $this->injector->make('Aerys\Responders\ReverseProxy\ReverseProxyResponder');
-            
+
             foreach ($reverseProxy['backends'] as $uri) {
                 $handler->addBackend($uri);
             }
-            
+
             unset($reverseProxy['backends']);
-            
+
             $handler->setAllOptions($reverseProxy);
 
             return $handler;
 
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                'ReverseProxyResponder build failure',
+                'ReverseProxyResponder build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
@@ -256,10 +466,11 @@ class Bootstrapper {
 
     private function buildHost($port, $ip, $name, callable $handler) {
         try {
+            $name = $name ?: $ip;
             return new Host($ip, $port, $name, $handler);
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                'Host build failure',
+                'Host build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
@@ -271,7 +482,7 @@ class Bootstrapper {
             $host->setEncryptionContext($tlsDefinition);
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                'Host build failure',
+                'Host build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
