@@ -158,7 +158,7 @@ class Bootstrapper {
     function loadFileConfig($filePath) {
         $this->validateConfigFileLint($filePath);
         
-        if (!@include $filePath) {
+        if (!include($filePath)) {
             throw new ConfigException(
                 "Config file inclusion failed: {$filePath}"
             );
