@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Websocket Echo Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="Daniel Lowrey">
+    <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.min.css" rel="stylesheet">
+    <link href="/favicon.ico" rel="icon" type="image/x-icon" />
+    <style>
+    .container > hr { margin: 30px 0; }
+    </style>
+  </head>
+
+  <body>
+
+    <div class="container">
+      <hr/>
+      <div class="row-fluid">
+        <div class="span8">
+          <h1>Websocket Echo Demo</h1>
+          <p>This demo simply echoes your messages to all connected websocket clients.</p>
+          <form id="theForm" onsubmit="return doSubmit();">
+          <div class="input-append">
+            <input class="span2" id="appendedInputButton" type="text" placeholder="Send a websocket message" style="min-width:300px;">
+            <button class="btn btn-info" type="button" id="submitButton">Send!</button>
+          </div>
+          </form>
+          
+        </div>
+        
+        <div class="span2 offset2" style="text-align:center;">
+          <h1 id="clientCount">?</h1>
+          <p>Current Users</p>
+        </div>
+      </div>
+      
+      <hr/>
+      
+      <div>
+        <table class="table table-striped">
+        <tbody id="messageTableBody">
+          <!--
+          <tr>
+            <td>Loading most recent messages ...</td>
+          </tr>
+          -->
+        </tbody>
+        </table>
+      </div>
+      
+
+    </div>
+
+    <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="echo.js"></script>
+  </body>
+</html>
