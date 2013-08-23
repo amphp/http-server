@@ -154,11 +154,15 @@ class Host {
         
         if (empty($tls['local_cert'])) {
             throw new \InvalidArgumentException(
-                'TLS local_cert required to bind crypto-enabled server socket'
+                '"local_cert" key required to bind crypto-enabled server socket'
+            );
+        } elseif (!(is_file($tls['local_cert']) && is_readable($tls['local_cert']))) {
+            throw new \InvalidArgumentException(
+                "Certificate file not found: {$tls['local_cert']}"
             );
         } elseif (empty($tls['passphrase'])) {
             throw new \InvalidArgumentException(
-                'TLS passphrase required to bind crypto-enabled server socket'
+                '"passphrase" key required to bind crypto-enabled server socket'
             );
         }
         

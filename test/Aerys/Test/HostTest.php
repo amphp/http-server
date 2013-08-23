@@ -55,7 +55,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
         $handler = function(){};
         $host = new Host($address, $port, $name, $handler);
         $host->setEncryptionContext([
-            'local_cert' => '/some/path',
+            'local_cert' => FIXTURE_DIR . '/vfs/misc/cert.pem.placeholder',
             'passphrase' => 'some pass'
         ]);
     }
@@ -86,6 +86,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
         return [
             [['local_cert' => '/some/path']], // <-- missing passphrase
             [['passphrase' => '42 is not a real passphrase']], // <-- missing local_cert
+            [['local_cert' => '/bad/path', 'passphrase' => 'doesnt matter']] // <-- nonexistent cert
         ];
     }
 
