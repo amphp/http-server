@@ -18,6 +18,8 @@ class App {
     private $documentRoot = [];
     private $reverseProxy = [];
     private $encryption = [];
+    private $userResponders = [];
+    private $responderOrder = [];
 
     /**
      * Define the host's port, IP and domain name
@@ -41,8 +43,8 @@ class App {
      * Define the IP interface on which the app will listen for requests
      *
      * The default wildcard IP value "*" translates to "all IPv4 interfaces" and is appropriate for
-     * most scenarios. Valid values include any IPv4 or IPv6 address. The string "[::]" denotes an
-     * IPv6 wildcard.
+     * most scenarios. Valid values also include any IPv4 or IPv6 address. The string "[::]" denotes
+     * an IPv6 wildcard.
      *
      * @param string $address
      * @return \Aerys\Framework\AppDefinition Returns the current object instance
@@ -68,11 +70,36 @@ class App {
     }
 
     /**
+     * Define TLS encryption settings for this host
+     *
+     * The $tlsOptions array takes the following form:
+     *
+     * $tlsOptions = [
+     *     'local_cert'             => '/path/to/mycert.pem', // *required
+     *     'passphrase'             => 'mypassphrase',        // *required
+     *     'allow_self_signed'      => TRUE,
+     *     'verify_peer'            => FALSE,
+     *     'ciphers'                => 'RC4-SHA:HIGH:!MD5:!aNULL:!EDH',
+     *     'disable_compression'    => TRUE,
+     *     'cafile'                 => NULL,
+     *     'capath'                 => NULL
+     * ];
+     *
+     * @param array $tlsOptions
+     * @return \Aerys\Framework\AppDefinition Returns the current object instance
+     */
+    function setEncryption(array $tlsOptions) {
+        $this->encryption = $tlsOptions;
+
+        return $this;
+    }
+
+    /**
      * Bind a handler for the specified HTTP method and URI path
      *
      * @param string $httpMethod The method for which this route applies
      * @param string $uriPath The route's URI path
-     * @param mxied $handler Any callable or class::method construction string
+     * @param mixed $handler Any callable or class::method construction string
      * @return \Aerys\Framework\AppDefinition Returns the current object instance
      */
     function addRoute($httpMethod, $uriPath, $handler) {
@@ -154,27 +181,41 @@ class App {
     }
 
     /**
-     * Define TLS encryption settings for this host
-     *
-     * The $tlsOptions array takes the following form:
-     *
-     * $tlsOptions = [
-     *     'local_cert'             => '/path/to/mycert.pem', // *required
-     *     'passphrase'             => 'mypassphrase',        // *required
-     *     'allow_self_signed'      => TRUE,
-     *     'verify_peer'            => FALSE,
-     *     'ciphers'                => 'RC4-SHA:HIGH:!MD5:!aNULL:!EDH',
-     *     'disable_compression'    => TRUE,
-     *     'cafile'                 => NULL,
-     *     'capath'                 => NULL
-     * ];
-     *
-     * @param array $tlsOptions
+     * Add a user responder to the request-response chain
+     * 
+     * User responders are always invoked in the order in which they are added to the App.
+     * 
+     * @param mixed $responder Any callable or class::method construction string
      * @return \Aerys\Framework\AppDefinition Returns the current object instance
      */
-    function setEncryption(array $tlsOptions) {
-        $this->encryption = $tlsOptions;
+    function addUserResponder($responder) {
+        $this->userResponders[] = $responder;
+        
+        return $this;
+    }
 
+    /**
+     * Determine the order in which request responders are invoked for this application
+     * 
+     * Valid values include the following and are case-insensitive:
+     * 
+     * - 'websockets'       (App::addWebsocket)
+     * - 'routes'           (App::addRoute)
+     * - 'user'             (App::addUserResponder)
+     * - 'docroot'          (App::setDocumentRoot)
+     * - 'reverseproxy'     (App::setReverseProxy)
+     * 
+     * Any values specified that don't match the above list will result in a ConfigException
+     * when the server is bootstrapped. Note that the above list is the default responder order.
+     * User responders added via `App::addUserResponder` are always ordered internally by the
+     * order in which they are added to the app.
+     * 
+     * @param array $order
+     * @return \Aerys\Framework\AppDefinition Returns the current object instance
+     */
+    function orderResponders(array $order) {
+        $this->responderOrder = $order;
+        
         return $this;
     }
 
@@ -192,7 +233,9 @@ class App {
             'websockets' => $this->websockets,
             'documentRoot' => $this->documentRoot,
             'reverseProxy' => $this->reverseProxy,
-            'encryption' => $this->encryption
+            'encryption' => $this->encryption,
+            'userResponders' => $this->userResponders,
+            'responderOrder' => $this->responderOrder
         ];
     }
 

@@ -24,6 +24,12 @@ class AppTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals('mysite.com', $arr['name']);
     }
 
+    function testSetEncryption() {
+        $app = (new App)->setEncryption($tlsSettings = [42]);
+        $arr = $app->toArray();
+        $this->assertEquals([42], $arr['encryption']);
+    }
+
     /**
      * @dataProvider provideRoutes
      */
@@ -88,11 +94,49 @@ class AppTest extends \PHPUnit_Framework_TestCase {
         $arr = $app->toArray();
         $this->assertEquals(['backends' => ['127.0.0.1:1337']], $arr['reverseProxy']);
     }
+    
+    function testAddUserResponder() {
+        $app = new App;
+        $this->assertSame($app, $app->addUserResponder('test1'));
+        $this->assertSame($app, $app->addUserResponder('test2'));
+        $this->assertEquals(['test1', 'test2'], $app->toArray()['userResponders']);
+    }
 
-    function testSetEncryption() {
-        $app = (new App)->setEncryption($tlsSettings = [42]);
-        $arr = $app->toArray();
-        $this->assertEquals([42], $arr['encryption']);
+    function testOrderResponders() {
+        $app = new App;
+        $this->assertSame($app, $app->orderResponders(['test1', 'test2']));
+        $this->assertEquals(['test1', 'test2'], $app->toArray()['responderOrder']);
     }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
