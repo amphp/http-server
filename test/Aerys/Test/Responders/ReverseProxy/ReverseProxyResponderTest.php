@@ -4,35 +4,59 @@ namespace Aerys\Test\Handlers\ReverseProxy;
 
 use Aerys\Responders\ReverseProxy\ReverseProxyResponder;
 
-class ReverseProxyTest extends \PHPUnit_Framework_TestCase {
-    
-    function testConstruct() {
-        $reactor = $this->getMock('Alert\Reactor');
-        $server = $this->getMock('Aerys\Server', NULL, [$reactor]);
-        $handler = new ReverseProxyResponder($reactor, $server);
-        $this->assertInstanceOf('Aerys\Responders\ReverseProxy\ReverseProxyResponder', $handler);
-    }
+class ReverseProxyResponderTest extends \PHPUnit_Framework_TestCase {
     
     function testOptionAssignment() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', NULL, [$reactor]);
-        $handler = new ReverseProxyResponder($reactor, $server);
+        $responder = new ReverseProxyResponder($reactor, $server);
         
-        $handler->setAllOptions([
-            'debug' => TRUE,
-            'debugColors' => TRUE,
+        $responder->setAllOptions([
+            'lowaterconnectionmin' => 4,
+            'hiwaterconnectionmax' => 100,
             'maxPendingRequests' => 1500,
             'proxyPassHeaders' => []
         ]);
     }
     
-    function testServiceUnavailableResponse() {
+    /**
+     * @expectedException \DomainException
+     */
+    function testOptionAssignmentThrowsOnUnknownKey() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = $this->getMock('Aerys\Server', NULL, [$reactor]);
-        $handler = new ReverseProxyResponder($reactor, $server);
+        $responder = new ReverseProxyResponder($reactor, $server);
         
-        $asgiResponse = $handler(['REQUEST_URI' => '/'], 42);
+        $responder->setOption('some unknown key', 42);
+    }
+    
+    /**
+     * @dataProvider provideInvalidBackendUris
+     * @expectedException \InvalidArgumentException
+     */
+    function testAddBackendThrowsOnMalformedUri($badUri) {
+        $reactor = $this->getMock('Alert\Reactor');
+        $server = $this->getMock('Aerys\Server', NULL, [$reactor]);
+        $responder = new ReverseProxyResponder($reactor, $server);
         
-        $this->assertEquals(503, $asgiResponse[0]);
+        $responder->addBackend($badUri);
+    }
+    
+    function provideInvalidBackendUris() {
+        return [
+            ['some invalid uri'],
+            [new \StdClass],
+            [TRUE]
+        ];
+    }
+    
+    function testServiceUnavailableResponseIfNoBackendsSpecified() {
+        $reactor = $this->getMock('Alert\Reactor');
+        $server = $this->getMock('Aerys\Server', NULL, [$reactor]);
+        $responder = new ReverseProxyResponder($reactor, $server);
+        
+        $asgiResponse = $responder(['REQUEST_URI' => '/'], 42);
+        $status = $asgiResponse[0];
+        $this->assertEquals(503, $status);
     }
 }
