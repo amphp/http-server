@@ -108,6 +108,77 @@ class App {
 
         return $this;
     }
+    
+    /**
+     * Add all public methods of the specified class to handle requests on the specified route
+     * 
+     * By default all public (non-magic) methods of the specified class will be added as route
+     * handlers for the uppercase HTTP verb of the same name. Assume the following class:
+     * 
+     * class MyClass {
+     *     function get(){}
+     *     function post(){}
+     *     function zanzibar(){} 
+     * }
+     * 
+     * Specifying `MyClass` as a route handler on `/myuri` will result in route matches for the
+     * following requests:
+     * 
+     * GET /myuri
+     * POST /myuri
+     * ZANZIBAR /myuri
+     * 
+     * If the optional $methodVerbMap parameter is specified, only the class methods listed in its
+     * keys will be added as routes. For example:
+     * 
+     * $app->addRouteClass('/myuri', 'MyClass', [
+     *     'get' => 'GET',
+     *     'post' => 'POST'
+     * ]);
+     * 
+     * By specifying the $methodVerbMap in the above example we avoid exposing the ZANZIBAR method
+     * to HTTP clients.
+     * 
+     * @param string $uriPath The route's URI path
+     * @param string $classHandler A route handler class name (fully namespaced)
+     * @param array $methodVerbMap If specified, only the methods listed as array keys will be used
+     * @throws \Aerys\Framework\ConfigException
+     * @return \Aerys\Framework\AppDefinition Returns the current object instance
+     */
+    function addRouteClass($uriPath, $classHandler, array $methodVerbMap = []) {
+        if (!class_exists($classHandler)) {
+            throw new ConfigException(
+                sprintf("Route class does not exist and could not be autoloaded: %s", $classHandler)
+            );
+        }
+        
+        $classMethods = get_class_methods($classHandler);
+        
+        if ($methodVerbMap && ($diff = array_diff(array_flip($methodVerbMap), $classMethods))) {
+            throw new ConfigException(
+                sprintf("Mapped %s methods must exist publicly: %s", $classHandler, implode(', ', $diff))
+            );
+        } elseif ($methodVerbMap) {
+            foreach ($methodVerbMap as $classMethod => $httpVerb) {
+                $this->addRoute($httpVerb, $uriPath, "{$classHandler}::{$classMethod}");
+            }
+        } elseif ($classMethods = $this->removeMagicMethods($classMethods)) {
+            foreach ($classMethods as $classMethod) {
+                $httpVerb = strtoupper($classMethod);
+                $this->addRoute($httpVerb, $uriPath, "{$classHandler}::{$classMethod}");
+            }
+        } else {
+            throw new ConfigException(
+                sprintf('Route class exposes no non-magic methods: %s', $classHandler)
+            );
+        }
+        
+        return $this;
+    }
+    
+    private function removeMagicMethods(array $classMethods) {
+        return array_filter($classMethods, function($m) { return (substr($m, 0, 2) !== '__'); });
+    }
 
     /**
      * Bind a websocket endpoint to the specified URI path

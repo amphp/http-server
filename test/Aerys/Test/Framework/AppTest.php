@@ -94,7 +94,7 @@ class AppTest extends \PHPUnit_Framework_TestCase {
         $arr = $app->toArray();
         $this->assertEquals(['backends' => ['127.0.0.1:1337']], $arr['reverseProxy']);
     }
-    
+
     function testAddUserResponder() {
         $app = new App;
         $this->assertSame($app, $app->addUserResponder('test1'));
@@ -108,35 +108,58 @@ class AppTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals(['test1', 'test2'], $app->toArray()['responderOrder']);
     }
 
+    /**
+     * @expectedException \Aerys\Framework\ConfigException
+     */
+    function testAddRouteClassThrowsOnNonexistentClass() {
+        $app = new App;
+        $app->addRouteClass('/uri', 'SomeNonexistentClass');
+    }
+
+    /**
+     * @expectedException \Aerys\Framework\ConfigException
+     */
+    function testAddRouteClassThrowsOnNonexistentMethodsInMap() {
+        $app = new App;
+        $map = [
+            'get' => 'GET',
+            'doesntExist' => 'POST'
+        ];
+        $app->addRouteClass('/uri', 'Aerys\Test\Framework\AppTestRouteClassFixture', $map);
+    }
+
+    /**
+     * @expectedException \Aerys\Framework\ConfigException
+     */
+    function testAddRouteClassThrowsIfNoNonMagicMethodsExist() {
+        $app = new App;
+        $app->addRouteClass('/uri', 'Aerys\Test\Framework\AppTestRouteClassNoMethodsFixture');
+    }
+
+    function testAddRouteClassIgnoresMagicMethods() {
+        $app = new App;
+        $app->addRouteClass('/uri', 'Aerys\Test\Framework\AppTestRouteClassFixture');
+
+        $routes = $app->toArray()['routes'];
+
+        $this->assertEquals([
+            ['GET', '/uri', 'Aerys\Test\Framework\AppTestRouteClassFixture::get'],
+            ['POST', '/uri', 'Aerys\Test\Framework\AppTestRouteClassFixture::post'],
+            ['ZANZIBAR', '/uri', 'Aerys\Test\Framework\AppTestRouteClassFixture::zanzibar'],
+        ], $routes);
+    }
+
+    function testAddRouteClassUsesOnlyMappedMethodsIfSpecified() {
+        $app = new App;
+        $app->addRouteClass('/uri', 'Aerys\Test\Framework\AppTestRouteClassFixture', $map = [
+            'zanzibar' => 'GET'
+        ]);
+
+        $routes = $app->toArray()['routes'];
+
+        $this->assertEquals([
+            ['GET', '/uri', 'Aerys\Test\Framework\AppTestRouteClassFixture::zanzibar']
+        ], $routes);
+    }
+
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
