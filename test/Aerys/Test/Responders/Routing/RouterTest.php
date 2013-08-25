@@ -89,7 +89,23 @@ abstract class RouterTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals($handler, $result[1]);
         $this->assertEquals($resultB, $result[2]);
     }
- 
+
+    function testMultipleArgRules() {
+        $router = $this->makeRouter();
+        
+        $handler1 = function(){};
+        $handler2 = function(){};
+        
+        $router->addRoute('GET', '/$arg1', $handler1);
+        $router->addRoute('GET', '/$#arg1/$#arg2/$arg3', $handler2);
+        
+        $matchResult = $router->matchRoute('GET', '/123/456/anything');
+        
+        $this->assertEquals($router::MATCHED, $matchResult[0]);
+        $this->assertSame($handler2, $matchResult[1]);
+        $this->assertEquals(['arg1' => '123', 'arg2' => '456', 'arg3' => 'anything'], $matchResult[2]);
+    }
+
     /**
      * @return Router
      */
