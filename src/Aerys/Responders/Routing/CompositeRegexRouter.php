@@ -130,7 +130,7 @@ class CompositeRegexRouter implements Router {
             $this->routes[$route][$httpMethod] = $handler;
         } else {
             $rule->route = $route;
-            $rule->expression = $expression;
+            $rule->expression = "^$expression\$";
             $rule->handler = $handler;
  
             $this->regexs[] = $rule;
