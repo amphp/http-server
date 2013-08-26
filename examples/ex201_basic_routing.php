@@ -24,3 +24,6 @@ $app = new Aerys\Framework\App;
 $app->addRoute('GET', '/', 'Ex201_BasicRouting::hello');
 $app->addRoute('GET', '/info', 'Ex201_BasicRouting::info');
 $app->addRoute('GET', '/$#arg1/$#arg2/$arg3', 'Ex201_BasicRouting::args');
+$app->addRoute('GET', '/static', 'Ex201_BasicRouting::myStaticHandler');
+$app->addRoute('GET', '/function', 'ex201_my_function');
+$app->addRoute('GET', '/closure', $ex201_closure);
