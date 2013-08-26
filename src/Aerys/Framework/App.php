@@ -129,11 +129,11 @@ class App {
      * ZANZIBAR /myuri
      * 
      * If the optional $methodVerbMap parameter is specified, only the class methods listed in its
-     * keys will be added as routes. For example:
+     * values will be added as routes. For example:
      * 
      * $app->addRouteClass('/myuri', 'MyClass', [
-     *     'get' => 'GET',
-     *     'post' => 'POST'
+     *     'GET' => 'get',
+     *     'POST' => 'post'
      * ]);
      * 
      * By specifying the $methodVerbMap in the above example we avoid exposing the ZANZIBAR method
@@ -154,12 +154,12 @@ class App {
         
         $classMethods = get_class_methods($classHandler);
         
-        if ($methodVerbMap && ($diff = array_diff(array_flip($methodVerbMap), $classMethods))) {
+        if ($methodVerbMap && ($diff = array_diff($methodVerbMap, $classMethods))) {
             throw new ConfigException(
                 sprintf("Mapped %s methods must exist publicly: %s", $classHandler, implode(', ', $diff))
             );
         } elseif ($methodVerbMap) {
-            foreach ($methodVerbMap as $classMethod => $httpVerb) {
+            foreach ($methodVerbMap as $httpVerb => $classMethod) {
                 $this->addRoute($httpVerb, $uriPath, "{$classHandler}::{$classMethod}");
             }
         } elseif ($classMethods = $this->removeMagicMethods($classMethods)) {

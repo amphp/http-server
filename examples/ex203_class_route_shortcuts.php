@@ -13,6 +13,6 @@ require __DIR__ . '/support/Ex203_RouteClassShortcuts.php';
 $app = (new Aerys\Framework\App)
     ->addRouteClass('/', 'Ex203_RouteClassShortcuts')
     ->addRouteClass('/map', 'Ex203_RouteClassShortcutsWithMap', $methods = [
-        'zanzibar' => 'GET'
+        'GET' => 'zanzibar'
     ])
 ;

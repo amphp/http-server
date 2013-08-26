@@ -122,8 +122,8 @@ class AppTest extends \PHPUnit_Framework_TestCase {
     function testAddRouteClassThrowsOnNonexistentMethodsInMap() {
         $app = new App;
         $map = [
-            'get' => 'GET',
-            'doesntExist' => 'POST'
+            'GET' => 'get',
+            'POST' => 'doesntExist'
         ];
         $app->addRouteClass('/uri', 'Aerys\Test\Framework\AppTestRouteClassFixture', $map);
     }
@@ -152,7 +152,7 @@ class AppTest extends \PHPUnit_Framework_TestCase {
     function testAddRouteClassUsesOnlyMappedMethodsIfSpecified() {
         $app = new App;
         $app->addRouteClass('/uri', 'Aerys\Test\Framework\AppTestRouteClassFixture', $map = [
-            'zanzibar' => 'GET'
+            'GET' => 'zanzibar'
         ]);
 
         $routes = $app->toArray()['routes'];
