@@ -25,7 +25,7 @@ class CompositeRegexRouter implements Router {
         if ($this->containsVariable($route)) {
             $escapedUri = $this->escapeUriForRule($route);
             $rule = $this->buildRule($httpMethod, $escapedUri, $handler);
-            $this->addRule($rule);
+            $this->addRule($rule, $httpMethod);
         } else {
             $this->routes[$route][$httpMethod] = $handler;
         }
@@ -166,9 +166,9 @@ class CompositeRegexRouter implements Router {
         return $rule;
     }
 
-    private function addRule(Rule $rule) {
+    private function addRule(Rule $rule, $httpMethod) {
         $this->regexs[] = $rule;
-        $this->rules[$rule->route][$rule->httpMethod] = $rule->handler;
+        $this->rules[$rule->route][$httpMethod] = $rule->handler;
         $this->buildCompositeRegex();
     }
  
