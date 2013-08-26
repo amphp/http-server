@@ -31,9 +31,9 @@ class Bootstrapper {
         $this->reactor = $reactor;
         $this->server = $server;
         $this->injector = $injector ?: new Provider;
-        $this->shortOpts = 'c:p:i:n:d:h';
+        $this->shortOpts = 'a:p:i:n:d:h';
         $this->longOpts = [
-            'config:',
+            'app:',
             'port:',
             'ip:',
             'name:',
@@ -41,7 +41,7 @@ class Bootstrapper {
             'help'
         ];
         $this->shortOptNameMap = [
-            'c' => 'config',
+            'a' => 'app',
             'p' => 'port',
             'i' => 'ip',
             'n' => 'name',
@@ -88,7 +88,7 @@ class Bootstrapper {
         $helpLines = [
             'Options:',
             '--------',
-            '-c, --config     Use a config file to bootstrap the server',
+            '-a, --app        Use an app config file to bootstrap the server',
             '-p, --port       Optional port on which to listen (default: 80)',
             '-i, --ip         Optional IP on which to bind (default: all IPv4 interfaces)',
             '-n, --name       Optional host/domain name',
@@ -97,8 +97,8 @@ class Bootstrapper {
             PHP_EOL,
             'Example Usage:',
             '--------------',
-            'aerys -c /path/to/app/config.php',
-            'aerys --config /path/to/app/config.php',
+            'aerys -a /path/to/app/config.php',
+            'aerys --app /path/to/app/config.php',
             'aerys --name mysite.com --docroot /path/to/document/root',
             'aerys -p 1337 -d /path/to/doc/root',
             PHP_EOL
@@ -109,7 +109,7 @@ class Bootstrapper {
 
     private function normalizeGetoptKeys(array $options) {
         $normalizedOptions = [
-            'config' => NULL,
+            'app' => NULL,
             'port' => NULL,
             'ip' => NULL,
             'name' => NULL,
@@ -129,8 +129,8 @@ class Bootstrapper {
 
     private function loadConfigFromGetoptArray(array $options) {
         try {
-            if ($options['config']) {
-                $this->loadFileConfig($options['config']);
+            if ($options['app']) {
+                $this->loadFileConfig($options['app']);
             } else {
                 $this->loadStaticAppFromGetoptArray($options);
             }

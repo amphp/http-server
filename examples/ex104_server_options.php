@@ -11,7 +11,7 @@
  * up-to-date list of possible options please consult the `Aerys\Server` source code.
  * 
  * To run:
- * $ bin/aerys -c examples/ex104_server_options.php
+ * $ bin/aerys -a examples/ex104_server_options.php
  * 
  * Once started, load http://127.0.0.1/ in your browser.
  */

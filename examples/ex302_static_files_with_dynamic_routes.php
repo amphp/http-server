@@ -16,7 +16,7 @@
  * 
  * To run:
  * 
- * $ bin/aerys -c examples/ex302_static_files_with_dynamic_routes.php
+ * $ bin/aerys -a examples/ex302_static_files_with_dynamic_routes.php
  * 
  * Once started, load http://127.0.0.1/ in your browser.
  */

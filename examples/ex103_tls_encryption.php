@@ -14,7 +14,7 @@
  * that redirects ALL unencrypted traffic to the equivalent encrypted address on port 443.
  * 
  * To run:
- * $ bin/aerys -c examples/ex103_tls_encryption.php
+ * $ bin/aerys -a examples/ex103_tls_encryption.php
  * 
  * Once started, load https://127.0.0.1/ in your browser. Note that your browser will not trust the
  * certificate and ask you if you're sure you want to continue. This happens because the cert we

@@ -4,7 +4,7 @@
  * @TODO Add explanation
  * 
  * To run:
- * $ bin/aerys -c examples/ex203_route_class_shortcuts.php
+ * $ bin/aerys -a examples/ex203_route_class_shortcuts.php
  */
 
 require __DIR__ . '/../vendor/autoload.php';

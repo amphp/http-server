@@ -17,7 +17,7 @@
  * requests to http://subdomain.aerys are handled from the static document root specified.
  * 
  * To run:
- * $ bin/aerys -c examples/ex102_multiple_hosts.php
+ * $ bin/aerys -a examples/ex102_multiple_hosts.php
  * 
  * Once started, load http://aerys/ or http://subdomain.aerys/ in your browser.
  */
