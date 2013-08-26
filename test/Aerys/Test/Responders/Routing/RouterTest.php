@@ -106,6 +106,18 @@ abstract class RouterTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals(['arg1' => '123', 'arg2' => '456', 'arg3' => 'anything'], $matchResult[2]);
     }
 
+    function testEscapedDollarSign() {
+        $router = $this->makeRouter();
+        $handler = [__CLASS__, 'handler'];
+        $router->addRoute('GET', '/$arg1/\$notArg', $handler);
+
+        $matchResult = $router->matchRoute('GET', '/abc/\$notArg');
+
+        $expect = [$router::MATCHED, $handler, ['arg1' => 'abc']];
+        $this->assertEquals($expect, $matchResult);
+
+    }
+
     /**
      * @return Router
      */
