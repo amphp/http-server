@@ -102,7 +102,9 @@ class ResponderBuilder {
     }
 
     private function generateRoutingResponder(array $dynamicRoutes) {
-        $responder = $this->injector->make('Aerys\Responders\Routing\RoutingResponder');
+        $responder = $this->injector->make('Aerys\Responders\Routing\RoutingResponder', [
+            'router' => 'Aerys\Responders\Routing\CompositeRegexRouter'
+        ]);
 
         foreach ($dynamicRoutes as $routeArr) {
             list($httpMethod, $uriPath, $routeHandler) = $routeArr;
