@@ -1,41 +1,53 @@
 #!/usr/bin/env php
 <?php
 
-/**
- * Aerys HTTP Server
- *
- * Options:
- * --------
- * -a, --app        Use an app config file to bootstrap the server
- * -p, --port       Optional port on which to listen (default: 80)
- * -i, --ip         Optional IP on which to bind (default: all IPv4 interfaces)
- * -n, --name       Optional host/domain name
- * -d, --docroot    The filesystem directory from which to serve static files
- * -h, --help       Display help screen
- *
- * Example Usage:
- * --------------
- * aerys -a /path/to/app/config.php
- * aerys --app /path/to/app/config.php
- * aerys --name mysite.com --docroot /path/to/document/root
- * aerys -p 1337 -d /path/to/doc/root
- * aerys --ip="[::]" -d /path/to/doc/root
- */
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
+$help = <<<EOT
+
+    Aerys HTTP Server
+    -----------------
+
+    -h, --help       Display help screen
+    -c, --config     Use the specified app config file to bootstrap the server
+    -w, --workers    Specify the number of worker forks to maintain (requires PCNTL)
+
+    Run a static file server without a config file:
+
+    -r, --root       Required filesystem directory from which to serve static files
+    -p, --port       Optional port on which to listen (default: 80)
+    -i, --ip         Optional IP on which to bind (default: all IPv4 interfaces)
+    -n, --name       Optional host/domain name
+
+    Example Usage:
+
+    aerys --help
+    aerys -c /path/to/app/config.php
+    aerys --config /path/to/app/config.php --workers 4
+    aerys --root /path/to/document/root --name mysite.com
+    aerys -r /path/to/document/root -p 1337
+    aerys -r /path/to/document/root --ip="[::]"
+
+
+EOT;
+
 try {
+    
+    $options = (new Aerys\Framework\BinOptions)->loadOptions();
 
-    $reactor = (new Alert\ReactorFactory)->select();
-    $server = new Aerys\Server($reactor);
-    $bootstrapper = new Aerys\Framework\Bootstrapper($reactor, $server);
-    $options = $bootstrapper->getCommandLineOptions();
-
-    if ($bootstrapper->loadCommandLineConfig($options)) {
-        $server->start();
-        $reactor->run();
+    if ($options->getHelp()) {
+        echo $help;
+        exit(0);
+    } else {
+        $watcherFactory = new Aerys\Framework\ServerWatcherFactory;
+        $serverWatcher = $watcherFactory->makeWatcher($options, $_SERVER['argv']);
+        $serverWatcher->watch();
     }
-
+    
 } catch (Exception $e) {
-    echo $e, "\n";
+    printf("\n%s\n\n", $e->getMessage());
+    exit(1);
 }

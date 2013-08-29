@@ -12,6 +12,7 @@ class Host {
     private $port;
     private $name;
     private $handler;
+    private $isTlsAvailable;
     private $tlsContext;
     private $tlsDefaults = [
         'local_cert'          => NULL,
@@ -37,10 +38,10 @@ class Host {
         $this->setAddress($address);
         $this->setPort($port);
         $this->name = strtolower($name);
-        $this->handler = $asgiAppHandler;
-        $this->modPriorityMap = new \SplObjectStorage;
-        
         $this->id = $this->name . ':' . $this->port;
+        $this->handler = $asgiAppHandler;
+        $this->isTlsAvailable = extension_loaded('openssl');
+        $this->modPriorityMap = new \SplObjectStorage;
     }
     
     private function setAddress($address) {
@@ -137,15 +138,31 @@ class Host {
     }
     
     /**
+     * Has this host been assigned a TLS encryption context?
+     * 
+     * @return bool Returns TRUE if a TLS context is assigned, FALSE otherwise
+     */
+    function isEncrypted() {
+        return (bool) $this->tlsContext;
+    }
+    
+    /**
      * Define TLS encryption settings for this host
      * 
      * @param array An array mapping TLS stream context values
      * @link http://php.net/manual/en/context.ssl.php
+     * @throws \RuntimeException If required PHP OpenSSL extension not loaded
      * @throws \InvalidArgumentException On missing local_cert or passphrase keys
      * @return void
      */
     function setEncryptionContext(array $tlsDefinition) {
-        $this->tlsContext = $tlsDefinition ? $this->generateTlsContext($tlsDefinition) : NULL;
+        if ($this->isTlsAvailable) {
+            $this->tlsContext = $tlsDefinition ? $this->generateTlsContext($tlsDefinition) : NULL;
+        } else {
+            throw new \RuntimeException(
+                sprintf('Cannot enable crypto on %s; openssl extension required', $this->id)
+            );
+        }
     }
     
     private function generateTlsContext(array $tls) {
@@ -167,15 +184,6 @@ class Host {
         }
         
         return stream_context_create(['ssl' => $tls]);
-    }
-    
-    /**
-     * Has this host been assigned a TLS encryption context?
-     * 
-     * @return bool Returns TRUE if a TLS context is assigned, FALSE otherwise
-     */
-    function isEncrypted() {
-        return (bool) $this->tlsContext;
     }
     
     /**

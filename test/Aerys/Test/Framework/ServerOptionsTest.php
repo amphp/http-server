@@ -34,8 +34,7 @@ class ServerOptionsTest extends \PHPUnit_Framework_TestCase {
     function testSetAllOptions() {
         $so = new ServerOptions;
         $options = [
-            'maxconnections' => 42,
-            'verbosity' => 42
+            'maxconnections' => 42
         ];
 
         $this->assertSame($so, $so->setAllOptions($options));

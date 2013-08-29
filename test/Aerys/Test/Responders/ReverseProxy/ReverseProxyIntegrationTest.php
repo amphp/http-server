@@ -50,7 +50,6 @@ class ReverseProxyIntegrationTest extends \PHPUnit_Framework_TestCase {
     static function setUpBeforeClass() {
         self::$reactor = new NativeReactor;
         self::$server = new Server(self::$reactor);
-        self::$server->setOption('verbosity', 0);
 
         // Frontend proxy responder
         self::$proxy = new ReverseProxyResponder(self::$reactor, self::$server);
@@ -63,16 +62,16 @@ class ReverseProxyIntegrationTest extends \PHPUnit_Framework_TestCase {
 
         // Frontend
         $host = new Host('127.0.0.1', 1508, '127.0.0.1', self::$proxy);
-        self::$server->registerHost($host);
+        self::$server->addHost($host);
 
         // Backend
         $host = new Host('127.0.0.1', 1509, '127.0.0.1', new ProxyBackendIntegrationApp(self::$server));
-        self::$server->registerHost($host);
+        self::$server->addHost($host);
 
         // Async HTTP Client
         self::$client = new AsyncClient(self::$reactor);
 
-        self::$server->start();
+        self::$server->listen();
     }
 
     function onArtaxClientError(\Exception $e) {

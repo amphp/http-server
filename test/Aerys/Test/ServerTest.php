@@ -12,7 +12,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
     function testStartThrowsIfNoHostsRegistered() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $server->start();
+        $server->listen();
     }
     
     function testOptionAccessors() {
@@ -20,7 +20,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
         $server = new Server($reactor);
         
         $options = [
-            'logErrorsTo'           => 'php://stderr',
+            'errorStream'           => STDERR,
             'maxConnections'        => 2500,
             'maxRequests'           => 150,
             'keepAliveTimeout'      => 5,
@@ -35,7 +35,6 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             'requireBodyLength'     => TRUE,
             'allowedMethods'        => [],
             'socketSoLingerZero'    => FALSE,
-            'verbosity'             => Server::QUIET,
             'defaultHost'           => NULL
         ];
         
@@ -68,16 +67,6 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
     
     /**
      * @expectedException DomainException
-     * @expectedExceptionMessage Invalid verbosity level: some-value
-     */
-    function testOptionAssignmentThrowsOnBadVerbosity() {
-        $reactor = $this->getMock('Alert\Reactor');
-        $server = new Server($reactor);
-        $server->setOption('verbosity', 'some-value');
-    }
-    
-    /**
-     * @expectedException DomainException
      * @expectedExceptionMessage Invalid default host; unknown host ID: some-value
      */
     function testOptionAssignmentThrowsOnBadDefaultHost() {
@@ -98,7 +87,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
         $expectedHostId = 'localhost:80';
         
         $host = new Host($address, $port, $name, $handler);
-        $server->registerHost($host);
+        $server->addHost($host);
         $server->setOption('defaultHost', 'localhost:80');
         
         $this->assertEquals($expectedHostId, $server->getOption('defaultHost'));

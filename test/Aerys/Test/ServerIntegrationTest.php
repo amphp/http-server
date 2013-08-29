@@ -60,11 +60,10 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
     static function setUpBeforeClass() {
         self::$reactor = new NativeReactor;
         self::$server = new Server(self::$reactor);
-        self::$server->setOption('verbosity', 0);
 
         $host = new Host('127.0.0.1', 1500, '127.0.0.1', new ServerIntegrationApp);
-        self::$server->registerHost($host);
-        self::$server->start();
+        self::$server->addHost($host);
+        self::$server->listen();
         self::$client = new AsyncClient(self::$reactor);
     }
 
@@ -340,14 +339,6 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
         self::$reactor->run();
         self::$reactor->cancel($watcher);
         @fclose($sock);
-    }
-
-    function testStartStopPauseAndResume() {
-        self::$server->pause();
-        self::$server->resume();
-        self::$server->stop();
-        usleep(100000);
-        self::$server->start();
     }
 
 }

@@ -1,0 +1,34 @@
+<?php
+
+error_reporting(E_ALL);
+
+require __DIR__ . '/../vendor/autoload.php';
+
+try {
+    ob_start();
+
+    $reactor = (new Alert\ReactorFactory)->select();
+    $server = new Aerys\Server($reactor);
+    $binOptions = (new Aerys\Framework\BinOptions)->loadOptions();
+
+    $bootstrapper = new Aerys\Framework\Bootstrapper;
+    $bootstrapper->boot($reactor, $server, $binOptions);
+
+    $boundAddresses = $server->bind();
+
+    $server->listen();
+
+    fwrite(STDOUT, "ready\n");
+
+    foreach ($boundAddresses as $address) {
+        $address = substr(str_replace('0.0.0.0', '*', $address), 6);
+        fwrite(STDOUT, sprintf("Listening for HTTP traffic on %s ...\n", $address));
+    }
+
+    ob_end_flush();
+
+    $server->run();
+
+} catch (Exception $e) {
+    fwrite(STDOUT, sprintf("\n%s\n\n", $e));
+}

@@ -20,8 +20,7 @@ class ServerOptions implements \ArrayAccess {
         'requirebodylength'     => NULL,
         'socketsolingerzero'    => NULL,
         'allowedmethods'        => NULL,
-        'defaulthost'           => NULL,
-        'verbosity'             => NULL
+        'defaulthost'           => NULL
     ];
 
     /**
