@@ -11,6 +11,25 @@ class CompositeRegexRouter implements Router {
  
     private $variables = [];
     private $variableCounter = 0;
+
+    /**
+     * Add a callable handler for the specified HTTP method verb and request URI route
+     *
+     * @param string $httpMethod
+     * @param string $route
+     * @param callable $handler
+     * @throws \Exception
+     * @return void
+     */
+    function addRoute($httpMethod, $route, callable $handler) {
+        if ($this->containsVariable($route)) {
+            $escapedUri = $this->escapeUriForRule($route);
+            $rule = $this->buildRule($httpMethod, $escapedUri, $handler);
+            $this->addRule($rule, $httpMethod);
+        } else {
+            $this->routes[$route][$httpMethod] = $handler;
+        }
+    }
  
     /**
      * Match the specified HTTP method verb and URI against added routes
@@ -54,89 +73,103 @@ class CompositeRegexRouter implements Router {
         }
  
         $buffer .= substr($uri, $offset);
+        $buffer = $this->escapeUriForRule($buffer);
  
         return isset($this->rules[$buffer][$httpMethod])
             ? [self::MATCHED, $this->rules[$buffer][$httpMethod], $arguments]
             : [self::METHOD_NOT_ALLOWED, array_keys($this->rules[$buffer])];
     }
- 
-    /**
-     * Add a callable handler for the specified HTTP method verb and request URI route
-     * 
-     * @param string $httpMethod
-     * @param string $route
-     * @param callable $handler
-     * @throws \Exception
-     * @return void
-     */
-    function addRoute($httpMethod, $route, callable $handler) {
+
+    private function escapeUriForRule($string) {
         $expression = str_replace(
             ['\$'],
             ['$'],
-            preg_quote($route, '~')
+            preg_quote($string, '~')
         );
-        $rule = new Rule;
-        $offset = 0;
-        while (($varPos = strpos($expression, '$', $offset)) !== FALSE) {
-            $offset = $varPos+1;
-            $end = strpos($expression, '/', $offset);
-            if ($end === FALSE) {
-                $var = substr($expression, $offset);
-            } else {
-                $var = substr($expression, $offset, $end - $offset);
-            }
+        return str_replace('\\$', '\\\\$', $expression);
+    }
+
+    private function parseVariable(Rule $rule, $expression, $varPos) {
+        $offset = $varPos+1;
+        $end = strpos($expression, '/', $offset);
+        if ($end === FALSE) {
+            $var = substr($expression, $offset);
+        } else {
+            $var = substr($expression, $offset, $end - $offset);
+        }
+        if (strlen($var) < 1) {
+            throw new BadRouteException(
+                sprintf(self::E_REQUIRES_IDENTIFIER_STR, '$'),
+                self::E_REQUIRES_IDENTIFIER_CODE
+            );
+        }
+        if ($var[0] === '#') {
+            $var = substr($var, 1);
             if (strlen($var) < 1) {
                 throw new BadRouteException(
-                    sprintf(self::E_REQUIRES_IDENTIFIER_STR, '$'),
+                    sprintf(self::E_REQUIRES_IDENTIFIER_STR, '$#'),
                     self::E_REQUIRES_IDENTIFIER_CODE
                 );
             }
-            if ($var[0] === '#') {
-                $var = substr($var, 1);
-                if (strlen($var) < 1) {
-                    throw new BadRouteException(
-                        sprintf(self::E_REQUIRES_IDENTIFIER_STR, '$#'),
-                        self::E_REQUIRES_IDENTIFIER_CODE
-                    );
-                }
-                $prefix = '$#';
-                $def = '\d+';
-            } else {
-                $prefix = '$';
-                $def = '[^/]+';
-            }
-            if (isset($rule->variables[$var])) {
-                throw new BadRouteException(
-                    sprintf(self::E_DUPLICATE_PARAMETER_STR, $var),
-                    self::E_DUPLICATE_PARAMETER_CODE
-                );
-            }
-            $key = 'i' . $this->variableCounter++;
-            $this->variables[$key] = [$prefix, $var];
-            $replace = "(?P<$key>$def)";
-            $count = 0;
-            $expression = str_replace("$prefix$var", $replace, $expression, $count);
-            if ($count > 1) {
-                throw new BadRouteException(
-                    sprintf(self::E_DUPLICATE_PARAMETER_STR, $var),
-                    self::E_DUPLICATE_PARAMETER_CODE
-                );
-            }
-            $offset += strlen($replace) - 1;
-            $rule->variables[$var] = $key;
-        }
- 
-        if (empty($rule->variables)) {
-            $this->routes[$route][$httpMethod] = $handler;
+            $prefix = '$#';
+            $def = '\d+';
         } else {
-            $rule->route = $route;
-            $rule->expression = "^$expression\$";
-            $rule->handler = $handler;
- 
-            $this->regexs[] = $rule;
-            $this->rules[$route][$httpMethod] = $handler;
-            $this->buildCompositeRegex();
+            $prefix = '$';
+            $def = '[^/]+';
         }
+        if (isset($rule->variables[$var])) {
+            throw new BadRouteException(
+                sprintf(self::E_DUPLICATE_PARAMETER_STR, $var),
+                self::E_DUPLICATE_PARAMETER_CODE
+            );
+        }
+        $key = 'i' . $this->variableCounter++;
+        $this->variables[$key] = [$prefix, $var];
+        $replace = "(?P<$key>$def)";
+        $count = 0;
+        $expression = str_replace("$prefix$var", $replace, $expression, $count);
+        if ($count > 1) {
+            throw new BadRouteException(
+                sprintf(self::E_DUPLICATE_PARAMETER_STR, $var),
+                self::E_DUPLICATE_PARAMETER_CODE
+            );
+        }
+        $offset += strlen($replace) - 1;
+        $rule->variables[$var] = $key;
+        return [$expression, $offset];
+    }
+
+    private function containsVariable($escapedUri) {
+        $varPos = strpos($escapedUri, '$');
+        return $varPos !== FALSE && $escapedUri[$varPos-1] !== '\\';
+    }
+
+    function buildRule($httpMethod, $route, $handler) {
+        $rule = new Rule;
+        $rule->httpMethod = $httpMethod;
+        $rule->route = $route;
+
+        $expression = $route;
+        $offset = 0;
+        while (($varPos = strpos($expression, '$', $offset)) !== FALSE) {
+            if ($expression[$varPos-1] === '\\') {
+                $offset = $varPos+1;
+                continue;
+            }
+            list($expression, $offset) = $this->parseVariable($rule, $expression, $varPos);
+        }
+
+        $rule->route = $route;
+        $rule->expression = "^$expression\$";
+        $rule->handler = $handler;
+
+        return $rule;
+    }
+
+    private function addRule(Rule $rule, $httpMethod) {
+        $this->regexs[] = $rule;
+        $this->rules[$rule->route][$httpMethod] = $rule->handler;
+        $this->buildCompositeRegex();
     }
  
     private function buildCompositeRegex() {
