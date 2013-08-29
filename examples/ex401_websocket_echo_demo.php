@@ -13,7 +13,7 @@
  * specifies the one endpoint at ws://127.0.0.1/echo
  * 
  * To run:
- * $ bin/aerys -a examples/ex401_websocket_echo_demo.php
+ * $ bin/aerys -c examples/ex401_websocket_echo_demo.php
  * 
  * Once started, load http://127.0.0.1/ in your browser.
  */

@@ -26,14 +26,14 @@
  * it serves to send a "hello world" response to all requests arriving on 127.0.0.1:1338
  * 
  * To run:
- * $ bin/aerys -a examples/ex101_ports_addresses_and_names.php
+ * $ bin/aerys -c examples/ex101_ports_addresses_and_names.php
  * 
  * Once started, load http://127.0.0.1:1338/ or http://localhost:1338/ in your browser.
  */
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$myResponder = function() {
+$myResponder = function($asgiEnv) {
     $body = '<html><body><h1>Hello, world.</h1></body></html>';
     return [$status = 200, $reason = 'OK', $headers = [], $body];
 };

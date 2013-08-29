@@ -11,7 +11,7 @@
  * up-to-date list of possible options please consult the `Aerys\Server` source code.
  * 
  * To run:
- * $ bin/aerys -a examples/ex104_server_options.php
+ * $ bin/aerys -c examples/ex104_server_options.php
  * 
  * Once started, load http://127.0.0.1/ in your browser.
  */
@@ -19,8 +19,8 @@
 require __DIR__ . '/../vendor/autoload.php';
 
 $serverOptions = (new Aerys\Framework\ServerOptions)->setAllOptions([
-    'maxConnections'    => 1000,
-    'maxRequests'       => 125,
+    'maxConnections'    => 2500,
+    'maxRequests'       => 100,
     'allowedMethods'    => ['GET', 'POST', 'PUT']
 ]);
 

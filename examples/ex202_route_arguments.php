@@ -4,7 +4,7 @@
  * @TODO Add explanation
  * 
  * To run:
- * $ bin/aerys -a examples/ex202_route_arguments.php
+ * $ bin/aerys -c examples/ex202_route_arguments.php
  */
 
 require __DIR__ . '/../vendor/autoload.php';

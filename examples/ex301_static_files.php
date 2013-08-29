@@ -8,7 +8,7 @@
  * $ aerys --docroot /path/to/static/files
  * 
  * To run:
- * $ bin/aerys -a examples/ex301_static_files.php
+ * $ bin/aerys -c examples/ex301_static_files.php
  */
 
 require __DIR__ . '/../vendor/autoload.php';

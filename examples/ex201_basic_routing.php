@@ -13,7 +13,7 @@
  * - MyClass::myStaticMethod
  * 
  * To run:
- * $ bin/aerys -a examples/ex201_basic_routing.php
+ * $ bin/aerys -c examples/ex201_basic_routing.php
  */
 
 require __DIR__ . '/../vendor/autoload.php';

@@ -27,6 +27,6 @@ $app = function($asgiEnv) use ($server) {
 
 $host = new Aerys\Host($address, $port, $name, $app);
 
-$server->registerHost($host);
-$server->start();
+$server->addHost($host);
+$server->listen();
 $reactor->run();
