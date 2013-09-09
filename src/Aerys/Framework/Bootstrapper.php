@@ -111,7 +111,7 @@ class Bootstrapper {
     private function bootFromAppSettings(AppSettings $appSettings) {
         $injector = $appSettings->getInjector();
 
-        $injector->alias('Aerys\Reactor', get_class($this->reactor));
+        $injector->alias('Alert\Reactor', get_class($this->reactor));
         $injector->share($this->reactor);
         $injector->share($this->server);
 
