@@ -40,7 +40,7 @@ class Bootstrapper {
 
         if (!include($configFile)) {
             throw new ConfigException(
-                "Config file inclusion failed: {$configFile}"
+                sprintf("Config file inclusion failed: %s", $configFile)
             );
         }
 
@@ -62,15 +62,15 @@ class Bootstrapper {
 
         if (!$apps) {
             throw new ConfigException(
-                sprintf('No Aerys\Framework\App configuration objects found in config file: %s', $configFile)
+                sprintf('No App configuration instances found in config file: %s', $configFile)
             );
         } elseif (count($options) > 1) {
             throw new ConfigException(
-                sprintf('Only one Aerys\Framework\ServerOptions instance allowed in config file: %s', $configFile)
+                sprintf('Only one ServerOptions instance allowed in config file: %s', $configFile)
             );
         } elseif (count($injectors) > 1) {
             throw new ConfigException(
-                sprintf('Only one Auryn\Injector instance allowed in config file: %s', $configFile)
+                sprintf('Only one Injector instance allowed in config file: %s', $configFile)
             );
         }
 

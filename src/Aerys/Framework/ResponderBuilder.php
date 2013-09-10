@@ -94,7 +94,7 @@ class ResponderBuilder {
             return $this->injector->make($endpointClass);
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                "Failed building websocket endpoint class {$endpointClass}: " . $previousException->getMessage(),
+                "Websocket endpoint build failure ({$endpointClass}): " . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
@@ -124,7 +124,7 @@ class ResponderBuilder {
             return $this->injector->getExecutable($handler);
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                'Failed building callable route handler: ' . $previousException->getMessage(),
+                'Callable route handler build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
@@ -157,7 +157,7 @@ class ResponderBuilder {
             return $this->injector->getExecutable($responder);
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                'Failed building callable user responder: ' . $previousException->getMessage(),
+                'Callable user responder build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
