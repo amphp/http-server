@@ -7,17 +7,42 @@ use Aerys\Server;
 class ForkWatcher implements ServerWatcher {
 
     private $server;
-    private $workers = 2;
+    private $workers;
 
     function __construct(Server $server, BinOptions $options) {
         $this->server = $server;
-        if ($workers = $options->getWorkers()) {
-            $this->workers = $workers;
+        $this->workers = $options->getWorkers() ?: $this->countCpuCores();
+    }
+    
+    private function countCpuCores() {
+        $cmd = "uname";
+        $os = strtolower(trim(shell_exec($cmd)));
+        
+        switch ($os) {
+           case "linux":
+              $cmd = "cat /proc/cpuinfo | grep processor | wc -l";
+              $cores = $this->executeCpuCoreCountShellCommand($cmd);
+              break;
+           case "freebsd":
+              $cmd = "sysctl -a | grep 'hw.ncpu' | cut -d ':' -f2";
+              $cores = $this->executeCpuCoreCountShellCommand($cmd);
+              break;
+           default:
+              $cores = 1;
         }
+        
+        return $cores;
+    }
+    
+    private function executeCpuCoreCountShellCommand($cmd) {
+        $execResult = shell_exec($cmd);
+        $cores = intval(trim($execResult));
+        
+        return $cores;
     }
 
     /**
-     * Monitor forked workers respawning dead children as needed
+     * Monitor forked workers and respawn dead children as needed
      *
      * @return void
      */
