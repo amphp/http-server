@@ -3,7 +3,6 @@
 namespace Aerys;
 
 use Alert\Reactor,
-    Alert\Forkable,
     Aerys\Parsing\Parser,
     Aerys\Parsing\MessageParser,
     Aerys\Parsing\PeclMessageParser,
@@ -11,7 +10,7 @@ use Alert\Reactor,
     Aerys\Writing\WriterFactory,
     Aerys\Writing\ResourceException;
 
-class Server implements Forkable {
+class Server {
 
     const SERVER_SOFTWARE = 'Aerys/0.1.0-devel';
 
@@ -428,7 +427,7 @@ class Server implements Forkable {
             ? strtoupper($requestArr['method'])
             : $requestArr['method'];
 
-        $uriInfo = $this->getRequestUriInfo($requestArr['uri']);
+        $uriInfo = new RequestUriInfo($requestArr['uri']);
         $headers = array_change_key_case($requestArr['headers'], CASE_UPPER);
 
         $requestArr['uriInfo'] = $uriInfo;
@@ -495,38 +494,11 @@ class Server implements Forkable {
         return [200, 'OK', $headers, $body = NULL];
     }
 
-    private function getRequestUriInfo($requestUri) {
-        if (stripos($requestUri, 'http://') === 0 || stripos($requestUri, 'https://') === 0) {
-            $parts = parse_url($requestUri);
-            return [
-                'isAbsolute' => TRUE,
-                'query' => $parts['query'],
-                'path' => $parts['path'],
-                'port' => $parts['port']
-            ];
-        }
-
-        if ($qPos = strpos($requestUri, '?')) {
-            $query = substr($requestUri, $qPos + 1);
-            $path = substr($requestUri, 0, $qPos);
-        } else {
-            $query = '';
-            $path = $requestUri;
-        }
-
-        return [
-            'isAbsolute' => FALSE,
-            'query' => $query,
-            'path' => $path,
-            'port' => NULL
-        ];
-    }
-
     /**
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
      */
-    private function selectRequestHost(array $uriInfo, $hostHeader, $isEncrypted, $protocol) {
-        if ($uriInfo['isAbsolute']) {
+    private function selectRequestHost(RequestUriInfo $uriInfo, $hostHeader, $isEncrypted, $protocol) {
+        if ($uriInfo->isAbsolute()) {
             $host = $this->selectHostByAbsoluteUri($uriInfo, $isEncrypted);
         } elseif ($hostHeader !== NULL || $protocol >= 1.1) {
             $host = $this->selectHostByHeader($hostHeader, $isEncrypted);
@@ -540,9 +512,9 @@ class Server implements Forkable {
     /**
      * @TODO return default host for forward proxy use-cases
      */
-    private function selectHostByAbsoluteUri(array $uriInfo, $isEncrypted) {
-        $port = $uriInfo['port'] ?: ($isEncrypted ? 443 : 80);
-        $hostId = $uriInfo['host'] . ':' . $port;
+    private function selectHostByAbsoluteUri(RequestUriInfo $uriInfo, $isEncrypted) {
+        $port = $uriInfo->getPort() ?: ($isEncrypted ? 443 : 80);
+        $hostId = $uriInfo->getHost() . ':' . $port;
         $host = isset($this->hosts[$hostId]) ? $this->hosts[$hostId] : NULL;
     }
 
@@ -616,8 +588,8 @@ class Server implements Forkable {
             'REMOTE_PORT'       => (string) $client->clientPort,
             'REQUEST_METHOD'    => $requestArr['method'],
             'REQUEST_URI'       => $requestArr['uri'],
-            'REQUEST_URI_PATH'  => $uriInfo['path'],
-            'QUERY_STRING'      => $uriInfo['query']
+            'REQUEST_URI_PATH'  => $uriInfo->getPath(),
+            'QUERY_STRING'      => $uriInfo->getQuery()
         ];
 
         $headers = $requestArr['headers'];
@@ -746,17 +718,14 @@ class Server implements Forkable {
         $requestArr['headersOnly'] = FALSE;
 
         if ($headers = $requestArr['headers']) {
-            $uriInfo = $this->getRequestUriInfo($requestArr['uri']);
+            $uriInfo = new RequestUriInfo($requestArr['uri']);
             $requestArr['uriInfo'] = $uriInfo;
             $headers = array_change_key_case($requestArr['headers'], CASE_UPPER);
             $hostHeader = empty($headers['HOST']) ? NULL : $headers['HOST'][0];
             $host = $this->selectRequestHost($uriInfo, $hostHeader, $client->isEncrypted, $protocol);
         } else {
             $host = $this->selectDefaultHost();
-            $requestArr['uriInfo'] = [
-                'path' => '?',
-                'query' => '?'
-            ];
+            $requestArr['uriInfo'] = new RequestUriInfo('');
         }
 
         $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
@@ -1571,37 +1540,6 @@ class Server implements Forkable {
             foreach ($outstandingRequestIds as $requestId) {
                 $this->setResponse($requestId, $asgiResponse);
             }
-        }
-    }
-
-    /**
-     * Convenience method for running the composed event reactor
-     * 
-     * @return void
-     */
-    function run() {
-        $this->reactor->run();
-    }
-    
-    /**
-     * Invoke before forking a new process or risk reactor stream IO watcher corruption
-     * 
-     * @return void
-     */
-    function beforeFork() {
-        if ($this->reactor instanceof Forkable) {
-            $this->reactor->beforeFork();
-        }
-    }
-    
-    /**
-     * Invoke in child processes after forking or risk reactor stream IO watcher corruption
-     * 
-     * @return void
-     */
-    function afterFork() {
-        if ($this->reactor instanceof Forkable) {
-            $this->reactor->afterFork();
         }
     }
 
