@@ -1,11 +1,12 @@
 ### 0xx Using `bin/aerys`
     - @todo Discuss using the executable for docroot/config
+    - @todo App configuration files
     - @todo Designing for scale
     - @todo Benchmarking considerations
 
 ### 1xx Basic Usage
-    - ex101_ports_addresses_and_names.php
-    - ex102_multiple_hosts.php
+    - ex101_ports_and_addresses.php
+    - ex102_host_names.php
     - ex103_tls_encryption.php
     - ex104_server_options.php
     - @todo ex105_chaining_responders.php
