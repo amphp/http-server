@@ -12,7 +12,7 @@ require __DIR__ . '/../vendor/autoload.php';
 $reactor = (new Alert\ReactorFactory)->select();
 $server = new Aerys\Server($reactor);
 
-$address = '127.0.0.1';
+$address = '*';
 $port = 80;
 $name = 'localhost';
 $app = function($asgiEnv) {
@@ -22,6 +22,5 @@ $app = function($asgiEnv) {
 
 $host = new Aerys\Host($address, $port, $name, $app);
 
-$server->addHost($host);
-$server->listen();
+$server->start($host);
 $reactor->run();

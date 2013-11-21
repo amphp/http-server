@@ -7,8 +7,8 @@
  * $ bin/aerys -c examples/ex203_route_class_shortcuts.php
  */
 
-require __DIR__ . '/../vendor/autoload.php';
-require __DIR__ . '/support/Ex203_RouteClassShortcuts.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/support/Ex203_RouteClassShortcuts.php';
 
 $app = (new Aerys\Framework\App)
     ->addRouteClass('/', 'Ex203_RouteClassShortcuts')

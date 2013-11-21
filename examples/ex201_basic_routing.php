@@ -16,8 +16,8 @@
  * $ bin/aerys -c examples/ex201_basic_routing.php
  */
 
-require __DIR__ . '/../vendor/autoload.php';
-require __DIR__ . '/support/Ex201_BasicRouting.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/support/Ex201_BasicRouting.php';
 
 $app = new Aerys\Framework\App;
 

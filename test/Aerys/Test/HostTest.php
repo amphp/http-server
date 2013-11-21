@@ -48,9 +48,6 @@ class HostTest extends \PHPUnit_Framework_TestCase {
         $host = new Host($address, $port, $name, $handler);
     }
 
-    /**
-     * @requires extension openssl
-     */
     function testSetEncryptionContext() {
         $address = '*';
         $port = 80;
@@ -63,9 +60,6 @@ class HostTest extends \PHPUnit_Framework_TestCase {
         ]);
     }
 
-    /**
-     * @requires extension openssl
-     */
     function testSetEncryptionContextAcceptsEmptyArray() {
         $address = '*';
         $port = 80;
@@ -76,7 +70,6 @@ class HostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @requires extension openssl
      * @dataProvider provideBadEncryptionArrays
      * @expectedException \InvalidArgumentException
      */

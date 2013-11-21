@@ -27,7 +27,7 @@ class DocRootResponder implements AsgiResponder {
     private $docRoot;
     private $indexes = ['index.html', 'index.htm'];
     private $eTagMode = self::ETAG_ALL;
-    private $expiresHeaderPeriod = 300;
+    private $expiresHeaderPeriod = 3600;
     private $defaultMimeType = 'text/plain';
     private $customMimeTypes = [];
     private $defaultTextCharset = 'utf-8';
@@ -37,6 +37,7 @@ class DocRootResponder implements AsgiResponder {
     private $cacheTtl = 10;
     private $fileDescriptorCache = [];
     private $memoryCache = [];
+    private $memoryCacheSize = 0;
     private $memoryCacheMaxSize = 67108864;    // 64 MiB
     private $memoryCacheMaxFileSize = 1048576; //  1 MiB
     private $memoryCacheCurrentSize = 0;

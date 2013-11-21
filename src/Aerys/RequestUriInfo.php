@@ -43,7 +43,7 @@ class RequestUriInfo {
     function getScheme() {
         return $this->scheme;
     }
-    
+
     function getHost() {
         return $this->host;
     }

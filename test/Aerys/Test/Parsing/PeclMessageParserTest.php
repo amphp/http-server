@@ -6,11 +6,20 @@ use Aerys\Parsing\PeclMessageParser;
 
 class PeclMessageParserTest extends \PHPUnit_Framework_TestCase {
     
+    private function skipIfMissingExtHttp() {
+        if (!extension_loaded('http')) {
+            $this->markTestSkipped(
+                'http extension not available'
+            );
+        }
+    }
+    
     /**
-     * @requires extension http
      * @dataProvider provideParseExpectations
      */
     public function testParseHeaders($msg, $method, $uri, $protocol, $headers, $body) {
+        $this->skipIfMissingExtHttp();
+        
         $msgParser = new PeclMessageParser;
         $parsedRequestArr = $msgParser->parse($msg);
         
@@ -25,9 +34,6 @@ class PeclMessageParserTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals($body, $actualBody);
     }
     
-    /**
-     * @requires extension http
-     */
     function testKeepAliveHeadResponseParse() {
         $request = "HTTP/1.1 200 OK\n\n";
         $msgParser = new PeclMessageParser(PeclMessageParser::MODE_RESPONSE);
@@ -38,20 +44,22 @@ class PeclMessageParserTest extends \PHPUnit_Framework_TestCase {
     }
     
     /**
-     * @requires extension http
      * @expectedException Aerys\Parsing\ParseException
      */
     public function testParseHeadersThrowsExceptionOnFailure() {
+        $this->skipIfMissingExtHttp();
+        
         $msg = "GET / HTTP/1.1" . "\r\n" . "Not-Complete\r\n\r\n";
         $msgParser = new PeclMessageParser;
         $parsedRequestArr = $msgParser->parse($msg);
     }
     
     /**
-     * @requires extension http
      * @expectedException Aerys\Parsing\PolicyException
      */
     function testPolicyExceptionThrownIfMessageBodyIsTooLarge() {
+        $this->skipIfMissingExtHttp();
+        
         $msgParser = new PeclMessageParser;
         $msgParser->setOptions([
             'maxBodyBytes' => 1
@@ -72,10 +80,11 @@ class PeclMessageParserTest extends \PHPUnit_Framework_TestCase {
     }
     
     /**
-     * @requires extension http
      * @expectedException Aerys\Parsing\PolicyException
      */
     function testPolicyExceptionThrownIfHeadersAreTooLarge() {
+        $this->skipIfMissingExtHttp();
+        
         $msgParser = new PeclMessageParser;
         $msgParser->setOptions([
             'maxHeaderBytes' => 1024

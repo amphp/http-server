@@ -3,7 +3,7 @@
 namespace Aerys;
 
 class Client {
-    
+
     public $id;
     public $socket;
     public $clientAddress;
@@ -11,17 +11,15 @@ class Client {
     public $serverAddress;
     public $serverPort;
     public $isEncrypted;
-    
+
+    public $requestCount;
     public $preBodyRequest;
     public $requests = [];
-    public $requestHeaderTraces = [];
-    public $responses = [];
     public $pipeline = [];
     public $closeAfterSend = [];
-    public $requestCount;
-    
+
     public $parser;
     public $readWatcher;
     public $writeWatcher;
-}
 
+}

@@ -11,6 +11,6 @@
  * $ bin/aerys -c examples/ex301_static_files.php
  */
 
-require __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php';
 
 $app = (new Aerys\Framework\App)->setDocumentRoot(__DIR__ . '/support/docroot');

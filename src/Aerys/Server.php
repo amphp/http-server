@@ -4,49 +4,50 @@ namespace Aerys;
 
 use Alert\Reactor,
     Aerys\Parsing\Parser,
-    Aerys\Parsing\MessageParser,
-    Aerys\Parsing\PeclMessageParser,
+    Aerys\Parsing\ParserFactory,
     Aerys\Parsing\ParseException,
     Aerys\Writing\WriterFactory,
     Aerys\Writing\ResourceException;
 
 class Server {
 
-    const SERVER_SOFTWARE = 'Aerys/0.1.0-devel';
+    private $state;
+    private static $STOPPED = 0;
+    private static $STARTED = 1;
+    private static $PAUSED = 2;
+    private static $STOPPING = 3;
 
-    private $isExtHttpEnabled;
     private $isExtSocketsEnabled;
 
-    private $state;
-    private static $UNBOUND = 0;
-    private static $PAUSED = 1;
-    private static $LISTENING = 2;
-
     private $reactor;
-    private $hosts = [];
-    private $servers = [];
+    private $hostBinder;
+    private $parserFactory;
+    private $writerFactory;
+    private $hosts;
+    private $listeningSockets = [];
     private $acceptWatchers = [];
     private $pendingTlsWatchers = [];
     private $clients = [];
     private $requestIdMap = [];
     private $exportedSocketIdMap = [];
-    private $lastRequestId = 0;
     private $cachedClientCount = 0;
+    private $lastRequestId = 0;
+    private $inProgressRequestId;
+    private $isBeforeResponse = FALSE;
+    private $isAfterResponse = FALSE;
 
     private $now;
     private $httpDateNow;
     private $httpDateFormat = 'D, d M Y H:i:s';
     private $keepAliveWatcher;
     private $keepAliveTimeouts = [];
-    private $keepAliveWatcherInterval = 1;
+    private $forceStopWatcher;
 
-    private $isBeforeResponse = FALSE;
-    private $isAfterResponse = FALSE;
-
+    private $errorLogPath;
     private $errorStream = STDERR;
     private $maxConnections = 1500;
     private $maxRequests = 150;
-    private $keepAliveTimeout = 10;
+    private $keepAliveTimeout = 5;
     private $defaultContentType = 'text/html';
     private $defaultTextCharset = 'utf-8';
     private $autoReasonPhrase = TRUE;
@@ -60,181 +61,264 @@ class Server {
     private $allowedMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE', 'PUT', 'POST', 'PATCH', 'DELETE'];
     private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER; // @TODO Add option setter
     private $readGranularity = 262144; // @TODO Add option setter
-    private $defaultHost;
+    private $serverToken = 'Aerys/0.1.0-devel';
+    private $showErrors = TRUE;
 
-    function __construct(Reactor $reactor, WriterFactory $wf = NULL) {
-        $this->state = self::$UNBOUND;
+    function __construct(
+        Reactor $reactor,
+        HostBinder $hb = NULL,
+        ParserFactory $pf = NULL,
+        WriterFactory $wf = NULL
+    ) {
+        $this->state = self::$STOPPED;
         $this->reactor = $reactor;
+        $this->hostBinder = $hb ?: new HostBinder;
+        $this->parserFactory = $pf ?: new ParserFactory;
         $this->writerFactory = $wf ?: new WriterFactory;
-
-        $this->isExtHttpEnabled = extension_loaded('http');
         $this->isExtSocketsEnabled = extension_loaded('sockets');
-
-        $this->now = time();
-        $this->httpDateNow = gmdate($this->httpDateFormat, $this->now) . ' UTC';
-        $this->keepAliveWatcher = $this->reactor->repeat(function() {
-            $this->timeoutKeepAlives();
-        }, $this->keepAliveWatcherInterval);
-        
-        register_shutdown_function(function() { $this->onShutdown(); });
     }
-    
+
     /**
-     * Register a server Host on which to listen
+     * Listen for HTTP traffic
      *
-     * @param Host $host A host definition for responding to client requests
-     * @return int Returns the new number of hosts registered with the server
-     * @TODO Track which addresses have TLS enabled and prevent conflicts in multi-host environments
-     */
-    function addHost(Host $host) {
-        $hostId = $host->getId();
-        $this->hosts[$hostId] = $host;
-
-        return count($this->hosts);
-    }
-
-    /**
-     * Bind all host sockets but don't listen yet
+     * IMPORTANT: The server's event reactor must still be started externally or nothing will happen.
      *
-     * @throws \LogicException If no hosts have yet been added to the server
-     * @throws \RuntimeException On server socket bind failure
-     * @return array Returns an array of all bound server addresses
-     */
-    function bind() {
-        if (empty($this->hosts)) {
-            throw new \LogicException(
-                'Cannot bind server sockets: no hosts exist!'
-            );
-        }
-
-        foreach ($this->hosts as $host) {
-            $ip = ($host->getAddress() === '*') ? '0.0.0.0' : $host->getAddress();
-            $bindAddress = sprintf('tcp://%s:%d', $ip, $host->getPort());
-
-            if (!isset($this->servers[$bindAddress])) {
-                $context = $host->getContext();
-                $this->bindServer($bindAddress, $context);
-            }
-        }
-
-        reset($this->hosts);
-        $this->state = self::$LISTENING;
-        
-        return array_keys($this->servers);
-    }
-
-    private function bindServer($bindAddress, $context) {
-        $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
-        
-        if ($server = @stream_socket_server($bindAddress, $errNo, $errStr, $flags, $context)) {
-            $this->servers[$bindAddress] = $server;
-            stream_set_blocking($server, FALSE);
-        } else {
-            throw new \RuntimeException(
-                sprintf('Failed binding server to %s: [Err# %s] %s', $bindAddress, $errNo, $errStr)
-            );
-        }
-    }
-
-    /**
-     * Stop listening and unbind all server sockets
-     * 
+     * @param mixed $hostOrCollection A Host, HostCollection or array of Host instances
+     * @param array $listeningSockets Optional array mapping bind addresses to existing sockets
+     * @throws \LogicException If server is running
+     * @throws \LogicException If no hosts have been added to the specified collection
+     * @throws \RuntimeException On socket bind failure
      * @return void
      */
-    function unbind() {
-        foreach ($this->servers as $server) {
-            if (is_resource($server)) {
-                @fclose($server);
+    function start($hostOrCollection, array $listeningSockets = []) {
+        if ($this->state !== self::$STOPPED) {
+            throw new \LogicException(
+                'Cannot start: server already running!'
+            );
+        }
+
+        $this->hosts = $this->normalizeStartHosts($hostOrCollection);
+        $this->listeningSockets = $this->hostBinder->bindHosts($this->hosts, $listeningSockets);
+        $tlsMap = $this->hosts->getTlsBindingsByAddress();
+        $acceptor = function($watcherId, $serverSocket) { $this->accept($serverSocket); };
+        $tlsAcceptor = function($watcherId, $serverSocket) { $this->acceptTls($serverSocket); };
+
+        foreach ($this->listeningSockets as $bindAddress => $serverSocket) {
+            if (isset($tlsMap[$bindAddress])) {
+                stream_context_set_option($serverSocket, $tlsMap[$bindAddress]);
+                $acceptCallback = $tlsAcceptor;
+            } else {
+                $acceptCallback = $acceptor;
+            }
+
+            $acceptWatcher = $this->reactor->onReadable($serverSocket, $acceptCallback);
+            $this->acceptWatchers[$bindAddress] = $acceptWatcher;
+        }
+
+        $this->initializeKeepAliveWatcher();
+
+        $this->state = self::$STARTED;
+    }
+
+    private function normalizeStartHosts($hostOrCollection) {
+        if ($hostOrCollection instanceof HostCollection) {
+            $hosts = $hostOrCollection;
+        } elseif ($hostOrCollection instanceof Host) {
+            $hosts = new HostCollection;
+            $hosts->addHost($hostOrCollection);
+        } elseif (is_array($hostOrCollection)) {
+            $hosts = new HostCollection;
+            foreach ($hostOrCollection as $host) {
+                $hosts->addHost($host);
             }
         }
-        
-        $this->servers = [];
-        
+
+        return $hosts;
+    }
+
+    private function initializeKeepAliveWatcher() {
+        $this->renewHttpDate();
+        $this->keepAliveWatcher = $this->reactor->repeat(function() {
+            $this->timeoutKeepAlives();
+        }, $intervalInSeconds = 1);
+    }
+
+    /**
+     * Stop the server gracefully (or not)
+     *
+     * By default the server will take as long as necessary to complete the currently outstanding
+     * requests ($timeout = -1) when stop() is called. New client acceptance will be suspended,
+     * previously assigned responses will be sent in full and any currently unfulfilled requests
+     * will be sent a 503 Service Unavailable response.
+     *
+     * If the optional $timeout parameter is greater than zero client connections will be forcibly
+     * closed and the server will stop if the shutdown hasn't completed when the timeout expires. A
+     * timeout value of 0 will force an immediate (ungraceful) stop.
+     *
+     * Repeated calls to this method will have no effect if the server is already in the process of
+     * stopping. Calls to Server::stop() will block until completion.
+     *
+     * @param int $timeout Timeout value in seconds
+     * @return void
+     */
+    function stop($timeout = -1) {
+        if (!($this->state && $this->state < self::$STOPPING)) {
+            return;
+        }
+
+        $timeout = filter_var($timeout, FILTER_VALIDATE_INT, ['options' => [
+            'min_range' => -1,
+            'default' => -1
+        ]]);
+
+        $this->initializeStop();
+
+        if ($timeout === 0) {
+            $this->forceStop();
+        } elseif ($this->clients) {
+            $this->stopGracefully($timeout);
+        }
+    }
+
+    private function initializeStop() {
+        $this->state = self::$STOPPING;
+
         foreach ($this->acceptWatchers as $watcherId) {
             $this->reactor->cancel($watcherId);
         }
-        
+
         $this->acceptWatchers = [];
-    }
 
-    /**
-     * Listen for new connections on bound host sockets
-     *
-     * @throws \LogicException If no hosts added
-     * @throws \RuntimeException On bind failure
-     * @return void
-     */
-    function listen() {
-        if ($this->state === self::$UNBOUND) {
-            $this->bind();
+        foreach ($this->pendingTlsWatchers as $client) {
+            $this->failTlsConnection($client);
         }
 
-        foreach ($this->servers as $bindAddress => $server) {
-            if (isset($this->acceptWatchers[$bindAddress])) {
-                $this->reactor->enable($this->acceptWatchers[$bindAddress]);
-            } else {
-                $isEncrypted = isset(stream_context_get_options($server)['ssl']);
-                $onAcceptable = $isEncrypted
-                    ? function($watcherId, $server) { $this->acceptTls($server); }
-                    : function($watcherId, $server) { $this->accept($server); };
-                $acceptWatcher = $this->reactor->onReadable($server, $onAcceptable);
-                $this->acceptWatchers[$bindAddress] = $acceptWatcher;
+        foreach ($this->clients as $client) {
+            stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
+        }
+
+        // This property is always NULL unless a fatal error instigated the server stop event. When
+        // a fatal occurs all unfulfilled requests are sent a 503 response. We use this property to
+        // instead send a 500 for the specific request that resulted in the fatal and allow mods
+        // the opportunity to capture information about the request that caused the 500.
+        if ($this->inProgressRequestId) {
+            $this->assignFatal500Response();
+        }
+    }
+
+    private function assignFatal500Response() {
+        if ($this->showErrors) {
+            $lastError = error_get_last();
+            extract($lastError);
+            $errorMsg = sprintf("%s in %s on line %d", $message, $file, $line);
+        } else {
+            $errorMsg = 'Something went terribly wrong';
+        }
+        
+        $body = '<html><body><h1>500 Internal Server Error</h1><hr/><p>%s</p></body></html>';
+        $body = sprintf($body, $errorMsg);
+        $headers = [
+            'Content-Type: text/html; charset=utf-8',
+            'Content-Length: ' . strlen($body),
+            'Connection: close'
+        ];
+        $asgiResponse = [500, 'Internal Server Error', $headers, $body];
+
+        $this->setResponse($this->inProgressRequestId, $asgiResponse);
+    }
+
+    private function forceStop() {
+        foreach ($this->clients as $client) {
+            $this->closeClient($client);
+        }
+
+        $this->onStopCompletion();
+
+        return $this;
+    }
+
+    private function stopGracefully($timeout) {
+        $asgiResponse = [
+            $status = 503,
+            $reason = 'Service Unavailable',
+            $headers = ['Connection: close'],
+            $body = '<html><body><h1>503 Service Unavailable</h1></body></html>'
+        ];
+
+        if ($this->clients && $timeout !== -1) {
+            $forceStopper = function() { $this->forceStop(); };
+            $this->forceStopWatcher = $this->reactor->once($forceStopper, $timeout);
+        }
+
+        foreach ($this->clients as $client) {
+            $this->stopClient($client, $asgiResponse);
+        }
+
+        while ($this->state === self::$STOPPING) {
+            $this->reactor->tick();
+        }
+    }
+
+    private function stopClient(Client $client, array $asgiResponse) {
+        if ($client->requests) {
+            $unassignedRequestIds = array_keys(array_diff_key($client->requests, $client->pipeline));
+            foreach ($unassignedRequestIds as $requestId) {
+                $this->setResponse($requestId, $asgiResponse);
             }
-        }
-
-        $this->state = self::$LISTENING;
-    }
-
-    private function timeoutKeepAlives() {
-        $now = time();
-        $this->now = $now;
-        $this->httpDateNow = gmdate('D, d M Y H:i:s', $now) . ' UTC';
-        foreach ($this->keepAliveTimeouts as $socketId => $expiryTime) {
-            if ($expiryTime <= $now) {
-                $client = $this->clients[$socketId];
-                $this->closeClient($client);
-            } else {
-                break;
-            }
+        } else {
+            $this->closeClient($client);
         }
     }
 
-    private function renewKeepAliveTimeout($socketId) {
-        unset($this->keepAliveTimeouts[$socketId]);
-        $this->keepAliveTimeouts[$socketId] = $this->now + $this->keepAliveTimeout;
+    private function onStopCompletion() {
+        $this->state = self::$STOPPED;
+        $this->reactor->cancel($this->keepAliveWatcher);
+        if ($this->forceStopWatcher) {
+            $this->reactor->cancel($this->forceStopWatcher);
+        }
     }
 
-    private function accept($server) {
-        while ($client = @stream_socket_accept($server, $timeout = 0)) {
+    private function accept($serverSocket) {
+        while ($client = @stream_socket_accept($serverSocket, $timeout = 0)) {
             stream_set_blocking($client, FALSE);
             $this->cachedClientCount++;
-            $this->onClient($client);
+            $this->onClient($client, $isEncrypted = FALSE);
             if ($this->maxConnections > 0 && $this->cachedClientCount >= $this->maxConnections) {
-                $this->pauseNewClientAcceptance();
+                $this->pauseClientAcceptance();
                 break;
             }
         }
     }
 
-    private function pauseNewClientAcceptance() {
-        if ($this->state === self::$LISTENING) {
-            foreach ($this->acceptWatchers as $watcherId) {
-                $this->reactor->disable($watcherId);
-            }
+    private function pauseClientAcceptance() {
+        foreach ($this->acceptWatchers as $watcherId) {
+            $this->reactor->disable($watcherId);
+        }
+        if ($this->state !== self::$STOPPING) {
             $this->state = self::$PAUSED;
         }
     }
 
-    private function acceptTls($server) {
-        while ($client = @stream_socket_accept($server, $timeout = 0)) {
+    private function resumeClientAcceptance() {
+        foreach ($this->acceptWatchers as $watcherId) {
+            $this->reactor->enable($watcherId);
+        }
+
+        if ($this->state !== self::$STOPPING) {
+            $this->state = self::$STARTED;
+        }
+    }
+
+    private function acceptTls($serverSocket) {
+        while ($client = @stream_socket_accept($serverSocket, $timeout = 0)) {
             stream_set_blocking($client, FALSE);
-
-            $cryptoEnabler = function() use ($client) { $this->doTlsHandshake($client); };
-            $this->pendingTlsWatchers[(int) $client] = $this->reactor->onReadable($client, $cryptoEnabler);
-
             $this->cachedClientCount++;
+            $cryptoEnabler = function() use ($client) { $this->doTlsHandshake($client); };
+            $clientId = (int) $client;
+            $tlsWatcher = $this->reactor->onReadable($client, $cryptoEnabler);
+            $this->pendingTlsWatchers[$clientId] = $tlsWatcher;
             if ($this->maxConnections > 0 && $this->cachedClientCount >= $this->maxConnections) {
-                $this->pauseNewClientAcceptance();
+                $this->pauseClientAcceptance();
                 break;
             }
         }
@@ -245,7 +329,7 @@ class Server {
 
         if ($isTlsHandshakeSuccessful) {
             $this->clearPendingTlsClient($client);
-            $this->onClient($client);
+            $this->onClient($client, $isEncrypted = TRUE);
         } elseif ($isTlsHandshakeSuccessful === FALSE) {
             $this->failTlsConnection($client);
         }
@@ -264,7 +348,7 @@ class Server {
             && $this->maxConnections > 0
             && $this->cachedClientCount <= $this->maxConnections
         ) {
-            $this->listen();
+            $this->resumeClientAcceptance();
         }
     }
 
@@ -278,36 +362,45 @@ class Server {
         unset($this->pendingTlsWatchers[$clientId]);
     }
 
-    /**
-     * Register a Mod for all hosts matching the specified $hostId
-     *
-     * Host IDs can match in multiple different ways:
-     *
-     * - *              Applies mod to ALL currently registered hosts
-     * - *:80           Applies mod to ALL currently registered hosts listening on port 80
-     * - 127.0.0.1:*    Applies mod to ALL currently registered hosts listening on any port at 127.0.0.1
-     * - mysite.com:*   Applies mod to all hosts on any port with the name mysite.com
-     * - mysite.com:80  Applies mod to ONLY mysite.com on port 80
-     *
-     * @param string $hostId The Host ID matching string
-     * @param \Aerys\Mods\Mod $mod The mod instance to register
-     * @param array $priorityMap Optionally specify mod invocation priority values
-     * @throws \DomainException If no registered hosts match the specified $hostId
-     * @return int Returns the number of hosts to which the mod was successfully applied
-     */
-    function registerMod($hostId, $mod, array $priorityMap = []) {
-        $matchCount = 0;
-        foreach ($this->hosts as $host) {
-            if ($host->matchesId($hostId)) {
-                $matchCount++;
-                $host->registerMod($mod, $priorityMap);
+    private function timeoutKeepAlives() {
+        $now = $this->renewHttpDate();
+
+        foreach ($this->keepAliveTimeouts as $socketId => $expiryTime) {
+            if ($expiryTime <= $now) {
+                $client = $this->clients[$socketId];
+                $this->closeClient($client);
+            } else {
+                break;
             }
         }
-
-        return $matchCount;
     }
 
-    private function onClient($socket) {
+    /**
+     * Date string generation is (relatively) expensive. Since we only need HTTP dates at a
+     * granularity of one second we're better off to generate this information once per second and
+     * cache it. Because we also timeout keep-alive connections at one-second intervals we cache
+     * the unix timestamp for comparisons against client activity times.
+     */
+    private function renewHttpDate() {
+        $time = time();
+        $this->now = $time;
+        $this->httpDateNow = gmdate('D, d M Y H:i:s', $time) . ' UTC';
+
+        return $time;
+    }
+
+    /**
+     * IMPORTANT: DO NOT REMOVE THE CALL TO unset(). It looks superfluous, but it's not. Keep-alive
+     * timeout entries must be ordered by value. This means that it's not enough to replace the
+     * existing map entry -- we have to remove it completely and push it back onto the end of the
+     * array to maintain the correct order.
+     */
+    private function renewKeepAliveTimeout($socketId) {
+        unset($this->keepAliveTimeouts[$socketId]);
+        $this->keepAliveTimeouts[$socketId] = $this->now + $this->keepAliveTimeout;
+    }
+
+    private function onClient($socket, $isEncrypted) {
         stream_set_blocking($socket, FALSE);
 
         $socketId = (int) $socket;
@@ -315,6 +408,7 @@ class Server {
         $client = new Client;
         $client->id = $socketId;
         $client->socket = $socket;
+        $client->isEncrypted = $isEncrypted;
 
         $rawServerName = stream_socket_get_name($socket, FALSE);
         list($client->serverAddress, $client->serverPort) = $this->parseSocketName($rawServerName);
@@ -322,16 +416,11 @@ class Server {
         $rawClientName = stream_socket_get_name($socket, TRUE);
         list($client->clientAddress, $client->clientPort) = $this->parseSocketName($rawClientName);
 
-        $client->isEncrypted = isset(stream_context_get_options($socket)['ssl']);
-
-        $client->parser = $this->isExtHttpEnabled
-            ? new PeclMessageParser(Parser::MODE_REQUEST)
-            : new MessageParser(Parser::MODE_REQUEST);
-
         $onHeaders = function($requestArr) use ($client) {
             $this->afterRequestHeaders($client, $requestArr);
         };
 
+        $client->parser = $this->parserFactory->makeParser();
         $client->parser->setOptions([
             'maxHeaderBytes' => $this->maxHeaderBytes,
             'maxBodyBytes' => $this->maxBodyBytes,
@@ -382,87 +471,101 @@ class Server {
     }
 
     private function afterRequestHeaders(Client $client, array $requestArr) {
-        if (!$requestInitStruct = $this->initializeRequest($client, $requestArr)) {
-            // initializeRequest() returns NULL if the server has already responded to the request
-            return;
+        if ($request = $this->initializeRequest($client, $requestArr)) {
+            $this->beforeRequestBody($client, $request);
         }
-        list($requestId, $asgiEnv, $host) = $requestInitStruct;
+    }
+
+    private function beforeRequestBody(Client $client, Request $request) {
+        $requestId = $request->getId();
+        $asgiEnv = $request->getAsgiEnv();
 
         if ($this->requireBodyLength && empty($asgiEnv['CONTENT_LENGTH'])) {
             $asgiResponse = [Status::LENGTH_REQUIRED, Reason::HTTP_411, ['Connection: close'], NULL];
             return $this->setResponse($requestId, $asgiResponse);
         }
 
-        $needs100Continue = isset($asgiEnv['HTTP_EXPECT']) && !strcasecmp($asgiEnv['HTTP_EXPECT'], '100-continue');
+        $client->preBodyRequest = $request;
+        $client->requests[$requestId] = $request;
 
-        $client->preBodyRequest = [$requestId, $asgiEnv, $host, $needs100Continue];
-        $client->requests[$requestId] = $asgiEnv;
-        $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
+        $this->invokeOnHeadersMods($request);
 
-        $this->invokeOnHeadersMods($host, $requestId);
+        $asgiResponse = $request->getAsgiResponse();
 
-        if ($needs100Continue && empty($client->responses[$requestId])) {
-            $client->responses[$requestId] = [Status::CONTINUE_100, Reason::HTTP_100, [], NULL];
+        if (!$asgiResponse && $request->expects100Continue()) {
+            $asgiResponse = [Status::CONTINUE_100, Reason::HTTP_100, [], NULL];
+            $request->setAsgiResponse($asgiResponse);
         }
 
-        if (isset($client->responses[$requestId])) {
+        if ($asgiResponse) {
             $this->writePipelinedResponses($client);
         }
     }
 
-    /**
-     * @TODO Clean up this mess. Right now a NULL return value signifies to afterRequestHeaders()
-     * and onRequest() that the server has already assigned a response so that they stop after this
-     * return. This needs to be cleaned up (in addition to the two calling methods) for better
-     * readability.
-     */
+    private function invokeOnHeadersMods(Request $request) {
+        $host = $request->getHost();
+        $requestId = $request->getId();
+
+        foreach ($host->getOnHeadersMods() as $mod) {
+            $mod->onHeaders($requestId);
+        }
+    }
+
     private function initializeRequest(Client $client, array $requestArr) {
+        $client->requestCount++;
         $requestId = ++$this->lastRequestId;
-        $this->requestIdMap[$requestId] = $client;
-
-        $client->requestCount += !isset($client->requests[$requestId]);
-
-        $protocol = $requestArr['protocol'];
-        $method = $requestArr['method'] = $this->normalizeMethodCase
+        $method = $this->normalizeMethodCase
             ? strtoupper($requestArr['method'])
             : $requestArr['method'];
 
-        $uriInfo = new RequestUriInfo($requestArr['uri']);
-        $headers = array_change_key_case($requestArr['headers'], CASE_UPPER);
+        $request = (new Request($requestId))
+            ->setClient($client)
+            ->setTrace($requestArr['trace'])
+            ->setProtocol($requestArr['protocol'])
+            ->setMethod($method)
+            ->setUri($requestArr['uri'])
+            ->setHeaders($requestArr['headers'])
+            ->setBody($requestArr['body']);
 
-        $requestArr['uriInfo'] = $uriInfo;
-        $requestArr['headers'] = $headers;
+        $this->requestIdMap[$requestId] = $request;
 
-        $hostHeader = empty($headers['HOST']) ? NULL : strtolower($headers['HOST'][0]);
-
-        $host = $this->selectRequestHost($uriInfo, $hostHeader, $client->isEncrypted, $protocol);
-
-        if ($host) {
-            $asgiEnv = $this->generateAsgiEnv($client, $host, $requestArr);
-
-            $client->requests[$requestId] = $asgiEnv;
-            $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
-
-            if (!in_array($method, $this->allowedMethods)) {
-                $asgiResponse = $this->generateMethodNotAllowedResponse();
-                return $this->setResponse($requestId, $asgiResponse);
-            } elseif ($method === 'TRACE' && empty($headers['MAX-FORWARDS'][0])) {
-                $asgiResponse = $this->generateTraceResponse($requestArr['trace']);
-                return $this->setResponse($requestId, $asgiResponse);
-            } elseif ($method === 'OPTIONS' && $requestArr['uri'] === '*') {
-                $asgiResponse = $this->generateOptionsResponse();
-                return $this->setResponse($requestId, $asgiResponse);
-            }
-
-            return [$requestId, $asgiEnv, $host];
-
+        if (!$this->assignRequestHost($request)) {
+            $asgiResponse = $this->generateInvalidHostNameResponse();
+        } elseif (!in_array($method, $this->allowedMethods)) {
+            $asgiResponse = $this->generateMethodNotAllowedResponse();
+        } elseif ($method === 'TRACE' && !$request->hasHeader('Max-Forwards')) {
+            $asgiResponse = $this->generateTraceResponse($request->getTrace());
+        } elseif ($method === 'OPTIONS' && $request->getUri() === '*') {
+            $asgiResponse = $this->generateOptionsResponse();
         } else {
-            $host = $this->selectDefaultHost();
-            $client->requests[$requestId] = $this->generateAsgiEnv($client, $host, $requestArr);
-            $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
-
-            return $this->setResponse($requestId, $this->generateInvalidHostNameResponse());
+            $asgiResponse = NULL;
         }
+
+        $request->generateAsgiEnv();
+
+        $client->requests[$requestId] = $request;
+
+        if ($asgiResponse) {
+            $this->setResponse($requestId, $asgiResponse);
+            $initResult = NULL;
+        } else {
+            $initResult = $request;
+        }
+
+        return $initResult;
+    }
+
+    private function assignRequestHost(Request $request) {
+        if ($host = $this->hosts->selectRequestHost($request)) {
+            $isRequestHostValid = TRUE;
+        } else {
+            $host = $this->hosts->selectDefaultHost();
+            $isRequestHostValid = FALSE;
+        }
+
+        $request->setHost($host);
+
+        return $isRequestHostValid;
     }
 
     private function generateTraceResponse($body) {
@@ -494,175 +597,72 @@ class Server {
         return [200, 'OK', $headers, $body = NULL];
     }
 
-    /**
-     * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
-     */
-    private function selectRequestHost(RequestUriInfo $uriInfo, $hostHeader, $isEncrypted, $protocol) {
-        if ($uriInfo->isAbsolute()) {
-            $host = $this->selectHostByAbsoluteUri($uriInfo, $isEncrypted);
-        } elseif ($hostHeader !== NULL || $protocol >= 1.1) {
-            $host = $this->selectHostByHeader($hostHeader, $isEncrypted);
-        } else {
-            $host = $this->selectDefaultHost();
-        }
-
-        return $host;
-    }
-
-    /**
-     * @TODO return default host for forward proxy use-cases
-     */
-    private function selectHostByAbsoluteUri(RequestUriInfo $uriInfo, $isEncrypted) {
-        $port = $uriInfo->getPort() ?: ($isEncrypted ? 443 : 80);
-        $hostId = $uriInfo->getHost() . ':' . $port;
-        $host = isset($this->hosts[$hostId]) ? $this->hosts[$hostId] : NULL;
-    }
-
-    private function selectHostByHeader($hostHeader, $isEncrypted) {
-        if ($portStartPos = strrpos($hostHeader, ']')) {
-            $ipComparison = substr($hostHeader, 0, $portStartPos + 1);
-            $port = substr($hostHeader, $portStartPos + 2);
-            $port = ($port === FALSE) ? ($isEncrypted ? '443' : '80') : $port;
-        } elseif ($portStartPos = strrpos($hostHeader, ':')) {
-            $ipComparison = substr($hostHeader, 0, $portStartPos);
-            $port = substr($hostHeader, $portStartPos + 1);
-        } else {
-            $port = $isEncrypted ? '443' : '80';
-            $ipComparison = $hostHeader;
-            $hostHeader .= ":{$port}";
-        }
-
-        $wildcardHost = "*:{$port}";
-        $ipv6WildcardHost = "[::]:{$port}";
-
-        if (isset($this->hosts[$hostHeader])) {
-            $host = $this->hosts[$hostHeader];
-        } elseif (isset($this->hosts[$wildcardHost])) {
-            $host = $this->hosts[$wildcardHost];
-        } elseif (isset($this->hosts[$ipv6WildcardHost])) {
-            $host = $this->hosts[$ipv6WildcardHost];
-        } elseif (!($host = $this->attemptIpHostSelection($hostHeader, $ipComparison))) {
-            $host = NULL;
-        }
-
-        return $host;
-    }
-
-    private function attemptIpHostSelection($hostHeader, $ipComparison) {
-        if (count($this->hosts) !== 1) {
-            $host = NULL;
-        } elseif (!filter_var($ipComparison, FILTER_VALIDATE_IP)) {
-            $host = NULL;
-        } elseif (!(($host = current($this->hosts))
-            && ($host->getAddress() === $ipComparison || $host->hasWildcardAddress())
-        )) {
-            $host = NULL;
-        }
-
-        return $host;
-    }
-
-    private function selectDefaultHost() {
-        return $this->defaultHost ?: current($this->hosts);
-    }
-
-    private function generateAsgiEnv(Client $client, Host $host, array $requestArr) {
-        $uriInfo = $requestArr['uriInfo'];
-        $uriScheme = $client->isEncrypted ? 'https' : 'http';
-        $serverName = $host->hasName() ? $host->getName() : $client->serverAddress;
-
-        $asgiEnv = [
-            'ASGI_VERSION'      => '0.1',
-            'ASGI_CAN_STREAM'   => TRUE,
-            'ASGI_NON_BLOCKING' => TRUE,
-            'ASGI_LAST_CHANCE'  => empty($requestArr['headersOnly']),
-            'ASGI_ERROR'        => $this->errorStream,
-            'ASGI_INPUT'        => $requestArr['body'],
-            'ASGI_URL_SCHEME'   => $uriScheme,
-            'AERYS_HOST_ID'     => $host->getId(),
-            'SERVER_PORT'       => $client->serverPort,
-            'SERVER_ADDR'       => $client->serverAddress,
-            'SERVER_NAME'       => $serverName,
-            'SERVER_PROTOCOL'   => (string) $requestArr['protocol'],
-            'REMOTE_ADDR'       => $client->clientAddress,
-            'REMOTE_PORT'       => (string) $client->clientPort,
-            'REQUEST_METHOD'    => $requestArr['method'],
-            'REQUEST_URI'       => $requestArr['uri'],
-            'REQUEST_URI_PATH'  => $uriInfo->getPath(),
-            'QUERY_STRING'      => $uriInfo->getQuery()
-        ];
-
-        $headers = $requestArr['headers'];
-
-        if (!empty($headers['CONTENT-TYPE'])) {
-            $asgiEnv['CONTENT_TYPE'] = $headers['CONTENT-TYPE'][0];
-            unset($headers['CONTENT-TYPE']);
-        }
-
-        if (!empty($headers['CONTENT-LENGTH'])) {
-            $asgiEnv['CONTENT_LENGTH'] = $headers['CONTENT-LENGTH'][0];
-            unset($headers['CONTENT-LENGTH']);
-        }
-
-        foreach ($headers as $field => $value) {
-            $field = 'HTTP_' . str_replace('-', '_', $field);
-            $asgiEnv[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
-        }
-
-        return $asgiEnv;
-    }
-
-    private function invokeOnHeadersMods(Host $host, $requestId) {
-        foreach ($host->getOnHeadersMods() as $mod) {
-            $mod->onHeaders($requestId);
-        }
-    }
-
     private function onRequest(Client $client, array $requestArr) {
         unset($this->keepAliveTimeouts[$client->id]);
 
-        if ($client->preBodyRequest) {
-            return $this->finalizePreBodyRequest($client, $requestArr);
+        if ($request = $client->preBodyRequest) {
+            $this->finalizePreBodyRequest($client, $requestArr);
+        } elseif ($request = $this->initializeRequest($client, $requestArr)) {
+            $this->invokeOnHeadersMods($request);
+        } else {
+            return; // Response already assigned
         }
 
-        if (!$requestInitStruct = $this->initializeRequest($client, $requestArr)) {
-            // initializeRequest() returns NULL if the server has already responded to the request
-            return;
+        $requestId = $request->getId();
+
+        if (!($request->isComplete() || $request->getAsgiResponse())) {
+            $handler = $request->getHostHandler();
+            $asgiEnv = $request->getAsgiEnv();
+            $this->inProgressRequestId = $requestId;
+            $this->invokeRequestHandler($handler, $asgiEnv, $requestId);
+            $this->inProgressRequestId = NULL;
         }
+    }
 
-        list($requestId, $asgiEnv, $host) = $requestInitStruct;
-
-        $this->invokeOnHeadersMods($host, $requestId);
-
-        if (isset($client->requests[$requestId]) && !isset($client->responses[$requestId])) {
-            // Mods may have altered the request environment, so reload it.
-            $asgiEnv = $client->requests[$requestId];
-            $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
+    private function invokeRequestHandler(callable $handler, array $asgiEnv, $requestId) {
+        try {
+            if ($asgiResponse = $handler($asgiEnv, $requestId)) {
+                $this->setResponse($requestId, $asgiResponse);
+            }
+        } catch (\Exception $e) {
+            $errorMsg = $this->showErrors
+                ? '<pre>' . $e->__toString() . '</pre>'
+                : '<p>Something went terribly wrong.</p>';
+            $body = '<html><body><h1>500 Internal Server Error</h1><hr/>%s</body></html>';
+            $body = sprintf($body, $errorMsg);
+            $headers = [
+                'Content-Type: text/html; charset=utf-8',
+                'Content-Length: ' . strlen($body)
+            ];
+            $asgiResponse = [500, 'Internal Server Error', $headers, $body];
+            $this->setResponse($requestId, $asgiResponse);
         }
     }
 
     private function finalizePreBodyRequest(Client $client, array $requestArr) {
-        list($requestId, $asgiEnv, $host, $needsNewRequestId) = $client->preBodyRequest;
+        $request = $client->preBodyRequest;
         $client->preBodyRequest = NULL;
+        $needsNewRequestId = $request->expects100Continue();
 
         if ($needsNewRequestId) {
             $requestId = ++$this->lastRequestId;
-            $this->requestIdMap[$requestId] = $client;
+            $this->requestIdMap[$requestId] = $request;
         }
 
-        if (!empty($asgiEnv['HTTP_TRAILER'])) {
-            $asgiEnv = $this->updateRequestEnvFromTrailers($asgiEnv, $requestArr);
+        /*
+        // @TODO Update request headers when trailers are present
+        if ($request->hasHeader('Trailer')) {
+            $this->updateRequestAfterTrailers($request, $requestArr);
         }
-
-        $asgiEnv['ASGI_LAST_CHANCE'] = TRUE;
-
-        $client->requests[$requestId] = $asgiEnv;
-
-        $this->invokeRequestHandler($requestId, $asgiEnv, $host->getHandler());
+        */
     }
 
-    private function updateRequestEnvFromTrailers(array $asgiEnv, array $finalRequestArr) {
+    /*
+    // @TODO FIX THIS so it works with new Request object abstraction!
+    private function updateRequestAfterTrailers(Request $request, array $finalRequestArr) {
         $newHeaders = array_change_key_case($finalRequestArr['headers'], CASE_UPPER);
+
+        $asgiEnv['ASGI_LAST_CHANCE'] = TRUE;
 
         // The Host header is ignored in trailers to prevent unsanitized values from bypassing the
         // safety check when headers are originally received. The other values are expressly
@@ -687,21 +687,11 @@ class Server {
 
         return $asgiEnv;
     }
-
-    private function invokeRequestHandler($requestId, array $asgiEnv, callable $handler) {
-        try {
-            if ($asgiResponse = $handler($asgiEnv, $requestId)) {
-                $this->setResponse($requestId, $asgiResponse);
-            }
-        } catch (\Exception $e) {
-            $asgiResponse = [500, 'Internal Server Error', [], $e->__toString()];
-            $this->setResponse($requestId, $asgiResponse);
-        }
-    }
+    */
 
     private function onParseError(Client $client, ParseException $e) {
         $requestId = $client->preBodyRequest
-            ? $client->preBodyRequest[0]
+            ? $client->preBodyRequest->getId()
             : $this->generateParseErrorEnv($client, $e);
 
         $asgiResponse = $this->generateParseErrorResponse($e);
@@ -711,31 +701,25 @@ class Server {
 
     private function generateParseErrorEnv(Client $client, ParseException $e) {
         $requestId = ++$this->lastRequestId;
-        $this->requestIdMap[$requestId] = $client;
-
         $requestArr = $e->getParsedMsgArr();
-        $requestArr['protocol'] = $protocol = '1.0';
-        $requestArr['headersOnly'] = FALSE;
+        $request = (new Request($requestId))
+            ->setClient($client)
+            ->setTrace($requestArr['trace'])
+            ->setProtocol($requestArr['protocol'])
+            ->setMethod($requestArr['method'])
+            ->setUri($requestArr['uri'])
+            ->setHeaders($requestArr['headers']);
 
-        if ($headers = $requestArr['headers']) {
-            $uriInfo = new RequestUriInfo($requestArr['uri']);
-            $requestArr['uriInfo'] = $uriInfo;
-            $headers = array_change_key_case($requestArr['headers'], CASE_UPPER);
-            $hostHeader = empty($headers['HOST']) ? NULL : $headers['HOST'][0];
-            $host = $this->selectRequestHost($uriInfo, $hostHeader, $client->isEncrypted, $protocol);
-        } else {
-            $host = $this->selectDefaultHost();
-            $requestArr['uriInfo'] = new RequestUriInfo('');
-        }
-
-        $client->requestHeaderTraces[$requestId] = $requestArr['trace'];
-        $client->requests[$requestId] = $this->generateAsgiEnv($client, $host, $requestArr);
+        $this->assignRequestHost($request);
+        $this->requestIdMap[$requestId] = $request;
+        $client->requests[$requestId] = $request;
+        $client->requestCount++;
 
         return $requestId;
     }
 
     private function generateParseErrorResponse(ParseException $e) {
-        $status = $e->getCode() ?: Status::BAD_REQUEST;
+        $status = $e->getCode() ?: 400;
         $reason = $this->getReasonPhrase($status);
         $msg = $e->getMessage();
         $body = "<html><body><h1>{$status} {$reason}</h1><p>{$msg}</p></body></html>";
@@ -750,7 +734,8 @@ class Server {
     }
 
     private function getReasonPhrase($statusCode) {
-        $reasonConst = 'Aerys\\Reason::HTTP_' . $statusCode;
+        $reasonConst = "Aerys\Reason::HTTP_{$statusCode}";
+
         return defined($reasonConst) ? constant($reasonConst) : '';
     }
 
@@ -759,17 +744,17 @@ class Server {
             return;
         }
 
-        $client = $this->requestIdMap[$requestId];
-        $asgiEnv = $client->requests[$requestId];
-        $client->responses[$requestId] = $asgiResponse;
+        $request = $this->requestIdMap[$requestId];
+        $request->setAsgiResponse($asgiResponse);
 
         if (!$this->isBeforeResponse) {
-            $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
+            $host = $request->getHost();
             $this->invokeBeforeResponseMods($host, $requestId);
 
             // We need to make another isset check in case a BeforeResponseMod has exported the socket
             // @TODO clean this up to get rid of the ugly nested if statement
-            if (isset($this->requestIdMap[$requestId])) {
+            if (!$request->isComplete()) {
+                $client = $request->getClient();
                 $this->writePipelinedResponses($client);
             }
         }
@@ -781,55 +766,6 @@ class Server {
             $mod->beforeResponse($requestId);
         }
         $this->isBeforeResponse = FALSE;
-    }
-
-    private function writePipelinedResponses(Client $client) {
-        foreach ($client->requests as $requestId => $asgiEnv) {
-            if (isset($client->pipeline[$requestId])) {
-                continue;
-            } elseif (isset($client->responses[$requestId])) {
-                $this->queuePipelineResponseWriter($client, $requestId, $asgiEnv);
-            } else {
-                break;
-            }
-        }
-
-        reset($client->requests);
-
-        $this->doClientWrite($client);
-    }
-
-    private function queuePipelineResponseWriter(Client $client, $requestId, array $asgiEnv) {
-        $asgiResponse = $client->responses[$requestId];
-        $asgiResponse = $this->doResponseNormalization($client, $asgiEnv, $asgiResponse);
-        $client->responses[$requestId] = $asgiResponse;
-        list($status, $reason, $headers, $body) = $asgiResponse;
-        $protocol = $asgiEnv['SERVER_PROTOCOL'];
-        $rawHeaders = "HTTP/$protocol $status";
-        if ($reason || $reason === '0') {
-            $rawHeaders .= " {$reason}";
-        }
-        $rawHeaders .= "\r\n{$headers}\r\n\r\n";
-        
-        $responseWriter = $this->writerFactory->make($client->socket, $rawHeaders, $body, $protocol);
-        $client->pipeline[$requestId] = $responseWriter;
-    }
-
-    private function doResponseNormalization($client, $asgiEnv, $asgiResponse) {
-        try {
-            $asgiResponse = $this->normalizeResponseForSend($client, $asgiEnv, $asgiResponse);
-        } catch (\UnexpectedValueException $e) {
-            $status = 500;
-            $reason = 'Internal Server Error';
-            $body = $e->getMessage();
-            $headers = 'Content-Length: ' . strlen($body) .
-                "\r\nContent-Type: text/plain;charset=utf-8" .
-                "\r\nConnection: close";
-
-            $asgiResponse = [$status, $reason, $headers, $body];
-        }
-
-        return $asgiResponse;
     }
 
     private function doClientWrite(Client $client) {
@@ -850,39 +786,94 @@ class Server {
         }
     }
 
+    private function writePipelinedResponses(Client $client) {
+        foreach ($client->requests as $requestId => $request) {
+            if (isset($client->pipeline[$requestId])) {
+                continue;
+            } elseif ($request->hasResponse()) {
+                $responseWriter = $this->generatePipelineResponseWriter($request);
+                $client->pipeline[$requestId] = $responseWriter;
+            } else {
+                break;
+            }
+        }
+
+        reset($client->requests);
+
+        $this->doClientWrite($client);
+    }
+
+    private function generatePipelineResponseWriter(Request $request) {
+        list($status, $reason, $headers, $body) = $this->normalizeAsgiResponse($request);
+
+        $protocol = $request->getProtocol();
+        $reason = ($reason || $reason === '0') ? (' ' . $reason) : '';
+        $rawHeaders = "HTTP/{$protocol} {$status}{$reason}\r\n{$headers}\r\n\r\n";
+        $client = $request->getClient();
+
+        return $this->writerFactory->make($client->socket, $rawHeaders, $body, $protocol);
+    }
+
+    private function normalizeAsgiResponse(Request $request) {
+        try {
+            $asgiResponse = $this->doResponseNormalization($request);
+        } catch (\UnexpectedValueException $e) {
+            $status = 500;
+            $reason = 'Internal Server Error';
+            $body = $e->getMessage();
+            $headers = 'Content-Length: ' . strlen($body) .
+                "\r\nContent-Type: text/plain;charset=utf-8" .
+                "\r\nConnection: close";
+
+            $asgiResponse = [$status, $reason, $headers, $body];
+        }
+
+        $request->setAsgiResponse($asgiResponse);
+
+        return $asgiResponse;
+    }
+
     /**
      * @throws \UnexpectedValueException On bad ASGI response array
+     * @TODO CLEAN THIS MESS UP!
      */
-    private function normalizeResponseForSend(Client $client, array $asgiEnv, array $asgiResponse) {
+    private function doResponseNormalization(Request $request) {
+        $asgiEnv = $request->getAsgiEnv();
+        $client = $request->getClient();
+        $asgiResponse = $request->getAsgiResponse();
+
         list($status, $reason, $headers, $body) = $asgiResponse;
 
-        $status = $this->filterResponseStatus($status);
+        $status = (int) $status;
+        if ($status < 100 || $status > 599) {
+            throw new \UnexpectedValueException(
+                'Invalid response status code'
+            );
+        }
 
-        if ($this->autoReasonPhrase && !$reason) {
+        if ($this->autoReasonPhrase && empty($reason)) {
             $reason = $this->getReasonPhrase($status);
         }
 
         $headers = $this->stringifyResponseHeaders($headers);
 
         if ($status >= 200) {
-            $isHttp11 = ($asgiEnv['SERVER_PROTOCOL'] === '1.1');
             list($headers, $close) = $this->normalizeConnectionHeader($headers, $asgiEnv, $client);
-            list($headers, $close) = $this->normalizeEntityHeaders($headers, $body, $isHttp11, $close);
+            list($headers, $close) = $this->normalizeEntityHeaders($headers, $body, $request->isHttp11(), $close);
         } else {
             $close = FALSE;
         }
 
-        if ($this->sendServerToken && (($serverTokenPos = stripos($headers, "\r\nServer:")) === FALSE)) {
-            $headers .= "\r\nServer: " . self::SERVER_SOFTWARE;
+        if ($this->sendServerToken && stripos($headers, "\r\nServer:") === FALSE) {
+            $headers = sprintf("%s\r\nServer: %s", $headers, $this->serverToken);
         }
 
         if (stripos($headers, "\r\nDate:") === FALSE) {
-            $headers .= "\r\nDate: " . $this->httpDateNow;
+            $headers = sprintf("%s\r\nDate: %s", $headers, $this->httpDateNow);
         }
 
         // This MUST happen AFTER content-length/body normalization or headers won't be correct
-        $requestMethod = $asgiEnv['REQUEST_METHOD'];
-        if ($requestMethod === 'HEAD') {
+        if ($request->getMethod() === 'HEAD') {
             $body = NULL;
         }
 
@@ -895,18 +886,6 @@ class Server {
             : [$status, $reason, $headers, $body];
 
         return $asgiResponse;
-    }
-
-    private function filterResponseStatus($status) {
-        $status = (int) $status;
-
-        if ($status < 100 || $status > 599) {
-            throw new \UnexpectedValueException(
-                'Invalid response status code'
-            );
-        }
-
-        return $status;
     }
 
     private function stringifyResponseHeaders($headers) {
@@ -925,18 +904,25 @@ class Server {
         return $headers;
     }
 
+    /**
+     * @TODO Massive FIX needed here. Use Response object to store close flag
+     */
     private function normalizeConnectionHeader($headers, $asgiEnv, Client $client) {
         $currentHeaderPos = stripos($headers, "\r\nConnection:");
-        
+
         if ($currentHeaderPos !== FALSE) {
             $lineEndPos = strpos($headers, "\r\n", $currentHeaderPos + 2);
             $line = substr($headers, $currentHeaderPos, $lineEndPos - $currentHeaderPos);
-            $willClose = stristr($line, 'close');
-            
+            //$willClose = stristr($line, 'close');
+            $willClose = stristr($headers, 'close');
+// @TODO FIX THIS!!!!!
             return [$headers, $willClose];
         }
-        
-        if ($this->disableKeepAlive) {
+
+        if ($this->state === self::$STOPPING) {
+            $valueToAssign = 'close';
+            $willClose = TRUE;
+        } elseif ($this->disableKeepAlive) {
             $valueToAssign = 'close';
             $willClose = TRUE;
         } elseif ($this->maxRequests > 0 && $client->requestCount >= $this->maxRequests) {
@@ -1050,11 +1036,14 @@ class Server {
     }
 
     private function afterResponse(Client $client, $requestId) {
-        $asgiEnv = $client->requests[$requestId];
-        $asgiResponse = $client->responses[$requestId];
+        $request = $this->requestIdMap[$requestId];
+        $request->markComplete();
+        $host = $request->getHost();
+        $asgiEnv = $request->getAsgiEnv();
+        $asgiResponse = $request->getAsgiResponse();
+
         list($status, $reason) = $asgiResponse;
 
-        $host = $this->hosts[$asgiEnv['AERYS_HOST_ID']];
         $this->invokeAfterResponseMods($host, $requestId);
 
         if ($status === Status::SWITCHING_PROTOCOLS) {
@@ -1064,7 +1053,7 @@ class Server {
         } elseif (array_shift($client->closeAfterSend)) {
             $this->closeClient($client);
         } else {
-            $this->dequeueClientPipelineRequest($client, $requestId);
+            $this->shiftClientPipeline($client, $requestId);
         }
     }
 
@@ -1099,13 +1088,17 @@ class Server {
             && $this->maxConnections > 0
             && $this->cachedClientCount <= $this->maxConnections
         ) {
-            $this->listen();
+            $this->resumeClientAcceptance();
         }
     }
 
     private function closeClient(Client $client) {
         $this->clearClientReferences($client);
         $this->doSocketClose($client->socket);
+
+        if ($this->state === self::$STOPPING && empty($this->clients)) {
+            $this->onStopCompletion();
+        }
     }
 
     private function doSocketClose($socket) {
@@ -1113,8 +1106,7 @@ class Server {
             $this->closeSocketWithSoLingerZero($socket);
         } elseif (is_resource($socket)) {
             stream_socket_shutdown($socket, STREAM_SHUT_WR);
-            stream_set_blocking($socket, FALSE);
-            while(@fgets($socket) !== FALSE);
+            @fread($socket, $this->readGranularity);
             @fclose($socket);
         }
     }
@@ -1134,12 +1126,10 @@ class Server {
         socket_close($socket);
     }
 
-    private function dequeueClientPipelineRequest($client, $requestId) {
+    private function shiftClientPipeline($client, $requestId) {
         unset(
             $client->pipeline[$requestId],
             $client->requests[$requestId],
-            $client->responses[$requestId],
-            $client->requestHeaderTraces[$requestId],
             $this->requestIdMap[$requestId]
         );
 
@@ -1150,64 +1140,76 @@ class Server {
         }
     }
 
+    /**
+     * @TODO Add docblocks
+     */
     function setRequest($requestId, array $asgiEnv) {
         if (isset($this->requestIdMap[$requestId])) {
-            $client = $this->requestIdMap[$requestId];
+            $request = $this->requestIdMap[$requestId];
         } else {
             throw new \DomainException(
                 "Unknown request ID: {$requestId}"
             );
         }
 
-        $client->requests[$requestId] = $asgiEnv;
+        $request->setAsgiEnv($asgiEnv);
     }
 
+    /**
+     * @TODO Add docblocks
+     */
     function getRequest($requestId) {
         if (isset($this->requestIdMap[$requestId])) {
-            $client = $this->requestIdMap[$requestId];
+            $request = $this->requestIdMap[$requestId];
         } else {
             throw new \DomainException(
                 "Unknown request ID: {$requestId}"
             );
         }
 
-        return $client->requests[$requestId];
+        return $request->getAsgiEnv();
     }
 
-    function getResponse($requestId) {
-        if (isset($this->requestIdMap[$requestId])) {
-            $client = $this->requestIdMap[$requestId];
-        } else {
-            throw new \DomainException(
-                "Unknown request ID: {$requestId}"
-            );
-        }
-
-        return $client->responses[$requestId];
-    }
-
+    /**
+     * @TODO Add docblocks
+     */
     function getTrace($requestId) {
         if (isset($this->requestIdMap[$requestId])) {
-            $client = $this->requestIdMap[$requestId];
+            $request = $this->requestIdMap[$requestId];
         } else {
             throw new \DomainException(
                 "Unknown request ID: {$requestId}"
             );
         }
 
-        return $client->requestHeaderTraces[$requestId];
+        return $request->getTrace();
+    }
+
+    /**
+     * @TODO Add docblocks
+     */
+    function getResponse($requestId) {
+        if (isset($this->requestIdMap[$requestId])) {
+            $request = $this->requestIdMap[$requestId];
+        } else {
+            throw new \DomainException(
+                "Unknown request ID: {$requestId}"
+            );
+        }
+
+        return $request->getResponse();
     }
 
     /**
      * Export a socket from the HTTP server
      *
      * Note that exporting a socket removes all references to its existince from the HTTP server.
-     * If any HTTP requests remain outstanding in the client's pipeline the will go unanswered. As
+     * If any HTTP requests remain outstanding in the client's pipeline they will go unanswered. As
      * far as the HTTP server is concerned the socket no longer exists. The only exception to this
      * rule is the Server::$cachedClientCount variable: _IT WILL NOT BE DECREMENTED_. This is a
      * safety measure. When code that exports sockets is ready to close those sockets IT MUST
-     * pass the relevant socket resource back to `Server::closeExportedSocket()` or the server
-     * will eventually max out it's allowed client slots. This requirement also allows exported
+     * pass the relevant socket resource back to the Server::closeExportedSocket() method or all
+     * allowed client slots will eventually max out. This requirement also allows exported
      * sockets to take advantage of HTTP server options such as socketSoLingerZero.
      *
      * @param int $requestId
@@ -1216,17 +1218,19 @@ class Server {
      */
     function exportSocket($requestId) {
         if (isset($this->requestIdMap[$requestId])) {
-            $client = $this->requestIdMap[$requestId];
+            $request = $this->requestIdMap[$requestId];
         } else {
             throw new \DomainException(
                 "Unknown request ID: {$requestId}"
             );
         }
 
+        $client = $request->getClient();
+        $socket = $client->socket;
+        $socketId = (int) $socket;
         $this->clearClientReferences($client);
-        $socketId = (int) $client->socket;
+        $this->cachedClientCount++; // It was decremented when references were cleared; take it back.
         $this->exportedSocketIdMap[$socketId] = TRUE;
-        $this->cachedClientCount++; // It was decremented when references were cleared, take it back.
 
         return $client->socket;
     }
@@ -1239,20 +1243,14 @@ class Server {
      */
     function querySocket($requestId) {
         if (isset($this->requestIdMap[$requestId])) {
-            $client = $this->requestIdMap[$requestId];
+            $request = $this->requestIdMap[$requestId];
         } else {
             throw new \DomainException(
                 "Unknown request ID: {$requestId}"
             );
         }
 
-        return [
-            'clientAddress' => $client->clientAddress,
-            'clientPort' => $client->clientPort,
-            'serverAddress' => $client->serverAddress,
-            'serverPort' => $client->serverPort,
-            'isEncrypted' => $client->isEncrypted
-        ];
+        return $request->getClientSocketInfo();
     }
 
     /**
@@ -1266,14 +1264,32 @@ class Server {
         if (isset($this->exportedSocketIdMap[$socketId])) {
             unset($this->exportedSocketIdMap[$socketId]);
             $this->cachedClientCount--;
+            $this->doSocketClose($socket);
         }
     }
 
     /**
-     * @TODO Add documentation
+     * A convenience method to simplify error logging in multiprocess environments
+     *
+     * To avoid data corruption the error log file must be locked during writes. Applications may
+     * use this method as a convenience method to avoid locking/unlocking the error stream manually.
+     *
+     * Note that currently this method *WILL BLOCK* execution while it obtains a write lock. This
+     * WILL SLOW DOWN YOUR SERVER, so don't have errors in your programs.
+     *
+     * @param string $errorMsg The error string to write (newline is auto-appended)
+     * @return void
      */
-    function getErrorStream() {
-        return $this->errorStream;
+    function logError($errorMsg) {
+        $errorMsg = trim($errorMsg) . PHP_EOL;
+
+        if (@flock($this->errorStream, LOCK_EX)) {
+            @fwrite($this->errorStream, $errorMsg);
+            @fflush($this->errorStream);
+            @flock($fp, LOCK_UN);
+        } else {
+            // @TODO Maybe? Not sure how to handle this ...
+        }
     }
 
     /**
@@ -1298,9 +1314,7 @@ class Server {
      * @return void
      */
     function setOption($option, $value) {
-        $option = strtolower($option);
-
-        switch ($option) {
+        switch (strtolower($option)) {
             case 'maxconnections':
                 $this->setMaxConnections($value); break;
             case 'maxrequests':
@@ -1329,10 +1343,14 @@ class Server {
                 $this->setRequireBodyLength($value); break;
             case 'socketsolingerzero':
                 $this->setSocketSoLingerZero($value); break;
+            case 'socketbacklogsize':
+                $this->setSocketBacklogSize($value); break;
             case 'allowedmethods':
                 $this->setAllowedMethods($value); break;
             case 'defaulthost':
                 $this->setDefaultHost($value); break;
+            case 'showerrors':
+                $this->setShowErrors($value); break;
             default:
                 throw new \DomainException(
                     "Unknown server option: {$option}"
@@ -1382,8 +1400,10 @@ class Server {
     private function setErrorStream($pathOrResource) {
         if (is_resource($pathOrResource)) {
             $this->errorStream = $pathOrResource;
+            $this->errorLogPath = stream_get_meta_data($pathOrResource)['uri'];
         } elseif (is_string($pathOrResource)) {
             $this->errorStream = fopen($pathOrResource, 'a+');
+            $this->errorLogPath = $pathOrResource;
         }
     }
 
@@ -1411,6 +1431,10 @@ class Server {
         $this->socketSoLingerZero = $boolFlag;
     }
 
+    private function setSocketBacklogSize($backlogSize) {
+        $this->hostBinder->setSocketBacklogSize($backlogSize);
+    }
+
     private function setAllowedMethods(array $methods) {
         if (!in_array('GET', $methods)) {
             $methods[] = 'GET';
@@ -1424,13 +1448,11 @@ class Server {
     }
 
     private function setDefaultHost($hostId) {
-        if (isset($this->hosts[$hostId])) {
-            $this->defaultHost = $this->hosts[$hostId];
-        } elseif ($hostId !== NULL) {
-            throw new \DomainException(
-                "Invalid default host; unknown host ID: {$hostId}"
-            );
-        }
+        $this->hosts->setDefaultHost($hostId);
+    }
+    
+    private function setShowErrors($boolFlag) {
+        $this->showErrors = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
 
     /**
@@ -1441,9 +1463,7 @@ class Server {
      * @return mixed The value of the requested server option
      */
     function getOption($option) {
-        $option = strtolower($option);
-
-        switch ($option) {
+        switch (strtolower($option)) {
             case 'maxconnections':
                 return $this->maxConnections; break;
             case 'maxrequests':
@@ -1472,10 +1492,14 @@ class Server {
                 return $this->requireBodyLength; break;
             case 'socketsolingerzero':
                 return $this->socketSoLingerZero; break;
+            case 'socketbacklogsize':
+                return $this->hostBinder->getSocketBacklogSize(); break;
             case 'allowedmethods':
                 return $this->allowedMethods; break;
             case 'defaulthost':
-                return $this->defaultHost ? $this->defaultHost->getId() : NULL; break;
+                return $this->hosts->getDefaultHostId(); break;
+            case 'showerrors':
+                return $this->showErrors; break;
             default:
                 throw new \DomainException(
                     "Unknown server option: {$option}"
@@ -1499,48 +1523,16 @@ class Server {
             'defaultContentType'    => $this->defaultContentType,
             'defaultTextCharset'    => $this->defaultTextCharset,
             'autoReasonPhrase'      => $this->autoReasonPhrase,
-            'errorStream'           => $this->errorStream,
+            'errorStream'           => $this->errorLogPath,
             'sendServerToken'       => $this->sendServerToken,
             'normalizeMethodCase'   => $this->normalizeMethodCase,
             'requireBodyLength'     => $this->requireBodyLength,
             'socketSoLingerZero'    => $this->socketSoLingerZero,
+            'socketBacklogSize'     => $this->hostBinder->getSocketBacklogSize(),
             'allowedMethods'        => $this->allowedMethods,
-            'defaultHost'           => ($this->defaultHost ? $this->defaultHost->getId() : NULL)
+            'defaultHost'           => $this->hosts ? $this->hosts->getDefaultHostId() : NULL,
+            'showErrors'            => $this->showErrors
         ];
-    }
-    
-    private function onShutdown() {
-        $fatals = [E_ERROR, E_PARSE, E_CORE_ERROR, E_CORE_WARNING, E_COMPILE_ERROR, E_COMPILE_WARNING];
-        $errorArr = error_get_last();
-        if ($errorArr && in_array($errorArr['type'], $fatals)) {
-            extract($errorArr);
-            $error = sprintf('%s in %s on line %d', $message, $file, $line);
-            $this->doErrorShutdown($error);
-        }
-    }
-    
-    function doErrorShutdown($error) {
-        $this->unbind();
-        
-        $asgiResponse = [
-            $status = 500,
-            $reason = 'Internal Server Error',
-            $headers = ['Connection: close'],
-            $body = sprintf(
-                '<html><body><h1>500 Internal Server Error</h1><p>%s</p></body></html>',
-                $error
-            )
-        ];
-        
-        foreach ($this->clients as $client) {
-            stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
-            
-            $outstandingRequestIds = array_keys(array_diff_key($client->requests, $client->responses));
-            
-            foreach ($outstandingRequestIds as $requestId) {
-                $this->setResponse($requestId, $asgiResponse);
-            }
-        }
     }
 
     function __destruct() {
@@ -1554,6 +1546,10 @@ class Server {
 
         if ($this->keepAliveWatcher) {
             $this->reactor->cancel($this->keepAliveWatcher);
+        }
+
+        if ($this->forceStopWatcher) {
+            $this->reactor->cancel($this->forceStopWatcher);
         }
     }
 }

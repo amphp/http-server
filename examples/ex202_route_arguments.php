@@ -7,8 +7,8 @@
  * $ bin/aerys -c examples/ex202_route_arguments.php
  */
 
-require __DIR__ . '/../vendor/autoload.php';
-require __DIR__ . '/support/Ex202_RouteArguments.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/support/Ex202_RouteArguments.php';
 
 $app = (new Aerys\Framework\App)
     ->addRoute('GET', '/', 'Ex202_RouteArguments::index')

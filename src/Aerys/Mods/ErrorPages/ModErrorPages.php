@@ -6,17 +6,17 @@ use Aerys\Server,
     Aerys\Mods\BeforeResponseMod;
 
 class ModErrorPages implements BeforeResponseMod {
-    
-    private $httpServer;
+
+    private $server;
     private $errorPages;
-    
-    function __construct(Server $httpServer, array $config) {
-        $this->httpServer = $httpServer;
-        
+
+    function __construct(Server $server, array $config) {
+        $this->server = $server;
+
         foreach ($config as $statusCode => $pageAndContentType) {
             $filePath = $pageAndContentType[0];
             $contentType = isset($pageAndContentType[1]) ? $pageAndContentType[1] : NULL;
-            
+
             if (is_readable($filePath) && is_file($filePath)) {
                 $content = file_get_contents($filePath);
                 $this->errorPages[$statusCode] = [$content, $contentType];
@@ -27,26 +27,26 @@ class ModErrorPages implements BeforeResponseMod {
             }
         }
     }
-    
+
     function beforeResponse($requestId) {
-        list($status, $reason, $headers, $body) = $this->httpServer->getResponse($requestId);
-        
+        list($status, $reason, $headers, $body) = $this->server->getResponse($requestId);
+
         if ($status >= 400 && isset($this->errorPages[$status])) {
             list($body, $contentType) = $this->errorPages[$status];
             if ($contentType) {
                 $headers = $this->assignContentTypeHeader($headers, $contentType);
             }
-            
-            $this->httpServer->setResponse($requestId, [$status, $reason, $headers, $body]);
+
+            $this->server->setResponse($requestId, [$status, $reason, $headers, $body]);
         }
     }
-    
+
     private function assignContentTypeHeader($headers, $contentType) {
         $headers = $this->stringifyResponseHeaders($headers);
         $ctPos = stripos($headers, "\r\nContent-Type:");
-        
+
         $newHeader = "\r\nContent-Type: {$contentType}";
-        
+
         if ($ctPos === FALSE) {
             $headers .= $newHeader;
         } else {
@@ -55,10 +55,10 @@ class ModErrorPages implements BeforeResponseMod {
             $end = substr($headers, $lineEndPos);
             $headers = $start . $newHeader . $end;
         }
-        
+
         return ltrim($headers);
     }
-    
+
     private function stringifyResponseHeaders($headers) {
         if (!$headers) {
             $headers = '';
@@ -71,7 +71,7 @@ class ModErrorPages implements BeforeResponseMod {
                 'Invalid response headers'
             );
         }
-        
+
         return $headers;
     }
 }

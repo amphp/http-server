@@ -5,7 +5,7 @@ namespace Aerys\Framework;
 use Auryn\Injector;
 
 class ResponderBuilder {
-    
+
     private $injector;
     private $responderOrder = [
         'websockets',
@@ -14,17 +14,17 @@ class ResponderBuilder {
         'docroot',
         'reverseproxy'
     ];
-    
+
     /**
      * @param \Auryn\Injector A dependency injection container
      */
-    function setInjector(Injector $injector) {
+    function __construct(Injector $injector) {
         $this->injector = $injector;
     }
-    
+
     /**
      * Use a dependency injection container to provision a callable host responder
-     * 
+     *
      * @param array $definition An array specifying responder definitions
      * @return mixed Returns a callable host responder
      */
@@ -137,10 +137,10 @@ class ResponderBuilder {
             if (!($responder instanceof \Closure || (is_string($responder) && function_exists($responder)))) {
                 $responder = $this->generateExecutableUserResponder($responder);
             }
-            
+
             $responders[] = $responder;
         }
-        
+
         if (count($responders) === 1) {
             $responder = current($responders);
         } else {
@@ -148,10 +148,10 @@ class ResponderBuilder {
                 ':responders' => $responders
             ]);
         }
-        
+
         return $responder;
     }
-    
+
     private function generateExecutableUserResponder($responder) {
         try {
             return $this->injector->getExecutable($responder);
@@ -205,25 +205,25 @@ class ResponderBuilder {
 
     private function orderResponders(array $responders, $userDefinedOrder) {
         $order = array_map('strtolower', $userDefinedOrder);
-        
+
         if ($diff = array_diff($order, $this->responderOrder)) {
             throw new ConfigException(
                 'Invalid responder order values: ' . implode(', ', $diff)
             );
         }
-        
+
         foreach ($this->responderOrder as $orderKey) {
             if (!in_array($orderKey, $order)) {
                 $order[] = $orderKey;
             }
         }
-        
+
         $orderedResponders = [];
         foreach ($order as $orderKey) {
             $orderedResponders[] = $responders[$orderKey];
         }
-        
+
         return $orderedResponders;
     }
-    
+
 }

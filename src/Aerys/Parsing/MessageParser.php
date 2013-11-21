@@ -158,7 +158,7 @@ class MessageParser implements Parser {
             if (!($protocol === '1.0' || '1.1' === $protocol)) {
                 throw new ParseException(
                     $this->getParsedMessageArray(),
-                    $msg = 'Protocol not supported: {$protocol}',
+                    $msg = 'Protocol not supported',
                     $code = 505,
                     $previousException = NULL
                 );

@@ -8,7 +8,7 @@
  * This example serves two separate domains (http://aerys and http://subdomain.aerys). Note that for
  * this code to work as expected you'll need to have the two domains pointing at your local machine.
  * In *nix this is done in the `/etc/hosts` file. In windows you'll instead want to set the same
- * line in your `%systemroot%\system32\drivers\etc\hosts` file:
+ * line in your `%systemroot%\system32\drivers\etc` file:
  * 
  *     127.0.0.1     localhost aerys subdomain.aerys
  * 
@@ -23,7 +23,7 @@
  * Once started, load http://aerys/ or http://subdomain.aerys/ in your browser.
  */
 
-require __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php';
 
 $dynamicAppResponder = function() {
     $body = '<html><body><h1>Hello from http://aerys</h1></body></html>';

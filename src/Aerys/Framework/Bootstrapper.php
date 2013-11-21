@@ -3,60 +3,50 @@
 namespace Aerys\Framework;
 
 use Alert\Reactor,
-    Aerys\Server;
+    Alert\ReactorFactory,
+    Auryn\Injector,
+    Auryn\Provider;
 
 class Bootstrapper {
 
-    private $hostBuilder;
-
-    function __construct(HostBuilder $hb = NULL) {
-        $this->hostBuilder = $hb ?: new HostBuilder;
-    }
-
     /**
-     * Bootstrap an aerys server using command line executable options
+     * Bootstrap a server and its host definitions from command line arguments
      *
-     * @param \Alert\Reactor The event reactor underlying everything
-     * @param \Aerys\Server The server instance we're bootstrapping
      * @param \Aerys\Framework\BinOptions $binOptions
      * @throws \Aerys\Framework\ConfigException
-     * @return \Aerys\Server Returns the bootstrapped server instance
+     * @return array Returns three-element array of the form [$reactor, $server, $hostCollection]
      */
-    function boot(Reactor $reactor, Server $server, BinOptions $binOptions) {
-        $this->reactor = $reactor;
-        $this->server = $server;
+    function boot(BinOptions $binOptions = NULL) {
+        $binOptions = $binOptions ?: (new BinOptions)->loadOptions();
 
-        if ($binOptions->getConfig()) {
-            $this->configureFromFile($binOptions);
-        } else {
-            $this->configureDocRoot($binOptions);
-        }
-
-        return $this->server;
+        return ($configFile = $binOptions->getConfig())
+            ? $this->buildFromFile($configFile)
+            : $this->buildDocRoot($binOptions);
     }
 
-    private function configureFromFile(BinOptions $binOptions) {
-        $configFile = $binOptions->getConfig();
-
+    private function buildFromFile($configFile) {
         if (!include($configFile)) {
             throw new ConfigException(
-                sprintf("Config file inclusion failed: %s", $configFile)
+                sprintf("Failed including specified config file (%s)", $configFile)
             );
         }
 
-        $vars = get_defined_vars();
-
         $apps = [];
-        $options = [];
+        $reactors = [];
         $injectors = [];
+        $serverOptions = [];
+
+        $vars = get_defined_vars();
 
         foreach ($vars as $key => $value) {
             if ($value instanceof App) {
                 $apps[] = $value;
             } elseif ($value instanceof ServerOptions) {
-                $options[] = $value;
+                $serverOptions[] = $value;
             } elseif ($value instanceof Injector) {
                 $injectors[] = $value;
+            } elseif ($value instanceof Reactor) {
+                $reactors[] = $value;
             }
         }
 
@@ -64,7 +54,7 @@ class Bootstrapper {
             throw new ConfigException(
                 sprintf('No App configuration instances found in config file: %s', $configFile)
             );
-        } elseif (count($options) > 1) {
+        } elseif (count($serverOptions) > 1) {
             throw new ConfigException(
                 sprintf('Only one ServerOptions instance allowed in config file: %s', $configFile)
             );
@@ -72,17 +62,49 @@ class Bootstrapper {
             throw new ConfigException(
                 sprintf('Only one Injector instance allowed in config file: %s', $configFile)
             );
+        } elseif (count($reactors) > 1) {
+            throw new ConfigException(
+                sprintf('Only one Reactor instance allowed in config file: %s', $configFile)
+            );
         }
 
-        $options = $options ? current($options) : NULL;
-        $injector = $injectors ? current($injectors) : NULL;
+        $reactor = $reactors ? current($reactors) : (new ReactorFactory)->select();
+        $injector = $injectors ? current($injectors) : new Provider;
+        $serverOptions = $serverOptions ? current($serverOptions) : new ServerOptions;
 
-        $appSettings = new AppSettings($apps, $options, $injector);
-
-        $this->bootFromAppSettings($appSettings);
+        return $this->generateServerAndHosts($reactor, $injector, $serverOptions, $apps);
     }
 
-    private function configureDocRoot(BinOptions $binOptions) {
+    private function generateServerAndHosts(
+        Reactor $reactor,
+        Injector $injector,
+        ServerOptions $serverOptions,
+        array $apps
+    ) {
+        $injector->alias('Alert\Reactor', get_class($reactor));
+        $injector->share($reactor);
+
+        $server = $injector->make('Aerys\Server');
+        $injector->share($server);
+
+        $injector->define('Aerys\Framework\ResponderBuilder', [
+            ':injector' => $injector
+        ]);
+
+        $hostBuilder = $injector->make('Aerys\Framework\HostBuilder');
+        $hostCollection = $injector->make('Aerys\HostCollection');
+
+        foreach ($apps as $app) {
+            $host = $hostBuilder->buildHost($app);
+            $hostCollection->addHost($host);
+        }
+
+        $server->setAllOptions($serverOptions->getAllOptions());
+
+        return [$reactor, $server, $hostCollection];
+    }
+
+    private function buildDocRoot(BinOptions $binOptions) {
         $docroot = realpath($binOptions->getRoot());
 
         if (!($docroot && is_dir($docroot) && is_readable($docroot))) {
@@ -103,28 +125,12 @@ class Bootstrapper {
             $app->setName($name);
         }
 
-        $appSettings = new AppSettings([$app]);
+        $reactor = (new ReactorFactory)->select();
+        $injector = new Provider;
+        $serverOptions = new ServerOptions;
+        $apps = [$app];
 
-        $this->bootFromAppSettings($appSettings);
-    }
-
-    private function bootFromAppSettings(AppSettings $appSettings) {
-        $injector = $appSettings->getInjector();
-
-        $injector->alias('Alert\Reactor', get_class($this->reactor));
-        $injector->share($this->reactor);
-        $injector->share($this->server);
-
-        $this->hostBuilder->setInjector($injector);
-
-        foreach ($appSettings->getApps() as $app) {
-            $host = $this->hostBuilder->buildHost($app);
-            $this->server->addHost($host);
-        }
-
-        $serverOptions = $appSettings->getOptions();
-        $opts = $serverOptions->getAllOptions();
-        $this->server->setAllOptions($opts);
+        return $this->generateServerAndHosts($reactor, $injector, $serverOptions, $apps);
     }
 
 }

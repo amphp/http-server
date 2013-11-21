@@ -772,8 +772,7 @@ class WebsocketResponder implements \Countable, AsgiResponder {
     }
     
     private function onEndpointError(EndpointException $e) {
-        // @TODO Incorporate throwing vs. logging according to Server::$verbosity level (maybe)
-        @fwrite($this->server->getErrorStream(), $e);
+        $this->server->logError($e);
     }
     
     private function onClose(Session $session, $code, $reason) {

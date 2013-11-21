@@ -19,13 +19,15 @@ class ServerOptions implements \ArrayAccess {
         'normalizemethodcase'   => NULL,
         'requirebodylength'     => NULL,
         'socketsolingerzero'    => NULL,
+        'socketbacklogsize'     => NULL,
         'allowedmethods'        => NULL,
-        'defaulthost'           => NULL
+        'defaulthost'           => NULL,
+        'showerrors'            => NULL
     ];
 
     /**
      * Set an individual server option
-     * 
+     *
      * @param string $option
      * @param mixed $value
      * @throws \DomainException On invalid option key
@@ -39,7 +41,7 @@ class ServerOptions implements \ArrayAccess {
 
     /**
      * Set multiple server options
-     * 
+     *
      * @param array $options
      * @throws \DomainException On invalid option key
      * @return \Aerys\Framework\ServerOptions Returns the current object instance
@@ -54,7 +56,7 @@ class ServerOptions implements \ArrayAccess {
 
     /**
      * Retrieve a server option value
-     * 
+     *
      * @param string $option
      * @throws \DomainException on invalid option key
      * @return mixed Returns the value of the specified option key
@@ -65,7 +67,7 @@ class ServerOptions implements \ArrayAccess {
 
     /**
      * Retrieve an array of all options that have been assigned a value
-     * 
+     *
      * @return array
      */
     function getAllOptions() {

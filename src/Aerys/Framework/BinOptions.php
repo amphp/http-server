@@ -11,7 +11,8 @@ class BinOptions {
     private $ip;
     private $name;
     private $root;
-    private $shortOpts = 'hc:w:p:i:n:r:';
+    private $control;
+    private $shortOpts = 'hc:w:p:i:n:r:z:';
     private $longOpts = [
         'help',
         'config:',
@@ -19,7 +20,8 @@ class BinOptions {
         'port:',
         'ip:',
         'name:',
-        'root:'
+        'root:',
+        'control:',
     ];
     private $shortOptNameMap = [
         'h' => 'help',
@@ -28,12 +30,13 @@ class BinOptions {
         'p' => 'port',
         'i' => 'ip',
         'n' => 'name',
-        'r' => 'root'
+        'r' => 'root',
+        'z' => 'control',
     ];
 
     /**
      * Load command line options that may be used to bootstrap a server
-     * 
+     *
      * @param array $options Used if defined, loaded from the CLI otherwise
      * @throws \Aerys\Framework\ConfigException
      * @return \Aerys\Framework\BinOptions Returns the current object instance
@@ -48,7 +51,8 @@ class BinOptions {
             'port' => NULL,
             'ip' => NULL,
             'name' => NULL,
-            'root' => NULL
+            'root' => NULL,
+            'control' => NULL
         ];
 
         foreach ($rawOptions as $key => $value) {
@@ -60,16 +64,16 @@ class BinOptions {
         }
 
         $this->setOptionValues($normalizedOptions);
-        
+
         if (!($this->help || $this->config || $this->root)) {
             throw new ConfigException(
                 'App config file (-c, --config) or document root directory (-r, --root) required'
             );
         }
-        
+
         return $this;
     }
-    
+
     private function getCommandLineOptions() {
         return getopt($this->shortOpts, $this->longOpts);
     }
@@ -97,6 +101,9 @@ class BinOptions {
                     break;
                 case 'root':
                     $this->root = $value;
+                    break;
+                case 'control':
+                    $this->control = $value;
                     break;
             }
         }
@@ -136,5 +143,71 @@ class BinOptions {
     function getRoot() {
         return $this->root;
     }
+    
+    function getControl() {
+        return $this->control;
+    }
+
+    function toArray() {
+        return array_filter([
+            'help' => $this->help,
+            'config' => $this->config,
+            'workers' => $this->workers,
+            'port' => $this->port,
+            'ip' => $this->ip,
+            'name' => $this->name,
+            'root' => $this->root,
+            'control' => $this->control
+        ]);
+    }
+    
+    function __toString() {
+        $parts = [];
+        
+        if ($this->help) {
+            $parts[] = '-h';
+        }
+        if ($this->config) {
+            $parts[] = '-c ' . escapeshellarg($this->config);
+        }
+        if ($this->workers) {
+            $parts[] = '-w ' . $this->workers;
+        }
+        if ($this->port) {
+            $parts[] = '-p ' . $this->port;
+        }
+        if ($this->ip) {
+            $parts[] = '-i ' . $this->ip;
+        }
+        if ($this->name) {
+            $parts[] = '-n ' . $this->name;
+        }
+        if ($this->root) {
+            $parts[] = '-r ' . $this->root;
+        }
+        if ($this->control) {
+            $parts[] = '-z ' . escapeshellarg($this->control);
+        }
+        
+        return implode(' ', $parts);
+    }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

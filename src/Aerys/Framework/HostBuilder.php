@@ -2,19 +2,14 @@
 
 namespace Aerys\Framework;
 
-use Auryn\Injector,
-    Aerys\Host;
+use Aerys\Host;
 
 class HostBuilder {
     
     private $responderBuilder;
     
-    function __construct(ResponderBuilder $rb = NULL) {
-        $this->responderBuilder = $rb ?: new ResponderBuilder;
-    }
-    
-    function setInjector(Injector $injector) {
-        $this->responderBuilder->setInjector($injector);
+    function __construct(ResponderBuilder $rb) {
+        $this->responderBuilder = $rb;
     }
     
     /**

@@ -3,5 +3,5 @@
 namespace Aerys\Framework;
 
 interface ServerWatcher {
-    function watch();
+    function watch(BinOptions $binOptions);
 }

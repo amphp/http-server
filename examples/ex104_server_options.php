@@ -16,7 +16,7 @@
  * Once started, load http://127.0.0.1/ in your browser.
  */
 
-require __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php';
 
 $serverOptions = (new Aerys\Framework\ServerOptions)->setAllOptions([
     'maxConnections'    => 2500,

@@ -23,20 +23,21 @@
  * through the security warning.
  */
 
-require __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php';
 
 $encryptionSettings = [
     'local_cert' => __DIR__ . '/../examples/support/tls_cert.pem',  // required
-    'passphrase' => '42 is not a legitimate passphrase',            // required
     
     // -------- Optional Settings (defaults shown) ---------- //
     
+    'passphrase'            => '42 is not a legitimate passphrase', // our example cert needs this
     'allow_self_signed'     => FALSE,
     'verify_peer'           => FALSE,
     'ciphers'               => 'RC4-SHA:HIGH:!MD5:!aNULL:!EDH',
     'disable_compression'   => TRUE,
     'cafile'                => NULL,
-    'capath'                => NULL
+    'capath'                => NULL,
+    'disable_compression'   => TRUE
 ];
 
 $encryptedApp = (new Aerys\Framework\App)
@@ -44,16 +45,17 @@ $encryptedApp = (new Aerys\Framework\App)
     ->setEncryption($encryptionSettings)
     ->setDocumentRoot(__DIR__ . '/support/docroot');
 
-$redirectResponder = function($asgiEnv) {
-    $status = 301;
-    $reason = 'Moved Permanently';
-    $headers = [
-        'Location: https://127.0.0.1' . $asgiEnv['REQUEST_URI']
-    ];
-    $body = '<html><body>All requests require encryption</body></html>';
-    
-    return [$status, $reason, $headers, $body];
-};
-
-$regularApp = (new Aerys\Framework\App)->setPort(80)->addUserResponder($redirectResponder);
+$redirectApp = (new Aerys\Framework\App)
+    ->setPort(80)
+    ->addUserResponder(function($asgiEnv) {
+        $status = 301;
+        $reason = 'Moved Permanently';
+        $headers = [
+            'Location: https://127.0.0.1' . $asgiEnv['REQUEST_URI']
+        ];
+        $body = '<html><body>Encryption required; redirecting to https:// ...</body></html>';
+        
+        return [$status, $reason, $headers, $body];
+    }
+);
 

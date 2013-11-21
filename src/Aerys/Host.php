@@ -7,19 +7,19 @@ use Aerys\Mods\OnHeadersMod,
     Aerys\Mods\AfterResponseMod;
 
 class Host {
-    
+
     private $address;
     private $port;
     private $name;
     private $handler;
     private $isTlsAvailable;
-    private $tlsContext;
+    private $tlsContextArr = [];
     private $tlsDefaults = [
         'local_cert'          => NULL,
         'passphrase'          => NULL,
         'allow_self_signed'   => FALSE,
         'verify_peer'         => FALSE,
-        'ciphers'             => 'RC4-SHA:HIGH:!MD5:!aNULL:!EDH',
+        'ciphers'             => 'ECDHE_RSA_AES256_SHA384:AES256_SHA256:RC4_SHA:RC4:HIGH:!MD5:!aNULL:!EDH:!AESGCM',
         'disable_compression' => TRUE,
         'cafile'              => NULL,
         'capath'              => NULL
@@ -33,7 +33,7 @@ class Host {
         'beforeResponse' => 50,
         'afterResponse' => 50
     ];
-    
+
     function __construct($address, $port, $name, callable $asgiAppHandler) {
         $this->setAddress($address);
         $this->setPort($port);
@@ -43,7 +43,7 @@ class Host {
         $this->isTlsAvailable = extension_loaded('openssl');
         $this->modPriorityMap = new \SplObjectStorage;
     }
-    
+
     private function setAddress($address) {
         $address = trim($address, "[]");
         if ($address === '*') {
@@ -60,7 +60,7 @@ class Host {
             );
         }
     }
-    
+
     private function setPort($port) {
         if ($port = filter_var($port, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 1,
@@ -73,102 +73,113 @@ class Host {
             );
         }
     }
-    
+
     /**
      * Retrieve the ID for this host
-     * 
+     *
      * @return string
      */
     function getId() {
         return $this->id;
     }
-    
+
     /**
      * Retrieve the IP on which the host listens (may be a wildcard "*" or "[::]")
-     * 
+     *
      * @return string
      */
     function getAddress() {
         return $this->address;
     }
-    
+
     /**
      * Retrieve the port on which this host listens
-     * 
+     *
      * @return int
      */
     function getPort() {
         return $this->port;
     }
-    
+
+    /**
+     * Retrieve the URI on which this host should be bound
+     *
+     * @return string
+     */
+    function getBindableAddress() {
+        $ip = ($this->address === '*') ? '0.0.0.0' : $this->address;
+
+        return sprintf('tcp://%s:%d', $ip, $this->port);
+    }
+
     /**
      * Retrieve the host's name
-     * 
+     *
      * @return string
      */
     function getName() {
         return $this->name;
     }
-    
+
     /**
      * Retrieve the callable application handler for this host
-     * 
+     *
      * @return mixed
      */
     function getHandler() {
         return $this->handler;
     }
-    
+
     /**
      * Is this host's address defined by a wildcard character?
-     * 
+     *
      * @return bool
      */
     function hasWildcardAddress() {
         return ($this->address === '*' || $this->address === '[::]');
     }
-    
+
     /**
      * Does this host have a name?
-     * 
+     *
      * @return bool
      */
     function hasName() {
         return ($this->name || $this->name === '0');
     }
-    
+
     /**
      * Has this host been assigned a TLS encryption context?
-     * 
+     *
      * @return bool Returns TRUE if a TLS context is assigned, FALSE otherwise
      */
     function isEncrypted() {
-        return (bool) $this->tlsContext;
+        return (bool) $this->tlsContextArr;
     }
-    
+
     /**
      * Define TLS encryption settings for this host
-     * 
+     *
      * @param array An array mapping TLS stream context values
      * @link http://php.net/manual/en/context.ssl.php
      * @throws \RuntimeException If required PHP OpenSSL extension not loaded
-     * @throws \InvalidArgumentException On missing local_cert or passphrase keys
+     * @throws \InvalidArgumentException On missing local_cert key
      * @return void
      */
     function setEncryptionContext(array $tlsDefinition) {
         if ($this->isTlsAvailable) {
-            $this->tlsContext = $tlsDefinition ? $this->generateTlsContext($tlsDefinition) : NULL;
+            $this->tlsContextArr = $tlsDefinition ? $this->generateTlsContext($tlsDefinition) : [];
         } else {
             throw new \RuntimeException(
                 sprintf('Cannot enable crypto on %s; openssl extension required', $this->id)
             );
         }
     }
-    
+
     private function generateTlsContext(array $tls) {
         $tls = array_filter($tls, function($value) { return isset($value); });
         $tls = array_merge($this->tlsDefaults, $tls);
-        
+
         if (empty($tls['local_cert'])) {
             throw new \InvalidArgumentException(
                 '"local_cert" key required to bind crypto-enabled server socket'
@@ -177,27 +188,23 @@ class Host {
             throw new \InvalidArgumentException(
                 "Certificate file not found: {$tls['local_cert']}"
             );
-        } elseif (empty($tls['passphrase'])) {
-            throw new \InvalidArgumentException(
-                '"passphrase" key required to bind crypto-enabled server socket'
-            );
         }
-        
-        return stream_context_create(['ssl' => $tls]);
+
+        return ['ssl' => $tls];
     }
-    
+
     /**
-     * Retrieve this host's socket connection context
-     * 
-     * @return resource The stream context to use when generating a server socket for this host
+     * Retrieve this host's TLS connection context options
+     *
+     * @return array An array of stream encryption context options
      */
-    function getContext() {
-        return $this->tlsContext ?: stream_context_create();
+    function getTlsContextArr() {
+        return $this->tlsContextArr;
     }
-    
+
     /**
      * Determine if this host matches the specified Host ID string
-     * 
+     *
      * @param string $hostId
      * @return bool Returns TRUE if a match is found, FALSE otherwise
      */
@@ -213,13 +220,13 @@ class Host {
         } else {
             $isMatch = FALSE;
         }
-        
+
         return $isMatch;
     }
-    
+
     /**
      * Register a mod for this host
-     * 
+     *
      * @param mixed $mod
      * @param array $priorityMap An optional array mapping execution priorities. Valid keys are:
      *                           [onHeaders, beforeResponse, afterResponse]
@@ -240,18 +247,18 @@ class Host {
                 '$mod parameter at Argument 1 must implement a server mod interface'
             );
         }
-        
+
         $priorityMap = array_merge($this->defaultModPriorities, $priorityMap);
         $this->modPriorityMap->attach($mod, $priorityMap);
         $this->sortModsByPriority();
     }
-    
+
     private function sortModsByPriority() {
         $onHeadersMods = $beforeResponseMods = $afterResponseMods = [];
-        
+
         foreach ($this->modPriorityMap as $mod) {
             $priorities = $this->modPriorityMap->offsetGet($mod);
-            
+
             if ($mod instanceof OnHeadersMod) {
                 $onHeadersMods[] = [$mod, $priorities['onHeaders']];
             }
@@ -262,45 +269,45 @@ class Host {
                 $afterResponseMods[] = [$mod, $priorities['afterResponse']];
             }
         }
-        
+
         usort($onHeadersMods, [$this, 'prioritySort']);
         usort($beforeResponseMods, [$this, 'prioritySort']);
         usort($afterResponseMods, [$this, 'prioritySort']);
-        
+
         $this->onHeadersMods = array_map('current', $onHeadersMods);
         $this->beforeResponseMods = array_map('current', $beforeResponseMods);
         $this->afterResponseMods = array_map('current', $afterResponseMods);
     }
-    
+
     private function prioritySort(array $a, array $b) {
         return ($a[1] != $b[1]) ? ($a[1] - $b[1]) : 0;
     }
-    
+
     /**
      * Retrieve an array of registered onHeaders Mod instances ordered by execution priority
-     * 
+     *
      * @return array
      */
     function getOnHeadersMods() {
         return $this->onHeadersMods;
     }
-    
+
     /**
      * Retrieve an array of registered beforeResponse Mod instances ordered by execution priority
-     * 
+     *
      * @return array
      */
     function getBeforeResponseMods() {
         return $this->beforeResponseMods;
     }
-    
+
     /**
      * Retrieve an array of registered afterResponse Mod instances ordered by execution priority
-     * 
+     *
      * @return array
      */
     function getAfterResponseMods() {
         return $this->afterResponseMods;
     }
-    
+
 }
