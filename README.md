@@ -35,6 +35,6 @@ without skipping some cases
 
 ```bash
 $ git clone --recursive https://github.com/rdlowrey/Aerys.git
-$ cd Aerys/bin
-$ php aerys.php --config="../examples/hello_world.php"
+$ cd Aerys
+$ php bin/aerys --config="../examples/ex101_ports_and_addresses.php"
 ```
