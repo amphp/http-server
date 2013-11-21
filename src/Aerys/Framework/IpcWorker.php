@@ -108,7 +108,7 @@ class IpcWorker {
      * @return void
      */
     function onShutdown() {
-        $fatals = [E_ERROR, E_PARSE, E_CORE_ERROR, E_CORE_WARNING, E_COMPILE_ERROR, E_COMPILE_WARNING];
+        $fatals = [E_ERROR, E_PARSE, E_USER_ERROR, E_CORE_ERROR, E_CORE_WARNING, E_COMPILE_ERROR, E_COMPILE_WARNING];
         $lastError = error_get_last();
 
         if ($lastError && in_array($lastError['type'], $fatals)) {
