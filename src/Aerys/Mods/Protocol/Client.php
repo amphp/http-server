@@ -2,7 +2,7 @@
 
 namespace Aerys\Mods\Protocol;
 
-class Connection {
+class Client {
     
     public $id;
     public $socket;
