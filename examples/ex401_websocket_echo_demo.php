@@ -19,8 +19,10 @@
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
+
+// This file contains our websocket handler class: Ex401_WebsocketEchoEndpoint
 require_once __DIR__ . '/support/Ex401_WebsocketEchoEndpoint.php';
 
-$myApp = new Aerys\Framework\App;
-$myApp->setDocumentRoot(__DIR__ . '/support/docroot/websockets');
-$myApp->addWebsocket('/echo', 'Ex401_WebsocketEchoEndpoint');
+$myApp = (new Aerys\Framework\App)
+    ->setDocumentRoot(__DIR__ . '/support/docroot/websockets')
+    ->addWebsocket('/echo', 'Ex401_WebsocketEchoEndpoint');
