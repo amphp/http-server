@@ -98,7 +98,8 @@ class IpcServer implements \Countable {
 
     private function readFromClient($client) {
         $clientId = (int) $client;
-        if ($signal = trim(@fgets($client))) {
+        if ($signal = trim(fgets($client))) {
+            printf("readable in pid %s", getmypid());
             $this->receiveSignal($clientId, $signal);
         } elseif (!is_resource($client) || @feof($client)) {
             $this->doClose($clientId);

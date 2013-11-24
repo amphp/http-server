@@ -11,18 +11,19 @@ use Alert\Reactor,
 
 class Server {
 
+    const STOPPED = 0;
+    const STARTED = 1;
+    const PAUSED = 2;
+    const STOPPING = 3;
+    const NEED_STOP_PERMISSION = 4;
+
     private $state;
-    private static $STOPPED = 0;
-    private static $STARTED = 1;
-    private static $PAUSED = 2;
-    private static $STOPPING = 3;
-
-    private $isExtSocketsEnabled;
-
     private $reactor;
     private $hostBinder;
     private $parserFactory;
     private $writerFactory;
+    private $observers;
+    private $stopBlockers;
     private $hosts;
     private $listeningSockets = [];
     private $acceptWatchers = [];
@@ -63,6 +64,9 @@ class Server {
     private $readGranularity = 262144; // @TODO Add option setter
     private $serverToken = 'Aerys/0.1.0-devel';
     private $showErrors = TRUE;
+    private $stopTimeout = -1;
+    
+    private $isExtSocketsEnabled;
 
     function __construct(
         Reactor $reactor,
@@ -70,12 +74,14 @@ class Server {
         ParserFactory $pf = NULL,
         WriterFactory $wf = NULL
     ) {
-        $this->state = self::$STOPPED;
+        $this->state = self::STOPPED;
         $this->reactor = $reactor;
         $this->hostBinder = $hb ?: new HostBinder;
         $this->parserFactory = $pf ?: new ParserFactory;
         $this->writerFactory = $wf ?: new WriterFactory;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
+        $this->observers = new \SplObjectStorage;
+        $this->stopBlockers = new \SplObjectStorage;
     }
 
     /**
@@ -91,9 +97,9 @@ class Server {
      * @return void
      */
     function start($hostOrCollection, array $listeningSockets = []) {
-        if ($this->state !== self::$STOPPED) {
+        if ($this->state !== self::STOPPED) {
             throw new \LogicException(
-                'Cannot start: server already running!'
+                'Cannot start: server currently running!'
             );
         }
 
@@ -116,8 +122,7 @@ class Server {
         }
 
         $this->initializeKeepAliveWatcher();
-
-        $this->state = self::$STARTED;
+        $this->updateStatus(self::STARTED);
     }
 
     private function normalizeStartHosts($hostOrCollection) {
@@ -144,6 +149,55 @@ class Server {
     }
 
     /**
+     * Attach an observer to be notified on server state changes
+     * 
+     * @param \Aerys\ServerObserver $observer
+     * @return void
+     */
+    function addObserver(ServerObserver $observer) {
+        $this->observers->attach($observer);
+    }
+    
+    /**
+     * Remove an attached server state observer
+     * 
+     * @param \Aerys\ServerObserver $observer
+     * @return void
+     */
+    function removeObserver(ServerObserver $observer) {
+        $this->observers->detach($observer);
+    }
+    
+    /**
+     * Register an object to temporarily prevent full server shutdown
+     * 
+     * Calling this method prevents Server::stop() calls from returning until the associated object
+     * is passed to Server::allowStop().
+     * 
+     * @param \Aerys\ServerObserver $observer
+     * @return void
+     */
+    function preventStop(ServerObserver $observer) {
+        $this->stopBlockers->attach($observer);
+    }
+    
+    /**
+     * Remove the server shutdown block associated with this object
+     * 
+     * @param \Aerys\ServerObserver $observer
+     * @return void
+     */
+    function allowStop(ServerObserver $observer) {
+        $this->stopBlockers->detach($observer);
+    }
+    
+    private function notifyObservers($status) {
+        foreach ($this->observers as $observer) {
+            $observer->onServerUpdate($this, $status);
+        }
+    }
+    
+    /**
      * Stop the server gracefully (or not)
      *
      * By default the server will take as long as necessary to complete the currently outstanding
@@ -161,38 +215,26 @@ class Server {
      * @param int $timeout Timeout value in seconds
      * @return void
      */
-    function stop($timeout = -1) {
-        if (!($this->state && $this->state < self::$STOPPING)) {
+    function stop($timeout = NULL) {
+        if ($this->state === self::STOPPING
+            || $this->state === self::NEED_STOP_PERMISSION
+            || $this->state === self::STOPPED
+        ) {
             return;
         }
 
-        $timeout = filter_var($timeout, FILTER_VALIDATE_INT, ['options' => [
-            'min_range' => -1,
-            'default' => -1
-        ]]);
-
-        $this->initializeStop();
-
-        if ($timeout === 0) {
-            $this->forceStop();
-        } elseif ($this->clients) {
-            $this->stopGracefully($timeout);
+        if (!is_null($timeout)) {
+            $this->setStopTimeout($timeout);
         }
-    }
-
-    private function initializeStop() {
-        $this->state = self::$STOPPING;
+        
+        $this->updateStatus(self::STOPPING);
 
         foreach ($this->acceptWatchers as $watcherId) {
             $this->reactor->cancel($watcherId);
         }
-
-        $this->acceptWatchers = [];
-
         foreach ($this->pendingTlsWatchers as $client) {
             $this->failTlsConnection($client);
         }
-
         foreach ($this->clients as $client) {
             stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
         }
@@ -204,40 +246,28 @@ class Server {
         if ($this->inProgressRequestId) {
             $this->assignFatal500Response();
         }
-    }
 
-    private function assignFatal500Response() {
-        if ($this->showErrors) {
-            $lastError = error_get_last();
-            extract($lastError);
-            $errorMsg = sprintf("%s in %s on line %d", $message, $file, $line);
-        } else {
-            $errorMsg = 'Something went terribly wrong';
+        if ($this->timeout === 0) {
+            $this->forceStop();
+        } elseif ($this->clients) {
+            $this->stopGracefully();
         }
-        
-        $body = '<html><body><h1>500 Internal Server Error</h1><hr/><p>%s</p></body></html>';
-        $body = sprintf($body, $errorMsg);
-        $headers = [
-            'Content-Type: text/html; charset=utf-8',
-            'Content-Length: ' . strlen($body),
-            'Connection: close'
-        ];
-        $asgiResponse = [500, 'Internal Server Error', $headers, $body];
 
-        $this->setResponse($this->inProgressRequestId, $asgiResponse);
+        $this->onStopCompletion();
     }
-
+    
+    private function updateStatus($newState) {
+        $this->state = $newState;
+        $this->notifyObservers($newState);
+    }
+    
     private function forceStop() {
         foreach ($this->clients as $client) {
             $this->closeClient($client);
         }
-
-        $this->onStopCompletion();
-
-        return $this;
     }
 
-    private function stopGracefully($timeout) {
+    private function stopGracefully() {
         $asgiResponse = [
             $status = 503,
             $reason = 'Service Unavailable',
@@ -245,16 +275,16 @@ class Server {
             $body = '<html><body><h1>503 Service Unavailable</h1></body></html>'
         ];
 
-        if ($this->clients && $timeout !== -1) {
+        if ($this->clients && $this->timeout !== -1) {
             $forceStopper = function() { $this->forceStop(); };
-            $this->forceStopWatcher = $this->reactor->once($forceStopper, $timeout);
+            $this->forceStopWatcher = $this->reactor->once($forceStopper, $this->timeout);
         }
 
         foreach ($this->clients as $client) {
             $this->stopClient($client, $asgiResponse);
         }
 
-        while ($this->state === self::$STOPPING) {
+        while ($this->state === self::STOPPING) {
             $this->reactor->tick();
         }
     }
@@ -271,11 +301,43 @@ class Server {
     }
 
     private function onStopCompletion() {
-        $this->state = self::$STOPPED;
         $this->reactor->cancel($this->keepAliveWatcher);
+
         if ($this->forceStopWatcher) {
             $this->reactor->cancel($this->forceStopWatcher);
+            $this->forceStopWatcher = NULL;
         }
+
+        $this->acceptWatchers = [];
+        $this->listeningSockets = [];
+        
+        while ($this->stopBlockers->count()) {
+            $this->reactor->tick();
+        }
+        
+        $this->updateStatus(self::STOPPED);
+    }
+
+    private function assignFatal500Response() {
+        if ($this->showErrors) {
+            $lastError = error_get_last();
+            extract($lastError);
+            $errorMsg = sprintf("%s in %s on line %d", $message, $file, $line);
+        } else {
+            $errorMsg = 'Something went terribly wrong';
+        }
+
+        $body = '<html><body><h1>500 Internal Server Error</h1><hr/><p>%s</p></body></html>';
+        $body = sprintf($body, $errorMsg);
+        $headers = [
+            'Content-Type: text/html; charset=utf-8',
+            'Content-Length: ' . strlen($body),
+            'Connection: close'
+        ];
+        $asgiResponse = [500, 'Internal Server Error', $headers, $body];
+
+        $this->setResponse($this->inProgressRequestId, $asgiResponse);
+        $this->inProgressRequestId = NULL;
     }
 
     private function accept($serverSocket) {
@@ -294,8 +356,8 @@ class Server {
         foreach ($this->acceptWatchers as $watcherId) {
             $this->reactor->disable($watcherId);
         }
-        if ($this->state !== self::$STOPPING) {
-            $this->state = self::$PAUSED;
+        if ($this->state !== self::STOPPING) {
+            $this->state = self::PAUSED;
         }
     }
 
@@ -304,8 +366,8 @@ class Server {
             $this->reactor->enable($watcherId);
         }
 
-        if ($this->state !== self::$STOPPING) {
-            $this->state = self::$STARTED;
+        if ($this->state !== self::STOPPING) {
+            $this->state = self::STARTED;
         }
     }
 
@@ -344,7 +406,7 @@ class Server {
 
         $this->cachedClientCount--;
 
-        if ($this->state === self::$PAUSED
+        if ($this->state === self::PAUSED
             && $this->maxConnections > 0
             && $this->cachedClientCount <= $this->maxConnections
         ) {
@@ -919,7 +981,7 @@ class Server {
             return [$headers, $willClose];
         }
 
-        if ($this->state === self::$STOPPING) {
+        if ($this->state === self::STOPPING) {
             $valueToAssign = 'close';
             $willClose = TRUE;
         } elseif ($this->disableKeepAlive) {
@@ -1084,7 +1146,7 @@ class Server {
 
         $this->cachedClientCount--;
 
-        if ($this->state === self::$PAUSED
+        if ($this->state === self::PAUSED
             && $this->maxConnections > 0
             && $this->cachedClientCount <= $this->maxConnections
         ) {
@@ -1096,8 +1158,8 @@ class Server {
         $this->clearClientReferences($client);
         $this->doSocketClose($client->socket);
 
-        if ($this->state === self::$STOPPING && empty($this->clients)) {
-            $this->onStopCompletion();
+        if ($this->state === self::STOPPING && !$this->clients) {
+            $this->updateStatus(self::NEED_STOP_PERMISSION);
         }
     }
 
@@ -1230,9 +1292,9 @@ class Server {
         $socketId = (int) $socket;
         $this->clearClientReferences($client);
         $this->cachedClientCount++; // It was decremented when references were cleared; take it back.
-        $this->exportedSocketIdMap[$socketId] = TRUE;
+        $this->exportedSocketIdMap[$socketId] = $socket;
 
-        return $client->socket;
+        return $socket;
     }
 
     /**
@@ -1351,6 +1413,8 @@ class Server {
                 $this->setDefaultHost($value); break;
             case 'showerrors':
                 $this->setShowErrors($value); break;
+            case 'stoptimeout':
+                $this->setStopTimeout($value); break;
             default:
                 throw new \DomainException(
                     "Unknown server option: {$option}"
@@ -1450,9 +1514,16 @@ class Server {
     private function setDefaultHost($hostId) {
         $this->hosts->setDefaultHost($hostId);
     }
-    
+
     private function setShowErrors($boolFlag) {
         $this->showErrors = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
+    }
+    
+    private function setStopTimeout($timeoutInSeconds) {
+        $this->timeout = filter_var($timeoutInSeconds, FILTER_VALIDATE_INT, ['options' => [
+            'min_range' => -1,
+            'default' => -1
+        ]]);
     }
 
     /**
@@ -1500,6 +1571,8 @@ class Server {
                 return $this->hosts->getDefaultHostId(); break;
             case 'showerrors':
                 return $this->showErrors; break;
+            case 'stoptimeout':
+                return $this->stopTimeout; break;
             default:
                 throw new \DomainException(
                     "Unknown server option: {$option}"
@@ -1531,7 +1604,8 @@ class Server {
             'socketBacklogSize'     => $this->hostBinder->getSocketBacklogSize(),
             'allowedMethods'        => $this->allowedMethods,
             'defaultHost'           => $this->hosts ? $this->hosts->getDefaultHostId() : NULL,
-            'showErrors'            => $this->showErrors
+            'showErrors'            => $this->showErrors,
+            'stopTimeout'           => $this->stopTimeout
         ];
     }
 

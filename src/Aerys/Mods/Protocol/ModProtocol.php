@@ -4,14 +4,21 @@ namespace Aerys\Mods\Protocol;
 
 use Alert\Reactor,
     Aerys\Server,
+    Aerys\ServerObserver,
     Aerys\Mods\BeforeResponseMod;
 
-class ModProtocol implements BeforeResponseMod {
+class ModProtocol implements BeforeResponseMod, ServerObserver {
 
     const CLOSE_USER_ERROR = 1;
     const CLOSE_SOCKET_GONE = 2;
-    const CLOSE_UNSPECIFIED = 3;
+    const CLOSE_SHUTTING_DOWN = 3;
+    const CLOSE_UNSPECIFIED = 4;
 
+    private static $STOPPED = 0;
+    private static $STARTED = 1;
+    private static $STOPPING = 2;
+
+    private $state;
     private $reactor;
     private $server;
     private $handlers;
@@ -21,10 +28,13 @@ class ModProtocol implements BeforeResponseMod {
     private $socketReadGranularity = 65535;
 
     function __construct(Reactor $reactor, Server $server) {
+        $this->state = self:$STOPPED;
         $this->reactor = $reactor;
         $this->server = $server;
         $this->handlers = new \SplObjectStorage;
         $this->canUseExtSockets = extension_loaded('sockets');
+        
+        $this->server->addObserver($this);
     }
 
     /**
@@ -113,6 +123,11 @@ class ModProtocol implements BeforeResponseMod {
         $this->reactor->cancel($client->writeWatcher);
         $this->server->closeExportedSocket($client->socket);
         $client->handler->onClose($client->id, $closeReason);
+
+        if ($this->state === self::$STOPPING && empty($this->clients)) {
+            $this->state === self::$STOPPED;
+            $this->server->allowStop($this);
+        }
     }
 
     private function onReadableSocket(Client $client) {
@@ -328,6 +343,39 @@ class ModProtocol implements BeforeResponseMod {
             'default' => 65536,
             'min_range' => 1
         ]]);
+    }
+
+    /**
+     * Listen for server status updates
+     *
+     * This method should only ever be invoked by the Server.
+     *
+     * @param \Aerys\Server $server
+     * @param int $status
+     * @return void
+     */
+    function onServerUpdate(Server $server, $status) {
+        switch ($status) {
+            case Server::STOPPING:
+                $this->initializeServerStop();
+                break;
+            case Server::STARTED:
+                $this->state = self::$STARTED;
+                break;
+        }
+    }
+    
+    private function initializeServerStop() {
+        if ($this->clients) {
+            $this->state = self::$STOPPING;
+            $this->server->preventStop($this);
+            foreach ($this->clients as $client) {
+                $this->doSocketClose($client, self::CLOSE_SHUTTING_DOWN);
+            }
+        } else {
+            $this->state = self::$STOPPED;
+            $this->server->allowStop($this);
+        }
     }
 
 }
