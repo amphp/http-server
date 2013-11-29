@@ -801,7 +801,7 @@ class Server {
         return defined($reasonConst) ? constant($reasonConst) : '';
     }
 
-    function setResponse($requestId, array $asgiResponse) {
+    function setResponse($requestId, $asgiResponse) {
         if (!isset($this->requestIdMap[$requestId])) {
             return;
         }
@@ -896,15 +896,21 @@ class Server {
     }
 
     /**
-     * @throws \UnexpectedValueException On bad ASGI response array
-     * @TODO CLEAN THIS MESS UP!
+     * @throws \UnexpectedValueException On bad ASGI response
      */
     private function doResponseNormalization(Request $request) {
         $asgiEnv = $request->getAsgiEnv();
         $client = $request->getClient();
         $asgiResponse = $request->getAsgiResponse();
 
-        list($status, $reason, $headers, $body) = $asgiResponse;
+        if (is_array($asgiResponse)) {
+            list($status, $reason, $headers, $body) = $asgiResponse;
+        } else {
+            $status = 200;
+            $reason = 'OK';
+            $headers = [];
+            $body = $asgiResponse;
+        }
 
         $status = (int) $status;
         if ($status < 100 || $status > 599) {

@@ -269,7 +269,7 @@ class Request {
         return (bool) $this->asgiResponse;
     }
     
-    function setAsgiResponse(array $asgiResponse) {
+    function setAsgiResponse($asgiResponse) {
         $this->asgiResponse = $asgiResponse;
         
         return $this;
