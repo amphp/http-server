@@ -17,8 +17,15 @@ class ModSendFile implements BeforeResponseMod {
     }
 
     function beforeResponse($requestId) {
-        $headers = $this->server->getResponse($requestId)[2];
-        $headers = $this->stringifyResponseHeaders($headers);
+        $asgiResponse = $this->server->getResponse($requestId);
+        
+        // If the response isn't an array then there are no headers
+        // and there's nothing for us to do
+        if (!is_array($asgiResponse)) {
+            return;
+        }
+        
+        $headers = $this->stringifyResponseHeaders($asgiResponse[2]);
 
         $sfPos = stripos($headers, "\r\nX-SendFile:");
 

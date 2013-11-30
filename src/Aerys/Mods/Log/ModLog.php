@@ -12,7 +12,6 @@ class ModLog implements AfterResponseMod {
     private $resourceFormatMap = [];
     private $buffers = [];
     private $flushSize = 0;
-    private $afterResponsePriority = 75;
     
     function __construct(Server $server, array $config) {
         $this->server = $server;
@@ -46,10 +45,6 @@ class ModLog implements AfterResponseMod {
             'min_range' => 0,
             'default' => 0
         ]]);
-    }
-    
-    function getAfterResponsePriority() {
-        return $this->afterResponsePriority;
     }
     
     function afterResponse($requestId) {

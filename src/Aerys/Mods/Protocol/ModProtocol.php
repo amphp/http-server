@@ -61,8 +61,10 @@ class ModProtocol implements BeforeResponseMod, ServerObserver {
      */
     function beforeResponse($requestId) {
         $asgiResponse = $this->server->getResponse($requestId);
-
-        if ($asgiResponse[0] == 400) {
+        
+        // If the response isn't an array then the status code is 200
+        // and there's nothing for us to do
+        if (!is_array($asgiResponse) && $asgiResponse[0] == 400) {
             $rejectedHttpTrace = $this->server->getTrace($requestId);
             $this->performHandlerNegotiation($requestId, $rejectedHttpTrace);
         }

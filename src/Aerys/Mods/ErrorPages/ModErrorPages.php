@@ -29,8 +29,16 @@ class ModErrorPages implements BeforeResponseMod {
     }
 
     function beforeResponse($requestId) {
-        list($status, $reason, $headers, $body) = $this->server->getResponse($requestId);
+        $asgiResponse = $this->server->getResponse($requestId);
+        
+        // If the response isn't an array then the status code is 200
+        // and there's nothing for us to do
+        if (!is_array($asgiResponse)) {
+            return;
+        }
 
+        list($status, $reason, $headers, $body) = $asgiResponse;
+        
         if ($status >= 400 && isset($this->errorPages[$status])) {
             list($body, $contentType) = $this->errorPages[$status];
             if ($contentType) {
