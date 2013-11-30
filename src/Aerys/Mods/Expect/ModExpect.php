@@ -47,20 +47,8 @@ class ModExpect implements OnHeadersMod {
     
     private $server;
     private $callbacks = [];
-    
-    private $response100 = [
-        Status::CONTINUE_100,
-        Reason::HTTP_100,
-        [],
-        NULL
-    ];
-    
-    private $response417 = [
-        Status::EXPECTATION_FAILED,
-        Reason::HTTP_417,
-        [],
-        NULL
-    ];
+    private $response100;
+    private $response417;
     
     function __construct(Server $server, array $config) {
         $this->server = $server;
@@ -80,6 +68,9 @@ class ModExpect implements OnHeadersMod {
             
             $this->callbacks[$uri] = $callback;
         }
+        
+        $this->response100 = [Status::CONTINUE_100, Reason::HTTP_100, [], NULL];
+        $this->response417 = [Status::EXPECTATION_FAILED, Reason::HTTP_417, [], NULL];
     }
     
     /**
