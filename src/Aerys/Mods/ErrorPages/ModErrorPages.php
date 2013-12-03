@@ -2,10 +2,9 @@
 
 namespace Aerys\Mods\ErrorPages;
 
-use Aerys\Server,
-    Aerys\Mods\BeforeResponseMod;
+use Aerys\Server;
 
-class ModErrorPages implements BeforeResponseMod {
+class ModErrorPages {
 
     private $server;
     private $errorPages;

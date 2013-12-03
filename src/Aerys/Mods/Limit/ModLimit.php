@@ -4,8 +4,7 @@ namespace Aerys\Mods\Limit;
 
 use Aerys\Server,
     Aerys\Status,
-    Aerys\Reason,
-    Aerys\Mods\OnHeadersMod;
+    Aerys\Reason;
 
 /**
  * Enforce request rate limits
@@ -35,7 +34,7 @@ use Aerys\Server,
  * ];
  * ```
  */
-class ModLimit implements OnHeadersMod {
+class ModLimit {
     
     private $server;
     private $ipProxyHeader;

@@ -57,39 +57,6 @@ class HostCollection implements \Countable, \IteratorAggregate {
     }
 
     /**
-     * Register a Mod for all hosts matching the specified ID
-     *
-     * Host IDs can match in multiple different ways:
-     *
-     * - *              Applies mod to ALL currently registered hosts
-     * - *:80           Applies mod to ALL currently registered hosts listening on port 80
-     * - 127.0.0.1:*    Applies mod to ALL currently registered hosts listening on any port at 127.0.0.1
-     * - mysite.com:*   Applies mod to all hosts on any port with the name mysite.com
-     * - mysite.com:80  Applies mod to ONLY mysite.com on port 80
-     *
-     * @param string $hostId The Host ID matching string
-     * @param mixed $mod The mod instance to register
-     * @param array $priorityMap Optionally specify mod invocation priority values
-     * @throws \DomainException If no registered hosts match the specified $hostId
-     * @return int Returns the number of hosts to which the mod was successfully applied
-     */
-    function registerMod($hostId, $mod, array $priorityMap = []) {
-        $matchCount = 0;
-        foreach ($this->hosts as $host) {
-            if ($host->matchesId($hostId)) {
-                $matchCount++;
-                $host->registerMod($mod, $priorityMap);
-            }
-        }
-
-        // We use current($this->hosts) in places so it's important to reset the array's internal
-        // pointer after iterating above.
-        reset($this->hosts);
-
-        return $matchCount;
-    }
-
-    /**
      * Select a virtual host match for the specified request according to RFC 2616 criteria
      *
      * @param \Aerys\Request $request

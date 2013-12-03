@@ -4,8 +4,7 @@ namespace Aerys\Mods\Expect;
 
 use Aerys\Server,
     Aerys\Status,
-    Aerys\Reason,
-    Aerys\Mods\OnHeadersMod;
+    Aerys\Reason;
 
 /**
  * By default Aerys will send a `100 Continue` response immediately to any requests specifying the
@@ -43,7 +42,7 @@ use Aerys\Server,
  * ]
  * ```
  */
-class ModExpect implements OnHeadersMod {
+class ModExpect {
     
     private $server;
     private $callbacks = [];
@@ -103,4 +102,3 @@ class ModExpect implements OnHeadersMod {
     }
     
 }
-

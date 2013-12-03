@@ -2,10 +2,9 @@
 
 namespace Aerys\Mods\Log;
 
-use Aerys\Server,
-    Aerys\Mods\AfterResponseMod;
+use Aerys\Server;
 
-class ModLog implements AfterResponseMod {
+class ModLog {
     
     private $server;
     private $resources = [];

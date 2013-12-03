@@ -13,17 +13,18 @@ class Server {
 
     const STOPPED = 0;
     const STARTED = 1;
-    const PAUSED = 2;
-    const STOPPING = 3;
-    const NEED_STOP_PERMISSION = 4;
+    const ON_HEADERS = 2;
+    const BEFORE_RESPONSE = 3;
+    const AFTER_RESPONSE = 4;
+    const PAUSED = 5;
+    const STOPPING = 6;
+    const NEED_STOP_PERMISSION = 7;
 
     private $state;
     private $reactor;
     private $hostBinder;
     private $parserFactory;
     private $writerFactory;
-    private $observers;
-    private $stopBlockers;
     private $hosts;
     private $listeningSockets = [];
     private $acceptWatchers = [];
@@ -43,6 +44,8 @@ class Server {
     private $keepAliveWatcher;
     private $keepAliveTimeouts = [];
     private $forceStopWatcher;
+    private $stopBlockers = [];
+    private $observations = [];
 
     private $errorLogPath;
     private $errorStream = STDERR;
@@ -80,8 +83,6 @@ class Server {
         $this->parserFactory = $pf ?: new ParserFactory;
         $this->writerFactory = $wf ?: new WriterFactory;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
-        $this->observers = new \SplObjectStorage;
-        $this->stopBlockers = new \SplObjectStorage;
     }
 
     /**
@@ -99,7 +100,7 @@ class Server {
     function start($hostOrCollection, array $listeningSockets = []) {
         if ($this->state !== self::STOPPED) {
             throw new \LogicException(
-                'Cannot start: server currently running!'
+                'Cannot start; server already running!'
             );
         }
 
@@ -122,7 +123,7 @@ class Server {
         }
 
         $this->initializeKeepAliveWatcher();
-        $this->updateStatus(self::STARTED);
+        $this->notifyObservers(self::STARTED);
     }
 
     private function normalizeStartHosts($hostOrCollection) {
@@ -149,23 +150,33 @@ class Server {
     }
 
     /**
-     * Attach an observer to be notified on server state changes
      * 
-     * @param \Aerys\ServerObserver $observer
-     * @return void
      */
-    function addObserver(ServerObserver $observer) {
-        $this->observers->attach($observer);
+    function addObserver($event, callable $observer, array $options = []) {
+        $observation = new ServerObservation($event, $observer, $options);
+        $this->observations[$event][] = $observation;
+        usort($this->observations[$event], [$this, 'observerPrioritySort']);
+        
+        return $observation;
+    }
+    
+    private function observerPrioritySort(ServerObservation $a, ServerObservation $b) {
+        $a = $a->getPriority();
+        $b = $b->getPriority();
+        return ($a != $b) ? ($a - $b) : 0;
     }
     
     /**
-     * Remove an attached server state observer
-     * 
-     * @param \Aerys\ServerObserver $observer
-     * @return void
+     *
      */
-    function removeObserver(ServerObserver $observer) {
-        $this->observers->detach($observer);
+    function removeObserver(ServerObservation $observation) {
+        foreach ($this->observations as $event => $list) {
+            foreach ($list as $key => $match) {
+                if ($match === $observation) {
+                    unset($this->observations[$event][$key]);
+                }
+            }
+        }
     }
     
     /**
@@ -174,27 +185,29 @@ class Server {
      * Calling this method prevents Server::stop() calls from returning until the associated object
      * is passed to Server::allowStop().
      * 
-     * @param \Aerys\ServerObserver $observer
-     * @return void
+     * @return string Unique stop ID; string must be passed back to Server:allowStop()
      */
-    function preventStop(ServerObserver $observer) {
-        $this->stopBlockers->attach($observer);
+    function preventStop() {
+        $stopId = uniqid($prefix = '', $moreEntropy = TRUE);
+        $this->stopBlockers[$stopId] = TRUE;
+        
+        return $stopId;
     }
     
     /**
      * Remove the server shutdown block associated with this object
      * 
-     * @param \Aerys\ServerObserver $observer
-     * @return void
+     * @param string $stopId A stop ID reference string previously obtained from Server::preventStop()
+     * @return bool Returns TRUE if the stop ID was cleared or FALSE if the ID was not recognized
      */
-    function allowStop(ServerObserver $observer) {
-        $this->stopBlockers->detach($observer);
-    }
-    
-    private function notifyObservers($status) {
-        foreach ($this->observers as $observer) {
-            $observer->onServerUpdate($this, $status);
+    function allowStop($stopId) {
+        if (isset($this->stopBlockers[$stopId])) {
+            $wasCleared = TRUE;
+        } else {
+            $wasCleared = FALSE;
         }
+        
+        return $wasCleared;
     }
     
     /**
@@ -227,7 +240,7 @@ class Server {
             $this->setStopTimeout($timeout);
         }
         
-        $this->updateStatus(self::STOPPING);
+        $this->notifyObservers(self::STOPPING);
 
         foreach ($this->acceptWatchers as $watcherId) {
             $this->reactor->cancel($watcherId);
@@ -256,9 +269,13 @@ class Server {
         $this->onStopCompletion();
     }
     
-    private function updateStatus($newState) {
-        $this->state = $newState;
-        $this->notifyObservers($newState);
+    private function notifyObservers($event) {
+        if (!empty($this->observations[$event])) {
+            foreach ($this->observations[$event] as $observation) {
+                $callback = $observation->getCallback();
+                $callback($this, $event);
+            }
+        }
     }
     
     private function forceStop() {
@@ -311,11 +328,11 @@ class Server {
         $this->acceptWatchers = [];
         $this->listeningSockets = [];
         
-        while ($this->stopBlockers->count()) {
+        while ($this->stopBlockers) {
             $this->reactor->tick();
         }
         
-        $this->updateStatus(self::STOPPED);
+        $this->notifyObservers(self::STOPPED);
     }
 
     private function assignFatal500Response() {
@@ -549,8 +566,9 @@ class Server {
 
         $client->preBodyRequest = $request;
         $client->requests[$requestId] = $request;
-
-        $this->invokeOnHeadersMods($request);
+        $host = $request->getHost();
+        
+        $this->invokeRequestObservers(self::ON_HEADERS, $host, $requestId);
 
         $asgiResponse = $request->getAsgiResponse();
 
@@ -564,12 +582,16 @@ class Server {
         }
     }
 
-    private function invokeOnHeadersMods(Request $request) {
-        $host = $request->getHost();
-        $requestId = $request->getId();
-
-        foreach ($host->getOnHeadersMods() as $mod) {
-            $mod->onHeaders($requestId);
+    private function invokeRequestObservers($event, Host $host, $requestId) {
+        if (empty($this->observations[$event])) {
+            return;
+        }
+        
+        foreach ($this->observations[$event] as $observation) {
+            if ($host->matches($observation->getHost())) {
+                $callback = $observation->getCallback();
+                $callback($requestId);
+            }
         }
     }
 
@@ -664,13 +686,14 @@ class Server {
 
         if ($request = $client->preBodyRequest) {
             $this->finalizePreBodyRequest($client, $requestArr);
+            $requestId = $request->getId();
         } elseif ($request = $this->initializeRequest($client, $requestArr)) {
-            $this->invokeOnHeadersMods($request);
+            $requestId = $request->getId();
+            $host = $request->getHost();
+            $this->invokeRequestObservers(self::ON_HEADERS, $host, $requestId);
         } else {
             return; // Response already assigned
         }
-
-        $requestId = $request->getId();
 
         if (!($request->isComplete() || $request->getAsgiResponse())) {
             $handler = $request->getHostHandler();
@@ -811,7 +834,10 @@ class Server {
 
         if (!$this->isBeforeResponse) {
             $host = $request->getHost();
-            $this->invokeBeforeResponseMods($host, $requestId);
+            
+            $this->isBeforeResponse = TRUE;
+            $this->invokeRequestObservers(self::BEFORE_RESPONSE, $host, $requestId);
+            $this->isBeforeResponse = FALSE;
 
             // We need to make another isset check in case a BeforeResponseMod has exported the socket
             // @TODO clean this up to get rid of the ugly nested if statement
@@ -820,14 +846,6 @@ class Server {
                 $this->writePipelinedResponses($client);
             }
         }
-    }
-
-    private function invokeBeforeResponseMods(Host $host, $requestId) {
-        $this->isBeforeResponse = TRUE;
-        foreach ($host->getBeforeResponseMods() as $mod) {
-            $mod->beforeResponse($requestId);
-        }
-        $this->isBeforeResponse = FALSE;
     }
 
     private function doClientWrite(Client $client) {
@@ -1112,7 +1130,9 @@ class Server {
 
         list($status, $reason) = $asgiResponse;
 
-        $this->invokeAfterResponseMods($host, $requestId);
+        $this->isAfterResponse = TRUE;
+        $this->invokeRequestObservers(self::AFTER_RESPONSE, $host, $requestId);
+        $this->isAfterResponse = FALSE;
 
         if ($status === Status::SWITCHING_PROTOCOLS) {
             $this->clearClientReferences($client);
@@ -1123,14 +1143,6 @@ class Server {
         } else {
             $this->shiftClientPipeline($client, $requestId);
         }
-    }
-
-    private function invokeAfterResponseMods(Host $host, $requestId) {
-        $this->isAfterResponse = TRUE;
-        foreach ($host->getAfterResponseMods() as $mod) {
-            $mod->afterResponse($requestId);
-        }
-        $this->isAfterResponse = FALSE;
     }
 
     private function clearClientReferences(Client $client) {
@@ -1165,7 +1177,7 @@ class Server {
         $this->doSocketClose($client->socket);
 
         if ($this->state === self::STOPPING && !$this->clients) {
-            $this->updateStatus(self::NEED_STOP_PERMISSION);
+            $this->notifyObservers(self::NEED_STOP_PERMISSION);
         }
     }
 

@@ -3,17 +3,16 @@
 namespace Aerys\Mods\SendFile;
 
 use Aerys\Server,
-    Aerys\Mods\BeforeResponseMod,
-    Aerys\Responders\DocRoot\DocRootResponder;
+    Aerys\Responders\Static\Docs;
 
-class ModSendFile implements BeforeResponseMod {
+class ModSendFile {
 
     private $server;
     private $docRootResponder;
 
-    function __construct(Server $server, DocRootResponder $docRootResponder = NULL) {
+    function __construct(Server $server, Docs $docRootResponder = NULL) {
         $this->server = $server;
-        $this->docRootResponder = $docRootResponder ?: new DocRootResponder;
+        $this->docRootResponder = $docRootResponder ?: new Docs;
     }
 
     function beforeResponse($requestId) {

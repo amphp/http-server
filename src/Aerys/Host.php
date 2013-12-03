@@ -2,10 +2,6 @@
 
 namespace Aerys;
 
-use Aerys\Mods\OnHeadersMod,
-    Aerys\Mods\BeforeResponseMod,
-    Aerys\Mods\AfterResponseMod;
-
 class Host {
 
     private $address;
@@ -24,15 +20,6 @@ class Host {
         'cafile'              => NULL,
         'capath'              => NULL
     ];
-    private $modPriorityMap;
-    private $onHeadersMods = [];
-    private $beforeResponseMods = [];
-    private $afterResponseMods = [];
-    private $defaultModPriorities = [
-        'onHeaders' => 50,
-        'beforeResponse' => 50,
-        'afterResponse' => 50
-    ];
 
     function __construct($address, $port, $name, callable $asgiAppHandler) {
         $this->setAddress($address);
@@ -41,7 +28,6 @@ class Host {
         $this->id = $this->name . ':' . $this->port;
         $this->handler = $asgiAppHandler;
         $this->isTlsAvailable = extension_loaded('openssl');
-        $this->modPriorityMap = new \SplObjectStorage;
     }
 
     private function setAddress($address) {
@@ -209,7 +195,7 @@ class Host {
      * @return bool Returns TRUE if a match is found, FALSE otherwise
      */
     function matches($hostId) {
-        if ($hostId === '*' || $hostId === $this->id) {
+        if ($hostId === $this->id || $hostId === '*') {
             $isMatch = TRUE;
         } elseif (substr($hostId, 0, 2) === '*:') {
             $portToMatch = substr($hostId, 2);
@@ -222,92 +208,6 @@ class Host {
         }
 
         return $isMatch;
-    }
-
-    /**
-     * Register a mod for this host
-     *
-     * @param mixed $mod
-     * @param array $priorityMap An optional array mapping execution priorities. Valid keys are:
-     *                           [onHeaders, beforeResponse, afterResponse]
-     * @throws \DomainException On invalid priority map key
-     * @throws \InvalidArgumentException On invalid mod parameter
-     * @return void
-     */
-    function registerMod($mod, array $priorityMap = []) {
-        if ($diff = array_diff_key($priorityMap, $this->defaultModPriorities)) {
-            throw new \DomainException(
-                'Invalid priority map key(s): ' . implode(', ', $diff)
-            );
-        } elseif (!($mod instanceof OnHeadersMod
-            || $mod instanceof BeforeResponseMod
-            || $mod instanceof AfterResponseMod
-        )) {
-            throw new \InvalidArgumentException(
-                '$mod parameter at Argument 1 must implement a server mod interface'
-            );
-        }
-
-        $priorityMap = array_merge($this->defaultModPriorities, $priorityMap);
-        $this->modPriorityMap->attach($mod, $priorityMap);
-        $this->sortModsByPriority();
-    }
-
-    private function sortModsByPriority() {
-        $onHeadersMods = $beforeResponseMods = $afterResponseMods = [];
-
-        foreach ($this->modPriorityMap as $mod) {
-            $priorities = $this->modPriorityMap->offsetGet($mod);
-
-            if ($mod instanceof OnHeadersMod) {
-                $onHeadersMods[] = [$mod, $priorities['onHeaders']];
-            }
-            if ($mod instanceof BeforeResponseMod) {
-                $beforeResponseMods[] = [$mod, $priorities['beforeResponse']];
-            }
-            if ($mod instanceof AfterResponseMod) {
-                $afterResponseMods[] = [$mod, $priorities['afterResponse']];
-            }
-        }
-
-        usort($onHeadersMods, [$this, 'prioritySort']);
-        usort($beforeResponseMods, [$this, 'prioritySort']);
-        usort($afterResponseMods, [$this, 'prioritySort']);
-
-        $this->onHeadersMods = array_map('current', $onHeadersMods);
-        $this->beforeResponseMods = array_map('current', $beforeResponseMods);
-        $this->afterResponseMods = array_map('current', $afterResponseMods);
-    }
-
-    private function prioritySort(array $a, array $b) {
-        return ($a[1] != $b[1]) ? ($a[1] - $b[1]) : 0;
-    }
-
-    /**
-     * Retrieve an array of registered onHeaders Mod instances ordered by execution priority
-     *
-     * @return array
-     */
-    function getOnHeadersMods() {
-        return $this->onHeadersMods;
-    }
-
-    /**
-     * Retrieve an array of registered beforeResponse Mod instances ordered by execution priority
-     *
-     * @return array
-     */
-    function getBeforeResponseMods() {
-        return $this->beforeResponseMods;
-    }
-
-    /**
-     * Retrieve an array of registered afterResponse Mod instances ordered by execution priority
-     *
-     * @return array
-     */
-    function getAfterResponseMods() {
-        return $this->afterResponseMods;
     }
 
 }
