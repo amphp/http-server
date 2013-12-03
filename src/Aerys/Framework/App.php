@@ -243,11 +243,11 @@ class App {
      *
      * @TODO Add more documentation
      *
-     * @param array $addresses An array of backend server addresses
+     * @param mixed $addressOrArray A backend address or an array of backend server addresses
      * @param array $options
      */
-    function setReverseProxy(array $addresses, array $options = []) {
-        $options['backends'] = $addresses;
+    function setReverseProxy($addressOrArray, array $options = []) {
+        $options['backends'] = is_array($addressOrArray) ? $addressOrArray : [$addressOrArray];
         $this->reverseProxy = $options;
 
         return $this;
