@@ -57,7 +57,7 @@ class Broker implements \Countable, AsgiResponder {
      * Send UTF-8 text to one or more connected sockets
      *
      * @param mixed $socketIdOrArray A socket ID or array of socket IDs
-     * @param string $data The data to be sent
+     * @param mixed $data Any string or seekable stream resource
      * @param callable $afterSend An optional callback to invoke after the non-blocking send completes
      */
     function sendText($socketIdOrArray, $data, callable $afterSend = NULL) {
@@ -68,7 +68,7 @@ class Broker implements \Countable, AsgiResponder {
      * Send binary data to one or more connected sockets
      *
      * @param mixed $socketIdOrArray A socket ID or array of socket IDs
-     * @param string $data The data to be sent
+     * @param mixed $data Any string or seekable stream resource
      * @param callable $afterSend An optional callback to invoke after the non-blocking send completes
      */
     function sendBinary($socketIdOrArray, $data, callable $afterSend = NULL) {
@@ -78,7 +78,7 @@ class Broker implements \Countable, AsgiResponder {
     /**
      * Retrieve the ASGI request environment used to originate the user's websocket connection
      *
-     * @param int $socketId
+     * @param int $socketId A client-identifying socket ID
      * @throws \DomainException On unknown socket ID
      * @return array The ASGI request environment used to initiate the specified ID's websocket session
      */
@@ -96,18 +96,18 @@ class Broker implements \Countable, AsgiResponder {
     /**
      * Retrieve aggregate IO statistics for the specified socket ID
      *
-     * @param int $socketId
+     * @param int $socketId A client-identifying socket ID
      * @throws \DomainException On unknown socket ID
      * @return array A map of numeric stats for the specified socket ID
      */
     function getStats($socketId) {
-        if (isset($this->sessions[$socketId])) {
-            $session = $this->sessions[$socketId];
-        } else {
+        if (!isset($this->sessions[$socketId])) {
             throw new \DomainException(
                 "Unknown socket ID: {$socketId}"
             );
         }
+        
+        $session = $this->sessions[$socketId];
 
         return [
             'dataBytesRead'     => $session->dataBytesRead,
@@ -128,7 +128,7 @@ class Broker implements \Countable, AsgiResponder {
     /**
      * How many total websocket connections are currently open?
      *
-     * Note that this returns the total for ALL endpoints.
+     * Note that this returns the aggregate total for ALL endpoints.
      *
      * @return int
      */
@@ -139,7 +139,7 @@ class Broker implements \Countable, AsgiResponder {
     /**
      * Manually initiate a websocket close handshake
      *
-     * @param mixed $socketIdOrArray A socket ID or array of socket IDs
+     * @param mixed $socketIdOrArray A socket ID or an array of socket IDs to close
      * @return void
      */
     function close($socketIdOrArray, $code, $reason) {
@@ -178,6 +178,15 @@ class Broker implements \Countable, AsgiResponder {
         return $recipients;
     }
 
+    /**
+     * Register an Endpoint implementation to handle websocket events on the specified URI path
+     *
+     * @param string $requestUriPath
+     * @param \Aerys\Responders\Websocket\Endpoint $endpoint
+     * @param array $options A map of endpoint-specific policy options
+     * @throw \InvalidArgumentException On bad URI path
+     * @return void
+     */
     function registerEndpoint($requestUriPath, Endpoint $endpoint, array $options = []) {
         if ($requestUriPath[0] !== '/') {
             throw new \InvalidArgumentException(
@@ -185,11 +194,13 @@ class Broker implements \Countable, AsgiResponder {
             );
         }
 
-        $options = $options ? $this->normalizeEndpointOptions($options) : $this->defaultEndpointOptions;
+        $options = empty($options)
+            ? $this->defaultEndpointOptions
+            : $this->normalizeEndpointOptions($options);
 
         $this->endpoints[$requestUriPath] = [$endpoint, $options];
     }
-    
+
     private function normalizeEndpointOptions(array $userOptions) {
         $mergedOptions = array_merge($this->defaultEndpointOptions, $userOptions);
         $opts = array_intersect_key($mergedOptions, $this->defaultEndpointOptions);
@@ -233,11 +244,11 @@ class Broker implements \Countable, AsgiResponder {
     }
 
     /**
-     * Respond to the specified ASGI request environment
+     * Respond to the ASGI requests (i.e. attempt the websocket handshake)
      *
      * @param array $asgiEnv The ASGI request
      * @param int $requestId The unique Aerys request identifier
-     * @return array Returns ASGI response array
+     * @return array Returns an ASGI response array
      */
     function __invoke(array $asgiEnv, $requestId) {
         list($isAccepted, $handshakeResult) = $this->validateClientHandshake($asgiEnv);
@@ -853,8 +864,12 @@ class Broker implements \Countable, AsgiResponder {
 
     private function onServerStart() {
         $this->state = self::$STARTED;
+        foreach ($this->endpoints as $endpointArray) {
+            $endpoint = $endpointArray[0];
+            $endpoint->onStart($this);
+        }
     }
-    
+
     private function onServerStopping() {
         if ($this->sessions) {
             $this->state = self::$STOPPING;
