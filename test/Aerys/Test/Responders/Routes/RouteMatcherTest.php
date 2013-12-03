@@ -1,10 +1,10 @@
 <?php
  
-namespace Aerys\Test\Responders\Routing;
+namespace Aerys\Test\Responders\Routes;
  
-use Aerys\Responders\Routing\Router;
+use Aerys\Responders\Routes\Router;
  
-abstract class RouterTest extends \PHPUnit_Framework_TestCase {
+abstract class RouteMatcherTest extends \PHPUnit_Framework_TestCase {
  
     function testRoute() {
         $method = 'GET';
@@ -158,7 +158,7 @@ abstract class RouterTest extends \PHPUnit_Framework_TestCase {
      */
     function testDuplicateParameterExceptions($method, $rule, callable $handler, $param) {
         $this->setExpectedException(
-            '\Aerys\Responders\Routing\BadRouteException',
+            '\Aerys\Responders\Routes\BadRouteException',
             sprintf(Router::E_DUPLICATE_PARAMETER_STR, $param),
             Router::E_DUPLICATE_PARAMETER_CODE
         );
@@ -171,7 +171,7 @@ abstract class RouterTest extends \PHPUnit_Framework_TestCase {
      */
     function testRequiresIdentifierExceptions($method, $rule, callable $handler, $param) {
         $this->setExpectedException(
-            '\Aerys\Responders\Routing\BadRouteException',
+            '\Aerys\Responders\Routes\BadRouteException',
             sprintf(Router::E_REQUIRES_IDENTIFIER_STR, $param),
             Router::E_REQUIRES_IDENTIFIER_CODE
         );

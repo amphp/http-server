@@ -1,17 +1,17 @@
 <?php
 
-namespace Aerys\Responders\Routing;
+namespace Aerys\Responders\Routes;
 
 use Aerys\Responders\AsgiResponder;
 
-class RoutingResponder implements AsgiResponder {
+class Router implements AsgiResponder {
 
     private $router;
     private $notFoundResponse;
     private $partialMethodNotAllowedResponse;
     private $partialInternalErrorResponse;
 
-    function __construct(Router $router = NULL) {
+    function __construct(RouteMatcher $router = NULL) {
         $this->router = $router ?: new CompositeRegexRouter;
 
         $this->notFoundResponse = [
@@ -48,15 +48,15 @@ class RoutingResponder implements AsgiResponder {
         $matchCode = $matchArr[0];
 
         switch ($matchCode) {
-            case Router::MATCHED:
+            case RouteMatcher::MATCHED:
                 list($matchCode, $handler, $uriArgs) = $matchArr;
                 $asgiEnv['URI_ROUTE_ARGS'] = $uriArgs;
                 $asgiResponse = $this->invokeRouteHandler($handler, $asgiEnv, $requestId);
                 break;
-            case Router::NOT_FOUND:
+            case RouteMatcher::NOT_FOUND:
                 $asgiResponse = $this->notFoundResponse;
                 break;
-            case Router::METHOD_NOT_ALLOWED:
+            case RouteMatcher::METHOD_NOT_ALLOWED:
                 $asgiResponse = $this->partialMethodNotAllowedResponse;
                 $asgiResponse[2] = ['Allow: ' . implode(',', $matchArr[1])];
                 break;
@@ -81,7 +81,7 @@ class RoutingResponder implements AsgiResponder {
      * @param string $httpMethod
      * @param string $route
      * @param callable $handler
-     * @return \Aerys\Responders\Routing\RoutingResponder Returns the current object instance
+     * @return \Aerys\Responders\Routes\Router Returns the current object instance
      */
     function addRoute($httpMethod, $route, callable $handler) {
         $this->router->addRoute($httpMethod, $route, $handler);

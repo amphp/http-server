@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Test\Handlers\Websocket;
+namespace Aerys\Test\Handlers\Broker;
 
 use Aerys\Responders\Websocket\Frame, 
     Aerys\Responders\Websocket\FrameStreamString;

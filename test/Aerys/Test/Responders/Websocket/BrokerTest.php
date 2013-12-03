@@ -1,17 +1,17 @@
 <?php
 
-namespace Aerys\Test\Handlers\Websocket;
+namespace Aerys\Test\Handlers\Broker;
 
-use Aerys\Responders\Websocket\WebsocketResponder,
+use Aerys\Responders\Websocket\Broker,
     Aerys\Status,
     Aerys\Server;
 
-class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
+class BrokerTest extends \PHPUnit_Framework_TestCase {
     
     function test101ReturnedOnSuccessfulHandshake() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         $handler->registerEndpoint('/chat', $this->getMock('Aerys\Responders\Websocket\Endpoint'));
         
         $asgiEnv = [
@@ -33,7 +33,7 @@ class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
     function test404ReturnedIfNoEndpointMatchesRequestUri() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         $handler->registerEndpoint('/chat', $this->getMock('Aerys\Responders\Websocket\Endpoint'));
         
         $asgiEnv = [
@@ -51,7 +51,7 @@ class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
     function test405ReturnedIfNotHttpGetRequest() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         $handler->registerEndpoint('/chat', $this->getMock('Aerys\Responders\Websocket\Endpoint'));
         
         $asgiEnv = [
@@ -68,7 +68,7 @@ class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
     function test505ReturnedIfBadHttpProtocol() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         $handler->registerEndpoint('/chat', $this->getMock('Aerys\Responders\Websocket\Endpoint'));
         
         $asgiEnv = [
@@ -89,7 +89,7 @@ class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
     function test426ReturnedOnInvalidUpgradeHeader($asgiEnv) {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         $handler->registerEndpoint('/chat', $this->getMock('Aerys\Responders\Websocket\Endpoint'));
         
         $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
@@ -133,7 +133,7 @@ class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
     function test400ReturnedOnInvalidConnectionHeader($asgiEnv) {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         $handler->registerEndpoint('/chat', $this->getMock('Aerys\Responders\Websocket\Endpoint'));
         
         $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
@@ -173,10 +173,10 @@ class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
         return $return;
     }
     
-    function test400ReturnedOnMissingSecWebsocketKeyHeader() {
+    function test400ReturnedOnMissingSecBrokerKeyHeader() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         $handler->registerEndpoint('/chat', $this->getMock('Aerys\Responders\Websocket\Endpoint'));
         
         $asgiEnv = [
@@ -193,10 +193,10 @@ class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals(Status::BAD_REQUEST, $asgiResponse[0]);
     }
     
-    function test400ReturnedOnEmptySecWebsocketVersionHeader() {
+    function test400ReturnedOnEmptySecBrokerVersionHeader() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         $handler->registerEndpoint('/chat', $this->getMock('Aerys\Responders\Websocket\Endpoint'));
         
         $asgiEnv = [
@@ -214,10 +214,10 @@ class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals(Status::BAD_REQUEST, $asgiResponse[0]);
     }
     
-    function test400ReturnedOnUnmatchedSecWebsocketVersionHeader() {
+    function test400ReturnedOnUnmatchedSecBrokerVersionHeader() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         $handler->registerEndpoint('/chat', $this->getMock('Aerys\Responders\Websocket\Endpoint'));
         
         $asgiEnv = [
@@ -239,7 +239,7 @@ class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
     function test403ReturnedOnUnmatchedOriginHeader() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         
         $endpoint = $this->getMock('Aerys\Responders\Websocket\Endpoint');
         $options = ['allowedOrigins' => ['site.com']];
@@ -263,10 +263,10 @@ class WebsocketResponderTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals(Status::FORBIDDEN, $asgiResponse[0]);
     }
     
-    function test400ReturnedOnUnmatchedSecWebsocketProtocolHeader() {
+    function test400ReturnedOnUnmatchedSecBrokerProtocolHeader() {
         $reactor = $this->getMock('Alert\Reactor');
         $server = new Server($reactor);
-        $handler = new WebsocketResponder($reactor, $server);
+        $handler = new Broker($reactor, $server);
         
         $endpoint = $this->getMock('Aerys\Responders\Websocket\Endpoint');
         $options = ['subprotocol' => 'some-protocol'];

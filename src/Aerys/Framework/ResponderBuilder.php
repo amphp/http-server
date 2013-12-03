@@ -32,11 +32,11 @@ class ResponderBuilder {
         $responders = [];
 
         $responders['websockets'] = ($websocketEndpoints = $definition['websockets'])
-            ? $this->generateWebsocketResponder($websocketEndpoints)
+            ? $this->generateWebsocketBroker($websocketEndpoints)
             : NULL;
 
         $responders['routes'] = ($dynamicRoutes = $definition['routes'])
-            ? $this->generateRoutingResponder($dynamicRoutes)
+            ? $this->generateRouter($dynamicRoutes)
             : NULL;
 
         $responders['user'] = ($userResponders = $definition['userResponders'])
@@ -44,11 +44,11 @@ class ResponderBuilder {
             : NULL;
 
         $responders['docroot'] = ($docRootOptions = $definition['documentRoot'])
-            ? $this->generateDocRootResponder($docRootOptions)
+            ? $this->generateStaticDocRoot($docRootOptions)
             : NULL;
 
         $responders['reverseproxy'] = ($reverseProxy = $definition['reverseProxy'])
-            ? $this->generateReverseProxyResponder($reverseProxy)
+            ? $this->generateProxyProxy($reverseProxy)
             : NULL;
 
         $responders = $this->orderResponders($responders, $definition['responderOrder']);
@@ -74,13 +74,13 @@ class ResponderBuilder {
         return $responder;
     }
 
-    private function generateWebsocketResponder(array $endpoints) {
-        $responder = $this->injector->make('Aerys\Responders\Websocket\WebsocketResponder');
+    private function generateWebsocketBroker(array $endpoints) {
+        $responder = $this->injector->make('Aerys\Responders\Websocket\Broker');
         $this->injector->share($responder);
 
         foreach ($endpoints as $endpointArr) {
             list($uriPath, $websocketEndpointClass, $endpointOptions) = $endpointArr;
-            $endpoint = $this->generateWebsocketEndpoint($websocketEndpointClass);
+            $endpoint = $this->generateWebsocketBrokerEndpoint($websocketEndpointClass);
             $responder->registerEndpoint($uriPath, $endpoint, $endpointOptions);
         }
 
@@ -89,20 +89,20 @@ class ResponderBuilder {
         return $responder;
     }
 
-    private function generateWebsocketEndpoint($endpointClass) {
+    private function generateWebsocketBrokerEndpoint($endpointClass) {
         try {
             return $this->injector->make($endpointClass);
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                "Websocket endpoint build failure ({$endpointClass}): " . $previousException->getMessage(),
+                "Broker endpoint build failure ({$endpointClass}): " . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
         }
     }
 
-    private function generateRoutingResponder(array $dynamicRoutes) {
-        $responder = $this->injector->make('Aerys\Responders\Routing\RoutingResponder');
+    private function generateRouter(array $dynamicRoutes) {
+        $responder = $this->injector->make('Aerys\Responders\Routes\Router');
 
         foreach ($dynamicRoutes as $routeArr) {
             list($httpMethod, $uriPath, $routeHandler) = $routeArr;
@@ -164,25 +164,25 @@ class ResponderBuilder {
         }
     }
 
-    private function generateDocRootResponder(array $docRootOptions) {
+    private function generateStaticDocRoot(array $docRootOptions) {
         try {
-            $handler = $this->injector->make('Aerys\Responders\DocRoot\DocRootResponder');
+            $handler = $this->injector->make('Aerys\Responders\Documents\DocRoot');
             $handler->setAllOptions($docRootOptions);
 
             return $handler;
 
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                'DocRootResponder build failure: ' . $previousException->getMessage(),
+                'DocRoot build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
         }
     }
 
-    private function generateReverseProxyResponder(array $reverseProxy) {
+    private function generateProxyProxy(array $reverseProxy) {
         try {
-            $handler = $this->injector->make('Aerys\Responders\ReverseProxy\ReverseProxyResponder');
+            $handler = $this->injector->make('Aerys\Responders\Reverse\Proxy');
 
             foreach ($reverseProxy['backends'] as $uri) {
                 $handler->addBackend($uri);
@@ -196,7 +196,7 @@ class ResponderBuilder {
 
         } catch (\Exception $previousException) {
             throw new ConfigException(
-                'ReverseProxyResponder build failure: ' . $previousException->getMessage(),
+                'Proxy build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );

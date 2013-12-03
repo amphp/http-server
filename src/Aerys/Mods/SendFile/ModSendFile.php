@@ -3,7 +3,7 @@
 namespace Aerys\Mods\SendFile;
 
 use Aerys\Server,
-    Aerys\Responders\Static\Docs;
+    Aerys\Responders\Documents\Docs;
 
 class ModSendFile {
 

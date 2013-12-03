@@ -58,12 +58,12 @@ class AppTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @dataProvider provideWebsockets
+     * @dataProvider provideBrokers
      */
-    function testAddWebsocket($input, $expectedOutput) {
+    function testAddBroker($input, $expectedOutput) {
         list($route, $endpointClass, $options) = $input;
 
-        $app = (new App)->addWebsocket($route, $endpointClass, $options);
+        $app = (new App)->addBroker($route, $endpointClass, $options);
         $arr = $app->toArray();
 
         list($expectedRoute, $expectedEndpointClass, $expectedOptions) = $expectedOutput;
@@ -75,7 +75,7 @@ class AppTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals($expectedOptions, $routeArr[2]);
     }
 
-    function provideWebsockets() {
+    function provideBrokers() {
         return [
             [['no_leading_slash', 'Endpoint', []], ['/no_leading_slash', 'Endpoint', []]],
             [['/leading_slash', 'Endpoint', [1,2,3]], ['/leading_slash', 'Endpoint', [1,2,3]]],

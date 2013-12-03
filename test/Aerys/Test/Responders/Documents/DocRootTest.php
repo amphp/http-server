@@ -1,8 +1,8 @@
 <?php
 
-namespace Aerys\Test\Handlers\DocRoot;
+namespace Aerys\Test\Handlers\Static;
 
-use Aerys\Responders\DocRoot\DocRootResponder,
+use Aerys\Responders\Documents\DocRoot,
     Alert\NativeReactor,
     Aerys\Status,
     Aerys\Server,
@@ -12,13 +12,13 @@ use Aerys\Responders\DocRoot\DocRootResponder,
  * vfsStream can't resolve realpath() correctly so we mock
  * this functionality for most of our tests.
  */
-class VfsRealpathHandler extends DocRootResponder {
+class VfsRealpathHandler extends DocRoot {
     protected function validateFilePath($filePath) {
         return $filePath;
     }
 }
 
-class DocRootResponderTest extends \PHPUnit_Framework_TestCase {
+class DocRootTest extends \PHPUnit_Framework_TestCase {
 
     private static $root;
 
@@ -91,7 +91,7 @@ class DocRootResponderTest extends \PHPUnit_Framework_TestCase {
         $handler = new VfsRealpathHandler($reactor);
         $handler->setAllOptions([
             'docroot' => 'vfs://root',
-            'eTagMode' => DocRootResponder::ETAG_NONE
+            'eTagMode' => DocRoot::ETAG_NONE
         ]);
 
         $asgiEnv = [
@@ -742,7 +742,7 @@ class DocRootResponderTest extends \PHPUnit_Framework_TestCase {
      */
     function testRelativePathCantAscendPastDocumentRoot($requestUri) {
         $reactor = $this->getMock('Alert\Reactor');
-        $handler = new DocRootResponder($reactor);
+        $handler = new DocRoot($reactor);
         $handler->setAllOptions([
             'docroot' => FIXTURE_DIR . '/vfs/static_handler_root',
         ]);

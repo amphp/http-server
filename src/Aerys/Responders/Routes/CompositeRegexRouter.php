@@ -1,12 +1,11 @@
 <?php
 
-namespace Aerys\Responders\Routing;
+namespace Aerys\Responders\Routes;
 
-class CompositeRegexRouter implements Router {
+class CompositeRegexRouter implements RouteMatcher {
 
     private $staticRoutes = [];
     private $variableRoutes = [];
-
     private $expressionToOffsetMap = [];
     private $currentOffset = 1; // skip offset 0, which is the full match
     private $compositeRegex = '';
@@ -127,4 +126,3 @@ class CompositeRegexRouter implements Router {
     }
 
 }
-

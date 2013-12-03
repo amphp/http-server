@@ -8,7 +8,7 @@ use Alert\Reactor,
     Artax\AsyncClient,
     Aerys\Server,
     Aerys\Host,
-    Aerys\Responders\ReverseProxy\ReverseProxyResponder;
+    Aerys\Responders\Reverse\Proxy;
 
 class ProxyBackendIntegrationApp {
 
@@ -52,7 +52,7 @@ class ReverseProxyIntegrationTest extends \PHPUnit_Framework_TestCase {
         self::$server = new Server(self::$reactor);
 
         // Frontend proxy responder
-        self::$proxy = new ReverseProxyResponder(self::$reactor, self::$server);
+        self::$proxy = new Proxy(self::$reactor, self::$server);
         self::$proxy->setOption('lowaterconnectionmin', 0);
         self::$proxy->setOption('proxyPassHeaders', [
             'Host'            => '$host',

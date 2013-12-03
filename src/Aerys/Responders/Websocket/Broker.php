@@ -7,10 +7,9 @@ use Alert\Reactor,
     Aerys\Reason,
     Aerys\Method,
     Aerys\Server,
-    Aerys\ServerObserver,
     Aerys\Responders\AsgiResponder;
 
-class WebsocketResponder implements \Countable, AsgiResponder, ServerObserver {
+class Broker implements \Countable, AsgiResponder {
 
     const ACCEPT_CONCAT = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
@@ -27,7 +26,7 @@ class WebsocketResponder implements \Countable, AsgiResponder, ServerObserver {
     private $heartbeats = [];
     private $heartbeatWatcher;
     private $heartbeatWatchInterval = 1;
-
+    private $serverStopBlockerId;
     private $queuedPingLimit = 3;
     private $closeResponseTimeout = 5;
     private $autoFrameSize = 65365;
@@ -39,7 +38,7 @@ class WebsocketResponder implements \Countable, AsgiResponder, ServerObserver {
         'maxMsgSize'       => 10485760,
         'heartbeatPeriod'  => 10,
         'validateUtf8Text' => TRUE
-        // @TODO add minimum average frame size rate threshold to prevent really-small-frame DoS
+        // @TODO add minimum average frame size rate threshold to prevent tiny-frame DoS
     ];
 
     function __construct(Reactor $reactor, Server $server, FrameStreamFactory $frameStreamFactory = NULL) {
@@ -47,11 +46,11 @@ class WebsocketResponder implements \Countable, AsgiResponder, ServerObserver {
         $this->reactor = $reactor;
         $this->server = $server;
         $this->frameStreamFactory = $frameStreamFactory ?: new FrameStreamFactory;
-        $this->server->addObserver($this);
-
         $this->heartbeatWatcher = $reactor->repeat(function() {
             $this->sendHeartbeats();
         }, $this->heartbeatWatchInterval);
+        $this->server->addObserver(Server::STARTED, function() { $this->onServerStart(); });
+        $this->server->addObserver(Server::STOPPING, function() { $this->onServerStopping(); });
     }
 
     /**
@@ -179,13 +178,10 @@ class WebsocketResponder implements \Countable, AsgiResponder, ServerObserver {
         return $recipients;
     }
 
-    /**
-     * @TODO Add documentation
-     */
     function registerEndpoint($requestUriPath, Endpoint $endpoint, array $options = []) {
         if ($requestUriPath[0] !== '/') {
             throw new \InvalidArgumentException(
-                'Endpoint URI path must begin with a backslash /'
+                'Endpoint URI path must begin with a forward slash'
             );
         }
 
@@ -193,7 +189,7 @@ class WebsocketResponder implements \Countable, AsgiResponder, ServerObserver {
 
         $this->endpoints[$requestUriPath] = [$endpoint, $options];
     }
-
+    
     private function normalizeEndpointOptions(array $userOptions) {
         $mergedOptions = array_merge($this->defaultEndpointOptions, $userOptions);
         $opts = array_intersect_key($mergedOptions, $this->defaultEndpointOptions);
@@ -283,7 +279,7 @@ class WebsocketResponder implements \Countable, AsgiResponder, ServerObserver {
         }
 
         if (empty($asgiEnv['HTTP_SEC_WEBSOCKET_KEY'])) {
-            $reason = 'Bad Request: "Sec-Websocket-Key" header required';
+            $reason = 'Bad Request: "Sec-Broker-Key" header required';
             return [FALSE, [Status::BAD_REQUEST, $reason, [], NULL]];
         }
 
@@ -816,7 +812,8 @@ class WebsocketResponder implements \Countable, AsgiResponder, ServerObserver {
 
         if ($this->state === self::$STOPPING && empty($this->sessions)) {
             $this->state = self::$STOPPED;
-            $this->server->allowStop($this);
+            $this->server->allowStop($this->serverStopBlockerId);
+            $this->serverStopBlockerId = NULL;
         }
     }
 
@@ -854,35 +851,20 @@ class WebsocketResponder implements \Countable, AsgiResponder, ServerObserver {
         }
     }
 
-    /**
-     * Listen for server status updates
-     *
-     * This method should only ever be invoked by the Server
-     *
-     * @param \Aerys\Server $server
-     * @param int $status
-     * @return void
-     */
-    function onServerUpdate(Server $server, $status) {
-        switch ($status) {
-            case Server::STOPPING:
-                $this->initializeServerStop();
-                break;
-            case Server::STARTED:
-                $this->state = self::$STARTED;
-                break;
-        }
+    private function onServerStart() {
+        $this->state = self::$STARTED;
     }
     
-    private function initializeServerStop() {
+    private function onServerStopping() {
         if ($this->sessions) {
             $this->state = self::$STOPPING;
-            $this->server->preventStop($this);
+            $this->serverStopBlockerId = $this->server->preventStop();
             $allSocketIds = array_keys($this->sessions);
             $this->close($allSocketIds, Codes::GOING_AWAY, 'Server shutting down');
         } else {
             $this->state = self::$STOPPED;
-            $this->server->allowStop($this);
+            $this->server->allowStop($this->serverStopBlockerId);
+            $this->serverStopBlockerId = NULL;
         }
     }
 

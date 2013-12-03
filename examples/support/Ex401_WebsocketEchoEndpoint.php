@@ -2,7 +2,7 @@
 
 use Aerys\Responders\Websocket\Message,
     Aerys\Responders\Websocket\Endpoint,
-    Aerys\Responders\Websocket\WebsocketResponder;
+    Aerys\Responders\Websocket\Broker;
 
 class Ex401_WebsocketEchoEndpoint implements Endpoint {
     
@@ -11,12 +11,12 @@ class Ex401_WebsocketEchoEndpoint implements Endpoint {
     const USER_COUNT_PREFIX = '1';
     const USER_ECHO_PREFIX = '2';
     
-    private $websocketResponder;
+    private $Broker;
     private $sockets = [];
     private $recentMessages = [];
     
-    function __construct(WebsocketResponder $websocketResponder) {
-        $this->websocketResponder = $websocketResponder;
+    function __construct(Broker $Broker) {
+        $this->Broker = $Broker;
     }
     
     function onOpen($socketId) {
@@ -28,13 +28,13 @@ class Ex401_WebsocketEchoEndpoint implements Endpoint {
     private function sendUserRecentMessages($socketId) {
         $recipient = $socketId;
         $msg = self::RECENT_MSG_PREFIX . json_encode($this->recentMessages);
-        $this->websocketResponder->sendText($recipient, $msg);
+        $this->Broker->sendText($recipient, $msg);
     }
     
     private function broadcastUserCount() {
         $recipients = array_values($this->sockets);
         $msg = self::USER_COUNT_PREFIX . count($this->sockets);
-        $this->websocketResponder->sendText($recipients, $msg);
+        $this->Broker->sendText($recipients, $msg);
     }
     
     function onMessage($socketId, Message $msg) {
@@ -51,7 +51,7 @@ class Ex401_WebsocketEchoEndpoint implements Endpoint {
         unset($recipients[$socketId]);
         
         $msg = self::USER_ECHO_PREFIX . $payload;
-        $this->websocketResponder->sendText($recipients, $msg);
+        $this->Broker->sendText($recipients, $msg);
     }
     
     function onClose($socketId, $code, $reason) {

@@ -1,8 +1,8 @@
 <?php
  
-namespace Aerys\Responders\Routing;
+namespace Aerys\Responders\Routes;
  
-interface Router {
+interface RouteMatcher {
  
     const MATCHED = 0;
     const NOT_FOUND = 1;

@@ -1,6 +1,5 @@
 <?php
  
-namespace Aerys\Responders\Routing;
+namespace Aerys\Responders\Routes;
  
 class BadRouteException extends \Exception {}
-

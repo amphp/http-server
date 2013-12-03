@@ -1,6 +1,6 @@
 <?php
  
-namespace Aerys\Responders\Routing;
+namespace Aerys\Responders\Routes;
  
 class Rule {
     public $route = '';
@@ -8,4 +8,3 @@ class Rule {
     public $variables = [];
     public $handler;
 }
-

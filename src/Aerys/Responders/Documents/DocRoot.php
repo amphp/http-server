@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Responders\DocRoot;
+namespace Aerys\Responders\Documents;
 
 use Alert\Reactor,
     Aerys\Server,
@@ -10,7 +10,7 @@ use Alert\Reactor,
     Aerys\Writing\MultiPartByteRangeBody,
     Aerys\Responders\AsgiResponder;
 
-class DocRootResponder implements AsgiResponder {
+class DocRoot implements AsgiResponder {
     
     const ETAG_NONE = 0;
     const ETAG_SIZE = 1;
@@ -93,7 +93,7 @@ class DocRootResponder implements AsgiResponder {
      * Set multiple DocRoot options
      * 
      * @param array $options Key-value array mapping option name keys to values
-     * @return \Aerys\Responders\DocRoot\DocRootResponder Returns the current object instance
+     * @return \Aerys\Responders\Documents\DocRoot Returns the current object instance
      */
     function setAllOptions(array $options) {
         foreach ($options as $option => $value) {
@@ -109,7 +109,7 @@ class DocRootResponder implements AsgiResponder {
      * @param string $option The option key (case-insensitve)
      * @param mixed $value The option value to assign
      * @throws \DomainException On unrecognized option key
-     * @return \Aerys\Responders\DocRoot\DocRootResponder Returns the current object instance
+     * @return \Aerys\Responders\Documents\DocRoot Returns the current object instance
      */
     function setOption($option, $value) {
         switch(strtolower($option)) {

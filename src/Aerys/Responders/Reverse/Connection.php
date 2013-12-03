@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Responders\ReverseProxy;
+namespace Aerys\Responders\Reverse;
 
 class Connection {
     public $id;

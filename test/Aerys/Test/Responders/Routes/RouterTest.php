@@ -1,11 +1,11 @@
 <?php
 
-namespace Aerys\Test\Responders\Routing;
+namespace Aerys\Test\Responders\Routes;
 
-use Aerys\Responders\Routing\RoutingResponder,
-    Aerys\Responders\Routing\Router;
+use Aerys\Responders\Routes\Router,
+    Aerys\Responders\Routes\RouteMatcher;
 
-class RoutingResponderTest extends \PHPUnit_Framework_TestCase {
+class RouterTest extends \PHPUnit_Framework_TestCase {
 
     function testResponderInvokesRouteHandlerOnMatch() {
         $asgiEnv = [
@@ -16,13 +16,13 @@ class RoutingResponderTest extends \PHPUnit_Framework_TestCase {
         $handler = function($asgiEnv, $requestId) { return $requestId; };
         $routeResult = [Router::MATCHED, $handler, $uriArgs = []];
 
-        $router = $this->getMock('Aerys\Responders\Routing\Router');
+        $router = $this->getMock('Aerys\Responders\Routes\Router');
         $router->expects($this->once())
                ->method('matchRoute')
                ->with($asgiEnv['REQUEST_METHOD'], $asgiEnv['REQUEST_URI_PATH'])
                ->will($this->returnValue($routeResult));
 
-        $responder = new RoutingResponder($router);
+        $responder = new Router($router);
         $asgiResponse = $responder->__invoke($asgiEnv, $requestId = 42);
 
         $this->assertEquals(42, $asgiResponse);
@@ -37,13 +37,13 @@ class RoutingResponderTest extends \PHPUnit_Framework_TestCase {
         $handler = function() { throw new \Exception('test'); };
         $routeResult = [Router::MATCHED, $handler, $uriArgs = []];
 
-        $router = $this->getMock('Aerys\Responders\Routing\Router');
+        $router = $this->getMock('Aerys\Responders\Routes\Router');
         $router->expects($this->once())
                ->method('matchRoute')
                ->with($asgiEnv['REQUEST_METHOD'], $asgiEnv['REQUEST_URI_PATH'])
                ->will($this->returnValue($routeResult));
 
-        $responder = new RoutingResponder($router);
+        $responder = new Router($router);
         $asgiResponse = $responder->__invoke($asgiEnv, $requestId = 42);
 
         $this->assertEquals(500, $asgiResponse[0]);
@@ -56,13 +56,13 @@ class RoutingResponderTest extends \PHPUnit_Framework_TestCase {
         ];
         $routeResult = [Router::NOT_FOUND];
 
-        $router = $this->getMock('Aerys\Responders\Routing\Router');
+        $router = $this->getMock('Aerys\Responders\Routes\Router');
         $router->expects($this->once())
                ->method('matchRoute')
                ->with($asgiEnv['REQUEST_METHOD'], $asgiEnv['REQUEST_URI_PATH'])
                ->will($this->returnValue($routeResult));
 
-        $responder = new RoutingResponder($router);
+        $responder = new Router($router);
         $asgiResponse = $responder->__invoke($asgiEnv, $requestId = 42);
 
         $this->assertEquals(404, $asgiResponse[0]);
@@ -75,13 +75,13 @@ class RoutingResponderTest extends \PHPUnit_Framework_TestCase {
         ];
         $routeResult = [Router::METHOD_NOT_ALLOWED, ['POST', 'PUT']];
 
-        $router = $this->getMock('Aerys\Responders\Routing\Router');
+        $router = $this->getMock('Aerys\Responders\Routes\Router');
         $router->expects($this->once())
                ->method('matchRoute')
                ->with($asgiEnv['REQUEST_METHOD'], $asgiEnv['REQUEST_URI_PATH'])
                ->will($this->returnValue($routeResult));
 
-        $responder = new RoutingResponder($router);
+        $responder = new Router($router);
         $asgiResponse = $responder->__invoke($asgiEnv, $requestId = 42);
 
         $this->assertEquals(405, $asgiResponse[0]);
@@ -93,12 +93,12 @@ class RoutingResponderTest extends \PHPUnit_Framework_TestCase {
         $route = '/path';
         $handler = function(){};
 
-        $router = $this->getMock('Aerys\Responders\Routing\Router');
+        $router = $this->getMock('Aerys\Responders\Routes\Router');
         $router->expects($this->once())
                ->method('addRoute')
                ->with($httpMethod, $route, $handler);
 
-        $responder = new RoutingResponder($router);
+        $responder = new Router($router);
 
         $this->assertSame($responder, $responder->addRoute($httpMethod, $route, $handler));
     }

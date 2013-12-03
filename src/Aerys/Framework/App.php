@@ -177,7 +177,7 @@ class App {
     /**
      * Bind a websocket endpoint to the specified URI path
      *
-     * Websockets endpoints require two arguments:
+     * Brokers endpoints require two arguments:
      *
      * - The websocket's URI endpoint
      * - The name of the "driver" class that sends and receives data on the websocket connection
@@ -205,7 +205,7 @@ class App {
 
         return $this;
     }
-
+    
     /**
      * Specify an optional filesystem directory from which to serve static files
      *
@@ -272,7 +272,7 @@ class App {
      *
      * Valid values include the following and are case-insensitive:
      *
-     * - 'websockets'       (App::addWebsocket)
+     * - 'websockets'       (App::addBroker)
      * - 'routes'           (App::addRoute)
      * - 'user'             (App::addUserResponder)
      * - 'docroot'          (App::setDocumentRoot)

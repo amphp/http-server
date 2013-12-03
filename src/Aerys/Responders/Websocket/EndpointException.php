@@ -3,6 +3,6 @@
 namespace Aerys\Responders\Websocket;
 
 /**
- * Thrown internally by the WebsocketResponder if a userland endpoint throws.
+ * Thrown internally by the Broker if a userland endpoint throws.
  */
 class EndpointException extends \RuntimeException {}

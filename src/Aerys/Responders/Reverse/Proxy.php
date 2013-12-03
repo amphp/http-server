@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Responders\ReverseProxy;
+namespace Aerys\Responders\Reverse;
 
 use Alert\Reactor,
     Aerys\Server,
@@ -12,7 +12,7 @@ use Alert\Reactor,
     Aerys\Writing\ResourceException,
     Aerys\Responders\AsgiResponder;
 
-class ReverseProxyResponder implements AsgiResponder {
+class Proxy implements AsgiResponder {
 
     private $reactor;
     private $server;
@@ -106,7 +106,7 @@ class ReverseProxyResponder implements AsgiResponder {
      * Set multiple proxy options at once
      *
      * @param array $options Key-value array mapping option name keys to values
-     * @return \Aerys\Responders\ReverseProxy\ReverseProxyResponder Returns the current object instance
+     * @return \Aerys\Responders\Reverse\Proxy Returns the current object instance
      */
     function setAllOptions(array $options) {
         foreach ($options as $key => $value) {
@@ -122,7 +122,7 @@ class ReverseProxyResponder implements AsgiResponder {
      * @param string $option The option key (case-insensitve)
      * @param mixed $value The option value to assign
      * @throws \DomainException On unrecognized option key
-     * @return \Aerys\Responders\ReverseProxy\ReverseProxyResponder Returns the current object instance
+     * @return \Aerys\Responders\Reverse\Proxy Returns the current object instance
      */
     function setOption($option, $value) {
         switch (strtolower($option)) {
