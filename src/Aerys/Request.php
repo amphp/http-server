@@ -239,12 +239,31 @@ class Request {
             unset($headers['CONTENT-LENGTH']);
         }
 
+        if (!empty($headers['COOKIE']) && ($cookies = $this->parseCookies($headers['COOKIE']))) {
+            $asgiEnv['COOKIES'] = $cookies;
+        }
+
         foreach ($headers as $field => $value) {
             $field = 'HTTP_' . str_replace('-', '_', $field);
             $asgiEnv[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
         }
         
         return $this->asgiEnv = $asgiEnv;
+    }
+    
+    private function parseCookies($cookieHeader) {
+        $cookies = [];
+        $pairs = array_filter(str_getcsv($cookieHeader, $delimiter = ';'));
+        foreach ($pairs as $pair) {
+            if (strpos($pair, '=')) {
+                list($key, $value) = explode('=', $pair, 2);
+                $value = str_replace(['\\"', '\\""'], ['"', '""'], $value);
+                $value = trim($value, '"');
+                $cookies[trim($key)] = $value;
+            }
+        }
+        
+        return $cookies;
     }
     
     function setAsgiEnv(array $asgiEnv) {
