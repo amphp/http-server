@@ -3,18 +3,18 @@
 namespace Aerys\Parsing;
 
 class MessageParser implements Parser {
-    
+
     const STATUS_LINE_PATTERN = "#^
         HTTP/(?P<protocol>\d+\.\d+)[\x20\x09]+
         (?P<status>[1-5]\d\d)[\x20\x09]*
         (?P<reason>[^\x01-\x08\x10-\x19]*)
     $#ix";
-    
+
     const HEADERS_PATTERN = "/
         (?P<field>[^\(\)<>@,;:\\\"\/\[\]\?\={}\x20\x09\x01-\x1F\x7F]+):[\x20\x09]*
         (?P<value>[^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
     /x";
-    
+
     private $mode;
     private $state = self::AWAITING_HEADERS;
     private $buffer = '';
@@ -34,13 +34,13 @@ class MessageParser implements Parser {
         'TRANSFER-ENCODING' => NULL,
         'CONTENT-LENGTH' => NULL
     ];
-    
+
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = -1;
     private $storeBody = TRUE;
     private $beforeBody;
     private $onBodyData;
-    
+
     private static $availableOptions = [
         'maxHeaderBytes' => 1,
         'maxBodyBytes' => 1,
@@ -48,11 +48,11 @@ class MessageParser implements Parser {
         'beforeBody' => 1,
         'onBodyData' => 1
     ];
-    
+
     function __construct($mode = self::MODE_REQUEST) {
         $this->mode = $mode;
     }
-    
+
     function setOptions(array $options) {
         if ($options = array_intersect_key($options, self::$availableOptions)) {
             foreach ($options as $key => $value) {
@@ -60,26 +60,26 @@ class MessageParser implements Parser {
             }
         }
     }
-    
+
     function enqueueResponseMethodMatch($method) {
         $this->responseMethodMatch[] = $method;
     }
-    
+
     function getBuffer() {
         return $this->buffer;
     }
-    
+
     function getState() {
         return $this->state;
     }
-    
+
     function parse($data) {
         $this->buffer .= $data;
-        
+
         if (!($this->buffer || $this->buffer === '0')) {
             goto more_data_needed;
         }
-        
+
         switch ($this->state) {
             case self::AWAITING_HEADERS:
                 goto awaiting_headers;
@@ -94,7 +94,7 @@ class MessageParser implements Parser {
             case self::TRAILERS:
                 goto trailers;
         }
-        
+
         awaiting_headers: {
             if (!$startLineAndHeaders = $this->shiftHeadersFromMessageBuffer()) {
                 goto more_data_needed;
@@ -102,23 +102,23 @@ class MessageParser implements Parser {
                 goto start_line;
             }
         }
-        
+
         start_line: {
             $startLineEndPos = strpos($startLineAndHeaders, "\n");
             $startLine = substr($startLineAndHeaders, 0, $startLineEndPos);
             $rawHeaders = substr($startLineAndHeaders, $startLineEndPos + 1);
             $this->traceBuffer = $startLineAndHeaders;
-            
+
             if ($this->mode === self::MODE_REQUEST) {
                 goto request_line_and_headers;
             } else {
                 goto status_line_and_headers;
             }
         }
-        
+
         request_line_and_headers: {
             $parts = explode(' ', trim($startLine));
-        
+
             if (isset($parts[0]) && ($method = trim($parts[0]))) {
                 $this->requestMethod = $method;
             } else {
@@ -130,7 +130,7 @@ class MessageParser implements Parser {
                     $previousException = NULL
                 );
             }
-            
+
             if (isset($parts[1]) && ($uri = trim($parts[1]))) {
                 $this->requestUri = $uri;
             } else {
@@ -142,7 +142,7 @@ class MessageParser implements Parser {
                     $previousException = NULL
                 );
             }
-            
+
             if (isset($parts[2]) && ($protocol = str_ireplace('HTTP/', '', trim($parts[2])))) {
                 $this->protocol = $protocol;
             } else {
@@ -154,7 +154,7 @@ class MessageParser implements Parser {
                     $previousException = NULL
                 );
             }
-            
+
             if (!($protocol === '1.0' || '1.1' === $protocol)) {
                 throw new ParseException(
                     $this->getParsedMessageArray(),
@@ -163,14 +163,14 @@ class MessageParser implements Parser {
                     $previousException = NULL
                 );
             }
-            
+
             if ($rawHeaders) {
                 $this->headers = $this->parseHeadersFromRaw($rawHeaders);
             }
-            
+
             goto transition_from_request_headers_to_body;
         }
-        
+
         status_line_and_headers: {
             if (preg_match(self::STATUS_LINE_PATTERN, $startLine, $m)) {
                 $this->protocol = $m['protocol'];
@@ -184,14 +184,14 @@ class MessageParser implements Parser {
                     $previousException = NULL
                 );
             }
-            
+
             if ($rawHeaders) {
                 $this->headers = $this->parseHeadersFromRaw($rawHeaders);
             }
-            
+
             goto transition_from_response_headers_to_body;
         }
-        
+
         transition_from_request_headers_to_body: {
             if ($this->requestMethod == 'HEAD' || $this->requestMethod == 'TRACE' || $this->requestMethod == 'OPTIONS') {
                 goto complete;
@@ -206,10 +206,10 @@ class MessageParser implements Parser {
                 goto complete;
             }
         }
-        
+
         transition_from_response_headers_to_body: {
             $requestMethod = array_shift($this->responseMethodMatch);
-            
+
             if ($this->responseCode == 204
                 || $this->responseCode == 304
                 || $this->responseCode < 200
@@ -230,21 +230,21 @@ class MessageParser implements Parser {
                 goto complete;
             }
         }
-        
+
         before_body: {
             if ($this->remainingBodyBytes === 0) {
                 goto complete;
             }
-            
+
             $this->body = fopen('php://memory', 'r+');
-            
+
             if ($beforeBody = $this->beforeBody) {
                 $parsedMsgArr = $this->getParsedMessageArray();
                 $parsedMsgArr['headersOnly'] = TRUE;
-                
+
                 $beforeBody($parsedMsgArr);
             }
-            
+
             switch ($this->state) {
                 case self::BODY_IDENTITY:
                     goto body_identity;
@@ -258,10 +258,10 @@ class MessageParser implements Parser {
                     );
             }
         }
-        
+
         body_identity: {
             $bufferDataSize = strlen($this->buffer);
-        
+
             if ($bufferDataSize < $this->remainingBodyBytes) {
                 $this->addToBody($this->buffer);
                 $this->buffer = NULL;
@@ -280,13 +280,13 @@ class MessageParser implements Parser {
                 goto complete;
             }
         }
-        
+
         body_identity_eof: {
             $this->addToBody($this->buffer);
             $this->buffer = '';
             goto more_data_needed;
         }
-        
+
         body_chunks: {
             if ($this->dechunk()) {
                 $this->state = self::TRAILERS_START;
@@ -295,22 +295,22 @@ class MessageParser implements Parser {
                 goto more_data_needed;
             }
         }
-        
+
         trailers_start: {
             $firstTwoBytes = substr($this->buffer, 0, 2);
-            
+
             if ($firstTwoBytes === FALSE || $firstTwoBytes === "\r") {
                 goto more_data_needed;
             } elseif ($firstTwoBytes === "\r\n") {
                 $this->buffer = substr($this->buffer, 2);
                 goto complete;
             } else {
-                
+
                 $this->state = self::TRAILERS;
                 goto trailers;
             }
         }
-        
+
         trailers: {
             if ($trailers = $this->shiftHeadersFromMessageBuffer()) {
                 $this->parseTrailers($trailers);
@@ -319,11 +319,11 @@ class MessageParser implements Parser {
                 goto more_data_needed;
             }
         }
-        
+
         complete: {
             $parsedMsgArr = $this->getParsedMessageArray();
             $parsedMsgArr['headersOnly'] = FALSE;
-            
+
             $this->state = self::AWAITING_HEADERS;
             $this->traceBuffer = NULL;
             $this->headers = [];
@@ -340,18 +340,18 @@ class MessageParser implements Parser {
                 'TRANSFER-ENCODING' => NULL,
                 'CONTENT-LENGTH' => NULL
             ];
-            
+
             return $parsedMsgArr;
         }
-        
+
         more_data_needed: {
             return NULL;
         }
     }
-    
+
     private function shiftHeadersFromMessageBuffer() {
         $this->buffer = ltrim($this->buffer, "\r\n");
-        
+
         if ($headersSize = strpos($this->buffer, "\r\n\r\n")) {
             $headers = substr($this->buffer, 0, $headersSize + 2);
             $this->buffer = substr($this->buffer, $headersSize + 4);
@@ -362,7 +362,7 @@ class MessageParser implements Parser {
             $headersSize = strlen($this->buffer);
             $headers = NULL;
         }
-        
+
         if ($this->maxHeaderBytes > 0 && $headersSize > $this->maxHeaderBytes) {
             throw new PolicyException(
                 $this->getParsedMessageArray(),
@@ -371,15 +371,15 @@ class MessageParser implements Parser {
                 $previousException = NULL
             );
         }
-        
+
         return $headers;
     }
-    
+
     private function parseHeadersFromRaw($rawHeaders) {
         if (strpos($rawHeaders, "\n\x20") || strpos($rawHeaders, "\n\t")) {
             $rawHeaders = preg_replace("/(?:\r\n|\n)[\x20\t]+/", ' ', $rawHeaders);
         }
-        
+
         if (!preg_match_all(self::HEADERS_PATTERN, $rawHeaders, $matches)) {
             throw new ParseException(
                 $this->getParsedMessageArray(),
@@ -388,17 +388,17 @@ class MessageParser implements Parser {
                 $previousException = NULL
             );
         }
-        
+
         $headers = [];
-        
+
         $aggregateMatchedHeaders = '';
-        
+
         for ($i=0, $c=count($matches[0]); $i < $c; $i++) {
             $aggregateMatchedHeaders .= $matches[0][$i];
             $field = $matches['field'][$i];
             $headers[$field][] = $matches['value'][$i];
         }
-        
+
         if (strlen($rawHeaders) !== strlen($aggregateMatchedHeaders)) {
             throw new ParseException(
                 $this->getParsedMessageArray(),
@@ -407,9 +407,9 @@ class MessageParser implements Parser {
                 $previousException = NULL
             );
         }
-        
+
         $ucKeyHeaders = array_change_key_case($headers, CASE_UPPER);
-        
+
         if (isset($ucKeyHeaders['TRANSFER-ENCODING'])
             && strcasecmp('identity', $ucKeyHeaders['TRANSFER-ENCODING'][0])
         ) {
@@ -417,15 +417,15 @@ class MessageParser implements Parser {
         } elseif (isset($ucKeyHeaders['CONTENT-LENGTH'])) {
             $this->parseFlowHeaders['CONTENT-LENGTH'] = (int) $ucKeyHeaders['CONTENT-LENGTH'][0];
         }
-        
+
         return $headers;
     }
-    
+
     private function dechunk() {
         if ($this->chunkLenRemaining !== NULL) {
             goto dechunk;
         }
-        
+
         determine_chunk_size: {
             if (FALSE === ($lineEndPos = strpos($this->buffer, "\r\n"))) {
                 goto more_data_needed;
@@ -437,11 +437,11 @@ class MessageParser implements Parser {
                     $previousException = NULL
                 );
             }
-            
+
             $line = substr($this->buffer, 0, $lineEndPos);
             $hex = strtolower(trim(ltrim($line, '0'))) ?: 0;
             $dec = hexdec($hex);
-            
+
             if ($hex == dechex($dec)) {
                 $this->chunkLenRemaining = $dec;
             } else {
@@ -452,67 +452,67 @@ class MessageParser implements Parser {
                     $previousException = NULL
                 );
             }
-            
+
             $this->buffer = substr($this->buffer, $lineEndPos + 2);
-            
+
             if (!$dec) {
                 return TRUE;
             }
         }
-        
+
         dechunk: {
             $bufferLen = strlen($this->buffer);
-            
+
             // These first two (extreme) edge cases prevent errors where the packet boundary ends after
             // the \r and before the \n at the end of a chunk.
             if ($bufferLen === $this->chunkLenRemaining) {
-                
+
                 goto more_data_needed;
-                
+
             } elseif ($bufferLen === $this->chunkLenRemaining + 1) {
-                
+
                 goto more_data_needed;
-                
+
             } elseif ($bufferLen >= $this->chunkLenRemaining + 2) {
                 $chunk = substr($this->buffer, 0, $this->chunkLenRemaining);
                 $this->buffer = substr($this->buffer, $this->chunkLenRemaining + 2);
                 $this->chunkLenRemaining = NULL;
                 $this->addToBody($chunk);
-                
+
                 goto determine_chunk_size;
-                
+
             } else {
                 $this->addToBody($this->buffer);
                 $this->buffer = '';
                 $this->chunkLenRemaining -= $bufferLen;
-                
+
                 goto more_data_needed;
             }
         }
-        
+
         more_data_needed: {
             return FALSE;
         }
     }
-    
+
     private function parseTrailers($trailers) {
         $trailerHeaders = $this->parseHeadersFromRaw($trailers);
         $ucKeyTrailerHeaders = array_change_key_case($trailerHeaders, CASE_UPPER);
         $ucKeyHeaders = array_change_key_case($this->headers, CASE_UPPER);
-        
+
         unset(
             $ucKeyTrailerHeaders['TRANSFER-ENCODING'],
             $ucKeyTrailerHeaders['CONTENT-LENGTH'],
             $ucKeyTrailerHeaders['TRAILER']
         );
-        
+
         foreach (array_keys($this->headers) as $key) {
             $ucKey = strtoupper($key);
             if (isset($ucKeyTrailerHeaders[$ucKey])) {
                 $this->headers[$key] = $ucKeyTrailerHeaders[$ucKey];
             }
         }
-        
+
         foreach (array_keys($trailerHeaders) as $key) {
             $ucKey = strtoupper($key);
             if (!isset($ucKeyHeaders[$ucKey])) {
@@ -520,19 +520,19 @@ class MessageParser implements Parser {
             }
         }
     }
-    
+
     function getParsedMessageArray() {
         if ($this->body) {
             rewind($this->body);
         }
-        
+
         $result = [
             'protocol' => $this->protocol,
             'headers'  => $this->headers,
             'body'     => $this->body,
             'trace'    => $this->traceBuffer
         ];
-        
+
         if ($this->mode === self::MODE_REQUEST) {
             $result['method'] = $this->requestMethod;
             $result['uri'] = $this->requestUri;
@@ -540,13 +540,13 @@ class MessageParser implements Parser {
             $result['status'] = $this->responseCode;
             $result['reason'] = $this->responseReason;
         }
-        
+
         return $result;
     }
-    
+
     private function addToBody($data) {
         $this->bodyBytesConsumed += strlen($data);
-        
+
         if ($this->maxBodyBytes > 0 && $this->bodyBytesConsumed > $this->maxBodyBytes) {
             throw new PolicyException(
                 $this->getParsedMessageArray(),
@@ -555,16 +555,15 @@ class MessageParser implements Parser {
                 $previousException = NULL
             );
         }
-        
+
         if ($onBodyData = $this->onBodyData) {
             $onBodyData($data);
         }
-        
+
         if ($this->storeBody) {
             fseek($this->body, 0, SEEK_END);
             fwrite($this->body, $data);
         }
     }
-    
-}
 
+}

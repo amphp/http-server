@@ -3,7 +3,7 @@
 namespace Aerys;
 
 class Status {
-    
+
     const ACCEPTED = 202;
     const BAD_GATEWAY = 502;
     const BAD_REQUEST = 400;
@@ -49,6 +49,5 @@ class Status {
     const UNSUPPORTED_MEDIA_TYPE = 415;
     const UPGRADE_REQUIRED = 426;
     const USE_PROXY = 305;
-    
-}
 
+}

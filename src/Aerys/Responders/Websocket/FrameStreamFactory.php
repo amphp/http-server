@@ -3,7 +3,7 @@
 namespace Aerys\Responders\Websocket;
 
 class FrameStreamFactory {
-    
+
     function __invoke($opcode, $dataSource) {
         if (is_scalar($dataSource)) {
             $frameStream = new FrameStreamString($opcode, $dataSource);
@@ -14,8 +14,8 @@ class FrameStreamFactory {
                 'A FrameStream may only be generated from scalars or seekable resources'
             );
         }
-        
+
         return $frameStream;
     }
-    
+
 }

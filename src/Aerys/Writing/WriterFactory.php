@@ -3,7 +3,7 @@
 namespace Aerys\Writing;
 
 class WriterFactory {
-    
+
     function make($destination, $headers, $body, $protocol) {
         if (!$body || is_string($body)) {
             $writer = new Writer($destination, $headers . $body);
@@ -22,9 +22,8 @@ class WriterFactory {
                 'Invalid BodyWriter init parameters'
             );
         }
-        
+
         return $writer;
     }
-    
-}
 
+}

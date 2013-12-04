@@ -57,7 +57,7 @@ class ModProtocol {
      */
     function beforeResponse($requestId) {
         $asgiResponse = $this->server->getResponse($requestId);
-        
+
         // If the response isn't an array then the status code is 200
         // and there's nothing for us to do
         if (!is_array($asgiResponse) && $asgiResponse[0] == 400) {
@@ -347,7 +347,7 @@ class ModProtocol {
     private function onServerStart() {
         $this->state = self::$STARTED;
     }
-    
+
     private function onServerStopping() {
         if ($this->clients) {
             $this->state = self::$STOPPING;

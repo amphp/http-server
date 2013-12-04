@@ -106,7 +106,7 @@ class Broker implements \Countable, AsgiResponder {
                 "Unknown socket ID: {$socketId}"
             );
         }
-        
+
         $session = $this->sessions[$socketId];
 
         return [

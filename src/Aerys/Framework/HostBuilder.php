@@ -5,13 +5,13 @@ namespace Aerys\Framework;
 use Aerys\Host;
 
 class HostBuilder {
-    
+
     private $responderBuilder;
-    
+
     function __construct(ResponderBuilder $rb) {
         $this->responderBuilder = $rb;
     }
-    
+
     /**
      * Create a server Host from an App definition
      *
@@ -22,7 +22,7 @@ class HostBuilder {
     function buildHost(App $app) {
         $definition = $app->toArray();
         $responder = $this->responderBuilder->buildResponder($definition);
-        
+
         $host = $this->doHostGeneration(
             $definition['port'],
             $definition['address'],
@@ -61,5 +61,5 @@ class HostBuilder {
             );
         }
     }
-    
+
 }

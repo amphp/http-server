@@ -45,10 +45,10 @@ class IpcServer implements \Countable {
                     sprintf('Unkown IPC event name: %s', $eventName)
                 );
         }
-        
+
         return $this;
     }
-    
+
     /**
      * Start the server
      *
@@ -65,7 +65,7 @@ class IpcServer implements \Countable {
         }
 
         stream_set_blocking($socket, FALSE);
-        
+
         $this->uri = $uri;
         $this->socket = $socket;
         $this->acceptWatcher = $this->reactor->onReadable($socket, function() {
@@ -258,7 +258,7 @@ class IpcServer implements \Countable {
         } else {
             $onShutdown();
         }
-        
+
         if (is_resource($this->socket)) {
             @fclose($this->socket);
         }

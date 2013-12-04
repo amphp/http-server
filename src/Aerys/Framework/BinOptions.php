@@ -143,7 +143,7 @@ class BinOptions {
     function getRoot() {
         return $this->root;
     }
-    
+
     function getControl() {
         return $this->control;
     }
@@ -160,10 +160,10 @@ class BinOptions {
             'control' => $this->control
         ]);
     }
-    
+
     function __toString() {
         $parts = [];
-        
+
         if ($this->help) {
             $parts[] = '-h';
         }
@@ -188,26 +188,8 @@ class BinOptions {
         if ($this->control) {
             $parts[] = '-z ' . escapeshellarg($this->control);
         }
-        
+
         return implode(' ', $parts);
     }
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -68,7 +68,7 @@ class Server {
     private $serverToken = 'Aerys/0.1.0-devel';
     private $showErrors = TRUE;
     private $stopTimeout = -1;
-    
+
     private $isExtSocketsEnabled;
 
     function __construct(
@@ -150,22 +150,22 @@ class Server {
     }
 
     /**
-     * 
+     *
      */
     function addObserver($event, callable $observer, array $options = []) {
         $observation = new ServerObservation($event, $observer, $options);
         $this->observations[$event][] = $observation;
         usort($this->observations[$event], [$this, 'observerPrioritySort']);
-        
+
         return $observation;
     }
-    
+
     private function observerPrioritySort(ServerObservation $a, ServerObservation $b) {
         $a = $a->getPriority();
         $b = $b->getPriority();
         return ($a != $b) ? ($a - $b) : 0;
     }
-    
+
     /**
      *
      */
@@ -178,25 +178,25 @@ class Server {
             }
         }
     }
-    
+
     /**
      * Register an object to temporarily prevent full server shutdown
-     * 
+     *
      * Calling this method prevents Server::stop() calls from returning until the associated object
      * is passed to Server::allowStop().
-     * 
+     *
      * @return string Unique stop ID; string must be passed back to Server:allowStop()
      */
     function preventStop() {
         $stopId = uniqid($prefix = '', $moreEntropy = TRUE);
         $this->stopBlockers[$stopId] = TRUE;
-        
+
         return $stopId;
     }
-    
+
     /**
      * Remove the server shutdown block associated with this object
-     * 
+     *
      * @param string $stopId A stop ID reference string previously obtained from Server::preventStop()
      * @return bool Returns TRUE if the stop ID was cleared or FALSE if the ID was not recognized
      */
@@ -206,10 +206,10 @@ class Server {
         } else {
             $wasCleared = FALSE;
         }
-        
+
         return $wasCleared;
     }
-    
+
     /**
      * Stop the server gracefully (or not)
      *
@@ -239,7 +239,7 @@ class Server {
         if (!is_null($timeout)) {
             $this->setStopTimeout($timeout);
         }
-        
+
         $this->notifyObservers(self::STOPPING);
 
         foreach ($this->acceptWatchers as $watcherId) {
@@ -268,7 +268,7 @@ class Server {
 
         $this->onStopCompletion();
     }
-    
+
     private function notifyObservers($event) {
         if (!empty($this->observations[$event])) {
             foreach ($this->observations[$event] as $observation) {
@@ -277,7 +277,7 @@ class Server {
             }
         }
     }
-    
+
     private function forceStop() {
         foreach ($this->clients as $client) {
             $this->closeClient($client);
@@ -327,11 +327,11 @@ class Server {
 
         $this->acceptWatchers = [];
         $this->listeningSockets = [];
-        
+
         while ($this->stopBlockers) {
             $this->reactor->tick();
         }
-        
+
         $this->notifyObservers(self::STOPPED);
     }
 
@@ -567,7 +567,7 @@ class Server {
         $client->preBodyRequest = $request;
         $client->requests[$requestId] = $request;
         $host = $request->getHost();
-        
+
         $this->invokeRequestObservers(self::ON_HEADERS, $host, $requestId);
 
         $asgiResponse = $request->getAsgiResponse();
@@ -586,7 +586,7 @@ class Server {
         if (empty($this->observations[$event])) {
             return;
         }
-        
+
         foreach ($this->observations[$event] as $observation) {
             if ($host->matches($observation->getHost())) {
                 $callback = $observation->getCallback();
@@ -834,7 +834,7 @@ class Server {
 
         if (!$this->isBeforeResponse) {
             $host = $request->getHost();
-            
+
             $this->isBeforeResponse = TRUE;
             $this->invokeRequestObservers(self::BEFORE_RESPONSE, $host, $requestId);
             $this->isBeforeResponse = FALSE;
@@ -1536,7 +1536,7 @@ class Server {
     private function setShowErrors($boolFlag) {
         $this->showErrors = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
-    
+
     private function setStopTimeout($timeoutInSeconds) {
         $this->timeout = filter_var($timeoutInSeconds, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => -1,

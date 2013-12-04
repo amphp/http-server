@@ -1,7 +1,7 @@
 <?php
- 
+
 namespace Aerys\Responders\Routes;
- 
+
 class Rule {
     public $route = '';
     public $expression = '';

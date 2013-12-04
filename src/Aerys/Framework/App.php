@@ -205,7 +205,7 @@ class App {
 
         return $this;
     }
-    
+
     /**
      * Specify an optional filesystem directory from which to serve static files
      *

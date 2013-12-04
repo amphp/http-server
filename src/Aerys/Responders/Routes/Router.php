@@ -85,7 +85,7 @@ class Router implements AsgiResponder {
      */
     function addRoute($httpMethod, $route, callable $handler) {
         $this->router->addRoute($httpMethod, $route, $handler);
-        
+
         return $this;
     }
 

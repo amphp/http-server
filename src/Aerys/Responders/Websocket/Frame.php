@@ -4,12 +4,12 @@ namespace Aerys\Responders\Websocket;
 
 /**
  * An immutable value object modeling websocket frames according to RFC 6455 Section 5
- * 
+ *
  * @link http://tools.ietf.org/html/rfc6455#section-5
- * 
+ *
  * @TODO Support > 32-bit Frame sizes (very low-priority)
- * 
- * Though the websocket protocol allows for up to 64-bit payload lengths we only support 
+ *
+ * Though the websocket protocol allows for up to 64-bit payload lengths we only support
  * a maximum of 32-bit lengths at this time. This is sensible because PHP's string type is
  * limited to 32-bit sizes anyway and Aerys buffers Frame payloads as strings. We could expand
  * this to support stream resources and/or Countable Iterators. This change would necessarily
@@ -19,24 +19,24 @@ namespace Aerys\Responders\Websocket;
  * content.
  */
 class Frame {
-    
+
     const FIN      = 0b1;
     const RSV_NONE = 0b000;
-    
+
     const OP_CONT  = 0x00;
     const OP_TEXT  = 0x01;
     const OP_BIN   = 0x02;
     const OP_CLOSE = 0x08;
     const OP_PING  = 0x09;
     const OP_PONG  = 0x0A;
-    
+
     private $fin;
     private $rsv;
     private $opcode;
     private $length;
     private $payload;
     private $maskingKey;
-    
+
     function __construct($fin, $rsv, $opcode, $payload, $maskingKey = NULL) {
         $this->fin = $fin;
         $this->rsv = $rsv;
@@ -45,7 +45,7 @@ class Frame {
         $this->payload = $payload;
         $this->maskingKey = isset($maskingKey) ? $maskingKey : NULL;
     }
-    
+
     function isFin() {
         return (bool) $this->fin;
     }
@@ -61,23 +61,23 @@ class Frame {
     function hasRsv3() {
         return (bool) ($this->rsv & 0b100);
     }
-    
+
     function getOpcode() {
         return $this->opcode;
     }
-    
+
     function getMaskingKey() {
         return $this->maskingKey;
     }
-    
+
     function getLength() {
         return $this->length;
     }
-    
+
     function getPayload() {
         return $this->payload;
     }
-    
+
     function __toString() {
         if ($this->length > 0xFFFF) {
             $lengthHeader = 0x7F;
@@ -111,6 +111,5 @@ class Frame {
 
         return $firstWord . $lengthBody . $maskingKey . $payload;
     }
-    
-}
 
+}

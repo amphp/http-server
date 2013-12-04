@@ -64,7 +64,7 @@ class Proxy implements AsgiResponder {
      *
      * Once added, the proxy will attempt to connect to new backend servers in the next iteration
      * of the event loop.
-     * 
+     *
      * @param string $uri A backend server URI e.g. (127.0.0.1:1337 or localhost:80)
      * @return void
      */
@@ -79,7 +79,7 @@ class Proxy implements AsgiResponder {
             });
         }
     }
-    
+
     private function doInitialBackendConnect(Backend $backend) {
         for ($i = 0; $i < $this->loWaterConnectionMin; $i++) {
             $this->connect($backend);
@@ -98,7 +98,7 @@ class Proxy implements AsgiResponder {
                 "Invalid proxy backend URI: {$uri}"
             );
         }
-        
+
         return $urlParts['host'] . ':' . $urlParts['port'];
     }
 
@@ -436,7 +436,7 @@ class Proxy implements AsgiResponder {
             $asgiEnv['HTTP_CONTENT_LENGTH'],
             $asgiEnv['HTTP_TRANSFER_ENCODING']
         );
-        
+
         $headerStr = $asgiEnv['REQUEST_METHOD'] . ' ' . $asgiEnv['REQUEST_URI'] . " HTTP/1.1\r\n";
 
         $headerArr = [];
@@ -446,9 +446,9 @@ class Proxy implements AsgiResponder {
                 $headerArr[$key] = $value;
             }
         }
-        
+
         $headerArr['CONNECTION'] = 'keep-alive';
-        
+
         if ($body = $asgiEnv['ASGI_INPUT']) {
             fseek($body, 0, SEEK_END);
             $headerArr['CONTENT_LENGTH'] = ftell($body);

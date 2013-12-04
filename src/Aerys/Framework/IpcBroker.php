@@ -99,10 +99,10 @@ class IpcBroker {
     function setFrontendPort($port) {
         $this->frontendUri = 'tcp://0.0.0.0:' . $port;
     }
-    
+
     /**
      * Bind the backend/frontend IPC socket(s)
-     * 
+     *
      * @return void
      */
     function start() {
@@ -176,7 +176,7 @@ class IpcBroker {
 
     /**
      * Is the backend IPC server operating on a unix domain socket?
-     * 
+     *
      * @return bool
      */
     function hasUnixBackendSocket() {
@@ -185,7 +185,7 @@ class IpcBroker {
 
     /**
      * Retrieve the backend IPC server URI
-     * 
+     *
      * @return string
      */
     function getBackendUri() {

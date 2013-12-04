@@ -3,7 +3,7 @@
 namespace Aerys;
 
 class Reason {
-    
+
     const HTTP_100 = 'Continue';
     const HTTP_101 = 'Switching Protocols';
     const HTTP_200 = 'OK';
@@ -49,6 +49,6 @@ class Reason {
     const HTTP_504 = 'Gateway Timeout';
     const HTTP_505 = 'HTTP Version Not Supported';
     const HTTP_511 = 'Network Authentication Required';
-    
+
 }
 

@@ -3,27 +3,27 @@
 namespace Aerys\Responders\Websocket;
 
 class FrameWriter {
-    
+
     private $destination;
     private $framePriorityQueue;
     private $currentFrame;
     private $buffer;
     private $bufferSize;
     private $frameBytesWritten = 0;
-    
+
     function __construct($destination) {
         $this->destination = $destination;
         $this->framePriorityQueue = new FramePriorityQueue;
     }
-    
+
     function canWrite() {
         return ($this->currentFrame || $this->framePriorityQueue->count());
     }
-    
+
     function enqueue(Frame $frame) {
         $this->framePriorityQueue->insert($frame);
     }
-    
+
     function write() {
         if ($this->currentFrame) {
             $completedFrame = $this->doWrite();
@@ -35,14 +35,14 @@ class FrameWriter {
         } else {
             $completedFrame = NULL;
         }
-        
+
         return $completedFrame;
     }
-    
+
     private function doWrite() {
         $bytesWritten = @fwrite($this->destination, $this->buffer);
         $this->frameBytesWritten += $bytesWritten;
-        
+
         if ($bytesWritten === $this->bufferSize) {
             $completedFrame = $this->currentFrame;
             $this->buffer = NULL;
@@ -62,9 +62,8 @@ class FrameWriter {
         } else {
             $completedFrame = NULL;
         }
-        
+
         return $completedFrame;
     }
-    
-}
 
+}

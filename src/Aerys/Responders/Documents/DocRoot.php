@@ -11,18 +11,18 @@ use Alert\Reactor,
     Aerys\Responders\AsgiResponder;
 
 class DocRoot implements AsgiResponder {
-    
+
     const ETAG_NONE = 0;
     const ETAG_SIZE = 1;
     const ETAG_INODE = 2;
     const ETAG_ALL = 3;
-    
+
     const PRECONDITION_NOT_MODIFIED = 100;
     const PRECONDITION_FAILED = 200;
     const PRECONDITION_IF_RANGE_OK = 300;
     const PRECONDITION_IF_RANGE_FAILED = 400;
     const PRECONDITION_PASS = 999;
-    
+
     private $reactor;
     private $docRoot;
     private $indexes = ['index.html', 'index.htm'];
@@ -43,17 +43,17 @@ class DocRoot implements AsgiResponder {
     private $memoryCacheCurrentSize = 0;
     private $cacheCleanInterval = 1;
     private $cacheWatcher;
-    
+
     function __construct(Reactor $reactor) {
         $this->reactor = $reactor;
         $this->assignDefaultMimeTypes();
         $this->multipartBoundary = uniqid('', TRUE);
         $this->cacheWatcher = $this->reactor->repeat([$this, 'clearStaleCache'], $this->cacheCleanInterval);
     }
-    
+
     /**
      * Retrieve the current value for the specified option
-     * 
+     *
      * @param string $option
      * @throws \DomainException On unknown option
      * @return mixed Returns the specified option's value
@@ -88,10 +88,10 @@ class DocRoot implements AsgiResponder {
                 );
         }
     }
-    
+
     /**
      * Set multiple DocRoot options
-     * 
+     *
      * @param array $options Key-value array mapping option name keys to values
      * @return \Aerys\Responders\Documents\DocRoot Returns the current object instance
      */
@@ -99,13 +99,13 @@ class DocRoot implements AsgiResponder {
         foreach ($options as $option => $value) {
             $this->setOption($option, $value);
         }
-        
+
         return $this;
     }
-    
+
     /**
      * Set a DocRoot option
-     * 
+     *
      * @param string $option The option key (case-insensitve)
      * @param mixed $value The option value to assign
      * @throws \DomainException On unrecognized option key
@@ -151,80 +151,80 @@ class DocRoot implements AsgiResponder {
                     "Unknown DocRoot option: {$option}"
                 );
         }
-        
+
         return $this;
     }
-    
+
     private function setDocRoot($path) {
         $path = str_replace('\\', '/', $path);
-        
+
         if (!(is_readable($path) && is_dir($path))) {
             throw new \InvalidArgumentException(
                 'Document root must be a readable directory'
             );
         }
-        
+
         $this->docRoot = rtrim($path, '/');
     }
-    
+
     private function setIndexes(array $indexes) {
         $this->indexes = $indexes;
     }
-    
+
     private function setIndexRedirection($boolFlag) {
         $this->indexRedirection = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
-    
+
     private function setETagMode($mode) {
         $this->eTagMode = (int) $mode;
     }
-    
+
     private function setExpiresHeaderPeriod($seconds) {
         $this->expiresHeaderPeriod = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => -1,
             'default' => 300
         ]]);
     }
-    
+
     private function setDefaultMimeType($mimeType) {
         $this->defaultMimeType = $mimeType;
     }
-    
+
     private function setCustomMimeTypes(array $mimeTypes) {
         foreach ($mimeTypes as $ext => $type) {
             $ext = strtolower(ltrim($ext, '.'));
             $this->customMimeTypes[$ext] = $type;
         }
     }
-    
+
     private function setDefaultTextCharset($charset) {
         $this->defaultTextCharset = $charset;
     }
-    
+
     private function setCacheTtl($seconds) {
         $this->cacheTtl = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
             'default' => 5
         ]]);
     }
-    
+
     private function setMemoryCacheMaxSize($bytes) {
         $this->memoryCacheMaxSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
             'default' => 67108864
         ]]);
     }
-    
+
     private function setMemoryCacheMaxFileSize($bytes) {
         $this->memoryCacheMaxFileSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
             'default' => 1048576
         ]]);
     }
-    
+
     /**
      * Clear all cached file descriptors and memory-mapped files
-     * 
+     *
      * @return void
      */
     function clearCache() {
@@ -233,10 +233,10 @@ class DocRoot implements AsgiResponder {
         $this->memoryCacheCurrentSize = 0;
         clearstatcache();
     }
-    
+
     /**
      * Clear only stale descriptors and memory-mapped files
-     * 
+     *
      * @return void
      */
     function clearStaleCache() {
@@ -245,7 +245,7 @@ class DocRoot implements AsgiResponder {
         $this->clearStaleDescriptorCacheEntries($now);
         clearstatcache();
     }
-    
+
     private function clearStaleMemoryCacheEntries($now) {
         foreach ($this->memoryCache as $cacheId => $cacheArr) {
             $cacheExpiry = $cacheArr[1];
@@ -258,7 +258,7 @@ class DocRoot implements AsgiResponder {
             }
         }
     }
-    
+
     private function clearStaleDescriptorCacheEntries($now) {
         foreach ($this->fileDescriptorCache as $cacheId => $cacheArr) {
             $cacheExpiry = $cacheArr[1];
@@ -269,7 +269,7 @@ class DocRoot implements AsgiResponder {
             }
         }
     }
-    
+
     /**
      * Respond to the specified ASGI request environment
      *
@@ -279,21 +279,21 @@ class DocRoot implements AsgiResponder {
      */
     function __invoke(array $asgiEnv, $requestId) {
         $filePath = $this->docRoot . $asgiEnv['REQUEST_URI_PATH'];
-        
+
         if (!$filePath = $this->validateFilePath($filePath)) {
             return $this->notFound();
         }
-        
+
         $isDir = is_dir($filePath);
         $redirectToIndex = NULL;
-        
+
         if (!$isDir && $this->indexRedirection && $this->indexes) {
             $pathParts = pathinfo($filePath);
             $redirectToIndex = in_array($pathParts['basename'], $this->indexes)
                 ? substr($pathParts['dirname'] . '/', strlen($this->docRoot))
                 : NULL;
         }
-        
+
         if ($redirectToIndex) {
             return $this->redirectTo($redirectToIndex);
         } elseif (!$isDir) {
@@ -304,14 +304,14 @@ class DocRoot implements AsgiResponder {
             return $this->notFound();
         }
     }
-    
+
     /**
      * The `realpath()` check is IMPORTANT to prevent access to the filesystem above the defined
      * document root using relative path segments such as "../".
-     * 
+     *
      * `realpath()` will return FALSE if the file does not exist but we still need to verify that
      * its resulting path resides within the top-level docRoot path if a match is found.
-     * 
+     *
      * This method carries protected accessibility because vfsStream cannot mock the results of the
      * `realpath()` function and we need to manually use inheritance to mock this behavior in our
      * unit tests. The StaticFileRelativePathAscensionTest integration test validates this security
@@ -321,19 +321,19 @@ class DocRoot implements AsgiResponder {
         if (!$realPath = realpath($filePath)) {
             return FALSE;
         }
-        
+
         // We have to perform the strpos check to ensure the requested URI is not outside the
         // allowed document root. This causes problems for windows so we normalize all path
         // separators to forward slashes to match the normalization performed on the docRoot.
         $realPath = str_replace('\\', '/', $realPath);
-        
+
         if (0 !== strpos($realPath, $this->docRoot)) {
             return FALSE;
         } else {
             return $realPath;
         }
     }
-    
+
     private function matchIndex($dirPath) {
         foreach ($this->indexes as $indexFile) {
             $indexPath = $dirPath . '/' . $indexFile;
@@ -341,10 +341,10 @@ class DocRoot implements AsgiResponder {
                 return $indexPath;
             }
         }
-        
+
         return NULL;
     }
-    
+
     private function redirectTo($redirectToIndex) {
         $status = Status::MOVED_PERMANENTLY;
         $reason = Reason::HTTP_301;
@@ -354,25 +354,25 @@ class DocRoot implements AsgiResponder {
             'Content-Type: text/html; charset=utf-8',
             'Content-Length: ' . strlen($body),
         ];
-        
+
         return [$status, $reason, $headers, $body];
     }
-    
+
     private function respondToFoundFile($filePath, array $asgiEnv) {
         $method = $asgiEnv['REQUEST_METHOD'];
-        
+
         if ($method == 'OPTIONS') {
             return $this->options();
         } elseif (!($method == 'GET' || $method == 'HEAD')) {
             return $this->methodNotAllowed();
         }
-        
+
         $mTime = filemtime($filePath);
         $fileSize = filesize($filePath);
         $eTag = $this->eTagMode ? $this->getEtag($mTime, $fileSize, $filePath) : NULL;
-        
+
         $ranges = empty($asgiEnv['HTTP_RANGE']) ? NULL : $asgiEnv['HTTP_RANGE'];
-        
+
         switch ($this->checkPreconditions($mTime, $fileSize, $eTag, $asgiEnv)) {
             case self::PRECONDITION_NOT_MODIFIED:
                 return $this->notModified($eTag, $mTime);
@@ -385,72 +385,72 @@ class DocRoot implements AsgiResponder {
             default:
                 break;
         }
-        
+
         return $ranges
             ? $this->doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag)
             : $this->doFile($filePath, $method, $mTime, $fileSize, $eTag);
     }
-    
+
     private function checkPreconditions($mTime, $fileSize, $eTag, $asgiEnv) {
         $ifMatchHeader = !empty($asgiEnv['HTTP_IF_MATCH'])
             ? $asgiEnv['HTTP_IF_MATCH']
             : NULL;
-        
+
         if ($ifMatchHeader && !$this->eTagMatchesPrecondition($eTag, $ifMatchHeader)) {
             return self::PRECONDITION_FAILED;
         }
-        
+
         $ifNoneMatchHeader = !empty($asgiEnv['HTTP_IF_NONE_MATCH'])
             ? $asgiEnv['HTTP_IF_NONE_MATCH']
             : NULL;
-        
+
         if ($ifNoneMatchHeader && $this->eTagMatchesPrecondition($eTag, $ifNoneMatchHeader)) {
             return self::PRECONDITION_NOT_MODIFIED;
         }
-        
+
         $ifModifiedSinceHeader = !empty($asgiEnv['HTTP_IF_MODIFIED_SINCE'])
             ? @strtotime($asgiEnv['HTTP_IF_MODIFIED_SINCE'])
             : NULL;
-        
+
         if ($ifModifiedSinceHeader && $ifModifiedSinceHeader <= $mTime) {
             return self::PRECONDITION_NOT_MODIFIED;
         }
-        
+
         $ifUnmodifiedSinceHeader = !empty($asgiEnv['HTTP_IF_UNMODIFIED_SINCE'])
             ? @strtotime($asgiEnv['HTTP_IF_UNMODIFIED_SINCE'])
             : NULL;
-        
+
         if ($ifUnmodifiedSinceHeader && $mTime > $ifUnmodifiedSinceHeader) {
             return self::PRECONDITION_FAILED;
         }
-        
+
         $ifRangeHeader = !empty($asgiEnv['HTTP_IF_RANGE'])
             ? $asgiEnv['HTTP_IF_RANGE']
             : NULL;
-        
+
         if ($ifRangeHeader) {
             return $this->ifRangeMatchesPrecondition($eTag, $mTime, $ifRangeHeader)
                 ? self::PRECONDITION_IF_RANGE_OK
                 : self::PRECONDITION_IF_RANGE_FAILED;
         }
-        
+
         return self::PRECONDITION_PASS;
     }
-    
+
     private function eTagMatchesPrecondition($eTag, $headerStringOrArray) {
         $eTagArr = is_string($headerStringOrArray)
             ? explode(',', $headerStringOrArray)
             : $headerStringOrArray;
-        
+
         foreach ($eTagArr as $value) {
             if ($eTag == $value) {
                 return TRUE;
             }
         }
-        
+
         return FALSE;
     }
-    
+
     private function ifRangeMatchesPrecondition($eTag, $mTime, $ifRangeHeader) {
         if ($httpDate = @strtotime($ifRangeHeader)) {
             return ($mTime <= $httpDate);
@@ -458,7 +458,7 @@ class DocRoot implements AsgiResponder {
             return ($eTag === $ifRangeHeader);
         }
     }
-    
+
     /**
      * @link http://tools.ietf.org/html/rfc2616#section-14.21
      */
@@ -466,24 +466,24 @@ class DocRoot implements AsgiResponder {
         $status = Status::OK;
         $reason = Reason::HTTP_200;
         $now = time();
-        
+
         $headers = [
             'Cache-Control: public',
             "Content-Length: {$fileSize}",
             'Last-Modified: ' . gmdate('D, d M Y H:i:s', $mTime) . ' UTC',
             'Accept-Ranges: bytes'
         ];
-        
+
         $headers[] = ($this->expiresHeaderPeriod > 0)
             ? 'Expires: ' . gmdate('D, d M Y H:i:s', $now + $this->expiresHeaderPeriod) . ' UTC'
             : 'Expires: 0';
-        
+
         $headers[] = $this->generateContentTypeHeader($filePath);
-        
+
         if ($eTag) {
             $headers[] = "ETag: {$eTag}";
         }
-        
+
         if ($method !== 'GET') {
             $body = NULL;
         } elseif ($fileSize < $this->memoryCacheMaxFileSize) {
@@ -493,29 +493,29 @@ class DocRoot implements AsgiResponder {
         } else {
             $body = $this->getFileDescriptor($filePath);
         }
-        
+
         return [$status, $reason, $headers, $body];
     }
-    
+
     private function getMemoryCacheableFile($filePath, $fileSize) {
         $cacheId = strtolower($filePath);
-        
+
         return isset($this->memoryCache[$cacheId])
             ? $this->memoryCache[$cacheId][0]
             : $this->storeFileInMemoryCache($cacheId, $filePath, $fileSize);
     }
-    
+
     private function storeFileInMemoryCache($cacheId, $filePath, $fileSize) {
         $memFile = file_get_contents($filePath);
         $cacheExpiry = time() + $this->cacheTtl;
         $this->memoryCache[$cacheId] = [$memFile, $cacheExpiry, $fileSize, $filePath];
-        
+
         return $memFile;
     }
-    
+
     private function getCacheableFileDescriptor($filePath) {
         $cacheId = strtolower($filePath);
-        
+
         if (isset($this->fileDescriptorCache[$cacheId])) {
             $fd = $this->fileDescriptorCache[$cacheId][0];
         } else {
@@ -523,32 +523,32 @@ class DocRoot implements AsgiResponder {
             $cacheExpiry = time() + $this->cacheTtl;
             $this->fileDescriptorCache[$cacheId] = [$fd, $cacheExpiry, $filePath];
         }
-        
+
         return $fd;
     }
-    
+
     private function getFileDescriptor($filePath) {
         $fd = fopen($filePath, 'rb');
         stream_set_blocking($fd, 0);
-        
+
         return $fd;
     }
-    
+
     private function generateContentTypeHeader($filePath) {
         $contentType = $this->getMimeType($filePath) ?: $this->defaultMimeType;
-        
+
         if (0 === stripos($contentType, 'text/')) {
             $contentType .= '; charset=' . $this->defaultTextCharset;
         }
-        
+
         return "Content-Type: {$contentType}";
     }
-    
+
     private function doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag) {
         if (!$ranges = $this->normalizeByteRanges($fileSize, $ranges)) {
            return $this->requestedRangeNotSatisfiable($fileSize);
         }
-        
+
         $now = time();
         $body = $this->getFileDescriptor($filePath);
         $status = Status::PARTIAL_CONTENT;
@@ -557,24 +557,24 @@ class DocRoot implements AsgiResponder {
             'Cache-Control: public',
             'Last-Modified: ' . gmdate('D, d M Y H:i:s', $mTime) . ' UTC'
         ];
-        
+
         if ($this->expiresHeaderPeriod > 0) {
             $time =  $now + $this->expiresHeaderPeriod;
             $headers[] = 'Expires: ' .  gmdate('D, d M Y H:i:s', $time) . ' UTC';
         }
-        
+
         if ($eTag) {
             $headers[] = "ETag: {$eTag}";
         }
-        
+
         $contentType = $this->generateContentTypeHeader($filePath);
-        
+
         if ($isMultiPart = (count($ranges) > 1)) {
             $headers[] = "Content-Type: multipart/byteranges; boundary={$this->multipartBoundary}";
             $body = ($method === 'GET')
                 ? new MultiPartByteRangeBody($body, $ranges, $this->multipartBoundary, $contentType, $fileSize)
                 : NULL;
-            
+
         } else {
             list($startPos, $endPos) = $ranges[0];
             $headers[] = 'Content-Length: ' . ($endPos - $startPos);
@@ -584,10 +584,10 @@ class DocRoot implements AsgiResponder {
                 ? new ByteRangeBody($body, $startPos, $endPos)
                 : NULL;
         }
-        
+
         return [$status, $reason, $headers, $body];
     }
-    
+
     /**
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
      */
@@ -595,19 +595,19 @@ class DocRoot implements AsgiResponder {
         if (is_array($rawRanges)) {
             $rawRanges = implode(',', array_filter($rawRanges));
         }
-        
+
         $rawRanges = str_ireplace([' ', 'bytes='], '', $rawRanges);
         $rawRanges = explode(',', $rawRanges);
-        
+
         $normalizedByteRanges = [];
-        
+
         foreach ($rawRanges as $range) {
             if (FALSE === strpos($range, '-')) {
                 return NULL;
             }
-            
+
             list($startPos, $endPos) = explode('-', rtrim($range));
-            
+
             if ($startPos === '' && $endPos === '') {
                 return NULL;
             } elseif ($startPos === '' && $endPos !== '') {
@@ -624,40 +624,40 @@ class DocRoot implements AsgiResponder {
                 $startPos = (int) $startPos;
                 $endPos = (int) $endPos;
             }
-            
+
             if ($startPos >= $fileSize || $endPos <= $startPos || $endPos <= 0) {
                 return NULL;
             }
-            
+
             $normalizedByteRanges[] = [$startPos, $endPos];
         }
-        
+
         return $normalizedByteRanges;
     }
-    
+
     private function getEtag($mTime, $fileSize, $filePath) {
         $hashable = $mTime;
-        
+
         if ($this->eTagMode & self::ETAG_SIZE) {
             $hashable .= $fileSize;
         }
-        
+
         if ($this->eTagMode & self::ETAG_INODE) {
             $hashable .= fileinode($filePath);
         }
-        
+
         return md5($hashable);
     }
-    
+
     private function getMimeType($filePath) {
         $ext = pathinfo($filePath, PATHINFO_EXTENSION);
-        
+
         if ($ext === '') {
             return NULL;
         }
-        
+
         $ext = strtolower($ext);
-        
+
         if (isset($this->customMimeTypes[$ext])) {
             return $this->customMimeTypes[$ext];
         } elseif (isset($this->mimeTypes[$ext])) {
@@ -666,7 +666,7 @@ class DocRoot implements AsgiResponder {
             return NULL;
         }
     }
-    
+
     private function options() {
         $status = Status::OK;
         $reason = Reason::HTTP_200;
@@ -674,51 +674,51 @@ class DocRoot implements AsgiResponder {
             'Allow: GET, HEAD, OPTIONS',
             'Accept-Ranges: bytes'
         ];
-        
+
         return [$status, $reason, $headers, NULL];
     }
-    
+
     private function methodNotAllowed() {
         $status = Status::METHOD_NOT_ALLOWED;
         $reason = Reason::HTTP_405;
         $headers = [
             'Allow: GET, HEAD, OPTIONS'
         ];
-        
+
         return [$status, $reason, $headers, NULL];
     }
-    
+
     private function requestedRangeNotSatisfiable($fileSize) {
         $status = Status::REQUESTED_RANGE_NOT_SATISFIABLE;
         $reason = Reason::HTTP_416;
         $headers = [
             "Content-Range: */{$fileSize}"
         ];
-        
+
         return [$status, $reason, $headers, NULL];
     }
-    
+
     private function notModified($eTag, $lastModified) {
         $status = Status::NOT_MODIFIED;
         $reason = Reason::HTTP_304;
         $headers = [
             'Last-Modified: ' . gmdate('D, d M Y H:i:s', $lastModified) . ' UTC'
         ];
-        
+
         if ($eTag) {
             $headers[] = "ETag: {$eTag}";
         }
-        
+
         return [$status, $reason, $headers, NULL];
     }
-    
+
     private function preconditionFailed() {
         $status = Status::PRECONDITION_FAILED;
         $reason = Reason::HTTP_412;
-        
+
         return [$status, $reason, $headers = [], NULL];
     }
-    
+
     private function notFound() {
         $status = Status::NOT_FOUND;
         $reason = Reason::HTTP_404;
@@ -727,10 +727,10 @@ class DocRoot implements AsgiResponder {
             'Content-Type: text/html',
             'Content-Length: ' . strlen($body),
         ];
-        
+
         return [$status, $reason, $headers, $body];
     }
-    
+
     function assignDefaultMimeTypes() {
         $this->mimeTypes = [
             "323"       => "text/h323",
@@ -926,9 +926,8 @@ class DocRoot implements AsgiResponder {
             "zip"       => "application/zip"
         ];
     }
-    
+
     function __destruct() {
         $this->reactor->cancel($this->cacheWatcher);
     }
 }
-

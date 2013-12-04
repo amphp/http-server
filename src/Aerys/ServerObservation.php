@@ -65,7 +65,7 @@ class ServerObservation {
     function getHost() {
         return $this->host;
     }
-    
+
     function getPriority() {
         return $this->priority;
     }

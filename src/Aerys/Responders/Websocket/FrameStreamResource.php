@@ -3,24 +3,24 @@
 namespace Aerys\Responders\Websocket;
 
 class FrameStreamResource extends FrameStream {
-    
+
     private $resource;
     private $keyCache;
     private $currentCache;
-    
+
     protected function setDataSource($dataSource) {
         $this->resource = $dataSource;
     }
-    
+
     function count() {
         $currentPos = $this->key();
         $this->seek(0, SEEK_END);
         $endPos = $this->key();
         $this->seek($currentPos);
-        
+
         return $endPos;
     }
-    
+
     function seek($position, $whence = SEEK_SET) {
         if (@fseek($this->resource, $position, $whence)) {
             throw new FrameStreamException(
@@ -34,7 +34,7 @@ class FrameStreamResource extends FrameStream {
             $this->currentCache = NULL;
         }
     }
-    
+
     function rewind() {
         if (!@rewind($this->resource)) {
             throw new FrameStreamException(
@@ -42,11 +42,11 @@ class FrameStreamResource extends FrameStream {
             );
         }
     }
-    
+
     function valid() {
         return !@feof($this->resource);
     }
-    
+
     function key() {
         if (isset($this->keyCache)) {
             return $this->keyCache;
@@ -58,16 +58,16 @@ class FrameStreamResource extends FrameStream {
             );
         }
     }
-    
+
     function current() {
         if (isset($this->currentCache)) {
             return $this->currentCache;
         }
-        
+
         $this->currentCache = $this->frameSize
             ? @fread($this->resource, $this->frameSize)
             : @stream_get_contents($this->resource);
-        
+
         if (FALSE !== $this->currentCache) {
             return $this->currentCache;
         } else {
@@ -82,6 +82,5 @@ class FrameStreamResource extends FrameStream {
         $this->currentCache = NULL;
         $this->keyCache = NULL;
     }
-    
-}
 
+}

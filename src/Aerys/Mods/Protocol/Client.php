@@ -3,7 +3,7 @@
 namespace Aerys\Mods\Protocol;
 
 class Client {
-    
+
     public $id;
     public $socket;
     public $clientName;
@@ -17,5 +17,5 @@ class Client {
     public $writeBuffer = [];
     public $isShutdownForWriting = FALSE;
     public $handler;
-    
+
 }

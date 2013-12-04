@@ -34,86 +34,86 @@ class Request {
 
     function setClient(Client $client) {
         $this->client = $client;
-        
+
         return $this;
     }
-    
+
     function getClient() {
         return $this->client;
     }
-    
+
     function setHost(Host $host) {
         $this->host = $host;
-        
+
         return $this;
     }
-    
+
     function getHost() {
         return $this->host;
     }
-    
+
     function getHostHandler() {
         return $this->host->getHandler();
     }
-    
+
     function setTrace($headerTrace) {
         $this->trace = $headerTrace;
-        
+
         return $this;
     }
-    
+
     function getTrace() {
         return $this->trace;
     }
 
     function setProtocol($protocol) {
         $this->protocol = (string) $protocol;
-        
+
         return $this;
     }
-    
+
     function getProtocol() {
         return $this->protocol;
     }
-    
+
     function isHttp11() {
         return ($this->protocol === '1.1');
     }
-    
+
     function setMethod($method) {
         $this->method = $method;
-        
+
         return $this;
     }
-    
+
     function getMethod() {
         return $this->method;
     }
-    
+
     function setHeaders(array $headers) {
         $this->headers = $headers;
         $this->ucHeaders = array_change_key_case($headers, CASE_UPPER);
-        
+
         return $this;
     }
-    
+
     function hasHeader($headerField) {
         $headerField = strtoupper($headerField);
-        
+
         return isset($this->ucHeaders[$headerField]);
     }
-    
+
     function getHeader($headerField) {
         $headerField = strtoupper($headerField);
-        
+
         return isset($this->ucHeaders[$headerField])
             ? $this->ucHeaders[$headerField]
             : NULL;
     }
-    
+
     function setBody($body) {
         $this->body = $body;
-        
+
         return $this;
     }
 
@@ -132,14 +132,14 @@ class Request {
         } else {
             $this->uriPath = $requestUri;
         }
-        
+
         return $this;
     }
 
     function getUri() {
         return $this->uri;
     }
-    
+
     function getUriHost() {
         return $this->uriHost;
     }
@@ -163,23 +163,23 @@ class Request {
     function isEncrypted() {
         return (bool) $this->client->isEncrypted;
     }
-    
+
     function getClientPort() {
         return $this->client->clientPort;
     }
-    
+
     function getClientAddress() {
         return $this->client->clientAddress;
     }
-    
+
     function getServerPort() {
         return $this->client->serverPort;
     }
-    
+
     function getServerAddress() {
         return $this->client->serverAddress;
     }
-    
+
     function getClientSocketInfo() {
         return [
             'clientAddress' => $this->client->clientAddress,
@@ -189,16 +189,16 @@ class Request {
             'isEncrypted'   => $this->client->isEncrypted
         ];
     }
-    
+
     function getAsgiEnv() {
         return $this->asgiEnv;
     }
-    
+
     function generateAsgiEnv() {
         $serverName = $this->host->hasName()
             ? $this->host->getName()
             : $this->client->serverAddress;
-        
+
         // It's important to pull the $uriScheme from the encryption status of the client socket and
         // NOT the scheme parsed from the request URI as the request could have passed an erroneous
         // absolute https or http scheme in an absolute URI -or- a valid scheme that doesn't reflect
@@ -206,7 +206,7 @@ class Request {
         $uriScheme = $this->client->isEncrypted
             ? 'https'
             : 'http';
-            
+
         $asgiEnv = [
             'ASGI_VERSION'      => '0.1',
             'ASGI_CAN_STREAM'   => TRUE,
@@ -247,10 +247,10 @@ class Request {
             $field = 'HTTP_' . str_replace('-', '_', $field);
             $asgiEnv[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
         }
-        
+
         return $this->asgiEnv = $asgiEnv;
     }
-    
+
     private function parseCookies($cookieHeader) {
         $cookies = [];
         $pairs = array_filter(str_getcsv($cookieHeader, $delimiter = ';'));
@@ -262,16 +262,16 @@ class Request {
                 $cookies[trim($key)] = $value;
             }
         }
-        
+
         return $cookies;
     }
-    
+
     function setAsgiEnv(array $asgiEnv) {
         $this->asgiEnv = $asgiEnv;
-        
+
         return $this;
     }
-    
+
     function expects100Continue() {
         if (!isset($this->ucHeaders['EXPECT'])) {
             $expectsContinue = FALSE;
@@ -280,79 +280,38 @@ class Request {
         } else {
             $expectsContinue = TRUE;
         }
-        
+
         return $expectsContinue;
     }
-    
+
     function hasResponse() {
         return (bool) $this->asgiResponse;
     }
-    
+
     function setAsgiResponse($asgiResponse) {
         $this->asgiResponse = $asgiResponse;
-        
+
         return $this;
     }
-    
+
     function getAsgiResponse() {
         return $this->asgiResponse;
     }
-    
+
     function markComplete() {
         $this->isComplete = TRUE;
     }
-    
+
     function isComplete() {
         return $this->isComplete;
     }
-    
+
     function setConnectionCloseFlag($shouldClose) {
         $this->closeConnectionAfterSend = $shouldClose;
     }
-    
+
     function shouldCloseAfterSend() {
         return $this->closeConnectionAfterSend;
     }
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
