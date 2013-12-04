@@ -71,6 +71,9 @@ class Server {
 
     private $isExtSocketsEnabled;
 
+    private $generatorResponses = [];
+    private $generatorResponseWatcher;
+
     function __construct(
         Reactor $reactor,
         HostBinder $hb = NULL,
@@ -123,7 +126,31 @@ class Server {
         }
 
         $this->initializeKeepAliveWatcher();
+        $this->initializeGeneratorWatcher();
         $this->notifyObservers(self::STARTED);
+    }
+
+    private function initializeGeneratorWatcher() {
+        $this->generatorResponseWatcher = $this->reactor->repeat(function() {
+            $this->iterateGeneratorResponses();
+        }, $delay = 0);
+
+        $this->reactor->disable($this->generatorResponseWatcher);
+    }
+
+    private function iterateGeneratorResponses() {
+        foreach ($this->generatorResponses as $requestId => $generator) {
+            if ($response = $generator->current()) {
+                unset($this->generatorResponses[$requestId]);
+                $this->setResponse($requestId, $response);
+            } else {
+                $generator->next();
+            }
+        }
+
+        if (empty($this->generatorResponses)) {
+            $this->reactor->disable($this->generatorResponseWatcher);
+        }
     }
 
     private function normalizeStartHosts($hostOrCollection) {
@@ -826,6 +853,12 @@ class Server {
 
     function setResponse($requestId, $asgiResponse) {
         if (!isset($this->requestIdMap[$requestId])) {
+            return;
+        }
+
+        if ($asgiResponse instanceof \Generator) {
+            $this->generatorResponses[$requestId] = $asgiResponse;
+            $this->reactor->enable($this->generatorResponseWatcher);
             return;
         }
 

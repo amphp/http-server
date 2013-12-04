@@ -9,8 +9,7 @@ written entirely in PHP. Awesomeness ensues.
 $ git clone --recursive https://github.com/rdlowrey/Aerys.git
 ```
 
-No. There's no composer. Don't ask. I'll add it when the project is more mature and not a second
-earlier.
+No. There's no composer right now. I'll add it when the project is more mature.
 
 ## Running Your Server
 
@@ -60,9 +59,7 @@ $myApp = (new App)->addUserResponder(function() {
 ##### The Request Environment
 
 Aerys passes an application exhaustive details of each request in a `$_SERVER`-style CGI-like array.
-Additionally, applications may avoid returning a response initially and assign a value in the future
-by using the unique request ID (not covered here). The example below prints the data stored in the
-request's ASGI environment array.
+The example below prints the data stored in the request's ASGI environment array.
 
 ```php
 <?php
@@ -100,6 +97,26 @@ $myApp = (new App)->addUserResponder(function() {
 });
 ```
 
+##### Asynchronous Responses
+
+The most important thing to remember about Aerys (and indeed any server running inside a non-blocking
+event loop) is that your application callables must not block execution with slow operations such as
+synchronous database access. If an application callable returns a `Generator` instance the first
+*truthy* value yielded by the generator is assigned as the response.
+
+```php
+<?php
+use Aerys\Framework\App;
+require __DIR__ . '/path/to/aerys/autoload.php';
+
+$myApp = (new App)->addUserResponder(function($request) { return function() use ($request) {
+    while (!($result = doSomethingNonBlocking($request))) {
+        yield;
+    }
+    yield "<html><body><h1>{$result}</h1></body></html>";
+});
+```
+
 ##### Named Hosts
 
 Each `App` instance corresponds to a host on your server. Users may add as many host names as they
@@ -130,8 +147,9 @@ $myOtherHost = (new App)
 
 While you can add your own user responder callables, it's usually better to take advantage of
 Aerys's builtin routing functionality to map URIs and HTTP method verbs to specific application
-endpoints. Any valid callable or class instance method be specified. Class methods will have their
-instances automatically provisioned/injected.
+endpoints. Any valid callable or class instance method may be specified as a route target. Note that
+class methods will have their instances automatically provisioned and injected affording routed
+applications all the benefits of clean code and dependency injection.
 
 ```php
 <?php
@@ -161,8 +179,7 @@ host applications.
 use Aerys\Framework\App;
 require __DIR__ . '/path/to/aerys/autoload.php';
 
-// Any URI not matched by another handler (dynamic routes in this case) is handled
-// by the fully HTTP/1.1 compliant static file responder
+// Any URI not matched by another handler is treated as a static file request
 $myApp = (new App)
     ->addRoute('GET', '/', 'MyClass::myGetHandlerMethod')
     ->addRoute('POST', '/', 'MyClass::myPostHandlerMethod')
@@ -237,7 +254,11 @@ require __DIR__ . '/path/to/aerys/autoload.php';
 require __DIR__ . '/support/Ex401_WebsocketEchoEndpoint.php';
 
 $myWebsocketApp = (new Aerys\Framework\App)
-    ->setReverseProxy('192.168.1.5:1500')
+    ->setReverseProxy('192.168.1.5:1500', ['proxyPassHeaders' => [
+        'Host'            => '$host',
+        'X-Forwarded-For' => '$remoteAddr',
+        'X-Real-Ip'       => '$serverAddr'
+    ]])
     ->setDocumentRoot(__DIR__ . '/support/docroot/websockets')
     ->addWebsocket('/echo', 'Ex401_WebsocketEchoEndpoint');
 ```
