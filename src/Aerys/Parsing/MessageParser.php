@@ -415,10 +415,23 @@ class MessageParser implements Parser {
         ) {
             $this->parseFlowHeaders['TRANSFER-ENCODING'] = TRUE;
         } elseif (isset($ucKeyHeaders['CONTENT-LENGTH'])) {
-            $this->parseFlowHeaders['CONTENT-LENGTH'] = (int) $ucKeyHeaders['CONTENT-LENGTH'][0];
+            $contentLength = $ucKeyHeaders['CONTENT-LENGTH'][0];
+            $this->validateContentLength($contentLength);
+            $this->parseFlowHeaders['CONTENT-LENGTH'] = $contentLength;
         }
 
         return $headers;
+    }
+
+    private function validateContentLength($contentLength) {
+        if (!ctype_digit($contentLength)) {
+            throw new ParseException(
+                $this->getParsedMessageArray(),
+                $msg = 'Invalid Content-Length',
+                $code = 400,
+                $previousException = NULL
+            );
+        }
     }
 
     private function dechunk() {
