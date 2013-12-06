@@ -101,20 +101,33 @@ $myApp = (new App)->addUserResponder(function() {
 
 The most important thing to remember about Aerys (and indeed any server running inside a non-blocking
 event loop) is that your application callables must not block execution with slow operations such as
-synchronous database access. If an application callable returns a `Generator` instance the first
-*truthy* value yielded by the generator is assigned as the response.
+synchronous database access. Application callables may employ `yield` to act as `Generator`s and
+cooperatively multitask with the server using non-blocking libraries.
 
 ```php
 <?php
 use Aerys\Framework\App;
 require __DIR__ . '/path/to/aerys/autoload.php';
 
-$myApp = (new App)->addUserResponder(function($request) { return function() use ($request) {
-    while (!($result = doSomethingNonBlocking($request))) {
-        yield;
-    }
-    yield "<html><body><h1>{$result}</h1></body></html>";
-});
+function multiplyByTwoAsync($arg, callable $onCompletion) {
+    $onCompletion($arg*2); // <-- [$arg*2] returned to your generator
+}
+
+function myAsyncRequestResponder($asgiEnv) {
+    $arg = 1;
+
+    list($arg) = (yield function(callable $onCompletion) use ($arg) {
+        multiplyByTwoAsync($arg, $onCompletion);
+    });
+
+    list($arg) = (yield function(callable $onCompletion) use ($arg) {
+        multiplyByTwoAsync($arg, $onCompletion);
+    });
+
+    yield "<html><body><h1>Woot! Generated {$arg}!</h1></body></html>";
+};
+
+$myApp = (new App)->setPort(1338)->addUserResponder('myAsyncRequestResponder');
 ```
 
 ##### Named Hosts
@@ -215,7 +228,7 @@ $redirectApp = (new App)
             'Location: https://127.0.0.1' . $asgiEnv['REQUEST_URI']
         ];
         $body = '<html><body>Encryption required; redirecting.</body></html>';
-        
+
         return [$status, $reason, $headers, $body];
     }
 );
@@ -244,8 +257,8 @@ $myWebsocketApp = (new Aerys\Framework\App)
 
 Aerys can also act as a reverse proxy and route certain requests through to backend servers. Using
 this functionality we can do nifty things like layer websocket endpoints on top of an existing
-application that uses the traditional PHP web SAPI. The example below will intercept any requests 
-made to the `/echo` URI and handle them as websockets while passing all other traffic without a 
+application that uses the traditional PHP web SAPI. The example below will intercept any requests
+made to the `/echo` URI and handle them as websockets while passing all other traffic without a
 match in our document root through to the backend server.
 
 ```php
@@ -312,7 +325,7 @@ server. This extension is compiled into most PHP distributions by default.
 
 #### TESTING
 
-- [vfsStream](https://github.com/mikey179/vfsStream) Required to execute the full unit test suite 
+- [vfsStream](https://github.com/mikey179/vfsStream) Required to execute the full unit test suite
 without skipping some cases
 - [Artax](https://github.com/rdlowrey/Artax) Required to execute the full integration test suite
 without skipping some cases

@@ -71,9 +71,6 @@ class Server {
 
     private $isExtSocketsEnabled;
 
-    private $generatorResponses = [];
-    private $generatorResponseWatcher;
-
     function __construct(
         Reactor $reactor,
         HostBinder $hb = NULL,
@@ -126,31 +123,7 @@ class Server {
         }
 
         $this->initializeKeepAliveWatcher();
-        $this->initializeGeneratorWatcher();
         $this->notifyObservers(self::STARTED);
-    }
-
-    private function initializeGeneratorWatcher() {
-        $this->generatorResponseWatcher = $this->reactor->repeat(function() {
-            $this->iterateGeneratorResponses();
-        }, $delay = 0);
-
-        $this->reactor->disable($this->generatorResponseWatcher);
-    }
-
-    private function iterateGeneratorResponses() {
-        foreach ($this->generatorResponses as $requestId => $generator) {
-            if ($response = $generator->current()) {
-                unset($this->generatorResponses[$requestId]);
-                $this->setResponse($requestId, $response);
-            } else {
-                $generator->next();
-            }
-        }
-
-        if (empty($this->generatorResponses)) {
-            $this->reactor->disable($this->generatorResponseWatcher);
-        }
     }
 
     private function normalizeStartHosts($hostOrCollection) {
@@ -814,15 +787,37 @@ class Server {
         return defined($reasonConst) ? constant($reasonConst) : '';
     }
 
+    private function processGeneratorResponse($requestId, \Generator $generator) {
+        try {
+            $result = $generator->current();
+
+            if (is_callable($result)) {
+                $result(function() use ($requestId, $generator) {
+                    $generator->send(func_get_args());
+                    $this->processGeneratorResponse($requestId, $generator);
+                });
+            } elseif (is_null($result)) {
+                throw new \RuntimeException(
+                    'Invalid NULL yielded from Generator response'
+                );
+            } else {
+                $this->setResponse($requestId, $result);
+            }
+        } catch (\Exception $e) {
+            $msg = $this->showErrors ? $e->__toString() : 'Something went terribly wrong';
+            $status = 500;
+            $reason = 'Internal Server Error';
+            $body = "<html><body><h1>{$status} {$reason}</h1><p>{$msg}</p></body></html>";
+
+            $this->setResponse($requestId, [$status, $reason, $headers = [], $body]);
+        }
+    }
+
     function setResponse($requestId, $asgiResponse) {
         if (!isset($this->requestIdMap[$requestId])) {
             return;
-        }
-
-        if ($asgiResponse instanceof \Generator) {
-            $this->generatorResponses[$requestId] = $asgiResponse;
-            $this->reactor->enable($this->generatorResponseWatcher);
-            return;
+        } elseif ($asgiResponse instanceof \Generator) {
+            return $this->processGeneratorResponse($requestId, $asgiResponse);
         }
 
         $request = $this->requestIdMap[$requestId];
