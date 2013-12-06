@@ -712,7 +712,7 @@ class Server {
         unset($this->keepAliveTimeouts[$client->id]);
 
         if ($request = $client->preBodyRequest) {
-            $this->finalizePreBodyRequest($client, $requestArr);
+            $this->onRequestEntityCompletion($client, $requestArr);
             $requestId = $request->getId();
         } elseif ($request = $this->initializeRequest($client, $requestArr)) {
             $requestId = $request->getId();
@@ -729,6 +729,19 @@ class Server {
             $this->invokeRequestHandler($handler, $asgiEnv, $requestId);
             $this->inProgressRequestId = NULL;
         }
+    }
+
+    private function onRequestEntityCompletion(Client $client, array $requestArr) {
+        $request = $client->preBodyRequest;
+        $client->preBodyRequest = NULL;
+        $needsNewRequestId = $request->expects100Continue();
+
+        if ($needsNewRequestId) {
+            $requestId = ++$this->lastRequestId;
+            $this->requestIdMap[$requestId] = $request;
+        }
+
+        $request->updateAsgiEnvAfterEntity($requestArr['headers']);
     }
 
     private function invokeRequestHandler(callable $handler, array $asgiEnv, $requestId) {
@@ -750,56 +763,6 @@ class Server {
             $this->setResponse($requestId, $asgiResponse);
         }
     }
-
-    private function finalizePreBodyRequest(Client $client, array $requestArr) {
-        $request = $client->preBodyRequest;
-        $client->preBodyRequest = NULL;
-        $needsNewRequestId = $request->expects100Continue();
-
-        if ($needsNewRequestId) {
-            $requestId = ++$this->lastRequestId;
-            $this->requestIdMap[$requestId] = $request;
-        }
-
-        /*
-        // @TODO Update request headers when trailers are present
-        if ($request->hasHeader('Trailer')) {
-            $this->updateRequestAfterTrailers($request, $requestArr);
-        }
-        */
-    }
-
-    /*
-    // @TODO FIX THIS so it works with new Request object abstraction!
-    private function updateRequestAfterTrailers(Request $request, array $finalRequestArr) {
-        $newHeaders = array_change_key_case($finalRequestArr['headers'], CASE_UPPER);
-
-        $asgiEnv['ASGI_LAST_CHANCE'] = TRUE;
-
-        // The Host header is ignored in trailers to prevent unsanitized values from bypassing the
-        // safety check when headers are originally received. The other values are expressly
-        // disallowed by RFC 2616 Section 14.40.
-        unset(
-            $newHeaders['TRANSFER-ENCODING'],
-            $newHeaders['CONTENT-LENGTH'],
-            $newHeaders['TRAILER'],
-            $newHeaders['HOST']
-        );
-
-        $trailerExpectation = $asgiEnv['HTTP_TRAILER'];
-        $allowedTrailers = array_map('strtoupper', array_map('trim', explode(',', $trailerExpectation)));
-
-        foreach ($allowedTrailers as $trailerField) {
-            if (isset($newHeaders[$trailerField])) {
-                $field = 'HTTP_' . str_replace('-', '_', $trailerField);
-                $value = $newHeaders[$trailerField];
-                $asgiEnv[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
-            }
-        }
-
-        return $asgiEnv;
-    }
-    */
 
     private function onParseError(Client $client, ParseException $e) {
         $requestId = $client->preBodyRequest

@@ -239,8 +239,12 @@ class Request {
             unset($headers['CONTENT-LENGTH']);
         }
 
+        if ($this->uriQuery) {
+            parse_str($this->uriQuery, $asgiEnv['QUERY']);
+        }
+
         if (!empty($headers['COOKIE']) && ($cookies = $this->parseCookies($headers['COOKIE']))) {
-            $asgiEnv['COOKIES'] = $cookies;
+            $asgiEnv['COOKIE'] = $cookies;
         }
 
         foreach ($headers as $field => $value) {
@@ -249,6 +253,43 @@ class Request {
         }
 
         return $this->asgiEnv = $asgiEnv;
+    }
+
+    function updateAsgiEnvAfterEntity(array $parsedHeadersArray) {
+        $this->asgiEnv['ASGI_LAST_CHANCE'] = TRUE;
+
+        if (isset($this->asgiEnv['HTTP_TRAILERS'])) {
+            $this->updateTrailerHeaders($parsedHeadersArray);
+        }
+
+        $contentType = isset($this->asgiEnv['CONTENT_TYPE']) ? $this->asgiEnv['CONTENT_TYPE'] : NULL;
+
+        if (stripos($contentType, 'application/x-www-form-urlencoded') === 0) {
+            $bufferedBody = stream_get_contents($this->body);
+            parse_str($bufferedBody, $this->asgiEnv['FORM']);
+            rewind($this->body);
+        }
+    }
+
+    /**
+     * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.40
+     */
+    private function updateTrailerHeaders(array $headers) {
+        $ucHeaders = array_change_key_case($headers, CASE_UPPER);
+
+        // The Host header is ignored in trailers to prevent unsanitized values from bypassing the
+        // original safety check when headers are first processed. The other values are expressly
+        // disallowed by RFC 2616 Section 14.40.
+        $disallowedHeaders = ['HOST', 'TRANSFER-ENCODING', 'CONTENT-LENGTH', 'TRAILER'];
+        foreach (array_keys($headers) as $field) {
+            $ucField = strtoupper($field);
+            if (!in_array($ucField, $disallowedHeaders)) {
+                $value = $headers[$field];
+                $value = isset($value[1]) ? implode(',', $value) : $value[0];
+                $key = 'HTTP_' . str_replace('-', '_', $ucField);
+                $this->asgiEnv[$key] = $value;
+            }
+        }
     }
 
     private function parseCookies($cookieHeader) {
