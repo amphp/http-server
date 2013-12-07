@@ -1,10 +1,14 @@
-### APPLICATION
+# ASGI
+
+@TODO Intro
+
+## The Application
 
 An ASGI application (the *Application*) is a reference to a PHP callable. This callable accepts
-*at least* one argument, the *Environment*, and **SHOULD** return an indexed array containing exactly
-four values:
+exactly one argument -- the request *Environment* -- and **SHOULD** return an indexed array containing
+exactly four values:
 
-- A valid HTTP status code in the range 100-599
+- A valid HTTP *integer* status code in the range 100-599
 - A reason phrase (may be an empty string)
 - An indexed array of string header lines
 - A string, seekable stream resource or `Iterator` instance representing the response entity body
@@ -23,7 +27,7 @@ $asgiApp = function(array $asgiEnv) {
 ```
 
 While ASGI-compliant applications may optionally return more data beginning at index 4 of the response
-array, it is not guaranteed to be supported across ASGI-compliant server platforms. Server **MAY**
+array, it is not guaranteed to be supported across ASGI-compliant platforms. Servers **MAY**
 also support responses that specify only an entity body, e.g.:
 
 ```php
@@ -33,103 +37,119 @@ $asgiApp = function(array $asgiEnv) {
 };
 ```
 
-Servers accepting such responses are responsible for extrapolating requisite headers such as
-`Content-Length` from the submitted entity. The acceptance and normalization of entity bodies is
-not required and may not be portable across ASGI-compliant servers. Further discussion of the return
-array may be found in the **RESPONSE** section.
+Servers accepting such responses are responsible for extrapolating the requisite headers from the
+returned entity value. The acceptance and normalization of entity bodies is not required and may not
+be portable across ASGI-compliant servers. Further discussion of the return array may be found in
+the **RESPONSE** section.
 
-### ENVIRONMENT
+## The Environment
 
-The *Environment* **MUST** be an associative array specifying CGI-like headers (as detailed below).
-The *Application* is free to modify the *Environment*. The *Environment* **MUST** include these keys
-(adopted from PEP 333 and PSGI) unless they would normally be empty. For example, an *Environment*
-describing an HTTP request with no entity body is not required to specify `CONTENT-LENGTH` or
+The *Environment* **MUST** be an associative array specifying CGI-like keys as detailed below.
+The *Application* is free to modify the *Environment* but **MUST** include at least the keys
+documented in this section unless they would normally be empty. For example, an *Environment*
+describing an HTTP request without an entity body **MUST NOT** specify `CONTENT-LENGTH` or
 `CONTENT-TYPE` keys.
 
 When an environment key is described as a boolean, its value **MUST** conform to PHP's concept of
-truthy-ness. This means that an empty string or an integer 0 are both valid false values. If a
-boolean key is not present, an application MAY treat this as a false value.
+"truthy-ness". This means that NULL, an empty string and an integer 0 (zero) are all valid "falsy"
+values. If a boolean key is not present, an application **MAY** treat this as boolean false.
 
-The values for all CGI keys (those not prefixed with "ASGI_") **MUST** be of the string type. This
-mandate also applies to "numeric" values such as port numbers or content-length values.
+The values for all CGI-like keys (those not prefixed with "ASGI_") **MUST** be of the string type.
+This mandate also applies to "numeric" values such as port numbers or content-length values.
 
-###### CGI KEYS
+### CGI KEYS
 
-- 'SERVER_NAME'
+##### SERVER_NAME
 
 The host/domain name specified by the client request stripped of any postfixed port numbers. Hosts
-without a DNS name should specify the server's IP address.
+without a DNS name should specify the server's IP address. Servers **MUST** ensure that this value
+is sanitized and free from potential malicious influence from the client-controlled `Host` header.
 
-- 'SERVER_PORT'
+##### SERVER_PORT
 
 The public facing port on which the request was received.
 
-- 'SERVER_PROTOCOL'
+##### SERVER_PROTOCOL
 
-The protocol agreed upon for the current request e.g. 1.0 or 1.1
+The HTTP protocol agreed upon for the current request, e.g. 1.0 or 1.1. This key consists only of
+the numeric protocol version and **MUST NOT** include any prefixing such as "HTTP" or "HTTP/".
 
-- 'REMOTE_ADDR'
+##### REMOTE_ADDR
 
-The IP address of the remote client responsible for the current request
+The IP address of the remote client responsible for the current request. Applications should be
+equipped to deal with both IPv4 and IPv6 addresses.
 
-- 'REMOTE_PORT'
+##### REMOTE_PORT
 
-The port number in use by the remote client when making the current request
+The numeric port number in use by the remote client when making the current request.
 
-- 'REQUEST_METHOD'
+##### REQUEST_METHOD
 
-The HTTP request method used in the current request e.g. GET/HEAD/POST. This value **MUST NOT** be
-an empty string; it is always required.
+The HTTP request method used in the current request, e.g. GET/HEAD/POST.
 
-- 'REQUEST_URI'
+##### REQUEST_URI
 
-The undecoded, raw request URL line. It is the raw URI path and query part that appears in the
-HTTP <code>GET /... HTTP/1.x</code> line and does not contain URI scheme and host names. This value
-**MUST NOT** be an empty string; it is always required.
+The undecoded raw URI parsed from the HTTP request start line. This value corresponds to the *full*
+URI shown here in brackets:
 
-- 'QUERY_STRING'
+```
+HTTP [GET http://mysite.com/path/to/resource] HTTP/1.1
+```
+
+This value is dependent upon the raw request submitted by the client. It may be a full absolute URI
+as shown above but it may also contain only the URI path and query components.
+
+##### REQUEST_URI_PATH
+
+Contains *only* the undecoded raw path and query components from the request URI. This value differs
+from the `REQUEST_URI` key in that it **MUST** only represent the URI path and query submitted in
+the request even if the raw request start line specified a full absolute URI.
+
+##### REQUEST_URI_SCHEME
+
+The request's URI scheme: `"https"` if the connection is encrypted, `"http"` otherwise. Servers
+**MUST** assign this value appropriately given the state of encryption on the client connections
+used to complete this request-response cycle.
+
+##### QUERY_STRING
 
 The portion of the request URL that follows the ?, if any. This key **MAY** be empty, but **MUST**
-always be present, even if empty.
+always be present, even when empty.
 
-- 'CONTENT_TYPE'
+##### CONTENT_TYPE
 
-The request's MIME type, as specified by the client. The presence or absence of this key **SHOULD**
-correspond to the presence or absence of HTTP Content-Type header in the request.
+The request's MIME type, as specified by the client. The presence or absence of this key **MUST**
+correspond to the presence or absence of an HTTP Content-Type header in the request.
 
-- 'CONTENT_LENGTH'
+##### CONTENT_LENGTH
 
-The length of the content in bytes. The presence or absence of this key **SHOULD** correspond to the
-presence or absence of HTTP Content-Length header in the request.
+The length of the request entity body in bytes. The presence or absence of this key **MUST**
+correspond to the presence or absence of HTTP Content-Length header in the request.
 
-###### ASGI KEYS
+### ASGI KEYS
 
-- 'ASGI_VERSION'
+##### ASGI_VERSION
 
 The ASGI protocol version adhered to by the server generating the request environment
 
-- 'ASGI_URL_SCHEME'
-
-The HTTP URL scheme for this request: `"https"` if the connection is encrypted, `"http"` otherwise.
-
-- 'ASGI_INPUT'
+##### ASGI_INPUT
 
 An open stream resource referencing to the request entity body (if present in the request).
 
-- 'ASGI_ERROR'
+##### ASGI_ERROR
 
 An open stream resource referencing the server's error stream. This makes it possible for applications
 to centralize error logging in a single location.
 
-- 'ASGI_NON_BLOCKING'
+##### ASGI_NON_BLOCKING
 
-`TRUE` if the server is calling the application in a non-blocking event loop.
+`TRUE` if the server is invoking the application inside a non-blocking event loop.
 
-- 'ASGI_LAST_CHANCE'
+##### ASGI_LAST_CHANCE
 
 `TRUE` if this is the final time the server expects to notify a handler of the current request.
 
-###### HTTP_* KEYS
+### HTTP_* KEYS
 
 These keys correspond to the client-supplied HTTP request headers. The presence or absence of these
 keys should correspond to the presence or absence of the appropriate HTTP header in the request. The
@@ -156,56 +176,53 @@ $asgiEnv = [
     'REMOTE_PORT'        => '9382',
     'REQUEST_METHOD'     => 'GET',
     'REQUEST_URI'        => '/hello_world.php?foo=bar',
+    'REQUEST_URI_PATH'   => '/hello_world.php?foo=bar',
+    'REQUEST_URI_SCHEME' => 'http',
     'QUERY_STRING'       => '?foo=bar',
     'CONTENT_TYPE'       => 'text/plain',
     'CONTENT_LENGTH'     => '42',
 
-    // --- BEGIN ASGI-SPECIFIC KEYS --- //
+    // --- ASGI_* KEYS --- //
 
-    'ASGI_VERSION'       => '0.1',
-    'ASGI_URL_SCHEME'    => 'http',
-    'ASGI_INPUT'         => NULL,
-    'ASGI_ERROR'         => $resource,
-    'ASGI_NON_BLOCKING'  => TRUE,
-    'ASGI_LAST_CHANCE'   => TRUE,
+    'ASGI_VERSION'          => '0.1',
+    'ASGI_INPUT'            => NULL,
+    'ASGI_ERROR'            => $resource,
+    'ASGI_NON_BLOCKING'     => TRUE,
+    'ASGI_LAST_CHANCE'      => TRUE,
 
-    // --- BEGIN HTTP_* KEYS --- //
+    // --- HTTP_* KEYS --- //
 
-    'HTTP_HOST' => '127.0.0.1:1337',
-    'HTTP_CONNECTION' => 'keep-alive',
-    'HTTP_ACCEPT' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'HTTP_USER_AGENT' => 'Mozilla/5.0 (X11; Linux x86_64) ...',
-    'HTTP_ACCEPT_ENCODING' => 'gzip,deflate,sdch',
-    'HTTP_ACCEPT_LANGUAGE' => 'en-US,en;q=0.8',
-    'HTTP_ACCEPT_CHARSET' => 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
-    'HTTP_SET_COOKIE'   => [
-        'cookie1',
-        'cookie2',
-        'cookie3'
-    ];
+    'HTTP_HOST'             => 'mysite.com',
+    'HTTP_CONNECTION'       => 'keep-alive',
+    'HTTP_ACCEPT'           => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'HTTP_USER_AGENT'       => 'Mozilla/5.0 (X11; Linux x86_64) ...',
+    'HTTP_ACCEPT_ENCODING'  => 'gzip,deflate,sdch',
+    'HTTP_ACCEPT_LANGUAGE'  => 'en-US,en;q=0.8',
+    'HTTP_ACCEPT_CHARSET'   => 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
+    'HTTP_COOKIE'           => 'var1=value1&var2=value2';
 ];
 ```
 
 
-### RESPONSE
+## Application Response
 
 Applications **SHOULD** return a response as an indexed four element array. The array indexes **MUST** be
 ordered from 0 to 4 and associative keys **MUST NOT** be used. The response array consists of the following
 elements:
 
-###### STATUS
+##### STATUS
 
 An HTTP status code. This **MUST** be a scalar value that, when cast as an integer, has a value greater
-than or equal to 100, less than or equal to 599. Status codes **SHOULD** used to reflect the semantic
+than or equal to 100, less than or equal to 599. Status codes **SHOULD** be used to reflect the semantic
 meaning of the HTTP status codes documented in RFC 2616 section 10.
 
-###### REASON
+##### REASON
 
 The reason **MAY** be an empty string or `NULL` value and **SHOULD** be an HTTP reason phrase as documented
 in RFC 2616. The specification of the reason phrase is explicitly separated from the numeric status
 code to simplify server processing of responses by their status.
 
-###### HEADERS
+##### HEADERS
 
 The headers **MUST** be an associative array of key/value pairs. Header keys are case-insensitive and
 may be normalized by servers without altering their meaning. All header keys must conform to the
@@ -218,33 +235,20 @@ The value of each header key **MUST** contain either:
 
 Any scalar header values **MUST** adhere to the ABNF rules specified in RFC 2616 section 4.2.
 
-In the event of an array header value, each value **MUST** be sent to the client separately (e.g.
-multiple `Set-Cookie` headers).
+In the event of an array header value, each value **MUST** be sent by a server to the client
+individually (e.g. multiple `Set-Cookie` headers).
 
 Applications **SHOULD** endeavor to populate `Content-Type` key and, if known, the `Content-Length`
-key. Servers may, but are not required to normalize and/or correct invalid header values.
+key. Servers **MAY** -- but are not required to -- normalize and/or correct invalid header values.
 
-###### BODY
+##### BODY
 
 The response body **MUST** be returned from the application as any one of the following:
 
 - A `NULL` value
 - A string (possibly empty)
 - An open PHP stream resource
-- An object instance implementing the `Iterator` interface
 
 `NULL`/string entity bodies are self-explanatory and should be returned directly to the client.
 Entity bodies returned in stream resource form **MUST** be seekable to allow servers the opportunity
-to add/correct missing `Content-Length` headers prior to sending the entity. The prohibition on
-unseekable resource streams also prevents the use of custom stream wrappers to stream entity data
-directly to clients. This decision is intenional and meant to enforce the use of `Iterator` body
-values as the method for streaming entities from server to client.
-
-###### DELAYED RESPONSE AND STREAMING BODIES
-
-In addition to strings and stream resources, all ASGI-compliant servers **MUST** support the output
-of `Iterator` response entity bodies. `Iterator` bodies may be streamed to both HTTP/1.0 and HTTP/1.1
-clients. HTTP/1.1 servers **MUST** chunk-encode the non-empty results of calls to `Iterator::current`
-until `Iterator::valid` returns `FALSE` when responding to HTTP/1.1 clients. Streaming responses
-**MUST** be accompanied by a `Connection: close` header when sent to HTTP/1.0 clients as the length
-is not known when response output begins.
+to add/correct missing `Content-Length` headers prior to sending the entity.
