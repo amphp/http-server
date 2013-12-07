@@ -13,7 +13,7 @@ No. There's no composer right now. I'll add it when the project is more mature.
 
 ## Running Your Server
 
-To start a server simply pass your server config file to the aerys binary:
+To start a server simply pass your config file to the aerys binary:
 
 ```bash
 $ bin/aerys --config = "/path/to/config.php"
@@ -100,8 +100,8 @@ $myApp = (new App)->addUserResponder(function() {
 ##### Asynchronous Responses
 
 The most important thing to remember about Aerys (and indeed any server running inside a non-blocking
-event loop) is that your application callables must not block execution with slow operations such as
-synchronous database access. Application callables may employ `yield` to act as `Generator`s and
+event loop) is that your application callables must not block execution with slow operations like
+synchronous database access. Application callables may employ `yield` to act as a `Generator` and
 cooperatively multitask with the server using non-blocking libraries.
 
 ```php
@@ -109,26 +109,59 @@ cooperatively multitask with the server using non-blocking libraries.
 use Aerys\Framework\App;
 require __DIR__ . '/path/to/aerys/autoload.php';
 
-function multiplyByTwoAsync($arg, callable $onCompletion) {
-    $onCompletion($arg*2); // <-- [$arg*2] returned to your generator
+// in reality we'd use a non-blocking lib to do something here
+function asyncMultiply($x, $y, callable $onCompletion) {
+    $result = $x*$y;
+    $onCompletion($result); // <-- array($result) is returned to our generator
 }
 
-function myAsyncRequestResponder($asgiEnv) {
-    $arg = 1;
-
-    list($arg) = (yield function(callable $onCompletion) use ($arg) {
-        multiplyByTwoAsync($arg, $onCompletion);
-    });
-
-    list($arg) = (yield function(callable $onCompletion) use ($arg) {
-        multiplyByTwoAsync($arg, $onCompletion);
-    });
-
-    yield "<html><body><h1>Woot! Generated {$arg}!</h1></body></html>";
+function sexyAsyncResponder($asgiEnv) {
+    $x = 6; $y = 7;
+    list($multiplicationResult) = (yield 'asyncMultiply' => [$x, $y]);
+    yield "<html><body><h1>Chicks dig brevity ({$multiplicationResult})!</h1></body></html>";
 };
 
-$myApp = (new App)->setPort(1338)->addUserResponder('myAsyncRequestResponder');
+function uglyAsyncResponder($asgiEnv) {
+    $x = 6; $y = 7;
+    list($multiplicationResult) = (yield function(callable $onCompletion) use ($x, $y) {
+        asyncMultiply($x, $y, $onCompletion);
+    });
+    yield "<html><body><h1>Ugly, but it works ({$multiplicationResult})!</h1></body></html>";
+};
+
+$myApp = (new App)
+    ->setPort(1338)
+    ->addRoute('GET', '/', 'sexyAsyncResponder')
+    ->addRoute('GET', '/other', 'uglyAsyncResponder');
 ```
+
+Just to demonstrate that we aren't limited only to functions, lets look at an example that uses
+instance methods:
+
+```php
+<?php
+use Aerys\Framework\App;
+require __DIR__ . '/path/to/aerys/autoload.php';
+
+class MyHandler {
+    private $redis;
+    function __construct(AsyncRedisClient $redis) {
+        $this->redis = $redis;
+    }
+    function doSomething() {
+        list($asyncResult) = (yield [$this->redis, 'get'] => 'mykey');
+        yield $this->manipulateMyAsyncData($asyncResult);
+    }
+    private function manipulateMyAsyncData($asyncResult) {
+        return "<html><body>{$asyncResult}</body></html>";
+    }
+}
+
+$myApp = (new App)->addRoute('GET', '/', 'MyHandler::doSomething');
+```
+
+In the above example we demonstrate the use of a non-scalar key in our yield statement to execute
+a local asynchronous instance method.
 
 ##### Named Hosts
 

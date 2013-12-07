@@ -789,19 +789,27 @@ class Server {
 
     private function processGeneratorResponse($requestId, \Generator $generator) {
         try {
-            $result = $generator->current();
+            $key = $generator->key();
+            $value = $generator->current();
 
-            if (is_callable($result)) {
-                $result(function() use ($requestId, $generator) {
+            if (is_callable($value)) {
+                $value(function() use ($requestId, $generator) {
                     $generator->send(func_get_args());
                     $this->processGeneratorResponse($requestId, $generator);
                 });
-            } elseif (is_null($result)) {
+            } elseif (is_callable($key)) {
+                $value = is_array($value) ? $value : [$value];
+                array_push($value, function() use ($requestId, $generator) {
+                    $generator->send(func_get_args());
+                    $this->processGeneratorResponse($requestId, $generator);
+                });
+                call_user_func_array($key, $value);
+            } elseif (is_null($value)) {
                 throw new \RuntimeException(
                     'Invalid NULL yielded from Generator response'
                 );
             } else {
-                $this->setResponse($requestId, $result);
+                $this->setResponse($requestId, $value);
             }
         } catch (\Exception $e) {
             $msg = $this->showErrors ? $e->__toString() : 'Something went terribly wrong';
