@@ -145,10 +145,6 @@ to centralize error logging in a single location.
 
 `TRUE` if the server is invoking the application inside a non-blocking event loop.
 
-##### ASGI_LAST_CHANCE
-
-`TRUE` if this is the final time the server expects to notify a handler of the current request.
-
 ### HTTP_* KEYS
 
 These keys correspond to the client-supplied HTTP request headers. The presence or absence of these

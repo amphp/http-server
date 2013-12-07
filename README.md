@@ -41,9 +41,8 @@ $ bin/aerys --h
 
 ##### Hello World
 
-Any string, seekable stream resource or Iterator instance may be returned as a response. Streams
-and Iterators are automatically streamed to clients whereas strings are obviously fully buffered
-in memory.
+Any string or seekable stream resource may be returned as a response. Resources are automatically
+streamed to clients whereas strings are obviously fully buffered in memory.
 
 ```php
 <?php
@@ -115,18 +114,19 @@ function asyncMultiply($x, $y, callable $onCompletion) {
     $onCompletion($result); // <-- array($result) is returned to our generator
 }
 
+// The key-value syntax assumes the async key accepts its fulfillment argument as the last parameter
 function sexyAsyncResponder($asgiEnv) {
     $x = 6; $y = 7;
-    list($multiplicationResult) = (yield 'asyncMultiply' => [$x, $y]);
-    yield "<html><body><h1>Chicks dig brevity ({$multiplicationResult})!</h1></body></html>";
+    list($result) = (yield 'asyncMultiply' => [$x, $y]);
+    yield "<html><body><h1>Chicks dig brevity ({$result})!</h1></body></html>";
 };
 
 function uglyAsyncResponder($asgiEnv) {
     $x = 6; $y = 7;
-    list($multiplicationResult) = (yield function(callable $onCompletion) use ($x, $y) {
+    list($result) = (yield function(callable $onCompletion) use ($x, $y) {
         asyncMultiply($x, $y, $onCompletion);
     });
-    yield "<html><body><h1>Ugly, but it works ({$multiplicationResult})!</h1></body></html>";
+    yield "<html><body><h1>Ugly, but it works ({$result})!</h1></body></html>";
 };
 
 $myApp = (new App)
@@ -135,8 +135,9 @@ $myApp = (new App)
     ->addRoute('GET', '/other', 'uglyAsyncResponder');
 ```
 
-Just to demonstrate that we aren't limited only to functions, lets look at an example that uses
-instance methods:
+To demonstrate that we aren't limited to functions lets look at an example using instance methods.
+Here we use a non-scalar callable key in our yield statement to execute a local property's method.
+Note that *any* valid callable may be passed in the key portion of the `yield` statement:
 
 ```php
 <?php
@@ -159,9 +160,6 @@ class MyHandler {
 
 $myApp = (new App)->addRoute('GET', '/', 'MyHandler::doSomething');
 ```
-
-In the above example we demonstrate the use of a non-scalar key in our yield statement to execute
-a local asynchronous instance method.
 
 ##### Named Hosts
 
