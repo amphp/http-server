@@ -31,7 +31,7 @@ class ModLogTest extends \PHPUnit_Framework_TestCase {
             'CONTENT_TYPE' => '',
             'CONTENT_LENGTH' => '',
             'ASGI_VERSION' => '0.1',
-            'ASGI_URL_SCHEME' => 'http',
+            'REQUEST_URI_SCHEME' => 'http',
             'ASGI_INPUT' => '',
             'ASGI_ERROR' => '',
             'ASGI_CAN_STREAM' => '1',

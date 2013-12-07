@@ -214,7 +214,6 @@ class Request {
             'ASGI_LAST_CHANCE'  => (bool) $this->body, // @TODO Fix this to use "headersOnly" from parsed request array
             'ASGI_ERROR'        => NULL, // @TODO Should this be passed as a method param? Do we even need this?
             'ASGI_INPUT'        => $this->body,
-            'ASGI_URL_SCHEME'   => $uriScheme,
             'SERVER_PORT'       => $this->client->serverPort,
             'SERVER_ADDR'       => $this->client->serverAddress,
             'SERVER_NAME'       => $serverName,
@@ -224,6 +223,7 @@ class Request {
             'REQUEST_METHOD'    => $this->method,
             'REQUEST_URI'       => $this->uri,
             'REQUEST_URI_PATH'  => $this->uriPath,
+            'REQUEST_URI_SCHEME'=> $uriScheme,
             'QUERY_STRING'      => $this->uriQuery
         ];
 
