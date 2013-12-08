@@ -284,6 +284,75 @@ $myWebsocketApp = (new Aerys\Framework\App)
     ->addWebsocket('/echo', 'Ex401_WebsocketEchoEndpoint', $options = []);
 ```
 
+Applications may yield/return data directly to clients or call websocket broker methods to target
+individual clients.
+
+###### Websocket Broker API
+
+- Broker::sendText($socketIdOrArrayOfIds, $stringOrStream)
+- Broker::sendBinary($socketIdOrArrayOfIds, $stringOrStream)
+- Broker::getStats($socketId)
+- Broker::getEnvironment($socketId)
+- Broker::close($socketIdOrArrayOfIds, $optionalCloseCode, $optionalCloseReason)
+
+
+A simple websocket endpoint implementation class is shown here ...
+
+```php
+<?php
+
+use Aerys\Responders\Websocket\Broker,
+    Aerys\Responders\Websocket\Message,
+    Aerys\Responders\Websocket\Endpoint;
+
+class Ex402_WsRot13Endpoint implements Endpoint {
+
+    private $broker;
+    private $clients = [];
+
+    function onStart(Broker $broker) {
+        $this->broker = $broker;
+    }
+
+    function onOpen($socketId) {
+        $this->clients[$socketId] = $socketId;
+
+        // If Endpoint::onOpen yields/returns a string or seekable stream that value
+        // is sent to the $socketId that connected to initiate the onOpen event. This action
+        // is equivalent to calling Broker::sendText($socketId, $data). If you need to
+        // return BINARY data you must manually call Binary::sendBinary($socketId, $data).
+        return json_encode(['hello' => 'Welcome!']);
+    }
+
+    function onMessage($socketId, Message $msg) {
+        $stringToEncode = $msg->getPayload();
+        list($result) = (yield [$this, 'asyncRot13'] => $stringToEncode);
+
+        // If Endpoint::onMessage yields/returns a string or seekable stream that value
+        // is sent to the $socketId that sent us the message to initiate the onMessage event.
+        // This action is equivalent to calling Broker::sendText($socketId, $data). If you
+        // need to return BINARY data you must manually call Broker::sendBinary($socketId, $data).
+        yield $result;
+    }
+
+    private function asyncRot13($string, callable $onCompletion) {
+        // In reality we'd do something involving a non-blocking lib here. For the purposes
+        // of this example we'll perform the rot13 action ourselves.
+        $rot13Txt = str_rot13($string);
+        $result = json_encode(['rot13' => $rot13Txt])
+        $onCompletion($result); // <-- array($result) is returned to our yield statement
+    }
+
+    function onClose($socketId, $code, $reason) {
+        unset($this->clients[$socketId]);
+    }
+
+}
+
+
+```
+
+
 ##### Reverse Proxying
 
 Aerys can also act as a reverse proxy and route certain requests through to backend servers. Using

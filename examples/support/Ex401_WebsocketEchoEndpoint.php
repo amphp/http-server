@@ -4,6 +4,11 @@ use Aerys\Responders\Websocket\Message,
     Aerys\Responders\Websocket\Endpoint,
     Aerys\Responders\Websocket\Broker;
 
+function asyncMultiply($x, $y, callable $onCompletion) {
+    $result = $x*$y; // <-- in reality we'd use a non-blocking lib to do something here
+    $onCompletion($result); // <-- array($result) is returned to our generator
+}
+
 class Ex401_WebsocketEchoEndpoint implements Endpoint {
 
     const RECENT_MSG_LIMIT = 10;
@@ -22,13 +27,9 @@ class Ex401_WebsocketEchoEndpoint implements Endpoint {
     function onOpen($socketId) {
         $this->sockets[$socketId] = $socketId;
         $this->broadcastUserCount();
-        $this->sendNewUserRecentMessages($socketId);
-    }
+        $openMessage = self::RECENT_MSG_PREFIX . json_encode($this->recentMessages);
 
-    private function sendNewUserRecentMessages($socketId) {
-        $recipient = $socketId;
-        $msg = self::RECENT_MSG_PREFIX . json_encode($this->recentMessages);
-        $this->broker->sendText($recipient, $msg);
+        return $openMessage;
     }
 
     private function broadcastUserCount() {
@@ -51,6 +52,7 @@ class Ex401_WebsocketEchoEndpoint implements Endpoint {
         unset($recipients[$socketId]);
 
         $msg = self::USER_ECHO_PREFIX . $payload;
+
         $this->broker->sendText($recipients, $msg);
     }
 

@@ -436,7 +436,12 @@ class Broker implements \Countable, AsgiResponder {
 
     private function onOpen(Session $session) {
         try {
-            $session->endpoint->onOpen($session->id);
+            $result = $session->endpoint->onOpen($session->id);
+            if ($result instanceof \Generator) {
+                $this->cooperate($result);
+            } elseif (is_string($result) || is_resource($result)) {
+                $this->broadcast($session->id, Frame::OP_TEXT, $result);
+            }
         } catch (\Exception $userlandException) {
             $endpointError = new EndpointException(
                 get_class($session->endpoint) . '::onOpen() threw an uncaught exception',
@@ -502,7 +507,12 @@ class Broker implements \Countable, AsgiResponder {
 
     private function onMessage(Session $session, Message $msg) {
         try {
-            $session->endpoint->onMessage($session->id, $msg);
+            $result = $session->endpoint->onMessage($session->id, $msg);
+            if ($result instanceof \Generator) {
+                $this->cooperate($result, $session->id);
+            } elseif (is_string($result) || is_resource($result)) {
+                $this->broadcast($session->id, Frame::OP_TEXT, $result);
+            }
         } catch (\Exception $userlandException) {
             $endpointError = new EndpointException(
                 get_class($session->endpoint) . '::onMessage() threw an uncaught exception',
@@ -510,6 +520,31 @@ class Broker implements \Countable, AsgiResponder {
                 $userlandException
             );
             $this->onEndpointError($endpointError);
+        }
+    }
+
+    private function cooperate(\Generator $generator, $socketId = NULL) {
+        $key = $generator->key();
+        $value = $generator->current();
+
+        if (is_callable($key)) {
+            $value = is_array($value) ? $value : [$value];
+            array_push($value, function() use ($generator, $socketId) {
+                $generator->send(func_get_args());
+                $this->cooperate($generator, $socketId);
+            });
+            call_user_func_array($key, $value);
+        } elseif (is_callable($value)) {
+            $value(function() use ($generator, $socketId) {
+                $generator->send(func_get_args());
+                $this->cooperate($generator, $socketId);
+            });
+        } elseif (is_string($value) || is_resource($value)) {
+            $this->broadcast($socketId, Frame::OP_TEXT, $value);
+        } elseif (isset($value, $socketId)) {
+            $generator->throw(new EndpointException(
+                sprintf('Invalid generator yield result: %s', gettype($value))
+            ));
         }
     }
 
@@ -793,7 +828,10 @@ class Broker implements \Countable, AsgiResponder {
     private function onClose(Session $session, $code, $reason) {
         try {
             $this->unloadSession($session);
-            $session->endpoint->onClose($session->id, $code, $reason);
+            $result = $session->endpoint->onClose($session->id, $code, $reason);
+            if ($result instanceof \Generator) {
+                $this->cooperate($result);
+            }
         } catch (\Exception $userlandException) {
             $endpointError = new EndpointException(
                 get_class($session->endpoint) . '::onClose() threw an uncaught exception',
