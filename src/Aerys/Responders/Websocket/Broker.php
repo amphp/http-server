@@ -436,7 +436,7 @@ class Broker implements \Countable, AsgiResponder {
 
     private function onOpen(Session $session) {
         try {
-            $result = $session->endpoint->onOpen($session->id);
+            $result = $session->endpoint->onOpen($this, $session->id);
             if ($result instanceof \Generator) {
                 $this->cooperate($result);
             } elseif (is_string($result) || is_resource($result)) {
@@ -507,7 +507,7 @@ class Broker implements \Countable, AsgiResponder {
 
     private function onMessage(Session $session, Message $msg) {
         try {
-            $result = $session->endpoint->onMessage($session->id, $msg);
+            $result = $session->endpoint->onMessage($this, $session->id, $msg);
             if ($result instanceof \Generator) {
                 $this->cooperate($result, $session->id);
             } elseif (is_string($result) || is_resource($result)) {
@@ -539,9 +539,9 @@ class Broker implements \Countable, AsgiResponder {
                 $generator->send(func_get_args());
                 $this->cooperate($generator, $socketId);
             });
-        } elseif (is_string($value) || is_resource($value)) {
+        } elseif (isset($socketId) && (is_string($value) || is_resource($value))) {
             $this->broadcast($socketId, Frame::OP_TEXT, $value);
-        } elseif (isset($value, $socketId)) {
+        } elseif (isset($value)) {
             $generator->throw(new EndpointException(
                 sprintf('Invalid generator yield result: %s', gettype($value))
             ));
@@ -828,7 +828,7 @@ class Broker implements \Countable, AsgiResponder {
     private function onClose(Session $session, $code, $reason) {
         try {
             $this->unloadSession($session);
-            $result = $session->endpoint->onClose($session->id, $code, $reason);
+            $result = $session->endpoint->onClose($this, $session->id, $code, $reason);
             if ($result instanceof \Generator) {
                 $this->cooperate($result);
             }
@@ -902,10 +902,6 @@ class Broker implements \Countable, AsgiResponder {
 
     private function onServerStart() {
         $this->state = self::$STARTED;
-        foreach ($this->endpoints as $endpointArray) {
-            $endpoint = $endpointArray[0];
-            $endpoint->onStart($this);
-        }
     }
 
     private function onServerStopping() {

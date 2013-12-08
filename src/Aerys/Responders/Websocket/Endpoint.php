@@ -5,44 +5,45 @@ namespace Aerys\Responders\Websocket;
 interface Endpoint {
 
     /**
-     * Invoked when the websocket broker is ready to accept clients on the endpoint
-     *
-     * Websocket endpoints do not communicate directly with the connected sockets. Instead, endpoints
-     * tell a broker instance what and to whom data should be sent and the broker takes care of the
-     * protocol details so applications don't have to know anything about RFC 6455. Endpoints must
-     * store a reference to the broker object when Endpoint::onStart is invoked or they won't be
-     * able to communicate with clients who connect to the endpoint.
-     *
-     * Websocket endpoints have access to a wide range of functionality and information retrieval
-     * for connected client sockets through their broker objects. This functionality may be explored
-     * inside the Broker class API.
-     *
-     * @param \Aerys\Responders\Websocket\Broker $broker
-     */
-    function onStart(Broker $broker);
-
-    /**
      * Invoked when a new client connects to the endpoint
      *
+     * If Endpoint::onOpen yields/returns a string or seekable stream that value is sent to the
+     * $socketId that connected to initiate the onOpen event. This action is equivalent to calling
+     * $broker->sendText($socketId, $data). If you need to return BINARY data you must manually call
+     * $broker->sendBinary($socketId, $data).
+     *
+     * @param \Aerys\Responders\Websocket\Broker $broker
      * @param int $socketId A unique identifier mapping to the newly connected client socket
      */
-    function onOpen($socketId);
+    function onOpen(Broker $broker, $socketId);
 
     /**
      * Invoked when a data message is received from a connected endpoint client
      *
+     * If Endpoint::onMessage yields/returns a string or seekable stream that value is sent to the
+     * $socketId reponsible for the message triggering the onMessage event. This action is the same
+     * as calling $broker->sendText($socketId, $data). If you need to return BINARY data you must
+     * manually call $broker->sendBinary($socketId, $data).
+     *
+     * @param \Aerys\Responders\Websocket\Broker $broker
      * @param int $socketId A unique identifier mapping to the newly connected client socket
      * @param \Aerys\Responders\Websocket\Message $message The received websocket data
      */
-    function onMessage($socketId, Message $message);
+    function onMessage(Broker $broker, $socketId, Message $message);
 
     /**
-     * Invoked after a client disconnection
+     * Invoked AFTER a client disconnects.
      *
+     * Endpoint::onClose implementations may use yield to act as generators and cooperatively
+     * multitask with the websocket responder. However, unlike Endpoint::onOpen and
+     * Endpoint::onMessage any uncallable values yielded or returned by this method will be
+     * discarded.
+     *
+     * @param \Aerys\Responders\Websocket\Broker $broker
      * @param int $socketId A unique identifier mapping to the newly connected client socket
      * @param int $code A numeric code indicating the "why" of the disconnection
      * @param string $reason A brief description of the close event
      */
-    function onClose($socketId, $code, $reason);
+    function onClose(Broker $broker, $socketId, $code, $reason);
 
 }

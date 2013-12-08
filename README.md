@@ -268,10 +268,10 @@ $redirectApp = (new App)
 ##### Websockets
 
 Adding websockets to your server is as simple as calling `App::addWebsocket` with the relevant
-URI path and the name of your websocket endpoint class. All an `Endpoint` must do is implement the
-[websocket `Endpoint`][endpoint-interface] interface and Aerys will auto-instantiate and provision
-the endpoint. In the below example we add the endpoint alongside a static document root that serves
-the HTML and javascript needed to run the websocket demo.
+URI path and the name of a websocket endpoint class. All an endpoint must do is implement the
+websocket [`Endpoint`][endpoint-interface] interface and Aerys will auto-instantiate and provision
+the class. In the below example we add the endpoint alongside a static document root that serves the
+HTML and javascript needed to run the websocket demo.
 
 ```php
 <?php
@@ -284,19 +284,26 @@ $myWebsocketApp = (new Aerys\Framework\App)
     ->addWebsocket('/echo', 'Ex401_WebsocketEchoEndpoint', $options = []);
 ```
 
-Applications may yield/return data directly to clients or call websocket broker methods to target
-individual clients.
+> **IMPORTANT:** Websocket endpoints are NOT normal HTTP resources.
+>
+> If you actually want to see something happen with a websocket endpoint you need to simultaneously
+> serve an HTML resource with javascript that connects to that endpoint to send data back and forth
+> over the websocket connection. If you serve a lone websocket endpoint and try to open the relevant
+> URI in a browser you'll receive a *426 Upgrade Required* response. Websockets don't work that way;
+> they aren't pages you can simply open in a browser.
 
-###### Websocket Broker API
+Websocket endpoints may cooperatively multitask with the server in the same way as HTTP responders
+using generators and the `yield` expression. Any string or stream yielded (or returned) is sent to
+the client that initiated the relevant event. Endpoints may use the websocket `Broker` API for
+complex operations and extended functionality:
 
-- Broker::sendText($socketIdOrArrayOfIds, $stringOrStream)
-- Broker::sendBinary($socketIdOrArrayOfIds, $stringOrStream)
-- Broker::getStats($socketId)
-- Broker::getEnvironment($socketId)
-- Broker::close($socketIdOrArrayOfIds, $optionalCloseCode, $optionalCloseReason)
+- `Broker::sendText($socketIdOrArrayOfIds, $stringOrStream)`
+- `Broker::sendBinary($socketIdOrArrayOfIds, $stringOrStream)`
+- `Broker::getStats($socketId)`
+- `Broker::getEnvironment($socketId)`
+- `Broker::close($socketIdOrArrayOfIds, $optionalCloseCode, $optionalCloseReason)`
 
-
-A simple websocket endpoint implementation class is shown here ...
+An extremely simple websocket `Endpoint` implementation is shown below:
 
 ```php
 <?php
@@ -305,51 +312,22 @@ use Aerys\Responders\Websocket\Broker,
     Aerys\Responders\Websocket\Message,
     Aerys\Responders\Websocket\Endpoint;
 
-class Ex402_WsRot13Endpoint implements Endpoint {
+class Rot13Endpoint implements Endpoint {
 
-    private $broker;
-    private $clients = [];
-
-    function onStart(Broker $broker) {
-        $this->broker = $broker;
-    }
-
-    function onOpen($socketId) {
-        $this->clients[$socketId] = $socketId;
-
-        // If Endpoint::onOpen yields/returns a string or seekable stream that value
-        // is sent to the $socketId that connected to initiate the onOpen event. This action
-        // is equivalent to calling Broker::sendText($socketId, $data). If you need to
-        // return BINARY data you must manually call Binary::sendBinary($socketId, $data).
+    function onOpen(Broker $broker, $socketId) {
         return json_encode(['hello' => 'Welcome!']);
     }
 
-    function onMessage($socketId, Message $msg) {
+    function onMessage(Broker $broker, $socketId, Message $msg) {
         $stringToEncode = $msg->getPayload();
-        list($result) = (yield [$this, 'asyncRot13'] => $stringToEncode);
-
-        // If Endpoint::onMessage yields/returns a string or seekable stream that value
-        // is sent to the $socketId that sent us the message to initiate the onMessage event.
-        // This action is equivalent to calling Broker::sendText($socketId, $data). If you
-        // need to return BINARY data you must manually call Broker::sendBinary($socketId, $data).
-        yield $result;
+        return json_encode(['rot13' => str_rot13($stringToEncode)]);
     }
 
-    private function asyncRot13($string, callable $onCompletion) {
-        // In reality we'd do something involving a non-blocking lib here. For the purposes
-        // of this example we'll perform the rot13 action ourselves.
-        $rot13Txt = str_rot13($string);
-        $result = json_encode(['rot13' => $rot13Txt])
-        $onCompletion($result); // <-- array($result) is returned to our yield statement
+    function onClose(Broker $broker, $socketId, $code, $reason) {
+        // The client ($socketId) disconnected, but we don't care so we
+        // don't do anything here.
     }
-
-    function onClose($socketId, $code, $reason) {
-        unset($this->clients[$socketId]);
-    }
-
 }
-
-
 ```
 
 
