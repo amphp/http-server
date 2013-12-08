@@ -367,7 +367,7 @@ require __DIR__ . '/path/to/aerys/autoload.php';
 require __DIR__ . '/support/Ex401_WebsocketEchoEndpoint.php';
 
 $myWebsocketApp = (new Aerys\Framework\App)
-    ->setReverseProxy('192.168.1.5:1500', ['proxyPassHeaders' => [
+    ->reverseProxyTo('192.168.1.5:1500', ['proxyPassHeaders' => [
         'Host'            => '$host',
         'X-Forwarded-For' => '$remoteAddr',
         'X-Real-Ip'       => '$serverAddr'

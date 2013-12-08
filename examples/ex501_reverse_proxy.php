@@ -1,9 +1,13 @@
 <?php
 
+use Aerys\Framework\App;
 require __DIR__ . '/../vendor/autoload.php';
-require __DIR__ . '/support/Ex401_WebsocketEchoEndpoint.php';
 
-$myWebsocketApp = (new Aerys\Framework\App)
-    ->setReverseProxy('192.168.1.5:1500')
-    ->setDocumentRoot(__DIR__ . '/support/docroot/websockets')
-    ->addWebsocket('/echo', 'Ex401_WebsocketEchoEndpoint');
+$myApp = (new App)
+    ->addWebsocket('/echo', 'MyWebsocketEndpointClass')
+    ->setDocumentRoot('/path/to/static/file/directory')
+    ->reverseProxyTo('192.168.1.5:1500', ['proxyPassHeaders' => [
+        'Host'            => '$host',
+        'X-Forwarded-For' => '$remoteAddr',
+        'X-Real-Ip'       => '$serverAddr'
+    ]]);
