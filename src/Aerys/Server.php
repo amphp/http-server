@@ -787,7 +787,7 @@ class Server {
         return defined($reasonConst) ? constant($reasonConst) : '';
     }
 
-    private function processGeneratorResponse($requestId, \Generator $generator) {
+    private function cooperate($requestId, \Generator $generator) {
         try {
             $key = $generator->key();
             $value = $generator->current();
@@ -795,16 +795,16 @@ class Server {
             if (is_callable($value)) {
                 $value(function() use ($requestId, $generator) {
                     $generator->send(func_get_args());
-                    $this->processGeneratorResponse($requestId, $generator);
+                    $this->cooperate($requestId, $generator);
                 });
             } elseif (is_callable($key)) {
                 $value = is_array($value) ? $value : [$value];
                 array_push($value, function() use ($requestId, $generator) {
                     $generator->send(func_get_args());
-                    $this->processGeneratorResponse($requestId, $generator);
+                    $this->cooperate($requestId, $generator);
                 });
                 call_user_func_array($key, $value);
-            } elseif (is_null($value)) {
+            } elseif (!isset($value)) {
                 throw new \RuntimeException(
                     'Invalid NULL yielded from Generator response'
                 );
@@ -825,7 +825,7 @@ class Server {
         if (!isset($this->requestIdMap[$requestId])) {
             return;
         } elseif ($asgiResponse instanceof \Generator) {
-            return $this->processGeneratorResponse($requestId, $asgiResponse);
+            return $this->cooperate($requestId, $asgiResponse);
         }
 
         $request = $this->requestIdMap[$requestId];
