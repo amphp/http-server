@@ -126,6 +126,83 @@ $myApp = (new App)->addResponder(function() {
 });
 ```
 
+##### Named Virtual Hosts
+
+Each `App` instance corresponds to a host on your server. Users may add as many host names as they
+like.
+
+```php
+<?php
+use Aerys\Framework\App;
+require __DIR__ . '/path/to/aerys/autoload.php';
+
+// mysite.com
+$mySite = (new App)
+    ->setPort(80) // <-- Defaults to 80, so this isn't technically necessary
+    ->setName('mysite.com')
+    ->addResponder(function() {
+        return '<html><body><h1>mysite.com</h1></body></html>';
+    });
+
+// subdomain.mysite.com
+$mySubdomain = (new App)
+    ->setName('subdomain.mysite.com')
+    ->addResponder(function() {
+        return '<html><body><h1>subdomain.mysite.com</h1></body></html>';
+    });
+
+// omgphpiswebscale.com
+$omgPhpIsWebscale = (new App)
+    ->setName('omgphpiswebscale.com')
+    ->addResponder(function() {
+        return '<html><body><h1>omgphpiswebscale.com</h1></body></html>';
+    });
+```
+
+##### Serving Static Files
+
+Simply add the `App::setDocumentRoot` declaration to add performant (and fully HTTP/1.1-compliant)
+static file serving to your applications.
+
+```php
+<?php
+use Aerys\Framework\App;
+require __DIR__ . '/path/to/aerys/autoload.php';
+
+// Any URI not matched by another handler is treated as a static file request
+$myApp = (new App)
+    ->setName('mysite.com')
+    ->addRoute('GET', '/', 'MyClass::myGetHandlerMethod')
+    ->addRoute('POST', '/', 'MyClass::myPostHandlerMethod')
+    ->setDocumentRoot('/path/to/static/file/root/');
+```
+
+##### Basic Routing
+
+While you can add your own user responder callables, it's usually better to take advantage of
+Aerys's builtin routing functionality to map URIs and HTTP method verbs to specific application
+endpoints. Any valid callable or class instance method may be specified as a route target. Note that
+class methods will have their instances automatically provisioned and injected affording routed
+applications all the benefits of clean code and dependency injection.
+
+```php
+<?php
+use Aerys\Framework\App;
+require __DIR__ . '/path/to/aerys/autoload.php';
+
+// Any PHP callable may be specified as a route target (instance methods, too!)
+$myApp = (new App)
+    ->addRoute('GET', '/', 'MyClass::myGetHandler')
+    ->addRoute('POST', '/', 'MyClass::myPostHandler')
+    ->addRoute('PUT', '/', 'MyClass::myPutHandler')
+    ->addRoute('GET', '/info', 'MyClass::anotherInstanceMethod')
+    ->addRoute('GET', '/static', 'SomeClass::staticMethod')
+    ->addRoute('GET', '/function', 'some_global_function')
+    ->addRoute('GET', '/lambda', function() { return '<html><body>hello</body></html>'; })
+    ->addRoute('GET', '/$#arg1/$#arg2/$arg3', 'SomeClass::routeArgs')
+    ->setDocumentRoot('/path/to/static/files'); // <-- only used if no routes match
+```
+
 ##### Asynchronous Responses
 
 The most important thing to remember about Aerys (and indeed any server running inside a non-blocking
@@ -189,83 +266,6 @@ class MyHandler {
 }
 
 $myApp = (new App)->addRoute('GET', '/', 'MyHandler::doSomething');
-```
-
-##### Named Virtual Hosts
-
-Each `App` instance corresponds to a host on your server. Users may add as many host names as they
-like.
-
-```php
-<?php
-use Aerys\Framework\App;
-require __DIR__ . '/path/to/aerys/autoload.php';
-
-// mysite.com
-$mySite = (new App)
-    ->setPort(80) // <-- Defaults to 80, so this isn't technically necessary
-    ->setName('mysite.com')
-    ->addResponder(function() {
-        return '<html><body><h1>mysite.com</h1></body></html>';
-    });
-
-// subdomain.mysite.com
-$mySubdomain = (new App)
-    ->setName('subdomain.mysite.com')
-    ->addResponder(function() {
-        return '<html><body><h1>subdomain.mysite.com</h1></body></html>';
-    });
-
-// omgphpiswebscale.com
-$mySubdomain = (new App)
-    ->setName('omgphpiswebscale.com')
-    ->addResponder(function() {
-        return '<html><body><h1>omgphpiswebscale.com</h1></body></html>';
-    });
-```
-
-##### Basic Routing
-
-While you can add your own user responder callables, it's usually better to take advantage of
-Aerys's builtin routing functionality to map URIs and HTTP method verbs to specific application
-endpoints. Any valid callable or class instance method may be specified as a route target. Note that
-class methods will have their instances automatically provisioned and injected affording routed
-applications all the benefits of clean code and dependency injection.
-
-```php
-<?php
-use Aerys\Framework\App;
-require __DIR__ . '/path/to/aerys/autoload.php';
-
-// Any PHP callable may be specified as a route target (instance methods, too!)
-$myApp = (new App)
-    ->addRoute('GET', '/', 'MyClass::myGetHandler')
-    ->addRoute('POST', '/', 'MyClass::myPostHandler')
-    ->addRoute('PUT', '/', 'MyClass::myPutHandler')
-    ->addRoute('GET', '/info', 'MyClass::anotherInstanceMethod')
-    ->addRoute('GET', '/static', 'SomeClass::staticMethod')
-    ->addRoute('GET', '/function', 'some_global_function')
-    ->addRoute('GET', '/lambda', function() { return '<html><body>hello</body></html>'; })
-    ->addRoute('GET', '/$#arg1/$#arg2/$arg3', 'SomeClass::routeArgs')
-    ->setDocumentRoot('/path/to/static/files'); // <-- only used if no routes match
-```
-
-##### Serving Static Files
-
-Simply add the `App::setDocumentRoot` declaration to add performant (and fully HTTP/1.1-compliant)
-static file serving to your applications.
-
-```php
-<?php
-use Aerys\Framework\App;
-require __DIR__ . '/path/to/aerys/autoload.php';
-
-// Any URI not matched by another handler is treated as a static file request
-$myApp = (new App)
-    ->setName('mysite.com')
-    ->addRoute('GET', '/', 'MyClass::myGetHandlerMethod')
-    ->addRoute('POST', '/', 'MyClass::myPostHandlerMethod')
-    ->setDocumentRoot('/path/to/static/file/root/');
 ```
 
 ##### TLS Encryption
@@ -390,7 +390,6 @@ $myWebsocketApp = (new Aerys\Framework\App)
     ->setDocumentRoot(__DIR__ . '/support/docroot/websockets')
     ->addWebsocket('/echo', 'Ex401_WebsocketEchoEndpoint');
 ```
-
 
 ## Dependencies
 
