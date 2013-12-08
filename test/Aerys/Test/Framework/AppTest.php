@@ -24,8 +24,8 @@ class AppTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals('mysite.com', $arr['name']);
     }
 
-    function testSetEncryption() {
-        $app = (new App)->setEncryption($tlsSettings = [42]);
+    function testEncrypt() {
+        $app = (new App)->encrypt($tlsSettings = [42]);
         $arr = $app->toArray();
         $this->assertEquals([42], $arr['encryption']);
     }
@@ -97,8 +97,8 @@ class AppTest extends \PHPUnit_Framework_TestCase {
 
     function testAddUserResponder() {
         $app = new App;
-        $this->assertSame($app, $app->addUserResponder('test1'));
-        $this->assertSame($app, $app->addUserResponder('test2'));
+        $this->assertSame($app, $app->addResponder('test1'));
+        $this->assertSame($app, $app->addResponder('test2'));
         $this->assertEquals(['test1', 'test2'], $app->toArray()['userResponders']);
     }
 

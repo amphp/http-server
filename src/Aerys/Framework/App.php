@@ -82,7 +82,7 @@ class App {
      * @param array $tlsOptions
      * @return \Aerys\Framework\App Returns the current object instance
      */
-    function setEncryption(array $tlsOptions) {
+    function encrypt(array $tlsOptions) {
         $this->encryption = $tlsOptions;
 
         return $this;
@@ -261,7 +261,7 @@ class App {
      * @param mixed $responder Any callable or class::method construction string
      * @return \Aerys\Framework\App Returns the current object instance
      */
-    function addUserResponder($responder) {
+    function addResponder($responder) {
         $this->userResponders[] = $responder;
 
         return $this;
@@ -274,13 +274,13 @@ class App {
      *
      * - 'websockets'       (App::addBroker)
      * - 'routes'           (App::addRoute)
-     * - 'user'             (App::addUserResponder)
+     * - 'user'             (App::addResponder)
      * - 'docroot'          (App::setDocumentRoot)
      * - 'reverseproxy'     (App::setReverseProxy)
      *
      * Any values specified that don't match the above list will result in a ConfigException
      * when the server is bootstrapped. Note that the above list is the default responder order.
-     * User responders added via `App::addUserResponder` are always ordered internally by the
+     * User responders added via `App::addResponder` are always ordered internally by the
      * order in which they are added to the app.
      *
      * @param array $order

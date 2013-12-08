@@ -50,7 +50,7 @@ use Aerys\Framework\App;
 require __DIR__ . '/path/to/aerys/autoload.php';
 
 // Send a basic 200 response to all requests on port 80.
-$myApp = (new App)->addUserResponder(function() {
+$myApp = (new App)->addResponder(function() {
     return '<html><body><h1>OMG PHP is Webscale!</h1></body></html>';
 });
 ```
@@ -66,7 +66,7 @@ use Aerys\Framework\App;
 require __DIR__ . '/path/to/aerys/autoload.php';
 
 // Responders are passed an environment array and Request ID
-$myApp = (new App)->addUserResponder(function($asgiEnv, $requestId) {
+$myApp = (new App)->addResponder(function($asgiEnv, $requestId) {
     $environment = print_r($asgiEnv, TRUE);
     return "<html><body><pre>{$environment}</pre></body></html>";
 });
@@ -84,7 +84,7 @@ use Aerys\Framework\App;
 require __DIR__ . '/path/to/aerys/autoload.php';
 
 // Response must be in the form [$status, $reason, $headersArray, $body]
-$myApp = (new App)->addUserResponder(function() {
+$myApp = (new App)->addResponder(function() {
     return [
         $status = 200,
         $reason = 'OK',
@@ -120,7 +120,7 @@ $__defaultContentType = 'text/html';
 $__defaultTextCharset = 'utf-8';
 $__allowedMethods = ['GET', 'HEAD', 'POST', 'PUT'];
 
-$myApp = (new App)->addUserResponder(function() {
+$myApp = (new App)->addResponder(function() {
     $body = '<html><body><h1>Hello, world.</h1></body></html>';
     return [$status = 200, $reason = 'OK', $headers = [], $body];
 });
@@ -205,21 +205,21 @@ require __DIR__ . '/path/to/aerys/autoload.php';
 $mySite = (new App)
     ->setPort(80) // <-- Defaults to 80, so this isn't technically necessary
     ->setName('mysite.com')
-    ->addUserResponder(function() {
+    ->addResponder(function() {
         return '<html><body><h1>mysite.com</h1></body></html>';
     });
 
 // subdomain.mysite.com
 $mySubdomain = (new App)
     ->setName('subdomain.mysite.com')
-    ->addUserResponder(function() {
+    ->addResponder(function() {
         return '<html><body><h1>subdomain.mysite.com</h1></body></html>';
     });
 
 // omgphpiswebscale.com
 $mySubdomain = (new App)
     ->setName('omgphpiswebscale.com')
-    ->addUserResponder(function() {
+    ->addResponder(function() {
         return '<html><body><h1>omgphpiswebscale.com</h1></body></html>';
     });
 ```
@@ -270,7 +270,7 @@ $myApp = (new App)
 
 ##### TLS Encryption
 
-Any host may utilize TLS encryption by passing appropriate settings to `App::setEncryption`. This
+Any host may utilize TLS encryption by passing appropriate settings to `App::encrypt`. This
 applies to *all* communications on the host (even websockets). The below example adds an additional
 host on port 80 that redirects all traffic to the encrypted application on port 443.
 
@@ -281,7 +281,7 @@ require __DIR__ . '/path/to/aerys/autoload.php';
 
 $encryptedApp = (new App)
     ->setPort(443)
-    ->setEncryption([
+    ->encrypt([
         'local_cert' => __DIR__ . '/examples/support/tls_cert.pem',
         'passphrase' => '42 is not a legitimate passphrase',
         'ciphers'    => 'RC4-SHA:HIGH:!MD5:!aNULL:!EDH'
@@ -290,7 +290,7 @@ $encryptedApp = (new App)
 // Because we can, let's redirect all unencrypted traffic on port 80 to port 443
 $redirectApp = (new App)
     ->setPort(80)
-    ->addUserResponder(function($asgiEnv) {
+    ->addResponder(function($asgiEnv) {
         $status = 302;
         $reason = 'Moved Temporarily';
         $headers = [

@@ -209,10 +209,8 @@ class Request {
 
         $asgiEnv = [
             'ASGI_VERSION'      => '0.1',
-            'ASGI_CAN_STREAM'   => TRUE,
             'ASGI_NON_BLOCKING' => TRUE,
-            'ASGI_LAST_CHANCE'  => (bool) $this->body, // @TODO Fix this to use "headersOnly" from parsed request array
-            'ASGI_ERROR'        => NULL, // @TODO Should this be passed as a method param? Do we even need this?
+            'ASGI_ERROR'        => NULL, // @TODO Do we even need this in the environment?
             'ASGI_INPUT'        => $this->body,
             'SERVER_PORT'       => $this->client->serverPort,
             'SERVER_ADDR'       => $this->client->serverAddress,

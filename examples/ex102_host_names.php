@@ -33,7 +33,7 @@ $dynamicAppResponder = function() {
 $mainHost = (new Aerys\Framework\App)
     ->setPort(80)
     ->setName('aerys')
-    ->addUserResponder($dynamicAppResponder)
+    ->addResponder($dynamicAppResponder)
 ;
 
 $subdomainHost = (new Aerys\Framework\App)

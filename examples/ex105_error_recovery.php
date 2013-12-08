@@ -48,4 +48,4 @@ $myResponder = function($asgiEnv) {
     }
 };
 
-$myApp = (new Aerys\Framework\App)->addUserResponder($myResponder);
+$myApp = (new Aerys\Framework\App)->addResponder($myResponder);

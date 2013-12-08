@@ -44,5 +44,5 @@ $myApp = (new Aerys\Framework\App)
     ->setAddress('192.168.1.5') // Overrides the first assignment
     ->setAddress('*')           // Overrides the second assignment
     ->setName('localhost')
-    ->addUserResponder($myResponder)
+    ->addResponder($myResponder)
 ;

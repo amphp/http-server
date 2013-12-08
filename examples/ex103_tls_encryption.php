@@ -2,7 +2,7 @@
 
 /**
  * TLS encryption is *important*; it should be easy to implement. To encrypt your Aerys web apps
- * simply call `App::setEncryption` with an array specifying the hard path to your certificate (in
+ * simply call `App::encrypt` with an array specifying the hard path to your certificate (in
  * .PEM format) and the passphrase associated with the cert. Note that you should also usually set
  * the port for encrypted apps to 443 as this is the default for encrypted HTTP communications.
  * 
@@ -42,12 +42,12 @@ $encryptionSettings = [
 
 $encryptedApp = (new Aerys\Framework\App)
     ->setPort(443)
-    ->setEncryption($encryptionSettings)
+    ->encrypt($encryptionSettings)
     ->setDocumentRoot(__DIR__ . '/support/docroot');
 
 $redirectApp = (new Aerys\Framework\App)
     ->setPort(80)
-    ->addUserResponder(function($asgiEnv) {
+    ->addResponder(function($asgiEnv) {
         $status = 301;
         $reason = 'Moved Permanently';
         $headers = [
