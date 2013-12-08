@@ -1,7 +1,7 @@
 # Aerys
 
 High-performance non-blocking HTTP/1.1 web application, websocket and custom socket protocol server
-written entirely in PHP. Awesomeness ensues.
+written *entirely* in PHP. Awesomeness ensues.
 
 ## Installation
 
@@ -9,17 +9,17 @@ written entirely in PHP. Awesomeness ensues.
 $ git clone --recursive https://github.com/rdlowrey/Aerys.git
 ```
 
-No. There's no composer right now. I'll add it when the project is more mature.
+No. There's no composer right now. I *may* add it when the project is more mature.
 
-## Running Your Server
+## Running a Server
 
-To start a server simply pass your config file to the aerys binary:
+To start a server simply pass a config file to the aerys binary:
 
 ```bash
 $ bin/aerys --config = "/path/to/config.php"
 ```
 
-Running a static file server on port 80 without any configuration:
+To run a static file server on port 80 without any configuration:
 
 ```bash
 $ bin/aerys -r /path/to/static/files
@@ -37,12 +37,12 @@ Get help via `-h` or `--help`:
 $ bin/aerys --h
 ```
 
-## Basic Config Examples
+## Basic Examples
 
 ##### Hello World
 
 Any string or seekable stream resource may be returned as a response. Resources are automatically
-streamed to clients whereas strings are obviously fully buffered in memory.
+streamed to clients.
 
 ```php
 <?php
@@ -57,8 +57,8 @@ $myApp = (new App)->addUserResponder(function() {
 
 ##### The Request Environment
 
-Aerys passes an application exhaustive details of each request in a `$_SERVER`-style CGI-like array.
-The example below prints the data stored in the request's ASGI environment array.
+Aerys passes requests to applications using a CGI-like array similar to the PHP web SAPI's
+`$_SERVER`. The example below returnes the contents of the request environment as a response.
 
 ```php
 <?php
@@ -74,8 +74,9 @@ $myApp = (new App)->addUserResponder(function($asgiEnv, $requestId) {
 
 ##### Customizing Status Codes & Headers
 
-While Aerys makes responses a snap by allowing the return of only an entity body, you can also
-customize response headers and status information by returning an indexed array as shown here:
+Aerys trivializes responses by abstracting away HTTP protocol details and allowing applications to
+return strings and resources directly. However, apps may also customize response headers and status
+information by returning an indexed array as shown below.
 
 ```php
 <?php
@@ -99,9 +100,9 @@ $myApp = (new App)->addUserResponder(function() {
 ##### Asynchronous Responses
 
 The most important thing to remember about Aerys (and indeed any server running inside a non-blocking
-event loop) is that your application callables must not block execution with slow operations like
-synchronous database access. Application callables may employ `yield` to act as a `Generator` and
-cooperatively multitask with the server using non-blocking libraries.
+event loop) is that your application callables must not block execution of the event loop with slow
+operations (like synchronous database or disk IO). Application callables may employ `yield` to act
+as a `Generator` and cooperatively multitask with the server using non-blocking libraries.
 
 ```php
 <?php
@@ -136,8 +137,8 @@ $myApp = (new App)
 ```
 
 To demonstrate that we aren't limited to functions lets look at an example using instance methods.
-Here we use a non-scalar callable key in our yield statement to execute a local property's method.
-Note that *any* valid callable may be passed in the key portion of the `yield` statement:
+Here we use a non-scalar callable key in our yield statement to execute a local instance method.
+Note how *any* valid callable may be passed in the key portion of the `yield` statement:
 
 ```php
 <?php
@@ -161,17 +162,17 @@ class MyHandler {
 $myApp = (new App)->addRoute('GET', '/', 'MyHandler::doSomething');
 ```
 
-##### Named Hosts
+##### Named Virtual Hosts
 
 Each `App` instance corresponds to a host on your server. Users may add as many host names as they
-like for an individual server instance as shown below:
+like.
 
 ```php
 <?php
 use Aerys\Framework\App;
 require __DIR__ . '/path/to/aerys/autoload.php';
 
-// Our first host name
+// mysite.com
 $mySite = (new App)
     ->setPort(80) // <-- Defaults to 80, so this isn't technically necessary
     ->setName('mysite.com')
@@ -179,11 +180,18 @@ $mySite = (new App)
         return '<html><body><h1>mysite.com</h1></body></html>';
     });
 
-// Setup a subdomain
-$myOtherHost = (new App)
+// subdomain.mysite.com
+$mySubdomain = (new App)
     ->setName('subdomain.mysite.com')
     ->addUserResponder(function() {
         return '<html><body><h1>subdomain.mysite.com</h1></body></html>';
+    });
+
+// omgphpiswebscale.com
+$mySubdomain = (new App)
+    ->setName('omgphpiswebscale.com')
+    ->addUserResponder(function() {
+        return '<html><body><h1>omgphpiswebscale.com</h1></body></html>';
     });
 ```
 
@@ -206,17 +214,17 @@ $myApp = (new App)
     ->addRoute('POST', '/', 'MyClass::myPostHandler')
     ->addRoute('PUT', '/', 'MyClass::myPutHandler')
     ->addRoute('GET', '/info', 'MyClass::anotherInstanceMethod')
-    ->addRoute('GET', '/static', 'StaticClass::staticMethod')
+    ->addRoute('GET', '/static', 'SomeClass::staticMethod')
     ->addRoute('GET', '/function', 'some_global_function')
     ->addRoute('GET', '/lambda', function() { return '<html><body>hello</body></html>'; })
     ->addRoute('GET', '/$#arg1/$#arg2/$arg3', 'SomeClass::routeArgs')
-    ->setDocumentRoot('/path/to/static/files'); // <-- only if no routes match
+    ->setDocumentRoot('/path/to/static/files'); // <-- only used if no routes match
 ```
 
 ##### Serving Static Files
 
-Simply add the `App::setDocumentRoot` declaration to add high-performance static file serving to
-host applications.
+Simply add the `App::setDocumentRoot` declaration to add performant (and fully HTTP/1.1-compliant)
+static file serving to your applications.
 
 ```php
 <?php
@@ -225,6 +233,7 @@ require __DIR__ . '/path/to/aerys/autoload.php';
 
 // Any URI not matched by another handler is treated as a static file request
 $myApp = (new App)
+    ->setName('mysite.com')
     ->addRoute('GET', '/', 'MyClass::myGetHandlerMethod')
     ->addRoute('POST', '/', 'MyClass::myPostHandlerMethod')
     ->setDocumentRoot('/path/to/static/file/root/');
