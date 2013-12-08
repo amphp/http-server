@@ -179,8 +179,8 @@ class App {
      *
      * Brokers endpoints require two arguments:
      *
-     * - The websocket's URI endpoint
-     * - The name of the "driver" class that sends and receives data on the websocket connection
+     * - The websocket endpoint's URI path
+     * - The name of the websocket endpoint class
      *
      * The third argument is an optional array specifying configuration values for the websocket
      * endpoint in the form shown below (defaults):
@@ -195,13 +195,13 @@ class App {
      * ];
      *
      * @param string $uriPath The URI path on which to bind the endpoint
-     * @param string $driverClass A websocket endpoint class name
+     * @param mixed $endpointClassName A websocket endpoint class name
      * @param array $options An array specifying key-value options for this websocket endpoint
      * @return \Aerys\Framework\App Returns the current object instance
      */
-    function addWebsocket($uriPath, $driverClass, array $options = []) {
+    function addWebsocket($uriPath, $endpointClassName, array $options = []) {
         $uriPath = '/' . ltrim($uriPath, '/');
-        $this->websockets[] = [$uriPath, $driverClass, $options];
+        $this->websockets[] = [$uriPath, $endpointClassName, $options];
 
         return $this;
     }
