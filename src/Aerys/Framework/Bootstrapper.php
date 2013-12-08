@@ -9,6 +9,8 @@ use Alert\Reactor,
 
 class Bootstrapper {
 
+    const SERVER_OPTION_PREFIX = '__';
+    
     /**
      * Bootstrap a server and its host definitions from command line arguments
      *
@@ -34,29 +36,26 @@ class Bootstrapper {
         $apps = [];
         $reactors = [];
         $injectors = [];
-        $serverOptions = [];
+        $options = [];
 
         $vars = get_defined_vars();
 
         foreach ($vars as $key => $value) {
             if ($value instanceof App) {
                 $apps[] = $value;
-            } elseif ($value instanceof ServerOptions) {
-                $serverOptions[] = $value;
             } elseif ($value instanceof Injector) {
                 $injectors[] = $value;
             } elseif ($value instanceof Reactor) {
                 $reactors[] = $value;
+            } elseif (substr($key, 0, 2) === self::SERVER_OPTION_PREFIX) {
+                $key = substr($key, 2);
+                $options[$key] = $value;
             }
         }
 
         if (!$apps) {
             throw new ConfigException(
                 sprintf('No App configuration instances found in config file: %s', $configFile)
-            );
-        } elseif (count($serverOptions) > 1) {
-            throw new ConfigException(
-                sprintf('Only one ServerOptions instance allowed in config file: %s', $configFile)
             );
         } elseif (count($injectors) > 1) {
             throw new ConfigException(
@@ -70,15 +69,14 @@ class Bootstrapper {
 
         $reactor = $reactors ? current($reactors) : (new ReactorFactory)->select();
         $injector = $injectors ? current($injectors) : new Provider;
-        $serverOptions = $serverOptions ? current($serverOptions) : new ServerOptions;
 
-        return $this->generateServerAndHosts($reactor, $injector, $serverOptions, $apps);
+        return $this->generateBootables($reactor, $injector, $options, $apps);
     }
 
-    private function generateServerAndHosts(
+    private function generateBootables(
         Reactor $reactor,
         Injector $injector,
-        ServerOptions $serverOptions,
+        array $options,
         array $apps
     ) {
         $injector->alias('Alert\Reactor', get_class($reactor));
@@ -99,7 +97,12 @@ class Bootstrapper {
             $hostCollection->addHost($host);
         }
 
-        $server->setAllOptions($serverOptions->getAllOptions());
+        $allowedOptions = array_map('strtolower', array_keys($server->getAllOptions()));
+        foreach ($options as $key => $value) {
+            if (in_array(strtolower($key), $allowedOptions)) {
+                $server->setOption($key, $value);
+            }
+        }
 
         return [$reactor, $server, $hostCollection];
     }
@@ -127,10 +130,10 @@ class Bootstrapper {
 
         $reactor = (new ReactorFactory)->select();
         $injector = new Provider;
-        $serverOptions = new ServerOptions;
+        $options = [];
         $apps = [$app];
 
-        return $this->generateServerAndHosts($reactor, $injector, $serverOptions, $apps);
+        return $this->generateBootables($reactor, $injector, $options, $apps);
     }
 
 }

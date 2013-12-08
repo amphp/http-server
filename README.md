@@ -97,6 +97,35 @@ $myApp = (new App)->addUserResponder(function() {
 });
 ```
 
+##### Server-Wide Options
+
+Aerys has many server-wide options available for customization. To assign these options, the
+server binary looks for any variables in your config file's global namespace prefixed with a
+double underscore ($__) that case-insensitively match server option directives. The server operates
+with sensible defaults, but if you want to customize such values this is the place to do it. Note
+again that server-wide options apply to ALL apps registered on your server.
+
+The example below sets only a small number of the available server options. To see a full and
+up-to-date list of possible options please consult the `Aerys\Server` source code.
+
+```php
+<?php
+use Aerys\Framework\App;
+require __DIR__ . '/path/to/aerys/autoload.php';
+
+$__maxConnections = 2500;
+$__maxRequests = 100;
+$__keepAliveTimeout = 5;
+$__defaultContentType = 'text/html';
+$__defaultTextCharset = 'utf-8';
+$__allowedMethods = ['GET', 'HEAD', 'POST', 'PUT'];
+
+$myApp = (new App)->addUserResponder(function() {
+    $body = '<html><body><h1>Hello, world.</h1></body></html>';
+    return [$status = 200, $reason = 'OK', $headers = [], $body];
+});
+```
+
 ##### Asynchronous Responses
 
 The most important thing to remember about Aerys (and indeed any server running inside a non-blocking
@@ -339,7 +368,6 @@ class Rot13Endpoint implements Endpoint {
 }
 ```
 
-
 ##### Reverse Proxying
 
 Aerys can also act as a reverse proxy and route certain requests through to backend servers. Using
@@ -363,29 +391,6 @@ $myWebsocketApp = (new Aerys\Framework\App)
     ->addWebsocket('/echo', 'Ex401_WebsocketEchoEndpoint');
 ```
 
-##### Setting Server-Wide Options
-
-Aerys servers offer many options that are not specific to individual host applications. To assign
-these simply populate a `ServerOptions` instance in your configuration as demonstrated below.
-
-```php
-<?php
-use Aerys\Framework\App, Aerys\Framework\ServerOptions;
-require __DIR__ . '/path/to/aerys/autoload.php';
-
-// Option keys are case-insensitive. These are some of the more useful options,
-// but there are many more available ...
-$options = (new ServerOptions)->setAll([
-    'maxConnections'   => 2500, // # of simultaneously allowed clients per CPU core
-    'maxRequests'      => 100,  // # of requests allowed on a single keep-alive connection
-    'keepAliveTimeout' => 5,    // Seconds of inactivity before closing a connection
-    'showErrors'       => FALSE // Don't show debug output in 500 response if your app errors
-]);
-
-$myApp = (new App)->addUserResponder(function() {
-    return '<html><body><h1>OMG PHP is Webscale!</h1></body></html>';
-});
-```
 
 ## Dependencies
 
