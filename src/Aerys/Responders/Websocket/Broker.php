@@ -438,7 +438,7 @@ class Broker implements \Countable, AsgiResponder {
         try {
             $result = $session->endpoint->onOpen($this, $session->id);
             if ($result instanceof \Generator) {
-                $this->cooperate($result);
+                $this->processGeneratorYield($result);
             } elseif (is_string($result) || is_resource($result)) {
                 $this->broadcast($session->id, Frame::OP_TEXT, $result);
             }
@@ -509,7 +509,7 @@ class Broker implements \Countable, AsgiResponder {
         try {
             $result = $session->endpoint->onMessage($this, $session->id, $msg);
             if ($result instanceof \Generator) {
-                $this->cooperate($result, $session->id);
+                $this->processGeneratorYield($result, $session->id);
             } elseif (is_string($result) || is_resource($result)) {
                 $this->broadcast($session->id, Frame::OP_TEXT, $result);
             }
@@ -523,7 +523,7 @@ class Broker implements \Countable, AsgiResponder {
         }
     }
 
-    private function cooperate(\Generator $generator, $socketId = NULL) {
+    private function processGeneratorYield(\Generator $generator, $socketId = NULL) {
         $key = $generator->key();
         $value = $generator->current();
 
@@ -531,13 +531,13 @@ class Broker implements \Countable, AsgiResponder {
             $value = is_array($value) ? $value : [$value];
             array_push($value, function() use ($generator, $socketId) {
                 $generator->send(func_get_args());
-                $this->cooperate($generator, $socketId);
+                $this->processGeneratorYield($generator, $socketId);
             });
             call_user_func_array($key, $value);
         } elseif (is_callable($value)) {
             $value(function() use ($generator, $socketId) {
                 $generator->send(func_get_args());
-                $this->cooperate($generator, $socketId);
+                $this->processGeneratorYield($generator, $socketId);
             });
         } elseif (isset($socketId) && (is_string($value) || is_resource($value))) {
             $this->broadcast($socketId, Frame::OP_TEXT, $value);
@@ -830,7 +830,7 @@ class Broker implements \Countable, AsgiResponder {
             $this->unloadSession($session);
             $result = $session->endpoint->onClose($this, $session->id, $code, $reason);
             if ($result instanceof \Generator) {
-                $this->cooperate($result);
+                $this->processGeneratorYield($result);
             }
         } catch (\Exception $userlandException) {
             $endpointError = new EndpointException(

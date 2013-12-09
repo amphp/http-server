@@ -787,7 +787,7 @@ class Server {
         return defined($reasonConst) ? constant($reasonConst) : '';
     }
 
-    private function cooperate($requestId, \Generator $generator) {
+    private function processGeneratorYield($requestId, \Generator $generator) {
         try {
             $key = $generator->key();
             $value = $generator->current();
@@ -795,13 +795,13 @@ class Server {
             if (is_callable($value)) {
                 $value(function() use ($requestId, $generator) {
                     $generator->send(func_get_args());
-                    $this->cooperate($requestId, $generator);
+                    $this->processGeneratorYield($requestId, $generator);
                 });
             } elseif (is_callable($key)) {
                 $value = is_array($value) ? $value : [$value];
                 array_push($value, function() use ($requestId, $generator) {
                     $generator->send(func_get_args());
-                    $this->cooperate($requestId, $generator);
+                    $this->processGeneratorYield($requestId, $generator);
                 });
                 call_user_func_array($key, $value);
             } elseif (!isset($value)) {
@@ -825,7 +825,7 @@ class Server {
         if (!isset($this->requestIdMap[$requestId])) {
             return;
         } elseif ($asgiResponse instanceof \Generator) {
-            return $this->cooperate($requestId, $asgiResponse);
+            return $this->processGeneratorYield($requestId, $asgiResponse);
         }
 
         $request = $this->requestIdMap[$requestId];
