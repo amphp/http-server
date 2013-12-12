@@ -9,8 +9,8 @@
     - ex102_host_names.php
     - ex103_tls_encryption.php
     - ex104_server_options.php
-    - @todo ex105_chaining_responders.php
-    - @todo ex106_dependency_injection.php
+    - ex105_async_response.php
+    - ex106_error_recovery.php
 
 ### 2xx Dynamic Routing
     - ex201_basic_routing.php
@@ -34,6 +34,3 @@
 
 ### 7xx Manual Lib Usage
     - ex701_manual_hello_world.php
-    - ex702_manual_asgi_environment.php
-    - ex703_manual_server_options.php
-

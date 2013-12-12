@@ -8,28 +8,28 @@ use Aerys\Responders\Routes\Router,
 class RouterTest extends \PHPUnit_Framework_TestCase {
 
     function testResponderInvokesRouteHandlerOnMatch() {
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test'
         ];
 
-        $handler = function($asgiEnv, $requestId) { return $requestId; };
+        $handler = function($asgiRequest, $requestId) { return $requestId; };
         $routeResult = [Router::MATCHED, $handler, $uriArgs = []];
 
         $router = $this->getMock('Aerys\Responders\Routes\Router');
         $router->expects($this->once())
                ->method('matchRoute')
-               ->with($asgiEnv['REQUEST_METHOD'], $asgiEnv['REQUEST_URI_PATH'])
+               ->with($asgiRequest['REQUEST_METHOD'], $asgiRequest['REQUEST_URI_PATH'])
                ->will($this->returnValue($routeResult));
 
         $responder = new Router($router);
-        $asgiResponse = $responder->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $responder->__invoke($asgiRequest, $requestId = 42);
 
         $this->assertEquals(42, $asgiResponse);
     }
 
     function testResponderReturns500IfHandlerInvocationThrows() {
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test'
         ];
@@ -40,17 +40,17 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $router = $this->getMock('Aerys\Responders\Routes\Router');
         $router->expects($this->once())
                ->method('matchRoute')
-               ->with($asgiEnv['REQUEST_METHOD'], $asgiEnv['REQUEST_URI_PATH'])
+               ->with($asgiRequest['REQUEST_METHOD'], $asgiRequest['REQUEST_URI_PATH'])
                ->will($this->returnValue($routeResult));
 
         $responder = new Router($router);
-        $asgiResponse = $responder->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $responder->__invoke($asgiRequest, $requestId = 42);
 
         $this->assertEquals(500, $asgiResponse[0]);
     }
 
     function testResponderReturns404IfNoRouteMatches() {
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test'
         ];
@@ -59,17 +59,17 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $router = $this->getMock('Aerys\Responders\Routes\Router');
         $router->expects($this->once())
                ->method('matchRoute')
-               ->with($asgiEnv['REQUEST_METHOD'], $asgiEnv['REQUEST_URI_PATH'])
+               ->with($asgiRequest['REQUEST_METHOD'], $asgiRequest['REQUEST_URI_PATH'])
                ->will($this->returnValue($routeResult));
 
         $responder = new Router($router);
-        $asgiResponse = $responder->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $responder->__invoke($asgiRequest, $requestId = 42);
 
         $this->assertEquals(404, $asgiResponse[0]);
     }
 
     function testResponderReturns405IfMethodNotAllowed() {
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test'
         ];
@@ -78,11 +78,11 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $router = $this->getMock('Aerys\Responders\Routes\Router');
         $router->expects($this->once())
                ->method('matchRoute')
-               ->with($asgiEnv['REQUEST_METHOD'], $asgiEnv['REQUEST_URI_PATH'])
+               ->with($asgiRequest['REQUEST_METHOD'], $asgiRequest['REQUEST_URI_PATH'])
                ->will($this->returnValue($routeResult));
 
         $responder = new Router($router);
-        $asgiResponse = $responder->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $responder->__invoke($asgiRequest, $requestId = 42);
 
         $this->assertEquals(405, $asgiResponse[0]);
         $this->assertEquals('Allow: POST,PUT', $asgiResponse[2][0]);

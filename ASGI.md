@@ -14,7 +14,7 @@ exactly four values:
 - A string, seekable stream resource or `Iterator` instance representing the response entity body
 
 ```php
-$asgiApp = function(array $asgiEnv) {
+$asgiApp = function(AsgiRequest $asgiRequest) {
     $status = 200;
     $reason = 'OK';
     $headers = [
@@ -32,7 +32,7 @@ also support responses that specify only an entity body, e.g.:
 
 ```php
 <?php
-$asgiApp = function(array $asgiEnv) {
+$asgiApp = function(AsgiRequest $asgiRequest) {
     return '<html><body>Hello, World.</body></html>';
 };
 ```
@@ -164,7 +164,7 @@ individual header line.
 An example of a typical *Environment* array follows:
 
 ```php
-$asgiEnv = [
+$asgiRequest = [
     'SERVER_NAME'        => 'mysite.com',
     'SERVER_PORT'        => '80',
     'SERVER_PROTOCOL'    => '1.1',

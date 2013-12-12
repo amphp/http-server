@@ -103,7 +103,9 @@ EOT;
         $output = implode($output, "\n");
         $json = json_decode($output, TRUE);
 
-        if ($json['error']) {
+        if (!$json) {
+            throw new ConfigException($output);
+        } elseif ($json['error']) {
             throw new ConfigException(
                 $json['error_msg']
             );

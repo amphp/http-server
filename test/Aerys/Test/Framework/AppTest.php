@@ -58,12 +58,12 @@ class AppTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @dataProvider provideBrokers
+     * @dataProvider provideWebsocketValues
      */
-    function testAddBroker($input, $expectedOutput) {
+    function testAddWebsocket($input, $expectedOutput) {
         list($route, $endpointClass, $options) = $input;
 
-        $app = (new App)->addBroker($route, $endpointClass, $options);
+        $app = (new App)->addWebsocket($route, $endpointClass, $options);
         $arr = $app->toArray();
 
         list($expectedRoute, $expectedEndpointClass, $expectedOptions) = $expectedOutput;
@@ -75,7 +75,7 @@ class AppTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals($expectedOptions, $routeArr[2]);
     }
 
-    function provideBrokers() {
+    function provideWebsocketValues() {
         return [
             [['no_leading_slash', 'Endpoint', []], ['/no_leading_slash', 'Endpoint', []]],
             [['/leading_slash', 'Endpoint', [1,2,3]], ['/leading_slash', 'Endpoint', [1,2,3]]],
@@ -90,7 +90,7 @@ class AppTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testSetReverseProxy() {
-        $app = (new App)->setReverseProxy(['127.0.0.1:1337'], $options = []);
+        $app = (new App)->reverseProxyTo(['127.0.0.1:1337'], $options = []);
         $arr = $app->toArray();
         $this->assertEquals(['backends' => ['127.0.0.1:1337']], $arr['reverseProxy']);
     }

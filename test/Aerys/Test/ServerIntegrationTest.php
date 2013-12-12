@@ -9,45 +9,35 @@ use Alert\Reactor,
     Aerys\Server,
     Aerys\Host;
 
-class IteratorBody implements \Iterator {
+class Host1App {
 
-    private $position = 0;
-    private $parts = ['one', 'two', NULL, 'three'];
-
-    function rewind() { $this->position = 0; }
-    function current() { return $this->parts[$this->position]; }
-    function key() { return $this->position; }
-    function next() { $this->position++; }
-    function valid() { return array_key_exists($this->position, $this->parts); }
-}
-
-class ServerIntegrationApp {
-
-    function __invoke(array $asgiEnv, $requestId) {
-        switch ($asgiEnv['REQUEST_URI']) {
+    function __invoke($request) {
+        switch ($request['REQUEST_URI']) {
             case '/return_body':
-                return $this->returnBody($asgiEnv, $requestId);
-            case '/iterator_body':
-                return $this->iteratorBody($asgiEnv, $requestId);
+                return $this->returnBody($request);
             default:
-                return $this->hello($asgiEnv, $requestId);
+                return $this->hello($request);
         }
     }
 
     private function hello() {
-        $body = '<html><body><h1>Hello, World.</h1></body></html>';
-        return [200, 'OK', $headers = [], $body];
+        return '<html><body><h1>Hello, World.</h1></body></html>';
     }
 
-    private function returnBody($asgiEnv) {
-        $body = stream_get_contents($asgiEnv['ASGI_INPUT']);
-        return [200, 'OK', $headers = [], $body];
+    private function returnBody($request) {
+        return stream_get_contents($request['ASGI_INPUT']);
     }
 
-    private function iteratorBody() {
-        return [200, 'OK', $headers = [], new IteratorBody];
+}
+
+class Host2App {
+    function __invoke($request) {
+        return $this->hello($request);
     }
 
+    private function hello() {
+        return '<html><body><h1>Hello, World.</h1></body></html>';
+    }
 }
 
 class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
@@ -61,9 +51,10 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
         self::$reactor = new NativeReactor;
         self::$server = new Server(self::$reactor);
 
-        $host = new Host('127.0.0.1', 1500, '127.0.0.1', new ServerIntegrationApp);
-        self::$server->addHost($host);
-        self::$server->listen();
+        $host1 = new Host('127.0.0.1', 1501, '', new Host1App);
+        $host2 = new Host('127.0.0.1', 1501, 'somesite.com', new Host2App);
+
+        self::$server->start([$host1, $host2]);
         self::$client = new AsyncClient(self::$reactor);
     }
 
@@ -74,34 +65,17 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
 
     function testBasicResponse() {
         $this->onResponse = function($response) {
+            self::$reactor->stop();
             $this->assertEquals(200, $response->getStatus());
             $this->assertEquals('OK', $response->getReason());
             $this->assertEquals('<html><body><h1>Hello, World.</h1></body></html>', $response->getBody());
             $this->assertEquals(strlen($response->getBody()), current($response->getHeader('Content-Length')));
             $this->assertEquals('text/html; charset=utf-8', current($response->getHeader('Content-Type')));
-            self::$reactor->stop();
         };
 
         self::$reactor->immediately(function() {
-            $uri = 'http://127.0.0.1:1500/';
+            $uri = 'http://127.0.0.1:1501/';
             self::$client->request($uri, $this->onResponse, [$this, 'onArtaxClientError']);
-        });
-
-        self::$reactor->run();
-    }
-
-    function testRequestBody() {
-        $requestBody = 'test';
-        $this->onResponse = function($response) use ($requestBody) {
-            $this->assertEquals(200, $response->getStatus());
-            $this->assertEquals($requestBody, $response->getBody());
-            self::$reactor->stop();
-        };
-
-        self::$reactor->immediately(function() use ($requestBody) {
-            $uri = 'http://127.0.0.1:1500/return_body';
-            $request = (new Request)->setUri($uri)->setMethod('POST')->setBody($requestBody);
-            self::$client->request($request, $this->onResponse, [$this, 'onArtaxClientError']);
         });
 
         self::$reactor->run();
@@ -114,7 +88,7 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
         };
 
         self::$reactor->immediately(function() {
-            $uri = 'http://127.0.0.1:1500/';
+            $uri = 'http://127.0.0.1:1501/';
             $request = (new Request)->setUri($uri)->setMethod('ZANZIBAR');
             self::$client->request($request, $this->onResponse, [$this, 'onArtaxClientError']);
         });
@@ -122,26 +96,11 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
         self::$reactor->run();
     }
 
-    function testIteratorBody() {
-        $this->onResponse = function($response) {
-            $this->assertEquals(200, $response->getStatus());
-            $this->assertEquals('onetwothree', $response->getBody());
-            self::$reactor->stop();
-        };
-
-        self::$reactor->immediately(function() {
-            $uri = 'http://127.0.0.1:1500/iterator_body';
-            self::$client->request($uri, $this->onResponse, [$this, 'onArtaxClientError']);
-        });
-
-        self::$reactor->run();
-    }
-
     function testHeadResponse() {
-        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        $sock = stream_socket_client('tcp://127.0.0.1:1501');
 
         $request = "HEAD / HTTP/1.1\r\n";
-        $request.= "Host: 127.0.0.1:1500\r\n";
+        $request.= "Host: 127.0.0.1:1501\r\n";
         $request.= "\r\n";
 
         self::$reactor->immediately(function() use ($sock, $request) {
@@ -161,11 +120,11 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testTraceResponse() {
-        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        $sock = stream_socket_client('tcp://127.0.0.1:1501');
 
         $request = "TRACE / HTTP/1.0\r\n";
         $request.= "User-Agent: My-User-Agent\r\n";
-        $request.= "Host: 127.0.0.1:1500\r\n";
+        $request.= "Host: 127.0.0.1:1501\r\n";
         $request.= "\r\n";
 
         self::$reactor->immediately(function() use ($sock, $request) {
@@ -194,7 +153,7 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testBadRequest() {
-        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        $sock = stream_socket_client('tcp://127.0.0.1:1501');
 
         $request = "some nonsense\r\nfas;fjdlfjadf;\najdlfaj\r\n\r\n";
 
@@ -217,7 +176,7 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
         $originalMaxHeaderBytes = self::$server->getOption('maxHeaderBytes');
         self::$server->setOption('maxHeaderBytes', 256);
 
-        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        $sock = stream_socket_client('tcp://127.0.0.1:1501');
 
         $request = "GET / HTTP/1.0\r\n";
         $request.= "X-My-Too-Long-Header: " . str_repeat('x', 512) . "\r\n";
@@ -243,7 +202,7 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
         $originalMaxBodyBytes = self::$server->getOption('maxBodyBytes');
         self::$server->setOption('maxBodyBytes', 3);
 
-        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        $sock = stream_socket_client('tcp://127.0.0.1:1501');
 
         $request = "POST / HTTP/1.0\r\n";
         $request.= "Content-Length: 5\r\n";
@@ -270,7 +229,7 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
         $originalMaxConnections = self::$server->getOption('maxConnections');
         self::$server->setOption('maxConnections', 1);
 
-        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        $sock = stream_socket_client('tcp://127.0.0.1:1501');
 
         $request = "GET / HTTP/1.0\r\n\r\n";
 
@@ -294,10 +253,10 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
         $originalBodyLengthSetting = self::$server->getOption('requireBodyLength');
         self::$server->setOption('requireBodyLength', TRUE);
 
-        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        $sock = stream_socket_client('tcp://127.0.0.1:1501');
 
         $request = "POST /test HTTP/1.1\r\n";
-        $request.= "Host: 127.0.0.1:1500\r\n";
+        $request.= "Host: 127.0.0.1:1501\r\n";
         $request.= "Transfer-Encoding: chunked\r\n";
         $request.= "Content-Type: text/plain\r\n";
         $request.= "\r\n";
@@ -320,7 +279,7 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testBadHostResponse() {
-        $sock = stream_socket_client('tcp://127.0.0.1:1500');
+        $sock = stream_socket_client('tcp://127.0.0.1:1501');
 
         $request = "GET / HTTP/1.1\r\n";
         $request.= "Host: zanzibar.com\r\n";
@@ -339,6 +298,23 @@ class ServerIntegrationTest extends \PHPUnit_Framework_TestCase {
         self::$reactor->run();
         self::$reactor->cancel($watcher);
         @fclose($sock);
+    }
+
+    function testRequestBody() {
+        $requestBody = 'test';
+        $this->onResponse = function($response) use ($requestBody) {
+            $this->assertEquals(200, $response->getStatus());
+            $this->assertEquals($requestBody, $response->getBody());
+            self::$reactor->stop();
+        };
+
+        self::$reactor->immediately(function() use ($requestBody) {
+            $uri = 'http://127.0.0.1:1501/return_body';
+            $request = (new Request)->setUri($uri)->setMethod('POST')->setBody($requestBody);
+            self::$client->request($request, $this->onResponse, [$this, 'onArtaxClientError']);
+        });
+
+        self::$reactor->run();
     }
 
 }

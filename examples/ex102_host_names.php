@@ -26,8 +26,7 @@
 require_once __DIR__ . '/../vendor/autoload.php';
 
 $dynamicAppResponder = function() {
-    $body = '<html><body><h1>Hello from http://aerys</h1></body></html>';
-    return [$status = 200, $reason = 'OK', $headers = [], $body];
+    return '<html><body><h1>Hello from http://aerys</h1></body></html>';
 };
 
 $mainHost = (new Aerys\Framework\App)

@@ -28,13 +28,13 @@ class CompositeResponderTest extends \PHPUnit_Framework_TestCase {
      */
     function testResponse($responders, $expectedAsgiResponse) {
         $responder = new CompositeResponder($responders);
-        $asgiResponse = $responder->__invoke($asgiEnv = [], $requestId = 42);
+        $asgiResponse = $responder->__invoke($asgiRequest = [], $requestId = 42);
         $this->assertEquals($expectedAsgiResponse, $asgiResponse);
     }
 
     function provideResponderExpectations() {
         $return = [];
-        $asgiEnv = [];
+        $asgiRequest = [];
         $requestId = 42;
         
         $asgiResponseOk = [200, 'OK', [], 'hello, world'];
@@ -50,14 +50,14 @@ class CompositeResponderTest extends \PHPUnit_Framework_TestCase {
         $responder1 = $this->getMock('Aerys\Responders\AsgiResponder');
         $responder1->expects($this->once())
                    ->method('__invoke')
-                   ->with($asgiEnv, $requestId)
+                   ->with($asgiRequest, $requestId)
                    ->will($this->returnValue($asgiResponseNotFound));
         
         
         $responder2 = $this->getMock('Aerys\Responders\AsgiResponder');
         $responder2->expects($this->once())
                    ->method('__invoke')
-                   ->with($asgiEnv, $requestId)
+                   ->with($asgiRequest, $requestId)
                    ->will($this->returnValue($asgiResponseOk));
         
         $return[] = [[$responder1, $responder2], $expectedResponse = $asgiResponseOk];
@@ -67,14 +67,14 @@ class CompositeResponderTest extends \PHPUnit_Framework_TestCase {
         $responder1 = $this->getMock('Aerys\Responders\AsgiResponder');
         $responder1->expects($this->once())
                    ->method('__invoke')
-                   ->with($asgiEnv, $requestId)
+                   ->with($asgiRequest, $requestId)
                    ->will($this->returnValue(NULL));
         
         
         $responder2 = $this->getMock('Aerys\Responders\AsgiResponder');
         $responder2->expects($this->once())
                    ->method('__invoke')
-                   ->with($asgiEnv, $requestId)
+                   ->with($asgiRequest, $requestId)
                    ->will($this->returnValue($asgiResponseOk));
         
         $return[] = [[$responder1, $responder2], $expectedResponse = NULL];
@@ -86,14 +86,14 @@ class CompositeResponderTest extends \PHPUnit_Framework_TestCase {
         $responder1 = $this->getMock('Aerys\Responders\AsgiResponder');
         $responder1->expects($this->once())
                    ->method('__invoke')
-                   ->with($asgiEnv, $requestId)
+                   ->with($asgiRequest, $requestId)
                    ->will($this->returnValue($asgiResponseNotFound2));
         
         
         $responder2 = $this->getMock('Aerys\Responders\AsgiResponder');
         $responder2->expects($this->once())
                    ->method('__invoke')
-                   ->with($asgiEnv, $requestId)
+                   ->with($asgiRequest, $requestId)
                    ->will($this->returnValue($asgiResponseNotFound2));
         
         $return[] = [[$responder1, $responder2], $expectedResponse = $asgiResponseNotFound];

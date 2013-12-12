@@ -84,32 +84,6 @@ class WriterFactoryTest extends \PHPUnit_Framework_TestCase {
             $expectedType
         ];
         
-        // 4 ---------------------------------------------------------------------------------------
-        
-        $body = $this->getMock('Iterator');
-        $protocol = '1.1';
-        $expectedType = 'Aerys\Writing\ChunkedIteratorWriter';
-        
-        $return[] = [
-            $destinationStream,
-            $body,
-            $protocol,
-            $expectedType
-        ];
-        
-        // 5 ---------------------------------------------------------------------------------------
-        
-        $body = $this->getMock('Iterator');
-        $protocol = '1.0';
-        $expectedType = 'Aerys\Writing\IteratorWriter';
-        
-        $return[] = [
-            $destinationStream,
-            $body,
-            $protocol,
-            $expectedType
-        ];
-        
         // x ---------------------------------------------------------------------------------------
         
         return $return;

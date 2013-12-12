@@ -33,29 +33,29 @@ class Proxy implements AsgiResponder {
         $this->server = $server;
         $this->canUsePeclParser = extension_loaded('http');
         $this->badGatewayResponse = [
-            $status = 502,
-            $reason = 'Bad Gateway',
-            $headers = ['Content-Type: text/html; charset=utf-8'],
-            $body = "<html><body><h1>502 Bad Gateway</h1></body></html>"
+            'status' => 502,
+            'reason' => 'Bad Gateway',
+            'headers' => ['Content-Type: text/html; charset=utf-8'],
+            'body' => "<html><body><h1>502 Bad Gateway</h1></body></html>"
         ];
         $this->serviceUnavailableResponse = [
-            $status = 503,
-            $reason = 'Service Unavailable',
-            $headers = ['Content-Type: text/html; charset=utf-8'],
-            $body = "<html><body><h1>503 Service Unavailable</h1></body></html>"
+            'status' => 503,
+            'reason' => 'Service Unavailable',
+            'headers' => ['Content-Type: text/html; charset=utf-8'],
+            'body' => "<html><body><h1>503 Service Unavailable</h1></body></html>"
         ];
     }
 
     /**
      * Respond to the specified ASGI request environment
      *
-     * @param array $asgiEnv The ASGI request
+     * @param $request The ASGI request environment map
      * @param int $requestId The unique Aerys request identifier
      * @return mixed Returns ASGI response array or NULL for delayed async response
      */
-    function __invoke(array $asgiEnv, $requestId) {
+    function __invoke($request, $requestId) {
         return ($this->backends && $this->maxPendingRequests > $this->totalPendingRequests)
-            ? $this->dispatchRequestToBackend($asgiEnv, $requestId)
+            ? $this->dispatchRequestToBackend($request)
             : $this->serviceUnavailableResponse;
     }
 
@@ -247,9 +247,9 @@ class Proxy implements AsgiResponder {
 
         if ($this->queuedRequests) {
             $requestId = key($this->queuedRequests);
-            $asgiEnv = $this->queuedRequests[$requestId];
+            $request = $this->queuedRequests[$requestId];
             unset($this->queuedRequests[$requestId]);
-            $this->enqueueRequest($conn, $requestId, $asgiEnv);
+            $this->enqueueRequest($conn, $requestId, $request);
         } else {
             $backend->availableConnections[$conn->id] = $conn;
         }
@@ -304,7 +304,7 @@ class Proxy implements AsgiResponder {
             }
         }
 
-        $asgiResponse = [
+        $response = [
             (int) $responseArr['status'],
             $responseArr['reason'],
             $responseHeaders,
@@ -314,16 +314,16 @@ class Proxy implements AsgiResponder {
         $this->totalPendingRequests--;
         $requestId = $conn->inProgressRequestId;
         $conn->inProgressRequestId = NULL;
-        $this->server->setResponse($requestId, $asgiResponse);
+        $this->server->setResponse($requestId, $response);
         $backend = $this->backends[$conn->uri];
 
         if ($isClosed || $this->shouldCloseAfterResponse($protocol, $headers)) {
             $this->unloadBackendConnection($backend, $conn);
         } elseif ($this->queuedRequests) {
             $requestId = key($this->queuedRequests);
-            $asgiEnv = $this->queuedRequests[$requestId];
+            $request = $this->queuedRequests[$requestId];
             unset($this->queuedRequests[$requestId]);
-            $this->enqueueRequest($conn, $requestId, $asgiEnv);
+            $this->enqueueRequest($conn, $requestId, $request);
         } else {
             $backend->availableConnections[$conn->id] = $conn;
         }
@@ -391,7 +391,7 @@ class Proxy implements AsgiResponder {
     /**
      * @TODO Utilize intelligent (not round-robin) backend selection
      */
-    private function dispatchRequestToBackend(array $asgiEnv, $requestId) {
+    private function dispatchRequestToBackend($request, $requestId) {
         if (!$backend = current($this->backends)) {
             reset($this->backends);
             $backend = current($this->backends);
@@ -404,43 +404,42 @@ class Proxy implements AsgiResponder {
             $connId = key($backend->availableConnections);
             $conn = $backend->availableConnections[$connId];
             unset($backend->availableConnections[$connId]);
-            $this->enqueueRequest($conn, $requestId, $asgiEnv);
-            $asgiResponse = NULL;
+            $response = (yield $this->enqueueRequest($conn, $requestId, $request));
         } elseif ($backend->cachedConnectionCount < $this->hiWaterConnectionMax) {
             $this->totalPendingRequests++;
-            $this->queuedRequests[$requestId] = $asgiEnv;
+            $this->queuedRequests[$requestId] = $request;
             $this->connect($backend);
-            $asgiResponse = NULL;
+            $response = (yield);
         } else {
-            $asgiResponse = $this->serviceUnavailableResponse;
+            $response = (yield $this->serviceUnavailableResponse);
         }
 
-        return $asgiResponse;
+        yield $response;
     }
 
-    private function enqueueRequest(Connection $conn, $requestId, array $asgiEnv) {
-        $rawHeaders = $this->generateRawHeadersFromEnvironment($asgiEnv);
+    private function enqueueRequest(Connection $conn, $requestId, $request) {
+        $rawHeaders = $this->generateRawHeadersFromEnvironment($request);
 
-        $conn->responseParser->enqueueResponseMethodMatch($asgiEnv['REQUEST_METHOD']);
+        $conn->responseParser->enqueueResponseMethodMatch($request['REQUEST_METHOD']);
         $conn->inProgressRequestId = $requestId;
-        $conn->inProgressRequestWriter = $asgiEnv['ASGI_INPUT']
-            ? new StreamWriter($conn->socket, $rawHeaders, $asgiEnv['ASGI_INPUT'])
+        $conn->inProgressRequestWriter = $request['ASGI_INPUT']
+            ? new StreamWriter($conn->socket, $rawHeaders, $request['ASGI_INPUT'])
             : new Writer($conn->socket, $rawHeaders);
 
         $this->writeToBackendConnection($conn);
     }
 
-    private function generateRawHeadersFromEnvironment(array $asgiEnv) {
+    private function generateRawHeadersFromEnvironment($request) {
         unset(
-            $asgiEnv['HTTP_EXPECT'],
-            $asgiEnv['HTTP_CONTENT_LENGTH'],
-            $asgiEnv['HTTP_TRANSFER_ENCODING']
+            $request['HTTP_EXPECT'],
+            $request['HTTP_CONTENT_LENGTH'],
+            $request['HTTP_TRANSFER_ENCODING']
         );
 
-        $headerStr = $asgiEnv['REQUEST_METHOD'] . ' ' . $asgiEnv['REQUEST_URI'] . " HTTP/1.1\r\n";
+        $headerStr = $request['REQUEST_METHOD'] . ' ' . $request['REQUEST_URI'] . " HTTP/1.1\r\n";
 
         $headerArr = [];
-        foreach ($asgiEnv as $key => $value) {
+        foreach ($request as $key => $value) {
             if (strpos($key, 'HTTP_') === 0) {
                 $key = str_replace('_', '-', substr($key, 5));
                 $headerArr[$key] = $value;
@@ -449,14 +448,14 @@ class Proxy implements AsgiResponder {
 
         $headerArr['CONNECTION'] = 'keep-alive';
 
-        if ($body = $asgiEnv['ASGI_INPUT']) {
+        if ($body = $request['ASGI_INPUT']) {
             fseek($body, 0, SEEK_END);
             $headerArr['CONTENT_LENGTH'] = ftell($body);
             rewind($body);
         }
 
         if ($this->proxyPassHeaders) {
-            $headerArr = $this->mergeProxyPassHeaders($asgiEnv, $headerArr, $this->proxyPassHeaders);
+            $headerArr = $this->mergeProxyPassHeaders($request, $headerArr, $this->proxyPassHeaders);
         }
 
         foreach ($headerArr as $field => $value) {
@@ -468,9 +467,9 @@ class Proxy implements AsgiResponder {
         return $headerStr;
     }
 
-    private function mergeProxyPassHeaders(array $asgiEnv, array $headerArr, array $proxyPassHeaders) {
-        $host = $asgiEnv['SERVER_NAME'];
-        $port = $asgiEnv['SERVER_PORT'];
+    private function mergeProxyPassHeaders($request, array $headerArr, array $proxyPassHeaders) {
+        $host = $request['SERVER_NAME'];
+        $port = $request['SERVER_PORT'];
 
         if (!($port == 80 || $port == 443)) {
             $host .= ":{$port}";
@@ -478,10 +477,10 @@ class Proxy implements AsgiResponder {
 
         $availableVars = [
             '$host' => $host,
-            '$serverName' => $asgiEnv['SERVER_NAME'],
-            '$serverAddr' => $asgiEnv['SERVER_ADDR'],
-            '$serverPort' => $asgiEnv['SERVER_PORT'],
-            '$remoteAddr' => $asgiEnv['REMOTE_ADDR']
+            '$serverName' => $request['SERVER_NAME'],
+            '$serverAddr' => $request['SERVER_ADDR'],
+            '$serverPort' => $request['SERVER_PORT'],
+            '$remoteAddr' => $request['REMOTE_ADDR']
         ];
 
         foreach ($proxyPassHeaders as $key => $value) {

@@ -29,6 +29,7 @@
                 lowUpperBound="35"
                 highLowerBound="70"
                 />
+        <!--
         <log
                 type="coverage-html"
                 target="./test/coverage"
@@ -38,5 +39,6 @@
                 highLowerBound="70"
                 showUncoveredFiles="true"
                 />
+        -->
     </logging>
 </phpunit>

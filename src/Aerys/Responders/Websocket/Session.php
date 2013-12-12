@@ -11,7 +11,7 @@ class Session {
 
     public $id;
     public $socket;
-    public $asgiEnv;
+    public $asgiRequest;
 
     public $endpoint;
     public $endpointOptions;
@@ -47,4 +47,5 @@ class Session {
     public $readWatcher;
     public $writeWatcher;
     public $closeTimeoutWatcher;
+    public $closeCallback;
 }

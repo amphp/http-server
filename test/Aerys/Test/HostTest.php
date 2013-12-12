@@ -139,14 +139,14 @@ class HostTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals($name, $host->getName());
     }
 
-    function testGetHandler() {
+    function testGetApplication() {
         $address = '127.0.0.1';
         $port = 80;
         $name = 'localhost';
         $handler = function(){};
 
         $host = new Host($address, $port, $name, $handler);
-        $this->assertEquals($handler, $host->getHandler());
+        $this->assertEquals($handler, $host->getApplication());
     }
 
     /**
@@ -175,102 +175,6 @@ class HostTest extends \PHPUnit_Framework_TestCase {
             [$host, '127.0.0.1:443', FALSE],
             [$host, '*:443', FALSE],
         ];
-    }
-
-    /**
-     * @dataProvider provideInvalidPriorityMapKeys
-     * @expectedException \DomainException
-     */
-    function testRegisterModThrowsOnInvalidPriorityMapKey($priorityMap) {
-        $address = '127.0.0.1';
-        $port = 80;
-        $name = 'localhost';
-        $handler = function(){};
-        $host = new Host($address, $port, $name, $handler);
-        $mod = $this->getMock('Aerys\Mods\OnHeadersMod');
-        $host->registerMod($mod, $priorityMap);
-    }
-
-    function provideInvalidPriorityMapKeys() {
-        return [
-            [['badKey' => 50]],
-            [['onSomething' => 99]]
-        ];
-    }
-
-    /**
-     * @dataProvider provideInvalidModObjects
-     * @expectedException \InvalidArgumentException
-     */
-    function testRegisterModThrowsOnInvalidMod($badMod) {
-        $address = '127.0.0.1';
-        $port = 80;
-        $name = 'localhost';
-        $handler = function(){};
-        $host = new Host($address, $port, $name, $handler);
-        $host->registerMod($badMod);
-    }
-
-    function provideInvalidModObjects() {
-        return [
-            [new \StdClass],
-            [[]],
-            ['not a mod']
-        ];
-    }
-
-    function testModPrioritySortOnHeaders() {
-        $address = '127.0.0.1';
-        $port = 80;
-        $name = 'localhost';
-        $handler = function(){};
-        $host = new Host($address, $port, $name, $handler);
-
-        $mod1 = $this->getMock('Aerys\Mods\OnHeadersMod');
-        $host->registerMod($mod1, ['onHeaders' => 99]);
-
-        $mod2 = $this->getMock('Aerys\Mods\OnHeadersMod');
-        $host->registerMod($mod2, ['onHeaders' => 1]);
-
-        $orderedMods = $host->getOnHeadersMods();
-        $this->assertSame($mod2, array_shift($orderedMods));
-        $this->assertSame($mod1, array_shift($orderedMods));
-    }
-
-    function testModPrioritySortBeforeResponse() {
-        $address = '127.0.0.1';
-        $port = 80;
-        $name = 'localhost';
-        $handler = function(){};
-        $host = new Host($address, $port, $name, $handler);
-
-        $mod1 = $this->getMock('Aerys\Mods\BeforeResponseMod');
-        $host->registerMod($mod1, ['beforeResponse' => 99]);
-
-        $mod2 = $this->getMock('Aerys\Mods\BeforeResponseMod');
-        $host->registerMod($mod2, ['beforeResponse' => 1]);
-
-        $orderedMods = $host->getBeforeResponseMods();
-        $this->assertSame($mod2, array_shift($orderedMods));
-        $this->assertSame($mod1, array_shift($orderedMods));
-    }
-
-    function testModPrioritySortAfterResponse() {
-        $address = '127.0.0.1';
-        $port = 80;
-        $name = 'localhost';
-        $handler = function(){};
-        $host = new Host($address, $port, $name, $handler);
-
-        $mod1 = $this->getMock('Aerys\Mods\AfterResponseMod');
-        $host->registerMod($mod1, ['afterResponse' => 99]);
-
-        $mod2 = $this->getMock('Aerys\Mods\AfterResponseMod');
-        $host->registerMod($mod2, ['afterResponse' => 1]);
-
-        $orderedMods = $host->getAfterResponseMods();
-        $this->assertSame($mod2, array_shift($orderedMods));
-        $this->assertSame($mod1, array_shift($orderedMods));
     }
 
 }

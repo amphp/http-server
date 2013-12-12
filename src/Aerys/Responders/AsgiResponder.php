@@ -3,5 +3,5 @@
 namespace Aerys\Responders;
 
 interface AsgiResponder {
-    function __invoke(array $asgiEnv, $requestId);
+    function __invoke(Request $request);
 }

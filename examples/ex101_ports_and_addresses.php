@@ -33,9 +33,8 @@
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-$myResponder = function($asgiEnv) {
-    $body = '<html><body><h1>Hello, world.</h1></body></html>';
-    return [$status = 200, $reason = 'OK', $headers = [], $body];
+$myResponder = function($request) {
+    return '<html><body><h1>Hello, world.</h1></body></html>';
 };
 
 $myApp = (new Aerys\Framework\App)

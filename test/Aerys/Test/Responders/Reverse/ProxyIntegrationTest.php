@@ -18,12 +18,12 @@ class ProxyBackendIntegrationApp {
         $this->server = $server;
     }
 
-    function __invoke(array $asgiEnv, $requestId) {
-        switch ($asgiEnv['REQUEST_URI']) {
+    function __invoke(AsgiRequest $asgiRequest, $requestId) {
+        switch ($asgiRequest['REQUEST_URI']) {
             case '/return_body':
-                return $this->returnBody($asgiEnv, $requestId);
+                return $this->returnBody($asgiRequest, $requestId);
             default:
-                return $this->hello($asgiEnv, $requestId);
+                return $this->hello($asgiRequest, $requestId);
         }
     }
 
@@ -32,8 +32,8 @@ class ProxyBackendIntegrationApp {
         return [200, 'OK', $headers = [], $body];
     }
 
-    private function returnBody($asgiEnv, $requestId) {
-        $body = stream_get_contents($asgiEnv['ASGI_INPUT']);
+    private function returnBody($asgiRequest, $requestId) {
+        $body = stream_get_contents($asgiRequest['ASGI_INPUT']);
         return [200, 'OK', $headers = [], $body];
     }
 

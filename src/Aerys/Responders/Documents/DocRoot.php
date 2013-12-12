@@ -7,10 +7,9 @@ use Alert\Reactor,
     Aerys\Status,
     Aerys\Reason,
     Aerys\Writing\ByteRangeBody,
-    Aerys\Writing\MultiPartByteRangeBody,
-    Aerys\Responders\AsgiResponder;
+    Aerys\Writing\MultiPartByteRangeBody;
 
-class DocRoot implements AsgiResponder {
+class DocRoot {
 
     const ETAG_NONE = 0;
     const ETAG_SIZE = 1;
@@ -273,12 +272,12 @@ class DocRoot implements AsgiResponder {
     /**
      * Respond to the specified ASGI request environment
      *
-     * @param array $asgiEnv The ASGI request
+     * @param $request The ASGI request environment
      * @param int $requestId The unique Aerys request identifier
      * @return array Returns ASGI response array
      */
-    function __invoke(array $asgiEnv, $requestId) {
-        $filePath = $this->docRoot . $asgiEnv['REQUEST_URI_PATH'];
+    function __invoke($request) {
+        $filePath = $this->docRoot . $request['REQUEST_URI_PATH'];
 
         if (!$filePath = $this->validateFilePath($filePath)) {
             return $this->notFound();
@@ -297,9 +296,9 @@ class DocRoot implements AsgiResponder {
         if ($redirectToIndex) {
             return $this->redirectTo($redirectToIndex);
         } elseif (!$isDir) {
-            return $this->respondToFoundFile($filePath, $asgiEnv);
+            return $this->respondToFoundFile($filePath, $request);
         } elseif ($isDir && $this->indexes && ($filePath = $this->matchIndex($filePath))) {
-            return $this->respondToFoundFile($filePath, $asgiEnv);
+            return $this->respondToFoundFile($filePath, $request);
         } else {
             return $this->notFound();
         }
@@ -358,8 +357,8 @@ class DocRoot implements AsgiResponder {
         return [$status, $reason, $headers, $body];
     }
 
-    private function respondToFoundFile($filePath, array $asgiEnv) {
-        $method = $asgiEnv['REQUEST_METHOD'];
+    private function respondToFoundFile($filePath, AsgiRequest $request) {
+        $method = $request['REQUEST_METHOD'];
 
         if ($method == 'OPTIONS') {
             return $this->options();
@@ -371,9 +370,9 @@ class DocRoot implements AsgiResponder {
         $fileSize = filesize($filePath);
         $eTag = $this->eTagMode ? $this->getEtag($mTime, $fileSize, $filePath) : NULL;
 
-        $ranges = empty($asgiEnv['HTTP_RANGE']) ? NULL : $asgiEnv['HTTP_RANGE'];
+        $ranges = empty($request['HTTP_RANGE']) ? NULL : $request['HTTP_RANGE'];
 
-        switch ($this->checkPreconditions($mTime, $fileSize, $eTag, $asgiEnv)) {
+        switch ($this->checkPreconditions($mTime, $fileSize, $eTag, $request)) {
             case self::PRECONDITION_NOT_MODIFIED:
                 return $this->notModified($eTag, $mTime);
             case self::PRECONDITION_FAILED:
@@ -391,41 +390,41 @@ class DocRoot implements AsgiResponder {
             : $this->doFile($filePath, $method, $mTime, $fileSize, $eTag);
     }
 
-    private function checkPreconditions($mTime, $fileSize, $eTag, $asgiEnv) {
-        $ifMatchHeader = !empty($asgiEnv['HTTP_IF_MATCH'])
-            ? $asgiEnv['HTTP_IF_MATCH']
+    private function checkPreconditions($mTime, $fileSize, $eTag, $request) {
+        $ifMatchHeader = !empty($request['HTTP_IF_MATCH'])
+            ? $request['HTTP_IF_MATCH']
             : NULL;
 
         if ($ifMatchHeader && !$this->eTagMatchesPrecondition($eTag, $ifMatchHeader)) {
             return self::PRECONDITION_FAILED;
         }
 
-        $ifNoneMatchHeader = !empty($asgiEnv['HTTP_IF_NONE_MATCH'])
-            ? $asgiEnv['HTTP_IF_NONE_MATCH']
+        $ifNoneMatchHeader = !empty($request['HTTP_IF_NONE_MATCH'])
+            ? $request['HTTP_IF_NONE_MATCH']
             : NULL;
 
         if ($ifNoneMatchHeader && $this->eTagMatchesPrecondition($eTag, $ifNoneMatchHeader)) {
             return self::PRECONDITION_NOT_MODIFIED;
         }
 
-        $ifModifiedSinceHeader = !empty($asgiEnv['HTTP_IF_MODIFIED_SINCE'])
-            ? @strtotime($asgiEnv['HTTP_IF_MODIFIED_SINCE'])
+        $ifModifiedSinceHeader = !empty($request['HTTP_IF_MODIFIED_SINCE'])
+            ? @strtotime($request['HTTP_IF_MODIFIED_SINCE'])
             : NULL;
 
         if ($ifModifiedSinceHeader && $ifModifiedSinceHeader <= $mTime) {
             return self::PRECONDITION_NOT_MODIFIED;
         }
 
-        $ifUnmodifiedSinceHeader = !empty($asgiEnv['HTTP_IF_UNMODIFIED_SINCE'])
-            ? @strtotime($asgiEnv['HTTP_IF_UNMODIFIED_SINCE'])
+        $ifUnmodifiedSinceHeader = !empty($request['HTTP_IF_UNMODIFIED_SINCE'])
+            ? @strtotime($request['HTTP_IF_UNMODIFIED_SINCE'])
             : NULL;
 
         if ($ifUnmodifiedSinceHeader && $mTime > $ifUnmodifiedSinceHeader) {
             return self::PRECONDITION_FAILED;
         }
 
-        $ifRangeHeader = !empty($asgiEnv['HTTP_IF_RANGE'])
-            ? $asgiEnv['HTTP_IF_RANGE']
+        $ifRangeHeader = !empty($request['HTTP_IF_RANGE'])
+            ? $request['HTTP_IF_RANGE']
             : NULL;
 
         if ($ifRangeHeader) {

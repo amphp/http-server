@@ -27,15 +27,15 @@ class PeclMessageParser implements Parser {
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = -1;
     private $storeBody = TRUE;
-    private $beforeBody;
     private $onBodyData;
+    private $returnBeforeEntity = FALSE;
 
     private static $availableOptions = [
         'maxHeaderBytes' => 1,
         'maxBodyBytes' => 1,
         'storeBody' => 1,
-        'beforeBody' => 1,
-        'onBodyData' => 1
+        'onBodyData' => 1,
+        'returnBeforeEntity' => 1
     ];
 
     function __construct($mode = self::MODE_REQUEST) {
@@ -185,11 +185,11 @@ class PeclMessageParser implements Parser {
 
             $this->body = fopen('php://memory', 'r+');
 
-            if ($beforeBody = $this->beforeBody) {
+            if ($this->returnBeforeEntity) {
                 $parsedMsgArr = $this->getParsedMessageArray();
                 $parsedMsgArr['headersOnly'] = TRUE;
-
-                $beforeBody($parsedMsgArr);
+                
+                return $parsedMsgArr;
             }
 
             switch ($this->state) {

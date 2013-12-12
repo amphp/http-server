@@ -5,11 +5,11 @@ namespace Aerys\Responders\Websocket;
 use Alert\Reactor,
     Aerys\Status,
     Aerys\Reason,
-    Aerys\Method,
+    Aerys\Response,
     Aerys\Server,
-    Aerys\Responders\AsgiResponder;
+    Aerys\Request;
 
-class Broker implements \Countable, AsgiResponder {
+class Broker implements \Countable {
 
     const ACCEPT_CONCAT = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
@@ -85,7 +85,7 @@ class Broker implements \Countable, AsgiResponder {
     function getEnvironment($socketId) {
         if (isset($this->sessions[$socketId])) {
             $session = $this->sessions[$socketId];
-            return $session->asgiEnv;
+            return $session->request;
         } else {
             throw new \DomainException(
                 "Unknown socket ID: {$socketId}"
@@ -244,63 +244,62 @@ class Broker implements \Countable, AsgiResponder {
     }
 
     /**
-     * Respond to the ASGI requests (i.e. attempt the websocket handshake)
+     * Respond to the request (i.e. attempt the websocket handshake)
      *
-     * @param array $asgiEnv The ASGI request
-     * @param int $requestId The unique Aerys request identifier
-     * @return array Returns an ASGI response array
+     * @param array $request The request environment map
+     * @return \Aerys\Response
      */
-    function __invoke(array $asgiEnv, $requestId) {
-        list($isAccepted, $handshakeResult) = $this->validateClientHandshake($asgiEnv);
+    function __invoke($request) {
+        list($isAccepted, $handshakeResult) = $this->validateClientHandshake($request);
 
         if ($isAccepted) {
             list($version, $protocol, $extensions) = $handshakeResult;
-            $asgiResponse = $this->generateServerHandshake($asgiEnv, $version, $protocol, $extensions);
+            $responseArray = $this->generateServerHandshake($request, $version, $protocol, $extensions);
         } else {
-            $asgiResponse = $handshakeResult;
+            $responseArray = $handshakeResult;
         }
-
-        return $asgiResponse;
+        
+        return new Response($responseArray);
     }
 
-    private function validateClientHandshake(array $asgiEnv) {
-        $requestUriPath = $asgiEnv['REQUEST_URI_PATH'];
+    private function validateClientHandshake($request) {
+        $requestUriPath = $request['REQUEST_URI_PATH'];
 
         if (isset($this->endpoints[$requestUriPath])) {
             $endpointOptions = $this->endpoints[$requestUriPath][1];
         } else {
-            return [FALSE, [Status::NOT_FOUND, Reason::HTTP_404, [], NULL]];
+            return [FALSE, ['status' => Status::NOT_FOUND, 'reason' => Reason::HTTP_404]];
         }
 
-        if ($asgiEnv['REQUEST_METHOD'] != 'GET') {
-            return [FALSE, [Status::METHOD_NOT_ALLOWED, Reason::HTTP_405, [], NULL]];
+        if ($request['REQUEST_METHOD'] != 'GET') {
+            return [FALSE, ['status' => Status::METHOD_NOT_ALLOWED, 'reason' => Reason::HTTP_405]];
         }
 
-        if ($asgiEnv['SERVER_PROTOCOL'] < 1.1) {
-            return [FALSE, [Status::HTTP_VERSION_NOT_SUPPORTED, Reason::HTTP_505, [], NULL]];
+        if ($request['SERVER_PROTOCOL'] < 1.1) {
+            return [FALSE, ['status' => Status::HTTP_VERSION_NOT_SUPPORTED, 'reason' => Reason::HTTP_505]];
         }
 
-        if (empty($asgiEnv['HTTP_UPGRADE']) || strcasecmp($asgiEnv['HTTP_UPGRADE'], 'websocket')) {
-            return [FALSE, [Status::UPGRADE_REQUIRED, Reason::HTTP_426, [], NULL]];
+        if (empty($request['HTTP_UPGRADE']) || strcasecmp($request['HTTP_UPGRADE'], 'websocket')) {
+            return [FALSE, ['status' => Status::UPGRADE_REQUIRED, 'reason' => Reason::HTTP_426]];
         }
 
-        if (empty($asgiEnv['HTTP_CONNECTION']) || !$this->validateConnectionHeader($asgiEnv['HTTP_CONNECTION'])) {
+        if (empty($request['HTTP_CONNECTION']) || !$this->validateConnectionHeader($request['HTTP_CONNECTION'])) {
             $reason = 'Bad Request: "Connection: Upgrade" header required';
-            return [FALSE, [Status::BAD_REQUEST, $reason, [], NULL]];
+            return [FALSE, ['status' => Status::BAD_REQUEST, 'reason' => $reason]];
         }
 
-        if (empty($asgiEnv['HTTP_SEC_WEBSOCKET_KEY'])) {
+        if (empty($request['HTTP_SEC_WEBSOCKET_KEY'])) {
             $reason = 'Bad Request: "Sec-Broker-Key" header required';
-            return [FALSE, [Status::BAD_REQUEST, $reason, [], NULL]];
+            return [FALSE, ['status' => Status::BAD_REQUEST, 'reason' => $reason]];
         }
 
-        if (empty($asgiEnv['HTTP_SEC_WEBSOCKET_VERSION'])) {
+        if (empty($request['HTTP_SEC_WEBSOCKET_VERSION'])) {
             $reason = 'Bad Request: "Sec-WebSocket-Version" header required';
-            return [FALSE, [Status::BAD_REQUEST, $reason, [], NULL]];
+            return [FALSE, ['status' => Status::BAD_REQUEST, 'reason' => $reason]];
         }
 
         $version = NULL;
-        $requestedVersions = explode(',', $asgiEnv['HTTP_SEC_WEBSOCKET_VERSION']);
+        $requestedVersions = explode(',', $request['HTTP_SEC_WEBSOCKET_VERSION']);
         foreach ($requestedVersions as $requestedVersion) {
             if ($requestedVersion === '13') {
                 $version = 13;
@@ -311,23 +310,23 @@ class Broker implements \Countable, AsgiResponder {
         if (!$version) {
             $reason = 'Bad Request: Requested WebSocket version(s) unavailable';
             $headers = ['Sec-WebSocket-Version: 13'];
-            return [FALSE, [Status::BAD_REQUEST, $reason, $headers, NULL]];
+            return [FALSE, ['status' => Status::BAD_REQUEST, 'reason' => $reason, 'headers' => $headers]];
         }
 
         $allowedOrigins = $endpointOptions['allowedOrigins'];
-        $originHeader = empty($asgiEnv['HTTP_ORIGIN']) ? NULL : $asgiEnv['HTTP_ORIGIN'];
+        $originHeader = empty($request['HTTP_ORIGIN']) ? NULL : $request['HTTP_ORIGIN'];
         if ($allowedOrigins && !in_array($originHeader, $allowedOrigins)) {
-            return [FALSE, [Status::FORBIDDEN, Reason::HTTP_403, [], NULL]];
+            return [FALSE, ['status' => Status::FORBIDDEN, 'reason' => Reason::HTTP_403]];
         }
 
         $subprotocol = $endpointOptions['subprotocol'];
-        $subprotocolHeader = !empty($asgiEnv['HTTP_SEC_WEBSOCKET_PROTOCOL'])
-            ? explode(',', $asgiEnv['HTTP_SEC_WEBSOCKET_PROTOCOL'])
+        $subprotocolHeader = !empty($request['HTTP_SEC_WEBSOCKET_PROTOCOL'])
+            ? explode(',', $request['HTTP_SEC_WEBSOCKET_PROTOCOL'])
             : [];
 
         if ($subprotocol && !in_array($subprotocol, $subprotocolHeader)) {
             $reason = 'Bad Request: Requested WebSocket subprotocol(s) unavailable';
-            return [FALSE, [Status::BAD_REQUEST, $reason, [], NULL]];
+            return [FALSE, ['status' => Status::BAD_REQUEST, 'reason' => $reason]];
         }
 
         /**
@@ -369,8 +368,8 @@ class Broker implements \Countable, AsgiResponder {
         return $hasConnectionUpgrade;
     }
 
-    private function generateServerHandshake(array $asgiEnv, $version, $subprotocol, $extensions) {
-        $concatenatedKeyStr = $asgiEnv['HTTP_SEC_WEBSOCKET_KEY'] . self::ACCEPT_CONCAT;
+    private function generateServerHandshake($request, $version, $subprotocol, $extensions) {
+        $concatenatedKeyStr = $request['HTTP_SEC_WEBSOCKET_KEY'] . self::ACCEPT_CONCAT;
         $secWebSocketAccept = base64_encode(sha1($concatenatedKeyStr, TRUE));
 
         $headers = [
@@ -388,26 +387,26 @@ class Broker implements \Countable, AsgiResponder {
         }
 
         return [
-            Status::SWITCHING_PROTOCOLS,
-            Reason::HTTP_101,
-            $headers,
-            $body = NULL,
-            [$this, 'importSocket']
+            'status' => Status::SWITCHING_PROTOCOLS,
+            'reason' => Reason::HTTP_101,
+            'headers' => $headers,
+            'export_callback' => [$this, 'importSocket']
         ];
     }
 
-    function importSocket($socket, array $asgiEnv) {
+    function importSocket($socket, $request, callable $closeCallback) {
         $socketId = (int) $socket;
 
-        $requestUriPath = $asgiEnv['REQUEST_URI_PATH'];
+        $requestUriPath = $request['REQUEST_URI_PATH'];
 
         list($endpoint, $endpointOptions) = $this->endpoints[$requestUriPath];
 
         $session = new Session;
 
+        $session->closeCallback = $closeCallback;
         $session->id = $socketId;
         $session->socket = $socket;
-        $session->asgiEnv = $asgiEnv;
+        $session->request = $request;
         $session->connectedAt = time();
         $session->endpoint = $endpoint;
         $session->endpointOptions = $endpointOptions;
@@ -797,7 +796,7 @@ class Broker implements \Countable, AsgiResponder {
             $session->frameWriter->enqueue($frame);
 
         } catch (\Exception $e) {
-            @fwrite($session->asgiEnv['ASGI_ERROR'], $e);
+            @fwrite($session->request['ASGI_ERROR'], $e);
 
             $code = Codes::UNEXPECTED_SERVER_ERROR;
             $reason = 'Resource read failure :(';
@@ -843,8 +842,8 @@ class Broker implements \Countable, AsgiResponder {
     }
 
     private function unloadSession(Session $session) {
-        $this->server->closeExportedSocket($session->socket);
-
+        $closeCallback = $session->closeCallback;
+        $closeCallback();
         $this->reactor->cancel($session->readWatcher);
         $this->reactor->cancel($session->writeWatcher);
 

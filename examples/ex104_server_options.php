@@ -27,6 +27,5 @@ $__defaultTextCharset = 'utf-8';
 $__allowedMethods = ['GET', 'HEAD', 'POST', 'PUT'];
 
 $myApp = (new Aerys\Framework\App)->addResponder(function() {
-    $body = '<html><body><h1>Hello, world.</h1></body></html>';
-    return [$status = 200, $reason = 'OK', $headers = [], $body];
+    return '<html><body><h1>Hello, world.</h1></body></html>';
 });

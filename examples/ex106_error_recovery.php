@@ -21,15 +21,15 @@
  * displaying error output to end-users.
  * 
  * To run:
- * $ bin/aerys -c examples/ex105_error_recovery.php
+ * $ bin/aerys -c examples/ex106_error_recovery.php
  * 
  * Once started, load http://127.0.0.1/ in your browser.
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-$myResponder = function($asgiEnv) {
-    switch ($asgiEnv['REQUEST_URI_PATH']) {
+$myResponder = function($request) {
+    switch ($request['REQUEST_URI_PATH']) {
         case '/fatal':
             $nonexistentObj->nonexistentMethod(); // <-- will cause a fatal E_ERROR
             break;
@@ -43,8 +43,8 @@ $myResponder = function($asgiEnv) {
                 <li><a href="/fatal">/fatal</a></li>
                 <li><a href="/exception">/exception</a></li>
             </ul>';
-            $body = "<html><body><h1>Error Recovery</h1>{$li}</body></html>";
-            return [$status = 200, $reason = 'OK', $headers = [], $body];
+            
+            return "<html><body><h1>Error Recovery</h1>{$li}</body></html>";
     }
 };
 

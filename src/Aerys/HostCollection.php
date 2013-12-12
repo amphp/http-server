@@ -4,15 +4,17 @@ namespace Aerys;
 
 /**
  * The HostCollection class aggregates the individual virtual hosts exposed by Server instances in
- * one place. The collection encapsulates logic for selecting which Host should be used to service
- * individual requests in multi-host environments. The HTTP/1.1 specification mandates somewhat
- * complex criteria for host selection and that logic is reflected here.
+ * one place. The collection encapsulates RFC2616-compliant logic for selecting which Host should
+ * service individual requests in multi-host environments.
  */
-class HostCollection implements \Countable, \IteratorAggregate {
+class HostCollection implements \Countable {
 
     private $hosts = [];
-    private $defaultHost;
-    private $cachedHostCount = 0;
+    private $singleHost;
+    
+    function count() {
+        return count($this->hosts);
+    }
 
     /**
      * Add a host to the collection
@@ -25,47 +27,27 @@ class HostCollection implements \Countable, \IteratorAggregate {
     function addHost(Host $host) {
         $hostId = $host->getId();
         $this->hosts[$hostId] = $host;
-        $this->cachedHostCount++;
+        $hostCount = count($this->hosts);
 
-        return count($this->hosts);
-    }
-
-    /**
-     * Assign a default host for use in request host selection
-     *
-     * @param string $hostId
-     * @throws \DomainException If no hosts in the collection match the specified ID
-     * @return void
-     */
-    function setDefaultHost($hostId) {
-        if (isset($this->hosts[$hostId])) {
-            $this->defaultHost = $this->hosts[$hostId];
-        } elseif ($hostId !== NULL) {
-            throw new \DomainException(
-                "Invalid default host; unknown host ID: {$hostId}"
-            );
+        if ($hostCount === 1) {
+            $this->singleHost = $host;
+        } else {
+            $this->singleHost = NULL;
         }
-    }
 
-    /**
-     * Retrieve the collection's default host ID
-     *
-     * @return mixed Returns string host ID or NULL if no default is assigned
-     */
-    function getDefaultHostId() {
-        return $this->defaultHost ? $this->defaultHost->getId() : NULL;
+        return $hostCount;
     }
 
     /**
      * Select a virtual host match for the specified request according to RFC 2616 criteria
      *
-     * @param \Aerys\Request $request
-     * @return mixed Returns the matching \Aerys\Host instance or NULL if no match found
+     * @param \Aerys\MessageCycle $messageCycle
+     * @return array Returns a Host object and boolean TRUE if a valid host selected, FALSE otherwise
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.6.1.1
      */
-    function selectRequestHost(Request $request) {
-        if ($this->cachedHostCount === 1) {
+    function selectHost(MessageCycle $messageCycle, $defaultHostId = NULL) {
+        if ($this->singleHost) {
             //
             // If a server only exposes one host we don't bother with host header validation and
             // return our single host directly. This behavior is justified in RFC2616 Section 5.2:
@@ -74,16 +56,23 @@ class HostCollection implements \Countable, \IteratorAggregate {
             // > ignore the Host header field value when determining the resource identified by an
             // > HTTP/1.1 request.
             //
-            $host = current($this->hosts);
-        } elseif ($request->hasAbsoluteUri()) {
-            $host = $this->selectHostByAbsoluteUri($request);
-        } elseif ($request->getProtocol() >= 1.1 || $request->hasHeader('Host')) {
-            $host = $this->selectHostByHeader($request);
-        } else {
-            $host = $this->selectDefaultHost();
+            $host = $this->singleHost;
+        } elseif ($messageCycle->hasAbsoluteUri) {
+            $host = $this->selectHostByAbsoluteUri($messageCycle);
+        } elseif ($messageCycle->isHttp11 || !empty($messageCycle->ucHeaders['HOST'])) {
+            $host = $this->selectHostByHeader($messageCycle);
+        } elseif ($messageCycle->isHttp10) {
+            $host = $this->selectDefaultHost($defaultHostId);
         }
 
-        return $host;
+        if ($host) {
+            $isRequestedHostValid = TRUE;
+        } else {
+            $host = $this->selectDefaultHost($defaultHostId);
+            $isRequestedHostValid = FALSE;
+        }
+
+        return [$host, $isRequestedHostValid];
     }
 
     /**
@@ -91,21 +80,19 @@ class HostCollection implements \Countable, \IteratorAggregate {
      *       probably to set a "proxy mode" flag on the collection and disallow more than a single
      *       virtual host when in this mode.
      */
-    private function selectHostByAbsoluteUri(Request $request) {
-        if (!$port = $request->getUriPort()) {
-            $port = $request->isEncrypted() ? 443 : 80;
+    private function selectHostByAbsoluteUri(MessageCycle $messageCycle) {
+        if (!$port = $messageCycle->uriPort) {
+            $port = $messageCycle->isEncrypted ? 443 : 80;
         }
 
-        $hostId = sprintf("%s:%d", $request->getUriHost(), $port);
+        $hostId = sprintf("%s:%d", $messageCycle->uriHost, $port);
 
-        return isset($this->hosts[$hostId])
-            ? $this->hosts[$hostId]
-            : NULL;
+        return isset($this->hosts[$hostId]) ? $this->hosts[$hostId] : NULL;
     }
 
-    private function selectHostByHeader(Request $request) {
-        $hostHeader = current($request->getHeader('Host'));
-        $isEncrypted = $request->isEncrypted();
+    private function selectHostByHeader(MessageCycle $messageCycle) {
+        $hostHeader = $messageCycle->ucHeaders['HOST'][0];
+        $isEncrypted = $messageCycle->client->isEncrypted;
 
         if ($portStartPos = strrpos($hostHeader, ']')) {
             $ipComparison = substr($hostHeader, 0, $portStartPos + 1);
@@ -164,8 +151,10 @@ class HostCollection implements \Countable, \IteratorAggregate {
      *
      * @return \Aerys\Host
      */
-    function selectDefaultHost() {
-        return $this->defaultHost ?: current($this->hosts);
+    function selectDefaultHost($defaultHostId) {
+        return isset($this->hosts[$defaultHostId])
+            ? $this->hosts[$defaultHostId]
+            : current($this->hosts);
     }
 
     /**
@@ -199,24 +188,6 @@ class HostCollection implements \Countable, \IteratorAggregate {
         reset($this->hosts);
 
         return $bindMap;
-    }
-
-    /**
-     * Retrieve the number of hosts added to the collection
-     *
-     * @return int Returns the current host count
-     */
-    function count() {
-        return $this->cachedHostCount;
-    }
-
-    /**
-     * Retrieve an iterator instance for the aggregated Host instances
-     *
-     * @return \ArrayIterator Returns an iterator containing aggregated \Aerys\Host objects
-     */
-    function getIterator() {
-        return new \ArrayIterator($this->hosts);
     }
 
 }

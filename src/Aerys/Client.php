@@ -11,13 +11,10 @@ class Client {
     public $serverAddress;
     public $serverPort;
     public $isEncrypted;
-
-    public $requestCount;
-    public $preBodyRequest;
-    public $requests = [];
     public $pipeline = [];
-    public $closeAfterSend = [];
-
+    public $messageCycles = [];
+    public $partialMessageCycle;
+    public $requestCount;
     public $parser;
     public $readWatcher;
     public $writeWatcher;

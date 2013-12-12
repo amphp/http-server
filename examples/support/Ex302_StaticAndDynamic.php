@@ -10,6 +10,6 @@ function ex302_static_and_dynamic() {
     $body.= 'link pointing to the static document root\'s robots.txt</a> file.';
     $body.= '</p></body></html>';
 
-    return [200, 'OK', $headers = [], $body];
+    return $body;
 
 }

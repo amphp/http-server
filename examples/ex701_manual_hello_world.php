@@ -11,15 +11,6 @@
  * When requests arrive our app will respond with a simple 200 reply and an HTML hello world
  * message. Note that we don't have to specify any headers in our response array because Aerys takes
  * care of missing headers for us.
- *
- * Responses MUST always be returned as a four-element indexed array of the form:
- *
- * [0] HTTP response status code
- * [1] Reason phrase; if empty Aerys will auto-fill the value according to the status code at [0]
- * [2] Array of Headers (optionally empty -- Aerys normalizes missing headers for you)
- * [3] The response body: NULL, string, seekable resource or Iterator instance (generators!)
- *
- * If your app returns an Iterator body Aerys will automatically stream it to the client.
  */
 
 require __DIR__ . '/../vendor/autoload.php';
@@ -30,11 +21,9 @@ $server = new Aerys\Server($reactor);
 $address = '*';
 $port = 80;
 $name = 'localhost';
-$app = function() {
-    $body = '<html><body><h1>Hello, world.</h1></body></html>';
-    return [$status = 200, $reason = 'OK', $headers = [], $body];
-};
-$host = new Aerys\Host($address, $port, $name, $app);
+$host = new Aerys\Host($address, $port, $name, function($request) {
+    return '<html><body><h1>Hello, world.</h1></body></html>';
+});
 
 $server->start($host);
 $reactor->run();

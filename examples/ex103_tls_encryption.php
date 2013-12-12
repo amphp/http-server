@@ -44,18 +44,17 @@ $encryptedApp = (new Aerys\Framework\App)
     ->setPort(443)
     ->encrypt($encryptionSettings)
     ->setDocumentRoot(__DIR__ . '/support/docroot');
-
+/*
 $redirectApp = (new Aerys\Framework\App)
     ->setPort(80)
-    ->addResponder(function($asgiEnv) {
-        $status = 301;
-        $reason = 'Moved Permanently';
-        $headers = [
-            'Location: https://127.0.0.1' . $asgiEnv['REQUEST_URI']
-        ];
-        $body = '<html><body>Encryption required; redirecting to https:// ...</body></html>';
+    ->addResponder(function($request) {
+        $response = new Aerys\Response([
+            'status' => 302,
+            'headers' => ['Location: https://127.0.0.1' . $request['REQUEST_URI_PATH']],
+            'body' => '<html><body>Encryption required; redirecting to https:// ...</body></html>'
+        ]);
         
-        return [$status, $reason, $headers, $body];
-    }
+        return $response;
+    })
 );
-
+*/

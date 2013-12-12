@@ -7,7 +7,7 @@ class Host {
     private $address;
     private $port;
     private $name;
-    private $handler;
+    private $application;
     private $isTlsAvailable;
     private $tlsContextArr = [];
     private $tlsDefaults = [
@@ -21,12 +21,14 @@ class Host {
         'capath'              => NULL
     ];
 
-    function __construct($address, $port, $name, callable $asgiAppHandler) {
+    function __construct($address, $port, $name, callable $application) {
         $this->setAddress($address);
         $this->setPort($port);
         $this->name = strtolower($name);
-        $this->id = $this->name . ':' . $this->port;
-        $this->handler = $asgiAppHandler;
+        $this->id = $this->name
+            ? $this->name . ':' . $this->port
+            : $this->address . ':' . $this->port;
+        $this->application = $application;
         $this->isTlsAvailable = extension_loaded('openssl');
     }
 
@@ -108,12 +110,12 @@ class Host {
     }
 
     /**
-     * Retrieve the callable application handler for this host
+     * Retrieve the callable application for this host
      *
      * @return mixed
      */
-    function getHandler() {
-        return $this->handler;
+    function getApplication() {
+        return $this->application;
     }
 
     /**

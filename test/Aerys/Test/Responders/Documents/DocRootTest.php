@@ -59,7 +59,7 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
     function testClearCache() {
         $this->assertTrue(file_exists('vfs://root/index.html'));
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/'
         ];
@@ -70,17 +70,17 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $firstBody = $asgiResponse[3];
         
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $secondBody = $asgiResponse[3];
         
         $this->assertSame($firstBody, $secondBody);
         
         $handler->clearCache();
         
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $thirdBody = $asgiResponse[3];
         
         $this->assertSame($thirdBody, $secondBody);
@@ -94,12 +94,12 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'eTagMode' => DocRoot::ETAG_NONE
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/'
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
 
         $this->assertFalse(isset($headers['ETag']));
@@ -119,7 +119,7 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
     function testSetIndexes() {
         $this->assertTrue(file_exists('vfs://root/index.html'));
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/'
         ];
@@ -131,7 +131,7 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
         ]);
 
         // Should match /index.html as per the default index settings
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $this->assertEquals(200, $asgiResponse[0]);
 
         // Set an empty index array
@@ -140,14 +140,14 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
         ]);
 
         // Should 404 because we removed directory index file matching
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $this->assertEquals(404, $asgiResponse[0]);
     }
 
     function testSetIndexRedirection() {
         $this->assertTrue(file_exists('vfs://root/index.html'));
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/index.html'
         ];
@@ -159,7 +159,7 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
         ]);
 
         // Index should be redirected by default
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $this->assertEquals(301, $asgiResponse[0]);
 
         // Turn off auto-redirection
@@ -168,7 +168,7 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
         ]);
 
         // Should 200 because we turned off auto-redirection of index files
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $this->assertEquals(200, $asgiResponse[0]);
     }
 
@@ -181,12 +181,12 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/'
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         
         $expires = strtotime($headers['Expires']);
@@ -197,7 +197,7 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'expiresHeaderPeriod' => -1,
         ]);
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         $this->assertSame('0', $headers['Expires']);
     }
@@ -211,12 +211,12 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt'
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
 
         $this->assertEquals('text/plain; charset=utf-8', $headers['Content-Type']);
@@ -225,7 +225,7 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'txt' => 'text/awesome'
         ]);
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
 
         $this->assertEquals('text/awesome; charset=utf-8', $headers['Content-Type']);
@@ -240,19 +240,19 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt'
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
 
         $this->assertEquals('text/plain; charset=utf-8', $headers['Content-Type']);
 
         $handler->setOption('defaultTextCharset', 'iso-8859-1');
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
 
         $this->assertEquals('text/plain; charset=iso-8859-1', $headers['Content-Type']);
@@ -263,43 +263,43 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
 
         // 0 ---------------------------------------------------------------------------------------
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/'
         ];
         $expectedCode = 200;
 
-        $return[] = [$asgiEnv, $expectedCode];
+        $return[] = [$asgiRequest, $expectedCode];
 
         // 1 ---------------------------------------------------------------------------------------
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/empty_dir/'
         ];
         $expectedCode = 404;
 
-        $return[] = [$asgiEnv, $expectedCode];
+        $return[] = [$asgiRequest, $expectedCode];
 
         // 2 ---------------------------------------------------------------------------------------
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'POST',
             'REQUEST_URI_PATH' => '/'
         ];
         $expectedCode = 405;
 
-        $return[] = [$asgiEnv, $expectedCode];
+        $return[] = [$asgiRequest, $expectedCode];
 
         // 3 ---------------------------------------------------------------------------------------
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/index.html' // index files are auto-redirected to / by default
         ];
         $expectedCode = 301;
 
-        $return[] = [$asgiEnv, $expectedCode];
+        $return[] = [$asgiRequest, $expectedCode];
 
         // x ---------------------------------------------------------------------------------------
 
@@ -309,14 +309,14 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
     /**
      * @dataProvider provideAsgiEnvRequests
      */
-    function testRequest($asgiEnv, $expectedCode) {
+    function testRequest($asgiRequest, $expectedCode) {
         $reactor = $this->getMock('Alert\Reactor');
         $handler = new VfsRealpathHandler($reactor);
         $handler->setAllOptions([
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $statusCode = $asgiResponse[0];
 
         $this->assertEquals($expectedCode, $statusCode);
@@ -329,12 +329,12 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'OPTIONS',
             'REQUEST_URI_PATH' => '/'
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $status = $asgiResponse[0];
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
 
@@ -352,14 +352,14 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
 
         $startPos = 0;
         $endPos = 5;
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_RANGE' => "bytes={$startPos}-{$endPos}"
         ];
         $expectedStatus = Status::PARTIAL_CONTENT;
 
-        $return[] = [$asgiEnv, $expectedStatus, $startPos, $endPos];
+        $return[] = [$asgiRequest, $expectedStatus, $startPos, $endPos];
 
         // 1 ---------------------------------------------------------------------------------------
 
@@ -367,14 +367,14 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
 
         $startPos = 0;
         $endPos = 20;
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_RANGE' => "bytes={$startPos}-{$endPos}"
         ];
         $expectedStatus = Status::PARTIAL_CONTENT;
 
-        $return[] = [$asgiEnv, $expectedStatus, $expectedStartPos = 0, $expectedEndPos = 20];
+        $return[] = [$asgiRequest, $expectedStatus, $expectedStartPos = 0, $expectedEndPos = 20];
 
         // 2 ---------------------------------------------------------------------------------------
 
@@ -382,14 +382,14 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
 
         $startPos = 10;
         $endPos = 41;
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_RANGE' => "bytes={$startPos}-{$endPos}"
         ];
         $expectedStatus = Status::PARTIAL_CONTENT;
 
-        $return[] = [$asgiEnv, $expectedStatus, $expectedStartPos = 10, $expectedEndPos = 41];
+        $return[] = [$asgiRequest, $expectedStatus, $expectedStartPos = 10, $expectedEndPos = 41];
 
         // 3 ---------------------------------------------------------------------------------------
 
@@ -397,14 +397,14 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
 
         $startPos = '';
         $endPos = 20;
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_RANGE' => "bytes={$startPos}-{$endPos}"
         ];
         $expectedStatus = Status::PARTIAL_CONTENT;
 
-        $return[] = [$asgiEnv, $expectedStatus, $expectedStartPos = 21, $expectedEndPos = 41];
+        $return[] = [$asgiRequest, $expectedStatus, $expectedStartPos = 21, $expectedEndPos = 41];
 
         // 4 ---------------------------------------------------------------------------------------
 
@@ -412,14 +412,14 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
 
         $startPos = 20;
         $endPos = '';
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_RANGE' => "bytes={$startPos}-{$endPos}"
         ];
         $expectedStatus = Status::PARTIAL_CONTENT;
 
-        $return[] = [$asgiEnv, $expectedStatus, $expectedStartPos = 20, $expectedEndPos = 41];
+        $return[] = [$asgiRequest, $expectedStatus, $expectedStartPos = 20, $expectedEndPos = 41];
 
         // x ---------------------------------------------------------------------------------------
 
@@ -429,14 +429,14 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
     /**
      * @dataProvider provideRangeRequests
      */
-    function testRangeRequest($asgiEnv, $expectedStatus, $expectedStartPos, $expectedEndPos) {
+    function testRangeRequest($asgiRequest, $expectedStatus, $expectedStartPos, $expectedEndPos) {
         $reactor = $this->getMock('Alert\Reactor');
         $handler = new VfsRealpathHandler($reactor);
         $handler->setAllOptions([
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         list($status, $reason, $headers, $body) = $asgiResponse;
 
         $this->assertEquals($expectedStatus, $status);
@@ -449,39 +449,39 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
 
         // 0 ---------------------------------------------------------------------------------------
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_RANGE' => "bytes=-"
         ];
-        $return[] = [$asgiEnv];
+        $return[] = [$asgiRequest];
 
         // 1 ---------------------------------------------------------------------------------------
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_RANGE' => "bytes="
         ];
-        $return[] = [$asgiEnv];
+        $return[] = [$asgiRequest];
 
         // 2 ---------------------------------------------------------------------------------------
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_RANGE' => 'bytes=8888888-9999999'
         ];
-        $return[] = [$asgiEnv];
+        $return[] = [$asgiRequest];
 
         // 3 ---------------------------------------------------------------------------------------
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_RANGE' => ['bytes=8888888-9999999', 'bytes=6666666-7777777']
         ];
-        $return[] = [$asgiEnv];
+        $return[] = [$asgiRequest];
 
         // x ---------------------------------------------------------------------------------------
 
@@ -491,14 +491,14 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
     /**
      * @dataProvider provideUnsatisfiableRangeRequests
      */
-    function testNotSatisfiableReturnedOnBadRangeRequest($asgiEnv) {
+    function testNotSatisfiableReturnedOnBadRangeRequest($asgiRequest) {
         $reactor = $this->getMock('Alert\Reactor');
         $handler = new VfsRealpathHandler($reactor);
         $handler->setAllOptions([
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
 
         $this->assertEquals(Status::REQUESTED_RANGE_NOT_SATISFIABLE, $asgiResponse[0]);
     }
@@ -510,13 +510,13 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_RANGE' => ['bytes=0-10', 'bytes=11-20']
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         list($status, $reason, $headers, $body) = $asgiResponse;
 
         $this->assertEquals(Status::PARTIAL_CONTENT, $status);
@@ -533,29 +533,29 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/no_extension'
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
 
         $this->assertEquals('text/plain; charset=utf-8', $headers['Content-Type']);
 
         $handler->setOption('DefaultMimeType', 'application/octet-stream');
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
 
         $this->assertEquals('application/octet-stream', $headers['Content-Type']);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/file.unknowntype'
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
 
         $this->assertEquals('application/octet-stream', $headers['Content-Type']);
@@ -568,21 +568,21 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/'
         ];
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         $eTag = $headers['ETag'];
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/',
             'HTTP_IF_NONE_MATCH' => $eTag
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $statusCode = $asgiResponse[0];
 
         $this->assertEquals(Status::NOT_MODIFIED, $statusCode);
@@ -595,12 +595,12 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/',
             'HTTP_IF_MATCH' => 'ZANZIBAR'
         ];
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $statusCode = $asgiResponse[0];
 
         $this->assertEquals(Status::PRECONDITION_FAILED, $statusCode);
@@ -613,21 +613,21 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/'
         ];
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         $lastModified = $headers['Last-Modified'];
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/',
             'HTTP_IF_MODIFIED_SINCE' => $lastModified
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $statusCode = $asgiResponse[0];
 
         $this->assertEquals(Status::NOT_MODIFIED, $statusCode);
@@ -642,12 +642,12 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
 
         $ifUnmodifiedSince = gmdate('D, d M Y H:i:s', 1);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/',
             'HTTP_IF_UNMODIFIED_SINCE' => $ifUnmodifiedSince
         ];
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $statusCode = $asgiResponse[0];
 
         $this->assertEquals(Status::PRECONDITION_FAILED, $statusCode);
@@ -660,22 +660,22 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt'
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         $eTag = $headers['ETag'];
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_IF_RANGE' => $eTag,
             'HTTP_RANGE' => 'bytes=0-5'
         ];
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $statusCode = $asgiResponse[0];
 
         $this->assertEquals(Status::PARTIAL_CONTENT, $statusCode);
@@ -688,22 +688,22 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt'
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         $lastModified = $headers['Last-Modified'];
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_IF_RANGE' => $lastModified,
             'HTTP_RANGE' => 'bytes=0-5'
         ];
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $statusCode = $asgiResponse[0];
 
         $this->assertEquals(Status::PARTIAL_CONTENT, $statusCode);
@@ -716,22 +716,22 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => 'vfs://root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt'
         ];
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $headers = $this->parseHeadersIntoMap($asgiResponse[2]);
         $lastModified = $headers['Last-Modified'];
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => '/test.txt',
             'HTTP_IF_RANGE' => 'ZANZIBAR',
             'HTTP_RANGE' => 'bytes=0-5'
         ];
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $statusCode = $asgiResponse[0];
 
         $this->assertEquals(Status::OK, $statusCode);
@@ -747,13 +747,13 @@ class DocRootTest extends \PHPUnit_Framework_TestCase {
             'docroot' => FIXTURE_DIR . '/vfs/static_handler_root',
         ]);
 
-        $asgiEnv = [
+        $asgiRequest = [
             'REQUEST_METHOD' => 'GET',
             'REQUEST_URI_PATH' => $requestUri
         ];
         $expectedCode = 404;
 
-        $asgiResponse = $handler->__invoke($asgiEnv, $requestId = 42);
+        $asgiResponse = $handler->__invoke($asgiRequest, $requestId = 42);
         $statusCode = $asgiResponse[0];
 
         $this->assertEquals($expectedCode, $statusCode);

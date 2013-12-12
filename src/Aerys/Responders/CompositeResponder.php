@@ -41,13 +41,13 @@ class CompositeResponder implements AsgiResponder {
      *
      * Each responder is tried until a non-404 response (or NULL for async response) is returned.
      *
-     * @param array $asgiEnv The ASGI request
+     * @param AsgiRequest $asgiRequest The ASGI request
      * @param int $requestId The unique Aerys request identifier
      * @return mixed Returns ASGI response array or NULL for delayed async response
      */
-    function __invoke(array $asgiEnv, $requestId) {
+    function __invoke(AsgiRequest $asgiRequest, $requestId) {
         foreach ($this->responders as $responder) {
-            $asgiResponse = $responder->__invoke($asgiEnv, $requestId);
+            $asgiResponse = $responder->__invoke($asgiRequest, $requestId);
             if (!$asgiResponse || $asgiResponse[0] != 404) {
                 return $asgiResponse;
             }

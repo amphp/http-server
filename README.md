@@ -1,15 +1,13 @@
 # Aerys
 
 High-performance non-blocking HTTP/1.1 web application, websocket and custom socket protocol server
-written *entirely* in PHP. Awesomeness ensues.
+written in PHP. Awesomeness ensues.
 
 ## Installation
 
 ```bash
 $ git clone --recursive https://github.com/rdlowrey/Aerys.git
 ```
-
-No. There's no composer right now. I *may* add it when the project is more mature.
 
 ## Running a Server
 
@@ -19,7 +17,7 @@ To start a server simply pass a config file to the aerys binary:
 $ bin/aerys --config = "/path/to/config.php"
 ```
 
-To run a static file server on port 80 without any configuration:
+To run a static file server on port 80 without a configuration file:
 
 ```bash
 $ bin/aerys -r /path/to/static/files
@@ -37,7 +35,7 @@ Get help via `-h` or `--help`:
 $ bin/aerys --h
 ```
 
-## Basic Examples
+## Learn by Example
 
 ##### Hello World
 
@@ -57,7 +55,7 @@ $myApp = (new App)->addResponder(function() {
 
 ##### The Request Environment
 
-Aerys passes requests to applications using a CGI-like array similar to the PHP web SAPI's
+Aerys passes request details to applications using a map structure similar to the PHP web SAPI's
 `$_SERVER`. The example below returnes the contents of the request environment as a response.
 
 ```php
@@ -66,33 +64,40 @@ use Aerys\Framework\App;
 require __DIR__ . '/path/to/aerys/autoload.php';
 
 // Responders are passed an environment array and Request ID
-$myApp = (new App)->addResponder(function($asgiEnv, $requestId) {
-    $environment = print_r($asgiEnv, TRUE);
+$myApp = (new App)->addResponder(function($request) {
+    $environment = print_r($request, TRUE);
     return "<html><body><pre>{$environment}</pre></body></html>";
 });
 ```
 
-##### Customizing Status Codes & Headers
+##### Customizing Status, Reason and Headers
 
-Aerys trivializes responses by abstracting away HTTP protocol details and allowing applications to
-return strings and resources directly. However, apps may also customize response headers and status
-information by returning an indexed array as shown below.
+Aerys abstracts HTTP protocol details and allows applications to return strings and resources
+directly in response to client requests. However, apps may also customize headers and status codes
+by returning a map structure as shown below. Any array or `ArrayAccess` instance may be returned and
+the available (case-sensitive) keys are:
+
+- status
+- reason
+- headers
+- body
+- export_callback (explained later)
+
 
 ```php
 <?php
 use Aerys\Framework\App;
 require __DIR__ . '/path/to/aerys/autoload.php';
 
-// Response must be in the form [$status, $reason, $headersArray, $body]
 $myApp = (new App)->addResponder(function() {
     return [
-        $status = 200,
-        $reason = 'OK',
-        $headers = [
+        'status' => 200,
+        'reason' => 'OK',
+        'headers' => [
             'X-My-Header: some value',
             'Another-Header: some other value'
         ],
-        $body = '<html><body><h1>ZOMG!!!1 PHP!!</h1></body></html>'
+        'body' = '<html><body><h1>ZOMG PGP!!!11</h1></body></html>'
     ];
 });
 ```
@@ -161,8 +166,8 @@ $omgPhpIsWebscale = (new App)
 
 ##### Serving Static Files
 
-Simply add the `App::setDocumentRoot` declaration to add performant (and fully HTTP/1.1-compliant)
-static file serving to your applications.
+Simply add the `App::setDocumentRoot` declaration to add fully HTTP/1.1-compliant static file
+serving to your applications.
 
 ```php
 <?php
@@ -179,11 +184,11 @@ $myApp = (new App)
 
 ##### Basic Routing
 
-While you can add your own user responder callables, it's usually better to take advantage of
-Aerys's builtin routing functionality to map URIs and HTTP method verbs to specific application
-endpoints. Any valid callable or class instance method may be specified as a route target. Note that
-class methods will have their instances automatically provisioned and injected affording routed
-applications all the benefits of clean code and dependency injection.
+While you can add your own user responder callables, it's usually better to take advantage of the
+built-in routing functionality to map URIs and HTTP method verbs to specific application endpoints.
+Any valid callable or class instance method may be specified as a route target. Note that class
+methods have their instances automatically provisioned and injected affording routed applications
+all the benefits of clean code and dependency injection.
 
 ```php
 <?php
@@ -208,7 +213,10 @@ $myApp = (new App)
 The most important thing to remember about Aerys (and indeed any server running inside a non-blocking
 event loop) is that your application callables must not block execution of the event loop with slow
 operations (like synchronous database or disk IO). Application callables may employ `yield` to act
-as a `Generator` and cooperatively multitask with the server using non-blocking libraries.
+as a `Generator` and cooperatively multitask with the server using non-blocking libraries. This
+functionality means we can avoid the ["callback hell"](http://callbackhell.com/) often associated
+with non-blocking code without resorting to additional libraries.
+
 
 ```php
 <?php
@@ -218,28 +226,41 @@ require __DIR__ . '/path/to/aerys/autoload.php';
 // in reality we'd use a non-blocking lib to do something here
 function asyncMultiply($x, $y, callable $onCompletion) {
     $result = $x*$y;
-    $onCompletion($result); // <-- array($result) is returned to our generator
+    $onCompletion($result); // <--$result is returned to our generator's yield expression
 }
 
-// The key-value syntax assumes the async key accepts its fulfillment argument as the last parameter
-function sexyAsyncResponder($asgiEnv) {
+// The key-value construction assumes the non-blocking lib accepts an "onComplete" callback
+// as its final parameter
+function sexyAsyncResponder($request) {
     $x = 6; $y = 7;
-    list($result) = (yield 'asyncMultiply' => [$x, $y]);
+    $result = (yield 'asyncMultiply' => [$x, $y]);
     yield "<html><body><h1>Chicks dig brevity ({$result})!</h1></body></html>";
 };
 
-function uglyAsyncResponder($asgiEnv) {
+// yielding a callable directly without the key-value form
+function uglyAsyncResponder($request) {
     $x = 6; $y = 7;
-    list($result) = (yield function(callable $onCompletion) use ($x, $y) {
+    $result = (yield function(callable $onCompletion) use ($x, $y) {
         asyncMultiply($x, $y, $onCompletion);
     });
     yield "<html><body><h1>Ugly, but it works ({$result})!</h1></body></html>";
 };
 
+// Using multiple yield statements in a single responder
+function multiAsyncResponder($request) {
+    $x = 1; $y = 2;
+    $result1 = (yield 'asyncMultiply' => [$x, $y]);
+    $result2 = (yield 'asyncMultiply' => [$result1, $y]);
+    $result3 = (yield 'asyncMultiply' => [$result2, $y]);
+    
+    yield "<html><body><h1>Async! All of the things ({$result3})!</h1></body></html>";
+}
+
 $myApp = (new App)
     ->setPort(1338)
     ->addRoute('GET', '/', 'sexyAsyncResponder')
-    ->addRoute('GET', '/other', 'uglyAsyncResponder');
+    ->addRoute('GET', '/ugly', 'uglyAsyncResponder')
+    ->addRoute('GET', '/multi', 'multiAsyncResponder');
 ```
 
 To demonstrate that we aren't limited to functions lets look at an example using instance methods.
@@ -257,7 +278,7 @@ class MyHandler {
         $this->redis = $redis;
     }
     function doSomething() {
-        list($asyncResult) = (yield [$this->redis, 'get'] => 'mykey');
+        $asyncResult = (yield [$this->redis, 'get'] => 'mykey');
         yield $this->manipulateMyAsyncData($asyncResult);
     }
     private function manipulateMyAsyncData($asyncResult) {
@@ -290,11 +311,11 @@ $encryptedApp = (new App)
 // Because we can, let's redirect all unencrypted traffic on port 80 to port 443
 $redirectApp = (new App)
     ->setPort(80)
-    ->addResponder(function($asgiEnv) {
+    ->addResponder(function($request) {
         $status = 302;
         $reason = 'Moved Temporarily';
         $headers = [
-            'Location: https://127.0.0.1' . $asgiEnv['REQUEST_URI']
+            'Location: https://127.0.0.1' . $request['REQUEST_URI']
         ];
         $body = '<html><body>Encryption required; redirecting.</body></html>';
 
@@ -370,8 +391,8 @@ class Rot13Endpoint implements Endpoint {
 
 ##### Reverse Proxying
 
-Aerys can also act as a reverse proxy and route certain requests through to backend servers. Using
-this functionality we can do nifty things like layer websocket endpoints on top of an existing
+Aerys can also act as a reverse proxy and route requests through to backend servers. Using this
+functionality we can do nifty things like layer websocket endpoints on top of an existing
 application that uses the traditional PHP web SAPI. The example below will intercept any requests
 made to the `/echo` URI and handle them as websockets while passing all other traffic without a
 match in our document root through to the backend server.
@@ -395,7 +416,7 @@ $myWebsocketApp = (new Aerys\Framework\App)
 
 #### REQUIRED
 
-- PHP 5.4+
+- PHP 5.5+ Aerys utilizes features introduced in 5.5: (`Generator`, `finally` keyword)
 - [Alert](https://github.com/rdlowrey/Alert) The magic hamster running the wheel
 - [Auryn](https://github.com/rdlowrey/Auryn) A dependency injector used to simplify app configuration
 

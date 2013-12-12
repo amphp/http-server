@@ -38,15 +38,15 @@ class MessageParser implements Parser {
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = -1;
     private $storeBody = TRUE;
-    private $beforeBody;
     private $onBodyData;
+    private $returnBeforeEntity = FALSE;
 
     private static $availableOptions = [
         'maxHeaderBytes' => 1,
         'maxBodyBytes' => 1,
         'storeBody' => 1,
-        'beforeBody' => 1,
-        'onBodyData' => 1
+        'onBodyData' => 1,
+        'returnBeforeEntity' => 1
     ];
 
     function __construct($mode = self::MODE_REQUEST) {
@@ -238,11 +238,11 @@ class MessageParser implements Parser {
 
             $this->body = fopen('php://memory', 'r+');
 
-            if ($beforeBody = $this->beforeBody) {
+            if ($this->returnBeforeEntity) {
                 $parsedMsgArr = $this->getParsedMessageArray();
                 $parsedMsgArr['headersOnly'] = TRUE;
-
-                $beforeBody($parsedMsgArr);
+                
+                return $parsedMsgArr;
             }
 
             switch ($this->state) {
@@ -322,7 +322,6 @@ class MessageParser implements Parser {
 
         complete: {
             $parsedMsgArr = $this->getParsedMessageArray();
-            $parsedMsgArr['headersOnly'] = FALSE;
 
             $this->state = self::AWAITING_HEADERS;
             $this->traceBuffer = NULL;
@@ -543,7 +542,8 @@ class MessageParser implements Parser {
             'protocol' => $this->protocol,
             'headers'  => $this->headers,
             'body'     => $this->body,
-            'trace'    => $this->traceBuffer
+            'trace'    => $this->traceBuffer,
+            'headersOnly' => FALSE
         ];
 
         if ($this->mode === self::MODE_REQUEST) {

@@ -11,9 +11,6 @@ class ServerObservation {
     private static $validEvents = [
         Server::STOPPED,
         Server::STARTED,
-        Server::ON_HEADERS,
-        Server::BEFORE_RESPONSE,
-        Server::AFTER_RESPONSE,
         Server::PAUSED,
         Server::STOPPING,
         Server::NEED_STOP_PERMISSION
