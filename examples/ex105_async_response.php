@@ -70,32 +70,12 @@ function anotherGroupAsyncResponder($request) {
     yield "<html><body><h1>{$result1} | {$result2} | {$result3}</h1></body></html>";
 }
 
-function nestedGroupAsyncResponder($request) {
-    list($result1, $result2, $result3) = (yield [
-        ['asyncMultiply', 6, 7],
-        ['asyncSubtract', 5, 3],
-        ['nestedAsync', 5, 5]
-    ]);
-
-    yield "<html><body><h1>{$result1} | {$result2} | {$result3}</h1></body></html>";
-}
-
-function uglyAsyncResponder($request) {
-    $x = 6; $y = 7;
-    $multiplicationResult = (yield function(callable $onCompletion) use ($x, $y) {
-        asyncMultiply($x, $y, $onCompletion);
-    });
-    yield "<html><body><h1>Ugly, but it works ({$multiplicationResult})!</h1></body></html>";
-}
-
 // ------------- Our app configuration ---------------------
 
 $myApp = (new App)
     ->setPort(1338)
     ->addRoute('GET', '/', 'sexyAsyncResponder')
-    ->addRoute('GET', '/other', 'uglyAsyncResponder')
     ->addRoute('GET', '/multi', 'multiAsyncResponder')
     ->addRoute('GET', '/group', 'groupAsyncResponder')
     ->addRoute('GET', '/group2', 'anotherGroupAsyncResponder')
-    ->addRoute('GET', '/nested', 'nestedGroupAsyncResponder')
 ;

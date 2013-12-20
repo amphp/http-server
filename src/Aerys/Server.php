@@ -26,6 +26,8 @@ class Server {
     private $parserFactory;
     private $writerFactory;
     private $responseNormalizer;
+    private $generatorResolver;
+
     private $hosts;
     private $listeningSockets = [];
     private $acceptWatchers = [];
@@ -35,6 +37,7 @@ class Server {
     private $cachedClientCount = 0;
     private $lastRequestId = 0;
     private $inProgressMessageCycle;
+    private $requestIdsBeingGenerated = [];
 
     private $now;
     private $httpDateNow;
@@ -74,7 +77,8 @@ class Server {
         HostBinder $hb = NULL,
         ParserFactory $pf = NULL,
         WriterFactory $wf = NULL,
-        ResponseNormalizer $rn = NULL
+        ResponseNormalizer $rn = NULL,
+        GeneratorResolver $gr = NULL
     ) {
         $this->state = self::STOPPED;
         $this->reactor = $reactor;
@@ -82,7 +86,12 @@ class Server {
         $this->parserFactory = $pf ?: new ParserFactory;
         $this->writerFactory = $wf ?: new WriterFactory;
         $this->responseNormalizer = $rn ?: new ResponseNormalizer;
+        $this->generatorResolver = $gr ?: new GeneratorResolver;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
+        
+        $this->onGeneratorResolution = function($result, $id) {
+            $this->onGeneratorResolution($result, $id);
+        };
     }
 
     /**
@@ -821,7 +830,12 @@ class Server {
             $messageCycle->response = $response;
             $this->respond($messageCycle);
         } elseif ($response instanceof \Generator) {
-            $this->processGeneratorResponse($messageCycle, $response);
+            $this->requestIdsBeingGenerated[$messageCycle->requestId] = $messageCycle;
+            $this->generatorResolver->resolve(
+                $response,
+                $this->onGeneratorResolution,
+                $messageCycle->requestId
+            );
         } elseif (is_null($response)) {
             $messageCycle->response = new Response([
                 'status' => Status::NOT_FOUND,
@@ -843,84 +857,11 @@ class Server {
         }
     }
 
-    private function processGeneratorResponse(MessageCycle $messageCycle, \Generator $generator) {
-        $key = $generator->key();
-        $value = $generator->current();
-
-        if ($yieldableStruct = $this->getYieldable($key, $value, $messageCycle, $generator)) {
-            list($callable, $args) = $yieldableStruct;
-            call_user_func_array($callable, $args);
-        } elseif (!$this->storeYieldableGroup($value, $messageCycle, $generator)
-            && ($value instanceof Response || is_scalar($value))
-        ) {
-            $this->assignMessageCycleResponse($messageCycle, $value);
+    private function onGeneratorResolution($response, $requestId) {
+        if (isset($this->requestIdsBeingGenerated[$requestId])) {
+            $messageCycle = $this->requestIdsBeingGenerated[$requestId];
+            $this->assignMessageCycleResponse($messageCycle, $response);
         }
-    }
-
-    private function getYieldable($key, $value, MessageCycle $messageCycle, \Generator $generator, $id = NULL) {
-        if (is_callable($key)) {
-            $value = is_array($value) ? $value : [$value];
-            array_push($value, function($toSend) use ($messageCycle, $generator, $id) {
-                $this->sendGeneratorResult($messageCycle, $generator, $toSend, $id);
-            });
-            $yieldableStruct = [$key, $value];
-        } elseif (is_callable($value)) {
-            $yieldableStruct = [$value, [function($toSend) use ($messageCycle, $generator, $id) {
-                $this->sendGeneratorResult($messageCycle, $generator, $toSend, $id);
-            }]];
-        } else {
-            $yieldableStruct = [];
-        }
-
-        return $yieldableStruct;
-    }
-
-    private function sendGeneratorResult(MessageCycle $messageCycle, \Generator $generator, $toSend, $id) {
-        try {
-            if (!$messageCycle->hasYieldGroup()) {
-                $generator->send($toSend);
-                $this->processGeneratorResponse($messageCycle, $generator);
-
-            // @TODO
-            //} elseif ($toSend instanceof \Generator) {
-
-            } elseif ($result = $messageCycle->submitYieldGroupResult($id, $toSend)) {
-                $generator->send($result);
-                $this->processGeneratorResponse($messageCycle, $generator);
-            }
-        } catch (\Exception $e) {
-            $this->assignExceptionResponse($messageCycle, $e);
-        }
-    }
-
-    private function storeYieldableGroup($yieldArray, MessageCycle $messageCycle, \Generator $generator) {
-        if (!($yieldArray && is_array($yieldArray))) {
-            return FALSE;
-        }
-
-        $yieldGroup = [];
-        foreach ($yieldArray as $id => $yieldDefinition) {
-            if (!($yieldDefinition && is_array($yieldDefinition))) {
-                return FALSE;
-            }
-
-            $key = array_shift($yieldDefinition);
-            $value = $yieldDefinition;
-            if ($yieldableStruct = $this->getYieldable($key, $value, $messageCycle, $generator, $id)) {
-                $yieldGroup[$id] = $yieldableStruct;
-            } else {
-                return FALSE;
-            }
-        }
-
-        $messageCycle->storeYieldGroup($yieldGroup);
-
-        foreach ($yieldGroup as $yieldableStruct) {
-            list($callable, $args) = $yieldableStruct;
-            call_user_func_array($callable, $args);
-        }
-
-        return TRUE;
     }
 
     private function assignExceptionResponse(MessageCycle $messageCycle, \Exception $e) {
@@ -944,7 +885,7 @@ class Server {
         $client = $messageCycle->client;
 
         foreach ($client->messageCycles as $requestId => $messageCycle) {
-            
+
             if (isset($client->pipeline[$requestId])) {
                 continue;
             } elseif ($messageCycle->response) {
@@ -1066,15 +1007,21 @@ class Server {
     }
 
     private function clearClientReferences(Client $client) {
-        $client->messageCycles = NULL;
         $this->reactor->cancel($client->readWatcher);
         $this->reactor->cancel($client->writeWatcher);
+
+        if ($client->messageCycles) {
+            foreach (array_keys($client->messageCycles) as $requestId) {
+                unset($this->requestIdsBeingGenerated[$requestId]);
+            }
+        }
+
         $client->parser = NULL;
-        $socketId = $client->id;
+        $client->messageCycles = NULL;
 
         unset(
-            $this->clients[$socketId],
-            $this->keepAliveTimeouts[$socketId]
+            $this->clients[$client->id],
+            $this->keepAliveTimeouts[$client->id]
         );
 
         $this->cachedClientCount--;
@@ -1124,7 +1071,8 @@ class Server {
     private function shiftClientPipeline($client, $requestId) {
         unset(
             $client->pipeline[$requestId],
-            $client->messageCycles[$requestId]
+            $client->messageCycles[$requestId],
+            $this->requestIdsBeingGenerated[$requestId]
         );
 
         // Disable active onWritable stream watchers if the pipeline is no longer write-ready
