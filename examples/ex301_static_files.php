@@ -3,9 +3,7 @@
 /**
  * This demo server shows how to run a fully HTTP/1.1-compliant static file server without any
  * dynamic functionality. Pretty. Freaking. Easy. Note that if this is all you need from Aerys
- * you're probably better served to do the same thing using the command line binary:
- * 
- * $ aerys --docroot /path/to/static/files
+ * you're probably better served to use the command line binary without a config file.
  * 
  * To run:
  * $ bin/aerys -c examples/ex301_static_files.php

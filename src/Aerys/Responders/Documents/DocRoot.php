@@ -3,9 +3,9 @@
 namespace Aerys\Responders\Documents;
 
 use Alert\Reactor,
-    Aerys\Server,
     Aerys\Status,
     Aerys\Reason,
+    Aerys\Response,
     Aerys\Writing\ByteRangeBody,
     Aerys\Writing\MultiPartByteRangeBody;
 
@@ -16,13 +16,17 @@ class DocRoot {
     const ETAG_INODE = 2;
     const ETAG_ALL = 3;
 
-    const PRECONDITION_NOT_MODIFIED = 100;
-    const PRECONDITION_FAILED = 200;
-    const PRECONDITION_IF_RANGE_OK = 300;
-    const PRECONDITION_IF_RANGE_FAILED = 400;
-    const PRECONDITION_PASS = 999;
+    private static $PRECONDITION_NOT_MODIFIED = 1;
+    private static $PRECONDITION_FAILED = 2;
+    private static $PRECONDITION_IF_RANGE_OK = 4;
+    private static $PRECONDITION_IF_RANGE_FAILED = 8;
+    private static $PRECONDITION_PASS = 16;
+
+    private static $CACHE_GC_INTERVAL = 1;
 
     private $reactor;
+    private $generatorResolver;
+    private $fileLoader;
     private $docRoot;
     private $indexes = ['index.html', 'index.htm'];
     private $eTagMode = self::ETAG_ALL;
@@ -31,23 +35,53 @@ class DocRoot {
     private $customMimeTypes = [];
     private $defaultTextCharset = 'utf-8';
     private $indexRedirection = TRUE;
+    private $maxCacheAge = 3;
+    private $maxCacheEntries = 50;
+    private $maxCacheEntrySize = 2097152;
     private $multipartBoundary;
     private $mimeTypes;
-    private $cacheTtl = 10;
-    private $fileDescriptorCache = [];
-    private $memoryCache = [];
-    private $memoryCacheSize = 0;
-    private $memoryCacheMaxSize = 67108864;    // 64 MiB
-    private $memoryCacheMaxFileSize = 1048576; //  1 MiB
-    private $memoryCacheCurrentSize = 0;
-    private $cacheCleanInterval = 1;
-    private $cacheWatcher;
 
-    function __construct(Reactor $reactor) {
+    private $cache = [];
+    private $cacheAge = [];
+    private $cacheCount = 0;
+    private $cacheGcWatcher;
+    private $now;
+
+    function __construct(Reactor $reactor, FileLoader $fileLoader = NULL) {
         $this->reactor = $reactor;
+        $this->fileLoader = $fileLoader ?: (new FileLoaderFactory)->select($reactor);
         $this->assignDefaultMimeTypes();
         $this->multipartBoundary = uniqid('', TRUE);
-        $this->cacheWatcher = $this->reactor->repeat([$this, 'clearStaleCache'], $this->cacheCleanInterval);
+
+        // @TODO This should probably be initialized with a server START observer
+        $this->now = time();
+
+        $this->cacheGcWatcher = $this->reactor->repeat(function() {
+            $this->collectCacheGarbage();
+        }, self::$CACHE_GC_INTERVAL);
+    }
+
+    private function collectCacheGarbage() {
+        $now = time();
+        $this->now = $now;
+
+        foreach ($this->cacheAge as $filePath => $timeAdded) {
+            $age = $now - $timeAdded;
+            if ($age > $this->maxCacheAge) {
+                $this->clearCachedFile($filePath);
+            } else {
+                break;
+            }
+        }
+    }
+
+    private function clearCachedFile($filePath) {
+        clearstatcache(TRUE, $filePath);
+        $this->cacheCount--;
+        unset(
+            $this->cache[$filePath],
+            $this->cacheAge[$filePath]
+        );
     }
 
     /**
@@ -75,12 +109,12 @@ class DocRoot {
                 return $this->customMimeTypes;
             case 'defaulttextcharset':
                 return $this->defaultTextCharset;
-            case 'cachettl':
-                return $this->cacheTtl;
-            case 'memorycachemaxsize':
-                return $this->memoryCacheMaxSize;
-            case 'memorycachemaxfilesize':
-                return $this->memoryCacheMaxFileSize;
+            case 'maxcacheage':
+                return $this->maxCacheAge;
+            case 'maxcacheentries':
+                return $this->maxCacheEntries;
+            case 'maxcacheentrysize':
+                return $this->maxCacheEntrySize;
             default:
                 throw new \DomainException(
                     "Unknown DocRoot option: {$option}"
@@ -136,14 +170,14 @@ class DocRoot {
             case 'defaulttextcharset':
                 $this->setDefaultTextCharset($value);
                 break;
-            case 'cachettl':
-                $this->setCacheTtl($value);
+            case 'maxcacheage':
+                $this->setMaxCacheAge($value);
                 break;
-            case 'memorycachemaxsize':
-                $this->setMemoryCacheMaxSize($value);
+            case 'maxcacheentries':
+                $this->setMaxCacheEntries($value);
                 break;
-            case 'memorycachemaxfilesize':
-                $this->setMemoryCacheMaxFileSize($value);
+            case 'maxcacheentrysize':
+                $this->setMaxCacheEntrySize($value);
                 break;
             default:
                 throw new \DomainException(
@@ -181,7 +215,7 @@ class DocRoot {
     private function setExpiresHeaderPeriod($seconds) {
         $this->expiresHeaderPeriod = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => -1,
-            'default' => 300
+            'default' => 3600
         ]]);
     }
 
@@ -200,92 +234,42 @@ class DocRoot {
         $this->defaultTextCharset = $charset;
     }
 
-    private function setCacheTtl($seconds) {
-        $this->cacheTtl = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
+    private function setMaxCacheAge($seconds) {
+        $this->maxCacheAge = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
-            'default' => 5
+            'default' => 30
         ]]);
     }
 
-    private function setMemoryCacheMaxSize($bytes) {
-        $this->memoryCacheMaxSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
+    private function setMaxCacheEntries($bytes) {
+        $this->maxCacheEntries = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
-            'default' => 67108864
+            'default' => 50
         ]]);
     }
 
-    private function setMemoryCacheMaxFileSize($bytes) {
-        $this->memoryCacheMaxFileSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
+    private function setMaxCacheEntrySize($bytes) {
+        $this->maxCacheEntrySize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
             'min_range' => 0,
             'default' => 1048576
         ]]);
     }
 
     /**
-     * Clear all cached file descriptors and memory-mapped files
-     *
-     * @return void
-     */
-    function clearCache() {
-        $this->memoryCache = [];
-        $this->fileDescriptorCache = [];
-        $this->memoryCacheCurrentSize = 0;
-        clearstatcache();
-    }
-
-    /**
-     * Clear only stale descriptors and memory-mapped files
-     *
-     * @return void
-     */
-    function clearStaleCache() {
-        $now = time();
-        $this->clearStaleMemoryCacheEntries($now);
-        $this->clearStaleDescriptorCacheEntries($now);
-        clearstatcache();
-    }
-
-    private function clearStaleMemoryCacheEntries($now) {
-        foreach ($this->memoryCache as $cacheId => $cacheArr) {
-            $cacheExpiry = $cacheArr[1];
-            if ($cacheExpiry <= $now) {
-                $cacheSizeDecrement = $cacheArr[2];
-                $this->memoryCacheSize -= $cacheSizeDecrement;
-                unset($this->memoryCache[$cacheId]);
-            } else {
-                break;
-            }
-        }
-    }
-
-    private function clearStaleDescriptorCacheEntries($now) {
-        foreach ($this->fileDescriptorCache as $cacheId => $cacheArr) {
-            $cacheExpiry = $cacheArr[1];
-            if ($cacheExpiry <= $now) {
-                unset($this->fileDescriptorCache[$cacheId]);
-            } else {
-                break;
-            }
-        }
-    }
-
-    /**
      * Respond to the specified ASGI request environment
      *
-     * @param $request The ASGI request environment
+     * @param array $request The ASGI request
      * @param int $requestId The unique Aerys request identifier
      * @return array Returns ASGI response array
      */
     function __invoke($request) {
         $filePath = $this->docRoot . $request['REQUEST_URI_PATH'];
-
         if (!$filePath = $this->validateFilePath($filePath)) {
             return $this->notFound();
         }
 
         $isDir = is_dir($filePath);
         $redirectToIndex = NULL;
-
         if (!$isDir && $this->indexRedirection && $this->indexes) {
             $pathParts = pathinfo($filePath);
             $redirectToIndex = in_array($pathParts['basename'], $this->indexes)
@@ -294,25 +278,27 @@ class DocRoot {
         }
 
         if ($redirectToIndex) {
-            return $this->redirectTo($redirectToIndex);
+            $response = $this->redirectTo($redirectToIndex);
         } elseif (!$isDir) {
-            return $this->respondToFoundFile($filePath, $request);
+            $response = $this->respondToFoundFile($filePath, $request);
         } elseif ($isDir && $this->indexes && ($filePath = $this->matchIndex($filePath))) {
-            return $this->respondToFoundFile($filePath, $request);
+            $response = $this->respondToFoundFile($filePath, $request);
         } else {
-            return $this->notFound();
+            $response = $this->notFound();
         }
+
+        return $response;
     }
 
     /**
-     * The `realpath()` check is IMPORTANT to prevent access to the filesystem above the defined
+     * The realpath() check is IMPORTANT to prevent access to the filesystem above the defined
      * document root using relative path segments such as "../".
      *
-     * `realpath()` will return FALSE if the file does not exist but we still need to verify that
+     * realpath() will return FALSE if the file does not exist but we still need to verify that
      * its resulting path resides within the top-level docRoot path if a match is found.
      *
      * This method carries protected accessibility because vfsStream cannot mock the results of the
-     * `realpath()` function and we need to manually use inheritance to mock this behavior in our
+     * realpath() function and we need to manually use inheritance to mock this behavior in our
      * unit tests. The StaticFileRelativePathAscensionTest integration test validates this security
      * measure against the real file system without vfsStream mocking.
      */
@@ -345,22 +331,25 @@ class DocRoot {
     }
 
     private function redirectTo($redirectToIndex) {
-        $status = Status::MOVED_PERMANENTLY;
-        $reason = Reason::HTTP_301;
         $body = '<html><body><h1>Moved!</h1></body></html>';
         $headers = [
             "Location: {$redirectToIndex}",
             'Content-Type: text/html; charset=utf-8',
-            'Content-Length: ' . strlen($body),
+            'Content-Length: ' . strlen($body)
         ];
 
-        return [$status, $reason, $headers, $body];
+        return new Response([
+            'status' => Status::MOVED_PERMANENTLY,
+            'reason' => Reason::HTTP_301,
+            'headers' => $headers,
+            'body' => $body
+        ]);
     }
 
-    private function respondToFoundFile($filePath, AsgiRequest $request) {
+    private function respondToFoundFile($filePath, $request) {
         $method = $request['REQUEST_METHOD'];
 
-        if ($method == 'OPTIONS') {
+        if ($method === 'OPTIONS') {
             return $this->options();
         } elseif (!($method == 'GET' || $method == 'HEAD')) {
             return $this->methodNotAllowed();
@@ -373,21 +362,19 @@ class DocRoot {
         $ranges = empty($request['HTTP_RANGE']) ? NULL : $request['HTTP_RANGE'];
 
         switch ($this->checkPreconditions($mTime, $fileSize, $eTag, $request)) {
-            case self::PRECONDITION_NOT_MODIFIED:
+            case self::$PRECONDITION_NOT_MODIFIED:
                 return $this->notModified($eTag, $mTime);
-            case self::PRECONDITION_FAILED:
+            case self::$PRECONDITION_FAILED:
                 return $this->preconditionFailed($eTag, $mTime);
-            case self::PRECONDITION_IF_RANGE_OK:
+            case self::$PRECONDITION_IF_RANGE_OK:
                 return $this->doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag);
-            case self::PRECONDITION_IF_RANGE_FAILED:
+            case self::$PRECONDITION_IF_RANGE_FAILED:
                 return $this->doFile($filePath,  $method, $mTime, $fileSize, $eTag);
             default:
-                break;
+                return $ranges
+                    ? $this->doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag)
+                    : $this->doFile($filePath, $method, $mTime, $fileSize, $eTag);
         }
-
-        return $ranges
-            ? $this->doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag)
-            : $this->doFile($filePath, $method, $mTime, $fileSize, $eTag);
     }
 
     private function checkPreconditions($mTime, $fileSize, $eTag, $request) {
@@ -396,7 +383,7 @@ class DocRoot {
             : NULL;
 
         if ($ifMatchHeader && !$this->eTagMatchesPrecondition($eTag, $ifMatchHeader)) {
-            return self::PRECONDITION_FAILED;
+            return self::$PRECONDITION_FAILED;
         }
 
         $ifNoneMatchHeader = !empty($request['HTTP_IF_NONE_MATCH'])
@@ -404,7 +391,7 @@ class DocRoot {
             : NULL;
 
         if ($ifNoneMatchHeader && $this->eTagMatchesPrecondition($eTag, $ifNoneMatchHeader)) {
-            return self::PRECONDITION_NOT_MODIFIED;
+            return self::$PRECONDITION_NOT_MODIFIED;
         }
 
         $ifModifiedSinceHeader = !empty($request['HTTP_IF_MODIFIED_SINCE'])
@@ -412,7 +399,7 @@ class DocRoot {
             : NULL;
 
         if ($ifModifiedSinceHeader && $ifModifiedSinceHeader <= $mTime) {
-            return self::PRECONDITION_NOT_MODIFIED;
+            return self::$PRECONDITION_NOT_MODIFIED;
         }
 
         $ifUnmodifiedSinceHeader = !empty($request['HTTP_IF_UNMODIFIED_SINCE'])
@@ -420,7 +407,7 @@ class DocRoot {
             : NULL;
 
         if ($ifUnmodifiedSinceHeader && $mTime > $ifUnmodifiedSinceHeader) {
-            return self::PRECONDITION_FAILED;
+            return self::$PRECONDITION_FAILED;
         }
 
         $ifRangeHeader = !empty($request['HTTP_IF_RANGE'])
@@ -429,11 +416,11 @@ class DocRoot {
 
         if ($ifRangeHeader) {
             return $this->ifRangeMatchesPrecondition($eTag, $mTime, $ifRangeHeader)
-                ? self::PRECONDITION_IF_RANGE_OK
-                : self::PRECONDITION_IF_RANGE_FAILED;
+                ? self::$PRECONDITION_IF_RANGE_OK
+                : self::$PRECONDITION_IF_RANGE_FAILED;
         }
 
-        return self::PRECONDITION_PASS;
+        return self::$PRECONDITION_PASS;
     }
 
     private function eTagMatchesPrecondition($eTag, $headerStringOrArray) {
@@ -458,14 +445,41 @@ class DocRoot {
         }
     }
 
-    /**
-     * @link http://tools.ietf.org/html/rfc2616#section-14.21
-     */
-    private function doFile($filePath, $method, $mTime, $fileSize, $eTag) {
-        $status = Status::OK;
-        $reason = Reason::HTTP_200;
-        $now = time();
+    private function generateContentTypeHeader($filePath) {
+        $contentType = $this->getMimeType($filePath) ?: $this->defaultMimeType;
 
+        if (0 === stripos($contentType, 'text/')) {
+            $contentType .= '; charset=' . $this->defaultTextCharset;
+        }
+
+        return "Content-Type: {$contentType}";
+    }
+
+    private function doFile($filePath, $method, $mTime, $fileSize, $eTag) {
+        if ($method === 'HEAD') {
+            $response = new Response([
+                'status' => Status::OK,
+                'reason' => Reason::HTTP_200,
+                'headers' => $this->generateNonRangeHeaders($filePath, $mTime, $fileSize, $eTag),
+                'body' => ''
+            ]);
+        } elseif (isset($this->cache[strtolower($filePath)])) {
+            $body = $this->cache[strtolower($filePath)];
+            $response = new Response([
+                'status' => Status::OK,
+                'reason' => Reason::HTTP_200,
+                'headers' => $this->generateNonRangeHeaders($filePath, $mTime, $fileSize, $eTag),
+                'body' => $body
+            ]);
+        } else {
+            $response = $this->doGeneratedFile($filePath, $mTime, $fileSize, $eTag);
+        }
+
+        return $response;
+    }
+
+    private function generateNonRangeHeaders($filePath, $mTime, $fileSize, $eTag) {
+        $now = time();
         $headers = [
             'Cache-Control: public',
             "Content-Length: {$fileSize}",
@@ -483,82 +497,59 @@ class DocRoot {
             $headers[] = "ETag: {$eTag}";
         }
 
-        if ($method !== 'GET') {
-            $body = NULL;
-        } elseif ($fileSize < $this->memoryCacheMaxFileSize) {
-            $body = $this->getMemoryCacheableFile($filePath, $fileSize);
-        } elseif ($this->cacheTtl) {
-            $body = $this->getCacheableFileDescriptor($filePath);
+        return $headers;
+    }
+
+    private function doGeneratedFile($filePath, $mTime, $fileSize, $eTag) {
+        $method = ($fileSize > $this->maxCacheEntrySize) ? 'getHandle' : 'getContents';
+        $body = (yield [$this->fileLoader, $method] => $filePath);
+
+        if ($body === FALSE) {
+            yield new Response([
+                'status' => Status::INTERNAL_SERVER_ERROR,
+                'reason' => Reason::HTTP_500,
+                'body' => "Failed reading {$filePath}"
+            ]);
         } else {
-            $body = $this->getFileDescriptor($filePath);
+            $this->cacheFile($filePath, $body);
+            yield new Response([
+                'status' => Status::OK,
+                'reason' => Reason::HTTP_200,
+                'headers' => $this->generateNonRangeHeaders($filePath, $mTime, $fileSize, $eTag),
+                'body' => $body
+            ]);
+        }
+    }
+
+    private function cacheFile($filePath, $body) {
+        if ($this->maxCacheAge <= 0) {
+            return;
         }
 
-        return [$status, $reason, $headers, $body];
-    }
+        $filePath = strtolower($filePath);
 
-    private function getMemoryCacheableFile($filePath, $fileSize) {
-        $cacheId = strtolower($filePath);
+        $this->cache[$filePath] = $body;
+        $this->cacheAge[$filePath] = $this->now;
+        $this->cacheCount++;
 
-        return isset($this->memoryCache[$cacheId])
-            ? $this->memoryCache[$cacheId][0]
-            : $this->storeFileInMemoryCache($cacheId, $filePath, $fileSize);
-    }
-
-    private function storeFileInMemoryCache($cacheId, $filePath, $fileSize) {
-        $memFile = file_get_contents($filePath);
-        $cacheExpiry = time() + $this->cacheTtl;
-        $this->memoryCache[$cacheId] = [$memFile, $cacheExpiry, $fileSize, $filePath];
-
-        return $memFile;
-    }
-
-    private function getCacheableFileDescriptor($filePath) {
-        $cacheId = strtolower($filePath);
-
-        if (isset($this->fileDescriptorCache[$cacheId])) {
-            $fd = $this->fileDescriptorCache[$cacheId][0];
-        } else {
-            $fd = $this->getFileDescriptor($filePath);
-            $cacheExpiry = time() + $this->cacheTtl;
-            $this->fileDescriptorCache[$cacheId] = [$fd, $cacheExpiry, $filePath];
+        if ($this->cacheCount > $this->maxCacheEntries) {
+            // I know you want to but DO NOT use array_shift to remove the oldest value from the
+            // LRU stack. It will reindex all of our filepath keys and break everything.
+            reset($this->cache);
+            $filePath = key($this->cache);
+            $this->clearCachedFile($filePath);
         }
-
-        return $fd;
     }
 
-    private function getFileDescriptor($filePath) {
-        $fd = fopen($filePath, 'rb');
-        stream_set_blocking($fd, 0);
 
-        return $fd;
-    }
-
-    private function generateContentTypeHeader($filePath) {
-        $contentType = $this->getMimeType($filePath) ?: $this->defaultMimeType;
-
-        if (0 === stripos($contentType, 'text/')) {
-            $contentType .= '; charset=' . $this->defaultTextCharset;
-        }
-
-        return "Content-Type: {$contentType}";
-    }
-
-    private function doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag) {
-        if (!$ranges = $this->normalizeByteRanges($fileSize, $ranges)) {
-           return $this->requestedRangeNotSatisfiable($fileSize);
-        }
-
-        $now = time();
-        $body = $this->getFileDescriptor($filePath);
-        $status = Status::PARTIAL_CONTENT;
-        $reason = Reason::HTTP_206;
+    private function generateRangeHeaders($filePath, $ranges, $mTime, $fileSize, $eTag, $contentType) {
         $headers = [
             'Cache-Control: public',
             'Last-Modified: ' . gmdate('D, d M Y H:i:s', $mTime) . ' UTC'
         ];
 
         if ($this->expiresHeaderPeriod > 0) {
-            $time =  $now + $this->expiresHeaderPeriod;
+            $time =  time() + $this->expiresHeaderPeriod;
             $headers[] = 'Expires: ' .  gmdate('D, d M Y H:i:s', $time) . ' UTC';
         }
 
@@ -566,25 +557,76 @@ class DocRoot {
             $headers[] = "ETag: {$eTag}";
         }
 
-        $contentType = $this->generateContentTypeHeader($filePath);
-
-        if ($isMultiPart = (count($ranges) > 1)) {
+        if (count($ranges) > 1) {
             $headers[] = "Content-Type: multipart/byteranges; boundary={$this->multipartBoundary}";
-            $body = ($method === 'GET')
-                ? new MultiPartByteRangeBody($body, $ranges, $this->multipartBoundary, $contentType, $fileSize)
-                : NULL;
-
         } else {
             list($startPos, $endPos) = $ranges[0];
             $headers[] = 'Content-Length: ' . ($endPos - $startPos);
             $headers[] = 'Content-Range: bytes ' . ($startPos - $endPos) . "/{$fileSize}";
             $headers[] = "Content-Type: {$contentType}";
-            $body = ($method == 'GET')
-                ? new ByteRangeBody($body, $startPos, $endPos)
-                : NULL;
         }
 
-        return [$status, $reason, $headers, $body];
+        return $headers;
+    }
+
+    private function doRange($filePath, $method, $ranges, $mTime, $fileSize, $eTag) {
+        if (!$ranges = $this->normalizeByteRanges($fileSize, $ranges)) {
+           $response = $this->requestedRangeNotSatisfiable($fileSize);
+        } elseif ($method === 'HEAD') {
+            $contentType = $this->generateContentTypeHeader($filePath);
+            $response = new Response([
+                'status' => Status::PARTIAL_CONTENT,
+                'reason' => Reason::HTTP_206,
+                'headers' => $this->generateRangeHeaders($filePath, $ranges, $mTime, $fileSize, $eTag, $contentType),
+                'body' => ''
+            ]);
+        } elseif (isset($this->cache[strtolower($filePath)])) {
+            $body = $this->cache[strtolower($filePath)];
+            $contentType = $this->generateContentTypeHeader($filePath);
+            $response = new Response([
+                'status' => Status::PARTIAL_CONTENT,
+                'reason' => Reason::HTTP_206,
+                'headers' => $this->generateRangeHeaders($filePath, $ranges, $mTime, $fileSize, $eTag),
+                'body' => $this->generateRangeBodyFromHandle($body, $ranges, $contentType, $fileSize)
+            ]);
+        } else {
+            $response = $this->doGeneratedRange($filePath, $ranges, $mTime, $fileSize, $eTag);
+        }
+
+        return $response;
+    }
+
+    private function generateRangeBodyFromHandle($handle, $ranges, $contentType, $fileSize) {
+        if (count($ranges) > 1) {
+            $body = new MultiPartByteRangeBody($body, $ranges, $this->multipartBoundary, $contentType, $fileSize);
+        } else {
+            list($startPos, $endPos) = $ranges[0];
+            $body = new ByteRangeBody($body, $startPos, $endPos);
+        }
+
+        return $body;
+    }
+
+    private function doGeneratedRange($filePath, $ranges, $mTime, $fileSize, $eTag) {
+        $method = ($fileSize > $this->maxCacheEntrySize) ? 'getHandle' : 'getContents';
+        $body = (yield [$this->fileLoader, $method] => $filePath);
+
+        if ($body === FALSE) {
+            yield new Response([
+                'status' => Status::INTERNAL_SERVER_ERROR,
+                'reason' => Reason::HTTP_500,
+                'body' => "Failed reading {$filePath}"
+            ]);
+        } else {
+            $this->cacheFile($filePath, $body);
+            $contentType = $this->generateContentTypeHeader($filePath);
+            yield new Response([
+                'status' => Status::OK,
+                'reason' => Reason::HTTP_200,
+                'headers' => $this->generateRangeHeaders($filePath, $mTime, $fileSize, $eTag),
+                'body' => $this->generateRangeBodyFromHandle($body, $ranges, $contentType, $fileSize)
+            ]);
+        }
     }
 
     /**
@@ -667,67 +709,59 @@ class DocRoot {
     }
 
     private function options() {
-        $status = Status::OK;
-        $reason = Reason::HTTP_200;
-        $headers = [
-            'Allow: GET, HEAD, OPTIONS',
-            'Accept-Ranges: bytes'
-        ];
-
-        return [$status, $reason, $headers, NULL];
+        return new Response([
+            'status' => Status::OK,
+            'reason' => Reason::HTTP_200,
+            'headers' => [
+                'Allow: GET, HEAD, OPTIONS',
+                'Accept-Ranges: bytes'
+            ]
+        ]);
     }
 
     private function methodNotAllowed() {
-        $status = Status::METHOD_NOT_ALLOWED;
-        $reason = Reason::HTTP_405;
-        $headers = [
-            'Allow: GET, HEAD, OPTIONS'
-        ];
-
-        return [$status, $reason, $headers, NULL];
+        return new Response([
+            'status' => Status::METHOD_NOT_ALLOWED,
+            'reason' => Reason::HTTP_405,
+            'headers' => ['Allow: GET, HEAD, OPTIONS']
+        ]);
     }
 
     private function requestedRangeNotSatisfiable($fileSize) {
-        $status = Status::REQUESTED_RANGE_NOT_SATISFIABLE;
-        $reason = Reason::HTTP_416;
-        $headers = [
-            "Content-Range: */{$fileSize}"
-        ];
-
-        return [$status, $reason, $headers, NULL];
+        return new Response([
+            'status' => Status::REQUESTED_RANGE_NOT_SATISFIABLE,
+            'reason' => Reason::HTTP_416,
+            'headers' => ["Content-Range: */{$fileSize}"]
+        ]);
     }
 
     private function notModified($eTag, $lastModified) {
-        $status = Status::NOT_MODIFIED;
-        $reason = Reason::HTTP_304;
-        $headers = [
-            'Last-Modified: ' . gmdate('D, d M Y H:i:s', $lastModified) . ' UTC'
-        ];
-
+        $headers = ['Last-Modified: ' . gmdate('D, d M Y H:i:s', $lastModified) . ' UTC'];
         if ($eTag) {
             $headers[] = "ETag: {$eTag}";
         }
-
-        return [$status, $reason, $headers, NULL];
+        
+        return new Response([
+            'status' => Status::NOT_MODIFIED,
+            'reason' => Reason::HTTP_304,
+            'headers' => $headers
+        ]);
     }
 
     private function preconditionFailed() {
-        $status = Status::PRECONDITION_FAILED;
-        $reason = Reason::HTTP_412;
-
-        return [$status, $reason, $headers = [], NULL];
+        return new Response([
+            'status' => Status::PRECONDITION_FAILED,
+            'reason' => Reason::HTTP_412
+        ]);
     }
 
     private function notFound() {
-        $status = Status::NOT_FOUND;
-        $reason = Reason::HTTP_404;
-        $body = '<html><body><h1>404 Not Found</h1></body></html>';
-        $headers = [
-            'Content-Type: text/html',
-            'Content-Length: ' . strlen($body),
-        ];
-
-        return [$status, $reason, $headers, $body];
+        return new Response([
+            'status' =>Status::NOT_FOUND,
+            'reason' => Reason::HTTP_404,
+            'headers' => ['Content-Type: text/html; charset=utf-8'],
+            'body' => '<html><body><h1>404 Not Found</h1></body></html>'
+        ]);
     }
 
     function assignDefaultMimeTypes() {
@@ -927,6 +961,6 @@ class DocRoot {
     }
 
     function __destruct() {
-        $this->reactor->cancel($this->cacheWatcher);
+        $this->reactor->cancel($this->cacheGcWatcher);
     }
 }
