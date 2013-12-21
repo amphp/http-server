@@ -2,6 +2,34 @@
 
 use Aerys\GeneratorResolver;
 
+function resolver_throws1($onCompletion) {
+    throw new Exception('resolver_throws1');
+}
+
+function resolver_throws2($onCompletion) {
+    yield (yield 'resolver_throws1' => []);
+}
+
+function resolver_throws3($onCompletion) {
+    throw new Exception('resolver_throws3');
+}
+
+function resolver_do_throw1() {
+    yield (yield 'resolver_throws1' => []);
+}
+
+function resolver_do_throw2() {
+    yield (yield 'resolver_throws2' => []);
+}
+
+function resolver_do_throw3() {
+    try {
+        $result = (yield 'resolver_throws1' => []);
+    } catch (\Exception $e) {
+        $result = (yield 'resolver_throws3' => []);
+    }
+}
+
 function resolver_do_multiply($x, $y, callable $onCompletion) {
     $multiplicationResult = $x*$y;
     $onCompletion($multiplicationResult);
@@ -39,13 +67,13 @@ class GeneratorResolverTest extends PHPUnit_Framework_TestCase {
     /**
      * @dataProvider provideResolutionExpectations
      */
-    function testRunExpectations($callable, $args, $expectedResult, $expectedId) {
+    function testRunExpectations($callable, $args, $expectedResult, $expectedData) {
         $resolver = new GeneratorResolver;
         $generator = call_user_func_array($callable, $args);
-        $resolver->resolve($generator, function($result, $id) use ($expectedResult, $expectedId) {
+        $resolver->resolve($generator, function($error, $result, $data) use ($expectedResult, $expectedData) {
             $this->assertEquals($expectedResult, $result);
-            $this->assertEquals($expectedId, $id);
-        }, $expectedId);
+            $this->assertEquals($expectedData, $data);
+        }, $expectedData);
     }
 
     function provideResolutionExpectations() {
@@ -57,7 +85,7 @@ class GeneratorResolverTest extends PHPUnit_Framework_TestCase {
             $callable = 'resolver_multiply',
             $args = [$x = 6, $y = 7],
             $expectedResult = $x*$y,
-            $expectedId = 'zanzibar'
+            $expectedData = 'zanzibar'
         ];
 
         // 1 -------------------------------------------------------------------------------------->
@@ -66,7 +94,7 @@ class GeneratorResolverTest extends PHPUnit_Framework_TestCase {
             $callable = 'resolver_multi_yield',
             $args = [$x = 6, $y = 7],
             $expectedResult = 34,
-            $expectedId = 'zanzibar'
+            $expectedData = 'zanzibar'
         ];
 
         // 2 -------------------------------------------------------------------------------------->
@@ -79,7 +107,54 @@ class GeneratorResolverTest extends PHPUnit_Framework_TestCase {
                 'result2' => 2,
                 'result3' => 25,
             ],
-            $expectedId = 'zanzibar'
+            $expectedData = 'zanzibar'
+        ];
+
+        // x -------------------------------------------------------------------------------------->
+
+        return $return;
+    }
+
+    /**
+     * @dataProvider provideErrorExpectations
+     */
+    function testErrorExpectations($callable, $args, $expectedError, $expectedData) {
+        $resolver = new GeneratorResolver;
+        $generator = call_user_func_array($callable, $args);
+        $resolver->resolve($generator, function($error, $result, $data) use ($expectedError, $expectedData) {
+            $this->assertEquals($expectedError, $error->getMessage());
+            $this->assertEquals($expectedData, $data);
+        }, $expectedData);
+    }
+
+    function provideErrorExpectations() {
+        $return = [];
+
+        // 0 -------------------------------------------------------------------------------------->
+
+        $return[] = [
+            $callable = 'resolver_do_throw1',
+            $args = [],
+            $expectedError = 'resolver_throws1',
+            $expectedData = 42
+        ];
+        
+        // 1 -------------------------------------------------------------------------------------->
+
+        $return[] = [
+            $callable = 'resolver_do_throw2',
+            $args = [],
+            $expectedError = 'resolver_throws1',
+            $expectedData = 42
+        ];
+        
+        // 2 -------------------------------------------------------------------------------------->
+
+        $return[] = [
+            $callable = 'resolver_do_throw3',
+            $args = [],
+            $expectedError = 'resolver_throws3',
+            $expectedData = 42
         ];
 
         // x -------------------------------------------------------------------------------------->

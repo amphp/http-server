@@ -7,6 +7,7 @@ use Alert\Reactor,
     Aerys\Reason,
     Aerys\Response,
     Aerys\Server,
+    Aerys\GeneratorResolver,
     Aerys\Request;
 
 class Broker implements \Countable {
@@ -41,11 +42,12 @@ class Broker implements \Countable {
         // @TODO add minimum average frame size rate threshold to prevent tiny-frame DoS
     ];
 
-    function __construct(Reactor $reactor, Server $server, FrameStreamFactory $frameStreamFactory = NULL) {
+    function __construct(Reactor $reactor, Server $server, GeneratorResolver $gr = NULL, FrameStreamFactory $fsf = NULL) {
         $this->state = self::$STOPPED;
         $this->reactor = $reactor;
         $this->server = $server;
-        $this->frameStreamFactory = $frameStreamFactory ?: new FrameStreamFactory;
+        $this->generatorResolver = $gr ?: new GeneratorResolver;
+        $this->frameStreamFactory = $fsf ?: new FrameStreamFactory;
         $this->heartbeatWatcher = $reactor->repeat(function() {
             $this->sendHeartbeats();
         }, $this->heartbeatWatchInterval);
@@ -258,7 +260,7 @@ class Broker implements \Countable {
         } else {
             $responseArray = $handshakeResult;
         }
-        
+
         return new Response($responseArray);
     }
 
@@ -437,7 +439,7 @@ class Broker implements \Countable {
         try {
             $result = $session->endpoint->onOpen($this, $session->id);
             if ($result instanceof \Generator) {
-                $this->processGeneratorYield($result);
+                $this->generatorResolver->resolve($result, [$this, 'onGeneratorResult'], $session->id);
             } elseif (is_string($result) || is_resource($result)) {
                 $this->broadcast($session->id, Frame::OP_TEXT, $result);
             }
@@ -508,8 +510,8 @@ class Broker implements \Countable {
         try {
             $result = $session->endpoint->onMessage($this, $session->id, $msg);
             if ($result instanceof \Generator) {
-                $this->processGeneratorYield($result, $session->id);
-            } elseif (is_string($result) || is_resource($result)) {
+                $this->generatorResolver->resolve($result, [$this, 'onGeneratorResult'], $session->id);
+            } elseif ($result && (is_string($result) || is_resource($result))) {
                 $this->broadcast($session->id, Frame::OP_TEXT, $result);
             }
         } catch (\Exception $userlandException) {
@@ -522,27 +524,22 @@ class Broker implements \Countable {
         }
     }
 
-    private function processGeneratorYield(\Generator $generator, $socketId = NULL) {
-        $key = $generator->key();
-        $value = $generator->current();
-
-        if (is_callable($key)) {
-            $value = is_array($value) ? $value : [$value];
-            array_push($value, function() use ($generator, $socketId) {
-                $generator->send(func_get_args());
-                $this->processGeneratorYield($generator, $socketId);
-            });
-            call_user_func_array($key, $value);
-        } elseif (is_callable($value)) {
-            $value(function() use ($generator, $socketId) {
-                $generator->send(func_get_args());
-                $this->processGeneratorYield($generator, $socketId);
-            });
-        } elseif (isset($socketId) && (is_string($value) || is_resource($value))) {
-            $this->broadcast($socketId, Frame::OP_TEXT, $value);
-        } elseif (isset($value)) {
-            $generator->throw(new EndpointException(
-                sprintf('Invalid generator yield result: %s', gettype($value))
+    function onGeneratorResult($error, $result, $socketId) {
+        if ($error) {
+            $this->onEndpointError(new EndpointException(
+                $msg = 'Generator resolution error',
+                $code = 0,
+                $error
+            ));
+        } elseif ($socketId === NULL) {
+            // Generator processed from onClose event
+            // @TODO Maybe handle yielded onClose results in a nicer way than a forceful return?
+            return;
+        } elseif ((is_string($result) && isset($result[0])) || is_resource($result)) {
+            $this->broadcast($socketId, Frame::OP_TEXT, $result);
+        } elseif ($result !== NULL) {
+            $this->onEndpointError(new EndpointException(
+                sprintf('Invalid generator yield result: %s', gettype($result))
             ));
         }
     }
@@ -829,7 +826,7 @@ class Broker implements \Countable {
             $this->unloadSession($session);
             $result = $session->endpoint->onClose($this, $session->id, $code, $reason);
             if ($result instanceof \Generator) {
-                $this->processGeneratorYield($result);
+                $this->generatorResolver->resolve($result, [$this, 'onGeneratorResult'], $socketId = NULL);
             }
         } catch (\Exception $userlandException) {
             $endpointError = new EndpointException(

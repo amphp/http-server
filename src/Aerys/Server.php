@@ -89,8 +89,8 @@ class Server {
         $this->generatorResolver = $gr ?: new GeneratorResolver;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
         
-        $this->onGeneratorResolution = function($result, $id) {
-            $this->onGeneratorResolution($result, $id);
+        $this->onGeneratorResolution = function($error, $result, $data) {
+            $this->onGeneratorResolution($error, $result, $data);
         };
     }
 
@@ -814,13 +814,13 @@ class Server {
             $request = $messageCycle->request;
             $responder = $messageCycle->host->getApplication();
             $response = $responder($request);
-            $this->assignMessageCycleResponse($messageCycle, $response);
+            $this->assignResponse($messageCycle, $response);
         } catch (\Exception $e) {
             $this->assignExceptionResponse($messageCycle, $e);
         }
     }
 
-    private function assignMessageCycleResponse($messageCycle, $response) {
+    private function assignResponse($messageCycle, $response) {
         if (is_scalar($response)) {
             $messageCycle->response = new Response([
                 'body' => $response
@@ -857,10 +857,16 @@ class Server {
         }
     }
 
-    private function onGeneratorResolution($response, $requestId) {
-        if (isset($this->requestIdsBeingGenerated[$requestId])) {
+    private function onGeneratorResolution($error, $result, $requestId) {
+        if (!isset($this->requestIdsBeingGenerated[$requestId])) {
+            // Client is already disconnected
+            return;
+        } elseif ($error) {
             $messageCycle = $this->requestIdsBeingGenerated[$requestId];
-            $this->assignMessageCycleResponse($messageCycle, $response);
+            $this->assignExceptionResponse($messageCycle, $error);
+        } else {
+            $messageCycle = $this->requestIdsBeingGenerated[$requestId];
+            $this->assignResponse($messageCycle, $result);
         }
     }
 

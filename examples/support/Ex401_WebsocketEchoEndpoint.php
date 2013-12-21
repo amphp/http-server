@@ -4,6 +4,10 @@ use Aerys\Responders\Websocket\Message,
     Aerys\Responders\Websocket\Endpoint,
     Aerys\Responders\Websocket\Broker;
 
+function asyncSomething($msg, $onComplete) {
+    $onComplete($msg);
+}
+    
 class Ex401_WebsocketEchoEndpoint implements Endpoint {
 
     const RECENT_MSG_LIMIT = 10;
@@ -19,7 +23,9 @@ class Ex401_WebsocketEchoEndpoint implements Endpoint {
         $this->broadcastUserCount($broker);
         $openMessage = self::RECENT_MSG_PREFIX . json_encode($this->recentMessages);
 
-        return $openMessage;
+        // Demonstrate yielding an asynchronous thing
+        $toSend = (yield 'asyncSomething' => $openMessage);
+        yield $toSend;
     }
 
     private function broadcastUserCount(Broker $broker) {

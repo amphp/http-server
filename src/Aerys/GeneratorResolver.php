@@ -4,43 +4,53 @@ namespace Aerys;
 
 class GeneratorResolver {
 
-    function resolve(\Generator $generator, callable $onResult, $userId = NULL) {
+    function resolve(\Generator $generator, callable $onResult, $userData = NULL) {
         $key = $generator->key();
         $value = $generator->current();
 
         if ($value instanceof \Generator) {
-            $this->resolve($value, function($result) use ($onResult, $userId) {
-                $onResult($result, $userId);
+            $this->resolve($value, function($result) use ($onResult, $userData) {
+                $onResult($result, $userData);
             });
         } elseif (is_callable($key)) {
             $value = is_array($value) ? $value : [$value];
-            array_push($value, function($result) use ($generator, $onResult, $userId) {
-                $this->sendResult($generator, $result, $onResult, $userId);
+            array_push($value, function($result) use ($generator, $onResult, $userData) {
+                $this->sendResult($generator, $result, $onResult, $userData);
             });
-            $this->trigger($generator, $key, $value, $onResult);
+            $this->trigger($generator, $key, $value, $onResult, $userData);
         } elseif ($value && is_array($value) && ($group = $this->buildGroup($generator, $value))) {
-            $this->triggerGroup($generator, $group, $onResult, $userId);
+            $this->triggerGroup($generator, $group, $onResult, $userData);
         } else {
-            $onResult($value, $userId);
+            $onResult($error = NULL, $value, $userData);
         }
     }
 
-    private function trigger(\Generator $generator, callable $action, array $args, callable $onResult) {
+    private function trigger(\Generator $generator, callable $action, array $args, callable $onResult, $userData) {
         try {
             call_user_func_array($action, $args);
-        } catch (\Exception $e) {
-            $generator->throw($e);
-            $this->resolve($generator, $onResult, $userId);
+        } catch (\Exception $error) {
+            $this->resolveError($generator, $onResult, $userData, $error);
         }
     }
 
-    private function sendResult(\Generator $generator, $result, callable $onResult, $userId) {
+    private function sendResult(\Generator $generator, $result, callable $onResult, $userData) {
         try {
             $generator->send($result);
+            $this->resolve($generator, $onResult, $userData);
         } catch (\Exception $e) {
-            $generator->throw($e);
-        } finally {
-            $this->resolve($generator, $onResult, $userId);
+            $this->resolveError($generator, $onResult, $userData, $error);
+        }
+    }
+
+    private function resolveError($generator, $onResult, $userData, $error) {
+        try {
+            $generator->throw($error);
+        } catch (\Exception $error) {
+            if ($generator->valid()) {
+                $this->resolveError($generator, $onResult, $userData, $error);
+            } else {
+                $onResult($error, $result = NULL, $userData);
+            }
         }
     }
 
@@ -63,37 +73,32 @@ class GeneratorResolver {
         return $yieldGroup;
     }
 
-    private function sendGroupResult(\Generator $generator, $result, $groupIndex, $onResult, $userId, \StdClass $state) {
+    private function sendGroupResult(\Generator $generator, $result, $groupIndex, $onResult, $userData, \StdClass $state) {
         $state->groupResults[$groupIndex] = $result;
 
         if (count($state->groupResults) === $state->count) {
-            $this->sendResult($generator, $state->groupResults, $onResult, $userId);
+            $this->sendResult($generator, $state->groupResults, $onResult, $userData);
         }
     }
 
-    private function triggerGroup(\Generator $generator, array $group, callable $onResult, $userId) {
-        try {
-            $state = new \StdClass;
-            $state->count = count($group);
-            $state->groupResults = [];
+    private function triggerGroup(\Generator $generator, array $group, callable $onResult, $userData) {
+        $state = new \StdClass;
+        $state->count = count($group);
+        $state->groupResults = [];
 
-            foreach ($group as $groupIndex => $groupArr) {
-                list($callable, $args) = $groupArr;
-                $relayer = function($result) use ($generator, $groupIndex, $onResult, $userId, $state) {
-                    $this->sendGroupResult($generator, $result, $groupIndex, $onResult, $userId, $state);
-                };
-                array_push($args, $relayer);
-                $result = call_user_func_array($callable, $args);
+        foreach ($group as $groupIndex => $groupArr) {
+            list($callable, $args) = $groupArr;
+            $relayer = function($result) use ($generator, $groupIndex, $onResult, $userData, $state) {
+                $this->sendGroupResult($generator, $result, $groupIndex, $onResult, $userData, $state);
+            };
+            array_push($args, $relayer);
+            $result = call_user_func_array($callable, $args);
 
-                if ($result instanceof \Generator) {
-                    $this->resolve($result, function($result) use ($relayer, $userId) {
-                        $relayer($result, $userId);
-                    });
-                }
+            if ($result instanceof \Generator) {
+                $this->resolve($result, function($result) use ($relayer, $userData) {
+                    $relayer($result, $userData);
+                });
             }
-        } catch (\Exception $e) {
-            $generator->throw($e);
-            $this->resolve($generator, $onResult, $userId);
         }
     }
 
