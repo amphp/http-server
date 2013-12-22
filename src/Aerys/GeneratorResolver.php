@@ -8,17 +8,18 @@ class GeneratorResolver {
         $key = $generator->key();
         $value = $generator->current();
 
+        $isArrayValue = is_array($value);
+
         if ($value instanceof \Generator) {
-            $this->resolve($value, function($result) use ($onResult, $userData) {
-                $onResult($result, $userData);
-            });
-        } elseif (is_callable($key)) {
-            $value = is_array($value) ? $value : [$value];
+            $this->resolve($value, function($error, $result, $userData) use ($onResult) {
+                $onResult($error, $result, $userData);
+            }, $userData);
+        } elseif ($isArrayValue && is_callable($key)) {
             array_push($value, function($result) use ($generator, $onResult, $userData) {
                 $this->sendResult($generator, $result, $onResult, $userData);
             });
             $this->trigger($generator, $key, $value, $onResult, $userData);
-        } elseif ($value && is_array($value) && ($group = $this->buildGroup($generator, $value))) {
+        } elseif ($value && $isArrayValue && ($group = $this->buildGroup($generator, $value))) {
             $this->triggerGroup($generator, $group, $onResult, $userData);
         } else {
             $onResult($error = NULL, $value, $userData);
