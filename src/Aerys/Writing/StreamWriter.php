@@ -19,7 +19,7 @@ class StreamWriter extends Writer {
         rewind($body);
 
         $this->body = $body;
-        stream_set_blocking($body);
+        stream_set_blocking($body, FALSE);
     }
 
     function write() {
