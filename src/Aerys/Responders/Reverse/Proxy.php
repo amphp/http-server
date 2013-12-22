@@ -25,7 +25,7 @@ class Proxy {
     private $maxPendingRequests = 1024;
     private $proxyPassHeaders = [];
     private $loWaterConnectionMin = 0;
-    private $hiWaterConnectionMax = 32;
+    private $hiWaterConnectionMax = 0;
     private $badGatewayResponse;
     private $serviceUnavailableResponse;
 
@@ -50,7 +50,7 @@ class Proxy {
     }
 
     /**
-     * Respond to the specified ASGI request environment
+     * Answer a request
      *
      * @param $request The request environment map
      * @return mixed Returns service unavailable response or generator
@@ -163,8 +163,8 @@ class Proxy {
 
     private function setHiWaterConnectionMax($count) {
         $this->hiWaterConnectionMax = filter_var($count, FILTER_VALIDATE_INT, ['options' => [
-            'min_range' => 1,
-            'default' => 100
+            'min_range' => 0,
+            'default' => 0
         ]]);
     }
 
@@ -270,8 +270,9 @@ class Proxy {
         try {
             while ($responseArr = $conn->responseParser->parse($data)) {
                 $this->receiveBackendResponse($conn, $responseArr);
-                $parseBuffer = ltrim($conn->responseParser->getBuffer(), "\r\n");
-                if ($parseBuffer || $parseBuffer === '0') {
+                if (!$conn->responseParser) {
+                    break;
+                } elseif (isset(ltrim($conn->responseParser->getBuffer(), "\r\n")[0])) {
                     $data = '';
                 } else {
                     break;
@@ -404,7 +405,7 @@ class Proxy {
             $conn = $backend->availableConnections[$connId];
             unset($backend->availableConnections[$connId]);
             $this->enqueueRequest($conn, $request, $onComplete);
-        } elseif ($backend->cachedConnectionCount < $this->hiWaterConnectionMax) {
+        } elseif ($this->hiWaterConnectionMax <= 0 || $backend->cachedConnectionCount < $this->hiWaterConnectionMax) {
             $this->totalPendingRequests++;
             $this->queuedRequests[] = [$request, $onComplete];
             $this->connect($backend);
