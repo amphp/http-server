@@ -7,8 +7,8 @@ class Connection {
     public $uri;
     public $socket;
     public $responseParser;
-    public $inProgressRequestId;
     public $inProgressRequestWriter;
     public $readWatcher;
     public $writeWatcher;
+    public $onCompleteCallback;
 }
