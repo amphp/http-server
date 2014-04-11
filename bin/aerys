@@ -4,7 +4,7 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-require __DIR__ . '/../vendor/autoload.php';
+require __DIR__ . '/../src/bootstrap.php';
 
 $help = <<<EOT
 
@@ -37,21 +37,21 @@ $help = <<<EOT
 EOT;
 
 try {
-    
-    $options = (new Aerys\Framework\BinOptions)->loadOptions();
+
+    $options = (new Aerys\Start\BinOptions)->loadOptions();
 
     if ($options->getHelp()) {
         echo $help;
         exit(0);
     } elseif (extension_loaded('pcntl')) {
-        $watcher = new Aerys\Framework\ForkWatcher;
+        $watcher = new Aerys\Watch\ForkWatcher;
     } else {
         $reactor = (new Alert\ReactorFactory)->select();
-        $watcher = new Aerys\Framework\ProcessWatcher;
+        $watcher = new Aerys\Watch\ProcessWatcher;
     }
-    
+
     $watcher->watch($options);
-    
+
 } catch (Exception $e) {
     printf("\n%s\n\n", $e->getMessage());
     exit(1);
