@@ -3,7 +3,8 @@
 namespace Aerys\Watch;
 
 use Alert\Reactor,
-    Alert\ReactorFactory;
+    Alert\ReactorFactory,
+    Aerys\Start\BinOptions;
 
 class ProcessWatcher implements ServerWatcher {
 
