@@ -8,7 +8,7 @@ use Alert\Reactor,
     Alert\Success,
     Alert\Aggregate,
     Aerys\Parse\Parser,
-    Aerys\Parse\ParserFactory,
+    Aerys\Parse\UserlandParser,
     Aerys\Parse\ParseException,
     Aerys\Write\ResponseWriter,
     Aerys\Write\DestinationPipeException;
@@ -31,7 +31,6 @@ class Server {
     private $state = self::STOPPED;
     private $reactor;
     private $hostBinder;
-    private $parserFactory;
     private $stopPromise;
     private $observers;
 
@@ -72,10 +71,9 @@ class Server {
     private $showErrors = TRUE;
     private $isExtSocketsEnabled;
 
-    public function __construct(Reactor $reactor, HostBinder $hb = NULL, ParserFactory $pf = NULL) {
+    public function __construct(Reactor $reactor, HostBinder $hb = NULL) {
         $this->reactor = $reactor;
         $this->hostBinder = $hb ?: new HostBinder;
-        $this->parserFactory = $pf ?: new ParserFactory;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
         $this->observers = new \SplObjectStorage;
         $this->lastRequestId = PHP_INT_MAX * -1;
@@ -394,8 +392,7 @@ class Server {
         list($client->clientAddress, $client->clientPort) = $this->parseSocketName($clientName);
         list($client->serverAddress, $client->serverPort) = $this->parseSocketName($serverName);
 
-        $client->parser = $this->parserFactory->makeParser();
-        $client->parser->setOptions([
+        $client->parser = (new UserlandParser)->setOptions([
             'maxHeaderBytes' => $this->maxHeaderBytes,
             'maxBodyBytes' => $this->maxBodyBytes,
             'returnBeforeEntity' => TRUE

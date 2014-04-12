@@ -2,8 +2,7 @@
 
 namespace Aerys\Parse;
 
-class MessageParser implements Parser {
-
+class UserlandParser implements Parser {
     const STATUS_LINE_PATTERN = "#^
         HTTP/(?P<protocol>\d+\.\d+)[\x20\x09]+
         (?P<status>[1-5]\d\d)[\x20\x09]*
@@ -59,7 +58,7 @@ class MessageParser implements Parser {
                 $this->{$key} = $value;
             }
         }
-        
+
         return $this;
     }
 
@@ -243,7 +242,7 @@ class MessageParser implements Parser {
             if ($this->returnBeforeEntity) {
                 $parsedMsgArr = $this->getParsedMessageArray();
                 $parsedMsgArr['headersOnly'] = TRUE;
-                
+
                 return $parsedMsgArr;
             }
 
@@ -580,5 +579,4 @@ class MessageParser implements Parser {
             fwrite($this->body, $data);
         }
     }
-
 }

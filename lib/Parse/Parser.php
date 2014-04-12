@@ -3,9 +3,9 @@
 namespace Aerys\Parse;
 
 interface Parser {
-
     const MODE_REQUEST = 1;
     const MODE_RESPONSE = 2;
+
     const AWAITING_HEADERS = 0;
     const BODY_IDENTITY = 1;
     const BODY_IDENTITY_EOF = 2;
@@ -13,10 +13,9 @@ interface Parser {
     const TRAILERS_START = 4;
     const TRAILERS = 5;
 
-    function setOptions(array $options);
-    function parse($data);
-    function getState();
-    function getBuffer();
-    function getParsedMessageArray();
-
+    public function setOptions(array $options);
+    public function parse($data);
+    public function getState();
+    public function getBuffer();
+    public function getParsedMessageArray();
 }
