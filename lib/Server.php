@@ -947,7 +947,6 @@ class Server {
         $response = $cycle->response;
 
         if ($request['SERVER_PROTOCOL'] < 1.1) {
-            $response->setProtocol(1.0);
             return TRUE;
         }
 
