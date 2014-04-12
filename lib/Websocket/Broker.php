@@ -22,7 +22,7 @@ class Broker {
     }
 
     public function close($socketId, $code = Codes::NORMAL_CLOSE, $reason = '') {
-        $this->broker->close($socketId, $code, $reason);
+        $this->endpoint->close($socketId, $code, $reason);
     }
 
     public function stats($socketId) {
