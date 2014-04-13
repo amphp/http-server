@@ -45,6 +45,11 @@ class ThreadWatcher implements ServerWatcher {
         $this->ipcPort = $this->startIpcServer($binOptions);
         $this->servers = $this->hostBinder->bindAddresses($thread->bindTo, $this->servers);
 
+        foreach ($thread->bindTo as $addr) {
+            $addr = substr(str_replace('0.0.0.0', '*', $addr), 6);
+            printf("Listening for HTTP traffic on %s ...\n", $addr);
+        }
+
         for ($i=0; $i < $this->workers; $i++) {
             $this->spawn();
         }
