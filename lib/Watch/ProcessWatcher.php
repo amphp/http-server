@@ -45,7 +45,7 @@ class ProcessWatcher implements ServerWatcher {
             );
         } else {
             $addresses = array_unique($json['hosts']);
-                foreach ($addresses as $address) {
+            foreach ($addresses as $address) {
                 $address = substr(str_replace('0.0.0.0', '*', $address), 6);
                 printf("Listening for HTTP traffic on %s ...\n", $address);
             }
