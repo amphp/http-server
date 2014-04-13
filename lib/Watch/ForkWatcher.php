@@ -8,11 +8,11 @@ use Aerys\HostBinder,
     Aerys\Start\StartException;
 
 class ForkWatcher implements ServerWatcher {
+    use CpuCounter;
 
     private $ipcBroker;
     private $bootstrapper;
     private $hostBinder;
-    private $cpuCounter;
     private $configPath;
     private $binOptions;
     private $backendUri;
@@ -32,13 +32,11 @@ EOT;
     public function __construct(
         IpcBroker $ipcBroker = NULL,
         Bootstrapper $bootstrapper = NULL,
-        HostBinder $hostBinder = NULL,
-        CpuCounter $cpuCounter = NULL
+        HostBinder $hostBinder = NULL
     ) {
         $this->ipcBroker = $ipcBroker ?: new IpcBroker;
         $this->bootstrapper = $bootstrapper ?: new Bootstrapper;
         $this->hostBinder = $hostBinder ?: new HostBinder;
-        $this->cpuCounter = $cpuCounter ?: new CpuCounter;
 
         $this->ipcBroker->setIpcEventCallbacks(IpcBroker::BACKEND, [
             'onClientClose' => function() {
@@ -213,7 +211,7 @@ EOT;
     }
 
     private function forkWorkers() {
-        $workerCount = $this->binOptions->getWorkers() ?: $this->cpuCounter->count();
+        $workerCount = $this->binOptions->getWorkers() ?: $this->countCpuCores();
         $this->ipcBroker->pause();
         for ($i=0; $i < $workerCount; $i++) {
             $this->fork();
