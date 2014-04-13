@@ -105,7 +105,7 @@ class ProcessWatcher implements ServerWatcher {
     private function accept($ipcServer) {
         while ($ipcClient = @stream_socket_accept($ipcServer, $timeout = 0)) {
             stream_set_blocking($ipcClient, FALSE);
-            $watcherId = $this->reactor->onReadable($ipcClient, function($watcherId, $ipcClient) {
+            $this->reactor->onReadable($ipcClient, function($watcherId, $ipcClient) {
                 $this->onReadableClient($watcherId, $ipcClient);
             });
         }
