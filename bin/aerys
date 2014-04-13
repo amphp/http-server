@@ -15,6 +15,7 @@ $help = <<<EOT
     -c, --config      Use the specified config file to bootstrap the server
     -w, --workers     Manually specify worker count (default: CPU core count)
     -z, --control     Specify a port number for server control commands
+    -b, --backend     Specify a custom port number for backend IPC communication
 
     Run a static file server without a config file:
 
@@ -31,7 +32,7 @@ $help = <<<EOT
     aerys --root /path/to/document/root --name mysite.com
     aerys -r /path/to/document/root -p 1337
     aerys -r /path/to/document/root --ip="[::]"
-    aerys -c /my/config.php -u tcp://127.0.0.1:23456
+    aerys -c /my/config.php -z tcp://127.0.0.1:23456
 
 
 EOT;
@@ -46,7 +47,6 @@ try {
     } elseif (extension_loaded('pcntl')) {
         $watcher = new Aerys\Watch\ForkWatcher;
     } else {
-        $reactor = (new Alert\ReactorFactory)->select();
         $watcher = new Aerys\Watch\ProcessWatcher;
     }
 

@@ -2,8 +2,8 @@
 
 namespace Aerys\Watch;
 
-class CpuCounter implements \Countable {
-    public function count() {
+trait CpuCounter {
+    private function countCpuCores() {
         $os = (stripos(PHP_OS, "WIN") === 0) ? "win" : strtolower(trim(shell_exec("uname")));
 
         switch ($os) {

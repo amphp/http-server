@@ -11,7 +11,8 @@ class BinOptions {
     private $name;
     private $root;
     private $control;
-    private $shortOpts = 'hc:w:p:i:n:r:z:';
+    private $backend;
+    private $shortOpts = 'hc:w:p:i:n:r:z:b:';
     private $longOpts = [
         'help',
         'config:',
@@ -21,6 +22,7 @@ class BinOptions {
         'name:',
         'root:',
         'control:',
+        'backend:'
     ];
     private $shortOptNameMap = [
         'h' => 'help',
@@ -31,14 +33,15 @@ class BinOptions {
         'n' => 'name',
         'r' => 'root',
         'z' => 'control',
+        'b' => 'backend'
     ];
 
     /**
      * Load command line options that may be used to bootstrap a server
      *
      * @param array $options Used if defined, loaded from the CLI otherwise
-     * @throws \Aerys\Framework\StartException
-     * @return \Aerys\Framework\BinOptions Returns the current object instance
+     * @throws \Aerys\Start\StartException
+     * @return \Aerys\Start\BinOptions Returns the current object instance
      */
     public function loadOptions(array $options = NULL) {
         $rawOptions = isset($options) ? $options : $this->getCommandLineOptions();
@@ -51,7 +54,8 @@ class BinOptions {
             'ip' => NULL,
             'name' => NULL,
             'root' => NULL,
-            'control' => NULL
+            'control' => NULL,
+            'backend' => NULL
         ];
 
         foreach ($rawOptions as $key => $value) {
@@ -104,6 +108,9 @@ class BinOptions {
                 case 'control':
                     $this->control = $value;
                     break;
+                case 'backend':
+                    $this->backend = $value;
+                    break;
             }
         }
     }
@@ -147,6 +154,10 @@ class BinOptions {
         return $this->control;
     }
 
+    public function getBackend() {
+        return $this->backend;
+    }
+
     public function toArray() {
         return array_filter([
             'help' => $this->help,
@@ -156,7 +167,8 @@ class BinOptions {
             'ip' => $this->ip,
             'name' => $this->name,
             'root' => $this->root,
-            'control' => $this->control
+            'control' => $this->control,
+            'backend' => $this->backend
         ]);
     }
 
@@ -186,6 +198,9 @@ class BinOptions {
         }
         if ($this->control) {
             $parts[] = '-z ' . escapeshellarg($this->control);
+        }
+        if ($this->backend) {
+            $parts[] = '-b ' . escapeshellarg($this->backend);
         }
 
         return implode(' ', $parts);
