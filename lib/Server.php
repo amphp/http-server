@@ -65,7 +65,6 @@ class Server {
     private $allowedMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE', 'PUT', 'POST', 'PATCH', 'DELETE'];
     private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER; // @TODO Add option setter
     private $readGranularity = 262144; // @TODO Add option setter
-    private $showErrors = TRUE;
     private $isExtSocketsEnabled;
 
     public function __construct(Reactor $reactor, HostBinder $hb = NULL, $debug = FALSE) {
@@ -788,7 +787,7 @@ class Server {
     private function assignExceptionResponse($cycle, \Exception $exception) {
         // @TODO Log $e to whatever error logging facility we can access
 
-        $displayMsg = $this->showErrors
+        $displayMsg = $this->debug
             ? "<pre>{$exception}</pre>"
             : '<p>Something went terribly wrong</p>';
 
@@ -1258,8 +1257,6 @@ class Server {
                 $this->setAllowedMethods($value); break;
             case 'defaulthost':
                 $this->setDefaultHost($value); break;
-            case 'showerrors':
-                $this->setShowErrors($value); break;
             default:
                 throw new \DomainException(
                     "Unknown server option: {$option}"
@@ -1363,10 +1360,6 @@ class Server {
         $this->defaultHost = $hostId;
     }
 
-    private function setShowErrors($boolFlag) {
-        $this->showErrors = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
-    }
-
     /**
      * Retrieve a server option value
      *
@@ -1410,8 +1403,6 @@ class Server {
                 return $this->allowedMethods;
             case 'defaulthost':
                 return $this->defaultHost;
-            case 'showerrors':
-                return $this->showErrors;
             default:
                 throw new \DomainException(
                     "Unknown server option: {$option}"
@@ -1442,8 +1433,7 @@ class Server {
             'socketSoLingerZero'    => $this->socketSoLingerZero,
             'socketBacklogSize'     => $this->hostBinder->getSocketBacklogSize(),
             'allowedMethods'        => $this->allowedMethods,
-            'defaultHost'           => $this->defaultHost,
-            'showErrors'            => $this->showErrors
+            'defaultHost'           => $this->defaultHost
         ];
     }
 
