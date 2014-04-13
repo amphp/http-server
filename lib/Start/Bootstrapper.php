@@ -20,13 +20,14 @@ class Bootstrapper {
      */
     public function boot(BinOptions $binOptions = NULL) {
         $binOptions = $binOptions ?: (new BinOptions)->loadOptions();
+        $debug = $binOptions->getDebug();
 
         return ($configFile = $binOptions->getConfig())
-            ? $this->buildFromFile($configFile)
-            : $this->buildDocRoot($binOptions);
+            ? $this->buildFromFile($configFile, $debug)
+            : $this->buildDocRoot($binOptions, $debug);
     }
 
-    public function buildFromFile($configFile) {
+    public function buildFromFile($configFile, $debug) {
         if (!include($configFile)) {
             throw new StartException(
                 sprintf("Failed including config file: %s", $configFile)
@@ -70,14 +71,14 @@ class Bootstrapper {
         $reactor = $reactors ? end($reactors) : (new ReactorFactory)->select();
         $injector = $injectors ? end($injectors) : new Provider;
 
-        return $this->generateBootables($reactor, $injector, $options, $apps);
+        return $this->generateBootables($reactor, $injector, $options, $apps, $debug);
     }
 
-    private function generateBootables(Reactor $reactor, Injector $injector, array $options, array $apps) {
+    private function generateBootables($reactor, $injector, $options, $apps, $debug) {
         $injector->alias('Alert\Reactor', get_class($reactor));
         $injector->share($reactor);
 
-        $server = $injector->make('Aerys\Server');
+        $server = $injector->make('Aerys\Server', [':debug' => $debug]);
         $injector->share($server);
         $injector->define('Aerys\Start\ResponderBuilder', [
             ':injector' => $injector
@@ -106,7 +107,12 @@ class Bootstrapper {
         return [$reactor, $server, $hostCollection];
     }
 
-    private function buildDocRoot(BinOptions $binOptions) {
+    private function buildDocRoot(BinOptions $binOptions, $debug) {
+        if ($debug) {
+            trigger_error('Debug mode does not apply in file server mode');
+            $debug = FALSE;
+        }
+        
         $docroot = realpath($binOptions->getRoot());
 
         if (!($docroot && is_dir($docroot) && is_readable($docroot))) {
@@ -132,6 +138,6 @@ class Bootstrapper {
         $options = [];
         $apps = [$app];
 
-        return $this->generateBootables($reactor, $injector, $options, $apps);
+        return $this->generateBootables($reactor, $injector, $options, $apps, $debug);
     }
 }

@@ -28,6 +28,7 @@ class Server {
     private $state = self::STOPPED;
     private $reactor;
     private $hostBinder;
+    private $debug;
     private $stopPromise;
     private $observers;
 
@@ -46,7 +47,6 @@ class Server {
     private $keepAliveWatcher;
     private $keepAliveTimeouts = [];
 
-    private $debug = TRUE;
     private $errorLogPath = 'php://stderr';
     private $maxConnections = 1500;
     private $maxRequests = 150;
@@ -68,12 +68,13 @@ class Server {
     private $showErrors = TRUE;
     private $isExtSocketsEnabled;
 
-    public function __construct(Reactor $reactor, HostBinder $hb = NULL) {
+    public function __construct(Reactor $reactor, HostBinder $hb = NULL, $debug = FALSE) {
         $this->reactor = $reactor;
         $this->hostBinder = $hb ?: new HostBinder;
-        $this->isExtSocketsEnabled = extension_loaded('sockets');
+        $this->debug = (bool) $debug;
         $this->observers = new \SplObjectStorage;
         $this->lastRequestId = PHP_INT_MAX * -1;
+        $this->isExtSocketsEnabled = extension_loaded('sockets');
     }
 
     /**
@@ -1223,8 +1224,6 @@ class Server {
      */
     public function setOption($option, $value) {
         switch (strtolower($option)) {
-            case 'debug':
-                $this->setDebug($value); break;
             case 'maxconnections':
                 $this->setMaxConnections($value); break;
             case 'maxrequests':
@@ -1266,10 +1265,6 @@ class Server {
                     "Unknown server option: {$option}"
                 );
         }
-    }
-
-    private function setDebug($bool) {
-        $this->debug = filter_var($bool, FILTER_VALIDATE_BOOLEAN);
     }
 
     private function setMaxConnections($maxConns) {
@@ -1381,8 +1376,6 @@ class Server {
      */
     public function getOption($option) {
         switch (strtolower($option)) {
-            case 'debug':
-                return $this->debug;
             case 'maxconnections':
                 return $this->maxConnections;
             case 'maxrequests':
@@ -1433,7 +1426,6 @@ class Server {
      */
     public function getAllOptions() {
         return [
-            'debug'                 => $this->debug,
             'maxConnections'        => $this->maxConnections,
             'maxRequests'           => $this->maxRequests,
             'keepAliveTimeout'      => $this->keepAliveTimeout,

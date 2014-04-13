@@ -12,6 +12,7 @@ $help = <<<EOT
     -----------------
 
     -h, --help        Display help screen
+    -d, --debug       Start the server in debug mode
     -c, --config      Use the specified config file to bootstrap the server
     -w, --workers     Manually specify worker count (default: CPU core count)
     -z, --control     Specify a port number for server control commands
@@ -44,6 +45,8 @@ try {
     if ($options->getHelp()) {
         echo $help;
         exit(0);
+    } elseif ($options->getDebug()) {
+        $watcher = new Aerys\Watch\DebugWatcher;
     } elseif (extension_loaded('pthreads')) {
         $watcher = new Aerys\Watch\ThreadWatcher;
     } elseif (extension_loaded('pcntl')) {

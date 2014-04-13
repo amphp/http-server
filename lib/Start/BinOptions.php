@@ -12,7 +12,8 @@ class BinOptions {
     private $root;
     private $control;
     private $backend;
-    private $shortOpts = 'hc:w:p:i:n:r:z:b:';
+    private $debug;
+    private $shortOpts = 'hc:w:p:i:n:r:z:b:d';
     private $longOpts = [
         'help',
         'config:',
@@ -22,7 +23,8 @@ class BinOptions {
         'name:',
         'root:',
         'control:',
-        'backend:'
+        'backend:',
+        'debug'
     ];
     private $shortOptNameMap = [
         'h' => 'help',
@@ -33,7 +35,8 @@ class BinOptions {
         'n' => 'name',
         'r' => 'root',
         'z' => 'control',
-        'b' => 'backend'
+        'b' => 'backend',
+        'd' => 'debug'
     ];
 
     /**
@@ -55,7 +58,8 @@ class BinOptions {
             'name' => NULL,
             'root' => NULL,
             'control' => NULL,
-            'backend' => NULL
+            'backend' => NULL,
+            'debug' => NULL
         ];
 
         foreach ($rawOptions as $key => $value) {
@@ -111,6 +115,9 @@ class BinOptions {
                 case 'backend':
                     $this->backend = $value;
                     break;
+                case 'debug':
+                    $this->debug = isset($value) ? TRUE : NULL;
+                    break;
             }
         }
     }
@@ -158,6 +165,10 @@ class BinOptions {
         return $this->backend;
     }
 
+    public function getDebug() {
+        return $this->debug;
+    }
+
     public function toArray() {
         return array_filter([
             'help' => $this->help,
@@ -168,7 +179,8 @@ class BinOptions {
             'name' => $this->name,
             'root' => $this->root,
             'control' => $this->control,
-            'backend' => $this->backend
+            'backend' => $this->backend,
+            'debug' => $this->debug
         ]);
     }
 
@@ -201,6 +213,9 @@ class BinOptions {
         }
         if ($this->backend) {
             $parts[] = '-b ' . escapeshellarg($this->backend);
+        }
+        if ($this->debug) {
+            $parts[] = '-d';
         }
 
         return implode(' ', $parts);
