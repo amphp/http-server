@@ -1,8 +1,18 @@
 <?php
 
-namespace Aerys\Parse;
+namespace Aerys;
 
-class UserlandParser implements Parser {
+class Parser {
+    const MODE_REQUEST = 1;
+    const MODE_RESPONSE = 2;
+
+    const AWAITING_HEADERS = 0;
+    const BODY_IDENTITY = 1;
+    const BODY_IDENTITY_EOF = 2;
+    const BODY_CHUNKS = 3;
+    const TRAILERS_START = 4;
+    const TRAILERS = 5;
+    
     const STATUS_LINE_PATTERN = "#^
         HTTP/(?P<protocol>\d+\.\d+)[\x20\x09]+
         (?P<status>[1-5]\d\d)[\x20\x09]*
@@ -124,7 +134,7 @@ class UserlandParser implements Parser {
                 $this->requestMethod = $method;
             } else {
                 $this->requestMethod = $this->requestUri = $this->protocol = '?';
-                throw new ParseException(
+                throw new ParserException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid request line',
                     $code = 400,
@@ -136,7 +146,7 @@ class UserlandParser implements Parser {
                 $this->requestUri = $uri;
             } else {
                 $this->requestUri = $this->protocol = '?';
-                throw new ParseException(
+                throw new ParserException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid request line',
                     $code = 400,
@@ -148,7 +158,7 @@ class UserlandParser implements Parser {
                 $this->protocol = $protocol;
             } else {
                 $this->protocol = '?';
-                throw new ParseException(
+                throw new ParserException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid request line',
                     $code = 400,
@@ -157,7 +167,7 @@ class UserlandParser implements Parser {
             }
 
             if (!($protocol === '1.0' || '1.1' === $protocol)) {
-                throw new ParseException(
+                throw new ParserException(
                     $this->getParsedMessageArray(),
                     $msg = 'Protocol not supported',
                     $code = 505,
@@ -178,7 +188,7 @@ class UserlandParser implements Parser {
                 $this->responseCode = $m['status'];
                 $this->responseReason = $m['reason'];
             } else {
-                throw new ParseException(
+                throw new ParserException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid status line',
                     $code = 400,
@@ -364,7 +374,7 @@ class UserlandParser implements Parser {
         }
 
         if ($this->maxHeaderBytes > 0 && $headersSize > $this->maxHeaderBytes) {
-            throw new PolicyException(
+            throw new ParserException(
                 $this->getParsedMessageArray(),
                 $msg = "Maximum allowable header size exceeded: {$this->maxHeaderBytes}",
                 $code = 431,
@@ -381,7 +391,7 @@ class UserlandParser implements Parser {
         }
 
         if (!preg_match_all(self::HEADERS_PATTERN, $rawHeaders, $matches)) {
-            throw new ParseException(
+            throw new ParserException(
                 $this->getParsedMessageArray(),
                 $msg = 'Invalid headers',
                 $code = 400,
@@ -400,7 +410,7 @@ class UserlandParser implements Parser {
         }
 
         if (strlen($rawHeaders) !== strlen($aggregateMatchedHeaders)) {
-            throw new ParseException(
+            throw new ParserException(
                 $this->getParsedMessageArray(),
                 $msg = 'Invalid headers',
                 $code = 400,
@@ -425,7 +435,7 @@ class UserlandParser implements Parser {
 
     private function validateContentLength($contentLength) {
         if (!ctype_digit($contentLength)) {
-            throw new ParseException(
+            throw new ParserException(
                 $this->getParsedMessageArray(),
                 $msg = 'Invalid Content-Length',
                 $code = 400,
@@ -443,7 +453,7 @@ class UserlandParser implements Parser {
             if (FALSE === ($lineEndPos = strpos($this->buffer, "\r\n"))) {
                 goto more_data_needed;
             } elseif ($lineEndPos === 0) {
-                throw new ParseException(
+                throw new ParserException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid new line; hexadecimal chunk size expected',
                     $code = 400,
@@ -458,7 +468,7 @@ class UserlandParser implements Parser {
             if ($hex == dechex($dec)) {
                 $this->chunkLenRemaining = $dec;
             } else {
-                throw new ParseException(
+                throw new ParserException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid hexadecimal chunk size',
                     $code = 400,
@@ -562,7 +572,7 @@ class UserlandParser implements Parser {
         $this->bodyBytesConsumed += strlen($data);
 
         if ($this->maxBodyBytes > 0 && $this->bodyBytesConsumed > $this->maxBodyBytes) {
-            throw new PolicyException(
+            throw new ParserException(
                 $this->getParsedMessageArray(),
                 $msg = 'Maximum allowable body size exceeded',
                 $code = 413,

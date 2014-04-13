@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Parse;
+namespace Aerys;
 
 class ParseException extends \RuntimeException {
     private $parsedMsgArr;

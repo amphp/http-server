@@ -7,9 +7,6 @@ use Alert\Reactor,
     Alert\Future,
     Alert\Success,
     Alert\Aggregate,
-    Aerys\Parse\Parser,
-    Aerys\Parse\UserlandParser,
-    Aerys\Parse\ParseException,
     Aerys\Write\ResponseWriter,
     Aerys\Write\DestinationPipeException;
 
@@ -392,7 +389,7 @@ class Server {
         list($client->clientAddress, $client->clientPort) = $this->parseSocketName($clientName);
         list($client->serverAddress, $client->serverPort) = $this->parseSocketName($serverName);
 
-        $client->parser = (new UserlandParser)->setOptions([
+        $client->parser = (new Parser)->setOptions([
             'maxHeaderBytes' => $this->maxHeaderBytes,
             'maxBodyBytes' => $this->maxBodyBytes,
             'returnBeforeEntity' => TRUE
@@ -441,12 +438,12 @@ class Server {
                     break;
                 }
             }
-        } catch (ParseException $e) {
+        } catch (ParserException $e) {
             $this->onParseError($client, $e);
         }
     }
 
-    private function onParseError($client, ParseException $e) {
+    private function onParseError($client, ParserException $e) {
         if ($client->partialCycle) {
             $cycle = $client->partialCycle;
             $client->partialCycle = NULL;
