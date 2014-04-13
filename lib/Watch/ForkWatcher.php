@@ -102,18 +102,18 @@ EOT;
         exec($cmd, $output, $exitCode);
 
         $output = implode($output, "\n");
-        $json = json_decode($output, TRUE);
+        $data = @unserialize($output);
 
-        if (!$json) {
+        if (empty($data)) {
             throw new StartException($output);
-        } elseif ($json['error']) {
-            throw new StartException(
-                $json['error_msg']
-            );
         }
 
-        $addresses = array_unique($json['hosts']);
-        $socketBacklogSize = $json['options']['socketBacklogSize'];
+        if ($data['error']) {
+            throw new StartException($data['error_msg']);
+        }
+
+        $addresses = array_unique($data['hosts']);
+        $socketBacklogSize = $data['options']['socketBacklogSize'];
         $this->hostBinder->setSocketBacklogSize($socketBacklogSize);
         $this->socketPool = $this->hostBinder->bindAddresses($addresses, $this->socketPool);
 

@@ -37,14 +37,14 @@ class ProcessWatcher implements ServerWatcher {
         exec($cmd, $output, $exitCode);
 
         $output = implode($output, "\n");
-        $json = json_decode($output, TRUE);
+        $data = @unserialize($output);
 
-        if ($exitCode) {
-            throw new StartException(
-                $json['error_msg']
-            );
+        if (empty($data)) {
+            throw new StartException($output);
+        } elseif ($data['error']) {
+            throw new StartException($data['error_msg']);
         } else {
-            $addresses = array_unique($json['hosts']);
+            $addresses = array_unique($data['hosts']);
             foreach ($addresses as $address) {
                 $address = substr(str_replace('0.0.0.0', '*', $address), 6);
                 printf("Listening for HTTP traffic on %s ...\n", $address);
