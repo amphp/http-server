@@ -23,7 +23,7 @@
 require_once  __DIR__ . '/../src/bootstrap.php';
 require_once __DIR__ . '/support/009_websocket_includes.php';
 
-$myApp = (new Aerys\Start\App)
+$myApp = (new Aerys\App)
     ->setPort(1338)
     ->setDocumentRoot(__DIR__ . '/support/docroot/websockets')
     ->addWebsocket('/echo', 'Ex009_WebsocketApp')

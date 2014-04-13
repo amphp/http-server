@@ -13,7 +13,7 @@
 require_once  __DIR__ . '/../src/bootstrap.php';
 require_once __DIR__ . '/support/007_routing_includes.php';
 
-$app = new Aerys\Start\App;
+$app = new Aerys\App;
 $app->setPort(1338);
 
 $app->addRoute('GET', '/', 'Ex007_BasicRouting::hello');

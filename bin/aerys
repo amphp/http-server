@@ -40,7 +40,7 @@ EOT;
 
 try {
 
-    $options = (new Aerys\Start\BinOptions)->loadOptions();
+    $options = (new Aerys\BinOptions)->loadOptions();
 
     if ($options->getHelp()) {
         echo $help;

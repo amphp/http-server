@@ -26,6 +26,6 @@ $__defaultContentType = 'text/html';
 $__defaultTextCharset = 'utf-8';
 $__allowedMethods = ['GET', 'HEAD', 'POST', 'PUT'];
 
-$myApp = (new Aerys\Start\App)->addResponder(function() {
+$myApp = (new Aerys\App)->addResponder(function() {
     return '<html><body><h1>Hello, world.</h1></body></html>';
 });

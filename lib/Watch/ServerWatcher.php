@@ -2,7 +2,7 @@
 
 namespace Aerys\Watch;
 
-use Aerys\Start\BinOptions;
+use Aerys\BinOptions;
 
 interface ServerWatcher {
     public function watch(BinOptions $binOptions);

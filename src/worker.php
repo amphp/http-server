@@ -2,8 +2,8 @@
 
 require __DIR__ . '/bootstrap.php';
 
-$binOptions = (new Aerys\Start\BinOptions)->loadOptions();
-list($reactor, $server, $hosts) = (new Aerys\Start\Bootstrapper)->boot($binOptions);
+$binOptions = (new Aerys\BinOptions)->loadOptions();
+list($reactor, $server, $hosts) = (new Aerys\Bootstrapper)->boot($binOptions);
 
 $worker = new Aerys\Watch\ProcessWorker($reactor, $server);
 

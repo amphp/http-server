@@ -18,7 +18,8 @@
  * displaying error output to end-users.
  *
  * To run:
- * $ bin/aerys -c examples/006_errors.php
+ *
+ *     $ bin/aerys -c examples/006_errors.php
  *
  * Once started, load http://127.0.0.1/ in your browser.
  */
@@ -45,4 +46,4 @@ $myResponder = function($request) {
     }
 };
 
-$myApp = (new Aerys\Start\App)->addResponder($myResponder);
+$myApp = (new Aerys\App)->addResponder($myResponder);

@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Start;
+namespace Aerys;
 
 class App {
     const PORT = 'port';
@@ -33,7 +33,7 @@ class App {
      * @param int $port The port number on which to listen
      * @param string $interface The IP address on which to bind this application
      * @param string $name The application domain name
-     * @return \Aerys\Start\App Returns the current object instance
+     * @return \Aerys\App Returns the current object instance
      */
     public function setPort($port) {
         $this->port = $port;
@@ -49,7 +49,7 @@ class App {
      * an IPv6 wildcard.
      *
      * @param string $address The interface address (IP) on which the host is exposed
-     * @return \Aerys\Start\App Returns the current object instance
+     * @return \Aerys\App Returns the current object instance
      */
     public function setAddress($address) {
         $this->address = $address;
@@ -63,7 +63,7 @@ class App {
      * A host name is only required if a server exposes more than one host.
      *
      * @param string $name
-     * @return \Aerys\Start\App Returns the current object instance
+     * @return \Aerys\App Returns the current object instance
      */
     public function setName($name) {
         $this->name = $name;
@@ -88,7 +88,7 @@ class App {
      * ];
      *
      * @param array $tlsOptions
-     * @return \Aerys\Start\App Returns the current object instance
+     * @return \Aerys\App Returns the current object instance
      */
     public function setEncryption(array $tlsOptions) {
         $this->encryption = $tlsOptions;
@@ -118,7 +118,7 @@ class App {
      *
      * @param string $rootDirectory
      * @param array $options An array specifying key-value options for static file serving
-     * @return \Aerys\Start\App Returns the current object instance
+     * @return \Aerys\App Returns the current object instance
      */
     public function setDocumentRoot($rootDirectory, array $options = []) {
         $options['root'] = $rootDirectory;
@@ -143,7 +143,7 @@ class App {
      * order in which they are added to the app.
      *
      * @param array $order
-     * @return \Aerys\Start\App Returns the current object instance
+     * @return \Aerys\App Returns the current object instance
      */
     public function setResponderOrder(array $order) {
         $this->order = $order;
@@ -157,7 +157,7 @@ class App {
      * @param string $httpMethod The method for which this route applies
      * @param string $uriPath The route's URI path
      * @param mixed $handler Any callable or class::method construction string
-     * @return \Aerys\Start\App Returns the current object instance
+     * @return \Aerys\App Returns the current object instance
      */
     public function addRoute($httpMethod, $uriPath, $handler) {
         $uriPath = '/' . ltrim($uriPath, '/');
@@ -180,7 +180,7 @@ class App {
      * @param string $uriPath The URI path on which to bind the endpoint
      * @param mixed $appClass A websocket endpoint class name
      * @param array $options An array specifying key-value options for this websocket endpoint
-     * @return \Aerys\Start\App Returns the current object instance
+     * @return \Aerys\App Returns the current object instance
      */
     public function addWebsocket($uriPath, $appClass, array $options = []) {
         $uriPath = '/' . ltrim($uriPath, '/');
@@ -195,7 +195,7 @@ class App {
      * User responders are always invoked in the order in which they are added to the App.
      *
      * @param mixed $responder Any callable or class::method construction string
-     * @return \Aerys\Start\App Returns the current object instance
+     * @return \Aerys\App Returns the current object instance
      */
     public function addResponder($responder) {
         $this->responders[] = $responder;

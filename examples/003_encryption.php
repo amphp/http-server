@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\Start\App;
+use Aerys\App;
 
 /**
  * TLS encryption is *important*; it should be easy to implement. To encrypt your Aerys web apps

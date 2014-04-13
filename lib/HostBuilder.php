@@ -1,8 +1,6 @@
 <?php
 
-namespace Aerys\Start;
-
-use Aerys\Host;
+namespace Aerys;
 
 class HostBuilder {
     private $responderBuilder;

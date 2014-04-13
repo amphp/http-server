@@ -12,6 +12,6 @@
 
 require_once  __DIR__ . '/../src/bootstrap.php';
 
-$app = (new Aerys\Start\App);
+$app = (new Aerys\App);
 $app->setPort(1338);
 $app->setDocumentRoot(__DIR__ . '/support/docroot');

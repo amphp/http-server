@@ -26,7 +26,7 @@ require __DIR__ . '/../src/bootstrap.php';
 
 // --- Retern "hello world" on http://aerys (port 80, all IPv4 interfaces) -------------------------
 
-$main = new Aerys\Start\App;
+$main = new Aerys\App;
 $main->setName('aerys');
 $main->addResponder(function() {
     return '<html><body><h1>Hello, World (http://aerys)!</h1></body></html>';
@@ -34,6 +34,6 @@ $main->addResponder(function() {
 
 // --- Serve other things from http://subdomain.aerys (port 80, all IPv4 interfaces) ---------------
 
-$subdomain = new Aerys\Start\App;
+$subdomain = new Aerys\App;
 $subdomain->setName('subdomain.aerys');
 $subdomain->setDocumentRoot(__DIR__ . '/support/docroot/');

@@ -2,7 +2,7 @@
 
 namespace Aerys\Watch;
 
-use Aerys\Start\Bootstrapper;
+use Aerys\Bootstrapper;
 
 class ThreadWorker extends \Thread {
     private $configFile;

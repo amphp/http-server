@@ -9,7 +9,7 @@
  * Once started, load http://127.0.0.1:1338/ in your browser.
  */
 
-use Aerys\Start\App, Alert\Success, Alert\Future;
+use Aerys\App, Alert\Success, Alert\Future;
 
 require __DIR__ . '/../src/bootstrap.php';
 

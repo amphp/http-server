@@ -42,7 +42,7 @@
 
 require __DIR__ . '/../src/bootstrap.php';
 
-$myApp = new Aerys\Start\App;
+$myApp = new Aerys\App;
 $myApp->setPort(1338);
 $myApp->setAddress('*');
 $myApp->setName('localhost');

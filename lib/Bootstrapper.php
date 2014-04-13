@@ -1,12 +1,11 @@
 <?php
 
-namespace Aerys\Start;
+namespace Aerys;
 
 use Alert\Reactor,
     Alert\ReactorFactory,
     Auryn\Injector,
-    Auryn\Provider,
-    Aerys\Server;
+    Auryn\Provider;
 
 class Bootstrapper {
     const SERVER_OPTION_PREFIX = '__';
@@ -80,7 +79,7 @@ class Bootstrapper {
 
         $server = $injector->make('Aerys\Server', [':debug' => $debug]);
         $injector->share($server);
-        $injector->define('Aerys\Start\ResponderBuilder', [
+        $injector->define('Aerys\ResponderBuilder', [
             ':injector' => $injector
         ]);
 
@@ -89,7 +88,7 @@ class Bootstrapper {
             $server->addObserver($observer);
         });
 
-        $hostBuilder = $injector->make('Aerys\Start\HostBuilder');
+        $hostBuilder = $injector->make('Aerys\HostBuilder');
         $hostCollection = $injector->make('Aerys\HostCollection');
 
         foreach ($apps as $app) {

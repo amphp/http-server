@@ -2,8 +2,8 @@
 
 namespace Aerys\Watch;
 
-use Aerys\Start\BinOptions,
-    Aerys\Start\Bootstrapper;
+use Aerys\BinOptions,
+    Aerys\Bootstrapper;
 
 class ThreadConfigTry extends \Thread {
     public $error;

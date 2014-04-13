@@ -1,5 +1,5 @@
 <?php
 
-namespace Aerys\Start;
+namespace Aerys;
 
 class StartException extends \Exception {}

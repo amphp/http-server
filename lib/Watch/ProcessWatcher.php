@@ -4,7 +4,7 @@ namespace Aerys\Watch;
 
 use Alert\Reactor,
     Alert\ReactorFactory,
-    Aerys\Start\BinOptions;
+    Aerys\BinOptions;
 
 class ProcessWatcher implements ServerWatcher {
     use CpuCounter;

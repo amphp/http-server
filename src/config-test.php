@@ -13,8 +13,8 @@ try {
         throw new RuntimeException('No config file specified');
     }
 
-    $binOptions = (new Aerys\Start\BinOptions)->loadOptions(['config' => $configFile]);
-    list($reactor, $server, $hosts) = (new Aerys\Start\Bootstrapper)->boot($binOptions);
+    $binOptions = (new Aerys\BinOptions)->loadOptions(['config' => $configFile]);
+    list($reactor, $server, $hosts) = (new Aerys\Bootstrapper)->boot($binOptions);
     if ($shouldBind) {
         (new Aerys\HostBinder)->bindHosts($hosts);
     }

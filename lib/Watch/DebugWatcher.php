@@ -3,8 +3,8 @@
 namespace Aerys\Watch;
 
 use Aerys\Server,
-    Aerys\Start\BinOptions,
-    Aerys\Start\Bootstrapper;
+    Aerys\BinOptions,
+    Aerys\Bootstrapper;
 
 class DebugWatcher {
     public function watch(BinOptions $binOptions) {

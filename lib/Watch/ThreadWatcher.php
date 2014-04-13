@@ -4,9 +4,9 @@ namespace Aerys\Watch;
 
 use Alert\Reactor,
     Alert\ReactorFactory,
-    Aerys\Start\BinOptions,
-    Aerys\Start\Bootstrapper,
-    Aerys\Start\StartException,
+    Aerys\BinOptions,
+    Aerys\Bootstrapper,
+    Aerys\StartException,
     Aerys\HostBinder;
 
 class ThreadWatcher implements ServerWatcher {

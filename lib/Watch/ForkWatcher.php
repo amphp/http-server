@@ -3,9 +3,9 @@
 namespace Aerys\Watch;
 
 use Aerys\HostBinder,
-    Aerys\Start\Bootstrapper,
-    Aerys\Start\BinOptions,
-    Aerys\Start\StartException;
+    Aerys\Bootstrapper,
+    Aerys\BinOptions,
+    Aerys\StartException;
 
 class ForkWatcher implements ServerWatcher {
     use CpuCounter;

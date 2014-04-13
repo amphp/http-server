@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Start;
+namespace Aerys;
 
 class BinOptions {
     private $help;
@@ -43,8 +43,8 @@ class BinOptions {
      * Load command line options that may be used to bootstrap a server
      *
      * @param array $options Used if defined, loaded from the CLI otherwise
-     * @throws \Aerys\Start\StartException
-     * @return \Aerys\Start\BinOptions Returns the current object instance
+     * @throws \Aerys\StartException
+     * @return \Aerys\BinOptions Returns the current object instance
      */
     public function loadOptions(array $options = NULL) {
         $rawOptions = isset($options) ? $options : $this->getCommandLineOptions();

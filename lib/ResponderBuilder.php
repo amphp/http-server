@@ -1,8 +1,9 @@
 <?php
 
-namespace Aerys\Start;
+namespace Aerys;
 
-use Auryn\Injector, Aerys\CompositeResponder, Amp\Dispatcher;
+use Auryn\Injector,
+    Amp\Dispatcher;
 
 class ResponderBuilder {
     private $injector;
