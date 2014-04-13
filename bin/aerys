@@ -44,6 +44,8 @@ try {
     if ($options->getHelp()) {
         echo $help;
         exit(0);
+    } elseif (extension_loaded('pthreads')) {
+        $watcher = new Aerys\Watch\ThreadWatcher;
     } elseif (extension_loaded('pcntl')) {
         $watcher = new Aerys\Watch\ForkWatcher;
     } else {

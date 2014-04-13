@@ -18,7 +18,7 @@ class Bootstrapper {
      * @throws \Aerys\Framework\StartException
      * @return array Returns three-element array of the form [$reactor, $server, $hostCollection]
      */
-    function boot(BinOptions $binOptions = NULL) {
+    public function boot(BinOptions $binOptions = NULL) {
         $binOptions = $binOptions ?: (new BinOptions)->loadOptions();
 
         return ($configFile = $binOptions->getConfig())
@@ -26,7 +26,7 @@ class Bootstrapper {
             : $this->buildDocRoot($binOptions);
     }
 
-    private function buildFromFile($configFile) {
+    public function buildFromFile($configFile) {
         if (!include($configFile)) {
             throw new StartException(
                 sprintf("Failed including config file: %s", $configFile)
