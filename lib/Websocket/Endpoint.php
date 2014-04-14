@@ -29,6 +29,7 @@ class Endpoint {
     private $heartbeatTimeouts = [];
     private $timeoutWatcher;
     private $now;
+    private $isStopping;
 
     private $allowedOrigins = [];
     private $autoFrameSize = 32768;
@@ -92,7 +93,8 @@ class Endpoint {
      * @return \Alert\Future Returns a future that will resolve when all sessions are closed
      */
     public function stop() {
-        if (empty($this->stopPromise)) {
+        if (!$this->isStopping) {
+            $this->stopPromise = new Promise;
             $this->initializeStop();
         }
 
@@ -104,17 +106,15 @@ class Endpoint {
             return $this->notifyAppStop();
         }
 
-        $this->stopPromise = new Promise;
-        $this->reactor->immediately(function() {
-            $code = Codes::GOING_AWAY;
-            $reason = 'Server is shutting down!';
-            foreach ($this->sessions as $session) {
-                $this->closeSession($session, $code, $reason);
-            }
-        });
+        $code = Codes::GOING_AWAY;
+        $reason = 'Server is shutting down!';
+        foreach ($this->sessions as $session) {
+            $this->closeSession($session, $code, $reason);
+        }
 
-        $stopFuture = $this->stopPromise->getFuture();
-        $stopFuture->onComplete(function() { $this->stopPromise = NULL; });
+        $this->stopPromise->getFuture()->onComplete(function() {
+            $this->isStopping = NULL;
+        });
     }
 
     /**
@@ -166,6 +166,7 @@ class Endpoint {
             }
         } catch (\Exception $e) {
             // @TODO Log error (app threw uncaught exception), do nothing
+            echo $e;
         }
     }
 
@@ -177,6 +178,7 @@ class Endpoint {
             }
         } catch (\Exception $e) {
             // @TODO Log error (app threw uncaught exception), do nothing
+            echo $e;
         }
     }
 
@@ -188,6 +190,7 @@ class Endpoint {
             }
         } catch (\Exception $e) {
             // @TODO Log error (app threw uncaught exception), do nothing
+            echo $e;
         }
     }
 
@@ -201,20 +204,22 @@ class Endpoint {
             }
         } catch (\Exception $e) {
             // @TODO Log error (app threw uncaught exception), do nothing
+            echo $e;
         }
     }
 
     private function onResolvedYield($generator, $future) {
         try {
+            var_dump($future->getValue());
             if ($future->succeeded()) {
                 $generator->send($future->getValue());
-                $this->processYield($generator, $socketId);
             } else {
                 $generator->throw($future->getError());
-                $this->advanceGenerator($generator);
             }
+            $this->advanceGenerator($generator);
         } catch (\Exception $e) {
             // @TODO Log error (app threw uncaught exception), do nothing
+            echo $e;
         }
     }
 
@@ -226,6 +231,7 @@ class Endpoint {
             }
         } catch (\Exception $e) {
             // @TODO Log error (app threw uncaught exception), do nothing
+            echo $e;
         }
     }
 
@@ -829,8 +835,8 @@ class Endpoint {
     /**
      * @TODO Docs
      */
-    public function close($socketIds, $code = Codes::NORMAL_CLOSE, $reason = '') {
-        if (!$socketIds = $this->normalizeSocketIdList($socketIds)) {
+    public function close($socketId, $code = Codes::NORMAL_CLOSE, $reason = '') {
+        if (!isset($this->sessions[$socketId])) {
             return;
         }
 
@@ -845,10 +851,8 @@ class Endpoint {
             $reason = substr($reason, 0, 125);
         }
 
-        foreach ($socketIds as $socketId) {
-            $session = $this->sessions[$socketId];
-            $this->closeSession($session, $code, $reason);
-        }
+        $session = $this->sessions[$socketId];
+        $this->closeSession($session, $code, $reason);
     }
 
     private function closeSession(Session $session, $code, $reason = '') {
@@ -895,7 +899,7 @@ class Endpoint {
         $reason = $session->closeState->reason;
         $this->notifyAppOnClose($socketId, $code, $reason);
 
-        if ($this->stopPromise && empty($this->sessions)) {
+        if ($this->isStopping && empty($this->sessions)) {
             $this->notifyAppStop();
         }
     }
@@ -903,11 +907,9 @@ class Endpoint {
     private function notifyAppStop() {
         try {
             $result = $this->app->stop();
-            $this->stopPromise->succeed($result);
+            $this->stopPromise->resolveSafely(NULL, $result);
         } catch (\Exception $e) {
-            $this->stopPromise->fail($e);
-        } finally {
-            $this->stopPromise = NULL;
+            $this->stopPromise->resolveSafely(NULL, $e);
         }
     }
 

@@ -26,6 +26,6 @@ class Broker {
     }
 
     public function stats($socketId) {
-        return $this->endpoint->getStats($socketId);
+        return $this->endpoint->stats($socketId);
     }
 }
