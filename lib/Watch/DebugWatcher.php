@@ -1,5 +1,7 @@
 <?php
 
+declare(ticks = 1);
+
 namespace Aerys\Watch;
 
 use Aerys\Server,
@@ -19,6 +21,12 @@ class DebugWatcher {
         foreach ($hosts->getBindableAddresses() as $addr) {
             $addr = substr(str_replace('0.0.0.0', '*', $addr), 6);
             printf("Listening for HTTP traffic on %s ...\n", $addr);
+        }
+
+        if (extension_loaded('pcntl')) {
+            $f = function() use ($server) { $server->stop()->onComplete(function(){ exit; }); };
+            pcntl_signal(SIGINT, $f);
+            pcntl_signal(SIGTERM, $f);
         }
 
         $reactor->run();
