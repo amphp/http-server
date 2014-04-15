@@ -60,7 +60,7 @@ class DocsResponder implements ServerObserver {
         $this->reactor = $reactor;
         $this->dispatcher = $dispatcher;
 
-        $dispatcher->setOption(Dispatcher::OPT_ON_WORKER_TASK, new StatStarterTask(
+        $dispatcher->addStartTask(new StatStarterTask(
             $this->root,
             $this->etagFlags,
             $this->indexes,
