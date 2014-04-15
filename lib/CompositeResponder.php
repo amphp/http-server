@@ -21,7 +21,7 @@ class CompositeResponder {
             }
         }
 
-        $this->responders = $responders;
+        $this->responders = array_values($responders);
         $this->notFoundResponse = (new Response)
             ->setStatus(Status::NOT_FOUND)
             ->setHeader('Content-Type',  'text/html; charset=utf-8')
@@ -39,6 +39,11 @@ class CompositeResponder {
             } else {
                 return $response;
             }
+
+            // @TODO Generator support
+            // } elseif ($response instanceof \Generator) {
+            //     // ... resolve generator before continuing //
+            // }
         }
 
         return $this->notFoundResponse;
