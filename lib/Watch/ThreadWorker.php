@@ -5,19 +5,20 @@ namespace Aerys\Watch;
 use Aerys\Bootstrapper;
 
 class ThreadWorker extends \Thread {
-    private $configFile;
+    private $debug;
+    private $config;
     private $ipcPort;
     private $fatals;
     private $sockPrefix = '__sock_';
 
-    public function __construct($configFile, $ipcPort /*, $socket1, $socket2, ... $socketN*/) {
-        $this->configFile = $configFile;
+    public function __construct($debug, $config, $ipcPort /*, $socket1, $socket2, ... $socketN*/) {
+        $this->debug = $debug;
+        $this->config = $config;
         $this->ipcPort = $ipcPort;
 
         $argv = func_get_args();
-        unset($argv[0], $argv[1]);
+        unset($argv[0], $argv[1], $argv[2]);
         $argv = array_values($argv);
-
         foreach ($argv as $sock) {
             $name = $this->sockPrefix . base64_encode(stream_socket_get_name($sock, FALSE));
             $this->{$name} = $sock;
@@ -34,6 +35,22 @@ class ThreadWorker extends \Thread {
         ];
     }
 
+    private function getComposedServerSocks() {
+        $sockets = [];
+        $sockPrefix = $this->sockPrefix;
+        $sockPrefixLen = strlen($sockPrefix);
+        $properties = get_object_vars($this);
+
+        foreach ($properties as $property => $value) {
+            if (strpos($property, $sockPrefix) === 0) {
+                $name = 'tcp://' . base64_decode(substr($property, $sockPrefixLen));
+                $sockets[$name] = $value;
+            }
+        }
+
+        return $sockets;
+    }
+
     public function run() {
         require __DIR__ . '/../../src/bootstrap.php';
 
@@ -47,7 +64,7 @@ class ThreadWorker extends \Thread {
         }
         stream_set_blocking($ipcSock, FALSE);
 
-        list($reactor, $server, $hosts) = (new Bootstrapper)->buildFromFile($this->configFile);
+        list($reactor, $server, $hosts) = (new Bootstrapper)->boot($this->debug, $this->config);
 
         $reactor->onReadable($ipcSock, function() use ($server) {
             $server->stop()->onComplete(function() { exit; });
@@ -64,21 +81,5 @@ class ThreadWorker extends \Thread {
 
         $server->start($hosts, $this->getComposedServerSocks());
         $reactor->run();
-    }
-
-    private function getComposedServerSocks() {
-        $sockets = [];
-        $sockPrefix = $this->sockPrefix;
-        $sockPrefixLen = strlen($sockPrefix);
-        $properties = get_object_vars($this);
-
-        foreach ($properties as $property => $value) {
-            if (strpos($property, $sockPrefix) === 0) {
-                $name = 'tcp://' . base64_decode(substr($property, $sockPrefixLen));
-                $sockets[$name] = $value;
-            }
-        }
-
-        return $sockets;
     }
 }

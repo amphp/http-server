@@ -14,12 +14,13 @@ class ThreadWatcher implements ServerWatcher {
 
     private $reactor;
     private $hostBinder;
-    private $configFile;
+    private $threads;
+    private $threadReflection;
+    private $debug;
+    private $config;
     private $ipcPort;
     private $workers;
-    private $threads;
     private $servers = [];
-    private $threadReflection;
 
     public function __construct(Reactor $reactor = NULL, HostBinder $hostBinder = NULL) {
         $this->reactor = $reactor ?: (new ReactorFactory)->select();
@@ -29,23 +30,26 @@ class ThreadWatcher implements ServerWatcher {
     }
 
     public function watch(BinOptions $binOptions) {
-        $this->configFile = $binOptions->getConfig();
+        $this->debug = $binOptions->getDebug();
+        $this->config = $binOptions->getConfig();
 
-        $thread = new ThreadConfigTry($this->configFile);
+        $thread = new ThreadConfigTry($this->debug, $this->config);
         $thread->start();
         $thread->join();
 
-        if ($thread->error) {
-            throw new StartException($thread->error);
+        list($bindTo, $options, $error) = $thread->getBootResultStruct();
+
+        if ($error) {
+            throw new StartException($error);
         }
 
-        $this->hostBinder->setSocketBacklogSize($thread->options['socketBacklogSize']);
+        $this->hostBinder->setSocketBacklogSize($options['socketBacklogSize']);
 
         $this->workers = $binOptions->getWorkers() ?: $this->countCpuCores();
         $this->ipcPort = $this->startIpcServer($binOptions);
-        $this->servers = $this->hostBinder->bindAddresses($thread->bindTo, $this->servers);
+        $this->servers = $this->hostBinder->bindAddresses($bindTo, $this->servers);
 
-        foreach ($thread->bindTo as $addr) {
+        foreach ($bindTo as $addr) {
             $addr = substr(str_replace('0.0.0.0', '*', $addr), 6);
             printf("Listening for HTTP traffic on %s ...\n", $addr);
         }
@@ -97,7 +101,7 @@ class ThreadWatcher implements ServerWatcher {
 
     public function spawn() {
         $args = $this->servers;
-        array_unshift($args, $this->configFile, $this->ipcPort);
+        array_unshift($args, $this->debug, $this->config, $this->ipcPort);
         $args = array_values($args);
 
         $thread = $this->threadReflection->newInstanceArgs($args);

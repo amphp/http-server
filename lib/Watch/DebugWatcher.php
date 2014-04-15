@@ -10,7 +10,10 @@ use Aerys\Server,
 
 class DebugWatcher {
     public function watch(BinOptions $binOptions) {
-        list($reactor, $server, $hosts) = (new Bootstrapper)->boot($binOptions);
+        $debug = $binOptions->getDebug();
+        $config = $binOptions->getConfig();
+
+        list($reactor, $server, $hosts) = (new Bootstrapper)->boot($debug, $config);
 
         register_shutdown_function(function() use ($server) {
             $this->shutdown($server);
@@ -26,7 +29,9 @@ class DebugWatcher {
         if (extension_loaded('pcntl')) {
             $f = function() use ($server) { $server->stop()->onComplete(function(){ exit; }); };
             pcntl_signal(SIGINT, $f);
-            pcntl_signal(SIGTERM, $f);
+            // @TODO Add Server::shutdown() to allow server observers to clean up resources
+            // in the event of a termination signal
+            //pcntl_signal(SIGTERM, $shutdown);
         }
 
         $reactor->run();

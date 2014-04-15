@@ -4,62 +4,45 @@ namespace Aerys;
 
 class BinOptions {
     private $help;
+    private $debug;
     private $config;
     private $workers;
-    private $port;
-    private $ip;
-    private $name;
-    private $root;
     private $control;
     private $backend;
-    private $debug;
-    private $shortOpts = 'hc:w:p:i:n:r:z:b:d';
+    private $shortOpts = 'hdc:w:z:b:';
     private $longOpts = [
         'help',
+        'debug',
         'config:',
         'workers:',
-        'port:',
-        'ip:',
-        'name:',
-        'root:',
         'control:',
         'backend:',
-        'debug'
     ];
     private $shortOptNameMap = [
         'h' => 'help',
+        'd' => 'debug',
         'c' => 'config',
         'w' => 'workers',
-        'p' => 'port',
-        'i' => 'ip',
-        'n' => 'name',
-        'r' => 'root',
         'z' => 'control',
         'b' => 'backend',
-        'd' => 'debug'
     ];
 
     /**
      * Load command line options that may be used to bootstrap a server
      *
      * @param array $options Used if defined, loaded from the CLI otherwise
-     * @throws \Aerys\StartException
-     * @return \Aerys\BinOptions Returns the current object instance
+     * @throws Aerys\StartException
+     * @return Aerys\BinOptions Returns the current object instance
      */
-    public function loadOptions(array $options = NULL) {
-        $rawOptions = isset($options) ? $options : $this->getCommandLineOptions();
+    public function loadOptions(array $options = []) {
+        $rawOptions = $options ? $options : getopt($this->shortOpts, $this->longOpts);
 
         $normalizedOptions = [
             'help' => NULL,
+            'debug' => NULL,
             'config' => NULL,
             'workers' => NULL,
-            'port' => NULL,
-            'ip' => NULL,
-            'name' => NULL,
-            'root' => NULL,
-            'control' => NULL,
             'backend' => NULL,
-            'debug' => NULL
         ];
 
         foreach ($rawOptions as $key => $value) {
@@ -72,17 +55,13 @@ class BinOptions {
 
         $this->setOptionValues($normalizedOptions);
 
-        if (!($this->help || $this->config || $this->root)) {
+        if (!($this->help || $this->config)) {
             throw new StartException(
-                'App config file (-c, --config) or document root directory (-r, --root) required'
+                'App config file (-c, --config) required; use -h or --help for more information.'
             );
         }
 
         return $this;
-    }
-
-    private function getCommandLineOptions() {
-        return getopt($this->shortOpts, $this->longOpts);
     }
 
     private function setOptionValues(array $options) {
@@ -91,23 +70,14 @@ class BinOptions {
                 case 'help':
                     $this->help = isset($value) ? TRUE : NULL;
                     break;
+                case 'debug':
+                    $this->debug = isset($value) ? TRUE : NULL;
+                    break;
                 case 'config':
                     $this->config = $value;
                     break;
                 case 'workers':
                     $this->setWorkers($value);
-                    break;
-                case 'port':
-                    $this->port = $value;
-                    break;
-                case 'ip':
-                    $this->ip = $value;
-                    break;
-                case 'name':
-                    $this->name = $value;
-                    break;
-                case 'root':
-                    $this->root = $value;
                     break;
                 case 'control':
                     $this->control = $value;
@@ -115,22 +85,22 @@ class BinOptions {
                 case 'backend':
                     $this->backend = $value;
                     break;
-                case 'debug':
-                    $this->debug = isset($value) ? TRUE : NULL;
-                    break;
             }
         }
     }
 
     private function setWorkers($count) {
-        $this->workers = filter_var($count, FILTER_VALIDATE_INT, ['options' => [
-            'default' => 0,
-            'min_range' => 1
-        ]]);
+        $count = @intval($count);
+        $count = ($count >= 0) ? $count : 0;
+        $this->workers = $count;
     }
 
     public function getHelp() {
         return $this->help;
+    }
+
+    public function getDebug() {
+        return $this->debug;
     }
 
     public function getConfig() {
@@ -141,22 +111,6 @@ class BinOptions {
         return $this->workers;
     }
 
-    public function getPort() {
-        return $this->port;
-    }
-
-    public function getIp() {
-        return $this->ip;
-    }
-
-    public function getName() {
-        return $this->name;
-    }
-
-    public function getRoot() {
-        return $this->root;
-    }
-
     public function getControl() {
         return $this->control;
     }
@@ -165,58 +119,26 @@ class BinOptions {
         return $this->backend;
     }
 
-    public function getDebug() {
-        return $this->debug;
-    }
-
     public function toArray() {
         return array_filter([
             'help' => $this->help,
+            'debug' => $this->debug,
             'config' => $this->config,
             'workers' => $this->workers,
-            'port' => $this->port,
-            'ip' => $this->ip,
-            'name' => $this->name,
-            'root' => $this->root,
             'control' => $this->control,
             'backend' => $this->backend,
-            'debug' => $this->debug
         ]);
     }
 
     public function __toString() {
-        $parts = [];
+        $parts[] = $this->help ? "-h" : NULL;
+        $parts[] = $this->debug ? "-d" : NULL;
+        $parts[] = $this->config ? ('-c ' . escapeshellarg($this->config)) : NULL;
+        $parts[] = $this->workers ? ('-w ' . $this->workers) : NULL;
+        $parts[] = $this->control ? ('-z ' . escapeshellarg($this->control)) : NULL;
+        $parts[] = $this->backend ? ('-b ' . escapeshellarg($this->backend)) : NULL;
 
-        if ($this->help) {
-            $parts[] = '-h';
-        }
-        if ($this->config) {
-            $parts[] = '-c ' . escapeshellarg($this->config);
-        }
-        if ($this->workers) {
-            $parts[] = '-w ' . $this->workers;
-        }
-        if ($this->port) {
-            $parts[] = '-p ' . $this->port;
-        }
-        if ($this->ip) {
-            $parts[] = '-i ' . $this->ip;
-        }
-        if ($this->name) {
-            $parts[] = '-n ' . $this->name;
-        }
-        if ($this->root) {
-            $parts[] = '-r ' . $this->root;
-        }
-        if ($this->control) {
-            $parts[] = '-z ' . escapeshellarg($this->control);
-        }
-        if ($this->backend) {
-            $parts[] = '-b ' . escapeshellarg($this->backend);
-        }
-        if ($this->debug) {
-            $parts[] = '-d';
-        }
+        $parts = array_filter($parts, function($i) { return isset($i); });
 
         return implode(' ', $parts);
     }

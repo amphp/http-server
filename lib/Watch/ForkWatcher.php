@@ -235,7 +235,9 @@ EOT;
     private function runChildFork() {
         $backendUri = $this->ipcBroker->getBackendUri();
         $this->ipcBroker = NULL;
-        list($reactor, $server, $hosts) = $this->bootstrapper->boot($this->binOptions);
+        $config = $this->binOptions->getConfig();
+        $debug = $this->binOptions->getDebug();
+        list($reactor, $server, $hosts) = $this->bootstrapper->boot($debug, $config);
         $server->start($hosts, $this->socketPool);
         $worker = new IpcWorker($reactor, $server);
         $worker->start($backendUri);

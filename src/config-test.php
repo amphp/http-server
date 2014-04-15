@@ -1,20 +1,20 @@
 <?php
-ob_start();
 error_reporting(E_ALL);
 ini_set('display_errors', true);
 require_once __DIR__ . '/bootstrap.php';
 
 try {
-    $opts = getopt('c:b');
+    $opts = getopt('c:bd');
+    $debug = isset($opts['d']);
+    $config = isset($opts['c']) ? $opts['c'] : NULL;
     $shouldBind = isset($opts['b']);
-    $configFile = isset($opts['c']) ? $opts['c'] : NULL;
 
-    if (empty($configFile)) {
+    if (empty($config)) {
         throw new RuntimeException('No config file specified');
     }
 
-    $binOptions = (new Aerys\BinOptions)->loadOptions(['config' => $configFile]);
-    list($reactor, $server, $hosts) = (new Aerys\Bootstrapper)->boot($binOptions);
+    list($reactor, $server, $hosts) = (new Aerys\Bootstrapper)->boot($debug, $config);
+
     if ($shouldBind) {
         (new Aerys\HostBinder)->bindHosts($hosts);
     }

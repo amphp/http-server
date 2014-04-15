@@ -32,8 +32,9 @@ class ProcessWatcher implements ServerWatcher {
     }
 
     private function validateConfig() {
-        $appConfigPath = escapeshellarg($this->binOptions->getConfig());
-        $cmd = $this->makeValidationCmd($appConfigPath);
+        $debug = $this->binOptions->getDebug();
+        $config = $this->binOptions->getConfig();
+        $cmd = $this->makeValidationCmd($debug, $config);
         exec($cmd, $output, $exitCode);
 
         $output = implode($output, "\n");
@@ -52,14 +53,17 @@ class ProcessWatcher implements ServerWatcher {
         }
     }
 
-    private function makeValidationCmd($appConfigPath) {
+    private function makeValidationCmd($debug, $config) {
         $cmd[] = PHP_BINARY;
         if ($ini = get_cfg_var('cfg_file_path')) {
             $cmd[] = "-c $ini";
         }
-        $cmd[] = __DIR__ . "/../../src/config-test.php -c";
-        $cmd[] = $appConfigPath;
-        $cmd[] = ' -b';
+        $cmd[] = __DIR__ . "/../../src/config-test.php";
+        if ($debug) {
+            $cmd[] = "-d";
+        }
+        $cmd[] = "-c {$config}";
+        $cmd[] = '-b';
 
         return implode(' ', $cmd);
     }
@@ -121,7 +125,7 @@ class ProcessWatcher implements ServerWatcher {
         $exe = __DIR__ . "/../../src/worker.php";
         $ini = ($ini = get_cfg_var('cfg_file_path')) ? " -c \"{$ini}\"" : '';
         $cmd = sprintf("%s%s %s %s", PHP_BINARY, $ini, $exe, $this->binOptions);
-        $process = popen($cmd, "r");
+        $process = @popen($cmd, "r");
 
         if (is_resource($process)) {
             stream_set_blocking($process, FALSE);

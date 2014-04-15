@@ -16,23 +16,12 @@ $help = <<<EOT
     -c, --config      Use the specified config file to bootstrap the server
     -w, --workers     Manually specify worker count (default: CPU core count)
     -z, --control     Specify a port number for server control commands
-    -b, --backend     Specify a custom port number for backend IPC communication
-
-    Run a static file server without a config file:
-
-    -r, --root        Required filesystem directory from which to serve static files
-    -p, --port        Optional port on which to listen (default: 80)
-    -i, --ip          Optional IP on which to bind (default: all IPv4 interfaces)
-    -n, --name        Optional host/domain name
 
     Example Usage:
 
     aerys --help
     aerys -c /path/to/app/config.php
     aerys --config /path/to/app/config.php --workers 4
-    aerys --root /path/to/document/root --name mysite.com
-    aerys -r /path/to/document/root -p 1337
-    aerys -r /path/to/document/root --ip="[::]"
     aerys -c /my/config.php -z tcp://127.0.0.1:23456
 
 
