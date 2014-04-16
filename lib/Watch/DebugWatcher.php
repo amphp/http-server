@@ -26,12 +26,17 @@ class DebugWatcher {
             printf("Listening for HTTP traffic on %s ...\n", $addr);
         }
 
-        if (extension_loaded('pcntl')) {
-            $f = function() use ($server) { $server->stop()->onComplete(function(){ exit; }); };
-            pcntl_signal(SIGINT, $f);
+        // phpdbg captures signals so don't intercept if running inside the debugger
+        if ((substr(PHP_BINARY, -6) !== 'phpdbg') && extension_loaded('pcntl')) {
+            pcntl_signal(SIGINT, function() use ($server) {
+                $server->stop()->onComplete(function(){ exit; });
+            });
             // @TODO Add Server::shutdown() to allow server observers to clean up resources
             // in the event of a termination signal
-            //pcntl_signal(SIGTERM, $shutdown);
+            //pcntl_signal(SIGTERM, function() use ($server) {
+            //    $server->shutdown();
+            //    exit;
+            //});
         }
 
         $reactor->run();
