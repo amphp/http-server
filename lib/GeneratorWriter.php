@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Write;
+namespace Aerys;
 
 use Alert\Reactor, Alert\Future, Alert\Promise, Alert\PromiseGroup;
 

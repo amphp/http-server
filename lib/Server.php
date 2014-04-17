@@ -6,9 +6,7 @@ use Alert\Reactor,
     Alert\Promise,
     Alert\Future,
     Alert\Success,
-    Alert\Aggregate,
-    Aerys\Write\ResponseWriter,
-    Aerys\Write\TargetPipeException;
+    Alert\Aggregate;
 
 class Server {
     const NAME = 'Aerys/0.1.0-devel';

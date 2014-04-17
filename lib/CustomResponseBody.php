@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Write;
+namespace Aerys;
 
 use Alert\Reactor;
 
@@ -21,7 +21,7 @@ interface CustomResponseBody {
     /**
      * Generate a custom responder capable of writing the PendingResponse to the client.
      *
-     * @return \Aerys\Write\ResponseWriter
+     * @return \Aerys\ResponseWriter
      */
     public function getResponseWriter(PendingResponse $pr);
 }

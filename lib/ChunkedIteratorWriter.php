@@ -1,8 +1,8 @@
 <?php
 
-namespace Aerys\Write;
+namespace Aerys;
 
-class ChunkedGeneratorWriter extends GeneratorWriter {
+class ChunkedIteratorWriter extends IteratorWriter {
     protected function bufferBodyData($data) {
         $data = dechex(strlen($data)) . "\r\n{$data}\r\n";
         parent::bufferBodyData($data);

@@ -1,5 +1,5 @@
 <?php
 
-namespace Aerys\Write;
+namespace Aerys;
 
 class SourcePipeException extends \Exception {}

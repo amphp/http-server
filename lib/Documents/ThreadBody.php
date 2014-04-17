@@ -2,9 +2,9 @@
 
 namespace Aerys\Documents;
 
-use Aerys\Write\CustomResponseBody,
-    Aerys\Write\ResponseWriter,
-    Aerys\Write\PendingResponse;
+use Aerys\CustomResponseBody,
+    Aerys\ResponseWriter,
+    Aerys\PendingResponse;
 
 class ThreadBody implements CustomResponseBody, ResponseWriter {
     private $dispatcher;

@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Write;
+namespace Aerys;
 
 /**
  * A Responder writes normalized HTTP responses to endpoint clients.
