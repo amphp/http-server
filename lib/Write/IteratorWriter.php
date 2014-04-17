@@ -80,7 +80,7 @@ class IteratorWriter implements ResponseWriter {
                 $this->bufferBodyData($value);
                 $this->writeResponse();
             } else {
-                $this->failWritePromise(new ResolvedValueException(sprintf(
+                $this->failWritePromise(new \DomainException(sprintf(
                     'Entity futures must resolve a non-empty scalar; %s returned', gettype($value)
                 )));
             }
@@ -109,7 +109,7 @@ class IteratorWriter implements ResponseWriter {
                 $this->bufferBodyData($value);
                 $this->writeResponse();
             } else {
-                throw new ResolvedValueException(sprintf(
+                throw new \DomainException(sprintf(
                     'Entity futures must resolve a non-empty scalar; %s returned', gettype($value)
                 ));
             }

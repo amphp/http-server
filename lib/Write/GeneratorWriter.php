@@ -91,7 +91,7 @@ class GeneratorWriter implements ResponseWriter {
                 $this->body->next();
                 $this->writeResponse();
             } else {
-                $this->failWritePromise(new ResolvedValueException(sprintf(
+                $this->failWritePromise(new \DomainException(sprintf(
                     'Yielded values MUST be of type Future or non-empty scalar; %s returned', gettype($value)
                 )));
             }
@@ -104,7 +104,7 @@ class GeneratorWriter implements ResponseWriter {
         try {
             (new PromiseGroup($futures))->getFuture()->onComplete($this->futureResolver);
         } catch (\InvalidArgumentException $e) {
-            $this->failWritePromise(new ResolvedValueException(sprintf(
+            $this->failWritePromise(new \DomainException(sprintf(
                 "Invalid yield array: non-empty array of Future instances required"
             )));
         }
