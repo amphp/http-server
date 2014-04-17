@@ -10,7 +10,7 @@ use Alert\Reactor,
     Aerys\Response,
     Aerys\ServerObserver;
 
-class WsResponder implements ServerObserver {
+class Responder implements ServerObserver {
     const ACCEPT_CONCAT = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
     private $reactor;

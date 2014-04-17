@@ -22,7 +22,7 @@ class ResponderBuilder {
         $responders = [];
 
         if ($appDefinition[App::WEBSOCKETS]) {
-            $responder = $this->buildWsResponder($appDefinition[App::WEBSOCKETS]);
+            $responder = $this->buildWebsocketResponder($appDefinition[App::WEBSOCKETS]);
             $responders[App::WEBSOCKETS] = $responder;
         }
 
@@ -63,8 +63,8 @@ class ResponderBuilder {
         };
     }
 
-    private function buildWsResponder(array $endpointApps) {
-        $wsResponder = $this->injector->make('Aerys\Websocket\WsResponder');
+    private function buildWebsocketResponder(array $endpointApps) {
+        $wsResponder = $this->injector->make('Aerys\Websocket\Responder');
 
         foreach ($endpointApps as $endpointStruct) {
             list($wsEndpointUriPath, $wsAppClass, $wsEndpointOptions) = $endpointStruct;
