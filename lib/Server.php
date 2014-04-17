@@ -8,7 +8,7 @@ use Alert\Reactor,
     Alert\Success,
     Alert\Aggregate,
     Aerys\Write\ResponseWriter,
-    Aerys\Write\DestinationPipeException;
+    Aerys\Write\TargetPipeException;
 
 class Server {
     const NAME = 'Aerys/0.1.0-devel';
@@ -1065,7 +1065,7 @@ class Server {
 
         $e = $future->getError();
 
-        if (!$e instanceof DestinationPipeException) {
+        if (!$e instanceof TargetPipeException) {
             // @TODO Log $e
 
             // Write failure occurred for some reason other than a premature client

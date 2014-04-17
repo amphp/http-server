@@ -48,7 +48,7 @@ class GeneratorWriter implements ResponseWriter {
             $this->reactor->enable($this->writeWatcher);
         } elseif (!is_resource($this->destination)) {
             $this->destinationPipeBroken = TRUE;
-            $this->failWritePromise(new DestinationPipeException);
+            $this->failWritePromise(new TargetPipeException);
         }
 
         return $this->future;

@@ -35,7 +35,7 @@ class StringWriter implements ResponseWriter {
             return $this->future ?: $this->makeWritePromise();
         } else {
             return $this->future
-                ? $this->failWritePromise(new DestinationPipeException)
+                ? $this->failWritePromise(new TargetPipeException)
                 : self::FAILURE;
         }
     }
