@@ -87,7 +87,7 @@ class Parser {
     public function parse($data) {
         $this->buffer .= $data;
 
-        if (!($this->buffer || $this->buffer === '0')) {
+        if ($this->buffer != '') {
             goto more_data_needed;
         }
 
@@ -550,10 +550,10 @@ class Parser {
         }
 
         $result = [
-            'protocol' => $this->protocol,
-            'headers'  => $this->headers,
-            'body'     => $this->body,
-            'trace'    => $this->traceBuffer,
+            'protocol'    => $this->protocol,
+            'headers'     => $this->headers,
+            'body'        => $this->body,
+            'trace'       => $this->traceBuffer,
             'headersOnly' => FALSE
         ];
 

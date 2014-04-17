@@ -6,7 +6,7 @@ class Response {
     private $status = 200;
     private $reason = '';
     private $headers = '';
-    private $body;
+    private $body = NULL;
     private $exportCallback;
 
     /**
@@ -315,7 +315,7 @@ class Response {
      * @return bool
      */
     public function hasBody() {
-        return isset($this->body) && $this->body !== '';
+        return $this->body !== NULL;
     }
 
     /**

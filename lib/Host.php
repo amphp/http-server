@@ -31,9 +31,7 @@ class Host {
         $this->setAddress($address);
         $this->setPort($port);
         $this->name = strtolower($name);
-        $this->id = $this->name
-            ? $this->name . ':' . $this->port
-            : $this->address . ':' . $this->port;
+        $this->id = ($this->name ? $this->name : $this->address) . ':' . $this->port;
         $this->application = $application;
         $this->isTlsAvailable = extension_loaded('openssl');
     }
@@ -139,7 +137,7 @@ class Host {
      * @return bool
      */
     public function hasName() {
-        return ($this->name || $this->name === '0');
+        return $this->name != '';
     }
 
     /**

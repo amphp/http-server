@@ -39,7 +39,7 @@ class Server {
     private $clients = [];
     private $exportedSocketIdMap = [];
     private $cachedClientCount = 0;
-    private $lastRequestId;
+    private $lastRequestId = PHP_INT_MAX * -1;
 
     private $now;
     private $httpDateNow;
@@ -72,7 +72,6 @@ class Server {
         $this->hostBinder = $hb ?: new HostBinder;
         $this->debug = (bool) $debug;
         $this->observers = new \SplObjectStorage;
-        $this->lastRequestId = PHP_INT_MAX * -1;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
     }
 
@@ -883,7 +882,7 @@ class Server {
             $bodyType = self::$BODY_STRING;
         }
 
-        $reason = ($reason || $reason === '0') ? " {$reason}" : '';
+        $reason = $reason != '' ? " {$reason}" : '';
         $headers = $response->getRawHeaders();
         $statusLineAndHeaders = "HTTP/{$proto} {$status}{$reason}{$headers}\r\n\r\n";
 
@@ -933,7 +932,7 @@ class Server {
 
         // If the client has exceeded the max allowable requests per connection
         // we always close.
-        if ($this->maxRequests > 0 && ($cycle->client->requestCount >= $this->maxRequests)) {
+        if ($this->maxRequests > 0 && $cycle->client->requestCount >= $this->maxRequests) {
             return TRUE;
         }
 
