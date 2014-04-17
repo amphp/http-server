@@ -6,7 +6,6 @@ namespace Aerys\Watch;
 
 use Alert\Reactor,
     Alert\ReactorFactory,
-    Aerys\Watch\BinOptions,
     Aerys\Bootstrapper,
     Aerys\StartException,
     Aerys\HostBinder;

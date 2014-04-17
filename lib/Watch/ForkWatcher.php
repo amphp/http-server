@@ -8,7 +8,6 @@ use Alert\Reactor,
     Alert\ReactorFactory,
     Aerys\HostBinder,
     Aerys\Bootstrapper,
-    Aerys\Watch\BinOptions,
     Aerys\StartException;
 
 class ForkWatcher implements ServerWatcher {
@@ -25,7 +24,7 @@ class ForkWatcher implements ServerWatcher {
     private $ipcClients = [];
     private $serverSocks = [];
     private $isStopping = FALSE;
-    private $reloading = FALSE;
+    private $isReloading = FALSE;
 
     public function __construct(Reactor $reactor = NULL, HostBinder $hb = NULL) {
         $this->reactor = $reactor ?: (new ReactorFactory)->select();
@@ -129,12 +128,12 @@ class ForkWatcher implements ServerWatcher {
             $this->isStopping = FALSE;
             $this->reactor->stop();
             return;
-        } elseif (!($this->isStopping || $this->reloading)) {
+        } elseif (!($this->isStopping || $this->isReloading)) {
             for ($i=count($this->ipcClients); $i<$this->workerCount; $i++) {
                 $this->spawn();
             }
-        } elseif ($this->reloading && count($this->ipcClients) === $this->workerCount) {
-            $this->reloading = FALSE;
+        } elseif ($this->isReloading && count($this->ipcClients) === $this->workerCount) {
+            $this->isReloading = FALSE;
         }
     }
 
@@ -158,8 +157,8 @@ class ForkWatcher implements ServerWatcher {
     }
 
     public function reload() {
-        if (!($this->reloading || $this->isStopping)) {
-            $this->reloading = TRUE;
+        if (!($this->isReloading || $this->isStopping)) {
+            $this->isReloading = TRUE;
             $this->notifyWorkers();
             for ($i=0; $i < $this->workerCount; $i++) {
                 $this->spawn();

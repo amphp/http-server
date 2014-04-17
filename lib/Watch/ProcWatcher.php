@@ -6,7 +6,6 @@ namespace Aerys\Watch;
 
 use Alert\Reactor,
     Alert\ReactorFactory,
-    Aerys\Watch\BinOptions,
     Aerys\StartException;
 
 class ProcWatcher implements ServerWatcher {
