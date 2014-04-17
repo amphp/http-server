@@ -16,6 +16,9 @@ trait CpuCounter {
             case "freebsd":
                 $cmd = "sysctl -a | grep 'hw.ncpu' | cut -d ':' -f2";
                 break;
+            case "darwin":
+                $cmd = "sysctl -a | grep 'hw.ncpu:' | awk '{ print $2 }'";
+                break;
             default:
                 $cmd = NULL;
         }
