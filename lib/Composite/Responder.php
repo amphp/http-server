@@ -1,8 +1,11 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Composite;
 
-class CompositeResponder {
+use Aerys\Status,
+    Aerys\Response;
+
+class Responder {
     private $responders;
     private $notFoundResponse;
 

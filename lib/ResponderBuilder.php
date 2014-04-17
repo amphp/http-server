@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Auryn\Injector;
+use Aerys\Composite\Responder as CompositeResponder;
 
 class ResponderBuilder {
     private $injector;
