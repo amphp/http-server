@@ -10,7 +10,7 @@ use Aerys\Server,
     Alert\Reactor,
     Amp\Dispatcher;
 
-class DocsResponder implements ServerObserver {
+class Responder implements ServerObserver {
     const OP_INDEXES = 1;
     const OP_ETAG_FLAGS = 2;
     const OP_EXPIRES_PERIOD = 3;

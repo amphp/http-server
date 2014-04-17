@@ -163,7 +163,7 @@ class ResponderBuilder {
         try {
             $root = $documentSettings['root'];
             unset($documentSettings['root']);
-            $responder = $this->injector->make('Aerys\Documents\DocsResponder', [
+            $responder = $this->injector->make('Aerys\Documents\Responder', [
                 ':root' => $root
             ]);
             $responder->setAllOptions($documentSettings);
