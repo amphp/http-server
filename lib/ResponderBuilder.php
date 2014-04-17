@@ -27,7 +27,7 @@ class ResponderBuilder {
         }
 
         if ($appDefinition[App::ROUTES]) {
-            $responder = $this->buildRoutingResponder($appDefinition[App::ROUTES]);
+            $responder = $this->buildRoutablesResponder($appDefinition[App::ROUTES]);
             $responders[App::ROUTES] = $responder;
         }
 
@@ -92,7 +92,7 @@ class ResponderBuilder {
         }
     }
 
-    private function buildRoutingResponder(array $routes) {
+    private function buildRoutablesResponder(array $routes) {
         $dispatcher = \FastRoute\simpleDispatcher(function(\FastRoute\RouteCollector $r) use ($routes) {
             foreach ($routes as $routeArr) {
                 list($httpMethod, $uriPath, $routeHandler) = $routeArr;
@@ -107,7 +107,7 @@ class ResponderBuilder {
 
         });
 
-        $responder = $this->injector->make('Aerys\RoutingResponder', [
+        $responder = $this->injector->make('Aerys\Routables\Responder', [
             ':dispatcher' => $dispatcher
         ]);
 
