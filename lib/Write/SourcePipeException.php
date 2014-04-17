@@ -2,4 +2,4 @@
 
 namespace Aerys\Write;
 
-class SourcePipeException extends \RuntimeException {}
+class SourcePipeException extends \Exception {}
