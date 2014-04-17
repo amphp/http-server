@@ -2,16 +2,14 @@
 
 require __DIR__ . '/bootstrap.php';
 
-$binOptions = (new Aerys\BinOptions)->loadOptions();
-$debug = $binOptions->getDebug();
-$config = $binOptions->getConfig();
-
-list($reactor, $server, $hosts) = (new Aerys\Bootstrapper)->boot($debug, $config);
-
-$worker = new Aerys\Watch\ProcessWorker($reactor, $server);
-
-register_shutdown_function([$worker, 'shutdown']);
-
-$worker->start('tcp://127.0.0.1:' . $binOptions->getBackend());
-$server->start($hosts);
-$reactor->run();
+$opts = getopt('', ['config:', 'ipcuri:', 'debug']);
+$config = $opts['config'];
+$ipcUri = $opts['ipcuri'];
+$debug = isset($opts['debug']);
+list($reactor, $server) = (new Aerys\Bootstrapper)->boot($config, $opts = ['debug' => $debug]);
+(new Aerys\Watch\ProcWorker($reactor, $server))
+    ->registerSignals()
+    ->registerShutdown()
+    ->start($ipcUri)
+    ->run()
+;

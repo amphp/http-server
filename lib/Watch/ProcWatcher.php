@@ -6,55 +6,55 @@ namespace Aerys\Watch;
 
 use Alert\Reactor,
     Alert\ReactorFactory,
-    Aerys\HostBinder,
-    Aerys\Bootstrapper,
     Aerys\Watch\BinOptions,
     Aerys\StartException;
 
-class ForkWatcher implements ServerWatcher {
+class ProcWatcher implements ServerWatcher {
     use CpuCounter;
 
     private $reactor;
-    private $hostBinder;
     private $debug;
     private $config;
     private $ipcUri;
-    private $options;
-    private $hostAddrs;
     private $workerCount;
+    private $hostAddrs;
+    private $processes = [];
     private $ipcClients = [];
-    private $serverSocks = [];
     private $isStopping = FALSE;
-    private $reloading = FALSE;
+    private $isReloading = FALSE;
 
-    public function __construct(Reactor $reactor = NULL, HostBinder $hb = NULL) {
+    public function __construct(Reactor $reactor = NULL) {
         $this->reactor = $reactor ?: (new ReactorFactory)->select();
-        $this->hostBinder = $hb ?: new HostBinder;
     }
 
     public function watch(BinOptions $binOptions) {
         $this->debug = $binOptions->getDebug();
         $this->validateConfig($binOptions->getConfig(), $isReload = FALSE);
+        $this->setWorkerCount($binOptions->getWorkers());
         $this->startIpcServer();
-        $this->bindServerSocks();
 
-        $stopCallback = [$this, 'stop'];
-        pcntl_signal(SIGCHLD, SIG_IGN);
-        pcntl_signal(SIGINT, $stopCallback);
-        pcntl_signal(SIGTERM, $stopCallback);
-
-        $this->workerCount = $binOptions->getWorkers() ?: $this->countCpuCores();
         for ($i=0; $i < $this->workerCount; $i++) {
             $this->spawn();
         }
 
-        $this->outputListenAddresses();
+        foreach ($this->hostAddrs as $address) {
+            $address = substr(str_replace('0.0.0.0', '*', $address), 6);
+            printf("Listening for HTTP traffic on %s ...\n", $address);
+        }
+
+        if (extension_loaded('pcntl')) {
+            $stopCallback = [$this, 'stop'];
+            pcntl_signal(SIGINT, $stopCallback);
+            pcntl_signal(SIGTERM, $stopCallback);
+        }
+
         $this->reactor->run();
     }
 
     private function validateConfig($config, $isReload) {
         $cmd = $this->buildConfigTestCmd($config, $isReload);
         exec($cmd, $output);
+
         $output = implode($output, "\n");
         $data = @unserialize($output);
 
@@ -62,11 +62,10 @@ class ForkWatcher implements ServerWatcher {
             throw new StartException($output);
         } elseif ($data['error']) {
             throw new StartException($data['error_msg']);
-        } else {
-            $this->config = $config;
-            $this->hostAddrs = $data['hosts'];
-            $this->options = $data['options'];
         }
+
+        $this->config = $config;
+        $this->hostAddrs = $data['hosts'];
     }
 
     private function buildConfigTestCmd($config, $isReload) {
@@ -86,10 +85,19 @@ class ForkWatcher implements ServerWatcher {
         return implode(' ', $cmd);
     }
 
-    private function bindServerSocks() {
-        $backlog = $this->options['socketBacklogSize'];
-        $this->hostBinder->setSocketBacklogSize($backlog);
-        $this->serverSocks = $this->hostBinder->bindAddresses($this->hostAddrs, $this->serverSocks);
+    /**
+     * We can't bind the same IP:PORT in multiple separate processes if we aren't
+     * in a Windows environment. Non-windows operating systems should have ext/pcntl
+     * availability, so this doesn't represent a real performance impediment.
+     */
+    private function setWorkerCount($requestedWorkerCount) {
+        if (stripos(PHP_OS, 'WIN') !== 0) {
+            $this->workerCount = 1;
+        } elseif ($requestedWorkerCount > 0) {
+            $this->workerCount = $requestedWorkerCount;
+        } else {
+            $this->workerCount = $this->countCpuCores();
+        }
     }
 
     private function startIpcServer() {
@@ -110,11 +118,11 @@ class ForkWatcher implements ServerWatcher {
         while ($ipcClient = @stream_socket_accept($ipcServer, $timeout = 0)) {
             $clientId = (int) $ipcClient;
             stream_set_blocking($ipcClient, FALSE);
-            $this->ipcClients[$clientId] = $ipcClient;
-            $this->reactor->onReadable($ipcClient, function($watcherId, $ipcClient) {
+            $watcherId = $this->reactor->onReadable($ipcClient, function($watcherId, $ipcClient) {
                 $clientId = (int) $ipcClient;
                 $this->unloadIpcClient($clientId, $watcherId, $ipcClient);
             });
+            $this->ipcClients[$clientId] = [$watcherId, $ipcClient];
         }
     }
 
@@ -124,6 +132,8 @@ class ForkWatcher implements ServerWatcher {
         if (is_resource($ipcClient)) {
             @fclose($ipcClient);
         }
+
+        $this->collect();
 
         if ($this->isStopping && empty($this->ipcClients)) {
             $this->isStopping = FALSE;
@@ -135,6 +145,18 @@ class ForkWatcher implements ServerWatcher {
             }
         } elseif ($this->reloading && count($this->ipcClients) === $this->workerCount) {
             $this->reloading = FALSE;
+        }
+    }
+
+    private function collect() {
+        foreach ($this->processes as $key => $procStruct) {
+            list($procHandle, $stdinPipe) = $procStruct;
+            $info = @proc_get_status($procHandle);
+            if (!($info && $info['running'])) {
+                @fclose($stdinPipe);
+                @proc_terminate($procHandle);
+                unset($this->processes[$key]);
+            }
         }
     }
 
@@ -160,7 +182,6 @@ class ForkWatcher implements ServerWatcher {
     public function reload() {
         if (!($this->reloading || $this->isStopping)) {
             $this->reloading = TRUE;
-            $this->notifyWorkers();
             for ($i=0; $i < $this->workerCount; $i++) {
                 $this->spawn();
             }
@@ -168,42 +189,26 @@ class ForkWatcher implements ServerWatcher {
         }
     }
 
-    private function outputListenAddresses() {
-        foreach ($this->hostAddrs as $address) {
-            $address = substr(str_replace('0.0.0.0', '*', $address), 6);
-            printf("Listening for HTTP traffic on %s ...\n", $address);
-        }
-    }
-
     private function spawn() {
-        $pid = pcntl_fork();
-        if ($pid === 0) {
-            $this->runChildFork();
-        } elseif (!$pid) {
+        $parts[] = PHP_BINARY;
+        if ($ini = get_cfg_var('cfg_file_path')) {
+            $parts[] = "-c \"{$ini}\"";
+        }
+        $parts[] = __DIR__ . "/../../src/worker.php";
+        $parts[] = "--config {$this->config}";
+        $parts[] = "--ipcuri {$this->ipcUri}";
+        if ($this->debug) {
+            $parts[] = "--debug";
+        }
+
+        $cmd = implode(" ", $parts);
+
+        if (!$procHandle = @proc_open($cmd, [["pipe", "r"]], $pipes)) {
             throw new \RuntimeException(
-                'Failed forking worker process'
+                'Failed opening worker process pipe'
             );
         }
-    }
 
-    private function runChildFork() {
-        $this->reactor->stop();
-        $this->reactor = NULL;
-        $this->hostBinder = NULL;
-
-        list($reactor, $server) = (new Bootstrapper)->boot($this->config, $options = [
-            'bind' => TRUE,
-            'socks' => $this->serverSocks,
-            'debug' => $this->debug,
-        ]);
-
-        (new ProcWorker($reactor, $server))
-            ->start($this->ipcUri)
-            ->registerSignals()
-            ->registerShutdown()
-            ->run()
-        ;
-
-        exit;
+        $this->processes[] = [$procHandle, $pipes[0]];
     }
 }

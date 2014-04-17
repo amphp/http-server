@@ -4,23 +4,28 @@ namespace Aerys\Watch;
 
 use Aerys\Bootstrapper;
 
-class ThreadConfigTry extends \Thread {
+class TryThreadConfig extends \Thread {
     private $debug;
     private $config;
+    private $bind;
     private $error;
     private $bindTo;
     private $options;
     private $hasExecuted;
 
-    public function __construct($debug, $config) {
+    public function __construct($debug, $config, $bind) {
         $this->debug = $debug;
         $this->config = $config;
+        $this->bind = $bind;
     }
 
     public function run() {
         register_shutdown_function([$this, 'shutdown']);
         require __DIR__ . '/../../src/bootstrap.php';
-        list($reactor, $server, $hosts) = (new Bootstrapper)->boot($this->debug, $this->config);
+        list($reactor, $server, $hosts) = (new Bootstrapper)->boot($this->config, $opt = [
+            'debug' => $this->debug,
+            'bind' => $this->bind,
+        ]);
         $this->bindTo = $hosts->getBindableAddresses();
         $this->options = $server->getAllOptions();
         $this->hasExecuted = TRUE;
@@ -34,7 +39,7 @@ class ThreadConfigTry extends \Thread {
             $this->error = sprintf("%s in %s on line %d", $message, $file, $line);
         }
     }
-    
+
     public function getBootResultStruct() {
         if ($this->hasExecuted) {
             return [$this->bindTo, $this->options, $this->error];

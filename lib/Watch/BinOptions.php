@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Watch;
 
 class BinOptions {
     private $help;
@@ -8,15 +8,13 @@ class BinOptions {
     private $config;
     private $workers;
     private $control;
-    private $backend;
-    private $shortOpts = 'hdc:w:z:b:';
+    private $shortOpts = 'hdc:w:z:';
     private $longOpts = [
         'help',
         'debug',
         'config:',
         'workers:',
         'control:',
-        'backend:',
     ];
     private $shortOptNameMap = [
         'h' => 'help',
@@ -24,7 +22,6 @@ class BinOptions {
         'c' => 'config',
         'w' => 'workers',
         'z' => 'control',
-        'b' => 'backend',
     ];
 
     /**
@@ -32,14 +29,13 @@ class BinOptions {
      *
      * @param array $options Used if defined, loaded from the CLI otherwise
      * @throws Aerys\StartException
-     * @return Aerys\BinOptions Returns the current object instance
+     * @return Aerys\Watch\BinOptions Returns the current object instance
      */
     public function loadOptions(array $options = []) {
         $rawOptions = $options ? $options : getopt($this->shortOpts, $this->longOpts);
 
         $normalizedOptions = [
             'help' => NULL,
-            'debug' => NULL,
             'config' => NULL,
             'workers' => NULL,
             'backend' => NULL,
@@ -82,9 +78,6 @@ class BinOptions {
                 case 'control':
                     $this->control = $value;
                     break;
-                case 'backend':
-                    $this->backend = $value;
-                    break;
             }
         }
     }
@@ -115,10 +108,6 @@ class BinOptions {
         return $this->control;
     }
 
-    public function getBackend() {
-        return $this->backend;
-    }
-
     public function toArray() {
         return array_filter([
             'help' => $this->help,
@@ -126,7 +115,6 @@ class BinOptions {
             'config' => $this->config,
             'workers' => $this->workers,
             'control' => $this->control,
-            'backend' => $this->backend,
         ]);
     }
 
@@ -136,7 +124,6 @@ class BinOptions {
         $parts[] = $this->config ? ('-c ' . escapeshellarg($this->config)) : NULL;
         $parts[] = $this->workers ? ('-w ' . $this->workers) : NULL;
         $parts[] = $this->control ? ('-z ' . escapeshellarg($this->control)) : NULL;
-        $parts[] = $this->backend ? ('-b ' . escapeshellarg($this->backend)) : NULL;
 
         $parts = array_filter($parts, function($i) { return isset($i); });
 

@@ -8,25 +8,29 @@ use Alert\Reactor,
     Auryn\Provider;
 
 class Bootstrapper {
-    const SERVER_OPTION_PREFIX = '__';
+    const OPT_VAR_PREFIX = '__';
     private static $ILLEGAL_CONFIG_VAR = 'Illegal config variable; "%s" is a reserved name';
 
     /**
      * Bootstrap a server and its host definitions from command line arguments
      *
-     * @param bool $debug Should the server execute in debug mode
      * @param string $config The application config file path
+     * @param array $options
      * @throws \Aerys\Framework\StartException
-     * @return array Returns three-element array of the form [$reactor, $server, $hostCollection]
+     * @return array Returns three-element array of the form [$reactor, $server, $hosts]
      */
-    public function boot($debug, $config) {
-        list($reactor, $injector, $apps, $options) = $this->parseAppConfig($config);
+    public function boot($config, array $opts = []) {
+        $bindOpt = isset($opts['bind']) ? (bool) $opts['bind'] : TRUE;
+        $socksOpt = isset($opts['socks']) ? (array) $opts['socks'] : [];
+        $debugOpt = isset($opts['debug']) ? (bool) $opts['debug'] : FALSE;
+
+        list($reactor, $injector, $apps, $serverOpts) = $this->parseAppConfig($config);
 
         $injector->alias('Alert\Reactor', get_class($reactor));
         $injector->share($reactor);
         $injector->share('Aerys\Server');
         $injector->define('Aerys\ResponderBuilder', [':injector' => $injector]);
-        $server = $injector->make('Aerys\Server', [':debug' => $debug]);
+        $server = $injector->make('Aerys\Server', [':debug' => $debugOpt]);
 
         // Automatically register any ServerObserver implementations with the server
         $injector->prepare('Aerys\ServerObserver', function($observer) use ($server) {
@@ -34,21 +38,25 @@ class Bootstrapper {
         });
 
         $hostBuilder = $injector->make('Aerys\HostBuilder');
-        $hostCollection = $injector->make('Aerys\HostCollection');
+        $hosts = $injector->make('Aerys\HostCollection');
 
         foreach ($apps as $app) {
             $host = $hostBuilder->buildHost($app);
-            $hostCollection->addHost($host);
+            $hosts->addHost($host);
         }
 
         $allowedOptions = array_map('strtolower', array_keys($server->getAllOptions()));
-        foreach ($options as $key => $value) {
+        foreach ($serverOpts as $key => $value) {
             if (in_array(strtolower($key), $allowedOptions)) {
                 $server->setOption($key, $value);
             }
         }
 
-        return [$reactor, $server, $hostCollection];
+        if ($bindOpt) {
+            $server->start($hosts, $socksOpt);
+        }
+
+        return [$reactor, $server, $hosts];
     }
 
     private function parseAppConfig($__config) {
@@ -89,7 +97,7 @@ class Bootstrapper {
                 $__injectors[] = $value;
             } elseif ($value instanceof Reactor) {
                 $__reactors[] = $value;
-            } elseif (substr($key, 0, 2) === self::SERVER_OPTION_PREFIX) {
+            } elseif (substr($key, 0, 2) === self::OPT_VAR_PREFIX) {
                 $key = substr($key, 2);
                 $__options[$key] = $value;
             }

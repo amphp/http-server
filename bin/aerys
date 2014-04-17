@@ -29,7 +29,7 @@ EOT;
 
 try {
 
-    $options = (new Aerys\BinOptions)->loadOptions();
+    $options = (new Aerys\Watch\BinOptions)->loadOptions();
 
     if ($options->getHelp()) {
         echo $help;
@@ -41,7 +41,7 @@ try {
     } elseif (extension_loaded('pcntl')) {
         $watcher = new Aerys\Watch\ForkWatcher;
     } else {
-        $watcher = new Aerys\Watch\ProcessWatcher;
+        $watcher = new Aerys\Watch\ProcWatcher;
     }
 
     $watcher->watch($options);

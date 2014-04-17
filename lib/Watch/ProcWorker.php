@@ -1,10 +1,12 @@
 <?php
 
+declare(ticks = 1);
+
 namespace Aerys\Watch;
 
 use Alert\Reactor, Aerys\Server;
 
-class ProcessWorker {
+class ProcWorker {
     private $reactor;
     private $server;
     private $watcher;
@@ -15,10 +17,24 @@ class ProcessWorker {
         $this->server = $server;
     }
 
-    public function start($ipcUri) {
-        $socket = @stream_socket_client($ipcUri, $errno, $errstr);
+    public function registerSignals() {
+        if (extension_loaded('pcntl')) {
+            $stopCallback = [$this, 'stop'];
+            pcntl_signal(SIGINT, $stopCallback);
+            pcntl_signal(SIGTERM, $stopCallback);
+        }
 
-        if ($socket) {
+        return $this;
+    }
+
+    public function registerShutdown() {
+        register_shutdown_function([$this, 'shutdown']);
+
+        return $this;
+    }
+
+    public function start($ipcUri) {
+        if ($socket = @stream_socket_client($ipcUri, $errno, $errstr)) {
             stream_set_blocking($socket, FALSE);
             $this->watcher = $this->reactor->onReadable($socket, [$this, 'stop']);
         } else {
@@ -26,6 +42,12 @@ class ProcessWorker {
                 sprintf('Failed connecting to IPC server %s: [%d] %s', $ipcUri, $errno, $errstr)
             );
         }
+
+        return $this;
+    }
+
+    public function run() {
+        $this->reactor->run();
     }
 
     public function stop() {

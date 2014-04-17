@@ -7,14 +7,14 @@ use Aerys\Bootstrapper;
 class ThreadWorker extends \Thread {
     private $debug;
     private $config;
-    private $ipcPort;
+    private $ipcUri;
     private $fatals;
     private $sockPrefix = '__sock_';
 
-    public function __construct($debug, $config, $ipcPort /*, $socket1, $socket2, ... $socketN*/) {
+    public function __construct($debug, $config, $ipcUri /*, $sock1, $sock2, ... $sockN*/) {
         $this->debug = $debug;
         $this->config = $config;
-        $this->ipcPort = $ipcPort;
+        $this->ipcUri = $ipcUri;
 
         $argv = func_get_args();
         unset($argv[0], $argv[1], $argv[2]);
@@ -35,36 +35,21 @@ class ThreadWorker extends \Thread {
         ];
     }
 
-    private function getComposedServerSocks() {
-        $sockets = [];
-        $sockPrefix = $this->sockPrefix;
-        $sockPrefixLen = strlen($sockPrefix);
-        $properties = get_object_vars($this);
-
-        foreach ($properties as $property => $value) {
-            if (strpos($property, $sockPrefix) === 0) {
-                $name = 'tcp://' . base64_decode(substr($property, $sockPrefixLen));
-                $sockets[$name] = $value;
-            }
-        }
-
-        return $sockets;
-    }
-
     public function run() {
         require __DIR__ . '/../../src/bootstrap.php';
 
-        $ipcUri = "tcp://127.0.0.1:{$this->ipcPort}";
-        $ipcSock = stream_socket_client($ipcUri, $errno, $errstr);
-
-        if (!$ipcSock) {
+        if (!$ipcSock = stream_socket_client($this->ipcUri, $errno, $errstr)) {
             throw new \RuntimeException(
                 sprintf('Failed connecting to IPC server %s: [%d] %s', $ipcUri, $errno, $errstr)
             );
         }
         stream_set_blocking($ipcSock, FALSE);
 
-        list($reactor, $server, $hosts) = (new Bootstrapper)->boot($this->debug, $this->config);
+        list($reactor, $server) = (new Bootstrapper)->boot($this->config, $opt = [
+            'bind'  => TRUE,
+            'debug' => $this->debug,
+            'socks' => $this->getComposedServerSocks(),
+        ]);
 
         $reactor->onReadable($ipcSock, function() use ($server) {
             $server->stop()->onComplete(function() { exit; });
@@ -79,7 +64,22 @@ class ThreadWorker extends \Thread {
             }
         });
 
-        $server->start($hosts, $this->getComposedServerSocks());
         $reactor->run();
+    }
+
+    private function getComposedServerSocks() {
+        $sockets = [];
+        $sockPrefix = $this->sockPrefix;
+        $sockPrefixLen = strlen($sockPrefix);
+        $properties = get_object_vars($this);
+
+        foreach ($properties as $property => $value) {
+            if (strpos($property, $sockPrefix) === 0) {
+                $name = 'tcp://' . base64_decode(substr($property, $sockPrefixLen));
+                $sockets[$name] = $value;
+            }
+        }
+
+        return $sockets;
     }
 }

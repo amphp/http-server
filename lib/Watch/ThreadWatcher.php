@@ -1,10 +1,12 @@
 <?php
 
+declare(ticks = 1);
+
 namespace Aerys\Watch;
 
 use Alert\Reactor,
     Alert\ReactorFactory,
-    Aerys\BinOptions,
+    Aerys\Watch\BinOptions,
     Aerys\Bootstrapper,
     Aerys\StartException,
     Aerys\HostBinder;
@@ -18,9 +20,12 @@ class ThreadWatcher implements ServerWatcher {
     private $threadReflection;
     private $debug;
     private $config;
-    private $ipcPort;
-    private $workers;
+    private $ipcUri;
+    private $workerCount;
     private $servers = [];
+    private $ipcClients = [];
+    private $isStopping = FALSE;
+    private $isReloading = FALSE;
 
     public function __construct(Reactor $reactor = NULL, HostBinder $hostBinder = NULL) {
         $this->reactor = $reactor ?: (new ReactorFactory)->select();
@@ -33,7 +38,7 @@ class ThreadWatcher implements ServerWatcher {
         $this->debug = $binOptions->getDebug();
         $this->config = $binOptions->getConfig();
 
-        $thread = new ThreadConfigTry($this->debug, $this->config);
+        $thread = new TryThreadConfig($this->debug, $this->config, $bind = TRUE);
         $thread->start();
         $thread->join();
 
@@ -43,70 +48,79 @@ class ThreadWatcher implements ServerWatcher {
             throw new StartException($error);
         }
 
-        $this->hostBinder->setSocketBacklogSize($options['socketBacklogSize']);
+        $this->startIpcServer();
 
-        $this->workers = $binOptions->getWorkers() ?: $this->countCpuCores();
-        $this->ipcPort = $this->startIpcServer($binOptions);
+        $this->hostBinder->setSocketBacklogSize($options['socketBacklogSize']);
+        $this->workerCount = $binOptions->getWorkers() ?: $this->countCpuCores();
         $this->servers = $this->hostBinder->bindAddresses($bindTo, $this->servers);
+
+        if (extension_loaded('pcntl')) {
+            $stopCallback = [$this, 'stop'];
+            pcntl_signal(SIGINT, $stopCallback);
+            pcntl_signal(SIGTERM, $stopCallback);
+        }
 
         foreach ($bindTo as $addr) {
             $addr = substr(str_replace('0.0.0.0', '*', $addr), 6);
             printf("Listening for HTTP traffic on %s ...\n", $addr);
         }
 
-        for ($i=0; $i < $this->workers; $i++) {
+        for ($i=0; $i < $this->workerCount; $i++) {
             $this->spawn();
         }
 
         $this->reactor->run();
+
+        foreach ($this->threads as $thread) {
+            $thread->kill();
+        }
     }
 
-    private function startIpcServer(BinOptions $binOptions) {
-        $ipcPort = $binOptions->getBackend() ?: '*';
-        $ipcServer = stream_socket_server("tcp://127.0.0.1:{$ipcPort}", $errno, $errstr);
-
-        if (!$ipcServer) {
+    private function startIpcServer() {
+        if ($ipcServer = stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
+            stream_set_blocking($ipcServer, FALSE);
+            $this->ipcUri = stream_socket_get_name($ipcServer, $wantPeer = FALSE);
+            $this->reactor->onReadable($ipcServer, function() use ($ipcServer) {
+                $this->accept($ipcServer);
+            });
+        } else {
             throw new \RuntimeException(
-                sprintf("Failed binding IPC server on %s: [%d] %s", $uri, $errno, $errstr)
+                sprintf("Failed binding socket server on %s: [%d] %s", $uri, $errno, $errstr)
             );
         }
-
-        stream_set_blocking($ipcServer, FALSE);
-
-        $this->reactor->onReadable($ipcServer, function() use ($ipcServer) {
-            $this->accept($ipcServer);
-        });
-
-        $ipcName = stream_socket_get_name($ipcServer, $wantPeer = FALSE);
-        $ipcPort = substr($ipcName, strrpos($ipcName, ':') + 1);
-
-        return $ipcPort;
     }
 
     private function accept($ipcServer) {
         while ($ipcClient = @stream_socket_accept($ipcServer, $timeout = 0)) {
+            $clientId = (int) $ipcClient;
             stream_set_blocking($ipcClient, FALSE);
+            $this->ipcClients[$clientId] = $ipcClient;
             $this->reactor->onReadable($ipcClient, function($watcherId, $ipcClient) {
-                $this->onReadableClient($watcherId, $ipcClient);
+                $clientId = (int) $ipcClient;
+                $this->unloadIpcClient($clientId, $watcherId, $ipcClient);
             });
         }
     }
 
-    private function onReadableClient($watcherId, $ipcClient) {
+    private function unloadIpcClient($clientId, $watcherId, $ipcClient) {
+        unset($this->ipcClients[$clientId]);
         $this->reactor->cancel($watcherId);
-        @fclose($ipcClient);
-        $this->spawn();
+        if (is_resource($ipcClient)) {
+            @fclose($ipcClient);
+        }
+
         $this->collect();
-    }
 
-    public function spawn() {
-        $args = $this->servers;
-        array_unshift($args, $this->debug, $this->config, $this->ipcPort);
-        $args = array_values($args);
-
-        $thread = $this->threadReflection->newInstanceArgs($args);
-        $thread->start();
-        $this->threads->attach($thread);
+        if ($this->isStopping && empty($this->ipcClients)) {
+            $this->isStopping = FALSE;
+            $this->reactor->stop();
+        } elseif (!($this->isStopping || $this->reloading)) {
+            for ($i=count($this->ipcClients); $i<$this->workerCount; $i++) {
+                $this->spawn();
+            }
+        } elseif ($this->reloading && count($this->ipcClients) === $this->workerCount) {
+            $this->reloading = FALSE;
+        }
     }
 
     private function collect() {
@@ -115,5 +129,45 @@ class ThreadWatcher implements ServerWatcher {
                 $this->threads->detach($thread);
             }
         }
+    }
+
+    public function stop() {
+        if (!$this->isStopping) {
+            $this->isStopping = TRUE;
+            $this->notifyWorkers();
+        }
+    }
+
+    private function notifyWorkers() {
+        foreach ($this->ipcClients as $clientId => $clientStruct) {
+            list($watcherId, $ipcClient) = $clientStruct;
+            @stream_set_blocking($ipcClient, TRUE);
+            if (!@fwrite($ipcClient, ".")) {
+                $this->unloadIpcClient($clientId, $watcherId, $ipcClient);
+            } else {
+                stream_set_blocking($ipcClient, FALSE);
+            }
+        }
+    }
+
+    public function reload() {
+        if (!($this->reloading || $this->isStopping)) {
+            $this->reloading = TRUE;
+            $this->notifyWorkers();
+            for ($i=0; $i < $this->workerCount; $i++) {
+                $this->spawn();
+            }
+            $this->outputListenAddresses();
+        }
+    }
+
+    private function spawn() {
+        $args = $this->servers;
+        array_unshift($args, $this->debug, $this->config, $this->ipcUri);
+        $args = array_values($args);
+
+        $thread = $this->threadReflection->newInstanceArgs($args);
+        $thread->start();
+        $this->threads->attach($thread);
     }
 }
