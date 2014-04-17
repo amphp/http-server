@@ -6,7 +6,7 @@ namespace Aerys\Watch;
 
 use Alert\Reactor,
     Alert\ReactorFactory,
-    Aerys\StartException;
+    Aerys\BootException;
 
 class ProcWatcher implements ServerWatcher {
     use CpuCounter;
@@ -58,9 +58,9 @@ class ProcWatcher implements ServerWatcher {
         $data = @unserialize($output);
 
         if (empty($data)) {
-            throw new StartException($output);
+            throw new BootException($output);
         } elseif ($data['error']) {
-            throw new StartException($data['error_msg']);
+            throw new BootException($data['error_msg']);
         }
 
         $this->config = $config;

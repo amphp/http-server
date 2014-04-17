@@ -16,7 +16,7 @@ class Bootstrapper {
      *
      * @param string $config The application config file path
      * @param array $options
-     * @throws \Aerys\Framework\StartException
+     * @throws \Aerys\Framework\BootException
      * @return array Returns three-element array of the form [$reactor, $server, $hosts]
      */
     public function boot($config, array $opts = []) {
@@ -61,19 +61,19 @@ class Bootstrapper {
 
     private function parseAppConfig($__config) {
         if (!include($__config)) {
-            throw new StartException(
+            throw new BootException(
                 sprintf("Failed including config file: %s", $__config)
             );
         }
 
         if (!(isset($__config) && $__config === func_get_args()[0])) {
-            throw new StartException(
+            throw new BootException(
                 sprintf(self::$ILLEGAL_CONFIG_VAR, "__config")
             );
         }
 
         if (isset($__vars)) {
-            throw new StartException(
+            throw new BootException(
                 sprintf(self::$ILLEGAL_CONFIG_VAR, "__vars")
             );
         }
@@ -82,7 +82,7 @@ class Bootstrapper {
 
         foreach (['__apps', '__reactors', '__injectors', '__options'] as $reserved) {
             if (isset($__vars[$reserved])) {
-                throw new StartException(
+                throw new BootException(
                     sprintf(self::$ILLEGAL_CONFIG_VAR, $reserved)
                 );
             }
@@ -104,7 +104,7 @@ class Bootstrapper {
         }
 
         if (empty($__apps)) {
-            throw new StartException(
+            throw new BootException(
                 "No app configuration instances found in config file"
             );
         }

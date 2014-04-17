@@ -8,7 +8,7 @@ use Alert\Reactor,
     Alert\ReactorFactory,
     Aerys\HostBinder,
     Aerys\Bootstrapper,
-    Aerys\StartException;
+    Aerys\BootException;
 
 class ForkWatcher implements ServerWatcher {
     use CpuCounter;
@@ -58,9 +58,9 @@ class ForkWatcher implements ServerWatcher {
         $data = @unserialize($output);
 
         if (empty($data)) {
-            throw new StartException($output);
+            throw new BootException($output);
         } elseif ($data['error']) {
-            throw new StartException($data['error_msg']);
+            throw new BootException($data['error_msg']);
         } else {
             $this->config = $config;
             $this->hostAddrs = $data['hosts'];

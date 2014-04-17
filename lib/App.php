@@ -137,7 +137,7 @@ class App {
      * - App::RESPONDERS       (App::addResponder)
      * - App::DOCUMENTS        (App::setDocumentRoot)
      *
-     * Any values specified that don't match the above list will result in a StartException
+     * Any values specified that don't match the above list will result in a BootException
      * when the server is bootstrapped. Note that the above list is the default responder order.
      * User responders added via `App::addResponder` are always ordered internally by the
      * order in which they are added to the app.

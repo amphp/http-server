@@ -2,8 +2,7 @@
 
 namespace Aerys;
 
-use Auryn\Injector,
-    Amp\Dispatcher;
+use Auryn\Injector;
 
 class ResponderBuilder {
     private $injector;
@@ -80,7 +79,7 @@ class ResponderBuilder {
         try {
             return $this->injector->make('Aerys\Websocket\Endpoint', ['app' => $wsAppClass]);
         } catch (\Exception $e) {
-            throw new StartException("Failed building websocket endpoint", $code = 0, $e);
+            throw new BootException("Failed building websocket endpoint", $code = 0, $e);
         }
     }
 
@@ -88,7 +87,7 @@ class ResponderBuilder {
         try {
             $endpoint->setAllOptions($options);
         } catch (\Exception $e) {
-            throw new StartException("Failed configuring websocket endpoint", $code = 0, $e);
+            throw new BootException("Failed configuring websocket endpoint", $code = 0, $e);
         }
     }
 
@@ -118,7 +117,7 @@ class ResponderBuilder {
         try {
             return $this->injector->getExecutable($routeHandler);
         } catch (\Exception $previousException) {
-            throw new StartException(
+            throw new BootException(
                 'Callable route handler build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
@@ -151,7 +150,7 @@ class ResponderBuilder {
         try {
             return $this->injector->getExecutable($responder);
         } catch (\Exception $previousException) {
-            throw new StartException(
+            throw new BootException(
                 'Callable user responder build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
@@ -171,7 +170,7 @@ class ResponderBuilder {
             return $responder;
 
         } catch (\Exception $previousException) {
-            throw new StartException(
+            throw new BootException(
                 'Documents build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
@@ -182,7 +181,7 @@ class ResponderBuilder {
     private function orderResponders(array $responders, $order) {
         $defaultOrder = [App::WEBSOCKETS, App::ROUTES, App::RESPONDERS, App::DOCUMENTS];
         if ($diff = array_diff($order, $defaultOrder)) {
-            throw new StartException(
+            throw new BootException(
                 'Invalid responder order value(s): ' . implode(', ', $diff)
             );
         }

@@ -13,7 +13,7 @@ class HostBuilder {
      * Create a server Host from an App definition
      *
      * @param \Aerys\Framework\App An App definition
-     * @throws \Aerys\Framework\StartException On invalid definition or responder build failure
+     * @throws \Aerys\Framework\BootException On invalid definition or responder build failure
      * @return \Aerys\Host Returns the generated host instance
      */
     public function buildHost(App $app) {
@@ -39,7 +39,7 @@ class HostBuilder {
             $name = $name ?: $ip;
             return new Host($ip, $port, $name, $responder);
         } catch (\Exception $e) {
-            throw new StartException(
+            throw new BootException(
                 sprintf('Host build failure: %s', $e->getMessage()),
                 $code = 0,
                 $e
@@ -51,7 +51,7 @@ class HostBuilder {
         try {
             $host->setEncryptionContext($tlsDefinition);
         } catch (\InvalidArgumentException $lastException) {
-            throw new StartException(
+            throw new BootException(
                 sprintf('Host build failure: %s', $lastException->getMessage()),
                 $errorCode = 0,
                 $lastException

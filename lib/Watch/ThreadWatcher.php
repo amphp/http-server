@@ -7,7 +7,7 @@ namespace Aerys\Watch;
 use Alert\Reactor,
     Alert\ReactorFactory,
     Aerys\Bootstrapper,
-    Aerys\StartException,
+    Aerys\BootException,
     Aerys\HostBinder;
 
 class ThreadWatcher implements ServerWatcher {
@@ -44,7 +44,7 @@ class ThreadWatcher implements ServerWatcher {
         list($bindTo, $options, $error) = $thread->getBootResultStruct();
 
         if ($error) {
-            throw new StartException($error);
+            throw new BootException($error);
         }
 
         $this->startIpcServer();

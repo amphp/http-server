@@ -28,7 +28,7 @@ class BinOptions {
      * Load command line options that may be used to bootstrap a server
      *
      * @param array $options Used if defined, loaded from the CLI otherwise
-     * @throws Aerys\StartException
+     * @throws Aerys\BootException
      * @return Aerys\Watch\BinOptions Returns the current object instance
      */
     public function loadOptions(array $options = []) {
@@ -52,7 +52,7 @@ class BinOptions {
         $this->setOptionValues($normalizedOptions);
 
         if (!($this->help || $this->config)) {
-            throw new StartException(
+            throw new BootException(
                 'App config file (-c, --config) required; use -h or --help for more information.'
             );
         }
