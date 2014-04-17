@@ -4,7 +4,7 @@ namespace Aerys\Write;
 
 use Alert\Reactor;
 
-interface CustomBody {
+interface CustomResponseBody {
 
     /**
      * Returns the integer content length of the entity body (if available)

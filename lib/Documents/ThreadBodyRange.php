@@ -2,11 +2,11 @@
 
 namespace Aerys\Documents;
 
-use Aerys\Write\CustomBody,
+use Aerys\Write\CustomResponseBody,
     Aerys\Write\ResponseWriter,
     Aerys\Write\PendingResponse;
 
-class ThreadBodyRange implements CustomBody, ResponseWriter {
+class ThreadBodyRange implements CustomResponseBody, ResponseWriter {
     private $dispatcher;
     private $path;
     private $size;
