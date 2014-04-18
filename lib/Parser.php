@@ -12,7 +12,7 @@ class Parser {
     const BODY_CHUNKS = 3;
     const TRAILERS_START = 4;
     const TRAILERS = 5;
-    
+
     const STATUS_LINE_PATTERN = "#^
         HTTP/(?P<protocol>\d+\.\d+)[\x20\x09]+
         (?P<status>[1-5]\d\d)[\x20\x09]*
@@ -87,7 +87,7 @@ class Parser {
     public function parse($data) {
         $this->buffer .= $data;
 
-        if ($this->buffer != '') {
+        if ($this->buffer == '') {
             goto more_data_needed;
         }
 
