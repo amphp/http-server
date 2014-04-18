@@ -4,11 +4,7 @@ declare(ticks = 1);
 
 namespace Aerys;
 
-use Alert\Reactor,
-    Alert\ReactorFactory,
-    Aerys\Bootstrapper,
-    Aerys\BootException,
-    Aerys\HostBinder;
+use Alert\Reactor, Alert\ReactorFactory;
 
 class ThreadWatcher implements ServerWatcher {
     use CpuCounter;

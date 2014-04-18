@@ -37,7 +37,7 @@ class Server {
     private $clients = [];
     private $exportedSocketIdMap = [];
     private $cachedClientCount = 0;
-    private $lastRequestId = PHP_INT_MAX * -1;
+    private $lastRequestId;
 
     private $now;
     private $httpDateNow;
@@ -71,6 +71,7 @@ class Server {
         $this->debug = (bool) $debug;
         $this->observers = new \SplObjectStorage;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
+        $this->lastRequestId = PHP_INT_MAX * -1; // <-- 5.5 compatibility
     }
 
     /**
@@ -884,7 +885,7 @@ class Server {
         $headers = $response->getRawHeaders();
         $statusLineAndHeaders = "HTTP/{$proto} {$status}{$reason}{$headers}\r\n\r\n";
 
-        $pr = new Write\PendingResponse;
+        $pr = new PendingResponse;
         $pr->headers = $statusLineAndHeaders;
         $pr->body = $body;
         $pr->writeWatcher = $cycle->client->writeWatcher;
@@ -892,17 +893,17 @@ class Server {
 
         switch ($bodyType) {
             case self::$BODY_STRING:
-                return new Write\StringWriter($this->reactor, $pr);
+                return new StringWriter($this->reactor, $pr);
             case self::$BODY_CUSTOM:
                 return $body->getResponder($this->reactor, $pr);
             case self::$BODY_GENERATOR:
                 return $cycle->closeAfterResponse
-                    ? new Write\GeneratorWriter($this->reactor, $pr)
-                    : new Write\ChunkedGeneratorWriter($this->reactor, $pr);
+                    ? new GeneratorWriter($this->reactor, $pr)
+                    : new ChunkedGeneratorWriter($this->reactor, $pr);
             case self::$BODY_ITERATOR:
                 return $cycle->closeAfterResponse
-                    ? new Write\IteratorWriter($this->reactor, $pr)
-                    : new Write\ChunkedIteratorWriter($this->reactor, $pr);
+                    ? new IteratorWriter($this->reactor, $pr)
+                    : new ChunkedIteratorWriter($this->reactor, $pr);
             default:
                 throw new \UnexpectedValueException(
                     sprintf('Unexpected responder body type: %s', $bodyType)

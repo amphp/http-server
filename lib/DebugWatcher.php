@@ -4,10 +4,6 @@ declare(ticks = 1);
 
 namespace Aerys;
 
-use Aerys\Server,
-    Aerys\BinOptions,
-    Aerys\Bootstrapper;
-
 class DebugWatcher {
     public function watch(BinOptions $binOptions) {
         $config = $binOptions->getConfig();

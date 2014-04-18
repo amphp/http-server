@@ -2,8 +2,6 @@
 
 namespace Aerys;
 
-use Aerys\Bootstrapper;
-
 class TryThreadConfig extends \Thread {
     private $debug;
     private $config;
@@ -21,7 +19,7 @@ class TryThreadConfig extends \Thread {
 
     public function run() {
         register_shutdown_function([$this, 'shutdown']);
-        require __DIR__ . '/../../src/bootstrap.php';
+        require __DIR__ . '/../src/bootstrap.php';
         list($reactor, $server, $hosts) = (new Bootstrapper)->boot($this->config, $opt = [
             'debug' => $this->debug,
             'bind' => $this->bind,
@@ -43,6 +41,10 @@ class TryThreadConfig extends \Thread {
     public function getBootResultStruct() {
         if ($this->hasExecuted) {
             return [$this->bindTo, $this->options, $this->error];
+        } elseif ($this->error) {
+            throw new \RuntimeException(
+                $this->error
+            );
         } else {
             throw new \LogicException(
                 "Cannot retrieve boot results: Thread has not executed"

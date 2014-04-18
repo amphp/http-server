@@ -48,7 +48,7 @@ class Host {
             $this->address = $address;
         } else {
             throw new \InvalidArgumentException(
-                "Valid IPv4/IPv6 address or wildcard required: {$address}"
+                "IPv4, IPv6 or wildcard address required: {$address}"
             );
         }
     }

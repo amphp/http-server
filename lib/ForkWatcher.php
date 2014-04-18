@@ -4,11 +4,7 @@ declare(ticks = 1);
 
 namespace Aerys;
 
-use Alert\Reactor,
-    Alert\ReactorFactory,
-    Aerys\HostBinder,
-    Aerys\Bootstrapper,
-    Aerys\BootException;
+use Alert\Reactor, Alert\ReactorFactory;
 
 class ForkWatcher implements ServerWatcher {
     use CpuCounter;
@@ -73,7 +69,7 @@ class ForkWatcher implements ServerWatcher {
         if ($ini = get_cfg_var('cfg_file_path')) {
             $cmd[] = "-c $ini";
         }
-        $cmd[] = __DIR__ . "/../../src/config-test.php";
+        $cmd[] = __DIR__ . "/../src/config-test.php";
         $cmd[] = "--config {$config}";
         if ($this->debug) {
             $cmd[] = "--debug";

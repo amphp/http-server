@@ -2,8 +2,6 @@
 
 namespace Aerys;
 
-use Alert\Reactor;
-
 interface CustomResponseBody {
 
     /**

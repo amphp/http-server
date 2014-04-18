@@ -2,8 +2,6 @@
 
 namespace Aerys;
 
-use Aerys\Bootstrapper;
-
 class ThreadWorker extends \Thread {
     private $debug;
     private $config;
@@ -36,7 +34,7 @@ class ThreadWorker extends \Thread {
     }
 
     public function run() {
-        require __DIR__ . '/../../src/bootstrap.php';
+        require __DIR__ . '/../src/bootstrap.php';
 
         if (!$ipcSock = stream_socket_client($this->ipcUri, $errno, $errstr)) {
             throw new \RuntimeException(

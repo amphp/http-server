@@ -4,9 +4,7 @@ declare(ticks = 1);
 
 namespace Aerys;
 
-use Alert\Reactor,
-    Alert\ReactorFactory,
-    Aerys\BootException;
+use Alert\Reactor, Alert\ReactorFactory;
 
 class ProcWatcher implements ServerWatcher {
     use CpuCounter;
@@ -72,7 +70,7 @@ class ProcWatcher implements ServerWatcher {
         if ($ini = get_cfg_var('cfg_file_path')) {
             $cmd[] = "-c $ini";
         }
-        $cmd[] = __DIR__ . "/../../src/config-test.php";
+        $cmd[] = __DIR__ . "/../src/config-test.php";
         $cmd[] = "--config {$config}";
         if ($this->debug) {
             $cmd[] = "--debug";
@@ -193,7 +191,7 @@ class ProcWatcher implements ServerWatcher {
         if ($ini = get_cfg_var('cfg_file_path')) {
             $parts[] = "-c \"{$ini}\"";
         }
-        $parts[] = __DIR__ . "/../../src/worker.php";
+        $parts[] = __DIR__ . "/../src/worker.php";
         $parts[] = "--config {$this->config}";
         $parts[] = "--ipcuri {$this->ipcUri}";
         if ($this->debug) {

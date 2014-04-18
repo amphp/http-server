@@ -1,9 +1,8 @@
 <?php
 
-namespace Aerys\Composite;
+namespace Aerys\Aggregate;
 
-use Aerys\Status,
-    Aerys\Response;
+use Aerys\Status, Aerys\Response;
 
 class Responder {
     private $responders;

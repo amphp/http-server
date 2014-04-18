@@ -4,7 +4,7 @@ declare(ticks = 1);
 
 namespace Aerys;
 
-use Alert\Reactor, Aerys\Server;
+use Alert\Reactor;
 
 class ProcWorker {
     private $reactor;
