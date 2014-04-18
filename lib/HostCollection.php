@@ -56,7 +56,7 @@ class HostCollection implements \Countable {
             $host = $this->selectDefaultHost($defaultHostId);
         }
 
-        if ($host) {
+        if (isset($host)) {
             $isRequestedHostValid = TRUE;
         } else {
             $host = $this->selectDefaultHost($defaultHostId);
