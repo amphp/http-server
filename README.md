@@ -6,6 +6,8 @@ A performant non-blocking HTTP/1.1 application/websocket server written in PHP.
 
 ```bash
 $ git clone --recursive https://github.com/rdlowrey/Aerys.git
+$ cd Aerys
+$ git submodule update --init --recursive
 ```
 
 ## Running a Server
