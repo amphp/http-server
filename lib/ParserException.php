@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-class ParseException extends \RuntimeException {
+class ParserException extends \RuntimeException {
     private $parsedMsgArr;
 
     public function __construct(array $parsedMsgArr, $msg, $errNo, \Exception $previousException = NULL) {
