@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Watch;
+namespace Aerys;
 
 trait CpuCounter {
     private function countCpuCores() {

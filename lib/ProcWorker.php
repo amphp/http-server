@@ -2,7 +2,7 @@
 
 declare(ticks = 1);
 
-namespace Aerys\Watch;
+namespace Aerys;
 
 use Alert\Reactor, Aerys\Server;
 

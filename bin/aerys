@@ -15,7 +15,7 @@ $help = <<<EOT
     -d, --debug       Start the server in debug mode
     -c, --config      Use the specified config file to bootstrap the server
     -w, --workers     Manually specify worker count (default: CPU core count)
-    -z, --control     Specify a port number for server control commands
+    -z, --control     A port number on which to listen for stop/reload commands
 
     Example Usage:
 
@@ -29,19 +29,19 @@ EOT;
 
 try {
 
-    $options = (new Aerys\Watch\BinOptions)->loadOptions();
+    $options = (new Aerys\BinOptions)->loadOptions();
 
     if ($options->getHelp()) {
         echo $help;
         exit(0);
     } elseif ($options->getDebug()) {
-        $watcher = new Aerys\Watch\DebugWatcher;
+        $watcher = new Aerys\DebugWatcher;
     } elseif (extension_loaded('pthreads')) {
-        $watcher = new Aerys\Watch\ThreadWatcher;
+        $watcher = new Aerys\ThreadWatcher;
     } elseif (extension_loaded('pcntl')) {
-        $watcher = new Aerys\Watch\ForkWatcher;
+        $watcher = new Aerys\ForkWatcher;
     } else {
-        $watcher = new Aerys\Watch\ProcWatcher;
+        $watcher = new Aerys\ProcWatcher;
     }
 
     $watcher->watch($options);

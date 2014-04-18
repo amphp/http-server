@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Watch;
+namespace Aerys;
 
 class BinOptions {
     private $help;
@@ -29,7 +29,7 @@ class BinOptions {
      *
      * @param array $options Used if defined, loaded from the CLI otherwise
      * @throws Aerys\BootException
-     * @return Aerys\Watch\BinOptions Returns the current object instance
+     * @return Aerys\BinOptions Returns the current object instance
      */
     public function loadOptions(array $options = []) {
         $rawOptions = $options ? $options : getopt($this->shortOpts, $this->longOpts);

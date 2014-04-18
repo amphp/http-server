@@ -2,7 +2,7 @@
 
 declare(ticks = 1);
 
-namespace Aerys\Watch;
+namespace Aerys;
 
 use Alert\Reactor,
     Alert\ReactorFactory,
@@ -30,7 +30,7 @@ class ThreadWatcher implements ServerWatcher {
         $this->reactor = $reactor ?: (new ReactorFactory)->select();
         $this->hostBinder = $hostBinder ?: new HostBinder;
         $this->threads = new \SplObjectStorage;
-        $this->threadReflection = new \ReflectionClass('Aerys\Watch\ThreadWorker');
+        $this->threadReflection = new \ReflectionClass('Aerys\ThreadWorker');
     }
 
     public function watch(BinOptions $binOptions) {

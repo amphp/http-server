@@ -2,10 +2,10 @@
 
 declare(ticks = 1);
 
-namespace Aerys\Watch;
+namespace Aerys;
 
 use Aerys\Server,
-    Aerys\Watch\BinOptions,
+    Aerys\BinOptions,
     Aerys\Bootstrapper;
 
 class DebugWatcher {
