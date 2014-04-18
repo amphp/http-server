@@ -8,7 +8,6 @@ $ipcUri = $opts['ipcuri'];
 $debug = isset($opts['debug']);
 list($reactor, $server) = (new Aerys\Bootstrapper)->boot($config, $opts = ['debug' => $debug]);
 (new Aerys\ProcWorker($reactor, $server))
-    ->registerSignals()
     ->registerShutdown()
     ->start($ipcUri)
     ->run()

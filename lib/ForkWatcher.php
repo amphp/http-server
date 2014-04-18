@@ -194,7 +194,6 @@ class ForkWatcher implements ServerWatcher {
 
         (new ProcWorker($reactor, $server))
             ->start($this->ipcUri)
-            ->registerSignals()
             ->registerShutdown()
             ->run()
         ;

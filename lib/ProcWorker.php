@@ -17,16 +17,6 @@ class ProcWorker {
         $this->server = $server;
     }
 
-    public function registerSignals() {
-        if (extension_loaded('pcntl')) {
-            $stopCallback = [$this, 'stop'];
-            pcntl_signal(SIGINT, $stopCallback);
-            pcntl_signal(SIGTERM, $stopCallback);
-        }
-
-        return $this;
-    }
-
     public function registerShutdown() {
         register_shutdown_function([$this, 'shutdown']);
 
