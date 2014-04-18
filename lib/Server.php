@@ -168,7 +168,7 @@ class Server {
             $this->renewHttpDate();
             $this->keepAliveWatcher = $this->reactor->repeat(function() {
                 $this->timeoutKeepAlives();
-            }, $intervalInSeconds = 1);
+            }, $msInterval = 1000);
 
             $this->state = self::STARTED;
         } else {
