@@ -10,28 +10,53 @@ $ cd Aerys
 $ git submodule update --init --recursive
 ```
 
+## Dependencies
+
+#### REQUIRED
+
+- PHP 5.5+ for unencrypted servers
+- PHP 5.6+ required for TLS encryption
+- [Alert](https://github.com/rdlowrey/Alert) IO, timer and signal event reactors
+- [Auryn](https://github.com/rdlowrey/Auryn) A dependency injector used to bootstrap applications
+
+#### OPTIONAL PHP EXTENSIONS
+
+- [pecl/libevent](http://pecl.php.net/package/libevent) Though optional, production servers *SHOULD*
+employ the libevent extension
+- [pecl/pthreads](http://pecl.php.net/package/pthreads) Though optional, productions servers *SHOULD*
+have pthreads if they wish to serve static files. Filesystem IO operations will block the main event
+loop without this extension.
+
+> **NOTE:** Windows users can find DLLs for both pecl extensions at the
+> [windows.php.net download index](http://windows.php.net/downloads/pecl/releases/).
+
+#### TESTING
+
+@TODO
+
 ## Running a Server
 
-To start a server pass a config file (`-c` or `--config`) to the aerys binary:
+To start a server pass a config file (`-c, --config`) to the aerys binary:
 
 ```bash
-$ bin/aerys --config = "/path/to/config.php"
+$ bin/aerys -c "/path/to/config.php"
 ```
 
-Get help via `-h` or `--help`:
+Use the `-h, --help` switches for more instructions.
 
-```bash
-$ bin/aerys --h
-```
+## Example Configs
+
+Every Aerys application is initialized using a PHP config file containing `Aerys\App` instances
+and server-wide option settings.
 
 ##### Hello World
 
-Any string or seekable stream resource may be returned as a response. Resources are automatically
-streamed to clients.
+Any returned string is treated as a response. Aerys handles the HTTP protocol details of sending
+the returned string to clients (similar to the classic PHP web SAPI).
 
 ```php
 <?php
-require __DIR__ . '/path/to/aerys/src/bootstrap.php';
+require '/path/to/aerys/src/bootstrap.php';
 
 // Send a basic 200 response to all requests on port 80.
 $myApp = (new Aerys\App)->addResponder(function() {
@@ -42,24 +67,29 @@ $myApp = (new Aerys\App)->addResponder(function() {
 ##### The HTTP Request Environment
 
 Aerys passes request details to applications using a map structure similar to the PHP web SAPI's
-`$_SERVER`. The example below returnes the contents of the request environment as a response.
+`$_SERVER`. The example below returns the contents of the request environment in a response.
 
 ```php
 <?php
-require __DIR__ . '/path/to/aerys/src/bootstrap.php';
+require '/path/to/aerys/src/bootstrap.php';
 
-// Responders are passed an environment array and Request ID
+// Responders are passed an environment array
 $myApp = (new Aerys\App)->addResponder(function(array $request) {
     return "<html><body><pre>" . print_r($request, TRUE) . "</pre></body></html>";
 });
 ```
 
+> **NOTE:** Unlike the PHP web SAPI there is no concept of request "superglobals" in Aerys. All data
+> describing client requests is passed directly to applications in the `$request` array argument.
+
 ##### The HTTP Response
 
+Applications may optionally customize headers, status codes and reason phrases by returning an
+`Aerys\Response` instance.
 
 ```php
 <?php
-require __DIR__ . '/path/to/aerys/src/bootstrap.php';
+require '/path/to/aerys/src/bootstrap.php';
 
 $myApp = (new Aerys\App)->addResponder(function($request) {
     return (new Aerys\Response)
@@ -68,6 +98,14 @@ $myApp = (new Aerys\App)->addResponder(function($request) {
         ->setBody('<html><body><h1>ZOMG PGP!!!11</h1></body></html>');
 });
 ```
+
+##### Streaming Responses
+
+@TODO
+
+##### Synchronous Responses
+
+@TODO
 
 ##### Server-Wide Options
 
@@ -82,7 +120,7 @@ up-to-date list of possible options please consult the `Aerys\Server` source cod
 
 ```php
 <?php
-require __DIR__ . '/path/to/aerys/src/bootstrap.php';
+require '/path/to/aerys/src/bootstrap.php';
 
 $__maxConnections = 2500;
 $__maxRequests = 100;
@@ -99,12 +137,12 @@ $myApp = (new Aerys\App)->addResponder(function() {
 
 ##### Named Virtual Hosts
 
-Each `App` instance corresponds to a host on your server. Users may add as many host names as they
-like.
+Each `App` instance in the config file corresponds to a host on your server. Users may specify a
+separate app for each domain/subdomain they wish to expose. For example ...
 
 ```php
 <?php
-require __DIR__ . '/path/to/aerys/src/bootstrap.php';
+require '/path/to/aerys/src/bootstrap.php';
 
 // mysite.com
 $mySite = (new Aerys\App)
@@ -136,7 +174,7 @@ serving to your applications.
 
 ```php
 <?php
-require __DIR__ . '/path/to/aerys/src/bootstrap.php';
+require '/path/to/aerys/src/bootstrap.php';
 
 // Any URI not matched by another handler is treated as a static file request
 $myApp = (new Aerys\App)
@@ -146,17 +184,21 @@ $myApp = (new Aerys\App)
     ->setDocumentRoot('/path/to/static/file/root/');
 ```
 
+> **NOTE:** Though static file serving will work without the `pecl/pthreads` extension (to ease
+> development) the deployment of a static file server in production without pthreads is strongly
+> discouraged. Without this extension static file transmission can block the server's event loop and
+> cause severe slowdowns. Ensure you have pthreads before serving static files in production.
+
 ##### Basic Routing
 
-While you can add your own user responder callables, it's usually better to take advantage of the
-built-in routing functionality to map URIs and HTTP method verbs to specific application endpoints.
-Any valid callable or class instance method may be specified as a route target. Note that class
-methods have their instances automatically provisioned and injected affording routed applications
-all the benefits of clean code and dependency injection.
+Aerys provides built-in URI and HTTP method routing to map requests to the application endpoints of
+your choosing. Any valid callable or class instance method may be specified as a route target. Note
+that class methods have their instances automatically provisioned and injected affording routed
+applications all the benefits of clean code and dependency injection.
 
 ```php
 <?php
-require __DIR__ . '/path/to/aerys/src/bootstrap.php';
+require '/path/to/aerys/src/bootstrap.php';
 
 // Any PHP callable may be specified as a route target (instance methods, too!)
 $myApp = (new Aerys\App)
@@ -170,6 +212,10 @@ $myApp = (new Aerys\App)
     ->setDocumentRoot('/path/to/static/files'); // <-- only used if no routes match
 ```
 
+##### Dependency Injection
+
+@TODO
+
 ##### Asynchronous Responses
 
 The most important thing to remember about Aerys (and indeed any server running inside a non-blocking
@@ -180,7 +226,7 @@ as a `Generator` and cooperatively multitask with the server using non-blocking 
 
 ```php
 <?php
-require __DIR__ . '/path/to/aerys/src/bootstrap.php';
+require '/path/to/aerys/src/bootstrap.php';
 
 function asyncResponder($request) {
     $result = (yield asyncMultiply(6, 7));
@@ -194,7 +240,7 @@ function multiAsyncResponder($request) {
         asyncMultiply(3, 3),
         asyncMultiply(2, 9)
     ]);
-    
+
     yield "<html><body><h1>{$result1} | {$result2} | {$result3}</h1></body></html>";
 }
 
@@ -212,29 +258,3 @@ $myApp = (new Aerys\App)
 ##### Websockets
 
 @TODO
-
-
-## Dependencies
-
-#### REQUIRED
-
-- PHP 5.5+ for unencrypted servers
-- PHP 5.6+ required to use TLS encryption
-- [Alert](https://github.com/rdlowrey/Alert) IO and timer event reactors
-- [Auryn](https://github.com/rdlowrey/Auryn) A dependency injector to bootstrap applications
-
-#### OPTIONAL PHP EXTENSIONS
-
-- [pecl/libevent](http://pecl.php.net/package/libevent) Though optional, production servers *SHOULD*
-employ the libevent extension
-- [pecl/pthreads](http://pecl.php.net/package/pthreads) Though optional, productions servers *SHOULD*
-have pthreads if they wish to serve static files. Filesystem IO operations will block the main event
-loop without this extension.
-
-> **NOTE:** Windows users can find DLLs for both pecl extensions at the
-> [windows.php.net download index](http://windows.php.net/downloads/pecl/releases/).
-
-#### TESTING
-
-- [Artax](https://github.com/rdlowrey/Artax) Required to execute the full integration test suite
-without skipping some cases
