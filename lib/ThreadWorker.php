@@ -6,7 +6,6 @@ class ThreadWorker extends \Thread {
     private $debug;
     private $config;
     private $ipcUri;
-    private $fatals;
     private $sockPrefix = '__sock_';
 
     public function __construct($debug, $config, $ipcUri /*, $sock1, $sock2, ... $sockN*/) {
@@ -21,16 +20,6 @@ class ThreadWorker extends \Thread {
             $name = $this->sockPrefix . base64_encode(stream_socket_get_name($sock, FALSE));
             $this->{$name} = $sock;
         }
-
-        $this->fatals = [
-            E_ERROR,
-            E_PARSE,
-            E_USER_ERROR,
-            E_CORE_ERROR,
-            E_CORE_WARNING,
-            E_COMPILE_ERROR,
-            E_COMPILE_WARNING
-        ];
     }
 
     public function run() {
@@ -55,7 +44,16 @@ class ThreadWorker extends \Thread {
 
         register_shutdown_function(function() use ($server) {
             $error = error_get_last();
-            if ($error && in_array($error['type'], $this->fatals)) {
+            $fatals = [
+                E_ERROR,
+                E_PARSE,
+                E_USER_ERROR,
+                E_CORE_ERROR,
+                E_CORE_WARNING,
+                E_COMPILE_ERROR,
+                E_COMPILE_WARNING
+            ];
+            if ($error && in_array($error['type'], $fatals)) {
                 extract($error);
                 printf("%s in %s on line %d\n", $message, $file, $line);
                 $server->stop()->onComplete(function() { exit(1); });
