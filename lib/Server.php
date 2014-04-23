@@ -18,12 +18,29 @@ class Server {
     const PAUSED = 3;
     const STOPPING = 4;
 
+    const OP_MAX_CONNECTIONS = 1;
+    const OP_MAX_REQUESTS = 2;
+    const OP_KEEP_ALIVE_TIMEOUT = 3;
+    const OP_DISABLE_KEEP_ALIVE = 4;
+    const OP_MAX_HEADER_BYTES = 5;
+    const OP_MAX_BODY_BYTES = 6;
+    const OP_DEFAULT_CONTENT_TYPE = 7;
+    const OP_DEFAULT_TEXT_CHARSET = 8;
+    const OP_AUTO_REASON_PHRASE = 9;
+    const OP_SEND_SERVER_TOKEN = 10;
+    const OP_NORMALIZE_METHOD_CASE = 11;
+    const OP_REQUIRE_BODY_LENGTH = 12;
+    const OP_SOCKET_SO_LINGER_ZERO = 13;
+    const OP_SOCKET_BACKLOG_SIZE = 14;
+    const OP_ALLOWED_METHODS = 15;
+    const OP_DEFAULT_HOST = 16;
+
     private static $BODY_STRING = 1;
     private static $BODY_CUSTOM = 2;
     private static $BODY_GENERATOR = 4;
     private static $BODY_ITERATOR = 8;
 
-    private $state = self::STOPPED;
+    private $state;
     private $reactor;
     private $hostBinder;
     private $debug;
@@ -45,7 +62,6 @@ class Server {
     private $keepAliveWatcher;
     private $keepAliveTimeouts = [];
 
-    private $errorLogPath = 'php://stderr';
     private $maxConnections = 1500;
     private $maxRequests = 150;
     private $keepAliveTimeout = 5;
@@ -60,7 +76,7 @@ class Server {
     private $requireBodyLength = TRUE;
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = 2097152;
-    private $allowedMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE', 'PUT', 'POST', 'PATCH', 'DELETE'];
+    private $allowedMethods;
     private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER; // @TODO Add option setter
     private $readGranularity = 262144; // @TODO Add option setter
     private $isExtSocketsEnabled;
@@ -72,6 +88,17 @@ class Server {
         $this->observers = new \SplObjectStorage;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
         $this->lastRequestId = PHP_INT_MAX * -1; // <-- 5.5 compatibility
+        $this->state = self::STOPPED;
+        $this->allowedMethods = [
+            'GET' => 1,
+            'HEAD' => 1,
+            'OPTIONS' => 1,
+            'TRACE' => 1,
+            'PUT' => 1,
+            'POST' => 1,
+            'PATCH' => 1,
+            'DELETE' => 1,
+        ];
     }
 
     /**
@@ -591,10 +618,10 @@ class Server {
                 ->setReason('Bad Request: Invalid Host')
                 ->setBody('<html><body><h1>400 Bad Request: Invalid Host</h1></body></html>')
             ;
-        } elseif (!in_array($__method, $this->allowedMethods)) {
+        } elseif (!isset($this->allowedMethods[$__method])) {
             $cycle->response = (new Response)
                 ->setStatus(Status::METHOD_NOT_ALLOWED)
-                ->setHeader('Allow', implode(',', $this->allowedMethods))
+                ->setHeader('Allow', implode(',', array_keys($this->allowedMethods)))
                 ->setHeader('Connection', 'close')
             ;
         } elseif ($__method === 'TRACE' && empty($cycle->ucHeaders['MAX_FORWARDS'])) {
@@ -608,7 +635,7 @@ class Server {
         } elseif ($__method === 'OPTIONS' && $cycle->uri === '*') {
             $cycle->response = (new Response)
                 ->setStatus(Status::OK)
-                ->setHeader('Allow', implode(',', $this->allowedMethods))
+                ->setHeader('Allow', implode(',', array_keys($this->allowedMethods)))
             ;
         } elseif ($this->requireBodyLength && $__headersOnly && empty($cycle->ucHeaders['CONTENT-LENGTH'])) {
             $cycle->response = (new Response)
@@ -1214,46 +1241,44 @@ class Server {
     /**
      * Set an individual server option directive
      *
-     * @param string $option The option key (case-INsensitve)
+     * @param int $option A server option constant
      * @param mixed $value The option value to assign
      * @throws \DomainException On unrecognized option key
      * @return void
      */
     public function setOption($option, $value) {
-        switch (strtolower($option)) {
-            case 'maxconnections':
+        switch ($option) {
+            case self::OP_MAX_CONNECTIONS:
                 $this->setMaxConnections($value); break;
-            case 'maxrequests':
+            case self::OP_MAX_REQUESTS:
                 $this->setMaxRequests($value); break;
-            case 'keepalivetimeout':
+            case self::OP_KEEP_ALIVE_TIMEOUT:
                 $this->setKeepAliveTimeout($value); break;
-            case 'disablekeepalive':
+            case self::OP_DISABLE_KEEP_ALIVE:
                 $this->setDisableKeepAlive($value); break;
-            case 'maxheaderbytes':
+            case self::OP_MAX_HEADER_BYTES:
                 $this->setMaxHeaderBytes($value); break;
-            case 'maxbodybytes':
+            case self::OP_MAX_BODY_BYTES:
                 $this->setMaxBodyBytes($value); break;
-            case 'defaultcontenttype':
+            case self::OP_DEFAULT_CONTENT_TYPE:
                 $this->setDefaultContentType($value); break;
-            case 'defaulttextcharset':
+            case self::OP_DEFAULT_TEXT_CHARSET:
                 $this->setDefaultTextCharset($value); break;
-            case 'autoreasonphrase':
+            case self::OP_AUTO_REASON_PHRASE:
                 $this->setAutoReasonPhrase($value); break;
-            case 'errorlogpath':
-                $this->setErrorLogPath($value); break;
-            case 'sendservertoken':
+            case self::OP_SEND_SERVER_TOKEN:
                 $this->setSendServerToken($value); break;
-            case 'normalizemethodcase':
+            case self::OP_NORMALIZE_METHOD_CASE:
                 $this->setNormalizeMethodCase($value); break;
-            case 'requirebodylength':
+            case self::OP_REQUIRE_BODY_LENGTH:
                 $this->setRequireBodyLength($value); break;
-            case 'socketsolingerzero':
+            case self::OP_SOCKET_SO_LINGER_ZERO:
                 $this->setSocketSoLingerZero($value); break;
-            case 'socketbacklogsize':
+            case self::OP_SOCKET_BACKLOG_SIZE:
                 $this->setSocketBacklogSize($value); break;
-            case 'allowedmethods':
+            case self::OP_ALLOWED_METHODS:
                 $this->setAllowedMethods($value); break;
-            case 'defaulthost':
+            case self::OP_DEFAULT_HOST:
                 $this->setDefaultHost($value); break;
             default:
                 throw new \DomainException(
@@ -1301,19 +1326,6 @@ class Server {
         $this->autoReasonPhrase = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
 
-    private function setErrorLogPath($path) {
-        if ($this->state !== self::$STOPPED) {
-            //$this->errorLogger->log('Cannot modify error log path while server is running');
-            // @TODO Update for logging
-        } elseif ($path && is_string($path)) {
-            $this->errorLogPath = $path;
-        } else {
-            throw new \InvalidArgumentException(
-                'Error log path expects a non-empty string'
-            );
-        }
-    }
-
     private function setSendServerToken($boolFlag) {
         $this->sendServerToken = filter_var($boolFlag, FILTER_VALIDATE_BOOLEAN);
     }
@@ -1351,7 +1363,7 @@ class Server {
             $methods[] = 'HEAD';
         }
 
-        $this->allowedMethods = array_unique($methods);
+        $this->allowedMethods = array_flip(array_unique($methods));
     }
 
     private function setDefaultHost($hostId) {
@@ -1361,45 +1373,43 @@ class Server {
     /**
      * Retrieve a server option value
      *
-     * @param string $option The (case-insensitive) server option key
+     * @param int $option A server option constant
      * @throws \DomainException On unknown option
-     * @return mixed The value of the requested server option
+     * @return mixed The current value of the requested option
      */
     public function getOption($option) {
-        switch (strtolower($option)) {
-            case 'maxconnections':
+        switch ($option) {
+            case self::OP_MAX_CONNECTIONS:
                 return $this->maxConnections;
-            case 'maxrequests':
+            case self::OP_MAX_REQUESTS:
                 return $this->maxRequests;
-            case 'keepalivetimeout':
+            case self::OP_KEEP_ALIVE_TIMEOUT:
                 return $this->keepAliveTimeout;
-            case 'disablekeepalive':
+            case self::OP_DISABLE_KEEP_ALIVE:
                 return $this->disableKeepAlive;
-            case 'maxheaderbytes':
+            case self::OP_MAX_HEADER_BYTES:
                 return $this->maxHeaderBytes;
-            case 'maxbodybytes':
+            case self::OP_MAX_BODY_BYTES:
                 return $this->maxBodyBytes;
-            case 'defaultcontenttype':
+            case self::OP_DEFAULT_CONTENT_TYPE:
                 return $this->defaultContentType;
-            case 'defaulttextcharset':
+            case self::OP_DEFAULT_TEXT_CHARSET:
                 return $this->defaultTextCharset;
-            case 'autoreasonphrase':
+            case self::OP_AUTO_REASON_PHRASE:
                 return $this->autoReasonPhrase;
-            case 'errorstream':
-                return $this->errorStream;
-            case 'sendservertoken':
+            case self::OP_SEND_SERVER_TOKEN:
                 return $this->sendServerToken;
-            case 'normalizemethodcase':
+            case self::OP_NORMALIZE_METHOD_CASE:
                 return $this->normalizeMethodCase;
-            case 'requirebodylength':
+            case self::OP_REQUIRE_BODY_LENGTH:
                 return $this->requireBodyLength;
-            case 'socketsolingerzero':
+            case self::OP_SOCKET_SO_LINGER_ZERO:
                 return $this->socketSoLingerZero;
-            case 'socketbacklogsize':
+            case self::OP_SOCKET_BACKLOG_SIZE:
                 return $this->hostBinder->getSocketBacklogSize();
-            case 'allowedmethods':
-                return $this->allowedMethods;
-            case 'defaulthost':
+            case self::OP_ALLOWED_METHODS:
+                return array_keys($this->allowedMethods);
+            case self::OP_DEFAULT_HOST:
                 return $this->defaultHost;
             default:
                 throw new \DomainException(
@@ -1409,29 +1419,28 @@ class Server {
     }
 
     /**
-     * Retrieve an associative array mapping all option keys to their current values
+     * Retrieve an indexed array mapping available options to their current values
      *
      * @return array
      */
     public function getAllOptions() {
         return [
-            'maxConnections'        => $this->maxConnections,
-            'maxRequests'           => $this->maxRequests,
-            'keepAliveTimeout'      => $this->keepAliveTimeout,
-            'disableKeepAlive'      => $this->disableKeepAlive,
-            'maxHeaderBytes'        => $this->maxHeaderBytes,
-            'maxBodyBytes'          => $this->maxBodyBytes,
-            'defaultContentType'    => $this->defaultContentType,
-            'defaultTextCharset'    => $this->defaultTextCharset,
-            'autoReasonPhrase'      => $this->autoReasonPhrase,
-            'errorLogPath'          => $this->errorLogPath,
-            'sendServerToken'       => $this->sendServerToken,
-            'normalizeMethodCase'   => $this->normalizeMethodCase,
-            'requireBodyLength'     => $this->requireBodyLength,
-            'socketSoLingerZero'    => $this->socketSoLingerZero,
-            'socketBacklogSize'     => $this->hostBinder->getSocketBacklogSize(),
-            'allowedMethods'        => $this->allowedMethods,
-            'defaultHost'           => $this->defaultHost
+            self::OP_MAX_CONNECTIONS        => $this->maxConnections,
+            self::OP_MAX_REQUESTS           => $this->maxRequests,
+            self::OP_KEEP_ALIVE_TIMEOUT     => $this->keepAliveTimeout,
+            self::OP_DISABLE_KEEP_ALIVE     => $this->disableKeepAlive,
+            self::OP_MAX_HEADER_BYTES       => $this->maxHeaderBytes,
+            self::OP_MAX_BODY_BYTES         => $this->maxBodyBytes,
+            self::OP_DEFAULT_CONTENT_TYPE   => $this->defaultContentType,
+            self::OP_DEFAULT_TEXT_CHARSET   => $this->defaultTextCharset,
+            self::OP_AUTO_REASON_PHRASE     => $this->autoReasonPhrase,
+            self::OP_SEND_SERVER_TOKEN      => $this->sendServerToken,
+            self::OP_NORMALIZE_METHOD_CASE  => $this->normalizeMethodCase,
+            self::OP_REQUIRE_BODY_LENGTH    => $this->requireBodyLength,
+            self::OP_SOCKET_SO_LINGER_ZERO  => $this->socketSoLingerZero,
+            self::OP_SOCKET_BACKLOG_SIZE    => $this->hostBinder->getSocketBacklogSize(),
+            self::OP_ALLOWED_METHODS        => array_keys($this->allowedMethods),
+            self::OP_DEFAULT_HOST           => $this->defaultHost
         ];
     }
 

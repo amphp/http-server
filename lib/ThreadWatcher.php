@@ -46,7 +46,7 @@ class ThreadWatcher implements ServerWatcher {
 
         $this->startIpcServer();
 
-        $this->hostBinder->setSocketBacklogSize($options['socketBacklogSize']);
+        $this->hostBinder->setSocketBacklogSize($options[Server::OP_SOCKET_BACKLOG_SIZE]);
         $this->workerCount = $binOptions->getWorkers() ?: $this->countCpuCores();
         $this->servers = $this->hostBinder->bindAddresses($bindTo, $this->servers);
 
@@ -64,7 +64,10 @@ class ThreadWatcher implements ServerWatcher {
         $this->reactor->run();
 
         foreach ($this->threads as $thread) {
-            $thread->join();
+            if (!$thread->isJoined()) {
+                $thread->join();
+            }
+            $this->threads->detach($thread);
         }
     }
 
@@ -106,12 +109,12 @@ class ThreadWatcher implements ServerWatcher {
         if ($this->isStopping && empty($this->ipcClients)) {
             $this->isStopping = FALSE;
             $this->reactor->stop();
-        } elseif (!($this->isStopping || $this->reloading)) {
+        } elseif (!($this->isStopping || $this->isReloading)) {
             for ($i=count($this->ipcClients); $i<$this->workerCount; $i++) {
                 $this->spawn();
             }
-        } elseif ($this->reloading && count($this->ipcClients) === $this->workerCount) {
-            $this->reloading = FALSE;
+        } elseif ($this->isReloading && count($this->ipcClients) === $this->workerCount) {
+            $this->isReloading = FALSE;
         }
     }
 
@@ -142,8 +145,8 @@ class ThreadWatcher implements ServerWatcher {
     }
 
     public function reload() {
-        if (!($this->reloading || $this->isStopping)) {
-            $this->reloading = TRUE;
+        if (!($this->isReloading || $this->isStopping)) {
+            $this->isReloading = TRUE;
             $this->notifyWorkers();
             for ($i=0; $i < $this->workerCount; $i++) {
                 $this->spawn();

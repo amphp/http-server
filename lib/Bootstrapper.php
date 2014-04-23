@@ -6,12 +6,33 @@ use Alert\Reactor,
     Alert\ReactorFactory,
     Auryn\Injector,
     Auryn\Provider,
+    Aerys\Server,
     Aerys\Aggregate\Responder as AggregateResponder;
 
 class Bootstrapper {
     const OPT_VAR_PREFIX = '__';
-    private static $ILLEGAL_CONFIG_VAR = 'Illegal config variable; "%s" is a reserved name';
+
     private $injector;
+    private $serverOptMap = [
+        '__maxconnections'      => Server::OP_MAX_CONNECTIONS,
+        '__maxrequests'         => Server::OP_MAX_REQUESTS,
+        '__keepalivetimeout'    => Server::OP_KEEP_ALIVE_TIMEOUT,
+        '__disablekeepalive'    => Server::OP_DISABLE_KEEP_ALIVE,
+        '__maxheaderbytes'      => Server::OP_MAX_HEADER_BYTES,
+        '__maxbodybytes'        => Server::OP_MAX_BODY_BYTES,
+        '__defaultcontenttype'  => Server::OP_DEFAULT_CONTENT_TYPE,
+        '__defaulttextcharset'  => Server::OP_DEFAULT_TEXT_CHARSET,
+        '__autoreasonphrase'    => Server::OP_AUTO_REASON_PHRASE,
+        '__sendservertoken'     => Server::OP_SEND_SERVER_TOKEN,
+        '__normalizemethodcase' => Server::OP_NORMALIZE_METHOD_CASE,
+        '__requirebodylength'   => Server::OP_REQUIRE_BODY_LENGTH,
+        '__socketsolingersero'  => Server::OP_SOCKET_SO_LINGER_ZERO,
+        '__socketbacklogsize'   => Server::OP_SOCKET_BACKLOG_SIZE,
+        '__allowedmethods'      => Server::OP_ALLOWED_METHODS,
+        '__defaulthost'         => Server::OP_DEFAULT_HOST,
+    ];
+
+    private static $ILLEGAL_CONFIG_VAR = 'Illegal config variable; "%s" is a reserved name';
 
     /**
      * Bootstrap a server and its host definitions from command line arguments
@@ -47,11 +68,8 @@ class Bootstrapper {
         }
         $this->injector = NULL;
 
-        $allowedOptions = array_map('strtolower', array_keys($server->getAllOptions()));
         foreach ($serverOpts as $key => $value) {
-            if (in_array(strtolower($key), $allowedOptions)) {
-                $server->setOption($key, $value);
-            }
+            $server->setOption($key, $value);
         }
 
         if ($bindOpt) {
@@ -93,21 +111,21 @@ class Bootstrapper {
         $__apps = $__reactors = $__injectors = $__options = [];
 
         foreach ($__vars as $key => $value) {
+            $lowKey = strtolower($key);
             if ($value instanceof App) {
                 $__apps[] = $value;
             } elseif ($value instanceof Injector) {
                 $__injectors[] = $value;
             } elseif ($value instanceof Reactor) {
                 $__reactors[] = $value;
-            } elseif (substr($key, 0, 2) === self::OPT_VAR_PREFIX) {
-                $key = substr($key, 2);
-                $__options[$key] = $value;
+            } elseif (isset($this->serverOptMap[$lowKey])) {
+                $__options[$this->serverOptMap[$lowKey]] = $value;
             }
         }
 
         if (empty($__apps)) {
             throw new BootException(
-                "No app configuration instances found in config file"
+                sprintf("No app configuration instances found in config file: %s", $__config)
             );
         }
 
