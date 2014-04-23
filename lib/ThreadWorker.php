@@ -50,7 +50,7 @@ class ThreadWorker extends \Thread {
         ]);
 
         $reactor->onReadable($ipcSock, function() use ($server) {
-            $server->stop()->onComplete(function() { exit; });
+            $server->stop()->onComplete(function() { exit(0); });
         });
 
         register_shutdown_function(function() use ($server) {
@@ -58,7 +58,7 @@ class ThreadWorker extends \Thread {
             if ($error && in_array($error['type'], $this->fatals)) {
                 extract($error);
                 printf("%s in %s on line %d\n", $message, $file, $line);
-                $server->stop()->onComplete(function() { exit; });
+                $server->stop()->onComplete(function() { exit(1); });
             }
         });
 

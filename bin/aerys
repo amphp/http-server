@@ -1,6 +1,6 @@
 #!/usr/bin/env php
-<?php
 
+<?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -36,7 +36,7 @@ try {
         exit(0);
     } elseif ($options->getDebug()) {
         $watcher = new Aerys\DebugWatcher;
-    } elseif (extension_loaded('pthreads')) {
+    } elseif (extension_loaded('pthreads') && extension_loaded('libevent')) {
         $watcher = new Aerys\ThreadWatcher;
     } elseif (extension_loaded('pcntl')) {
         $watcher = new Aerys\ForkWatcher;

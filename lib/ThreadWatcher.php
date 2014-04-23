@@ -1,13 +1,14 @@
 <?php
 
-declare(ticks = 1);
-
 namespace Aerys;
 
 use Alert\Reactor, Alert\ReactorFactory;
 
 class ThreadWatcher implements ServerWatcher {
     use CpuCounter;
+
+    const SIGINT = 2;
+    const SIGTERM = 15;
 
     private $reactor;
     private $hostBinder;
@@ -49,12 +50,6 @@ class ThreadWatcher implements ServerWatcher {
         $this->workerCount = $binOptions->getWorkers() ?: $this->countCpuCores();
         $this->servers = $this->hostBinder->bindAddresses($bindTo, $this->servers);
 
-        if (extension_loaded('pcntl')) {
-            $stopCallback = [$this, 'stop'];
-            pcntl_signal(SIGINT, $stopCallback);
-            pcntl_signal(SIGTERM, $stopCallback);
-        }
-
         foreach ($bindTo as $addr) {
             $addr = substr(str_replace('0.0.0.0', '*', $addr), 6);
             printf("Listening for HTTP traffic on %s ...\n", $addr);
@@ -64,10 +59,12 @@ class ThreadWatcher implements ServerWatcher {
             $this->spawn();
         }
 
+        $this->reactor->onSignal(self::SIGINT, [$this, 'stop']);
+        $this->reactor->onSignal(self::SIGTERM, [$this, 'stop']);
         $this->reactor->run();
 
         foreach ($this->threads as $thread) {
-            $thread->kill();
+            $thread->join();
         }
     }
 
@@ -89,11 +86,11 @@ class ThreadWatcher implements ServerWatcher {
         while ($ipcClient = @stream_socket_accept($ipcServer, $timeout = 0)) {
             $clientId = (int) $ipcClient;
             stream_set_blocking($ipcClient, FALSE);
-            $this->ipcClients[$clientId] = $ipcClient;
-            $this->reactor->onReadable($ipcClient, function($watcherId, $ipcClient) {
+            $watcherId = $this->reactor->onReadable($ipcClient, function($watcherId, $ipcClient) {
                 $clientId = (int) $ipcClient;
                 $this->unloadIpcClient($clientId, $watcherId, $ipcClient);
             });
+            $this->ipcClients[$clientId] = [$watcherId, $ipcClient];
         }
     }
 
@@ -136,11 +133,10 @@ class ThreadWatcher implements ServerWatcher {
     private function notifyWorkers() {
         foreach ($this->ipcClients as $clientId => $clientStruct) {
             list($watcherId, $ipcClient) = $clientStruct;
-            @stream_set_blocking($ipcClient, TRUE);
-            if (!@fwrite($ipcClient, ".")) {
-                $this->unloadIpcClient($clientId, $watcherId, $ipcClient);
-            } else {
+            if (@stream_set_blocking($ipcClient, TRUE) && @fwrite($ipcClient, ".")) {
                 stream_set_blocking($ipcClient, FALSE);
+            } else {
+                $this->unloadIpcClient($clientId, $watcherId, $ipcClient);
             }
         }
     }

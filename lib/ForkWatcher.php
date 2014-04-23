@@ -33,11 +33,6 @@ class ForkWatcher implements ServerWatcher {
         $this->startIpcServer();
         $this->bindServerSocks();
 
-        $stopCallback = [$this, 'stop'];
-        pcntl_signal(SIGCHLD, SIG_IGN);
-        pcntl_signal(SIGINT, $stopCallback);
-        pcntl_signal(SIGTERM, $stopCallback);
-
         $this->workerCount = $binOptions->getWorkers() ?: $this->countCpuCores();
         for ($i=0; $i < $this->workerCount; $i++) {
             $this->spawn();
@@ -194,7 +189,7 @@ class ForkWatcher implements ServerWatcher {
 
         (new ProcWorker($reactor, $server))
             ->start($this->ipcUri)
-            ->registerShutdown()
+            ->register()
             ->run()
         ;
 

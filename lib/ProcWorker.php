@@ -1,12 +1,13 @@
 <?php
 
-declare(ticks = 1);
-
 namespace Aerys;
 
-use Alert\Reactor;
+use Alert\Reactor, Alert\SignalReactor;
 
 class ProcWorker {
+    const SIGINT = 2;
+    const SIGTERM = 15;
+
     private $reactor;
     private $server;
     private $watcher;
@@ -17,8 +18,16 @@ class ProcWorker {
         $this->server = $server;
     }
 
-    public function registerShutdown() {
+    public function register() {
         register_shutdown_function([$this, 'shutdown']);
+
+        if ($this->reactor instanceof SignalReactor) {
+            $this->reactor->onSignal(self::SIGINT, [$this, 'stop']);
+            $this->reactor->onSignal(self::SIGTERM, [$this, 'stop']);
+        } elseif (extension_loaded('pcntl')) {
+            pcntl_signal(SIGINT, [$this, 'stop']);
+            pcntl_signal(SIGTERM, [$this, 'stop']);
+        }
 
         return $this;
     }

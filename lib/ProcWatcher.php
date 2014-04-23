@@ -1,7 +1,5 @@
 <?php
 
-declare(ticks = 1);
-
 namespace Aerys;
 
 use Alert\Reactor, Alert\ReactorFactory;
@@ -37,12 +35,6 @@ class ProcWatcher implements ServerWatcher {
         foreach ($this->hostAddrs as $address) {
             $address = substr(str_replace('0.0.0.0', '*', $address), 6);
             printf("Listening for HTTP traffic on %s ...\n", $address);
-        }
-
-        if (extension_loaded('pcntl')) {
-            $stopCallback = [$this, 'stop'];
-            pcntl_signal(SIGINT, $stopCallback);
-            pcntl_signal(SIGTERM, $stopCallback);
         }
 
         $this->reactor->run();
@@ -136,12 +128,12 @@ class ProcWatcher implements ServerWatcher {
             $this->isStopping = FALSE;
             $this->reactor->stop();
             return;
-        } elseif (!($this->isStopping || $this->reloading)) {
+        } elseif (!($this->isStopping || $this->isReloading)) {
             for ($i=count($this->ipcClients); $i<$this->workerCount; $i++) {
                 $this->spawn();
             }
-        } elseif ($this->reloading && count($this->ipcClients) === $this->workerCount) {
-            $this->reloading = FALSE;
+        } elseif ($this->isReloading && count($this->ipcClients) === $this->workerCount) {
+            $this->isReloading = FALSE;
         }
     }
 
@@ -177,8 +169,8 @@ class ProcWatcher implements ServerWatcher {
     }
 
     public function reload() {
-        if (!($this->reloading || $this->isStopping)) {
-            $this->reloading = TRUE;
+        if (!($this->isReloading || $this->isStopping)) {
+            $this->isReloading = TRUE;
             for ($i=0; $i < $this->workerCount; $i++) {
                 $this->spawn();
             }
