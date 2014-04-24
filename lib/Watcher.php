@@ -2,6 +2,6 @@
 
 namespace Aerys;
 
-interface ServerWatcher {
+interface Watcher {
     public function watch(BinOptions $binOptions);
 }

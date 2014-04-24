@@ -4,7 +4,7 @@ namespace Aerys;
 
 use Alert\Reactor, Alert\SignalReactor;
 
-class ProcWorker {
+class WorkerProcess {
     const SIGINT = 2;
     const SIGTERM = 15;
 

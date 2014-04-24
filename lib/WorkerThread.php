@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-class ThreadWorker extends \Thread {
+class WorkerThread extends \Thread {
     private $debug;
     private $config;
     private $ipcUri;

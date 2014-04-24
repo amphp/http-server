@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-class TryThreadConfig extends \Thread {
+class WorkerThreadConfigTry extends \Thread {
     private $debug;
     private $config;
     private $bind;

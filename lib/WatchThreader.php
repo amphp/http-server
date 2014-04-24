@@ -4,7 +4,7 @@ namespace Aerys;
 
 use Alert\Reactor, Alert\ReactorFactory;
 
-class ThreadWatcher implements ServerWatcher {
+class WatchThreader implements Watcher {
     use CpuCounter;
 
     const SIGINT = 2;
@@ -27,14 +27,14 @@ class ThreadWatcher implements ServerWatcher {
         $this->reactor = $reactor ?: (new ReactorFactory)->select();
         $this->hostBinder = $hostBinder ?: new HostBinder;
         $this->threads = new \SplObjectStorage;
-        $this->threadReflection = new \ReflectionClass('Aerys\ThreadWorker');
+        $this->threadReflection = new \ReflectionClass('Aerys\WorkerThread');
     }
 
     public function watch(BinOptions $binOptions) {
         $this->debug = $binOptions->getDebug();
         $this->config = $binOptions->getConfig();
 
-        $thread = new TryThreadConfig($this->debug, $this->config, $bind = TRUE);
+        $thread = new WorkerThreadConfigTry($this->debug, $this->config, $bind = TRUE);
         $thread->start();
         $thread->join();
 

@@ -4,7 +4,7 @@ declare(ticks = 1);
 
 namespace Aerys;
 
-class DebugWatcher {
+class WatchDebugger {
     public function watch(BinOptions $binOptions) {
         $config = $binOptions->getConfig();
         list($reactor, $server, $hosts) = (new Bootstrapper)->boot($config, $opt = [

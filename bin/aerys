@@ -35,13 +35,13 @@ try {
         echo $help;
         exit(0);
     } elseif ($options->getDebug()) {
-        $watcher = new Aerys\DebugWatcher;
+        $watcher = new Aerys\WatchDebugger;
     } elseif (extension_loaded('pthreads') && extension_loaded('libevent')) {
-        $watcher = new Aerys\ThreadWatcher;
+        $watcher = new Aerys\WatchThreader;
     } elseif (extension_loaded('pcntl')) {
-        $watcher = new Aerys\ForkWatcher;
+        $watcher = new Aerys\WatchForker;
     } else {
-        $watcher = new Aerys\ProcWatcher;
+        $watcher = new Aerys\WatchProcessor;
     }
 
     $watcher->watch($options);
