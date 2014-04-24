@@ -1,12 +1,6 @@
 [submodule "vendor/Auryn"]
 	path = vendor/Auryn
 	url = https://github.com/rdlowrey/Auryn.git
-[submodule "vendor/vfsStream"]
-	path = vendor/vfsStream
-	url = git://github.com/mikey179/vfsStream.git
-[submodule "vendor/Artax"]
-	path = vendor/Artax
-	url = https://github.com/rdlowrey/Artax.git
 [submodule "vendor/Alert"]
 	path = vendor/Alert
 	url = https://github.com/rdlowrey/Alert.git
