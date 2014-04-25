@@ -560,14 +560,18 @@ class Server {
         $cycle->host = $host;
 
         $serverName = $host->hasName() ? $host->getName() : $client->serverAddress;
+        if ($serverName === '*') {
+            $sp = $client->serverPort;
+            $serverNamePort = ($sp == 80 || $sp == 443) ? '' : ":{$sp}";
+            $serverName = $client->serverAddress . $serverNamePort;
+        }
 
         $request = [
-            'AERYS_SOCKET_ID'   => $client->id,
-            'AERYS_REQUEST_ID'  => $cycle->requestId,
             'ASGI_VERSION'      => '0.1',
             'ASGI_NON_BLOCKING' => TRUE,
             'ASGI_ERROR'        => NULL,
             'ASGI_INPUT'        => $cycle->body,
+            'AERYS_SOCKET_ID'   => $client->id,
             'SERVER_PORT'       => $client->serverPort,
             'SERVER_ADDR'       => $client->serverAddress,
             'SERVER_NAME'       => $serverName,
@@ -810,7 +814,7 @@ class Server {
             // @TODO Log the error here. For now we'll just send it to STDERR:
             @fwrite(STDERR, $exception);
         }
-        
+
         $displayMsg = $this->debug
             ? "<pre>{$exception}</pre>"
             : '<p>Something went terribly wrong</p>';
