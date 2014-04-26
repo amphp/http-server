@@ -67,6 +67,24 @@ class Responder implements ServerObserver {
             $this->maxCacheEntrySize
         ));
 
+        $this->boundary = uniqid('', TRUE);
+        $this->assignDefaultMimeTypes();
+        $this->initializeReusableResponses();
+    }
+
+    private function setRoot($root) {
+        $path = str_replace('\\', '/', $root);
+
+        if (!(is_readable($path) && is_dir($path))) {
+            throw new \InvalidArgumentException(
+                'Document root must be a readable directory'
+            );
+        }
+
+        $this->root = rtrim($path, '/');
+    }
+
+    private function initializeReusableResponses() {
         $this->notFoundResponse = (new Response)
             ->setStatus(404)
             ->setHeader('Content-Type', 'text/html; charset=utf-8')
@@ -87,21 +105,6 @@ class Responder implements ServerObserver {
             ->setStatus(Status::METHOD_NOT_ALLOWED)
             ->setHeader('Allow', 'GET, HEAD, OPTIONS')
         ;
-
-        $this->boundary = uniqid('', TRUE);
-        $this->assignDefaultMimeTypes();
-    }
-
-    private function setRoot($root) {
-        $path = str_replace('\\', '/', $root);
-
-        if (!(is_readable($path) && is_dir($path))) {
-            throw new \InvalidArgumentException(
-                'Document root must be a readable directory'
-            );
-        }
-
-        $this->root = rtrim($path, '/');
     }
 
     public function __invoke($request) {
@@ -109,14 +112,12 @@ class Responder implements ServerObserver {
 
         if (isset($this->cache[$path])) {
             $statStruct = $this->cache[$path];
-            $response = ($statStruct === FALSE)
+            return ($statStruct === FALSE)
                 ? $this->notFoundResponse
                 : $this->respond($path, $request, $statStruct);
-        } else {
-            $response = $this->generateResponse($path, $request);
         }
 
-        return $response;
+        return $this->generateResponse($path, $request);
     }
 
     private function generateResponse($path, $request) {
@@ -165,7 +166,7 @@ class Responder implements ServerObserver {
         $ranges = empty($request['HTTP_RANGE']) ? NULL : $request['HTTP_RANGE'];
         $sendRangeResponse = (bool) $ranges;
 
-        list($path, $size, $mtime, $etag, $buffer) = $statStruct;
+        list($path, $size, $mtime, $etag) = $statStruct;
 
         switch ($this->checkPreconditions($request, $mtime, $size, $etag)) {
             case self::$PRECOND_NOT_MODIFIED:
@@ -180,9 +181,16 @@ class Responder implements ServerObserver {
                 break;
         }
 
+        $proto = $request['SERVER_PROTOCOL'];
+
+        /*
+        // @TODO Restore this once range responses are fixed
         return $sendRangeResponse
-            ? $this->makeRangeResponse($path, $mtime, $size, $etag, $ranges)
-            : $this->makeResponse($path, $mtime, $size, $etag, $buffer);
+            ? $this->makeRangeResponseWriter($statStruct, $proto, $ranges)
+            : $this->makeResponseWriter($statStruct, $proto);
+        */
+
+        return $this->makeResponseWriter($statStruct, $proto);
     }
 
     private function checkPreconditions($request, $mtime, $size, $etag) {
@@ -251,27 +259,28 @@ class Responder implements ServerObserver {
             : ($etag === $ifRangeHeader);
     }
 
-    private function makeResponse($path, $mtime, $size, $etag, $buffer) {
+    private function makeResponseWriter($statStruct, $proto) {
+        list($path, $size, $mtime, $etag, $buffer) = $statStruct;
+
         $headers = $this->buildCommonHeaders($mtime, $etag);
         $headers[] = "Content-Length: {$size}";
         $headers[] = $this->generateContentTypeHeader($path);
+        $headers = implode("\r\n", $headers);
 
-        $body = isset($buffer) ? $buffer : new ThreadBody($this->dispatcher, $path, $size);
+        $startLineAndHeaders = "HTTP/{$proto} 200 OK\r\n{$headers}";
 
-        $response = new Response;
-        $response->setStatus(Status::OK);
-        $response->applyRawHeaderLines($headers);
-
-        $response->setBody($body);
-
-        return $response;
+        // If we already have the entity body buffered we can write the response as a single string.
+        // Otherwise we use a thread to do our filesystem IO without blocking the event loop.
+        return isset($buffer)
+            ? new StringResponseWriter($this->reactor, $startLineAndHeaders, $buffer)
+            : new ThreadResponseWriter($this->dispatcher, $startLineAndHeaders, $path, $size);
     }
 
     private function buildCommonHeaders($mtime, $etag) {
         $headers = [
             'Cache-Control: public',
             'Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' UTC',
-            'Accept-Ranges: bytes'
+            // 'Accept-Ranges: bytes' // @TODO Restore this after range support is fixed
         ];
 
         if ($this->expiresPeriod > 0) {
@@ -298,7 +307,9 @@ class Responder implements ServerObserver {
         return "Content-Type: {$mime}";
     }
 
-    private function makeRangeResponse($path, $mtime, $size, $etag, $ranges) {
+    private function makeRangeResponse($statStruc, $proto, $ranges) {
+        list($path, $size, $mtime, $etag, $buffer) = $statStruct;
+
         $response = new Response;
         $ranges = $this->normalizeByteRanges($size, $ranges);
 
@@ -422,11 +433,9 @@ class Responder implements ServerObserver {
 
     private function getMimeTypeFromPath($path) {
         $ext = pathinfo($path, PATHINFO_EXTENSION);
-
-        if ($ext === '') {
+        if ($ext == '') {
             return NULL;
         }
-
         $ext = strtolower($ext);
 
         return isset($this->mimeTypes[$ext]) ? $this->mimeTypes[$ext] : NULL;

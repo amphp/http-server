@@ -17,9 +17,9 @@ interface CustomResponseBody {
     public function getContentLength();
 
     /**
-     * Generate a custom responder capable of writing the PendingResponse to the client.
+     * Generate a custom responder capable of writing the WriteSubjectNormalized to the client.
      *
      * @return \Aerys\ResponseWriter
      */
-    public function getResponseWriter(PendingResponse $pr);
+    public function getResponseWriter(WriteSubjectNormalized $pr);
 }

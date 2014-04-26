@@ -35,14 +35,10 @@ class Server {
     const OP_ALLOWED_METHODS = 15;
     const OP_DEFAULT_HOST = 16;
 
-    private static $BODY_STRING = 1;
-    private static $BODY_CUSTOM = 2;
-    private static $BODY_GENERATOR = 4;
-    private static $BODY_ITERATOR = 8;
-
     private $state;
     private $reactor;
     private $hostBinder;
+    private $writerFactory;
     private $debug;
     private $stopPromise;
     private $observers;
@@ -81,9 +77,10 @@ class Server {
     private $readGranularity = 262144; // @TODO Add option setter
     private $isExtSocketsEnabled;
 
-    public function __construct(Reactor $reactor, HostBinder $hb = NULL, $debug = FALSE) {
+    public function __construct(Reactor $reactor, HostBinder $hb = NULL, WriterFactory $wf = NULL, $debug = FALSE) {
         $this->reactor = $reactor;
         $this->hostBinder = $hb ?: new HostBinder;
+        $this->writerFactory = $wf ?: new WriterFactory($reactor);
         $this->debug = (bool) $debug;
         $this->observers = new \SplObjectStorage;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
@@ -215,10 +212,10 @@ class Server {
      *                       If the server is already started no action occurs and NULL is returned.
      */
     public function stop() {
-        if ($this->state === self::STOPPING || $this->state === self::STOPPED) {
-            throw new \LogicException(
-                'Server already stopping'
-            );
+        if ($this->state === self::STOPPING) {
+            $this->stopPromise->getFuture();
+        } elseif ($this->state === self::STOPPED) {
+            return new Success;
         }
 
         foreach ($this->acceptWatchers as $watcherId) {
@@ -241,7 +238,6 @@ class Server {
             $stopFuture = $observerFuture;
         } else {
             $this->stopPromise = new Promise;
-
             $response = (new Response)
                 ->setStatus(Status::SERVICE_UNAVAILABLE)
                 ->setHeader('Connection', 'close')
@@ -266,7 +262,7 @@ class Server {
             foreach ($unassignedRequestIds as $requestId) {
                 $cycle = $client->cycles[$requestId];
                 $cycle->response = $response;
-                $this->hydrateResponderPipeline($cycle);
+                $this->hydrateWriterPipeline($cycle);
             }
         } else {
             $this->closeClient($client);
@@ -423,7 +419,7 @@ class Server {
         $onReadable = function() use ($client) { $this->readClientSocketData($client); };
         $client->readWatcher = $this->reactor->onReadable($socket, $onReadable);
 
-        $onWritable = function() use ($client) { $client->pendingResponder->writeResponse(); };
+        $onWritable = function() use ($client) { $client->pendingWriter->writeResponse(); };
         $client->writeWatcher = $this->reactor->onWritable($socket, $onWritable, $enableNow = FALSE);
 
         $this->clients[$socketId] = $client;
@@ -479,7 +475,7 @@ class Server {
         $status = $e->getCode() ?: Status::BAD_REQUEST;
         $body = sprintf("<html><body><p>%s</p></body></html>", $e->getMessage());
         $cycle->response = (new Response)->setStatus($status)->setBody($body);
-        $this->hydrateResponderPipeline($cycle);
+        $this->hydrateWriterPipeline($cycle);
     }
 
     /**
@@ -502,7 +498,7 @@ class Server {
         // state to avoid parse errors after a non-100 response. Otherwise we really have no choice
         // but to close the connection after this response.
         if ($cycle->response) {
-            $this->hydrateResponderPipeline($cycle);
+            $this->hydrateWriterPipeline($cycle);
         }
     }
 
@@ -658,7 +654,7 @@ class Server {
         }
 
         if ($cycle->response) {
-            $this->hydrateResponderPipeline($cycle);
+            $this->hydrateWriterPipeline($cycle);
         } else {
             $this->invokeHostApplication($cycle);
         }
@@ -710,8 +706,8 @@ class Server {
 
     private function invokeHostApplication($cycle) {
         try {
-            $responder = $cycle->host->getApplication();
-            $response = $responder($cycle->request);
+            $application = $cycle->host->getApplication();
+            $response = $application($cycle->request);
             $this->assignResponse($cycle, $response);
         } catch (\Exception $exception) {
             $this->assignExceptionResponse($cycle, $exception);
@@ -721,10 +717,10 @@ class Server {
     private function assignResponse($cycle, $response) {
         if (is_string($response)) {
             $cycle->response = (new Response)->setBody($response);
-            $this->hydrateResponderPipeline($cycle);
-        } elseif ($response instanceof Response) {
+            $this->hydrateWriterPipeline($cycle);
+        } elseif ($response instanceof Response || $response instanceof Writer) {
             $cycle->response = $response;
-            $this->hydrateResponderPipeline($cycle);
+            $this->hydrateWriterPipeline($cycle);
         } elseif ($response instanceof \Generator) {
             $this->advanceResponseGenerator($cycle, $response);
         } elseif ($response instanceof Future) {
@@ -761,15 +757,15 @@ class Server {
                 $multiFuture->onComplete(function($future) use ($cycle, $generator) {
                     $this->onFutureYieldResolution($cycle, $generator, $future);
                 });
-            } elseif ($yielded instanceof Response) {
+            } elseif ($yielded instanceof Response || $yielded instanceof Writer) {
                 $cycle->response = $yielded;
-                $this->hydrateResponderPipeline($cycle);
+                $this->hydrateWriterPipeline($cycle);
             } elseif (is_string($yielded)) {
                 // If the generator yields a string we assume that all remaining values
                 // yielded from the generator will be strings or resolvable futures.
                 // A streaming response is assumed and the generator is its body.
                 $cycle->response = (new Response)->setBody($generator);
-                $this->hydrateResponderPipeline($cycle);
+                $this->hydrateWriterPipeline($cycle);
             } else {
                 throw new \UnexpectedValueException(
                     sprintf("Unexpected yield type: %s", gettype($yielded))
@@ -810,8 +806,11 @@ class Server {
     }
 
     private function assignExceptionResponse($cycle, \Exception $exception) {
-        // @TODO Log $e to whatever error logging facility we can access
-
+        if (!$this->debug) {
+            // @TODO Log the error here. For now we'll just send it to STDERR:
+            @fwrite(STDERR, $exception);
+        }
+        
         $displayMsg = $this->debug
             ? "<pre>{$exception}</pre>"
             : '<p>Something went terribly wrong</p>';
@@ -821,11 +820,11 @@ class Server {
         $body = "<html><body><h1>{$status} {$reason}</h1><p>{$displayMsg}</p></body></html>";
         $cycle->response = (new Response)->setStatus($status)->setReason($reason)->setBody($body);
 
-        $this->hydrateResponderPipeline($cycle);
+        $this->hydrateWriterPipeline($cycle);
     }
 
-    private function hydrateResponderPipeline($cycle) {
-        // @TODO Retrieve and execute Host::getAfterResponder() here ...
+    private function hydrateWriterPipeline($cycle) {
+        // @TODO Retrieve and execute Host::getBeforeResponse() here ...
 
         $client = $cycle->client;
 
@@ -833,7 +832,7 @@ class Server {
             if (isset($client->pipeline[$requestId])) {
                 continue;
             } elseif ($cycle->response) {
-                $client->pipeline[$requestId] = $this->generateResponder($cycle);
+                $client->pipeline[$requestId] = $this->makeWriter($cycle);
             } else {
                 break;
             }
@@ -842,250 +841,222 @@ class Server {
         // IMPORTANT: don't break the pipeline order!
         reset($client->cycles);
 
-        // If we already have a pending responder in progress we have to wait until
-        // it's complete before starting the next one. Otherwise we need to ensure
-        // the first request in the pipeline has a responder assigned before proceeding.
-        if (!$client->pendingResponder && ($responder = current($client->pipeline))) {
-            $this->initiateResponderWrite($client, $responder);
-        }
-    }
-
-    private function generateResponder($cycle) {
-        $request = $cycle->request;
-        $response = $cycle->response;
-
-        $proto = $request['SERVER_PROTOCOL'];
-        $status = $response->getStatus();
-        $body = $response->getBody();
-
-        if ($status >= 200) {
-            $mustClose = $this->mustCloseAfterResponse($cycle);
-            $bodyType = $this->determineResponseBodyType($body);
-            $bodyLen = $this->normalizeContentLengthHeader($response, $proto, $body, $bodyType);
-            $this->normalizeConnectionHeader($cycle);
-            $this->normalizeContentTypeHeader($response);
-        } elseif (!$response->hasBody()) {
-            // Never close after a 1xx response
-            $mustClose = FALSE;
-            $bodyType = self::$BODY_STRING;
-            $bodyLen = 0;
-        } else {
-            $this->assignExceptionResponse($cycle, new \DomainException(
-                '1xx response cannot contain an entity body'
-            ));
-
-            return $this->generateResponder($cycle);
-        }
-
-        $response->setHeader('Date', $this->httpDateNow);
-
-        if ($this->sendServerToken) {
-            $response->setHeader('Server', self::NAME);
-        }
-
-        $reason = $response->getReason();
-        if ($this->autoReasonPhrase && !($reason || $reason === '0')) {
-            $reasonConstant = "Aerys\\Reason::HTTP_{$status}";
-            $reason = defined($reasonConstant) ? constant($reasonConstant) : '';
-            $response->setReason($reason);
-        }
-
-        if ($status >= 200 && $mustClose || ($proto < 1.1 && $bodyLen === -1)) {
-            $response->setHeader('Connection', 'close');
-            $response->removeHeader('Keep-Alive');
-            $cycle->closeAfterResponse = TRUE;
-        } else {
-            $cycle->closeAfterResponse = FALSE;
-        }
-
-        $body = $response->getBody();
-
-        // This MUST happen AFTER entity header normalization or headers won't be
-        // correct when responding to HEAD requests. Don't move this above the header
-        // generation/normalization lines!
-        if ($request['REQUEST_METHOD'] === 'HEAD') {
-            $response->setBody($body = '');
-            $bodyType = self::$BODY_STRING;
-        }
-
-        $reason = $reason != '' ? " {$reason}" : '';
-        $headers = $response->getRawHeaders();
-        $statusLineAndHeaders = "HTTP/{$proto} {$status}{$reason}{$headers}\r\n\r\n";
-
-        $pr = new PendingResponse;
-        $pr->headers = $statusLineAndHeaders;
-        $pr->body = $body;
-        $pr->writeWatcher = $cycle->client->writeWatcher;
-        $pr->destination = $cycle->client->socket;
-
-        switch ($bodyType) {
-            case self::$BODY_STRING:
-                return new StringWriter($this->reactor, $pr);
-            case self::$BODY_CUSTOM:
-                return $body->getResponder($this->reactor, $pr);
-            case self::$BODY_GENERATOR:
-                return $cycle->closeAfterResponse
-                    ? new GeneratorWriter($this->reactor, $pr)
-                    : new ChunkedGeneratorWriter($this->reactor, $pr);
-            case self::$BODY_ITERATOR:
-                return $cycle->closeAfterResponse
-                    ? new IteratorWriter($this->reactor, $pr)
-                    : new ChunkedIteratorWriter($this->reactor, $pr);
-            default:
-                throw new \UnexpectedValueException(
-                    sprintf('Unexpected responder body type: %s', $bodyType)
-                );
-        }
-    }
-
-    private function determineResponseBodyType($body) {
-        if (empty($body) || is_scalar($body)) {
-            return self::$BODY_STRING;
-        } elseif ($body instanceof \Generator) {
-            return self::$BODY_GENERATOR;
-        } elseif ($body instanceof \Iterator) {
-            return self::$BODY_ITERATOR;
-        } else {
-            return self::$BODY_CUSTOM;
-        }
-    }
-
-    private function mustCloseAfterResponse($cycle) {
-        // If keep-alive is disabled or the server is stopping we always close.
-        if ($this->disableKeepAlive || $this->state === self::STOPPING) {
-            return TRUE;
-        }
-
-        // If the client has exceeded the max allowable requests per connection
-        // we always close.
-        if ($this->maxRequests > 0 && $cycle->client->requestCount >= $this->maxRequests) {
-            return TRUE;
-        }
-
-        $request = $cycle->request;
-        $response = $cycle->response;
-
-        if ($request['SERVER_PROTOCOL'] < 1.1) {
-            return TRUE;
-        }
-
-        // If the request indicated a close preference we agree to that. If the request uses
-        // HTTP/1.0 we may still have to close if the response content length is unknown.
-        if (isset($request['HTTP_CONNECTION'])) {
-            return (stripos($request['HTTP_CONNECTION'], 'close') !== FALSE);
-        }
-
-        // If response mandates a close preferences then use that.
-        return $response->hasHeader('Connection')
-            ? (stripos($response->getHeaderMerged('Connection'), 'close') !== FALSE)
-            : FALSE;
-    }
-
-    private function normalizeConnectionHeader($cycle) {
-        $response = $cycle->response;
-        $shouldClose = $cycle->closeAfterResponse;
-
-        if ($shouldClose) {
-            $response->setHeader('Connection', 'close');
+        if ($client->pendingWriter || !($writer = current($client->pipeline))) {
+            // If we already have a pending writer in progress we have to wait until
+            // it's complete before starting the next one. Otherwise we need to ensure
+            // the first request in the pipeline has a writer before proceeding.
             return;
         }
 
-        $value = $shouldClose ? 'close' : 'keep-alive';
-        $response->addHeader('Connection', $value);
+        $writeResult = $writer->writeResponse();
 
-        if (empty($shouldClose) && $this->keepAliveTimeout > 0) {
-            $timeout = $this->keepAliveTimeout;
-            $remaining = $this->maxRequests - $cycle->client->requestCount;
-            $response->setHeader('Keep-Alive', "timeout={$timeout}, max={$remaining}");
-        }
-    }
-
-    private function normalizeContentLengthHeader($response, $proto, $body, $bodyType) {
-        switch ($bodyType) {
-            case self::$BODY_STRING:
-                $bodyLen = strlen($body);
-                $response->setHeader('Content-Length', $bodyLen);
-                $response->removeHeader('Transfer-Encoding');
-                break;
-            case self::$BODY_ITERATOR:
-                // fallthrough
-            case self::$BODY_GENERATOR:
-                $bodyLen = -1;
-                $response->removeHeader('Content-Length');
-                if ($proto > 1.0) {
-                    $response->setHeader('Transfer-Encoding', 'chunked');
-                }
-                break;
-            case self::$BODY_CUSTOM:
-                $bodyLen = $body->getContentLength();
-                if ($bodyLen >= 0) {
-                    $response->setHeader('Content-Length', $bodyLen);
-                    $response->removeHeader('Transfer-Encoding');
-                } else {
-                    $response->removeHeader('Content-Length');
-                }
-                break;
-            default:
-                throw new \Exception(
-                    'Custom body types not yet implemented'
-                );
-        }
-
-        return $bodyLen;
-    }
-
-    private function normalizeContentTypeHeader($response) {
-        $contentType = $response->hasHeader('Content-Type')
-            ? $this->normalizeContentTypeTextCharset($response)
-            : "{$this->defaultContentType}; charset={$this->defaultTextCharset}";
-
-        $response->setHeader('Content-Type', $contentType);
-    }
-
-    private function normalizeContentTypeTextCharset($response) {
-        $contentType = $response->getHeader('Content-Type');
-        if (stripos($contentType, "text/") === 0 && stripos($contentType, 'charset=') === FALSE) {
-            $contentType .= "; charset={$this->defaultTextCharset}";
-        }
-
-        return $contentType;
-    }
-
-    private function initiateResponderWrite($client, ResponseWriter $responder) {
-        $writeResult = $responder->writeResponse();
-
-        if ($writeResult === ResponseWriter::COMPLETED) {
-            $this->afterResponseWrite($client);
-        } elseif ($writeResult === ResponseWriter::FAILED) {
-            $this->closeClient($client);
+        if ($writeResult === (bool) $writeResult) {
+            // A boolean return indicates the write operation is complete. This is more
+            // performant than going through the Future interface, so Writer implementations
+            // should return a bool immediately if they're finished sending the response.
+            $this->afterResponseWrite($client, $writeResult);
         } elseif ($writeResult instanceof Future) {
-            // IMPORTANT: Client writability watchers map to the client's pendingResponder
-            // property. By always storing the currently in-progress responder in this property
+            // IMPORTANT: Client writability watchers map to the client's pendingWriter
+            // property. By always storing the currently in-progress writer in this property
             // we're able to reuse the same writability watcher for the full life of the
             // client connection. This is a big performance win and any refactoring should
-            // retain this single watcher approach.
-            $client->pendingResponder = $responder;
+            // retain this "single-watcher" approach.
+            $client->pendingWriter = $writer;
 
-            // The write result is a future value; assign the appropriate
-            // callbacks to invoke when the future eventually resolves.
+            // The $writeResult is a future value; here we assign the appropriate callback to
+            // invoke when the future eventually resolves.
             $writeResult->onComplete(function($future) use ($client) {
-                $this->onFutureResponseWriteComplete($client, $future);
+                $this->onFutureWriteResolution($client, $future);
             });
         } else {
-            // @TODO this represents a clear program error. However, it may be
-            // preferable to send an error response instead of killing the server
-            // with a fatal uncaught exception.
+            // @TODO this represents a clear program error as Writers are expected
+            // to return either an integer close flag or a Future that resolves with
+            // an integer close flag upon success. However, it may be preferable to send
+            // an error response instead of killing the server with an uncaught exception.
             throw new \UnexpectedValueException(
-                'Unexpected response writer code'
+                'Unexpected response writer result; boolean or Future required.'
             );
         }
     }
 
-    private function onFutureResponseWriteComplete($client, $future) {
-        $client->pendingResponder = NULL;
+    /**
+     * Yes, this could be broken out into multiple methods to improve readability and eliminate
+     * the inline comments. In fact, it originally was separated into several methods. However,
+     * the "one long method" approach is used specifically here to minimize expensive additional
+     * userland function calls on each response in the interest of performance maximization.
+     */
+    private function makeWriter($cycle) {
+        $client = $cycle->client;
+        $request = $cycle->request;
+        $response = $cycle->response;
+
+        if ($this->disableKeepAlive || $this->state === self::STOPPING) {
+            // If keep-alive is disabled or the server is stopping we always close
+            // after the response is written.
+            $mustClose = TRUE;
+        } elseif ($this->maxRequests > 0 && $client->requestCount >= $this->maxRequests) {
+            // If the client has exceeded the max allowable requests per connection
+            // we always close after the response is written.
+            $mustClose = TRUE;
+        } elseif (isset($request['HTTP_CONNECTION'])) {
+            // If the request indicated a close preference we agree to that. If the request uses
+            // HTTP/1.0 we may still have to close if the response content length is unknown.
+            // This potential need must be determined based on whether or not the response
+            // content length is known at the time output starts.
+            $mustClose = (stripos($request['HTTP_CONNECTION'], 'close') !== FALSE);
+        } elseif ($request['SERVER_PROTOCOL'] < 1.1) {
+            // HTTP/1.0 defaults to a close after each response if not otherwise specified.
+            $mustClose = TRUE;
+        } else {
+            $mustClose = FALSE;
+        }
+
+        if ($mustClose) {
+            $keepAliveHeader = NULL;
+        } else {
+            $reqsRemaining = $this->maxRequests - $client->requestCount;
+            $keepAliveHeader = "timeout={$this->keepAliveTimeout}, max={$reqsRemaining}";
+        }
+
+        // --- If the $response implements Writer we return it and don't normalize -----------------
+
+        if ($response instanceof Writer) {
+            $subject = new WriterSubject;
+            $subject->socket = $client->socket;
+            $subject->writeWatcher = $client->writeWatcher;
+            $subject->mustClose = $mustClose;
+            $subject->dateHeader = $this->httpDateNow;
+            $subject->serverHeader = $this->sendServerToken ? self::NAME : NULL;
+            $subject->keepAliveHeader = $keepAliveHeader;
+            $subject->defaultContentType = $this->defaultContentType;
+            $subject->defaultTextCharset = $this->defaultTextCharset;
+            $subject->autoReasonPhrase = $this->autoReasonPhrase;
+            $subject->debug = $this->debug;
+
+            $response->prepareSubject($subject);
+
+            return $response;
+        }
+
+        // --- Normalize standard write subject ----------------------------------------------------
+
+        $proto = $request['SERVER_PROTOCOL'];
+
+        list($status, $reason, $body) = $response->toList();
+
+        $is1xxResponse = ($status < 200);
+        if (!($is1xxResponse || $mustClose) && $response->hasHeaderMatch('Connection', 'close')) {
+            // If the Response explicitly specifies a close then honor that assignment.
+            $mustClose = TRUE;
+        }
+
+        // --- Handle 1xx responses ----------------------------------------------------------------
+
+        if ($is1xxResponse && $body == '') {
+            $finalReason = $reason != '' ? " {$reason}" : '';
+            $finalHeaders = $response->getRawHeaders();
+            $startLineAndHeaders = "HTTP/{$proto} {$status}{$finalReason}{$finalHeaders}\r\n\r\n";
+
+            $subject = new WriterSubjectNormalized;
+            $subject->socket = $client->socket;
+            $subject->writeWatcher = $client->writeWatcher;
+            $subject->mustClose = FALSE;
+            $subject->headers = $startLineAndHeaders;
+
+            $writer = $this->writerFactory->make(Writer::BODY_STRING, FALSE);
+            $writer->prepareSubject($subject);
+
+        } elseif ($is1xxResponse) {
+            $this->assignExceptionResponse($cycle, new \DomainException(
+                '1xx response must not contain an entity body'
+            ));
+
+            return $this->makeWriter($cycle);
+        }
+
+        // --- Normalize Content-Length and Transfer-Encoding --------------------------------------
+
+        if (empty($body) || is_scalar($body)) {
+            $bodyType = Writer::BODY_STRING;
+            $transferEncoding = 'identity';
+            $response->setHeader('Content-Length', strlen($body));
+        } else {
+            $bodyType = Writer::BODY_GENERATOR;
+            $transferEncoding = ($proto < 1.1) ? 'identity' : 'chunked';
+            $response->removeHeader('Content-Length');
+            $mustClose = $mustClose ?: ($proto < 1.1);
+        }
+
+        $response->setHeader('Transfer-Encoding', $transferEncoding);
+
+        // --- Normalize Connection and Keep-Alive -------------------------------------------------
+
+        if ($mustClose) {
+            $response->setHeader('Connection', 'close');
+            $response->removeHeader('Keep-Alive');
+        } elseif ($keepAliveHeader) {
+            $response->addHeader('Connection', 'keep-alive');
+            $response->setHeader('Keep-Alive', $keepAliveHeader);
+        } else {
+            $response->addHeader('Connection', 'keep-alive');
+            $response->removeHeader('Keep-Alive');
+        }
+
+        // --- Normalize Content-Type --------------------------------------------------------------
+
+        $contentType = $response->getHeaderSafe('Content-Type') ?: $this->defaultContentType;
+        if (stripos($contentType, 'text/') === 0 && stripos($contentType, 'charset=') === FALSE) {
+            $contentType .= "; charset={$this->defaultTextCharset}";
+        }
+
+        $response->setHeader('Content-Type', $contentType);
+
+        // --- Normalize other miscellaneous stuff -------------------------------------------------
+
+        $response->setHeader('Date', $this->httpDateNow);
+        if ($this->sendServerToken) {
+            $response->setHeader('Server', self::NAME);
+        }
+
+        if ($this->autoReasonPhrase && $reason == '') {
+            $reasonConstant = "Aerys\Reason::HTTP_{$status}";
+            $reason = defined($reasonConstant) ? constant($reasonConstant) : '';
+            $response->setReason($reason);
+        }
+
+        // IMPORTANT: This MUST happen AFTER entity header normalization or headers
+        // won't be correct when responding to HEAD requests. Don't move this above
+        // the header normalization lines!
+        if ($request['REQUEST_METHOD'] === 'HEAD') {
+            $body = '';
+            $response->setBody($body);
+            $bodyType = Writer::BODY_STRING;
+        }
+
+        // --- Build the final Writer --------------------------------------------------------------
+
+        $finalReason = $reason != '' ? " {$reason}" : '';
+        $finalHeaders = $response->getRawHeaders();
+        $startLineAndHeaders = "HTTP/{$proto} {$status}{$finalReason}{$finalHeaders}\r\n\r\n";
+
+        $subject = new WriterSubjectNormalized;
+        $subject->socket = $client->socket;
+        $subject->writeWatcher = $client->writeWatcher;
+        $subject->mustClose = $mustClose;
+        $subject->headers = $startLineAndHeaders;
+        $subject->body = $body;
+        $writer = $this->writerFactory->make($bodyType, $mustClose);
+        $writer->prepareSubject($subject);
+
+        return $writer;
+    }
+
+    private function onFutureWriteResolution($client, $future) {
+        $client->pendingWriter = NULL;
 
         if ($future->succeeded()) {
-            return $this->afterResponseWrite($client);
+            $shouldClose = $future->getValue();
+            return $this->afterResponseWrite($client, $shouldClose);
         }
 
         $e = $future->getError();
@@ -1097,42 +1068,50 @@ class Server {
             // disconnect. This represents an error in our program and requires logging.
         }
 
-        // Always close the connection after an error
+        // Always close the connection if an error occurred while writing
         $this->closeClient($client);
     }
 
-    private function afterResponseWrite($client) {
+    private function afterResponseWrite($client, $shouldClose) {
         $requestId = key($client->cycles);
         $cycle = $client->cycles[$requestId];
 
-        if ($cycle->response->hasExportCallback()) {
-            $this->upgradeSocket($cycle);
-        } elseif ($cycle->closeAfterResponse) {
+        if ($client->isGone) {
+            // Nothing to do; the client socket has been exported or disconnected.
+        } elseif ($shouldClose) {
             $this->closeClient($client);
         } else {
             $this->shiftClientPipeline($client, $requestId);
         }
     }
 
-    private function upgradeSocket($cycle) {
-        try {
-            $client = $cycle->client;
+    /**
+     * Take control of the specified socket
+     *
+     * Note that exported sockets continue to count against the server's maxConnections limit to
+     * protect against DoS. When an application is finished with the exported socket it MUST
+     * invoke the callback returned at index 1 of this function's return array.
+     *
+     * @param int $socketId
+     * @throws DomainException on unknown socket ID
+     * @return array[int $socketId, Closure $closeCallback]
+     */
+    public function exportSocket($socketId) {
+        if (isset($this->clients[$socketId])) {
+            $client = $this->clients[$socketId];
             $socket = $client->socket;
-            $socketId = (int) $socket;
             $this->exportedSocketIdMap[$socketId] = $socket;
-
-            $upgradeCallback = $cycle->response->getExportCallback();
 
             // Don't decrement the client count because we want to keep track of
             // resource usage as long as the exported client is still open.
             $this->clearClientReferences($client, $decrementClientCount = FALSE);
+            $closeCallback = function() use ($socketId) { $this->closeExportedSocket($socketId); };
 
-            $upgradeCallback($socket, $cycle->request, $onClose = function() use ($socketId) {
-                $this->closeExportedSocket($socketId);
-            });
-        } catch (\Exception $e) {
-            $this->closeExportedSocket($socketId);
-            // @TODO Log $e here
+            return [$socket, $closeCallback];
+        } else {
+            throw new \DomainException(
+                sprintf("Unknown socket ID: %s", $socketId)
+            );
         }
     }
 

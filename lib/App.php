@@ -16,8 +16,9 @@ class App {
     private $port = 80;
     private $address = '*';
     private $name = '';
-    private $routes = [];
-    private $websockets = [];
+    private $standardRoutes = [];
+    private $threadRoutes = [];
+    private $websocketRoutes = [];
     private $documents = [];
     private $encryption = [];
     private $responders = [];
@@ -28,7 +29,9 @@ class App {
      *
      * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
      * well-known services (like HTTP on port 80) and port numbers less than 1024 require root
-     * access on UNIX-like systems. Port 80 is assumed in the absence of port specification.
+     * access on UNIX-like systems. Port 80 is assumed in the absence of port specification. The
+     * default port for encrypted sockets (https) is 443. If you plan to use encryption with this
+     * app you'll generally want to use port 443.
      *
      * @param int $port The port number on which to listen
      * @param string $interface The IP address on which to bind this application
@@ -161,20 +164,35 @@ class App {
      */
     public function addRoute($httpMethod, $uriPath, $handler) {
         $uriPath = '/' . ltrim($uriPath, '/');
-        $this->routes[] = [$httpMethod, $uriPath, $handler];
+        $this->standardRoutes[] = [$httpMethod, $uriPath, $handler];
 
         return $this;
     }
 
     /**
-     * Bind a websocket endpoint to the specified URI path
+     * Bind a synchronous route handler to execute in a dedicated worker thread when matched
      *
-     * Brokers endpoints require two arguments:
+     * @param string $httpMethod The method for which this route applies
+     * @param string $uriPath The route's URI path
+     * @param string $handler Any function or class::method construction string
+     */
+    public function addThreadRoute($httpMethod, $uriPath, $handler) {
+        $uriPath = '/' . ltrim($uriPath, '/');
+        $this->threadRoutes[] = [$httpMethod, $uriPath, $handler];
+
+        return $this;
+    }
+
+    /**
+     * Bind a websocket endpoint to the specified URI route
      *
-     * - The websocket endpoint's URI path
+     * Websocket routes are slightly different from other routes because they don't require an
+     * HTTP method (GET is mandated by the protocol). Websocket routes require two arguments:
+     *
+     * - The websocket endpoint's URI path (routing regex allowed like all other routes)
      * - The name of the websocket endpoint class
      *
-     * The third argument is an optional array specifying configuration values for the websocket
+     * The third argument is an optional array specifying configuration values for this websocket
      * endpoint.
      *
      * @param string $uriPath The URI path on which to bind the endpoint
@@ -182,9 +200,9 @@ class App {
      * @param array $options An array specifying key-value options for this websocket endpoint
      * @return \Aerys\App Returns the current object instance
      */
-    public function addWebsocket($uriPath, $appClass, array $options = []) {
+    public function addWebsocketRoute($uriPath, $appClass, array $options = []) {
         $uriPath = '/' . ltrim($uriPath, '/');
-        $this->websockets[] = [$uriPath, $appClass, $options];
+        $this->websocketRoutes[] = [$uriPath, $appClass, $options];
 
         return $this;
     }
@@ -216,8 +234,9 @@ class App {
             self::ORDER         => $this->order,
             self::ENCRYPTION    => $this->encryption,
             self::DOCUMENTS     => $this->documents,
-            self::ROUTES        => $this->routes,
-            self::WEBSOCKETS    => $this->websockets,
+            self::ROUTES        => $this->standardRoutes,
+            self::THREAD_ROUTES => $this->threadRoutes,
+            self::WEBSOCKETS    => $this->websocketRoutes,
             self::RESPONDERS    => $this->responders,
         ];
     }

@@ -1,35 +1,57 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Documents;
 
-use Alert\Reactor, Alert\Promise, Alert\Failure;
+use Alert\Reactor,
+    Alert\Promise,
+    Alert\Failure,
+    Aerys\Writer,
+    Aerys\TargetPipeException;
 
-class StringWriter implements Writer {
+class StringResponseWriter implements Writer {
     private $reactor;
     private $socket;
     private $writeWatcher;
-    private $buffer;
-    private $promise;
     private $mustClose;
-    
-    public function __construct(Reactor $reactor) {
+    private $promise;
+    private $startLineAndHeaders;
+    private $body;
+    private $response;
+
+    public function __construct(Reactor $reactor, $startLineAndHeaders, $body) {
         $this->reactor = $reactor;
+        $this->startLineAndHeaders = $startLineAndHeaders;
+        $this->body = $body;
     }
 
     public function prepareSubject($subject) {
         $this->socket = $subject->socket;
         $this->writeWatcher = $subject->writeWatcher;
-        $this->buffer = ($subject->headers . $subject->body);
         $this->mustClose = $subject->mustClose;
+
+        $extraHeaders = [];
+        if ($subject->mustClose) {
+            $extraHeaders[] = 'Connection: close';
+        } else {
+            $extraHeaders[] = 'Connection: keep-alive';
+            $extraHeaders[] = $subject->keepAliveHeader;
+        }
+        if ($subject->serverHeader) {
+            $extraHeaders[] = $subject->serverHeader;
+        }
+        $extraHeaders[] = $subject->dateHeader;
+        $extraHeaders = implode("\r\n", $extraHeaders);
+
+        $this->response = "{$this->startLineAndHeaders}\r\n{$extraHeaders}\r\n\r\n{$this->body}";
     }
 
     public function writeResponse() {
-        $bytesWritten = @fwrite($this->socket, $this->buffer);
+        $bytesWritten = @fwrite($this->socket, $this->response);
 
-        if ($bytesWritten === strlen($this->buffer)) {
+        if ($bytesWritten === strlen($this->response)) {
             return $this->promise ? $this->fulfillWritePromise() : $this->mustClose;
         } elseif ($bytesWritten > 0) {
-            $this->buffer = substr($this->buffer, $bytesWritten);
+            $this->response = substr($this->response, $bytesWritten);
             return $this->promise ?: $this->makeWritePromise();
         } elseif (is_resource($this->socket)) {
             return $this->promise ?: $this->makeWritePromise();
@@ -41,10 +63,8 @@ class StringWriter implements Writer {
     }
 
     private function makeWritePromise() {
-        $this->promise = new Promise;
         $this->reactor->enable($this->writeWatcher);
-
-        return $this->promise->getFuture();
+        return $this->promise = new Promise;
     }
 
     private function fulfillWritePromise() {

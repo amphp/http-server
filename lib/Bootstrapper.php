@@ -6,7 +6,6 @@ use Alert\Reactor,
     Alert\ReactorFactory,
     Auryn\Injector,
     Auryn\Provider,
-    Aerys\Server,
     Aerys\Aggregate\Responder as AggregateResponder;
 
 class Bootstrapper {
@@ -178,12 +177,11 @@ class Bootstrapper {
     private function aggregateAppResponders(array $appArr) {
         $responders = [];
 
-        if ($conf = $appArr[App::WEBSOCKETS]) {
-            $responders[App::WEBSOCKETS] = $this->buildWebsocketResponder($conf);
-        }
-
-        if ($conf = $appArr[App::ROUTES]) {
-            $responders[App::ROUTES] = $this->buildRoutablesResponder($conf);
+        if ($appArr[App::ROUTES] || $appArr[App::THREAD_ROUTES] || $appArr[App::WEBSOCKETS]) {
+            $standard = $appArr[App::ROUTES];
+            $threaded = $appArr[App::THREAD_ROUTES];
+            $websockets = $appArr[App::WEBSOCKETS];
+            $responders[App::ROUTES] = $this->buildRoutablesResponder($standard, $threaded, $websockets);
         }
 
         if ($conf = $appArr[App::RESPONDERS]) {
@@ -217,22 +215,79 @@ class Bootstrapper {
         };
     }
 
-    private function buildWebsocketResponder(array $endpointApps) {
-        $wsResponder = $this->injector->make('Aerys\Websocket\Responder');
+    private function buildRoutablesResponder(array $standard, array $threaded, array $websockets) {
+        $routeBuilder = function(RouteCollector $rc) use ($standard, $threaded, $websockets) {
+            if ($standard) {
+                $this->buildStandardRouteHandlers($rc, $standard);
+            }
+            if ($threaded) {
+                $this->buildThreadedRouteHandlers($rc, $threaded);
+            }
+            if ($websockets) {
+                $this->buildWebsocketRouteHandlers($rc, $websockets);
+            }
+        };
+        $dispatcher = \FastRoute\simpleDispatcher($routeBuilder);
+        $responder = $this->injector->make('Aerys\Routables\Responder', [
+            ':dispatcher' => $dispatcher
+        ]);
 
-        foreach ($endpointApps as $endpointStruct) {
-            list($wsEndpointUriPath, $wsAppClass, $wsEndpointOptions) = $endpointStruct;
-            $wsEndpoint = $this->makeWebsocketEndpoint($wsAppClass);
-            $this->configureWebsocketEndpoint($wsEndpoint, $wsEndpointOptions);
-            $wsResponder->setEndpoint($wsEndpointUriPath, $wsEndpoint);
-        }
-
-        return $wsResponder;
+        return $responder;
     }
 
-    private function makeWebsocketEndpoint($wsAppClass) {
+    private function buildStandardRouteHandlers(RouteCollector $rc, array $routes) {
+        foreach ($routes as list($httpMethod, $uriPath, $handler)) {
+            if (!($handler instanceof \Closure || @function_exists($handler))) {
+                $handler = $this->buildStandardRouteExecutable($handler);
+            }
+            $rc->addRoute($httpMethod, $uriPath, $handler);
+        }
+    }
+
+    private function buildStandardRouteExecutable($routeHandler) {
         try {
-            return $this->injector->make('Aerys\Websocket\Endpoint', ['app' => $wsAppClass]);
+            return $this->injector->getExecutable($routeHandler);
+        } catch (\Exception $previousException) {
+            throw new BootException(
+                'Callable route handler build failure: ' . $previousException->getMessage(),
+                $errorCode = 0,
+                $previousException
+            );
+        }
+    }
+
+    private function buildThreadedRouteHandlers(RouteCollector $rc, array $routes) {
+        $responder = $this->injector->make('Aerys\Blockable\Responder');
+        foreach ($routes as list($httpMethod, $uriPath, $handler)) {
+            // @TODO Allow Class::method strings once auto injection is added inside
+            // worker threads. For now we'll just require function names.
+            if (!@function_exists($handler)) {
+                throw new BootException(
+                    'Thread route handler must be a function or class::method string'
+                );
+            }
+
+            $rc->addRoute($httpMethod, $uriPath, function($request) use ($responder, $handler) {
+                $request['AERYS_THREAD_ROUTE'] = $handler;
+                return $responder->__invoke($request);
+            });
+        }
+    }
+
+    private function buildWebsocketRouteHandlers(RouteCollector $rc, array $routes) {
+        $handshaker = $this->injector->make('Aerys\Websocket\HandshakeResponder');
+        foreach ($routes as list($uriPath, $handlerClass, $endpointOptions)) {
+            $endpoint = $this->makeWebsocketEndpoint($handlerClass);
+            $this->configureWebsocketEndpoint($endpoint, $endpointOptions);
+            $rc->addRoute('GET', $uriPath, function($request) use ($handshaker, $endpoint) {
+                return $handshaker->handshake($endpoint, $request);
+            });
+        }
+    }
+
+    private function makeWebsocketEndpoint($handlerClass) {
+        try {
+            return $this->injector->make('Aerys\Websocket\Endpoint', ['app' => $handlerClass]);
         } catch (\Exception $e) {
             throw new BootException("Failed building websocket endpoint", $code = 0, $e);
         }
@@ -243,40 +298,6 @@ class Bootstrapper {
             $endpoint->setAllOptions($options);
         } catch (\Exception $e) {
             throw new BootException("Failed configuring websocket endpoint", $code = 0, $e);
-        }
-    }
-
-    private function buildRoutablesResponder(array $routes) {
-        $dispatcher = \FastRoute\simpleDispatcher(function(\FastRoute\RouteCollector $r) use ($routes) {
-            foreach ($routes as $routeArr) {
-                list($httpMethod, $uriPath, $routeHandler) = $routeArr;
-                if (!($routeHandler instanceof \Closure
-                    || (is_string($routeHandler) && function_exists($routeHandler))
-                )) {
-                    $routeHandler = $this->buildExecutableRouteHandler($routeHandler);
-                }
-
-                $r->addRoute($httpMethod, $uriPath, $routeHandler);
-            }
-
-        });
-
-        $responder = $this->injector->make('Aerys\Routables\Responder', [
-            ':dispatcher' => $dispatcher
-        ]);
-
-        return $responder;
-    }
-
-    private function buildExecutableRouteHandler($routeHandler) {
-        try {
-            return $this->injector->getExecutable($routeHandler);
-        } catch (\Exception $previousException) {
-            throw new BootException(
-                'Callable route handler build failure: ' . $previousException->getMessage(),
-                $errorCode = 0,
-                $previousException
-            );
         }
     }
 

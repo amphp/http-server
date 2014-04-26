@@ -4,52 +4,76 @@ namespace Aerys\Documents;
 
 use Amp\Thread;
 
-class ThreadSendTask {
-    private $headers;
-    private $path;
+/**
+ * The socket remains in non-blocking mode even though we're operating inside a worker thread.
+ * We can't tell it to block because this could affect read operations in the main thread where
+ * blocking behavior is unacceptable. As a result, we loop when writing to ensure all data is
+ * sent before proceeding.
+ */
+class ThreadSendTask extends \Threaded {
     private $socket;
-    private $socketId;
+    private $startLineAndHeaders;
+    private $filePath;
+    private $fileSize;
 
-    public function __construct($headers, $path, $socket) {
-        $this->headers = $headers;
-        $this->path = $path;
+    public function __construct($socket, $startLineAndHeaders, $filePath, $fileSize) {
         $this->socket = $socket;
-
-        /**
-         * It's important to store the socket ID here and not inside the run()
-         * method as the ID number will change once the socket is imported into
-         * the worker thread's context.
-         */
-        $this->socketId = (int) $socket;
+        $this->startLineAndHeaders = $startLineAndHeaders;
+        $this->filePath = $filePath;
+        $this->fileSize = $fileSize;
     }
 
     public function run() {
-        if (!isset($this->worker->shared[$this->socketId])) {
-            $this->worker->shared[$this->socketId] = $this->socket;
+        $fileHandle = @fopen($this->filePath, 'r');
+
+        if ($fileHandle === FALSE) {
+            $this->worker->registerResult(Thread::FAILURE, new \RuntimeException(
+                sprintf('Failed opening file handle: %s', $this->filePath)
+            ));
+            return;
         }
 
-        $handle = @fopen($this->path, 'r');
-
-        if ($handle === FALSE) {
-            throw new \RuntimeException(
-                sprintf('Failed opening file handle: %s', $this->path)
-            );
+        if (!$this->writeHeaders()) {
+            $this->worker->registerResult(Thread::FAILURE, new \RuntimeException(
+                'Socket went away while writing headers'
+            ));
+            return;
         }
 
-        if (!@fwrite($this->socket, $this->headers)) {
-            throw new \RuntimeException(
-                'Failed writing response headers to socket'
-            );
+        if ($this->writeBody($fileHandle)) {
+            $this->worker->registerResult(Thread::SUCCESS, $result = NULL);
+        } else {
+            $this->worker->registerResult(Thread::FAILURE, new \RuntimeException(
+                'Socket went away while writing entity body'
+            ));
+        }
+    }
+
+    public function writeBody($fileHandle) {
+        $maxLength = -1;
+        $bytesWritten = 0;
+        while ($bytesWritten < $this->fileSize) {
+            $bytes = @stream_copy_to_stream($fileHandle, $this->socket, $maxLength, $bytesWritten);
+            $bytesWritten += $bytes;
+            if ($bytes === FALSE) {
+                return FALSE;
+            }
         }
 
-        $result = @stream_copy_to_stream($handle, $this->socket);
+        return TRUE;
+    }
 
-        if ($result === FALSE) {
-            throw new \RuntimeException(
-                sprintf('Failed writing file handle to socket: %s', $path)
-            );
+    public function writeHeaders() {
+        while (TRUE) {
+            $bytesWritten = @fwrite($this->socket, $this->startLineAndHeaders);
+
+            if ($bytesWritten === strlen($this->startLineAndHeaders)) {
+                return TRUE;
+            } elseif ($bytesWritten > 0) {
+                $this->startLineAndHeaders = substr($this->startLineAndHeaders, $bytesWritten);
+            } elseif (!is_resource($this->socket)) {
+                return FALSE;
+            }
         }
-
-        $this->worker->registerResult(Thread::SUCCESS, $result);
     }
 }

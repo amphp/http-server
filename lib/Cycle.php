@@ -27,6 +27,5 @@ class Cycle {
     public $hasAbsoluteUri;
     public $request;
     public $response;
-    public $closeAfterResponse;
     public $expectsContinue;
 }

@@ -2,9 +2,10 @@
 
 namespace Aerys;
 
-class PendingResponse {
+class WriterSubjectNormalized {
+    public $socket;
     public $writeWatcher;
-    public $destination;
+    public $mustClose;
     public $headers;
     public $body;
 }

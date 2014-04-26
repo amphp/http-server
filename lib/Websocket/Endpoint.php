@@ -4,9 +4,11 @@ namespace Aerys\Websocket;
 
 use Alert\Future,
     Alert\Promise,
-    Alert\Reactor;
+    Alert\Reactor,
+    Aerys\Server,
+    Aerys\ServerObserver;
 
-class Endpoint {
+class Endpoint implements ServerObserver {
     const OP_ALLOWED_ORIGINS = 1;
     const OP_MAX_FRAME_SIZE = 2;
     const OP_MAX_MSG_SIZE = 3;
@@ -50,6 +52,25 @@ class Endpoint {
         $this->reactor = $reactor;
         $this->app = $app;
         $this->broker = new Broker($this);
+    }
+
+    /**
+     * Listen for server START/STOPPING notifications
+     *
+     * Websocket endpoints require notification when the server starts or stops to enable
+     * application bootstrapping and graceful shutdown.
+     *
+     * @param Aerys\Server $server
+     * @param int $event
+     * @return Alert\Future
+     */
+    public function onServerUpdate(Server $server, $event) {
+        switch ($event) {
+            case Server::STARTING:
+                return $this->start();
+            case Server::STOPPING:
+                return $this->stop();
+        }
     }
 
     /**
@@ -125,7 +146,7 @@ class Endpoint {
      * @param callable $closer A callback that MUST be invoked when the socket is disconnected
      *                         to notify Aerys that the client is gone.
      */
-    public function import($socket, array $request, callable $closer) {
+    public function import($socket, callable $closer, array $request) {
         $session = new Session;
 
         $socketId = (int) $socket;

@@ -7,7 +7,6 @@ class Response {
     private $reason = '';
     private $headers = '';
     private $body = NULL;
-    private $exportCallback;
 
     /**
      * Get the status code for this response
@@ -19,7 +18,7 @@ class Response {
     }
 
     /**
-     * Assign the response status code (default: 200)
+     * Assign a response status code
      *
      * @param int $status
      * @throws \InvalidArgumentException On invalid parameter type
@@ -36,7 +35,7 @@ class Response {
                 sprintf('Invalid response status code: %d', $status)
             );
         } else {
-            $this->status = $status;
+            $this->status = (int) $status;
         }
 
         return $this;
@@ -55,17 +54,10 @@ class Response {
      * Assign an optional reason phrase (e.g. Not Found) to accompany the status code
      *
      * @param string $reason
-     * @throws \InvalidArgumentException
      * @return object Returns the current object instance
      */
     public function setReason($reason) {
-        if (is_string($reason)) {
-            $this->reason = $reason;
-        } else {
-            throw new \InvalidArgumentException(
-                sprintf('Reason phrase must be a string; %s provided', gettype($reason))
-            );
-        }
+        $this->reason = (string) $reason;
 
         return $this;
     }
@@ -82,49 +74,117 @@ class Response {
      * @return string
      */
     public function getHeader($field) {
-        $this->validateHeaderField($field);
-        $headers = "\r\n" . $this->headers;
-        $lineStartPos = stripos($headers, "\r\n{$field}:");
-
-        if ($lineStartPos === FALSE) {
-            throw new \DomainException(
-                sprintf("Header field not found: %s", $field)
-            );
-        } else {
-            $fieldLen = strlen($field) + 3;
-            $valueStart = $lineStartPos + $fieldLen;
-            $valueLen = strpos($headers, "\r\n", $lineStartPos + 2) - $valueStart;
-
-            return trim(substr($headers, $valueStart, $valueLen));
+        $fieldKey = rtrim($field, " :") . ':';
+        $tok = strtok("\r\n" . $this->headers, "\r\n");
+        while ($tok !== FALSE) {
+            if (stripos($tok, $fieldKey) === 0) {
+                return trim(substr($tok, strlen($fieldKey)));
+            }
+            $tok = strtok("\r\n");
         }
+
+        throw new \DomainException(
+            sprintf("Header field not found: %s", $field)
+        );
+    }
+
+    /**
+     * Like Response::getHeader() but returns NULL if the header doesn't exist instead of throwing
+     *
+     * NOTE: This method returns only the first value for the specified field. Use
+     * Response::getHeaderArray() if you need access to all assigned headers for
+     * a given field.
+     *
+     * @param string $field
+     * @return string|NULL
+     */
+    public function getHeaderSafe($field) {
+        $fieldKey = rtrim($field, " :") . ':';
+        $tok = strtok("\r\n" . $this->headers, "\r\n");
+        while ($tok !== FALSE) {
+            if (stripos($tok, $fieldKey) === 0) {
+                return trim(substr($tok, strlen($fieldKey)));
+            }
+            $tok = strtok("\r\n");
+        }
+
+        return NULL;
     }
 
     /**
      * Retrieve an array of header values assigned for the specified field
      *
      * HTTP allows multiple values for a given header field. Use this method to retrieve
-     * all individually assigned values for a given field.
+     * all individually assigned values for a given field. If the specified header is not
+     * assigned an empty array is returned.
      *
      * @param string $field
      * @return array
      */
     public function getHeaderArray($field) {
-        $this->validateHeaderField($field);
-        $headers = "\r\n" . $this->headers;
-        $fieldLen = strlen($field) + 3;
+        $fieldKey = rtrim($field, " :") . ':';
+        $fieldKeyLen = strlen($fieldKey);
         $values = [];
 
-        while (($lineStartPos = stripos($headers, "\r\n{$field}:")) !== FALSE) {
-            $valueStart = $lineStartPos + $fieldLen;
-            $valueLen = strpos($headers, "\r\n", $lineStartPos + 2) - $valueStart;
-            $values[] = trim(substr($headers, $valueStart, $valueLen));
+        $tok = strtok($this->headers, "\r\n");
+        while ($tok !== FALSE) {
+        if (stripos($tok, $fieldKey) === 0) {
+                $values[] = trim(substr($tok, $fieldKeyLen));
+                trim(substr($tok, $fieldKeyLen));
+            }
+            $tok = strtok("\r\n");
         }
 
         return $values;
     }
 
-    public function getHeaderMerged($field) {
-        return implode(',', $this->getHeaderArray($field));
+    /**
+     * Retrieve a string of comma-concatenated headers for the specified field
+     *
+     * If the specified header is not assigned an empty string is returned.
+     *
+     * @param string $field
+     * @return string|NULL
+     */
+    public function getHeaderFolded($field) {
+        $fieldKey = rtrim($field, " :") . ':';
+        $fieldKeyLen = strlen($fieldKey);
+        $values = [];
+
+        $tok = strtok($this->headers, "\r\n");
+        while ($tok !== FALSE) {
+            if (stripos($tok, $fieldKey) === 0) {
+                $values[] = trim(substr($tok, $fieldKeyLen));
+            }
+            $tok = strtok("\r\n");
+        }
+
+        return $values ? implode(', ', $values) : NULL;
+    }
+
+    /**
+     * Does the specified $field have a case-insensitive match for the specified $value?
+     *
+     * @param string $field
+     * @param string $value
+     * @return bool
+     */
+    public function hasHeaderMatch($field, $value) {
+        $fieldKey = rtrim($field, " :") . ':';
+        $fieldKeyLen = strlen($fieldKey);
+
+        $tok = strtok($this->headers, "\r\n");
+        while ($tok !== FALSE) {
+            if (stripos($tok, $fieldKey) === 0 &&
+                strcasecmp($value, trim(substr($tok, $fieldKeyLen))) === 0
+            ) {
+                return TRUE;
+            } else {
+                $tok = strtok("\r\n");
+            }
+        }
+
+        return FALSE;
     }
 
     /**
@@ -142,7 +202,7 @@ class Response {
      * @return array
      */
     public function getAllHeaderLines() {
-        return $this->headers ? explode("\r\n", $this->headers) : [];
+        return $this->headers ? explode("\r\n", trim($this->headers)) : [];
     }
 
     /**
@@ -169,8 +229,7 @@ class Response {
      * @return bool
      */
     public function hasHeader($field) {
-        $this->validateHeaderField($field);
-
+        $field = (string) $field;
         if (stripos($this->headers, "\r\n{$field}:") !== FALSE) {
             return TRUE;
         } elseif (stripos($this->headers, "{$field}:") === 0) {
@@ -190,7 +249,7 @@ class Response {
      * @return object Returns the current object instance
      */
     public function addHeader($field, $value) {
-        $this->validateHeaderField($field);
+        $field = (string) $field;
         $this->validateHeaderValue($value);
         $this->headers .= "\r\n{$field}: {$value}";
 
@@ -214,7 +273,7 @@ class Response {
             );
         } elseif (strpbrk($value, "\r\n") !== FALSE) {
             throw new \DomainException(
-                'Header values must not contain CR (\\r) or LF (\\n) characters'
+                'Header values must not contain CR (\r) or LF (\n) characters'
             );
         }
     }
@@ -229,7 +288,7 @@ class Response {
      * @return object Returns the current object instance
      */
     public function setHeader($field, $value) {
-        $this->validateHeaderField($field);
+        $field = (string) $field;
         $this->validateHeaderValue($value);
         $this->removeHeader($field);
         $this->headers .= "\r\n{$field}: {$value}";
@@ -283,21 +342,16 @@ class Response {
      * @return object Returns the current object instance
      */
     public function removeHeader($field) {
-        $this->validateHeaderField($field);
-
-        $removedHeaderCount = 0;
-        $headers = $this->headers;
-        while (($lineStartPos = stripos($headers, "\r\n{$field}:")) !== FALSE) {
-            $lineEndPos = strpos($headers, "\r\n", $lineStartPos + 2);
-            $start = substr($headers, 0, $lineStartPos);
-            $end = $lineEndPos ? substr($headers, $lineEndPos) : '';
-            $headers = $start . $end;
-            $removedHeaderCount++;
+        $newHeaders = [];
+        $fieldKey = rtrim($field, " :") . ':';
+        foreach (explode("\r\n", $this->headers) as $line) {
+            if (stripos($line, $fieldKey) !== 0) {
+                $newHeaders[] = $line;
+            }
         }
+        $this->headers = $newHeaders ? implode("\r\n", $newHeaders) : '';
 
-        $this->headers = $headers;
-
-        return $removedHeaderCount;
+        return $this;
     }
 
     /**
@@ -315,7 +369,7 @@ class Response {
      * @return bool
      */
     public function hasBody() {
-        return $this->body !== NULL;
+        return $this->body != '';
     }
 
     /**
@@ -339,25 +393,21 @@ class Response {
         return $this;
     }
 
-    public function setExportCallback(callable $callback) {
-        $this->exportCallback = $callback;
-        
-        return $this;
-    }
-
-    public function hasExportCallback() {
-        return (bool) $this->exportCallback;
-    }
-
-    public function getExportCallback() {
-        return $this->exportCallback;
-    }
-
     public function toList() {
-
+        return [
+            $this->status,
+            $this->reason,
+            $this->body,
+            $this->headers,
+        ];
     }
 
     public function toDict() {
-
+        return [
+            'status'  => $this->status,
+            'reason'  => $this->reason,
+            'body'    => $this->body,
+            'headers' => $this->headers,
+        ];
     }
 }

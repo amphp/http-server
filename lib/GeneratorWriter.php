@@ -4,30 +4,31 @@ namespace Aerys;
 
 use Alert\Reactor, Alert\Future, Alert\Promise, Alert\PromiseGroup;
 
-class GeneratorWriter implements ResponseWriter {
-
+class GeneratorWriter implements Writer {
     private $reactor;
-    private $destination;
+    private $socket;
     private $writeWatcher;
     private $bufferString;
     private $bufferLength;
-    private $iteratorError;
     private $promise;
-    private $future;
     private $body;
+    private $mustClose;
     private $awaitingFuture;
     private $outputCompleted = FALSE;
-    private $destinationPipeBroken = FALSE;
+    private $targetPipeBroken = FALSE;
 
-    public function __construct(Reactor $reactor, PendingResponse $pr) {
+    public function __construct(Reactor $reactor) {
         $this->reactor = $reactor;
-        $this->destination = $pr->destination;
-        $this->writeWatcher = $pr->writeWatcher;
-        $this->bufferString = $pr->headers;
+    }
+
+    public function prepareSubject($subject) {
+        $this->socket = $subject->socket;
+        $this->writeWatcher = $subject->writeWatcher;
+        $this->bufferString = $subject->headers;
         $this->bufferLength = strlen($this->bufferString);
-        $this->body = $pr->body;
+        $this->body = $subject->body;
+        $this->mustClose = $subject->mustClose;
         $this->promise = new Promise;
-        $this->future = $this->promise->getFuture();
         $this->futureResolver = function(Future $f) {
             $this->awaitingFuture = FALSE;
             $this->onFutureCompletion($f);
@@ -36,7 +37,7 @@ class GeneratorWriter implements ResponseWriter {
 
     public function writeResponse() {
         $bytesWritten = ($this->bufferLength > 0)
-            ? @fwrite($this->destination, $this->bufferString, $this->bufferLength)
+            ? @fwrite($this->socket, $this->bufferString, $this->bufferLength)
             : 0;
 
         if ($bytesWritten === $this->bufferLength) {
@@ -46,12 +47,12 @@ class GeneratorWriter implements ResponseWriter {
             $this->bufferString = substr($this->bufferString, $bytesWritten);
             $this->bufferLength -= $bytesWritten;
             $this->reactor->enable($this->writeWatcher);
-        } elseif (!is_resource($this->destination)) {
-            $this->destinationPipeBroken = TRUE;
+        } elseif (!is_resource($this->socket)) {
+            $this->targetPipeBroken = TRUE;
             $this->failWritePromise(new TargetPipeException);
         }
 
-        return $this->future;
+        return $this->promise;
     }
 
     private function bufferNextElement() {
@@ -112,8 +113,8 @@ class GeneratorWriter implements ResponseWriter {
 
     private function onFutureCompletion(Future $future) {
         try {
-            if ($this->destinationPipeBroken) {
-                // We're finished because the destination endpoint went away while we were
+            if ($this->targetPipeBroken) {
+                // We're finished because the destination socket went away while we were
                 // working to resolve this future.
                 return;
             } elseif ($future->succeeded()) {
@@ -130,7 +131,7 @@ class GeneratorWriter implements ResponseWriter {
 
     private function fulfillWritePromise() {
         $this->reactor->disable($this->writeWatcher);
-        $this->promise->succeed();
+        $this->promise->succeed($this->mustClose);
     }
 
     private function failWritePromise(\Exception $e) {
