@@ -342,7 +342,7 @@ class Bootstrapper {
         try {
             $root = $documentSettings['root'];
             unset($documentSettings['root']);
-            $responder = $this->injector->make('Aerys\Documents\Responder', [
+            $responder = $this->injector->make('Aerys\DocRoot\Responder', [
                 ':root' => $root
             ]);
             $responder->setAllOptions($documentSettings);

@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Documents;
+namespace Aerys\DocRoot;
 
 final class Etag {
     const NONE = 0;

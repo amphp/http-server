@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Documents;
+namespace Aerys\DocRoot;
 
 class StatStarterTask extends \Stackable {
     private $rootDir;

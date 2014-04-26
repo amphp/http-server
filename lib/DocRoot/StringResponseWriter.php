@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Documents;
+namespace Aerys\DocRoot;
 
 use Alert\Reactor,
     Alert\Promise,
