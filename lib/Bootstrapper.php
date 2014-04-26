@@ -4,6 +4,7 @@ namespace Aerys;
 
 use Alert\Reactor,
     Alert\ReactorFactory,
+    FastRoute\RouteCollector,
     Auryn\Injector,
     Auryn\Provider,
     Aerys\Aggregate\Responder as AggregateResponder;
@@ -48,10 +49,12 @@ class Bootstrapper {
 
         list($reactor, $injector, $apps, $serverOpts) = $this->parseAppConfig($config);
 
+        $this->injector = $injector;
+
         $injector->alias('Alert\Reactor', get_class($reactor));
         $injector->share($reactor);
         $injector->share('Aerys\Server');
-        $injector->define('Aerys\ResponderBuilder', [':injector' => $injector]);
+        $injector->share('Amp\Dispatcher');
         $server = $injector->make('Aerys\Server', [':debug' => $debugOpt]);
 
         // Automatically register any ServerObserver implementations with the server
@@ -59,7 +62,6 @@ class Bootstrapper {
             $server->addObserver($observer);
         });
 
-        $this->injector = $injector;
         $hosts = new HostCollection;
         foreach ($apps as $app) {
             $host = $this->buildHost($app);
@@ -298,6 +300,24 @@ class Bootstrapper {
             $endpoint->setAllOptions($options);
         } catch (\Exception $e) {
             throw new BootException("Failed configuring websocket endpoint", $code = 0, $e);
+        }
+    }
+
+    private function buildThreadedRouteHandlers(RouteCollector $rc, array $routes) {
+        $responder = $this->injector->make('Aerys\Blockable\Responder');
+
+        foreach ($routes as list($httpMethod, $uriPath, $handler)) {
+            if (is_string($handler) && is_callable($handler)) {
+                $routeHandler = function($request) use ($responder, $handler) {
+                    $request['AERYS_THREAD_ROUTE'] = $handler;
+                    return $responder->__invoke($request);
+                };
+                $rc->addRoute($httpMethod, $uriPath, $routeHandler);
+            } else {
+                throw new BootException(
+                    'Thread route handler must be a function or class::method string'
+                );
+            }
         }
     }
 

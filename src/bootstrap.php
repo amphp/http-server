@@ -2,7 +2,6 @@
 
 require __DIR__ . '/../vendor/Auryn/src/bootstrap.php';
 require __DIR__ . '/../vendor/Alert/src/bootstrap.php';
-//require __DIR__ . '/../vendor/Amp/src/bootstrap.php';
 require_once __DIR__ . '/../vendor/FastRoute/src/bootstrap.php';
 
 spl_autoload_register(function($class) {

@@ -33,7 +33,7 @@ class Responder {
 
     public function __invoke($request) {
         foreach ($this->responders as $responder) {
-            $response = $responder->__invoke($request);
+            $response = call_user_func($responder, $request);
             if (empty($response)) {
                 continue;
             } elseif ($response instanceof Response && $response->getStatus() === Status::NOT_FOUND) {

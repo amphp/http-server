@@ -9,6 +9,7 @@ class App {
     const ENCRYPTION = 'encryption';
     const ORDER = 'order';
     const ROUTES = 'routes';
+    const THREAD_ROUTES = 'thread_routes';
     const DOCUMENTS = 'documents';
     const WEBSOCKETS = 'websockets';
     const RESPONDERS = 'responders';
@@ -155,7 +156,7 @@ class App {
     }
 
     /**
-     * Bind a handler for the specified HTTP method and URI path
+     * Bind a non-blocking route handler for the specified HTTP method and URI path
      *
      * @param string $httpMethod The method for which this route applies
      * @param string $uriPath The route's URI path
