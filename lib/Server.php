@@ -937,6 +937,7 @@ class Server {
             $subject->autoReasonPhrase = $this->autoReasonPhrase;
             $subject->debug = $this->debug;
 
+            // @TODO Catch exceptions here to prevent bad user code from crashing the server here
             $response->prepareSubject($subject);
 
             return $response;
@@ -1081,7 +1082,7 @@ class Server {
         $cycle = $client->cycles[$requestId];
 
         if ($client->isGone) {
-            // Nothing to do; the client socket has been exported or disconnected.
+            return; // Nothing to do; the client socket has already disconnected/exported
         } elseif ($shouldClose) {
             $this->closeClient($client);
         } else {
@@ -1090,7 +1091,7 @@ class Server {
     }
 
     /**
-     * Take control of the specified socket
+     * Assume control of the specified socket
      *
      * Note that exported sockets continue to count against the server's maxConnections limit to
      * protect against DoS. When an application is finished with the exported socket it MUST
