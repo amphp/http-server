@@ -38,7 +38,6 @@ class Server {
     private $state;
     private $reactor;
     private $hostBinder;
-    private $writerFactory;
     private $debug;
     private $stopPromise;
     private $observers;
@@ -77,10 +76,9 @@ class Server {
     private $readGranularity = 262144; // @TODO Add option setter
     private $isExtSocketsEnabled;
 
-    public function __construct(Reactor $reactor, HostBinder $hb = NULL, WriterFactory $wf = NULL, $debug = FALSE) {
+    public function __construct(Reactor $reactor, HostBinder $hb = NULL, $debug = FALSE) {
         $this->reactor = $reactor;
         $this->hostBinder = $hb ?: new HostBinder;
-        $this->writerFactory = $wf ?: new WriterFactory($reactor);
         $this->debug = (bool) $debug;
         $this->observers = new \SplObjectStorage;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
@@ -722,7 +720,7 @@ class Server {
         if (is_string($response)) {
             $cycle->response = (new Response)->setBody($response);
             $this->hydrateWriterPipeline($cycle);
-        } elseif ($response instanceof Response || $response instanceof Writer) {
+        } elseif ($response instanceof Response || $response instanceof ResponseWriterCustom) {
             $cycle->response = $response;
             $this->hydrateWriterPipeline($cycle);
         } elseif ($response instanceof \Generator) {
@@ -761,7 +759,7 @@ class Server {
                 $multiFuture->onComplete(function($future) use ($cycle, $generator) {
                     $this->onFutureYieldResolution($cycle, $generator, $future);
                 });
-            } elseif ($yielded instanceof Response || $yielded instanceof Writer) {
+            } elseif ($yielded instanceof Response || $yielded instanceof ResponseWriterCustom) {
                 $cycle->response = $yielded;
                 $this->hydrateWriterPipeline($cycle);
             } elseif (is_string($yielded)) {
@@ -836,7 +834,7 @@ class Server {
             if (isset($client->pipeline[$requestId])) {
                 continue;
             } elseif ($cycle->response) {
-                $client->pipeline[$requestId] = $this->makeWriter($cycle);
+                $client->pipeline[$requestId] = $this->makeResponseWriter($cycle);
             } else {
                 break;
             }
@@ -888,11 +886,15 @@ class Server {
      * the inline comments. In fact, it originally was separated into several methods. However,
      * the "one long method" approach is used specifically here to minimize expensive additional
      * userland function calls on each response in the interest of performance maximization.
+     *
+     * @return Aerys\ResponseWriter
      */
-    private function makeWriter($cycle) {
+    private function makeResponseWriter($cycle) {
         $client = $cycle->client;
         $request = $cycle->request;
         $response = $cycle->response;
+
+        // --- Perform standard normalizations required for both Writer and WriterCustom -----------
 
         if ($this->disableKeepAlive || $this->state === self::STOPPING) {
             // If keep-alive is disabled or the server is stopping we always close
@@ -922,10 +924,10 @@ class Server {
             $keepAliveHeader = "timeout={$this->keepAliveTimeout}, max={$reqsRemaining}";
         }
 
-        // --- If the $response implements Writer we return it and don't normalize -----------------
+        // --- Prepare and return custom writers without normalization -----------------------------
 
-        if ($response instanceof Writer) {
-            $subject = new WriterSubject;
+        if ($response instanceof ResponseWriterCustom) {
+            $subject = new ResponseWriterSubject;
             $subject->socket = $client->socket;
             $subject->writeWatcher = $client->writeWatcher;
             $subject->mustClose = $mustClose;
@@ -937,13 +939,10 @@ class Server {
             $subject->autoReasonPhrase = $this->autoReasonPhrase;
             $subject->debug = $this->debug;
 
-            // @TODO Catch exceptions here to prevent bad user code from crashing the server here
-            $response->prepareSubject($subject);
-
-            return $response;
+            return $this->prepareResponseWriter($response, $subject, $cycle);
         }
 
-        // --- Normalize standard write subject ----------------------------------------------------
+        // --- If we're still here let's start normalizing things ----------------------------------
 
         $proto = $request['SERVER_PROTOCOL'];
 
@@ -958,35 +957,31 @@ class Server {
         // --- Handle 1xx responses ----------------------------------------------------------------
 
         if ($is1xxResponse && $body == '') {
+            $socket = $client->socket;
+            $watcher = $client->writeWatcher;
             $finalReason = $reason != '' ? " {$reason}" : '';
             $finalHeaders = $response->getRawHeaders();
-            $startLineAndHeaders = "HTTP/{$proto} {$status}{$finalReason}{$finalHeaders}\r\n\r\n";
+            $response = "HTTP/{$proto} {$status}{$finalReason}{$finalHeaders}\r\n\r\n";
+            $mustClose = FALSE;
 
-            $subject = new WriterSubjectNormalized;
-            $subject->socket = $client->socket;
-            $subject->writeWatcher = $client->writeWatcher;
-            $subject->mustClose = FALSE;
-            $subject->headers = $startLineAndHeaders;
-
-            $writer = $this->writerFactory->make(Writer::BODY_STRING, FALSE);
-            $writer->prepareSubject($subject);
+            return new StringWriter($this->reactor, $socket, $watcher, $response, $mustClose);
 
         } elseif ($is1xxResponse) {
             $this->assignExceptionResponse($cycle, new \DomainException(
                 '1xx response must not contain an entity body'
             ));
 
-            return $this->makeWriter($cycle);
+            return $this->makeResponseWriter($cycle);
         }
 
         // --- Normalize Content-Length and Transfer-Encoding --------------------------------------
 
         if (empty($body) || is_scalar($body)) {
-            $bodyType = Writer::BODY_STRING;
+            $isStringBody = TRUE;
             $transferEncoding = 'identity';
             $response->setHeader('Content-Length', strlen($body));
         } else {
-            $bodyType = Writer::BODY_GENERATOR;
+            $isStringBody = FALSE;
             $transferEncoding = ($proto < 1.1) ? 'identity' : 'chunked';
             $response->removeHeader('Content-Length');
             $mustClose = $mustClose ?: ($proto < 1.1);
@@ -1035,25 +1030,39 @@ class Server {
         if ($request['REQUEST_METHOD'] === 'HEAD') {
             $body = '';
             $response->setBody($body);
-            $bodyType = Writer::BODY_STRING;
+            $isStringBody = TRUE;
         }
 
         // --- Build the final Writer --------------------------------------------------------------
 
         $finalReason = $reason != '' ? " {$reason}" : '';
         $finalHeaders = $response->getRawHeaders();
-        $startLineAndHeaders = "HTTP/{$proto} {$status}{$finalReason}{$finalHeaders}\r\n\r\n";
+        $socket = $client->socket;
+        $watcher = $client->writeWatcher;
+        $reactor = $this->reactor;
 
-        $subject = new WriterSubjectNormalized;
-        $subject->socket = $client->socket;
-        $subject->writeWatcher = $client->writeWatcher;
-        $subject->mustClose = $mustClose;
-        $subject->headers = $startLineAndHeaders;
-        $subject->body = $body;
-        $writer = $this->writerFactory->make($bodyType, $mustClose);
-        $writer->prepareSubject($subject);
+        if ($isStringBody) {
+            $response = "HTTP/{$proto} {$status}{$finalReason}{$finalHeaders}\r\n\r\n{$body}";
+            return new StringWriter($reactor, $socket, $watcher, $response, $mustClose);
+        } elseif ($mustClose) {
+            $headers = "HTTP/{$proto} {$status}{$finalReason}{$finalHeaders}\r\n\r\n";
+            return new GeneratorWriter($reactor, $socket, $watcher, $headers, $body , $mustClose);
+        } else {
+            $headers = "HTTP/{$proto} {$status}{$finalReason}{$finalHeaders}\r\n\r\n";
+            return new GeneratorWriterChunked($reactor, $socket, $watcher, $headers, $body , $mustClose);
+        }
+    }
 
-        return $writer;
+    private function prepareResponseWriter(ResponseWriterCustom $writer, ResponseWriterSubject $subject, Cycle $cycle) {
+        try {
+            $writer->prepareResponse($subject);
+            return $writer;
+        } catch (\Exception $e) {
+            $this->assignExceptionResponse($cycle, new \DomainException(
+                '1xx response must not contain an entity body'
+            ));
+            return $this->makeResponseWriter($cycle);
+        }
     }
 
     private function onFutureWriteResolution($client, $future) {
@@ -1078,12 +1087,14 @@ class Server {
     }
 
     private function afterResponseWrite($client, $shouldClose) {
+        if ($client->isGone) {
+            return; // Nothing to do; the client socket has already disconnected/exported
+        }
+
         $requestId = key($client->cycles);
         $cycle = $client->cycles[$requestId];
 
-        if ($client->isGone) {
-            return; // Nothing to do; the client socket has already disconnected/exported
-        } elseif ($shouldClose) {
+        if ($shouldClose) {
             $this->closeClient($client);
         } else {
             $this->shiftClientPipeline($client, $requestId);

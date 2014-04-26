@@ -4,10 +4,10 @@ namespace Aerys;
 
 use Alert\Reactor, Alert\Future, Alert\Promise, Alert\PromiseGroup;
 
-class GeneratorWriter implements Writer {
+class GeneratorWriter implements ResponseWriter {
     private $reactor;
     private $socket;
-    private $writeWatcher;
+    private $watcher;
     private $bufferString;
     private $bufferLength;
     private $promise;
@@ -17,17 +17,14 @@ class GeneratorWriter implements Writer {
     private $outputCompleted = FALSE;
     private $targetPipeBroken = FALSE;
 
-    public function __construct(Reactor $reactor) {
+    public function __construct(Reactor $reactor, $socket, $watcher, $headers, $body , $mustClose) {
         $this->reactor = $reactor;
-    }
-
-    public function prepareSubject($subject) {
-        $this->socket = $subject->socket;
-        $this->writeWatcher = $subject->writeWatcher;
-        $this->bufferString = $subject->headers;
-        $this->bufferLength = strlen($this->bufferString);
-        $this->body = $subject->body;
-        $this->mustClose = $subject->mustClose;
+        $this->socket = $socket;
+        $this->watcher = $watcher;
+        $this->bufferString = $headers;
+        $this->bufferLength = strlen($headers);
+        $this->body = $body;
+        $this->mustClose = $mustClose;
         $this->promise = new Promise;
         $this->futureResolver = function(Future $f) {
             $this->awaitingFuture = FALSE;
@@ -46,7 +43,7 @@ class GeneratorWriter implements Writer {
         } elseif ($bytesWritten > 0) {
             $this->bufferString = substr($this->bufferString, $bytesWritten);
             $this->bufferLength -= $bytesWritten;
-            $this->reactor->enable($this->writeWatcher);
+            $this->reactor->enable($this->watcher);
         } elseif (!is_resource($this->socket)) {
             $this->targetPipeBroken = TRUE;
             $this->failWritePromise(new TargetPipeException);
@@ -60,7 +57,7 @@ class GeneratorWriter implements Writer {
             $this->fulfillWritePromise();
         } elseif ($this->awaitingFuture) {
             // We can't proceed until the in-progress future value is resolved
-            $this->reactor->disable($this->writeWatcher);
+            $this->reactor->disable($this->watcher);
         } elseif ($this->body->valid()) {
             $this->advanceGenerator();
         } else {
@@ -130,12 +127,12 @@ class GeneratorWriter implements Writer {
     }
 
     private function fulfillWritePromise() {
-        $this->reactor->disable($this->writeWatcher);
+        $this->reactor->disable($this->watcher);
         $this->promise->succeed($this->mustClose);
     }
 
     private function failWritePromise(\Exception $e) {
-        $this->reactor->disable($this->writeWatcher);
+        $this->reactor->disable($this->watcher);
         $this->promise->fail($e);
     }
 }

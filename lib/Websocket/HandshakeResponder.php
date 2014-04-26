@@ -3,6 +3,7 @@
 namespace Aerys\Websocket;
 
 use Alert\Reactor,
+    Alert\Success,
     Aerys\Server,
     Aerys\Status,
     Aerys\Response,
@@ -140,6 +141,7 @@ class HandshakeResponder implements ServerObserver {
     public function onServerUpdate(Server $server, $event) {
         if ($event === Server::STOPPING) {
             $this->isStopping = TRUE;
+            return new Success;
         }
     }
 }

@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-class WriterSubject {
+class ResponseWriterSubject {
     public $socket;
     public $writeWatcher;
     public $mustClose;

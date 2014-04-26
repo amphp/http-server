@@ -2,11 +2,12 @@
 
 namespace Aerys\Blockable;
 
-use Aerys\Writer,
-    Alert\Promise,
-    Amp\Dispatcher;
+use Alert\Promise,
+    Amp\Dispatcher,
+    Aerys\ResponseWriterCustom,
+    Aerys\ResponseWriterSubject;
 
-class ThreadResponseWriter implements Writer {
+class ThreadResponseWriter implements ResponseWriterCustom {
     private $dispatcher;
     private $request;
     private $subject;
@@ -17,7 +18,7 @@ class ThreadResponseWriter implements Writer {
         $this->request = $request;
     }
 
-    public function prepareSubject($subject) {
+    public function prepareResponse(ResponseWriterSubject $subject) {
         $this->subject = $subject;
     }
 

@@ -2,14 +2,15 @@
 
 namespace Aerys\Websocket;
 
-use Aerys\Writer,
+use Alert\Reactor,
+    Alert\Promise,
+    Alert\Failure,
     Aerys\Server,
     Aerys\TargetPipeException,
-    Alert\Reactor,
-    Alert\Promise,
-    Alert\Failure;
+    Aerys\ResponseWriterCustom,
+    Aerys\ResponseWriterSubject;
 
-class HandshakeWriter implements Writer {
+class HandshakeWriter implements ResponseWriterCustom {
     private $server;
     private $reactor;
     private $endpoint;
@@ -27,7 +28,7 @@ class HandshakeWriter implements Writer {
         $this->response = $response;
     }
 
-    public function prepareSubject($subject) {
+    public function prepareResponse(ResponseWriterSubject $subject) {
         $this->socket = $subject->socket;
         $this->writeWatcher = $subject->writeWatcher;
     }
@@ -51,7 +52,7 @@ class HandshakeWriter implements Writer {
 
     private function exportSocket() {
         list($socket, $closer) = $this->server->exportSocket($this->request['AERYS_SOCKET_ID']);
-        $this->endpoint->import($socket, $this->request, $closer);
+        $this->endpoint->import($socket, $closer, $this->request);
         return TRUE;
     }
 

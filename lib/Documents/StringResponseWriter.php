@@ -5,10 +5,11 @@ namespace Aerys\Documents;
 use Alert\Reactor,
     Alert\Promise,
     Alert\Failure,
-    Aerys\Writer,
+    Aerys\ResponseWriterCustom,
+    Aerys\ResponseWriterSubject,
     Aerys\TargetPipeException;
 
-class StringResponseWriter implements Writer {
+class StringResponseWriter implements ResponseWriterCustom {
     private $reactor;
     private $socket;
     private $writeWatcher;
@@ -24,7 +25,7 @@ class StringResponseWriter implements Writer {
         $this->body = $body;
     }
 
-    public function prepareSubject($subject) {
+    public function prepareResponse(ResponseWriterSubject $subject) {
         $this->socket = $subject->socket;
         $this->writeWatcher = $subject->writeWatcher;
         $this->mustClose = $subject->mustClose;

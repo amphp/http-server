@@ -5,9 +5,10 @@ namespace Aerys\Documents;
 use Amp\Dispatcher,
     Alert\Promise,
     Alert\Future,
-    Aerys\Writer;
+    Aerys\ResponseWriterCustom,
+    Aerys\ResponseWriterSubject;
 
-class ThreadResponseWriter implements Writer {
+class ThreadResponseWriter implements ResponseWriterCustom {
     private $dispatcher;
     private $startLineAndHeaders;
     private $filePath;
@@ -23,7 +24,7 @@ class ThreadResponseWriter implements Writer {
         $this->fileSize = $fileSize;
     }
 
-    public function prepareSubject($subject) {
+    public function prepareResponse(ResponseWriterSubject $subject) {
         $this->mustClose = $subject->mustClose;
 
         $extraHeaders = [];

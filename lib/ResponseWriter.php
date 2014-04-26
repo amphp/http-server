@@ -2,19 +2,7 @@
 
 namespace Aerys;
 
-use Alert\Reactor;
-
-interface Writer {
-    const BODY_STRING = 1;
-    const BODY_GENERATOR = 2;
-
-    /**
-     * Prepare the responder with all data needed to manually output the $subject
-     *
-     * @param Aerys\WriterSubjectNormalized|Aerys\WriterSubject $subject
-     */
-    public function prepareSubject($subject);
-
+interface ResponseWriter {
     /**
      * Return TRUE to indicate the response was written completely and that the client should
      * be closed. Return FALSE to indicate the response was written and the client should NOT be
