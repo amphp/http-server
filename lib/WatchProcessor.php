@@ -4,9 +4,7 @@ namespace Aerys;
 
 use Alert\Reactor, Alert\ReactorFactory;
 
-class WatchProcessor implements Watcher {
-    use CpuCounter;
-
+class WatchProcessor extends Watcher {
     private $reactor;
     private $debug;
     private $config;

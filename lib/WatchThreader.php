@@ -4,9 +4,7 @@ namespace Aerys;
 
 use Alert\Reactor, Alert\ReactorFactory;
 
-class WatchThreader implements Watcher {
-    use CpuCounter;
-
+class WatchThreader extends Watcher {
     const SIGINT = 2;
     const SIGTERM = 15;
 

@@ -6,9 +6,7 @@ namespace Aerys;
 
 use Alert\Reactor, Alert\ReactorFactory;
 
-class WatchForker implements Watcher {
-    use CpuCounter;
-
+class WatchForker extends Watcher {
     private $reactor;
     private $hostBinder;
     private $debug;
