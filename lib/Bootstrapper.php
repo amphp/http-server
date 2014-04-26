@@ -183,7 +183,7 @@ class Bootstrapper {
             $standard = $appArr[App::ROUTES];
             $threaded = $appArr[App::THREAD_ROUTES];
             $websockets = $appArr[App::WEBSOCKETS];
-            $responders[App::ROUTES] = $this->buildRoutablesResponder($standard, $threaded, $websockets);
+            $responders[App::ROUTES] = $this->buildRoutableResponder($standard, $threaded, $websockets);
         }
 
         if ($conf = $appArr[App::RESPONDERS]) {
@@ -191,7 +191,7 @@ class Bootstrapper {
         }
 
         if ($conf = $appArr[App::DOCUMENTS]) {
-            $responders[App::DOCUMENTS] = $this->buildDocumentResponder($conf);
+            $responders[App::DOCUMENTS] = $this->buildDocRootResponder($conf);
         }
 
         $responders = $this->orderResponders($responders, $appArr[App::ORDER]);
@@ -217,7 +217,7 @@ class Bootstrapper {
         };
     }
 
-    private function buildRoutablesResponder(array $standard, array $threaded, array $websockets) {
+    private function buildRoutableResponder(array $standard, array $threaded, array $websockets) {
         $routeBuilder = function(RouteCollector $rc) use ($standard, $threaded, $websockets) {
             if ($standard) {
                 $this->buildStandardRouteHandlers($rc, $standard);
@@ -230,7 +230,7 @@ class Bootstrapper {
             }
         };
         $dispatcher = \FastRoute\simpleDispatcher($routeBuilder);
-        $responder = $this->injector->make('Aerys\Routables\Responder', [
+        $responder = $this->injector->make('Aerys\Routable\Responder', [
             ':dispatcher' => $dispatcher
         ]);
 
@@ -338,7 +338,7 @@ class Bootstrapper {
         }
     }
 
-    private function buildDocumentResponder(array $documentSettings) {
+    private function buildDocRootResponder(array $documentSettings) {
         try {
             $root = $documentSettings['root'];
             unset($documentSettings['root']);
@@ -351,7 +351,7 @@ class Bootstrapper {
 
         } catch (\Exception $previousException) {
             throw new BootException(
-                'Documents build failure: ' . $previousException->getMessage(),
+                'DocRoot build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );

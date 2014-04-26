@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Routables;
+namespace Aerys\Routable;
 
 use Aerys\Status,
     Aerys\Response,
