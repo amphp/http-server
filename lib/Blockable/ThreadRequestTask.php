@@ -11,7 +11,7 @@ use Amp\Thread,
 class ThreadRequestTask extends \Threaded {
     private $request;
     private $socket;
-    private $settings;
+    private $input;
     private $mustClose;
     private $dateHeader;
     private $serverHeader;
@@ -23,9 +23,10 @@ class ThreadRequestTask extends \Threaded {
     private $isStreaming;
     private $isChunking;
 
-    public function __construct($request, $socket, $subject) {
+    public function __construct($request, $socket, $input, $subject) {
         $this->request = $request;
         $this->socket = $socket;
+        $this->input = $input;
         $this->mustClose = $subject->mustClose;
         $this->dateHeader = $subject->dateHeader;
         $this->serverHeader = $subject->serverHeader;
@@ -39,6 +40,7 @@ class ThreadRequestTask extends \Threaded {
     public function run() {
         $request =& $this->request;
         $request['ASGI_NON_BLOCKING'] = FALSE;
+        $request['ASGI_INPUT'] = $this->input;
         /*
         // @TODO
         list($injector, $threadLocal) = $this->worker->getDomainShare('__aerysBlockables');

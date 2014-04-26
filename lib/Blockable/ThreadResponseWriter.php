@@ -3,6 +3,7 @@
 namespace Aerys\Blockable;
 
 use Alert\Promise,
+    Alert\Future,
     Amp\Dispatcher,
     Aerys\ResponseWriterCustom,
     Aerys\ResponseWriterSubject;
@@ -23,18 +24,23 @@ class ThreadResponseWriter implements ResponseWriterCustom {
     }
 
     public function writeResponse() {
-        $this->promisor = new Promise;
         $subject = $this->subject;
         $socket = $subject->socket;
         $subject->socket = NULL;
-        $task = new ThreadRequestTask($this->request, $socket, $subject);
-        $this->dispatcher->execute($task)->onComplete([$this, 'afterWrite']);
 
-        return $this->promisor;
+        $request =& $this->request;
+        $input = $request['ASGI_INPUT'];
+        unset($request['ASGI_ERROR'], $request['ASGI_INPUT']);
+
+        $task = new ThreadRequestTask($request, $socket, $input, $subject);
+        $future = $this->dispatcher->execute($task);
+        $future->onComplete([$this, 'afterWrite']);
+
+        return $this->promisor = new Promise;
     }
 
-    public function afterWrite($dispatchFuture) {
-        $shouldClose = $dispatchFuture->succeeded() ? (bool) $dispatchFuture->getValue() : TRUE;
+    public function afterWrite(Future $future) {
+        $shouldClose = $future->succeeded() ? (bool) $future->getValue() : TRUE;
         $this->promisor->succeed($shouldClose);
     }
 }
