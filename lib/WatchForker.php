@@ -6,7 +6,7 @@ namespace Aerys;
 
 use Alert\Reactor, Alert\ReactorFactory;
 
-class WatchForker extends Watcher {
+class WatchForker implements Watcher {
     private $reactor;
     private $hostBinder;
     private $debug;
@@ -31,7 +31,7 @@ class WatchForker extends Watcher {
         $this->startIpcServer();
         $this->bindServerSocks();
 
-        $this->workerCount = $binOptions->getWorkers() ?: $this->countCpuCores();
+        $this->workerCount = $binOptions->getWorkers() ?: countCpuCores();
         for ($i=0; $i < $this->workerCount; $i++) {
             $this->spawn();
         }

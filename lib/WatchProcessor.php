@@ -4,7 +4,7 @@ namespace Aerys;
 
 use Alert\Reactor, Alert\ReactorFactory;
 
-class WatchProcessor extends Watcher {
+class WatchProcessor implements Watcher {
     private $reactor;
     private $debug;
     private $config;
@@ -75,7 +75,8 @@ class WatchProcessor extends Watcher {
     /**
      * We can't bind the same IP:PORT in multiple separate processes if we aren't
      * in a Windows environment. Non-windows operating systems should have ext/pcntl
-     * availability, so this doesn't represent a real performance impediment.
+     * or pecl/pthreads, so this limitation is really only enforced in development
+     * environments.
      */
     private function setWorkerCount($requestedWorkerCount) {
         if (stripos(PHP_OS, 'WIN') !== 0) {
@@ -83,7 +84,7 @@ class WatchProcessor extends Watcher {
         } elseif ($requestedWorkerCount > 0) {
             $this->workerCount = $requestedWorkerCount;
         } else {
-            $this->workerCount = $this->countCpuCores();
+            $this->workerCount = countCpuCores();
         }
     }
 

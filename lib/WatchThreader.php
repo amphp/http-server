@@ -4,7 +4,7 @@ namespace Aerys;
 
 use Alert\Reactor, Alert\ReactorFactory;
 
-class WatchThreader extends Watcher {
+class WatchThreader implements Watcher {
     const SIGINT = 2;
     const SIGTERM = 15;
 
@@ -45,7 +45,7 @@ class WatchThreader extends Watcher {
         $this->startIpcServer();
 
         $this->hostBinder->setSocketBacklogSize($options[Server::OP_SOCKET_BACKLOG_SIZE]);
-        $this->workerCount = $binOptions->getWorkers() ?: $this->countCpuCores();
+        $this->workerCount = $binOptions->getWorkers() ?: countCpuCores();
         $this->servers = $this->hostBinder->bindAddresses($bindTo, $this->servers);
 
         foreach ($bindTo as $addr) {

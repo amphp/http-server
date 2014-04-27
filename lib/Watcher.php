@@ -2,37 +2,13 @@
 
 namespace Aerys;
 
-abstract class Watcher {
-    abstract public function watch(BinOptions $binOptions);
-    
-    final protected function countCpuCores() {
-        $os = (stripos(PHP_OS, "WIN") === 0) ? "win" : strtolower(trim(shell_exec("uname")));
-
-        switch ($os) {
-            case "win":
-                $cmd = "wmic cpu get NumberOfCores";
-                break;
-            case "linux":
-                $cmd = "cat /proc/cpuinfo | grep processor | wc -l";
-                break;
-            case "freebsd":
-                $cmd = "sysctl -a | grep 'hw.ncpu' | cut -d ':' -f2";
-                break;
-            case "darwin":
-                $cmd = "sysctl -a | grep 'hw.ncpu:' | awk '{ print $2 }'";
-                break;
-            default:
-                $cmd = NULL;
-        }
-
-        $execResult = $cmd ? shell_exec($cmd) : 1;
-
-        if ($os === 'win') {
-            $execResult = explode("\n", $execResult)[1];
-        }
-
-        $cores = intval(trim($execResult));
-
-        return $cores;
-    }
+/**
+ * Watchers manage server workers (forks, processes or threads depending on the environment).
+ * 
+ * Watchers respawn server workers if they fatal out and signal them to gracefully shutdown
+ * when the server is stopped or a reload is triggered. Watchers are the front-facing interface
+ * of the Aerys binary.
+ */
+interface Watcher {
+    public function watch(BinOptions $binOptions);
 }

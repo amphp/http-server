@@ -1,6 +1,7 @@
 <?php
 
-require_once __DIR__ . '/../vendor/FastRoute/src/bootstrap.php';
+require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/../vendor/FastRoute/src/functions.php';
 
 spl_autoload_register(function($class) {
     if (strpos($class, 'Aerys\\') === 0) {
