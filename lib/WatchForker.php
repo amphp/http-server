@@ -75,7 +75,7 @@ class WatchForker implements Watcher {
     }
 
     private function bindServerSocks() {
-        $backlog = $this->options['socketBacklogSize'];
+        $backlog = $this->options[Server::OP_SOCKET_BACKLOG_SIZE];
         $this->hostBinder->setSocketBacklogSize($backlog);
         $this->serverSocks = $this->hostBinder->bindAddresses($this->hostAddrs, $this->serverSocks);
     }
