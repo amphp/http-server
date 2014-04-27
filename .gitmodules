@@ -10,3 +10,6 @@
 [submodule "vendor/Amp"]
 	path = vendor/Amp
 	url = https://github.com/rdlowrey/Amp.git
+[submodule "vendor/After"]
+	path = vendor/After
+	url = https://github.com/rdlowrey/After.git

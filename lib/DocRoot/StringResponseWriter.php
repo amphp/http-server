@@ -3,8 +3,8 @@
 namespace Aerys\DocRoot;
 
 use Alert\Reactor,
-    Alert\Promise,
-    Alert\Failure,
+    After\Promise,
+    After\Failure,
     Aerys\ResponseWriterCustom,
     Aerys\ResponseWriterSubject,
     Aerys\TargetPipeException;

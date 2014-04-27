@@ -2,8 +2,8 @@
 
 namespace Aerys\Websocket;
 
-use Alert\Future,
-    Alert\Promise,
+use After\Future,
+    After\Promise,
     Alert\Reactor,
     Aerys\Server,
     Aerys\ServerObserver;
@@ -62,7 +62,7 @@ class Endpoint implements ServerObserver {
      *
      * @param Aerys\Server $server
      * @param int $event
-     * @return Alert\Future
+     * @return After\Future
      */
     public function onServerUpdate(Server $server, $event) {
         switch ($event) {
@@ -76,13 +76,13 @@ class Endpoint implements ServerObserver {
     /**
      * Notify the application that the server is ready to start
      *
-     * @return \Alert\Future Returns a Future that resolves upon app startup completion
+     * @return \After\Future Returns a Future that resolves upon app startup completion
      */
     public function start() {
         if (empty($this->startPromise)) {
             $this->startPromise = new Promise;
             $startFuture = $this->startPromise->getFuture();
-            $startFuture->onComplete(function($future) { $this->onStartCompletion($future); });
+            $startFuture->onResolution(function($future) { $this->onStartCompletion($future); });
             $this->notifyAppStart();
         } else {
             $startFuture = $this->startPromise->getFuture();
@@ -111,7 +111,7 @@ class Endpoint implements ServerObserver {
     /**
      * Initialize endpoint stoppage
      *
-     * @return \Alert\Future Returns a future that will resolve when all sessions are closed
+     * @return \After\Future Returns a future that will resolve when all sessions are closed
      */
     public function stop() {
         if (!$this->isStopping) {
@@ -133,7 +133,7 @@ class Endpoint implements ServerObserver {
             $this->closeSession($session, $code, $reason);
         }
 
-        $this->stopPromise->getFuture()->onComplete(function() {
+        $this->stopPromise->getFuture()->onResolution(function() {
             $this->isStopping = NULL;
         });
     }
@@ -219,7 +219,7 @@ class Endpoint implements ServerObserver {
         try {
             $yielded = $generator->current();
             if ($yielded instanceof Future) {
-                $yielded->onComplete(function($future) use ($generator) {
+                $yielded->onResolution(function($future) use ($generator) {
                     $this->onResolvedYield($generator, $future);
                 });
             }

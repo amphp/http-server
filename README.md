@@ -2,6 +2,9 @@
 
 A performant non-blocking HTTP/1.1 application/websocket server written in PHP.
 
+> **IMPORTANT:** Aerys is highly volatile pre-alpha software. Everything is subject to change
+> without notice, but you already knew that didn't you? :)
+
 ## Installation
 
 ```bash
@@ -16,8 +19,16 @@ $ git submodule update --init --recursive
 
 - PHP 5.5+ for unencrypted servers
 - PHP 5.6+ required for TLS encryption
-- [Alert](https://github.com/rdlowrey/Alert) IO, timer and signal event reactors
-- [Auryn](https://github.com/rdlowrey/Auryn) A dependency injector used to bootstrap applications
+
+*Userland Dependencies*
+
+- [Alert](https://github.com/rdlowrey/Alert) :: IO and event reactors
+- [After](https://github.com/rdlowrey/After) :: Simple concurrency primitives
+- [Auryn](https://github.com/rdlowrey/Auryn) :: Dependency injector
+- [Amp](https://github.com/rdlowrey/Amp) :: Non-blocking threaded job dispatcher
+
+> **NOTE:** The userland dependencies listed above are automatically retrieved for you if you use
+> the installation instructions shown here.
 
 #### OPTIONAL PHP EXTENSIONS
 
@@ -30,13 +41,10 @@ loop without this extension.
 > **NOTE:** Windows users can find DLLs for both pecl extensions at the
 > [windows.php.net download index](http://windows.php.net/downloads/pecl/releases/).
 
-#### TESTING
-
-@TODO
 
 ## Running a Server
 
-To start a server pass a config file (`-c, --config`) to the aerys binary:
+To start a server pass a config file to the aerys binary using the `-c, --config` switches:
 
 ```bash
 $ bin/aerys -c "/path/to/config.php"
@@ -103,9 +111,41 @@ $myApp = (new Aerys\App)->addResponder(function($request) {
 
 @TODO
 
-##### Synchronous Responses
+##### Threaded Responses
 
-@TODO
+Aerys applications aren't forced to use non-blocking semantics. Any server with access to the
+`pecl/pthreads` extension may specify threaded routes which, when matched, will execute inside
+dedicated worker threads for synchronous processing in a style similar to the PHP web SAPI.
+
+Applications can mix and match threaded routes with any of Aerys's other functionality. In the
+following example we demonstrate the use of a threaded route alongside a standard non-blocking
+route and fallback responder.
+
+```php
+<?php
+require '/path/to/aerys/src/bootstrap.php';
+
+function myNonBlockingRoute($request) {
+    return "<html><body><h1>Non-blocking route</h1></body></html>";
+}
+
+function myThreadedRoute($request) {
+    return "<html><body><h1>Hurray for synchronous execution!</h1></body></html>";
+}
+
+function myFallbackResponder($request) {
+    return "<html><body><h1>Everything else is routed to our fallback</h1></body></html>";
+}
+
+$myApp = (new Aerys\App)
+    ->setPort(1337)
+    ->addRoute('GET', '/non-blocking', 'myNonBlockingRoute')
+    ->addThreadRoute('GET', '/', 'myNonBlockingRoute')
+    ->addThreadRoute('GET', '/threaded', 'myThreadedRoute')
+    ->addResponder('myFallbackResponder')
+;
+
+```
 
 ##### Server-Wide Options
 
@@ -212,6 +252,12 @@ $myApp = (new Aerys\App)
     ->setDocumentRoot('/path/to/static/files'); // <-- only used if no routes match
 ```
 
+> **NOTE:** Aerys uses [FastRoute](https://github.com/nikic/FastRoute) for routing. Full regex
+> functionality is available in all route definitions.
+
+URI arguments parsed from request URIs are available in the request environment array's
+`'URI_ROUTE_ARGS'` key.
+
 ##### Dependency Injection
 
 @TODO
@@ -249,6 +295,11 @@ $myApp = (new Aerys\App)
     ->addRoute('GET', '/', 'asyncResponder')
     ->addRoute('GET', '/multi', 'multiAsyncResponder');
 ```
+
+> **NOTE:** Threaded routes are free of the restrictions of non-blocking routes but they come at the
+> cost of scalability as worker thread resource become a bottleneck with synchronous resources. An
+> application using strictly non-blocking logic can easily handle thousands of simultaneous users on
+> a single machine.
 
 
 ##### TLS Encryption

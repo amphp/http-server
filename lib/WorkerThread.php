@@ -39,7 +39,7 @@ class WorkerThread extends \Thread {
         ]);
 
         $reactor->onReadable($ipcSock, function() use ($server) {
-            $server->stop()->onComplete(function() { exit(0); });
+            $server->stop()->onResolution(function() { exit(0); });
         });
 
         register_shutdown_function(function() use ($server) {
@@ -56,7 +56,7 @@ class WorkerThread extends \Thread {
             if ($error && in_array($error['type'], $fatals)) {
                 extract($error);
                 printf("%s in %s on line %d\n", $message, $file, $line);
-                $server->stop()->onComplete(function() { exit(1); });
+                $server->stop()->onResolution(function() { exit(1); });
             }
         });
 

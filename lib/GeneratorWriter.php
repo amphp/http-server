@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Alert\Reactor, Alert\Future, Alert\Promise, Alert\PromiseGroup;
+use Alert\Reactor, After\Future, After\Promise, After\PromiseGroup;
 
 class GeneratorWriter implements ResponseWriter {
     private $reactor;
@@ -81,7 +81,7 @@ class GeneratorWriter implements ResponseWriter {
 
             if ($value instanceof Future) {
                 $this->awaitingFuture = TRUE;
-                $value->onComplete($this->futureResolver);
+                $value->onResolution($this->futureResolver);
             } elseif (is_array($value)) {
                 $this->tryPromiseGroup($value);
             } elseif (is_scalar($value) && isset($value[0])) {
@@ -100,7 +100,7 @@ class GeneratorWriter implements ResponseWriter {
 
     private function tryPromiseGroup(array $futures) {
         try {
-            (new PromiseGroup($futures))->getFuture()->onComplete($this->futureResolver);
+            (new PromiseGroup($futures))->getFuture()->onResolution($this->futureResolver);
         } catch (\InvalidArgumentException $e) {
             $this->failWritePromise(new \DomainException(sprintf(
                 "Invalid yield array: non-empty array of Future instances required"

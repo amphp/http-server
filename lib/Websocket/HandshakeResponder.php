@@ -3,7 +3,7 @@
 namespace Aerys\Websocket;
 
 use Alert\Reactor,
-    Alert\Success,
+    After\Success,
     Aerys\Server,
     Aerys\Status,
     Aerys\Response,

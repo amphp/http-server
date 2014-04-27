@@ -10,7 +10,7 @@ interface ResponseWriter {
      * Future should be returned that is eventually resolved with TRUE/FALSE according to the
      * write result.
      *
-     * @return bool|Alert\Future
+     * @return bool|After\Future
      */
     public function writeResponse();
     

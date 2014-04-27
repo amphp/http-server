@@ -19,7 +19,7 @@ class WatchDebugger extends Watcher {
         // phpdbg captures SIGINT so don't intercept if running inside the debugger
         if ((substr(PHP_BINARY, -6) !== 'phpdbg') && extension_loaded('pcntl')) {
             pcntl_signal(SIGINT, function() use ($server) {
-                $server->stop()->onComplete(function(){ exit; });
+                $server->stop()->onResolution(function(){ exit; });
             });
         }
 
@@ -46,7 +46,7 @@ class WatchDebugger extends Watcher {
             case E_COMPILE_WARNING:
                 extract($err);
                 printf("%s in %s on line %d\n", $message, $file, $line);
-                $server->stop()->onComplete(function() { exit; });
+                $server->stop()->onResolution(function() { exit; });
                 break;
         }
     }

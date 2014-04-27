@@ -3,8 +3,8 @@
 namespace Aerys\DocRoot;
 
 use Amp\Dispatcher,
-    Alert\Promise,
-    Alert\Future,
+    After\Promise,
+    After\Future,
     Aerys\ResponseWriterCustom,
     Aerys\ResponseWriterSubject;
 
@@ -51,7 +51,7 @@ class ThreadResponseWriter implements ResponseWriterCustom {
 
     public function writeResponse() {
         $future = $this->dispatcher->execute($this->sendTask);
-        $future->onComplete(function($future) {
+        $future->onResolution(function($future) {
             $this->afterWrite($future);
         });
 

@@ -54,7 +54,7 @@ class WorkerProcess {
             $this->isStopping = TRUE;
             $this->reactor->cancel($this->watcher);
             $future = $this->server->stop();
-            $future->onComplete([$this->reactor, 'stop']);
+            $future->onResolution([$this->reactor, 'stop']);
         }
     }
 

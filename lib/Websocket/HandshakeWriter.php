@@ -3,8 +3,8 @@
 namespace Aerys\Websocket;
 
 use Alert\Reactor,
-    Alert\Promise,
-    Alert\Failure,
+    After\Promise,
+    After\Failure,
     Aerys\Server,
     Aerys\TargetPipeException,
     Aerys\ResponseWriterCustom,

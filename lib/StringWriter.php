@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Alert\Reactor, Alert\Promise, Alert\Failure;
+use Alert\Reactor, After\Promise, After\Failure;
 
 class StringWriter implements ResponseWriter {
     private $reactor;

@@ -3,10 +3,10 @@
 namespace Aerys;
 
 use Alert\Reactor,
-    Alert\Promise,
-    Alert\Future,
-    Alert\Success,
-    Alert\Aggregate;
+    After\Promise,
+    After\Future,
+    After\Success,
+    After\Aggregate;
 
 class Server {
     const NAME = 'Aerys/0.1.0-devel';
@@ -131,7 +131,7 @@ class Server {
      * @param array $listeningSockets Optional array mapping bind addresses to existing sockets
      * @throws \LogicException If no hosts have been added to the specified collection
      * @throws \RuntimeException On socket bind failure
-     * @return \Alert\Future Returns a Future that will resolve once all startup tasks complete
+     * @return \After\Future Returns a Future that will resolve once all startup tasks complete
      */
     public function start($hosts, array $listeningSockets = []) {
         if ($this->state !== self::STOPPED) {
@@ -161,7 +161,7 @@ class Server {
 
         $this->state = self::STARTING;
         $startFuture = $this->notifyObservers(self::STARTING);
-        $startFuture->onComplete(function($future) { $this->onStartCompletion($future); });
+        $startFuture->onResolution(function($future) { $this->onStartCompletion($future); });
 
         return $startFuture;
     }
@@ -206,7 +206,7 @@ class Server {
      * New client acceptance is suspended, previously assigned responses are sent in full and any
      * currently unfulfilled requests receive a 503 Service Unavailable response.
      *
-     * @return \Alert\Future Returns a Future that will resolve once the shutdown routine completes.
+     * @return \After\Future Returns a Future that will resolve once the shutdown routine completes.
      *                       If the server is already started no action occurs and NULL is returned.
      */
     public function stop() {
@@ -249,7 +249,7 @@ class Server {
             $stopFuture = Aggregate::all([$this->stopPromise->getFuture(), $observerFuture]);
         }
 
-        $stopFuture->onComplete(function(Future $f) { $this->onStopCompletion($f); });
+        $stopFuture->onResolution(function(Future $f) { $this->onStopCompletion($f); });
 
         return $stopFuture;
     }
@@ -726,7 +726,7 @@ class Server {
         } elseif ($response instanceof \Generator) {
             $this->advanceResponseGenerator($cycle, $response);
         } elseif ($response instanceof Future) {
-            $response->onComplete(function($future) use ($cycle) {
+            $response->onResolution(function($future) use ($cycle) {
                 $this->onFutureResponseResolution($cycle, $future);
             });
         } else {
@@ -743,7 +743,7 @@ class Server {
             if ($yielded instanceof Future) {
                 // If the generator yields a Future we wait until it's resolved to
                 // determine how to proceed.
-                $yielded->onComplete(function($future) use ($cycle, $generator) {
+                $yielded->onResolution(function($future) use ($cycle, $generator) {
                     $this->onFutureYieldResolution($cycle, $generator, $future);
                 });
             } elseif (is_array($yielded)) {
@@ -756,7 +756,7 @@ class Server {
                 // the group instantiation will throw and an appropriate error
                 // response will be sent.
                 $multiFuture = Aggregate::all($yielded);
-                $multiFuture->onComplete(function($future) use ($cycle, $generator) {
+                $multiFuture->onResolution(function($future) use ($cycle, $generator) {
                     $this->onFutureYieldResolution($cycle, $generator, $future);
                 });
             } elseif ($yielded instanceof Response || $yielded instanceof ResponseWriterCustom) {
@@ -867,7 +867,7 @@ class Server {
 
             // The $writeResult is a future value; here we assign the appropriate callback to
             // invoke when the future eventually resolves.
-            $writeResult->onComplete(function($future) use ($client) {
+            $writeResult->onResolution(function($future) use ($client) {
                 $this->onFutureWriteResolution($client, $future);
             });
         } else {

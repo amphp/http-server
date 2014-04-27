@@ -9,11 +9,11 @@
  * Once started, load http://127.0.0.1:1338/ in your browser.
  */
 
-use Aerys\App, Alert\Success, Alert\Future;
+use Aerys\App, After\Success, After\Future;
 
 require __DIR__ . '/../src/bootstrap.php';
 
-// ------ Any library that returns an Alert\Future instance -------
+// ------ Any library that returns an After\Future instance -------
 
 // In reality we'd use non-blocking libraries here to return futures.
 // For the purpose of this example we'll just return Futures whose
