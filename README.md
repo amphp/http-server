@@ -13,6 +13,12 @@ $ cd Aerys
 $ git submodule update --init --recursive
 ```
 
+If you have problems cloning via the `https` method use SSH instead (it always works):
+
+```bash
+$ git clone --recursive git@github.com:rdlowrey/Aerys.git
+```
+
 ## Dependencies
 
 #### REQUIRED
