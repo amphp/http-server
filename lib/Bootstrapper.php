@@ -10,34 +10,34 @@ use Alert\Reactor,
     Aerys\Aggregate\Responder as AggregateResponder;
 
 class Bootstrapper {
-    const OPT_VAR_PREFIX = '__';
+    const E_CONFIG_INCLUDE = "Config file inclusion failure: %s";
+    const E_CONFIG_VARNAME = "Illegal variable name; \"%s\" must not be used in config files";
+    const E_MISSING_CONFIG = "No HostConfig instances found in config file: %s";
 
     private $injector;
     private $serverOptMap = [
-        '__maxconnections'      => Server::OP_MAX_CONNECTIONS,
-        '__maxrequests'         => Server::OP_MAX_REQUESTS,
-        '__keepalivetimeout'    => Server::OP_KEEP_ALIVE_TIMEOUT,
-        '__disablekeepalive'    => Server::OP_DISABLE_KEEP_ALIVE,
-        '__maxheaderbytes'      => Server::OP_MAX_HEADER_BYTES,
-        '__maxbodybytes'        => Server::OP_MAX_BODY_BYTES,
-        '__defaultcontenttype'  => Server::OP_DEFAULT_CONTENT_TYPE,
-        '__defaulttextcharset'  => Server::OP_DEFAULT_TEXT_CHARSET,
-        '__autoreasonphrase'    => Server::OP_AUTO_REASON_PHRASE,
-        '__sendservertoken'     => Server::OP_SEND_SERVER_TOKEN,
-        '__normalizemethodcase' => Server::OP_NORMALIZE_METHOD_CASE,
-        '__requirebodylength'   => Server::OP_REQUIRE_BODY_LENGTH,
-        '__socketsolingersero'  => Server::OP_SOCKET_SO_LINGER_ZERO,
-        '__socketbacklogsize'   => Server::OP_SOCKET_BACKLOG_SIZE,
-        '__allowedmethods'      => Server::OP_ALLOWED_METHODS,
-        '__defaulthost'         => Server::OP_DEFAULT_HOST,
+        'MAX_CONNECTIONS'       => Server::OP_MAX_CONNECTIONS,
+        'MAX_REQUESTS'          => Server::OP_MAX_REQUESTS,
+        'KEEP_ALIVE_TIMEOUT'    => Server::OP_KEEP_ALIVE_TIMEOUT,
+        'DISABLE_KEEP_ALIVE'    => Server::OP_DISABLE_KEEP_ALIVE,
+        'MAX_HEADER_BYTES'      => Server::OP_MAX_HEADER_BYTES,
+        'MAX_BODY_BYTES'        => Server::OP_MAX_BODY_BYTES,
+        'DEFAULT_CONTENT_TYPE'  => Server::OP_DEFAULT_CONTENT_TYPE,
+        'DEFAULT_TEXT_CHARSET'  => Server::OP_DEFAULT_TEXT_CHARSET,
+        'AUTO_REASON_PHRASE'    => Server::OP_AUTO_REASON_PHRASE,
+        'SEND_SERVER_TOKEN'     => Server::OP_SEND_SERVER_TOKEN,
+        'NORMALIZE_METHOD_CASE' => Server::OP_NORMALIZE_METHOD_CASE,
+        'REQUIRE_BODY_LENGTH'   => Server::OP_REQUIRE_BODY_LENGTH,
+        'SOCKET_SO_LINGER_ZERO' => Server::OP_SOCKET_SO_LINGER_ZERO,
+        'SOCKET_BACKLOG_SIZE'   => Server::OP_SOCKET_BACKLOG_SIZE,
+        'ALLOWED_METHODS'       => Server::OP_ALLOWED_METHODS,
+        'DEFAULT_HOST'          => Server::OP_DEFAULT_HOST,
     ];
-
-    private static $ILLEGAL_CONFIG_VAR = 'Illegal config variable; "%s" is a reserved name';
 
     /**
      * Bootstrap a server and its host definitions from command line arguments
      *
-     * @param string $config The application config file path
+     * @param string $config The server config file path
      * @param array $options
      * @throws \Aerys\Framework\BootException
      * @return array Returns three-element array of the form [$reactor, $server, $hosts]
@@ -47,8 +47,10 @@ class Bootstrapper {
         $socksOpt = isset($opts['socks']) ? (array) $opts['socks'] : [];
         $debugOpt = isset($opts['debug']) ? (bool) $opts['debug'] : FALSE;
 
-        list($reactor, $injector, $apps, $serverOpts) = $this->parseAppConfig($config);
+        list($hostConfigs, $serverOptions) = $this->parseHostConfigs($config);
 
+        $reactor = (new ReactorFactory)->select();
+        $injector = new Provider;
         $this->injector = $injector;
 
         $injector->alias('Alert\Reactor', get_class($reactor));
@@ -63,14 +65,14 @@ class Bootstrapper {
         });
 
         $hosts = new HostCollection;
-        foreach ($apps as $app) {
-            $host = $this->buildHost($app);
+        foreach ($hostConfigs as $hostConfig) {
+            $host = $this->buildHost($hostConfig);
             $hosts->addHost($host);
         }
         $this->injector = NULL;
 
-        foreach ($serverOpts as $key => $value) {
-            $server->setOption($key, $value);
+        foreach ($serverOptions as $option => $value) {
+            $server->setOption($option, $value);
         }
 
         if ($bindOpt) {
@@ -80,69 +82,86 @@ class Bootstrapper {
         return [$reactor, $server, $hosts];
     }
 
-    private function parseAppConfig($__config) {
-        if (!include($__config)) {
+    private function parseHostConfigs($__configFile) {
+        if (!include($__configFile)) {
             throw new BootException(
-                sprintf("Failed including config file: %s", $__config)
+                sprintf(self::E_CONFIG_INCLUDE, $__configFile)
             );
         }
 
-        if (!(isset($__config) && $__config === func_get_args()[0])) {
+        if (!(isset($__configFile) && $__configFile === func_get_args()[0])) {
             throw new BootException(
-                sprintf(self::$ILLEGAL_CONFIG_VAR, "__config")
+                sprintf(self::E_CONFIG_VARNAME, "__configFile")
             );
         }
 
-        if (isset($__vars)) {
+        if (isset($__configVars)) {
             throw new BootException(
-                sprintf(self::$ILLEGAL_CONFIG_VAR, "__vars")
+                sprintf(self::E_CONFIG_VARNAME, "__configVars")
             );
         }
 
-        $__vars = get_defined_vars();
+        $__configVars = get_defined_vars();
+        $this->validateVars($__configVars);
 
-        foreach (['__apps', '__reactors', '__injectors', '__options'] as $reserved) {
-            if (isset($__vars[$reserved])) {
-                throw new BootException(
-                    sprintf(self::$ILLEGAL_CONFIG_VAR, $reserved)
-                );
+        $__hostConfigs = [];
+
+        foreach ($__configVars as $__cvKey => $__cvValue) {
+            if ($__cvValue instanceof HostConfig) {
+                $__hostConfigs[] = $__cvValue;
             }
         }
 
-        $__apps = $__reactors = $__injectors = $__options = [];
-
-        foreach ($__vars as $key => $value) {
-            $lowKey = strtolower($key);
-            if ($value instanceof App) {
-                $__apps[] = $value;
-            } elseif ($value instanceof Injector) {
-                $__injectors[] = $value;
-            } elseif ($value instanceof Reactor) {
-                $__reactors[] = $value;
-            } elseif (isset($this->serverOptMap[$lowKey])) {
-                $__options[$this->serverOptMap[$lowKey]] = $value;
-            }
-        }
-
-        if (empty($__apps)) {
+        if (empty($__hostConfigs)) {
             throw new BootException(
-                sprintf("No app configuration instances found in config file: %s", $__config)
+                sprintf(self::E_MISSING_CONFIG, $__configFile)
             );
         }
 
-        $reactor = $__reactors ? end($__reactors) : (new ReactorFactory)->select();
-        $injector = $__injectors ? end($__injectors) : new Provider;
+        $__serverOptions = [];
+        foreach ($this->serverOptMap as $const => $serverConst) {
+            $const = "Aerys\{$const}";
+            if (defined($const)) {
+                $__serverOptions[$serverConst] = constant($const);
+            }
+        }
 
-        return [$reactor, $injector, $__apps, $__options];
+        return [$__hostConfigs, $__serverOptions];
     }
 
-    private function buildHost(App $app) {
-        $appArr = $app->toArray();
-        $ip   = $appArr[App::ADDRESS];
-        $port = $appArr[App::PORT];
-        $name = $appArr[App::NAME] ?: $ip;
-        $tls  = $appArr[App::ENCRYPTION];
-        $responder = $this->aggregateAppResponders($appArr);
+    private function validateVars(array $vars) {
+        if (isset($vars['__hostConfigs'])) {
+            throw new BootException(
+                sprintf(self::E_CONFIG_VARNAME, "__hostConfigs")
+            );
+        }
+
+        if (isset($vars['__serverOptions'])) {
+            throw new BootException(
+                sprintf(self::E_CONFIG_VARNAME, "__serverOptions")
+            );
+        }
+
+        if (isset($vars['__cvKey'])) {
+            throw new BootException(
+                sprintf(self::E_CONFIG_VARNAME, "__cvKey")
+            );
+        }
+
+        if (isset($vars['__cvValue'])) {
+            throw new BootException(
+                sprintf(self::E_CONFIG_VARNAME, "__cvValue")
+            );
+        }
+    }
+
+    private function buildHost(HostConfig $hostConfig) {
+        $hostConfigArr = $hostConfig->toArray();
+        $ip   = $hostConfigArr[HostConfig::ADDRESS];
+        $port = $hostConfigArr[HostConfig::PORT];
+        $name = $hostConfigArr[HostConfig::NAME] ?: $ip;
+        $tls  = $hostConfigArr[HostConfig::ENCRYPTION];
+        $responder = $this->aggregateHostResponders($hostConfigArr);
         $host = $this->tryHost($ip, $port, $name, $responder);
 
         if ($tls) {
@@ -176,25 +195,28 @@ class Bootstrapper {
         }
     }
 
-    private function aggregateAppResponders(array $appArr) {
+    private function aggregateHostResponders(array $hostArr) {
         $responders = [];
 
-        if ($appArr[App::ROUTES] || $appArr[App::THREAD_ROUTES] || $appArr[App::WEBSOCKETS]) {
-            $standard = $appArr[App::ROUTES];
-            $threaded = $appArr[App::THREAD_ROUTES];
-            $websockets = $appArr[App::WEBSOCKETS];
-            $responders[App::ROUTES] = $this->buildRoutableResponder($standard, $threaded, $websockets);
+        if ($hostArr[HostConfig::ROUTES] ||
+            $hostArr[HostConfig::THREAD_ROUTES] ||
+            $hostArr[HostConfig::WEBSOCKETS]
+        ) {
+            $standard = $hostArr[HostConfig::ROUTES];
+            $threaded = $hostArr[HostConfig::THREAD_ROUTES];
+            $websockets = $hostArr[HostConfig::WEBSOCKETS];
+            $responders[HostConfig::ROUTES] = $this->buildRoutableResponder($standard, $threaded, $websockets);
         }
 
-        if ($conf = $appArr[App::RESPONDERS]) {
-            $responders[App::RESPONDERS] = $this->buildUserResponder($conf);
+        if ($conf = $hostArr[HostConfig::RESPONDERS]) {
+            $responders[HostConfig::RESPONDERS] = $this->buildUserResponder($conf);
         }
 
-        if ($conf = $appArr[App::DOCUMENTS]) {
-            $responders[App::DOCUMENTS] = $this->buildDocRootResponder($conf);
+        if ($conf = $hostArr[HostConfig::DOCUMENTS]) {
+            $responders[HostConfig::DOCUMENTS] = $this->buildDocRootResponder($conf);
         }
 
-        $responders = $this->orderResponders($responders, $appArr[App::ORDER]);
+        $responders = $this->orderResponders($responders, $hostArr[HostConfig::ORDER]);
 
         switch (count($responders)) {
             case 0:
@@ -359,7 +381,7 @@ class Bootstrapper {
     }
 
     private function orderResponders(array $responders, $order) {
-        $defaultOrder = [App::WEBSOCKETS, App::ROUTES, App::RESPONDERS, App::DOCUMENTS];
+        $defaultOrder = [HostConfig::WEBSOCKETS, HostConfig::ROUTES, HostConfig::RESPONDERS, HostConfig::DOCUMENTS];
         if ($diff = array_diff($order, $defaultOrder)) {
             throw new BootException(
                 'Invalid responder order value(s): ' . implode(', ', $diff)

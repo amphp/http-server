@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-class App {
+class HostConfig {
     const PORT = 'port';
     const ADDRESS = 'address';
     const NAME = 'name';
@@ -26,18 +26,36 @@ class App {
     private $order = [];
 
     /**
+     * Optionally define the host's domain name (e.g. localhost or mysite.com or subdomain.mysite.com)
+     *
+     * A host name is only required if a server exposes more than one host. If not defined the
+     * server will fallback to "localhost" for its name.
+     *
+     * @param string $name
+     */
+    public function __construct($name = '') {
+        if (!is_string($name)) {
+            throw new \InvalidArgumentException(
+                sprintf("%s requires a string at Argument 1", __METHOD__)
+            );
+        }
+
+        $this->name = $name;
+    }
+
+    /**
      * Define the host's port, IP and domain name
      *
      * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
      * well-known services (like HTTP on port 80) and port numbers less than 1024 require root
      * access on UNIX-like systems. Port 80 is assumed in the absence of port specification. The
      * default port for encrypted sockets (https) is 443. If you plan to use encryption with this
-     * app you'll generally want to use port 443.
+     * host you'll generally want to use port 443.
      *
      * @param int $port The port number on which to listen
-     * @param string $interface The IP address on which to bind this application
-     * @param string $name The application domain name
-     * @return \Aerys\App Returns the current object instance
+     * @param string $interface The IP address on which to bind this host
+     * @param string $name The host's domain name
+     * @return \Aerys\HostConfig Returns the current object instance
      */
     public function setPort($port) {
         $this->port = $port;
@@ -46,31 +64,17 @@ class App {
     }
 
     /**
-     * Define the IP interface on which the app will listen for requests
+     * Define the IP interface on which the host will listen for requests
      *
      * The default wildcard IP value "*" translates to "all IPv4 interfaces" and is appropriate for
      * most scenarios. Valid values also include any IPv4 or IPv6 address. The string "[::]" denotes
      * an IPv6 wildcard.
      *
      * @param string $address The interface address (IP) on which the host is exposed
-     * @return \Aerys\App Returns the current object instance
+     * @return \Aerys\HostConfig Returns the current object instance
      */
     public function setAddress($address) {
         $this->address = $address;
-
-        return $this;
-    }
-
-    /**
-     * Define the app's host name (e.g. localhost or mysite.com or subdomain.mysite.com)
-     *
-     * A host name is only required if a server exposes more than one host.
-     *
-     * @param string $name
-     * @return \Aerys\App Returns the current object instance
-     */
-    public function setName($name) {
-        $this->name = $name;
 
         return $this;
     }
@@ -92,7 +96,7 @@ class App {
      * ];
      *
      * @param array $tlsOptions
-     * @return \Aerys\App Returns the current object instance
+     * @return \Aerys\HostConfig Returns the current object instance
      */
     public function setEncryption(array $tlsOptions) {
         $this->encryption = $tlsOptions;
@@ -122,7 +126,7 @@ class App {
      *
      * @param string $rootDirectory
      * @param array $options An array specifying key-value options for static file serving
-     * @return \Aerys\App Returns the current object instance
+     * @return \Aerys\HostConfig Returns the current object instance
      */
     public function setDocumentRoot($rootDirectory, array $options = []) {
         $options['root'] = $rootDirectory;
@@ -132,22 +136,22 @@ class App {
     }
 
     /**
-     * Determine the order in which request responders are invoked for this application
+     * Determine the order in which request responders are invoked for this host
      *
      * Valid values include:
      *
-     * - App::WEBSOCKETS       (App::addWebsocket)
-     * - App::ROUTES           (App::addRoute)
-     * - App::RESPONDERS       (App::addResponder)
-     * - App::DOCUMENTS        (App::setDocumentRoot)
+     * - HostConfig::WEBSOCKETS       (HostConfig::addWebsocket)
+     * - HostConfig::ROUTES           (HostConfig::addRoute)
+     * - HostConfig::RESPONDERS       (HostConfig::addResponder)
+     * - HostConfig::DOCUMENTS        (HostConfig::setDocumentRoot)
      *
      * Any values specified that don't match the above list will result in a BootException
      * when the server is bootstrapped. Note that the above list is the default responder order.
-     * User responders added via `App::addResponder` are always ordered internally by the
-     * order in which they are added to the app.
+     * User responders added via `HostConfig::addResponder` are always ordered internally by the
+     * order in which they are added to the host.
      *
      * @param array $order
-     * @return \Aerys\App Returns the current object instance
+     * @return \Aerys\HostConfig Returns the current object instance
      */
     public function setResponderOrder(array $order) {
         $this->order = $order;
@@ -161,7 +165,7 @@ class App {
      * @param string $httpMethod The method for which this route applies
      * @param string $uriPath The route's URI path
      * @param mixed $handler Any callable or class::method construction string
-     * @return \Aerys\App Returns the current object instance
+     * @return \Aerys\HostConfig Returns the current object instance
      */
     public function addRoute($httpMethod, $uriPath, $handler) {
         $uriPath = '/' . ltrim($uriPath, '/');
@@ -199,7 +203,7 @@ class App {
      * @param string $uriPath The URI path on which to bind the endpoint
      * @param mixed $appClass A websocket endpoint class name
      * @param array $options An array specifying key-value options for this websocket endpoint
-     * @return \Aerys\App Returns the current object instance
+     * @return \Aerys\HostConfig Returns the current object instance
      */
     public function addWebsocketRoute($uriPath, $appClass, array $options = []) {
         $uriPath = '/' . ltrim($uriPath, '/');
@@ -211,10 +215,10 @@ class App {
     /**
      * Add a user responder to the request-response chain
      *
-     * User responders are always invoked in the order in which they are added to the App.
+     * User responders are always invoked in the order in which they are added to the HostConfig.
      *
      * @param mixed $responder Any callable or class::method construction string
-     * @return \Aerys\App Returns the current object instance
+     * @return \Aerys\HostConfig Returns the current object instance
      */
     public function addResponder($responder) {
         $this->responders[] = $responder;

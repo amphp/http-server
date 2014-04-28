@@ -53,7 +53,7 @@ class BinOptions {
 
         if (!($this->help || $this->config)) {
             throw new BootException(
-                'App config file (-c, --config) required; use -h or --help for more information.'
+                'Server config file (-c, --config) required; use -h or --help for more information.'
             );
         }
 
