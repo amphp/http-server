@@ -60,8 +60,42 @@ Use the `-h, --help` switches for more instructions.
 
 ## Example Configs
 
-Every Aerys application is initialized using a PHP config file containing `Aerys\App` instances
-and server-wide option settings.
+Every Aerys application is initialized using a PHP config file containing `Aerys\HostConfig` instances
+and server-wide option settings. Here's an example:
+
+```php
+<?php
+
+namespace Aerys;
+
+// --- global server options -----------------------------------------------------------------------
+
+const MAX_CONNECTIONS = 1000;
+const MAX_REQUESTS = 100;
+const KEEP_ALIVE_TIMEOUT = 5;
+const MAX_HEADER_BYTES = 8192;
+const MAX_BODY_BYTES = 2097152;
+const DEFAULT_CONTENT_TYPE = 'text/html';
+const DEFAULT_TEXT_CHARSET = 'utf-8';
+const AUTO_REASON_PHRASE = TRUE;
+const SEND_SERVER_TOKEN = FALSE;
+const SOCKET_BACKLOG_SIZE = 128;
+const ALLOWED_METHODS = 'GET, HEAD, OPTIONS, TRACE, PUT, POST, PATCH, DELETE';
+
+
+// --- mysite.com ----------------------------------------------------------------------------------
+
+$mysite = new HostConfig('mysite.com');
+$mysite->addRoute('GET', '/non-blocking', 'myNonBlockingRoute');
+$mysite->addThreadRoute('GET', '/', 'myThreadRoute');
+$mysite->addResponder('myFallbackResponder');
+
+
+// --- static.mysite.com ---------------------------------------------------------------------------
+
+$statics = new HostConfig('static.mysite.com');
+$statics->setDocumentRoot('/path/to/static/files');
+```
 
 ##### Hello World
 
@@ -70,10 +104,9 @@ the returned string to clients (similar to the classic PHP web SAPI).
 
 ```php
 <?php
-require '/path/to/aerys/src/bootstrap.php';
 
 // Send a basic 200 response to all requests on port 80.
-$myApp = (new Aerys\App)->addResponder(function() {
+$myApp = (new Aerys\HostConfig)->addResponder(function() {
     return '<html><body><h1>OMG PHP is Webscale!</h1></body></html>';
 });
 ```
@@ -85,10 +118,9 @@ Aerys passes request details to applications using a map structure similar to th
 
 ```php
 <?php
-require '/path/to/aerys/src/bootstrap.php';
 
 // Responders are passed an environment array
-$myApp = (new Aerys\App)->addResponder(function(array $request) {
+$myApp = (new Aerys\HostConfig)->addResponder(function(array $request) {
     return "<html><body><pre>" . print_r($request, TRUE) . "</pre></body></html>";
 });
 ```
@@ -103,9 +135,8 @@ Applications may optionally customize headers, status codes and reason phrases b
 
 ```php
 <?php
-require '/path/to/aerys/src/bootstrap.php';
 
-$myApp = (new Aerys\App)->addResponder(function($request) {
+$myApp = (new Aerys\HostConfig)->addResponder(function($request) {
     return (new Aerys\Response)
         ->setStatus(200)
         ->setHeader('X-My-Header', 42)
@@ -129,7 +160,6 @@ route and fallback responder.
 
 ```php
 <?php
-require '/path/to/aerys/src/bootstrap.php';
 
 function myNonBlockingRoute($request) {
     return "<html><body><h1>Non-blocking route</h1></body></html>";
@@ -143,7 +173,7 @@ function myFallbackResponder($request) {
     return "<html><body><h1>Everything else is routed to our fallback</h1></body></html>";
 }
 
-$myApp = (new Aerys\App)
+$myApp = (new Aerys\HostConfig)
     ->setPort(1337)
     ->addRoute('GET', '/non-blocking', 'myNonBlockingRoute')
     ->addThreadRoute('GET', '/', 'myNonBlockingRoute')
@@ -153,34 +183,6 @@ $myApp = (new Aerys\App)
 
 ```
 
-##### Server-Wide Options
-
-Aerys has many server-wide options available for customization. To assign these options, the
-server binary looks for any variables in your config file's global namespace prefixed with a
-double underscore ($__) that case-insensitively match server option directives. The server operates
-with sensible defaults, but if you want to customize such values this is the place to do it. Note
-again that server-wide options apply to ALL apps registered on your server.
-
-The example below sets only a small number of the available server options. To see a full and
-up-to-date list of possible options please consult the `Aerys\Server` source code.
-
-```php
-<?php
-require '/path/to/aerys/src/bootstrap.php';
-
-$__maxConnections = 2500;
-$__maxRequests = 100;
-$__keepAliveTimeout = 5;
-$__defaultContentType = 'text/html';
-$__defaultTextCharset = 'utf-8';
-$__allowedMethods = ['GET', 'HEAD', 'POST', 'PUT'];
-
-$myApp = (new Aerys\App)->addResponder(function() {
-    $body = '<html><body><h1>Hello, world.</h1></body></html>';
-    return [$status = 200, $reason = 'OK', $headers = [], $body];
-});
-```
-
 ##### Named Virtual Hosts
 
 Each `App` instance in the config file corresponds to a host on your server. Users may specify a
@@ -188,10 +190,9 @@ separate app for each domain/subdomain they wish to expose. For example ...
 
 ```php
 <?php
-require '/path/to/aerys/src/bootstrap.php';
 
 // mysite.com
-$mySite = (new Aerys\App)
+$mySite = (new Aerys\HostConfig)
     ->setPort(80) // <-- Defaults to 80, so this isn't technically necessary
     ->setName('mysite.com')
     ->addResponder(function() {
@@ -199,14 +200,14 @@ $mySite = (new Aerys\App)
     });
 
 // subdomain.mysite.com
-$mySubdomain = (new Aerys\App)
+$mySubdomain = (new Aerys\HostConfig)
     ->setName('subdomain.mysite.com')
     ->addResponder(function() {
         return '<html><body><h1>subdomain.mysite.com</h1></body></html>';
     });
 
 // omgphpiswebscale.com
-$omgPhpIsWebscale = (new Aerys\App)
+$omgPhpIsWebscale = (new Aerys\HostConfig)
     ->setName('omgphpiswebscale.com')
     ->addResponder(function() {
         return '<html><body><h1>omgphpiswebscale.com</h1></body></html>';
@@ -215,15 +216,14 @@ $omgPhpIsWebscale = (new Aerys\App)
 
 ##### Serving Static Files
 
-Simply add the `App::setDocumentRoot` declaration to add HTTP/1.1-compliant static file
+Simply add the `HostConfig::setDocumentRoot` declaration to add HTTP/1.1-compliant static file
 serving to your applications.
 
 ```php
 <?php
-require '/path/to/aerys/src/bootstrap.php';
 
 // Any URI not matched by another handler is treated as a static file request
-$myApp = (new Aerys\App)
+$myApp = (new Aerys\HostConfig)
     ->setName('mysite.com')
     ->addRoute('GET', '/', 'MyClass::myGetHandlerMethod')
     ->addRoute('POST', '/', 'MyClass::myPostHandlerMethod')
@@ -244,10 +244,9 @@ applications all the benefits of clean code and dependency injection.
 
 ```php
 <?php
-require '/path/to/aerys/src/bootstrap.php';
 
 // Any PHP callable may be specified as a route target (instance methods, too!)
-$myApp = (new Aerys\App)
+$myApp = (new Aerys\HostConfig)
     ->addRoute('GET', '/', 'MyClass::myGetHandler')
     ->addRoute('POST', '/', 'MyClass::myPostHandler')
     ->addRoute('PUT', '/', 'MyClass::myPutHandler')
@@ -278,7 +277,6 @@ as a `Generator` and cooperatively multitask with the server using non-blocking 
 
 ```php
 <?php
-require '/path/to/aerys/src/bootstrap.php';
 
 function asyncResponder($request) {
     $result = (yield asyncMultiply(6, 7));
@@ -296,7 +294,7 @@ function multiAsyncResponder($request) {
     yield "<html><body><h1>{$result1} | {$result2} | {$result3}</h1></body></html>";
 }
 
-$myApp = (new Aerys\App)
+$myApp = (new Aerys\HostConfig)
     ->setPort(1337)
     ->addRoute('GET', '/', 'asyncResponder')
     ->addRoute('GET', '/multi', 'multiAsyncResponder');
