@@ -10,21 +10,20 @@
  * that way. They aren't pages you can simply open in a browser.
  *
  * Though you can add any number of websocket endpoints for a given Aerys app, this example only
- * specifies the one endpoint at ws://127.0.0.1/echo
+ * specifies the one endpoint at ws://127.0.0.1:1337/echo
  *
  * To run:
  *
- *     $ bin/aerys -c examples/009_websockets.php
+ * $ bin/aerys -c examples/007_websockets.php
  *
- * Once started, load http://127.0.0.1:1338/ in your browser. Open/close the address in multiple
+ * Once started, load http://127.0.0.1:1337/ in your browser. Open/close the address in multiple
  * tabs to see the "connected users" total increment
  */
 
-require_once  __DIR__ . '/../src/bootstrap.php';
-require_once __DIR__ . '/support/009_websocket_includes.php';
+require_once __DIR__ . '/support/websocket_includes.php';
 
-$myApp = (new Aerys\App)
-    ->setPort(1338)
-    ->addWebsocketRoute('/echo', 'Ex009_WebsocketApp')
+$myApp = (new Aerys\HostConfig)
+    ->setPort(1337)
+    ->addWebsocketRoute('/echo', 'ExampleWebsocketApp')
     ->setDocumentRoot(__DIR__ . '/support/docroot/websockets')
 ;

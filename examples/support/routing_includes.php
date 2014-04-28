@@ -1,9 +1,9 @@
 <?php
 
-function ex007_my_function($request) {
-    $body = '<html><body><h1>ex007_my_function</h1>';
+function myRouteRunction($request) {
+    $body = '<html><body><h1>myRouteFunction</h1>';
     $body.= '<hr/>';
-    $body.= Ex007_BasicRouting::generateLinkList($request['REQUEST_URI_PATH']);
+    $body.= BasicRouting::generateLinkList($request['REQUEST_URI_PATH']);
     $body.= '<hr/><p>';
     $body.= 'This example demonstrates using a global function to respond to requests.';
     $body.= '</p></body></html>';
@@ -11,10 +11,10 @@ function ex007_my_function($request) {
     return $body;
 }
 
-$ex007_closure = function($request) {
+$myRouteClosure = function($request) {
     $body = '<html><body><h1>$ex007_closure</h1>';
     $body.= '<hr/>';
-    $body.= Ex007_BasicRouting::generateLinkList($request['REQUEST_URI_PATH']);
+    $body.= BasicRouting::generateLinkList($request['REQUEST_URI_PATH']);
     $body.= '<hr/><p>';
     $body.= 'This example demonstrates using a closure to respond to requests.';
     $body.= '</p></body></html>';
@@ -22,9 +22,9 @@ $ex007_closure = function($request) {
     return $body;
 };
 
-class Ex007_Dependency {}
+class ClassDependency {}
 
-class Ex007_BasicRouting {
+class BasicRouting {
 
     private static $links = [
         '/' => 'Hello World',
@@ -35,10 +35,10 @@ class Ex007_BasicRouting {
         '/closure' => 'Closure'
     ];
 
-    function __construct(Ex007_Dependency $dep) {}
+    function __construct(ClassDependency $dep) {}
 
     function hello($request) {
-        $body = '<html><body><h1>Ex007_BasicRouting::hello</h1>';
+        $body = '<html><body><h1>BasicRouting::hello</h1>';
         $body.= '<hr/>';
         $body.= $this->generateLinkList($request['REQUEST_URI_PATH']);
         $body.= '<hr/>';
@@ -60,7 +60,7 @@ class Ex007_BasicRouting {
     }
 
     function info($request) {
-        $body = '<html><body><h1>Ex007_BasicRouting::info</h1>';
+        $body = '<html><body><h1>BasicRouting::info</h1>';
         $body.= '<hr/>';
         $body.= $this->generateLinkList($request['REQUEST_URI_PATH']);
         $body.= '<hr/>';
@@ -74,7 +74,7 @@ class Ex007_BasicRouting {
     }
 
     function args($request) {
-        $body = '<html><body><h1>Ex007_BasicRouting::args</h1>';
+        $body = '<html><body><h1>BasicRouting::args</h1>';
         $body.= '<hr/>';
         $body.= $this->generateLinkList($request['REQUEST_URI_PATH']);
         $body.= '<hr/>';

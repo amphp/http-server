@@ -1,51 +1,87 @@
 <?php
 
 /**
- * Every Aerys "App" is a 1:1 mapping of a host name, IP address and listening port to a callable
- * responder. When a request arrives Aerys determines which App responder should be invoked and
- * routes the request to the appropriate application. You aren't *required* to actually set any of
- * the port/address/name values unless you need to modify the defaults values:
+ * GLOBAL SERVER OPTIONS
  *
- * App::setPort(int $port)          The app's TCP port number
- * App::setAddress(string $ip)      The app's IPv4 or IPv6 address number
- * App::setName(string $name)       The app's host (domain) name
+ * Global server options are defined using constants in the "Aerys\" namespace. Use these constants
+ * to configure options that apply to all hosts on the server. For example:
+ *
+ *     <?php
+ *     namespace Aerys;
+ *
+ *     const MAX_CONNECTIONS = 1000;
+ *     const MAX_REQUESTS = 100;
+ *     const KEEP_ALIVE_TIMEOUT = 5;
+ *
+ *     // Individual host definitions here
+ *
+ * This is by no means an exhaustive list of the available options. The takeaway here is that these
+ * namespaced constants are how you configure globally-applicable server options.
  *
  *
- * ### Ports
+ * HOSTS
  *
- * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
- * well-known services (like HTTP on port 80) and port numbers less than 1024 require root
- * access on UNIX-like systems. If no value is specified port 80 is assumed.
+ * Aerys exposes the HostConfig class to configure the application you wish to run for each
+ * individual domain (host) in your server. Defining multiple HostConfig objects allows a server to
+ * expose multiple HTTP virtual hosts. For example:
+ *
+ *     <?php
+ *     namespace Aerys;
+ *
+ *     // Global server option constants here
+ *
+ *     // --- mysite.com (listens on port 80, all IPv4 interfaces) ---------------------------------
+ *     $mysite = (new HostConfig('mysite.com'))->addResponder(function($request) {
+ *         return '<html><body><h1>Hello, world.</h1></body></html>';
+ *     });
+ *
+ *     // --- static.mysite.com (listens on port 80, all IPv4 interfaces) --------------------------
+ *     $subdomain = (new HostConfig('static.mysite.com')->setDocumentRoot('/path/to/static/files');
  *
  *
- * ### Addresses
+ * The above example binds two hosts: mysite.com and static.mysite.com. The first returns a generic
+ * "hello world" response for all requests it receives and the second acts as a static file server.
+ * If no host name is passed to HostConfig::__construct() then "localhost" is assumed. Servers
+ * exposing only one host are not required to set the domain name in the HostConfig constructor. A
+ * name is required when serving more than one host in a server.
+ *
+ *
+ * PORT NUMBERS
+ *
+ * Any valid port number [1-65535] may be specified using HostConfig::setPort(). If no value is
+ * specified port 80 is assumed.
+ *
+ *
+ * IP ADDRESSES
  *
  * The default wildcard IP value "*" translates to "all IPv4 interfaces" and is appropriate for
  * most scenarios. Valid values also include any IPv4 or IPv6 address. The string "[::]" denotes
- * an IPv6 wildcard.
+ * an IPv6 wildcard. A host's IP address is assigned with HostConfig::setAddress(). If no address
+ * is assigned the server assumes the IPv4 wildcard ("*").
  *
  *
- * ### Host Names
+ * RUNNABLE EXAMPLE
  *
- * The name is your application's domain (e.g. localhost or mysite.com or subdomain.mysite.com). A
- * name is not required if you only serve one application. If multiple applications (domain names)
- * are specified for your server each App MUST specify a name to differentiate it from the other
- * virtual hosts on the server.
+ * To run this example server:
  *
+ * $ bin/aerys -c examples/001_start.php
  *
- * To run this application:
- *
- *     $ bin/aerys -c examples/001_start.php
- *
- * Once started, load http://127.0.0.1:1338/ or http://localhost:1338/ in your browser.
+ * Once started, load http://127.0.0.1:1337/ or http://localhost:1337/ in your browser.
  */
 
-require __DIR__ . '/../src/bootstrap.php';
 
-$myApp = new Aerys\App;
-$myApp->setPort(1338);
-$myApp->setAddress('*');
-$myApp->setName('localhost');
-$myApp->addResponder(function($request) {
-    return '<html><body><h1>Hello, world.</h1></body></html>';
-});
+namespace Aerys;
+
+/* --- Global server options here --------------------------------------------------------------- */
+
+const KEEP_ALIVE_TIMEOUT = 30;
+
+/* --- http://localhost:1338/ or http://127.0.0.1:1338/  (all IPv4 interfaces) ------------------ */
+
+$myHost = (new HostConfig)
+    ->setPort(1337)
+    ->setAddress('*')
+    ->addResponder(function($request) {
+        return '<html><body><h1>Hello, world.</h1></body></html>';
+    })
+;

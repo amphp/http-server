@@ -1,17 +1,6 @@
 <?php
 
-/**
- * @TODO
- *
- * To run:
- * $ bin/aerys -c examples/005_async.php
- *
- * Once started, load http://127.0.0.1:1338/ in your browser.
- */
-
-use Aerys\App, After\Success, After\Future;
-
-require __DIR__ . '/../src/bootstrap.php';
+use After\Success;
 
 // ------ Any library that returns an After\Future instance -------
 
@@ -64,13 +53,3 @@ function group2AsyncResponder($request) {
 
     yield "<html><body><h1>{$result1} | {$result2} | {$result3}</h1></body></html>";
 }
-
-// ------------- Our app configuration ---------------------
-
-$myApp = (new App)
-    ->setPort(1338)
-    ->addRoute('GET', '/', 'asyncResponder')
-    ->addRoute('GET', '/multi', 'multiAsyncResponder')
-    ->addRoute('GET', '/group1', 'group1AsyncResponder')
-    ->addRoute('GET', '/group2', 'group2AsyncResponder')
-;

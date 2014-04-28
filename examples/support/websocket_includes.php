@@ -2,7 +2,7 @@
 
 use Aerys\Websocket\App, Aerys\Websocket\Broker;
 
-class Ex009_WebsocketApp implements App {
+class ExampleWebsocketApp implements App {
     private $broker;
     private $sockets = [];
 

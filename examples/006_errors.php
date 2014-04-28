@@ -6,12 +6,12 @@
  * triggers a fatal error. To generate this error, simply load this URI in your browser after
  * launching the server:
  *
- *     http://127.0.0.1/fatal
+ *     http://127.0.0.1:1337/fatal
  *
  * Servers also generate a 500 response if your application throws an uncaught exception while
  * responding to a request. This behavior is demonstrated here:
  *
- *     http://127.0.0.1/exception
+ *     http://127.0.0.1:1337/exception
  *
  * Note that error traceback is displayed by default. This behavior can be controlled using the
  * server's "showErrors" option. Production servers should set this value to FALSE to avoid
@@ -19,14 +19,12 @@
  *
  * To run:
  *
- *     $ bin/aerys -c examples/006_errors.php
+ * $ bin/aerys -c examples/006_errors.php --debug
  *
- * Once started, load http://127.0.0.1/ in your browser.
+ * Once started, load http://127.0.0.1:1337/ in your browser.
  */
 
-require_once  __DIR__ . '/../src/bootstrap.php';
-
-$myResponder = function($request) {
+$myApp = (new Aerys\HostConfig)->setPort(1337)->addResponder(function($request) {
     switch ($request['REQUEST_URI_PATH']) {
         case '/fatal':
             $nonexistentObj->nonexistentMethod(); // <-- will cause a fatal E_ERROR
@@ -44,6 +42,4 @@ $myResponder = function($request) {
 
             return "<html><body><h1>Error Recovery</h1>{$li}</body></html>";
     }
-};
-
-$myApp = (new Aerys\App)->addResponder($myResponder);
+});
