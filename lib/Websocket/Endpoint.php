@@ -231,7 +231,6 @@ class Endpoint implements ServerObserver {
 
     private function onResolvedYield($generator, $future) {
         try {
-            var_dump($future->getValue());
             if ($future->succeeded()) {
                 $generator->send($future->getValue());
             } else {
@@ -596,6 +595,7 @@ class Endpoint implements ServerObserver {
         }
 
         frame_complete: {
+            $payloadReference = isset($payloadReference) ? $payloadReference : '';
             $frameStruct = [$payloadReference, $ps->opcode, $ps->fin];
             $payloadReference = '';
 
