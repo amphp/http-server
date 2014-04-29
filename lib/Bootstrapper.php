@@ -216,8 +216,6 @@ class Bootstrapper {
             $responders[HostConfig::DOCUMENTS] = $this->buildDocRootResponder($conf);
         }
 
-        $responders = $this->orderResponders($responders, $hostArr[HostConfig::ORDER]);
-
         switch (count($responders)) {
             case 0:
                 $responder = $this->buildDefaultResponder();
@@ -378,29 +376,5 @@ class Bootstrapper {
                 $previousException
             );
         }
-    }
-
-    private function orderResponders(array $responders, $order) {
-        $defaultOrder = [HostConfig::WEBSOCKETS, HostConfig::ROUTES, HostConfig::RESPONDERS, HostConfig::DOCUMENTS];
-        if ($diff = array_diff($order, $defaultOrder)) {
-            throw new BootException(
-                'Invalid responder order value(s): ' . implode(', ', $diff)
-            );
-        }
-
-        foreach ($defaultOrder as $orderKey) {
-            if (!in_array($orderKey, $order)) {
-                $order[] = $orderKey;
-            }
-        }
-
-        $orderedResponders = [];
-        foreach ($order as $orderKey) {
-            if (isset($responders[$orderKey])) {
-                $orderedResponders[] = $responders[$orderKey];
-            }
-        }
-
-        return $orderedResponders;
     }
 }

@@ -7,7 +7,6 @@ class HostConfig {
     const ADDRESS = 'address';
     const NAME = 'name';
     const ENCRYPTION = 'encryption';
-    const ORDER = 'order';
     const ROUTES = 'routes';
     const THREAD_ROUTES = 'thread_routes';
     const DOCUMENTS = 'documents';
@@ -23,7 +22,6 @@ class HostConfig {
     private $documents = [];
     private $encryption = [];
     private $responders = [];
-    private $order = [];
 
     /**
      * Optionally define the host's domain name (e.g. localhost or mysite.com or subdomain.mysite.com)
@@ -136,30 +134,6 @@ class HostConfig {
     }
 
     /**
-     * Determine the order in which request responders are invoked for this host
-     *
-     * Valid values include:
-     *
-     * - HostConfig::WEBSOCKETS       (HostConfig::addWebsocket)
-     * - HostConfig::ROUTES           (HostConfig::addRoute)
-     * - HostConfig::RESPONDERS       (HostConfig::addResponder)
-     * - HostConfig::DOCUMENTS        (HostConfig::setDocumentRoot)
-     *
-     * Any values specified that don't match the above list will result in a BootException
-     * when the server is bootstrapped. Note that the above list is the default responder order.
-     * User responders added via `HostConfig::addResponder` are always ordered internally by the
-     * order in which they are added to the host.
-     *
-     * @param array $order
-     * @return \Aerys\HostConfig Returns the current object instance
-     */
-    public function setResponderOrder(array $order) {
-        $this->order = $order;
-
-        return $this;
-    }
-
-    /**
      * Bind a non-blocking route handler for the specified HTTP method and URI path
      *
      * @param string $httpMethod The method for which this route applies
@@ -236,7 +210,6 @@ class HostConfig {
             self::PORT          => $this->port,
             self::ADDRESS       => $this->address,
             self::NAME          => $this->name,
-            self::ORDER         => $this->order,
             self::ENCRYPTION    => $this->encryption,
             self::DOCUMENTS     => $this->documents,
             self::ROUTES        => $this->standardRoutes,
