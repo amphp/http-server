@@ -20,8 +20,8 @@ class Parser {
     $#ix";
 
     const HEADERS_PATTERN = "/
-        (?P<field>[^\(\)<>@,;:\\\"\/\[\]\?\={}\x20\x09\x01-\x1F\x7F]+):[\x20\x09]*
-        (?P<value>[^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
+        ([^\(\)<>@,;:\\\"\/\[\]\?\={}\x20\x09\x01-\x1F\x7F]+):[\x20\x09]*
+        ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
     /x";
 
     private $mode;
@@ -85,9 +85,9 @@ class Parser {
     }
 
     public function parse($data) {
-        $this->buffer .= $data;
+        $buffer = $this->buffer .= $data;
 
-        if ($this->buffer == '') {
+        if ($buffer == '') {
             goto more_data_needed;
         }
 
@@ -107,16 +107,30 @@ class Parser {
         }
 
         awaiting_headers: {
-            if (!$startLineAndHeaders = $this->shiftHeadersFromMessageBuffer()) {
-                goto more_data_needed;
+            $buffer = ltrim($buffer, "\r\n");
+
+            if ($headerPos = strpos($buffer, "\r\n\r\n")) {
+                $startLineAndHeaders = substr($buffer, 0, $headerPos + 2);
+                $this->buffer = $buffer = (string) substr($buffer, $headerPos + 4);
+            } elseif ($headerPos = strpos($buffer, "\n\n")) {
+                $startLineAndHeaders = substr($buffer, 0, $headerPos + 1);
+                $this->buffer = $buffer = (string) substr($buffer, $headerPos + 2);
+            } elseif ($this->maxHeaderBytes > 0 && strlen($this->buffer) > $this->maxHeaderBytes) {
+                throw new ParserException(
+                    $this->getParsedMessageArray(),
+                    $msg = "Maximum allowable header size exceeded: {$this->maxHeaderBytes}",
+                    $code = 431
+                );
             } else {
-                goto start_line;
+                goto more_data_needed;
             }
+
+            goto start_line;
         }
 
         start_line: {
             $startLineEndPos = strpos($startLineAndHeaders, "\n");
-            $startLine = substr($startLineAndHeaders, 0, $startLineEndPos);
+            $startLine = rtrim(substr($startLineAndHeaders, 0, $startLineEndPos), "\r\n");
             $rawHeaders = substr($startLineAndHeaders, $startLineEndPos + 1);
             $this->traceBuffer = $startLineAndHeaders;
 
@@ -128,50 +142,34 @@ class Parser {
         }
 
         request_line_and_headers: {
-            $parts = explode(' ', trim($startLine));
-
-            if (isset($parts[0]) && ($method = trim($parts[0]))) {
-                $this->requestMethod = $method;
-            } else {
+            if (!$this->requestMethod = strtok($startLine, " ")) {
                 $this->requestMethod = $this->requestUri = $this->protocol = '?';
                 throw new ParserException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid request line',
-                    $code = 400,
-                    $previousException = NULL
+                    $code = 400
                 );
             }
 
-            if (isset($parts[1]) && ($uri = trim($parts[1]))) {
-                $this->requestUri = $uri;
-            } else {
+            if (!$this->requestUri = strtok(" ")) {
                 $this->requestUri = $this->protocol = '?';
                 throw new ParserException(
                     $this->getParsedMessageArray(),
                     $msg = 'Invalid request line',
-                    $code = 400,
-                    $previousException = NULL
+                    $code = 400
                 );
             }
 
-            if (isset($parts[2]) && ($protocol = str_ireplace('HTTP/', '', trim($parts[2])))) {
+            $protocol = strtok(" ");
+            $protocol = str_ireplace('HTTP/', '', $protocol);
+            if ($protocol === '1.1' || $protocol === '1.0') {
                 $this->protocol = $protocol;
             } else {
                 $this->protocol = '?';
                 throw new ParserException(
                     $this->getParsedMessageArray(),
-                    $msg = 'Invalid request line',
-                    $code = 400,
-                    $previousException = NULL
-                );
-            }
-
-            if (!($protocol === '1.0' || '1.1' === $protocol)) {
-                throw new ParserException(
-                    $this->getParsedMessageArray(),
                     $msg = 'Protocol not supported',
-                    $code = 505,
-                    $previousException = NULL
+                    $code = 505
                 );
             }
 
@@ -399,49 +397,23 @@ class Parser {
             );
         }
 
+        list($lines, $fields, $values) = $matches;
+
         $headers = [];
-
-        $aggregateMatchedHeaders = '';
-
-        for ($i=0, $c=count($matches[0]); $i < $c; $i++) {
-            $aggregateMatchedHeaders .= $matches[0][$i];
-            $field = $matches['field'][$i];
-            $headers[$field][] = $matches['value'][$i];
+        foreach ($fields as $index => $field) {
+            $headers[strtoupper($field)][] = $values[$index];
         }
 
-        if (strlen($rawHeaders) !== strlen($aggregateMatchedHeaders)) {
-            throw new ParserException(
-                $this->getParsedMessageArray(),
-                $msg = 'Invalid headers',
-                $code = 400,
-                $previousException = NULL
-            );
+        if (isset($headers['CONTENT-LENGTH'])) {
+            $this->parseFlowHeaders['CONTENT-LENGTH'] = (int) $headers['CONTENT-LENGTH'][0];
         }
 
-        $ucKeyHeaders = array_change_key_case($headers, CASE_UPPER);
-
-        if (isset($ucKeyHeaders['TRANSFER-ENCODING'])
-            && strcasecmp('identity', $ucKeyHeaders['TRANSFER-ENCODING'][0])
-        ) {
-            $this->parseFlowHeaders['TRANSFER-ENCODING'] = TRUE;
-        } elseif (isset($ucKeyHeaders['CONTENT-LENGTH'])) {
-            $contentLength = $ucKeyHeaders['CONTENT-LENGTH'][0];
-            $this->validateContentLength($contentLength);
-            $this->parseFlowHeaders['CONTENT-LENGTH'] = $contentLength;
+        if (isset($headers['TRANSFER_ENCODING'])) {
+            $value = $headers['TRANSFER_ENCODING'][0];
+            $this->parseFlowHeaders['TRANSFER_ENCODING'] = (bool) strcasecmp($value, 'identity');
         }
 
         return $headers;
-    }
-
-    private function validateContentLength($contentLength) {
-        if (!ctype_digit($contentLength)) {
-            throw new ParserException(
-                $this->getParsedMessageArray(),
-                $msg = 'Invalid Content-Length',
-                $code = 400,
-                $previousException = NULL
-            );
-        }
     }
 
     private function dechunk() {

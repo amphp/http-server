@@ -17,7 +17,6 @@ class Cycle {
     public $protocol;
     public $method;
     public $headers = [];
-    public $ucHeaders = [];
     public $body;
     public $uri;
     public $uriHost;

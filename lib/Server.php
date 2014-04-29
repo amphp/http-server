@@ -516,7 +516,6 @@ class Server {
         }
 
         $__method = $this->normalizeMethodCase ? strtoupper($__method) : $__method;
-        $__ucHeaders = array_change_key_case($__headers, CASE_UPPER);
 
         $cycle = new Cycle;
         $cycle->requestId = ++$this->lastRequestId;
@@ -525,7 +524,6 @@ class Server {
         $cycle->method = $__method;
         $cycle->body = $__body;
         $cycle->headers = $__headers;
-        $cycle->ucHeaders = $__ucHeaders;
         $cycle->uri = $__uri;
 
         if (stripos($__uri, 'http://') === 0 || stripos($__uri, 'https://') === 0) {
@@ -542,9 +540,9 @@ class Server {
             $cycle->uriPath = $__uri;
         }
 
-        if (empty($__ucHeaders['EXPECT'])) {
+        if (empty($__headers['EXPECT'])) {
             $cycle->expectsContinue = FALSE;
-        } elseif (stristr($__ucHeaders['EXPECT'][0], '100-continue')) {
+        } elseif (stristr($__headers['EXPECT'][0], '100-continue')) {
             $cycle->expectsContinue = TRUE;
         } else {
             $cycle->expectsContinue = FALSE;
@@ -583,26 +581,26 @@ class Server {
             'QUERY_STRING'      => $cycle->uriQuery
         ];
 
-        if (!empty($__ucHeaders['CONTENT-TYPE'])) {
-            $request['CONTENT_TYPE'] = $__ucHeaders['CONTENT-TYPE'][0];
-            unset($__ucHeaders['CONTENT-TYPE']);
+        if (!empty($__headers['CONTENT-TYPE'])) {
+            $request['CONTENT_TYPE'] = $__headers['CONTENT-TYPE'][0];
+            unset($__headers['CONTENT-TYPE']);
         }
 
-        if (!empty($__ucHeaders['CONTENT-LENGTH'])) {
-            $request['CONTENT_LENGTH'] = $__ucHeaders['CONTENT-LENGTH'][0];
-            unset($__ucHeaders['CONTENT-LENGTH']);
+        if (!empty($__headers['CONTENT-LENGTH'])) {
+            $request['CONTENT_LENGTH'] = $__headers['CONTENT-LENGTH'][0];
+            unset($__headers['CONTENT-LENGTH']);
         }
 
         $request['QUERY'] = $cycle->uriQuery ? parse_str($cycle->uriQuery, $request['QUERY']) : [];
 
         // @TODO Add cookie parsing
-        //if (!empty($ucHeaders['COOKIE']) && ($cookies = $this->parseCookies($ucHeaders['COOKIE']))) {
+        //if (!empty($headers['COOKIE']) && ($cookies = $this->parseCookies($headers['COOKIE']))) {
         //    $request['COOKIE'] = $cookies;
         //}
 
         // @TODO Add multipart entity parsing
 
-        foreach ($__ucHeaders as $field => $value) {
+        foreach ($__headers as $field => $value) {
             $field = 'HTTP_' . str_replace('-', '_', $field);
             $value = isset($value[1]) ? implode(',', $value) : $value[0];
             $request[$field] = $value;
@@ -622,7 +620,7 @@ class Server {
                 ->setHeader('Allow', implode(',', array_keys($this->allowedMethods)))
                 ->setHeader('Connection', 'close')
             ;
-        } elseif ($__method === 'TRACE' && empty($cycle->ucHeaders['MAX_FORWARDS'])) {
+        } elseif ($__method === 'TRACE' && empty($cycle->headers['MAX_FORWARDS'])) {
             // @TODO Max-Forwards needs some additional server flag because that check shouldn't
             // be used unless the server is acting as a reverse proxy
             $cycle->response = (new Response)
@@ -635,7 +633,7 @@ class Server {
                 ->setStatus(Status::OK)
                 ->setHeader('Allow', implode(',', array_keys($this->allowedMethods)))
             ;
-        } elseif ($this->requireBodyLength && $__headersOnly && empty($cycle->ucHeaders['CONTENT-LENGTH'])) {
+        } elseif ($this->requireBodyLength && $__headersOnly && empty($cycle->headers['CONTENT-LENGTH'])) {
             $cycle->response = (new Response)
                 ->setStatus(Status::LENGTH_REQUIRED)
                 ->setReason('Content Length Required')
@@ -689,8 +687,6 @@ class Server {
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.40
      */
     private function updateTrailerHeaders($cycle, array $headers) {
-        $ucHeaders = array_change_key_case($headers, CASE_UPPER);
-
         // The Host header is ignored in trailers to prevent unsanitized values from bypassing the
         // original safety check when headers are first processed. The other values are expressly
         // disallowed by RFC 2616 Section 14.40.
