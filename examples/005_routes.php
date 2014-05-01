@@ -12,7 +12,7 @@
 
 require_once __DIR__ . '/support/routing_includes.php';
 
-$app = new (Aerys\HostConfig)
+$app = (new Aerys\HostConfig)
     ->setPort(1337)
     ->addRoute('GET', '/', 'BasicRouting::hello')
     ->addRoute('GET', '/info', 'BasicRouting::info')
