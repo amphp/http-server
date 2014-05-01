@@ -38,9 +38,16 @@ class ThreadRequestTask extends \Threaded {
     }
 
     public function run() {
+        if ($this->worker->__aerysStorage) {
+            $aerysStorage = $this->worker->__aerysStorage;
+        } else {
+            $this->worker->__aerysStorage = $aerysStorage = new \StdClass;
+        }
+
         $request =& $this->request;
         $request['ASGI_NON_BLOCKING'] = FALSE;
         $request['ASGI_INPUT'] = $this->input;
+        $request['AERYS_STORAGE'] = $aerysStorage;
         /*
         // @TODO
         list($injector, $threadLocal) = $this->worker->getDomainShare('__aerysBlockables');
@@ -214,7 +221,7 @@ class ThreadRequestTask extends \Threaded {
                 throw new TargetPipeException;
             }
         }
-        
+
         return '';
     }
 

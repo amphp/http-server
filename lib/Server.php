@@ -50,6 +50,7 @@ class Server {
     private $exportedSocketIdMap = [];
     private $cachedClientCount = 0;
     private $lastRequestId;
+    private $sharedStorage;
 
     private $now;
     private $httpDateNow;
@@ -83,6 +84,7 @@ class Server {
         $this->observers = new \SplObjectStorage;
         $this->isExtSocketsEnabled = extension_loaded('sockets');
         $this->lastRequestId = PHP_INT_MAX * -1; // <-- 5.5 compatibility
+        $this->sharedStorage = new \StdClass;
         $this->state = self::STOPPED;
         $this->allowedMethods = [
             'GET' => 1,
@@ -568,6 +570,7 @@ class Server {
             'ASGI_ERROR'        => NULL,
             'ASGI_INPUT'        => $cycle->body,
             'AERYS_SOCKET_ID'   => $client->id,
+            'AERYS_STORAGE'     => $this->sharedStorage,
             'SERVER_PORT'       => $client->serverPort,
             'SERVER_ADDR'       => $client->serverAddress,
             'SERVER_NAME'       => $serverName,
@@ -1214,6 +1217,15 @@ class Server {
             $this->reactor->disable($client->writeWatcher);
             $this->renewKeepAliveTimeout($client->id);
         }
+    }
+
+    /**
+     * Expose shared worker storage
+     *
+     * @return StdClass
+     */
+    public function getSharedStorage() {
+        return $this->sharedStorage;
     }
 
     /**

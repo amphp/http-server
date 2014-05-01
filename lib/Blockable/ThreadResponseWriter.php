@@ -28,9 +28,9 @@ class ThreadResponseWriter implements ResponseWriterCustom {
         $socket = $subject->socket;
         $subject->socket = NULL;
 
-        $request =& $this->request;
+        $request = $this->request;
         $input = $request['ASGI_INPUT'];
-        unset($request['ASGI_ERROR'], $request['ASGI_INPUT']);
+        unset($request['ASGI_ERROR'], $request['ASGI_INPUT'], $request['AERYS_STORAGE']);
 
         $task = new ThreadRequestTask($request, $socket, $input, $subject);
         $future = $this->dispatcher->execute($task);
