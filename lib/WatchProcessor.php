@@ -2,9 +2,12 @@
 
 namespace Aerys;
 
-use Alert\Reactor, Alert\ReactorFactory;
+use Alert\Reactor, Alert\ReactorFactory, Alert\SignalReactor;
 
 class WatchProcessor implements Watcher {
+    const SIGINT = 2;
+    const SIGTERM = 15;
+
     private $reactor;
     private $debug;
     private $config;
@@ -33,6 +36,11 @@ class WatchProcessor implements Watcher {
         foreach ($this->hostAddrs as $address) {
             $address = substr(str_replace('0.0.0.0', '*', $address), 6);
             printf("Listening for HTTP traffic on %s ...\n", $address);
+        }
+
+        if ($this->reactor instanceof SignalReactor) {
+            $this->reactor->onSignal(self::SIGINT, [$this, 'stop']);
+            $this->reactor->onSignal(self::SIGTERM, [$this, 'stop']);
         }
 
         $this->reactor->run();
