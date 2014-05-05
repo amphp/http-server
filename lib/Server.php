@@ -728,10 +728,13 @@ class Server {
             $response->onResolution(function($future) use ($cycle) {
                 $this->onFutureResponseResolution($cycle, $future);
             });
-        } else {
+        } elseif (isset($response)) {
             $this->assignExceptionResponse($cycle, new \UnexpectedValueException(
                 sprintf("Unexpected response type: %s", gettype($response))
             ));
+        } else {
+            $cycle->response = (new Response)->setStatus(404)->setBody("<html><body>Not found</body></html>");
+            $this->hydrateWriterPipeline($cycle);
         }
     }
 
@@ -1181,6 +1184,10 @@ class Server {
     }
 
     private function doSocketClose($socket) {
+        if (!is_resource($socket)) {
+            return;
+        }
+
         $socketId = (int) $socket;
 
         if (isset(stream_context_get_options($socket)['ssl'])) {
@@ -1189,7 +1196,7 @@ class Server {
 
         if ($this->socketSoLingerZero) {
             $this->closeSocketWithSoLingerZero($socket);
-        } elseif (is_resource($socket)) {
+        } else {
             stream_socket_shutdown($socket, STREAM_SHUT_WR);
             @fread($socket, $this->readGranularity);
             @fclose($socket);
