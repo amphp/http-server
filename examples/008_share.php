@@ -29,26 +29,30 @@
  * is making an additional favicon request -- it's not an error :)
  */
 
+use Aerys\Server, Aerys\ServerObserver, Aerys\HostConfig;
 
-namespace Aerys;
+/* --- Define our application code; implement Aerys\ServerObserver for initialization ----------- */
 
-/* --- Global server options here --------------------------------------------------------------- */
+class MyApp implements ServerObserver {
+    public function onServerUpdate(Server $server, $event) {
+        if ($event === Server::STARTING) {
+            // Initialize any properties we want to share across requests
+            $storage = $server->getSharedStorage();
+            $storage->increment = 0;
+        }
+    }
+    public function requestHandler($request) {
+        $storage = $request['AERYS_STORAGE'];
+        $i = ++$storage->increment;
 
-const KEEP_ALIVE_TIMEOUT = 30;
+        return "<html><body><h1>Shared Storage</h1><p>Increment: {$i}</p></body></html>";
+    }
+}
 
-/* --- http://localhost:1338/ or http://127.0.0.1:1338/  (all IPv4 interfaces) ------------------ */
+/* --- http://localhost:1337/ or http://127.0.0.1:1337/  (all IPv4 interfaces) ------------------ */
 
 $myHost = (new HostConfig)
     ->setPort(1337)
     ->setAddress('*')
-    ->addResponder(function($request) {
-        $storage = $request['AERYS_STORAGE'];
-        if (empty($storage->increment)) {
-            $i = $storage->increment = 1;
-        } else {
-            $i = ++$storage->increment;
-        }
-
-        return "<html><body><h1>Shared Storage</h1><p>Increment: {$i}</p></body></html>";
-    })
+    ->addResponder('MyApp::requestHandler')
 ;
