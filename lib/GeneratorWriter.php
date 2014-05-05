@@ -84,10 +84,15 @@ class GeneratorWriter implements ResponseWriter {
                 $value->onResolution($this->futureResolver);
             } elseif (is_array($value)) {
                 $this->tryPromiseGroup($value);
-            } elseif (is_scalar($value) && isset($value[0])) {
+            } elseif (is_string($value)) {
                 $this->bufferBodyData($value);
                 $this->body->next();
                 $this->writeResponse();
+            } elseif (is_int($value) && $value > 0) {
+                $msDelay = $value;
+                $future = new Promise;
+                $future->onResolution(function($future) { $this->onFutureCompletion($future); });
+                $this->reactor->once([$future, 'succeed'], $msDelay);
             } else {
                 $this->failWritePromise(new \DomainException(sprintf(
                     'Yielded values MUST be of type Future or non-empty scalar; %s returned', gettype($value)
