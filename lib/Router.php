@@ -1,12 +1,10 @@
 <?php
 
-namespace Aerys\Routable;
+namespace Aerys;
 
-use Aerys\Status,
-    Aerys\Response,
-    FastRoute\Dispatcher;
+use FastRoute\Dispatcher;
 
-class Responder {
+class Router {
     private $dispatcher;
 
     public function __construct(Dispatcher $dispatcher) {

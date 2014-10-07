@@ -1,19 +1,20 @@
 <?php
 
-namespace Aerys\Aggregate;
+namespace Aerys;
 
-use Aerys\Status, Aerys\Response;
-
-class Responder {
+class Aggregator {
     private $responders;
+    private $resolver;
     private $notFoundResponse;
 
-    public function __construct(array $responders) {
+    public function __construct(array $responders, Resolver $resolver) {
         if (empty($responders)) {
             throw new \InvalidArgumentException(
                 'Non-empty array of callables required'
             );
         }
+
+        $this->resolver = $resolver;
 
         foreach ($responders as $key => $responder) {
             if (!is_callable($responder)) {
@@ -38,6 +39,8 @@ class Responder {
                 continue;
             } elseif ($response instanceof Response && $response->getStatus() === Status::NOT_FOUND) {
                 continue;
+            } elseif ($response instanceof \Generator) {
+
             } else {
                 return $response;
             }
