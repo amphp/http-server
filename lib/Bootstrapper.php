@@ -2,17 +2,16 @@
 
 namespace Aerys;
 
-use Alert\Reactor,
-    Alert\ReactorFactory,
-    FastRoute\RouteCollector,
-    Auryn\Injector,
-    Auryn\Provider,
-    Aerys\Aggregate\Responder as AggregateResponder;
+use Amp\Reactor;
+use Amp\ReactorFactory;
+use Amp\Promise;
+use Auryn\Injector;
+use Auryn\Provider;
 
 class Bootstrapper {
     const E_CONFIG_INCLUDE = "Config file inclusion failure: %s";
     const E_CONFIG_VARNAME = "Illegal variable name; \"%s\" must not be used in config files";
-    const E_MISSING_CONFIG = "No HostConfig instances found in config file: %s";
+    const E_MISSING_CONFIG = "No Host instances found in config file: %s";
 
     private $injector;
     private $serverOptMap = [
@@ -24,7 +23,6 @@ class Bootstrapper {
         'MAX_BODY_BYTES'        => Server::OP_MAX_BODY_BYTES,
         'DEFAULT_CONTENT_TYPE'  => Server::OP_DEFAULT_CONTENT_TYPE,
         'DEFAULT_TEXT_CHARSET'  => Server::OP_DEFAULT_TEXT_CHARSET,
-        'AUTO_REASON_PHRASE'    => Server::OP_AUTO_REASON_PHRASE,
         'SEND_SERVER_TOKEN'     => Server::OP_SEND_SERVER_TOKEN,
         'NORMALIZE_METHOD_CASE' => Server::OP_NORMALIZE_METHOD_CASE,
         'REQUIRE_BODY_LENGTH'   => Server::OP_REQUIRE_BODY_LENGTH,
@@ -39,7 +37,7 @@ class Bootstrapper {
      *
      * @param string $config The server config file path
      * @param array $options
-     * @throws \Aerys\Framework\BootException
+     * @throws \Aerys\BootException
      * @return array Returns three-element array of the form [$reactor, $server, $hosts]
      */
     public function boot($config, array $opts = []) {
@@ -49,14 +47,14 @@ class Bootstrapper {
 
         list($hostConfigs, $serverOptions) = $this->parseHostConfigs($config);
 
-        $reactor = (new ReactorFactory)->select();
+        $reactor = \Amp\reactor();
         $injector = new Provider;
         $this->injector = $injector;
 
-        $injector->alias('Alert\Reactor', get_class($reactor));
+        $injector->alias('Amp\Reactor', get_class($reactor));
         $injector->share($reactor);
         $injector->share('Aerys\Server');
-        $injector->share('Amp\Dispatcher');
+        $injector->share('Amp\Resolver');
         $server = $injector->make('Aerys\Server', [':debug' => $debugOpt]);
 
         // Automatically register any ServerObserver implementations with the server
@@ -64,7 +62,7 @@ class Bootstrapper {
             $server->addObserver($observer);
         });
 
-        $hosts = new HostCollection;
+        $hosts = new HostGroup;
         foreach ($hostConfigs as $hostConfig) {
             $host = $this->buildHost($hostConfig);
             $hosts->addHost($host);
@@ -107,7 +105,7 @@ class Bootstrapper {
         $__hostConfigs = [];
 
         foreach ($__configVars as $__cvKey => $__cvValue) {
-            if ($__cvValue instanceof HostConfig) {
+            if ($__cvValue instanceof Host) {
                 $__hostConfigs[] = $__cvValue;
             }
         }
@@ -120,7 +118,7 @@ class Bootstrapper {
 
         $__serverOptions = [];
         foreach ($this->serverOptMap as $const => $serverConst) {
-            $const = "Aerys\{$const}";
+            $const = "Aerys\\{$const}";
             if (defined($const)) {
                 $__serverOptions[$serverConst] = constant($const);
             }
@@ -155,12 +153,12 @@ class Bootstrapper {
         }
     }
 
-    private function buildHost(HostConfig $hostConfig) {
+    private function buildHost(Host $hostConfig) {
         $hostConfigArr = $hostConfig->toArray();
-        $ip   = $hostConfigArr[HostConfig::ADDRESS];
-        $port = $hostConfigArr[HostConfig::PORT];
-        $name = $hostConfigArr[HostConfig::NAME] ?: $ip;
-        $tls  = $hostConfigArr[HostConfig::ENCRYPTION];
+        $ip   = $hostConfigArr[Host::ADDRESS];
+        $port = $hostConfigArr[Host::PORT];
+        $name = $hostConfigArr[Host::NAME] ?: $ip;
+        $tls  = $hostConfigArr[Host::ENCRYPTION];
         $responder = $this->aggregateHostResponders($hostConfigArr);
         $host = $this->tryHost($ip, $port, $name, $responder);
 
@@ -173,22 +171,22 @@ class Bootstrapper {
 
     private function tryHost($ip, $port, $name, $responder) {
         try {
-            return new Host($ip, $port, $name, $responder);
+            return new HostDefinition($ip, $port, $name, $responder);
         } catch (\Exception $previousException) {
             throw new BootException(
-                sprintf('Host build failure: %s', $e->getMessage()),
+                sprintf('HostDefinition build failure: %s', $e->getMessage()),
                 $code = 0,
                 $previousException
             );
         }
     }
 
-    private function tryHostEncryption(Host $host, array $tls) {
+    private function tryHostEncryption(HostDefinition $host, array $tls) {
         try {
             $host->setEncryptionContext($tlsDefinition);
         } catch (\Exception $previousException) {
             throw new BootException(
-                sprintf('Host build failure: %s', $lastException->getMessage()),
+                sprintf('HostDefinition build failure: %s', $lastException->getMessage()),
                 $code = 0,
                 $previousException
             );
@@ -198,37 +196,49 @@ class Bootstrapper {
     private function aggregateHostResponders(array $hostArr) {
         $responders = [];
 
-        if ($hostArr[HostConfig::ROUTES] ||
-            $hostArr[HostConfig::THREAD_ROUTES] ||
-            $hostArr[HostConfig::WEBSOCKETS]
-        ) {
-            $standard = $hostArr[HostConfig::ROUTES];
-            $threaded = $hostArr[HostConfig::THREAD_ROUTES];
-            $websockets = $hostArr[HostConfig::WEBSOCKETS];
-            $responders[HostConfig::ROUTES] = $this->buildRoutableResponder($standard, $threaded, $websockets);
+        if ($hostArr[Host::ROUTES] || $hostArr[Host::WEBSOCKETS]) {
+            $standard = $hostArr[Host::ROUTES];
+            $websockets = $hostArr[Host::WEBSOCKETS];
+            $responders[Host::ROUTES] = $this->buildRouter($standard, $websockets);
         }
 
-        if ($conf = $hostArr[HostConfig::RESPONDERS]) {
-            $responders[HostConfig::RESPONDERS] = $this->buildUserResponder($conf);
+        if ($conf = $hostArr[Host::RESPONDERS]) {
+            $responders[Host::RESPONDERS] = $this->buildUserResponder($conf);
         }
 
-        if ($conf = $hostArr[HostConfig::DOCUMENTS]) {
-            $responders[HostConfig::DOCUMENTS] = $this->buildDocRootResponder($conf);
+        if ($conf = $hostArr[Host::ROOT]) {
+            $responders[Host::ROOT] = $this->buildRootResponder($conf);
         }
 
         switch (count($responders)) {
-            case 0:
-                $responder = $this->buildDefaultResponder();
-                break;
-            case 1:
-                $responder = current($responders);
-                break;
-            default:
-                $responder = new AggregateResponder($responders);
-                break;
+            case 0:  return $this->buildDefaultResponder();
+            case 1:  return current($responders);
+            default: return $this->buildAggregateResponder($responders);
         }
+    }
 
-        return $responder;
+    private function buildAggregateResponder(array $responders) {
+        $http404 = [
+            'status' => Status::NOT_FOUND,
+            'header' => 'Content-Type: text/html; charset=utf-8',
+            'body'   => '<html><body><h1>404 Not Found</h1></body></html>',
+        ];
+
+        return function($request) use ($responders, $http404) {
+            foreach ($responders as $responder) {
+                $response = call_user_func($responder, $request);
+                if ($response instanceof \Generator
+                    || $response instanceof Promise
+                    || is_string($response)
+                    || empty($response['status'])
+                    || $response['status'] != Status::NOT_FOUND
+                ) {
+                    return $response;
+                }
+            }
+
+            return $http404;
+        };
     }
 
     private function buildDefaultResponder() {
@@ -237,81 +247,95 @@ class Bootstrapper {
         };
     }
 
-    private function buildRoutableResponder(array $standard, array $threaded, array $websockets) {
-        $routeBuilder = function(RouteCollector $rc) use ($standard, $threaded, $websockets) {
+    private function buildRouter(array $standard, array $websockets) {
+        $routeBuilder = function(\FastRoute\RouteCollector $rc) use ($standard, $websockets) {
             if ($standard) {
                 $this->buildStandardRouteHandlers($rc, $standard);
-            }
-            if ($threaded) {
-                $this->buildThreadedRouteHandlers($rc, $threaded);
             }
             if ($websockets) {
                 $this->buildWebsocketRouteHandlers($rc, $websockets);
             }
         };
-        $dispatcher = \FastRoute\simpleDispatcher($routeBuilder);
-        $responder = $this->injector->make('Aerys\Routable\Responder', [
-            ':dispatcher' => $dispatcher
-        ]);
+        $routeDispatcher = \FastRoute\simpleDispatcher($routeBuilder);
+        $http404 = [
+            'status' => Status::NOT_FOUND,
+            'header' => 'Content-Type: text/html; charset=utf-8',
+            'body'   => '<html><body><h1>404 Not Found</h1></body></html>',
+        ];
 
-        return $responder;
-    }
+        return function($request) use ($routeDispatcher, $http404) {
+            $httpMethod = $request['REQUEST_METHOD'];
+            $uriPath = $request['REQUEST_URI_PATH'];
+            $matchArr = $routeDispatcher->dispatch($httpMethod, $uriPath);
 
-    private function buildStandardRouteHandlers(RouteCollector $rc, array $routes) {
-        foreach ($routes as list($httpMethod, $uriPath, $handler)) {
-            if (!($handler instanceof \Closure || @function_exists($handler))) {
-                $handler = $this->buildStandardRouteExecutable($handler);
+            switch ($matchArr[0]) {
+                case \FastRoute\Dispatcher::FOUND:
+                    $handler = $matchArr[1];
+                    $request['URI_ROUTE_ARGS'] = $matchArr[2];
+                    return $handler($request);
+                case \FastRoute\Dispatcher::NOT_FOUND:
+                    return $http404;
+                case \FastRoute\Dispatcher::METHOD_NOT_ALLOWED:
+                    return [
+                        'status' => Status::METHOD_NOT_ALLOWED,
+                        'header' => 'Allow: ' . implode(',', $matchArr[1]),
+                        'body'   => '<html><body><h1>405 Method Not Allowed</h1></body></html>',
+                    ];
+                default:
+                    throw new \UnexpectedValueException(
+                        'Unexpected match code returned from route dispatcher'
+                    );
             }
-            $rc->addRoute($httpMethod, $uriPath, $handler);
-        }
+        };
     }
 
-    private function buildStandardRouteExecutable($routeHandler) {
+    private function buildStandardRouteHandlers(\FastRoute\RouteCollector $rc, array $routes) {
         try {
-            return $this->injector->getExecutable($routeHandler);
-        } catch (\Exception $previousException) {
+            foreach ($routes as list($httpMethod, $uriPath, $handler)) {
+                if (!($handler instanceof \Closure || @function_exists($handler))) {
+                    $handler = $this->buildStandardRouteExecutable($handler);
+                }
+                $rc->addRoute($httpMethod, $uriPath, $handler);
+            }
+        } catch (BootException $previousException) {
             throw new BootException(
-                'Callable route handler build failure: ' . $previousException->getMessage(),
+                sprintf('Failed building callable for route: %s %s', $httpMethod, $uriPath),
                 $errorCode = 0,
                 $previousException
             );
         }
     }
 
-    private function buildThreadedRouteHandlers(RouteCollector $rc, array $routes) {
-        $responder = $this->injector->make('Aerys\Blockable\Responder');
-        foreach ($routes as list($httpMethod, $uriPath, $handler)) {
-            // @TODO Allow Class::method strings once auto injection is added inside
-            // worker threads. For now we'll just require function names.
-            if (!@function_exists($handler)) {
-                throw new BootException(
-                    'Thread route handler must be a function or class::method string'
-                );
-            }
-
-            $rc->addRoute($httpMethod, $uriPath, function($request) use ($responder, $handler) {
-                $request['AERYS_THREAD_ROUTE'] = $handler;
-                return $responder->__invoke($request);
-            });
+    private function buildStandardRouteExecutable($routeHandler) {
+        try {
+            return $this->injector->buildExecutable($routeHandler);
+        } catch (\Exception $previousException) {
+            throw new BootException(
+                'Failed building route handler: ' . $previousException->getMessage(),
+                $errorCode = 0,
+                $previousException
+            );
         }
     }
 
     private function buildWebsocketRouteHandlers(RouteCollector $rc, array $routes) {
-        $handshaker = $this->injector->make('Aerys\Websocket\HandshakeResponder');
-        foreach ($routes as list($uriPath, $handlerClass, $endpointOptions)) {
-            $endpoint = $this->makeWebsocketEndpoint($handlerClass);
+        $handshaker = $this->injector->make('Aerys\\Websocket\\Handshaker');
+        foreach ($routes as list($uriPath, $websocketClass, $endpointOptions)) {
+            $endpoint = $this->makeWebsocketEndpoint($websocketClass);
+            $handshaker->addEndpoint($uriPath, $endpoint);
             $this->configureWebsocketEndpoint($endpoint, $endpointOptions);
-            $rc->addRoute('GET', $uriPath, function($request) use ($handshaker, $endpoint) {
-                return $handshaker->handshake($endpoint, $request);
-            });
+            $rc->addRoute('GET', $uriPath, $handshaker);
         }
     }
 
-    private function makeWebsocketEndpoint($handlerClass) {
+    private function makeWebsocketEndpoint($websocketClass) {
         try {
-            return $this->injector->make('Aerys\Websocket\Endpoint', ['app' => $handlerClass]);
+            $definitionKey = is_string($websocketClass) ? 'websocket' : ':websocket';
+            return $this->injector->make('Aerys\\Websocket\\Endpoint',  [
+                $definitionKey => $websocketClass
+            ]);
         } catch (\Exception $e) {
-            throw new BootException("Failed building websocket endpoint", $code = 0, $e);
+            throw new BootException("Failed building websocket endpoint: {$websocketClass}", $code = 0, $e);
         }
     }
 
@@ -343,12 +367,12 @@ class Bootstrapper {
 
         return (count($responders) === 1)
             ? current($responders)
-            : new AggregateResponder($responders);
+            : $this->buildAggregateResponder($responders);
     }
 
     private function buildExecutableUserResponder($responder) {
         try {
-            return $this->injector->getExecutable($responder);
+            return $this->injector->buildExecutable($responder);
         } catch (\Exception $previousException) {
             throw new BootException(
                 'Callable user responder build failure: ' . $previousException->getMessage(),
@@ -358,20 +382,21 @@ class Bootstrapper {
         }
     }
 
-    private function buildDocRootResponder(array $documentSettings) {
+    private function buildRootResponder(array $rootSettings) {
         try {
-            $root = $documentSettings['root'];
-            unset($documentSettings['root']);
-            $responder = $this->injector->make('Aerys\DocRoot\Responder', [
-                ':root' => $root
+            $rootPath = $rootSettings['root'];
+            unset($rootSettings['root']);
+            // @TODO Choose the UvRoot if possible once implemented
+            $responder = $this->injector->make('Aerys\\Root\\NaiveRoot', [
+                ':rootPath' => $rootPath
             ]);
-            $responder->setAllOptions($documentSettings);
+            $responder->setAllOptions($rootSettings);
 
             return $responder;
 
         } catch (\Exception $previousException) {
             throw new BootException(
-                'DocRoot build failure: ' . $previousException->getMessage(),
+                'Root build failure: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );

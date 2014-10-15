@@ -4,7 +4,8 @@ declare(ticks = 1);
 
 namespace Aerys;
 
-use Alert\Reactor, Alert\ReactorFactory;
+use Amp\Reactor;
+use Amp\ReactorFactory;
 
 class WatchForker implements Watcher {
     private $reactor;
@@ -99,7 +100,7 @@ class WatchForker implements Watcher {
             $clientId = (int) $ipcClient;
             stream_set_blocking($ipcClient, FALSE);
             $this->ipcClients[$clientId] = $ipcClient;
-            $this->reactor->onReadable($ipcClient, function($watcherId, $ipcClient) {
+            $this->reactor->onReadable($ipcClient, function($reactor, $watcherId, $ipcClient) {
                 $clientId = (int) $ipcClient;
                 $this->unloadIpcClient($clientId, $watcherId, $ipcClient);
             });

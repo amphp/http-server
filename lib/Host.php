@@ -3,216 +3,202 @@
 namespace Aerys;
 
 class Host {
-    private $address;
-    private $port;
-    private $name;
-    private $application;
-    private $isTlsAvailable;
-    private $tlsContextArr = [];
-    private $tlsDefaults = [
-        /*
-        'single_ecdh_use'       => TRUE,
-        'honor_cipher_order'    => TRUE,
-        'disable_compression'   => TRUE,
-        'reneg_limit'           => 0,
-        'reneg_limit_callback'  => NULL,
-        'SNI_server_names'      => [],
-        */
-        'local_cert'            => NULL,
-        'passphrase'            => NULL,
-        'allow_self_signed'     => FALSE,
-        'verify_peer'           => FALSE,
-        'ciphers'               => NULL,
-        'cafile'                => NULL,
-        'capath'                => NULL
-    ];
+    const PORT       = 'port';
+    const ADDRESS    = 'address';
+    const NAME       = 'name';
+    const ENCRYPTION = 'encryption';
+    const ROUTES     = 'routes';
+    const ROOT       = 'root';
+    const WEBSOCKETS = 'websockets';
+    const RESPONDERS = 'responders';
 
-    public function __construct($address, $port, $name, callable $application) {
-        $this->setAddress($address);
-        $this->setPort($port);
-        $this->name = strtolower($name);
-        $this->id = ($this->name ? $this->name : $this->address) . ':' . $this->port;
-        $this->application = $application;
-        $this->isTlsAvailable = extension_loaded('openssl');
-    }
+    private $port = 80;
+    private $address = '*';
+    private $name = '';
+    private $httpRoutes = [];
+    private $websocketRoutes = [];
+    private $responders = [];
+    private $encryption = [];
+    private $root = [];
 
-    private function setAddress($address) {
-        $address = trim($address, "[]");
-        if ($address === '*') {
-            $this->address = $address;
-        } elseif ($address === '::') {
-            $this->address = '[::]';
-        } elseif (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
-            $this->address = "[{$address}]";
-        } elseif (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            $this->address = $address;
-        } else {
+    /**
+     * Optionally define the host's domain name (e.g. localhost or mysite.com or subdomain.mysite.com)
+     *
+     * A host name is only required if a server exposes more than one host. If not defined the
+     * server will fallback to "localhost" for its name.
+     *
+     * @param string $name
+     */
+    public function __construct($name = '') {
+        if (!is_string($name)) {
             throw new \InvalidArgumentException(
-                "IPv4, IPv6 or wildcard address required: {$address}"
+                sprintf("%s requires a string at Argument 1", __METHOD__)
             );
         }
-    }
 
-    private function setPort($port) {
-        if ($port = filter_var($port, FILTER_VALIDATE_INT, ['options' => [
-            'min_range' => 1,
-            'max_range' => 65535
-        ]])) {
-            $this->port = (int) $port;
-        } else {
-            throw new \InvalidArgumentException(
-                "Invalid host port: {$port}"
-            );
-        }
+        $this->name = $name;
     }
 
     /**
-     * Retrieve the ID for this host
+     * Define the host's port, IP and domain name
      *
-     * @return string
+     * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
+     * well-known services (like HTTP on port 80) and port numbers less than 1024 require root
+     * access on UNIX-like systems. Port 80 is assumed in the absence of port specification. The
+     * default port for encrypted sockets (https) is 443. If you plan to use encryption with this
+     * host you'll generally want to use port 443.
+     *
+     * @param int $port The port number on which to listen
+     * @param string $interface The IP address on which to bind this host
+     * @param string $name The host's domain name
+     * @return self
      */
-    public function getId() {
-        return $this->id;
+    public function setPort($port) {
+        $this->port = $port;
+
+        return $this;
     }
 
     /**
-     * Retrieve the IP on which the host listens (may be a wildcard "*" or "[::]")
+     * Define the IP interface on which the host will listen for requests
      *
-     * @return string
-     */
-    public function getAddress() {
-        return $this->address;
-    }
-
-    /**
-     * Retrieve the port on which this host listens
+     * The default wildcard IP value "*" translates to "all IPv4 interfaces" and is appropriate for
+     * most scenarios. Valid values also include any IPv4 or IPv6 address. The string "[::]" denotes
+     * an IPv6 wildcard.
      *
-     * @return int
+     * @param string $address The interface address (IP) on which the host is exposed
+     * @return self
      */
-    public function getPort() {
-        return $this->port;
-    }
+    public function setAddress($address) {
+        $this->address = $address;
 
-    /**
-     * Retrieve the URI on which this host should be bound
-     *
-     * @return string
-     */
-    public function getBindableAddress() {
-        $ip = ($this->address === '*') ? '0.0.0.0' : $this->address;
-
-        return sprintf('tcp://%s:%d', $ip, $this->port);
-    }
-
-    /**
-     * Retrieve the host's name
-     *
-     * @return string
-     */
-    public function getName() {
-        return $this->name;
-    }
-
-    /**
-     * Retrieve the callable application for this host
-     *
-     * @return mixed
-     */
-    public function getApplication() {
-        return $this->application;
-    }
-
-    /**
-     * Is this host's address defined by a wildcard character?
-     *
-     * @return bool
-     */
-    public function hasWildcardAddress() {
-        return ($this->address === '*' || $this->address === '[::]');
-    }
-
-    /**
-     * Does this host have a name?
-     *
-     * @return bool
-     */
-    public function hasName() {
-        return $this->name != '';
-    }
-
-    /**
-     * Has this host been assigned a TLS encryption context?
-     *
-     * @return bool Returns TRUE if a TLS context is assigned, FALSE otherwise
-     */
-    public function isEncrypted() {
-        return (bool) $this->tlsContextArr;
+        return $this;
     }
 
     /**
      * Define TLS encryption settings for this host
      *
-     * @param array An array mapping TLS stream context values
-     * @link http://php.net/manual/en/context.ssl.php
-     * @throws \RuntimeException If required PHP OpenSSL extension not loaded
-     * @throws \InvalidArgumentException On missing local_cert key
-     * @return void
+     * The $tlsOptions array takes the following form:
+     *
+     * $tlsOptions = [
+     *     'local_cert'             => '/path/to/mycert.pem', // *required
+     *     'passphrase'             => 'mypassphrase',
+     *     'allow_self_signed'      => TRUE,
+     *     'verify_peer'            => FALSE,
+     *     'ciphers'                => 'RC4-SHA:HIGH:!MD5:!aNULL:!EDH',
+     *     'disable_compression'    => TRUE,
+     *     'cafile'                 => NULL,
+     *     'capath'                 => NULL
+     * ];
+     *
+     * @param array $tlsOptions
+     * @return self
      */
-    public function setEncryptionContext(array $tlsDefinition) {
-        if ($this->isTlsAvailable) {
-            $this->tlsContextArr = $tlsDefinition ? $this->generateTlsContext($tlsDefinition) : [];
-        } else {
-            throw new \RuntimeException(
-                sprintf('Cannot enable crypto on %s; openssl extension required', $this->id)
-            );
-        }
-    }
+    public function setEncryption(array $tlsOptions) {
+        $this->encryption = $tlsOptions;
 
-    private function generateTlsContext(array $tls) {
-        $tls = array_filter($tls, function($value) { return isset($value); });
-        $tls = array_merge($this->tlsDefaults, $tls);
-
-        if (empty($tls['local_cert'])) {
-            throw new \InvalidArgumentException(
-                '"local_cert" key required to bind crypto-enabled server socket'
-            );
-        } elseif (!(is_file($tls['local_cert']) && is_readable($tls['local_cert']))) {
-            throw new \InvalidArgumentException(
-                "Certificate file not found: {$tls['local_cert']}"
-            );
-        }
-
-        return ['ssl' => $tls];
+        return $this;
     }
 
     /**
-     * Retrieve this host's TLS connection context options
+     * Specify an optional filesystem directory from which to serve static files
      *
-     * @return array An array of stream encryption context options
+     * The $options array takes the form:
+     *
+     * $options = [
+     *     'indexes'                   => ['index.html', 'index.htm'],
+     *     'eTagMode'                  => 'all',
+     *     'expiresHeaderPeriod'       => 300,
+     *     'defaultMimeType'           => 'text/plain',
+     *     'customMimeTypes'           => [],
+     *     'defaultTextCharset'        => 'utf-8',
+     *     'cacheTtl'                  => 5,
+     *     'memoryCacheMaxSize'        => 67108864,
+     *     'memoryCacheMaxFileSize'    => 1048576
+     * ];
+     *
+     * Note: websocket endpoint and dynamic HTTP route URIs always take precedence over filesystem
+     * resources in the event of a routing conflict.
+     *
+     * @param string $rootDirectory
+     * @param array $options An array specifying key-value options for static file serving
+     * @return self
      */
-    public function getTlsContextArr() {
-        return $this->tlsContextArr;
+    public function setRoot($rootDirectory, array $options = []) {
+        $options['root'] = $rootDirectory;
+        $this->root = $options;
+
+        return $this;
     }
 
     /**
-     * Determine if this host matches the specified Host ID string
+     * Bind a non-blocking route handler for the specified HTTP method and URI path
      *
-     * @param string $hostId
-     * @return bool Returns TRUE if a match is found, FALSE otherwise
+     * @param string $httpMethod The method for which this route applies
+     * @param string $uriPath The route's URI path
+     * @param mixed $handler Any callable or class::method construction string
+     * @return self
      */
-    public function matches($hostId) {
-        if ($hostId === $this->id || $hostId === '*') {
-            $isMatch = TRUE;
-        } elseif (substr($hostId, 0, 2) === '*:') {
-            $portToMatch = substr($hostId, 2);
-            $isMatch = ($portToMatch === '*' || $this->port == $portToMatch);
-        } elseif (substr($hostId, -2) === ':*') {
-            $addrToMatch = substr($hostId, 0, -2);
-            $isMatch = ($addrToMatch === '*' || $this->address === $addrToMatch || $this->name === $addrToMatch);
-        } else {
-            $isMatch = FALSE;
-        }
+    public function addRoute($httpMethod, $uriPath, $handler) {
+        $uriPath = '/' . ltrim($uriPath, '/');
+        $this->httpRoutes[] = [$httpMethod, $uriPath, $handler];
 
-        return $isMatch;
+        return $this;
+    }
+
+    /**
+     * Bind a websocket endpoint to the specified URI route
+     *
+     * Websocket routes are slightly different from other routes because they don't require an
+     * HTTP method (GET is mandated by the protocol). Websocket routes require two arguments:
+     *
+     * - The websocket endpoint's URI path (routing regex allowed like all other routes)
+     * - The name of the websocket endpoint class
+     *
+     * The third argument is an optional array specifying configuration values for this websocket
+     * endpoint.
+     *
+     * @param string $uriPath The URI path on which to bind the endpoint
+     * @param mixed $classOrCallables A websocket endpoint class name or array map of callables
+     * @param array $options An array specifying key-value options for this websocket endpoint
+     * @return self
+     */
+    public function addWebsocketRoute($uriPath, $classOrCallables, array $options = []) {
+        $uriPath = '/' . ltrim($uriPath, '/');
+        $this->websocketRoutes[] = [$uriPath, $appClass, $options];
+
+        return $this;
+    }
+
+    /**
+     * Add a user responder to the request-response chain
+     *
+     * User responders are always invoked in the order in which they are added to the Host.
+     *
+     * @param mixed $responder Any callable or class::method construction string
+     * @return self
+     */
+    public function addResponder($responder) {
+        $this->responders[] = $responder;
+
+        return $this;
+    }
+
+    /**
+     * Retrieve an associative array summarizing the host definition
+     *
+     * @return array
+     */
+    public function toArray() {
+        return [
+            self::PORT          => $this->port,
+            self::ADDRESS       => $this->address,
+            self::NAME          => $this->name,
+            self::ENCRYPTION    => $this->encryption,
+            self::ROOT          => $this->root,
+            self::ROUTES        => $this->httpRoutes,
+            self::WEBSOCKETS    => $this->websocketRoutes,
+            self::RESPONDERS    => $this->responders,
+        ];
     }
 }

@@ -1,6 +1,6 @@
 <?php
 
-require __DIR__ . '/bootstrap.php';
+require __DIR__ . '/../vendor/autoload.php';
 
 $opts = getopt('', ['config:', 'ipcuri:', 'debug']);
 $config = $opts['config'];

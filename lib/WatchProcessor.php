@@ -2,7 +2,9 @@
 
 namespace Aerys;
 
-use Alert\Reactor, Alert\ReactorFactory, Alert\SignalReactor;
+use Amp\Reactor;
+use Amp\ReactorFactory;
+use Amp\SignalReactor;
 
 class WatchProcessor implements Watcher {
     const SIGINT = 2;
@@ -114,7 +116,7 @@ class WatchProcessor implements Watcher {
         while ($ipcClient = @stream_socket_accept($ipcServer, $timeout = 0)) {
             $clientId = (int) $ipcClient;
             stream_set_blocking($ipcClient, FALSE);
-            $watcherId = $this->reactor->onReadable($ipcClient, function($watcherId, $ipcClient) {
+            $watcherId = $this->reactor->onReadable($ipcClient, function($reactor, $watcherId, $ipcClient) {
                 $clientId = (int) $ipcClient;
                 $this->unloadIpcClient($clientId, $watcherId, $ipcClient);
             });

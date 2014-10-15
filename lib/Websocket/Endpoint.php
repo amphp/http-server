@@ -2,11 +2,11 @@
 
 namespace Aerys\Websocket;
 
-use After\Future,
-    After\Promise,
-    Alert\Reactor,
-    Aerys\Server,
-    Aerys\ServerObserver;
+use Amp\Reactor;
+use Amp\Future;
+use Amp\Resolver;
+use Aerys\Server;
+use Aerys\ServerObserver;
 
 class Endpoint implements ServerObserver {
     const OP_ALLOWED_ORIGINS = 1;
@@ -24,8 +24,8 @@ class Endpoint implements ServerObserver {
     private $reactor;
     private $app;
     private $broker;
-    private $startPromise;
-    private $stopPromise;
+    private $startPromisor;
+    private $stopPromisor;
     private $sessions = [];
     private $closeTimeouts = [];
     private $heartbeatTimeouts = [];
@@ -47,11 +47,14 @@ class Endpoint implements ServerObserver {
     // @TODO We don't currently support any subprotocols
     private $subprotocols = [];
     // @TODO add minimum average frame size rate threshold to prevent tiny-frame DoS
+    private $onGeneratorResolve;
 
-    public function __construct(Reactor $reactor, App $app) {
+    public function __construct(Reactor $reactor, App $app, Resolver $resolver = null) {
         $this->reactor = $reactor;
         $this->app = $app;
+        $this->resolver = $resolver ?: new Resolver($reactor);
         $this->broker = new Broker($this);
+        $this->onGeneratorResolve = function($e, $r) { if ($e) { throw $e; } };
     }
 
     /**
@@ -60,9 +63,9 @@ class Endpoint implements ServerObserver {
      * Websocket endpoints require notification when the server starts or stops to enable
      * application bootstrapping and graceful shutdown.
      *
-     * @param Aerys\Server $server
+     * @param \Aerys\Server $server
      * @param int $event
-     * @return After\Future
+     * @return \Amp\Promise
      */
     public function onServerUpdate(Server $server, $event) {
         switch ($event) {
@@ -76,50 +79,49 @@ class Endpoint implements ServerObserver {
     /**
      * Notify the application that the server is ready to start
      *
-     * @return \After\Future Returns a Future that resolves upon app startup completion
+     * @return \Amp\Promise Returns a Promise that resolves on app startup completion
      */
     public function start() {
-        if (empty($this->startPromise)) {
-            $this->startPromise = new Promise;
-            $startFuture = $this->startPromise->getFuture();
-            $startFuture->onResolution(function($future) { $this->onStartCompletion($future); });
+        if (empty($this->startPromisor)) {
+            $this->startPromisor = $promisor = new Future($this->reactor);
+            $promisor->when(function($e, $r) { $this->onStartCompletion($e, $r); });
             $this->notifyAppStart();
         } else {
-            $startFuture = $this->startPromise->getFuture();
+            $promisor = $this->startPromisor;
         }
 
-        return $startFuture;
+        return $promisor;
     }
 
     private function notifyAppStart() {
         try {
             $startResult = $this->app->start($this->broker);
-            $this->startPromise->succeed($startResult);
+            $this->startPromisor->succeed($startResult);
         } catch (\Exception $e) {
-            $this->startPromise->fail($e);
+            $this->startPromisor->fail($e);
         }
     }
 
-    private function onStartCompletion(Future $f) {
-        $this->startPromise = NULL;
-        if ($f->succeeded()) {
+    private function onStartCompletion($e, $r) {
+        $this->startPromisor = null;
+        if (empty($e)) {
             $this->now = time();
             $this->timeoutWatcher = $this->reactor->repeat([$this, 'timeout'], $msInterval = 1000);
         }
     }
 
     /**
-     * Initialize endpoint stoppage
+     * Stop the endpoint
      *
-     * @return \After\Future Returns a future that will resolve when all sessions are closed
+     * @return \Amp\Promise Returns a Promise that will resolve when all sessions are closed
      */
     public function stop() {
         if (!$this->isStopping) {
-            $this->stopPromise = new Promise;
+            $this->stopPromisor = new Future($this->reactor);
             $this->initializeStop();
         }
 
-        return $this->stopPromise->getFuture();
+        return $this->stopPromisor->promise();
     }
 
     private function initializeStop() {
@@ -133,8 +135,8 @@ class Endpoint implements ServerObserver {
             $this->closeSession($session, $code, $reason);
         }
 
-        $this->stopPromise->getFuture()->onResolution(function() {
-            $this->isStopping = NULL;
+        $this->stopPromisor->when(function() {
+            $this->isStopping = null;
         });
     }
 
@@ -181,76 +183,36 @@ class Endpoint implements ServerObserver {
 
     private function notifyAppOnOpen($socketId, $httpEnvironment) {
         try {
-            $openResult = $this->app->onOpen($socketId, $httpEnvironment);
-            if ($openResult instanceof \Generator) {
-                $this->resolveGenerator($openResult);
+            $result = $this->app->onOpen($socketId, $httpEnvironment);
+            if ($result instanceof \Generator) {
+                $this->resolver->resolve($result)->when($this->onGeneratorResolve);
             }
         } catch (\Exception $e) {
-            // @TODO Log error (app threw uncaught exception), do nothing
+            // @TODO Log error (app threw uncaught exception)
             echo $e;
         }
     }
 
     private function notifyAppOnData($socketId, $payload, $context) {
         try {
-            $dataResult = $this->app->onData($socketId, $payload, $context);
-            if ($dataResult instanceof \Generator) {
-                $this->resolveGenerator($dataResult);
+            $result = $this->app->onData($socketId, $payload, $context);
+            if ($result instanceof \Generator) {
+                $this->resolver->resolve($result)->when($this->onGeneratorResolve);
             }
         } catch (\Exception $e) {
-            // @TODO Log error (app threw uncaught exception), do nothing
+            // @TODO Log error (app threw uncaught exception)
             echo $e;
         }
     }
 
     private function notifyAppOnClose($socketId, $code, $reason) {
         try {
-            $closeResult = $this->app->onClose($socketId, $code, $reason);
-            if ($closeResult instanceof \Generator) {
-                $this->resolveGenerator($closeResult);
+            $result = $this->app->onClose($socketId, $code, $reason);
+            if ($result instanceof \Generator) {
+                $this->resolver->resolve($result)->when($this->onGeneratorResolve);
             }
         } catch (\Exception $e) {
-            // @TODO Log error (app threw uncaught exception), do nothing
-            echo $e;
-        }
-    }
-
-    private function resolveGenerator($generator) {
-        try {
-            $yielded = $generator->current();
-            if ($yielded instanceof Future) {
-                $yielded->onResolution(function($future) use ($generator) {
-                    $this->onResolvedYield($generator, $future);
-                });
-            }
-        } catch (\Exception $e) {
-            // @TODO Log error (app threw uncaught exception), do nothing
-            echo $e;
-        }
-    }
-
-    private function onResolvedYield($generator, $future) {
-        try {
-            if ($future->succeeded()) {
-                $generator->send($future->getValue());
-            } else {
-                $generator->throw($future->getError());
-            }
-            $this->advanceGenerator($generator);
-        } catch (\Exception $e) {
-            // @TODO Log error (app threw uncaught exception), do nothing
-            echo $e;
-        }
-    }
-
-    private function advanceGenerator($generator) {
-        try {
-            $generator->next();
-            if ($generator->valid()) {
-                $this->resolveGenerator($generator);
-            }
-        } catch (\Exception $e) {
-            // @TODO Log error (app threw uncaught exception), do nothing
+            // @TODO Log error (app threw uncaught exception)
             echo $e;
         }
     }
@@ -314,7 +276,7 @@ class Endpoint implements ServerObserver {
         return $frames;
     }
 
-    private function buildFrameStruct($opcode, $payload, $fin, $rsv = 0, $mask = NULL) {
+    private function buildFrameStruct($opcode, $payload, $fin, $rsv = 0, $mask = null) {
         $length = strlen($payload);
 
         if ($length > 0xFFFF) {
@@ -425,7 +387,7 @@ class Endpoint implements ServerObserver {
             $ps->rsv = ($firstByte & 0b01110000) >> 4;
             $ps->opcode = $firstByte & 0b00001111;
             $ps->isMasked = (bool) ($secondByte & 0b10000000);
-            $ps->maskingKey = NULL;
+            $ps->maskingKey = null;
             $ps->frameLength = $secondByte & 0b01111111;
 
             $ps->isControlFrame = ($ps->opcode >= 0x08);
@@ -604,20 +566,20 @@ class Endpoint implements ServerObserver {
             }
 
             $ps->state = ParseState::START;
-            $ps->fin = NULL;
-            $ps->rsv = NULL;
-            $ps->opcode = NULL;
-            $ps->isMasked = NULL;
-            $ps->maskingKey = NULL;
-            $ps->frameLength = NULL;
+            $ps->fin = null;
+            $ps->rsv = null;
+            $ps->opcode = null;
+            $ps->isMasked = null;
+            $ps->maskingKey = null;
+            $ps->frameLength = null;
             $ps->frameBytesRecd = 0;
-            $ps->isControlFrame = NULL;
+            $ps->isControlFrame = null;
 
             return $frameStruct;
         }
 
         more_data_needed: {
-            return NULL;
+            return null;
         }
     }
 
@@ -928,9 +890,9 @@ class Endpoint implements ServerObserver {
     private function notifyAppStop() {
         try {
             $result = $this->app->stop();
-            $this->stopPromise->resolveSafely(NULL, $result);
+            $this->stopPromisor->resolveSafely(null, $result);
         } catch (\Exception $e) {
-            $this->stopPromise->resolveSafely(NULL, $e);
+            $this->stopPromisor->resolveSafely(null, $e);
         }
     }
 

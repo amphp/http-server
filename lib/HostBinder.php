@@ -11,13 +11,13 @@ class HostBinder {
      * We allow an optional array of existing sockets to reuse when binding to avoid bind errors
      * when reloading configuration in environments without access to SO_REUSEPORT.
      *
-     * @param \Aerys\HostCollection $hosts
+     * @param \Aerys\HostGroup $hosts
      * @param array $existingSockets An array of previously bound sockets to reuse
      * @throws \LogicException if no hosts exist in the specified collection
      * @throws \RuntimeException on socket bind failure
      * @return array Returns an array of bound sockets mapped by address
      */
-    public function bindHosts(HostCollection $hosts, array $existingSockets = []) {
+    public function bindHosts(HostGroup $hosts, array $existingSockets = []) {
         if (!$hosts->count()) {
             throw new \LogicException(
                 'Cannot bind sockets: no hosts added'
@@ -88,10 +88,10 @@ class HostBinder {
      * @return int Returns the assigned backlog size
      */
     public function setSocketBacklogSize($size) {
-        $size = filter_var($size, FILTER_VALIDATE_INT, ['options' => [
-            'min_range' => 0,
-            'default' => 128
-        ]]);
+        $size = (int) $size;
+        if ($size <= 0) {
+            $size = 128;
+        }
 
         $this->socketBacklogSize = $size;
 

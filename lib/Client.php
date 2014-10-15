@@ -21,6 +21,6 @@ class Client {
     public $parser;
     public $readWatcher;
     public $writeWatcher;
-    public $pendingWriter;
+    public $pendingResponder;
     public $isGone;
 }

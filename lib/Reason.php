@@ -3,7 +3,6 @@
 namespace Aerys;
 
 class Reason {
-
     const HTTP_100 = 'Continue';
     const HTTP_101 = 'Switching Protocols';
     const HTTP_200 = 'OK';

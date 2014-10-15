@@ -2,13 +2,13 @@
 
 namespace Aerys\Websocket;
 
-use Alert\Reactor,
-    After\Promise,
-    After\Failure,
-    Aerys\Server,
-    Aerys\TargetPipeException,
-    Aerys\ResponseWriterCustom,
-    Aerys\ResponseWriterSubject;
+use Amp\Reactor;
+use Amp\Failure;
+use Amp\Future;
+use Aerys\Server;
+use Aerys\TargetPipeException;
+use Aerys\ResponseWriterCustom;
+use Aerys\ResponseWriterSubject;
 
 class HandshakeWriter implements ResponseWriterCustom {
     private $server;
@@ -18,7 +18,7 @@ class HandshakeWriter implements ResponseWriterCustom {
     private $response;
     private $socket;
     private $writeWatcher;
-    private $promise;
+    private $promisor;
 
     public function __construct(Reactor $reactor, Server $server, Endpoint $endpoint, array $request, $response) {
         $this->reactor = $reactor;
@@ -37,14 +37,14 @@ class HandshakeWriter implements ResponseWriterCustom {
         $bytesWritten = @fwrite($this->socket, $this->response);
 
         if ($bytesWritten === strlen($this->response)) {
-            return $this->promise ? $this->fulfillWritePromise() : $this->exportSocket();
+            return $this->promisor ? $this->succeedPromisor() : $this->exportSocket();
         } elseif ($bytesWritten > 0) {
             $this->response = substr($this->response, $bytesWritten);
-            return $this->promise ?: $this->makeWritePromise();
+            return $this->promisor ?: $this->makePromisor();
         } elseif (is_resource($this->socket)) {
-            return $this->promise ?: $this->makeWritePromise();
-        } elseif ($this->promise) {
-            $this->failWritePromise(new TargetPipeException);
+            return $this->promisor ?: $this->makePromisor();
+        } elseif ($this->promisor) {
+            $this->failPromisor(new TargetPipeException);
         } else {
             return new Failure(new TargetPipeException);
         }
@@ -56,19 +56,19 @@ class HandshakeWriter implements ResponseWriterCustom {
         return TRUE;
     }
 
-    private function makeWritePromise() {
+    private function makePromisor() {
         $this->reactor->enable($this->writeWatcher);
-        return $this->promise = new Promise;
+        return $this->promisor = new Future($this->reactor);
     }
 
-    private function fulfillWritePromise() {
+    private function succeedPromisor() {
         $this->reactor->disable($this->writeWatcher);
         $this->exportSocket();
-        $this->promise->succeed(TRUE);
+        $this->promisor->succeed(TRUE);
     }
 
-    private function failWritePromise(\Exception $e) {
+    private function failPromisor(\Exception $e) {
         $this->reactor->disable($this->writeWatcher);
-        $this->promise->fail($e);
+        $this->promisor->fail($e);
     }
 }

@@ -2,7 +2,8 @@
 
 namespace Aerys;
 
-use Alert\Reactor, Alert\SignalReactor;
+use Amp\Reactor;
+use Amp\SignalReactor;
 
 class WorkerProcess {
     const SIGINT = 2;
@@ -53,8 +54,7 @@ class WorkerProcess {
         if (!$this->isStopping) {
             $this->isStopping = TRUE;
             $this->reactor->cancel($this->watcher);
-            $future = $this->server->stop();
-            $future->onResolution([$this->reactor, 'stop']);
+            $this->server->stop()->when([$this->reactor, 'stop']);
         }
     }
 

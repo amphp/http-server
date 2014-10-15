@@ -2,51 +2,16 @@
 
 A performant non-blocking HTTP/1.1 application/websocket server written in PHP.
 
-> **IMPORTANT:** Aerys is highly volatile pre-alpha software. Everything is subject to change
-> without notice, but you already knew that didn't you? :)
+> **IMPORTANT:** Aerys is highly volatile pre-alpha software; everything can
+> and likely will change without notice.
 
 ## Installation
 
 ```bash
-$ git clone --recursive https://github.com/rdlowrey/Aerys.git
+$ git clone https://github.com/rdlowrey/Aerys.git
 $ cd Aerys
-$ git submodule update --init --recursive
+$ composer install
 ```
-
-If you have problems cloning via the `https` method use SSH instead (it always works):
-
-```bash
-$ git clone --recursive git@github.com:rdlowrey/Aerys.git
-```
-
-## Dependencies
-
-#### REQUIRED
-
-- PHP 5.5+ for unencrypted servers
-- PHP 5.6+ required for TLS encryption
-
-*Userland Dependencies*
-
-- [Alert](https://github.com/rdlowrey/Alert) :: IO and event reactors
-- [After](https://github.com/rdlowrey/After) :: Simple concurrency primitives
-- [Auryn](https://github.com/rdlowrey/Auryn) :: Dependency injector
-- [Amp](https://github.com/rdlowrey/Amp) :: Non-blocking threaded job dispatcher
-
-> **NOTE:** The userland dependencies listed above are automatically retrieved for you if you use
-> the installation instructions shown here.
-
-#### OPTIONAL PHP EXTENSIONS
-
-- [pecl/libevent](http://pecl.php.net/package/libevent) Though optional, production servers *SHOULD*
-employ the libevent extension
-- [pecl/pthreads](http://pecl.php.net/package/pthreads) Though optional, productions servers *SHOULD*
-have pthreads if they wish to serve static files. Filesystem IO operations will block the main event
-loop without this extension.
-
-> **NOTE:** Windows users can find DLLs for both pecl extensions at the
-> [windows.php.net download index](http://windows.php.net/downloads/pecl/releases/).
-
 
 ## Running a Server
 
@@ -60,7 +25,7 @@ Use the `-h, --help` switches for more instructions.
 
 ## Example Configs
 
-Every Aerys application is initialized using a PHP config file containing `Aerys\HostConfig` instances
+Every Aerys application is initialized using a PHP config file containing `Aerys\Host` instances
 and server-wide option settings. Here's an example:
 
 ```php
@@ -85,16 +50,15 @@ const ALLOWED_METHODS = 'GET, HEAD, OPTIONS, TRACE, PUT, POST, PATCH, DELETE';
 
 // --- mysite.com ----------------------------------------------------------------------------------
 
-$mysite = new HostConfig('mysite.com');
-$mysite->addRoute('GET', '/non-blocking', 'myNonBlockingRoute');
-$mysite->addThreadRoute('GET', '/', 'myThreadRoute');
-$mysite->addResponder('myFallbackResponder');
-
+$mySite = (new Host('mysite.com'))
+    ->addRoute('GET', '/', 'myIndexCallable')
+    ->addRoute('GET', '/hello', 'myHelloCallable')
+    ->addResponder('myFallbackResponder')
+;
 
 // --- static.mysite.com ---------------------------------------------------------------------------
 
-$statics = new HostConfig('static.mysite.com');
-$statics->setDocumentRoot('/path/to/static/files');
+$staticFiles = new Host('static.mysite.com')->setRoot('/path/to/static/files');
 ```
 
 ##### Hello World
@@ -106,7 +70,7 @@ the returned string to clients (similar to the classic PHP web SAPI).
 <?php
 
 // Send a basic 200 response to all requests on port 80.
-$myApp = (new Aerys\HostConfig)->addResponder(function() {
+$myApp = (new Aerys\Host)->addResponder(function() {
     return '<html><body><h1>OMG PHP is Webscale!</h1></body></html>';
 });
 ```
@@ -120,7 +84,7 @@ Aerys passes request details to applications using a map structure similar to th
 <?php
 
 // Responders are passed an environment array
-$myApp = (new Aerys\HostConfig)->addResponder(function(array $request) {
+$myApp = (new Aerys\Host)->addResponder(function(array $request) {
     return "<html><body><pre>" . print_r($request, TRUE) . "</pre></body></html>";
 });
 ```
@@ -131,68 +95,30 @@ $myApp = (new Aerys\HostConfig)->addResponder(function(array $request) {
 ##### The HTTP Response
 
 Applications may optionally customize headers, status codes and reason phrases by returning an
-`Aerys\Response` instance.
+associative array.
 
 ```php
 <?php
 
-$myApp = (new Aerys\HostConfig)->addResponder(function($request) {
-    return (new Aerys\Response)
-        ->setStatus(200)
-        ->setHeader('X-My-Header', 42)
-        ->setBody('<html><body><h1>ZOMG PGP!!!11</h1></body></html>');
+$myApp = (new Aerys\Host)->addResponder(function($request) {
+    return [
+        'status' => 200,
+        'header' => 'X-My-Header: 42',
+        'body'   =>'<html><body><h1>ZOMG PGP!!!11</h1></body></html>',
+    ];
 });
-```
-
-##### Streaming Responses
-
-@TODO
-
-##### Threaded Responses
-
-Aerys applications aren't forced to use non-blocking semantics. Any server with access to the
-`pecl/pthreads` extension may specify threaded routes which, when matched, will execute inside
-dedicated worker threads for synchronous processing in a style similar to the PHP web SAPI.
-
-Applications can mix and match threaded routes with any of Aerys's other functionality. In the
-following example we demonstrate the use of a threaded route alongside a standard non-blocking
-route and fallback responder.
-
-```php
-<?php
-
-function myNonBlockingRoute($request) {
-    return "<html><body><h1>Non-blocking route</h1></body></html>";
-}
-
-function myThreadedRoute($request) {
-    return "<html><body><h1>Hurray for synchronous execution!</h1></body></html>";
-}
-
-function myFallbackResponder($request) {
-    return "<html><body><h1>Everything else is routed to our fallback</h1></body></html>";
-}
-
-$myApp = (new Aerys\HostConfig)
-    ->setPort(1337)
-    ->addRoute('GET', '/non-blocking', 'myNonBlockingRoute')
-    ->addThreadRoute('GET', '/', 'myNonBlockingRoute')
-    ->addThreadRoute('GET', '/threaded', 'myThreadedRoute')
-    ->addResponder('myFallbackResponder')
-;
-
 ```
 
 ##### Named Virtual Hosts
 
-Each `App` instance in the config file corresponds to a host on your server. Users may specify a
+Each `Host` instance in the config file corresponds to a host on your server. Users may specify a
 separate app for each domain/subdomain they wish to expose. For example ...
 
 ```php
 <?php
 
 // mysite.com
-$mySite = (new Aerys\HostConfig)
+$mySite = (new Aerys\Host)
     ->setPort(80) // <-- Defaults to 80, so this isn't technically necessary
     ->setName('mysite.com')
     ->addResponder(function() {
@@ -200,14 +126,14 @@ $mySite = (new Aerys\HostConfig)
     });
 
 // subdomain.mysite.com
-$mySubdomain = (new Aerys\HostConfig)
+$mySubdomain = (new Aerys\Host)
     ->setName('subdomain.mysite.com')
     ->addResponder(function() {
         return '<html><body><h1>subdomain.mysite.com</h1></body></html>';
     });
 
 // omgphpiswebscale.com
-$omgPhpIsWebscale = (new Aerys\HostConfig)
+$omgPhpIsWebscale = (new Aerys\Host)
     ->setName('omgphpiswebscale.com')
     ->addResponder(function() {
         return '<html><body><h1>omgphpiswebscale.com</h1></body></html>';
@@ -216,24 +142,19 @@ $omgPhpIsWebscale = (new Aerys\HostConfig)
 
 ##### Serving Static Files
 
-Simply add the `HostConfig::setDocumentRoot` declaration to add HTTP/1.1-compliant static file
+Simply add the `Host::setRoot` declaration to add HTTP/1.1-compliant static file
 serving to your applications.
 
 ```php
 <?php
 
 // Any URI not matched by another handler is treated as a static file request
-$myApp = (new Aerys\HostConfig)
+$myApp = (new Aerys\Host)
     ->setName('mysite.com')
     ->addRoute('GET', '/', 'MyClass::myGetHandlerMethod')
     ->addRoute('POST', '/', 'MyClass::myPostHandlerMethod')
-    ->setDocumentRoot('/path/to/static/file/root/');
+    ->setRoot('/path/to/static/file/root/');
 ```
-
-> **NOTE:** Though static file serving will work without the `pecl/pthreads` extension (to ease
-> development) the deployment of a static file server in production without pthreads is strongly
-> discouraged. Without this extension static file transmission can block the server's event loop and
-> cause severe slowdowns. Ensure you have pthreads before serving static files in production.
 
 ##### Basic Routing
 
@@ -246,7 +167,7 @@ applications all the benefits of clean code and dependency injection.
 <?php
 
 // Any PHP callable may be specified as a route target (instance methods, too!)
-$myApp = (new Aerys\HostConfig)
+$myApp = (new Aerys\Host)
     ->addRoute('GET', '/', 'MyClass::myGetHandler')
     ->addRoute('POST', '/', 'MyClass::myPostHandler')
     ->addRoute('PUT', '/', 'MyClass::myPutHandler')
@@ -254,7 +175,7 @@ $myApp = (new Aerys\HostConfig)
     ->addRoute('GET', '/static', 'SomeClass::staticMethod')
     ->addRoute('GET', '/function', 'some_global_function')
     ->addRoute('GET', '/lambda', function() { return '<html><body>hello</body></html>'; })
-    ->setDocumentRoot('/path/to/static/files'); // <-- only used if no routes match
+    ->setRoot('/path/to/static/files'); // <-- only used if no routes match
 ```
 
 > **NOTE:** Aerys uses [FastRoute](https://github.com/nikic/FastRoute) for routing. Full regex
@@ -267,11 +188,11 @@ URI arguments parsed from request URIs are available in the request environment 
 
 @TODO
 
-##### Asynchronous Responses
+##### Generated Responses
 
 The most important thing to remember about Aerys (and indeed any server running inside a non-blocking
 event loop) is that your application callables must not block execution of the event loop with slow
-operations (like synchronous database or disk IO). Application callables may employ `yield` to act
+operations like synchronous database or disk IO. Application callables may employ `yield` to act
 as a `Generator` and cooperatively multitask with the server using non-blocking libraries.
 
 
@@ -294,17 +215,11 @@ function multiAsyncResponder($request) {
     yield "<html><body><h1>{$result1} | {$result2} | {$result3}</h1></body></html>";
 }
 
-$myApp = (new Aerys\HostConfig)
+$myApp = (new Aerys\Host)
     ->setPort(1337)
     ->addRoute('GET', '/', 'asyncResponder')
     ->addRoute('GET', '/multi', 'multiAsyncResponder');
 ```
-
-> **NOTE:** Threaded routes are free of the restrictions of non-blocking routes but they come at the
-> cost of scalability as worker thread resource become a bottleneck with synchronous resources. An
-> application using strictly non-blocking logic can easily handle thousands of simultaneous users on
-> a single machine.
-
 
 ##### TLS Encryption
 

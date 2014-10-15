@@ -1,0 +1,44 @@
+{
+    "name":           "amphp/aerys",
+    "homepage":       "https://github.com/amphp/aerys",
+    "description":    "Non-blocking HTTP/Websocket server",
+    "keywords": [
+        "http",
+        "websocket",
+        "server",
+        "async",
+        "non-blocking",
+        "aerys"
+    ],
+    "license":        "MIT",
+    "authors": [
+        {
+            "name": "Daniel Lowrey",
+            "email": "rdlowrey@gmail.com",
+            "role": "Creator / Lead Developer"
+        }
+    ],
+    "require": {
+        "php": ">=5.5.0",
+        "amphp/amp": "~0.12",
+        "rdlowrey/auryn": "~0.14",
+        "nikic/fast-route": "~0.1"
+
+    },
+    "autoload": {
+        "psr-4": {
+            "Aerys\\": "lib/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Aerys\\Test\\": "test/"
+        },
+        "files": ["lib/functions.php"]
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "0.1.x-dev"
+        }
+    }
+}
