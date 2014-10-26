@@ -22,12 +22,11 @@ class Endpoint implements ServerObserver {
     const OP_SUBPROTOCOL = 8;
     const OP_AUTO_FRAME_SIZE = 9;
     const OP_QUEUED_PING_LIMIT = 11;
-    const OP_NOTIFY_FRAMES = 12;
 
     private $reactor;
     private $endpoint;
     private $combinator;
-    private $state = Sever::STOPPED;
+    private $state = Server::STOPPED;
 
     private $sessions = [];
     private $closeTimeouts = [];
@@ -52,17 +51,13 @@ class Endpoint implements ServerObserver {
 
     private $errorLogger;
 
-    private static $RESOLVE_OPEN = 1;
-    private static $RESOLVE_DATA = 2;
-    private static $RESOLVE_CLOSE = 3;
-
     public function __construct(Reactor $reactor, Websocket $websocket, Combinator $combinator = null) {
         $this->reactor = $reactor;
         $this->websocket = $websocket;
         $this->combinator = $combinator ?: new Combinator($reactor);
         $this->errorLogger = function($error) {
             if (!$error instanceof ClientGoneException) {
-                fwrite(STDERR, $e);
+                fwrite(STDERR, $error);
             }
         };
     }
@@ -96,7 +91,7 @@ class Endpoint implements ServerObserver {
 
     private function start() {
         try {
-            $result = $this->endpoint->onStart();
+            $result = $this->websocket->onStart();
             if ($result instanceof \Generator) {
                 $promise = $this->resolveGenerator($result);
             } elseif ($result instanceof Promise) {
@@ -106,7 +101,11 @@ class Endpoint implements ServerObserver {
             }
 
             $promise->when(function($e, $r) {
-                if (empty($e)) {
+                if ($e) {
+                    $errorLogger = $this->errorLogger;
+                    $errorLogger($e);
+                } else {
+                    $this->state = Server::STARTED;
                     $this->now = time();
                     $this->timeoutWatcher = $this->reactor->repeat([$this, 'timeout'], $msInterval = 1000);
                     $this->reactor->disable($this->timeoutWatcher);
@@ -178,37 +177,37 @@ class Endpoint implements ServerObserver {
 
     private function notifyEndpointOnOpen($clientId, $httpEnvironment) {
         try {
-            $result = $this->endpoint->onOpen($clientId, $httpEnvironment);
+            $result = $this->websocket->onOpen($clientId, $httpEnvironment);
             if ($result instanceof \Generator) {
                 $this->resolveGenerator($result, $clientId);
             }
         } catch (\Exception $e) {
-            // @TODO Log error (app threw uncaught exception)
-            echo $e;
+            $errorLogger = $this->errorLogger;
+            $errorLogger($e);
         }
     }
 
-    private function notifyEndpointOnData($clientId, $payload, $context) {
+    private function notifyEndpointOnData($clientId, $payload) {
         try {
-            $result = $this->endpoint->onData($clientId, $payload, $context);
+            $result = $this->websocket->onData($clientId, $payload);
             if ($result instanceof \Generator) {
                 $this->resolveGenerator($result, $clientId);
             }
         } catch (\Exception $e) {
-            // @TODO Log error (app threw uncaught exception)
-            echo $e;
+            $errorLogger = $this->errorLogger;
+            $errorLogger($e);
         }
     }
 
     private function notifyEndpointOnClose($clientId, $code, $reason) {
         try {
-            $result = $this->endpoint->onClose($clientId, $code, $reason);
+            $result = $this->websocket->onClose($clientId, $code, $reason);
             if ($result instanceof \Generator) {
                 $this->resolveGenerator($result, $clientId);
             }
         } catch (\Exception $e) {
-            // @TODO Log error (app threw uncaught exception)
-            echo $e;
+            $errorLogger = $this->errorLogger;
+            $errorLogger($e);
         }
     }
 
@@ -232,8 +231,8 @@ class Endpoint implements ServerObserver {
             if ($generator->valid()) {
                 $key = $generator->key();
                 $current = $generator->current();
-                $promise = $this->promisifyYield($key, $current);
-                $this->reactor->immediately(function() use ($rs) {
+                $promise = $this->promisifyYield($rs, $key, $current);
+                $this->reactor->immediately(function() use ($rs, $promise) {
                     $promise->when(function($error, $result) use ($rs) {
                         $this->sendToGenerator($rs, $error, $result);
                     });
@@ -269,8 +268,6 @@ class Endpoint implements ServerObserver {
                     return $this->inspect($current);
                 case Websocket::CLOSE:
                     return $this->close($current);
-                case Websocket::WATCH_STREAM:
-                    goto watch_stream;
                 case Websocket::IMMEDIATELY:
                     goto immediately;
                 case Websocket::ONCE:
@@ -347,31 +344,6 @@ class Endpoint implements ServerObserver {
             $watcherId = $this->reactor->{$key}($func, $msDelay);
 
             return new Success($watcherId);
-        }
-
-        watch_stream: {
-            if (!($current &&
-                isset($current[0], $current[1], $current[2]) &&
-                is_array($current) &&
-                is_callable($current[1])
-            )) {
-                return new Failure(new \DomainException(
-                    sprintf(
-                        '"%s" yield requires [resource $stream, callable $func, int $flags]; %s provided',
-                        $key,
-                        gettype($current)
-                    )
-                ));
-            }
-
-            list($stream, $callback, $flags) = $current;
-
-            try {
-                $watcherId = $this->reactor->watchStream($stream, $callback, $flags);
-                return new Success($watcherId);
-            } catch (\Exception $error) {
-                return new Failure($error);
-            }
         }
 
         watcher_control: {
@@ -464,7 +436,7 @@ class Endpoint implements ServerObserver {
      * @return \Amp\Promise
      */
     public function inspect($clientId) {
-        if (empty($this->sessions[$clientId]) {
+        if (empty($this->sessions[$clientId])) {
             new Failure(new \DomainException(
                 sprintf('Unkown clientId: %s', $clientId)
             ));
@@ -524,7 +496,7 @@ class Endpoint implements ServerObserver {
                     'Cannot send: close handshake initiated'
                 ));
             } else {
-                $promisor = new Future($this);
+                $promisor = new Future($this->reactor);
                 $promises[] = $promisor;
                 $session->writeState->dataQueue[] = [$frameStructs, $promisor];
                 $this->write($session);
@@ -884,7 +856,7 @@ class Endpoint implements ServerObserver {
 
     private function receiveData(Session $session, $payload, $fin) {
         $session->messageBuffer .= $payload;
-        if ($fin || $this->notifyFrames) {
+        if ($fin) {
             $payload = $session->messageBuffer;
             $session->messageBuffer = '';
             $this->notifyEndpointOnData($session->clientId, $payload);
@@ -893,7 +865,7 @@ class Endpoint implements ServerObserver {
 
     private function receivePing(Session $session, $payload) {
         $frameStruct = $this->buildFrameStruct(Frame::OP_PONG, $payload, $fin=1);
-        $session->writeState->controlQueue[] = [$frameStruct, null];
+        $session->writeState->controlQueue[] = [[$frameStruct], null];
         $this->write($session);
     }
 
@@ -922,12 +894,10 @@ class Endpoint implements ServerObserver {
 
     private function parseCloseFramePayload($payload) {
         if (strlen($payload) >= 2) {
-            $code = unpack('nstatus', substr($payload, 0, 2))['status'];
-            $code = filter_var($code, FILTER_VALIDATE_INT, ['options' => [
-                'default' => Codes::NONE,
-                'min_range' => 1000,
-                'max_range' => 4999
-            ]]);
+            $code = (int) unpack('nstatus', substr($payload, 0, 2))['status'];
+            if ($code < Codes::MIN || $code > Codes::MAX) {
+                $code = Codes::NONE;
+            }
             $codeAndReason = [$code, (string) substr($payload, 2, 125)];
         } else {
             $codeAndReason = [Codes::NONE, ''];
@@ -989,7 +959,7 @@ class Endpoint implements ServerObserver {
             $session->framesSent++;
             $session->messagesSent += $writeState->fin;
 
-            if ($writeState->opcode & Frame::OP_CLOSE) {
+            if ($writeState->opcode >= Frame::OP_CLOSE) {
                 goto after_control_message;
             } elseif ($writeState->fin) {
                 goto after_data_message;
@@ -999,8 +969,11 @@ class Endpoint implements ServerObserver {
         }
 
         after_control_message: {
-            list(, $promise) = array_shift($writeState->controlQueue);
-            $promise->succeed();
+            list(, $promisor) = array_shift($writeState->controlQueue);
+            if ($promisor) {
+                $promisor->succeed();
+            }
+
             if ($writeState->opcode === Frame::OP_CLOSE) {
                 goto after_close_message;
             } elseif ($writeState->dataQueue || $writeState->controlQueue) {
@@ -1025,7 +998,7 @@ class Endpoint implements ServerObserver {
         }
 
         after_data_message: {
-            $promisor = array_shift($writeState->dataQueue)[1];
+            list(, $promisor) = array_shift($writeState->dataQueue);
             $promisor->succeed();
             if ($writeState->dataQueue || $writeState->controlQueue) {
                 goto further_write_needed;
@@ -1091,7 +1064,7 @@ class Endpoint implements ServerObserver {
             $this->closeSession($session, $code, $reason);
         } else {
             $frameStruct = $this->buildFrameStruct(Frame::OP_PING, $payload, $fin=1);
-            $session->writeState->controlQueue[] = [$frameStruct, null];
+            $session->writeState->controlQueue[] = [[$frameStruct], null];
             $this->write($session);
         }
     }
@@ -1136,7 +1109,7 @@ class Endpoint implements ServerObserver {
             $session->closeReason = isset($reason[125]) ? substr($reason, 0, 125) : $reason;
             $session->closePayload = pack('S', $code) . $reason;
             $frameStruct = $this->buildFrameStruct(Frame::OP_CLOSE, $session->closePayload, $fin=1);
-            $session->writeState->controlQueue[] = [$frameStruct, $promisor];
+            $session->writeState->controlQueue[] = [[$frameStruct], $promisor];
             $this->write($session);
         } elseif ($session->closeState & Session::CLOSE_DONE) {
             $this->endSession($session);
@@ -1164,6 +1137,7 @@ class Endpoint implements ServerObserver {
             }
         }
 
+        $clientId = $session->clientId;
         unset(
             $this->sessions[$clientId],
             $this->closeTimeouts[$clientId],
@@ -1188,15 +1162,11 @@ class Endpoint implements ServerObserver {
         $code = $session->closeCode;
         $reason = $session->closeReason;
         $this->notifyEndpointOnClose($clientId, $code, $reason);
-
-        if ($this->state === Server::STOPPING && $noSessionsRemaining) {
-            $this->notifyEndpointOnStop();
-        }
     }
 
     private function notifyEndpointOnStop() {
         try {
-            $result = $this->endpoint->onStop();
+            $result = $this->websocket->onStop();
             if ($result instanceof \Generator) {
                 return $this->resolveGenerator($result);
             } elseif ($result instanceof Promise) {
@@ -1276,29 +1246,22 @@ class Endpoint implements ServerObserver {
             case self::OP_AUTO_FRAME_SIZE:
                 $this->setAutoFrameSize($value);
                 break;
-            case self::OP_NOTIFY_FRAMES:
-                $this->setNotifyFrames($value);
-                break;
             case self::OP_QUEUED_PING_LIMIT:
                 $this->setQueuedPingLimit($value);
                 break;
             default:
                 throw new \DomainException(
-                    sprintf("Unknown option: %s", $option)
+                    sprintf("Unknown websocket option: %s", $option)
                 );
         }
     }
 
     private function setTextOnly($bool) {
-        $this->textOnly = filter_var($bool, FILTER_VALIDATE_BOOLEAN);
+        $this->textOnly = (bool) $bool;
     }
 
     private function setValidateUtf8($bool) {
-        $this->validateUtf8 = filter_var($bool, FILTER_VALIDATE_BOOLEAN);
-    }
-
-    private function setNotifyFrames($bool) {
-        $this->notifyFrames = filter_var($bool, FILTER_VALIDATE_BOOLEAN);
+        $this->validateUtf8 = (bool) $bool;
     }
 
     private function setAllowedOrigins(array $origins) {
@@ -1306,44 +1269,50 @@ class Endpoint implements ServerObserver {
     }
 
     private function setMaxFrameSize($bytes) {
-        $this->maxFrameSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
-            'default' => 2097152,
-            'min_range' => 1
-        ]]);
+        $bytes = (int) $bytes;
+        if ($bytes < 1) {
+            $bytes = 2097152;
+        }
+        $this->maxFrameSize = $bytes;
     }
 
     private function setMaxMsgSize($bytes) {
-        $this->maxMsgSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
-            'default' => 10485760,
-            'min_range' => 1
-        ]]);
+        $bytes = (int) $bytes;
+        if ($bytes < 1) {
+            $bytes = 10485760;
+        }
+        $this->maxMsgSize = $bytes;
     }
 
     private function setHeartbeatPeriod($seconds) {
-        $this->heartbeatPeriod = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
-            'default' => 10,
-            'min_range' => 0
-        ]]);
+        $seconds = (int) $seconds;
+        if ($seconds < 1) {
+            $seconds = 10;
+        }
+        $this->heartbeatPeriod = $seconds;
     }
 
     private function setAutoFrameSize($bytes) {
-        $this->autoFrameSize = filter_var($bytes, FILTER_VALIDATE_INT, ['options' => [
-            'default' => 32768,
-            'min_range' => 1
-        ]]);
+        $bytes = (int) $bytes;
+        if ($bytes < 1) {
+            $bytes = 32768;
+        }
+        $this->autoFrameSize = $bytes;
     }
 
     private function setClosePeriod($seconds) {
-        $this->closePeriod = filter_var($seconds, FILTER_VALIDATE_INT, ['options' => [
-            'default' => 3,
-            'min_range' => 1
-        ]]);
+        $seconds = (int) $seconds;
+        if ($seconds < 1) {
+            $seconds = 3;
+        }
+        $this->closePeriod = $seconds;
     }
 
     private function setQueuedPingLimit($limit) {
-        $this->queuedPingLimit = filter_var($limit, FILTER_VALIDATE_INT, ['options' => [
-            'default' => 5,
-            'min_range' => 1
-        ]]);
+        $limit = (int) $limit;
+        if ($limit < 1) {
+            $limit = 5;
+        }
+        $this->queuedPingLimit = $limit;
     }
 }

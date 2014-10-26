@@ -7,6 +7,7 @@ use Amp\ReactorFactory;
 use Amp\Promise;
 use Auryn\Injector;
 use Auryn\Provider;
+use FastRoute\RouteCollector;
 
 class Bootstrapper {
     const E_CONFIG_INCLUDE = "Config file inclusion failure: %s";
@@ -227,7 +228,8 @@ class Bootstrapper {
         return function($request) use ($responders, $http404) {
             foreach ($responders as $responder) {
                 $response = call_user_func($responder, $request);
-                if ($response instanceof \Generator
+                if ($response instanceof Responder
+                    || $response instanceof \Generator
                     || $response instanceof Promise
                     || is_string($response)
                     || empty($response['status'])

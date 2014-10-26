@@ -14,14 +14,13 @@ interface Websocket {
     const IMMEDIATELY = 'immediately';
     const ONCE = 'once';
     const REPEAT = 'repeat';
-    const WATCH_STREAM = 'watch-stream';
     const ENABLE = 'enable';
     const DISABLE = 'disable';
     const CANCEL = 'cancel';
 
     public function onStart();
     public function onOpen($clientId, array $httpEnvironment);
-    public function onData($clientId, $dataRcvd, array $context);
+    public function onData($clientId, $dataRcvd);
     public function onClose($clientId, $closeCode, $closeReason);
     public function onStop();
 }

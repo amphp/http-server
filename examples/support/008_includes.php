@@ -42,7 +42,7 @@ class ExampleWebsocket implements Websocket {
         $this->clientCount--;
         $msg = json_encode(['type' => 'count', 'data' => $this->clientCount]);
 
-        // Broadcast the current user count to all users
+        // Broadcast the current user count to all connected users
         yield 'broadcast' => $msg;
     }
 

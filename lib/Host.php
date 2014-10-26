@@ -159,13 +159,13 @@ class Host {
      * endpoint.
      *
      * @param string $uriPath The URI path on which to bind the endpoint
-     * @param mixed $classOrCallables A websocket endpoint class name or array map of callables
+     * @param mixed $websocketClass A websocket endpoint class name or an instance of Aerys\Websocket
      * @param array $options An array specifying key-value options for this websocket endpoint
      * @return self
      */
-    public function addWebsocketRoute($uriPath, $classOrCallables, array $options = []) {
+    public function addWebsocketRoute($uriPath, $websocketClass, array $options = []) {
         $uriPath = '/' . ltrim($uriPath, '/');
-        $this->websocketRoutes[] = [$uriPath, $appClass, $options];
+        $this->websocketRoutes[] = [$uriPath, $websocketClass, $options];
 
         return $this;
     }
