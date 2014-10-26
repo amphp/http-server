@@ -1,54 +1,52 @@
 <?php
 
-use Aerys\Websocket\App, Aerys\Websocket\Broker;
+use Amp\Success;
+use Aerys\Websocket;
+use Aerys\Websocket\Broadcast;
 
-class ExampleWebsocketApp implements App {
-    private $broker;
-    private $sockets = [];
+class ExampleWebsocket implements Websocket {
+    private $clientCount = 0;
 
-    public function start(Broker $broker) {
-        $this->broker = $broker;
+    public function onStart() {
+        return new Success;
     }
 
-    public function onOpen($socketId, array $httpEnvironment) {
-        $this->sockets[$socketId] = $socketId;
+    public function onOpen($clientId, array $httpEnvironment) {
+        $this->clientCount++;
+        $msg = json_encode(['type' => 'count', 'data' => $this->clientCount]);
 
-        // Broadcast the new user count to all users
-        $this->broadcastUserCount();
+        // Broadcast the current user count to all users. Yielding the
+        // "broadcast" key with a string element is a shortcut for sending
+        // the specified $msg to all clients connected to this websocket
+        // endpoint. Fine-grained control over which clients receive a
+        // broadcast is demonstrated in the onData() method.
+        yield 'broadcast' => $msg;
     }
 
-    private function broadcastUserCount() {
-        $msgType = 'count';
-        $msgData = count($this->sockets);
-        $msg = json_encode(['type' => $msgType, 'data' => $msgData]);
+    public function onData($clientId, $payload) {
+        $msg = json_encode(['type' => 'echo', 'data' => $payload]);
 
-        $recipients = array_values($this->sockets);
+        // An empty $include array equates to "all connected clients"
+        $include = [];
 
-        $this->broker->broadcast($msg, $recipients);
+        // Exclude the client that sent us this message from the broadcast
+        // because our javascript has already displayed the message on the
+        // client end of things.
+        $exclude = [$clientId];
+
+        // Broadcast the message.
+        yield new Broadcast($msg, $include, $exclude);
     }
 
-    public function onData($socketId, $payload, array $context) {
-        $msgType = 'echo';
-        $msgData = $payload;
-        $msg = json_encode(['type' => $msgType, 'data' => $msgData]);
+    public function onClose($clientId, $code, $reason) {
+        $this->clientCount--;
+        $msg = json_encode(['type' => 'count', 'data' => $this->clientCount]);
 
-        // Send our message to all connected clients except
-        // the $socketId that originated it
-        $recipients = $this->sockets;
-        unset($recipients[$socketId]);
-
-        $this->broker->broadcast($msg, $recipients);
+        // Broadcast the current user count to all users
+        yield 'broadcast' => $msg;
     }
 
-    public function onClose($socketId, $code, $reason) {
-        // The socket is closed, lets clear it from our records
-        unset($this->sockets[$socketId]);
-
-        // Broadcast the updated user count to all remaining users
-        $this->broadcastUserCount();
-    }
-
-    public function stop() {
-        // If you need to cleanup resources from start() do it here
+    public function onStop() {
+        return new Success;
     }
 }

@@ -12,6 +12,8 @@ namespace Aerys\Websocket;
  *  - 1006: is ONLY for logging after an ungraceful disconnect (do not send)
  */
 class Codes {
+    const MIN = 1000;
+    const MAX = 4999;
     const NORMAL_CLOSE = 1000;
     const GOING_AWAY = 1001;
     const PROTOCOL_ERROR = 1002;

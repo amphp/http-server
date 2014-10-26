@@ -2,157 +2,97 @@
 
 namespace Aerys\Websocket;
 
-use Amp\Reactor;
 use Amp\Success;
+use Amp\Failure;
+use Amp\Future;
 use Aerys\Server;
-use Aerys\Status;
-use Aerys\Response;
-use Aerys\ServerObserver;
+use Aerys\Responder;
+use Aerys\ResponderStruct;
+use Aerys\ClientGoneException;
 
-class HandshakeResponder implements ServerObserver {
-    const ACCEPT_CONCAT = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+class HandshakeResponder implements Responder {
+    private $responderStruct;
+    private $endpoint;
+    private $buffer;
+    private $bufferSize;
+    private $isWatcherEnabled;
+    private $promisor;
 
-    private $reactor;
-    private $server;
-    private $isStopping;
-
-    public function __construct(Reactor $reactor, Server $server) {
-        $this->reactor = $reactor;
-        $this->server = $server;
+    /**
+     * @param \Aerys\Websocket\Endpoint $endpoint
+     * @param string $handshakeResponse
+     */
+    public function __construct(Endpoint $endpoint, $handshakeResponse) {
+        $this->endpoint = $endpoint;
+        $this->buffer = $handshakeResponse;
+        $this->bufferSize = strlen($handshakeResponse);
     }
 
     /**
-     * Conduct the websocket handshake and respond appropriately
+     * Prepare the Responder
      *
-     * @param Aerys\Websocket\Endpoint $endpoint
-     * @param array $request The HTTP request environment map
-     * @return mixed[Aerys\Response|Aerys\Writer]
+     * @param Aerys\ResponderStruct $responderStruct
      */
-    public function handshake(Endpoint $endpoint, array $request) {
-        if ($this->isStopping) {
-            return ['status' => Status::SERVICE_UNAVAILABLE];
+    public function prepare(ResponderStruct $responderStruct) {
+        $this->responderStruct = $responderStruct;
+    }
+
+    /**
+     * Write the prepared response
+     *
+     * @return \Amp\Promise
+     */
+    public function write() {
+        $responderStruct = $this->responderStruct;
+        $bytesWritten = @fwrite($responderStruct->socket, $this->buffer);
+
+        if ($bytesWritten === $this->bufferSize) {
+            goto write_complete;
+        } elseif ($bytesWritten !== false) {
+            goto write_incomplete;
+        } else {
+            goto write_error;
         }
 
-        if ($request['REQUEST_METHOD'] != 'GET') {
-            return ['status' => Status::METHOD_NOT_ALLOWED];
-        }
-
-        if ($request['SERVER_PROTOCOL'] < 1.1) {
-            return ['status' => Status::HTTP_VERSION_NOT_SUPPORTED];
-        }
-
-        if (empty($request['HTTP_UPGRADE']) || strcasecmp($request['HTTP_UPGRADE'], 'websocket') !== 0) {
-            return ['status' => Status::UPGRADE_REQUIRED];
-        }
-
-        if (empty($request['HTTP_CONNECTION']) || stripos($request['HTTP_CONNECTION'], 'Upgrade') === FALSE) {
-            return [
-                'status' => Status::BAD_REQUEST,
-                'reason' => 'Bad Request: "Connection: Upgrade" header required',
-            ];
-        }
-
-        if (empty($request['HTTP_SEC_WEBSOCKET_KEY'])) {
-            return [
-                'status' => Status::BAD_REQUEST,
-                'reason' => 'Bad Request: "Sec-Broker-Key" header required',
-            ];
-        }
-
-        if (empty($request['HTTP_SEC_WEBSOCKET_VERSION'])) {
-            return [
-                'status' => Status::BAD_REQUEST,
-                'reason' => 'Bad Request: "Sec-WebSocket-Version" header required',
-            ];
-        }
-
-        $version = null;
-        $requestedVersions = explode(',', $request['HTTP_SEC_WEBSOCKET_VERSION']);
-        foreach ($requestedVersions as $requestedVersion) {
-            if ($requestedVersion === '13') {
-                $version = 13;
-                break;
+        write_complete: {
+            if ($this->isWatcherEnabled) {
+                $responderStruct->reactor->disable($responderStruct->writeWatcher);
+                $this->isWatcherEnabled = false;
             }
+
+            $mustClose = false;
+            $request = $responderStruct->request;
+            $server = $responderStruct->server;
+            $socketId = $request['AERYS_SOCKET_ID'];
+            list($socket, $onClose) = $server->exportSocket($socketId);
+            $this->endpoint->import($socket, $onClose, $request);
+
+            return $this->promisor ? $this->promisor->succeed($mustClose) : new Success($mustClose);
         }
 
-        if (empty($version)) {
-            return [
-                'status'  => Status::BAD_REQUEST,
-                'reason'  => 'Bad Request: Requested WebSocket version(s) unavailable',
-                'headers' => [
-                    'Sec-WebSocket-Version: 13'
-                ]
-            ];
+        write_incomplete: {
+            $this->bufferSize -= $bytesWritten;
+            $this->buffer = substr($this->buffer, $bytesWritten);
+
+            if (!$this->isWatcherEnabled) {
+                $this->isWatcherEnabled = true;
+                $responderStruct->reactor->enable($responderStruct->writeWatcher);
+            }
+
+            return $this->promisor ?: ($this->promisor = new Future($responderStruct->reactor));
         }
 
-        $originHeader = empty($request['HTTP_ORIGIN']) ? NULL : $request['HTTP_ORIGIN'];
-        if ($originHeader && !$endpoint->allowsOrigin($originHeader)) {
-            return ['status' => Status::FORBIDDEN];
-        }
+        write_error: {
+            if ($this->isWatcherEnabled) {
+                $this->isWatcherEnabled = false;
+                $responderStruct->reactor->disable($responderStruct->writeWatcher);
+            }
 
-        $subprotocol = null;
-        $reqSubprotos = !empty($request['HTTP_SEC_WEBSOCKET_PROTOCOL'])
-            ? explode(',', $request['HTTP_SEC_WEBSOCKET_PROTOCOL'])
-            : [];
+            $error = new ClientGoneException(
+                'Write failed: destination stream went away'
+            );
 
-        if ($reqSubprotos && (!$subprotocol = $endpoint->negotiateSubprotocol($reqSubprotos))) {
-            return [
-                'status'  => Status::BAD_REQUEST,
-                'reason'  => 'Bad Request: Requested WebSocket subprotocol(s) unavailable',
-            ];
-        }
-
-        /**
-         * @TODO Negotiate supported Sec-WebSocket-Extensions
-         *
-         * The Sec-WebSocket-Extensions header field is used to select protocol-level extensions as
-         * outlined in RFC 6455 Section 9.1:
-         *
-         * http://tools.ietf.org/html/rfc6455#section-9.1
-         *
-         * As of 2013-03-08 no extensions have been registered with the IANA:
-         *
-         * http://www.iana.org/assignments/websocket/websocket.xml#extension-name
-         */
-        $extensions = [];
-
-        $concatKeyStr = $request['HTTP_SEC_WEBSOCKET_KEY'] . self::ACCEPT_CONCAT;
-        $secWebSocketAccept = base64_encode(sha1($concatKeyStr, TRUE));
-
-        $headers = [
-            'Upgrade: websocket',
-            'Connection: Upgrade',
-            "Sec-WebSocket-Accept: {$secWebSocketAccept}"
-        ];
-
-        if ($subprotocol) {
-            $headers[] = "Sec-WebSocket-Protocol: {$subprotocol}";
-        }
-
-        if ($extensions) {
-            $headers[] = 'Sec-WebSocket-Extensions: ' . implode(',', $extensions);
-        }
-
-        $headers = implode("\r\n", $headers);
-        $response = "HTTP/1.1 101 Switching Protocols\r\n{$headers}\r\n\r\n";
-
-        return new HandshakeWriter($this->reactor, $this->server, $endpoint, $request, $response);
-    }
-
-    /**
-     * Listen for server STOPPING notifications
-     *
-     * If the Server notifies us that it wants to shutdown we shouldn't accept new connections.
-     * Store this information so we can return an appropriate response if a request arrives
-     * while the server is trying to stop.
-     *
-     * @param Aerys\Server $server
-     * @param int $event
-     */
-    public function onServerUpdate(Server $server, $event) {
-        if ($event === Server::STOPPING) {
-            $this->isStopping = TRUE;
-            return new Success;
+            return $this->promisor ? $this->promisor->fail($error) : new Failure($error);
         }
     }
 }

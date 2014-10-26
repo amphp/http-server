@@ -4,8 +4,11 @@ namespace Aerys\Websocket;
 
 use Amp\Reactor;
 use Amp\Future;
-use Amp\Resolver;
+use Amp\Success;
+use Amp\Failure;
+use Amp\Combinator;
 use Aerys\Server;
+use Aerys\Websocket;
 use Aerys\ServerObserver;
 
 class Endpoint implements ServerObserver {
@@ -22,16 +25,15 @@ class Endpoint implements ServerObserver {
     const OP_NOTIFY_FRAMES = 12;
 
     private $reactor;
-    private $app;
-    private $broker;
-    private $startPromisor;
-    private $stopPromisor;
+    private $endpoint;
+    private $combinator;
+    private $state = Sever::STOPPED;
+
     private $sessions = [];
     private $closeTimeouts = [];
     private $heartbeatTimeouts = [];
     private $timeoutWatcher;
     private $now;
-    private $isStopping;
 
     private $allowedOrigins = [];
     private $autoFrameSize = 32768;
@@ -40,21 +42,29 @@ class Endpoint implements ServerObserver {
     private $readGranularity = 32768;
     private $heartbeatPeriod = 10;
     private $closePeriod = 3;
-    private $validateUtf8 = FALSE;
-    private $textOnly = TRUE;
+    private $validateUtf8 = false;
+    private $textOnly = true;
     private $queuedPingLimit = 3;
-    private $notifyFrames = FALSE;
+    private $notifyFrames = false;
     // @TODO We don't currently support any subprotocols
     private $subprotocols = [];
     // @TODO add minimum average frame size rate threshold to prevent tiny-frame DoS
-    private $onGeneratorResolve;
 
-    public function __construct(Reactor $reactor, App $app, Resolver $resolver = null) {
+    private $errorLogger;
+
+    private static $RESOLVE_OPEN = 1;
+    private static $RESOLVE_DATA = 2;
+    private static $RESOLVE_CLOSE = 3;
+
+    public function __construct(Reactor $reactor, Websocket $websocket, Combinator $combinator = null) {
         $this->reactor = $reactor;
-        $this->app = $app;
-        $this->resolver = $resolver ?: new Resolver($reactor);
-        $this->broker = new Broker($this);
-        $this->onGeneratorResolve = function($e, $r) { if ($e) { throw $e; } };
+        $this->websocket = $websocket;
+        $this->combinator = $combinator ?: new Combinator($reactor);
+        $this->errorLogger = function($error) {
+            if (!$error instanceof ClientGoneException) {
+                fwrite(STDERR, $e);
+            }
+        };
     }
 
     /**
@@ -70,122 +80,107 @@ class Endpoint implements ServerObserver {
     public function onServerUpdate(Server $server, $event) {
         switch ($event) {
             case Server::STARTING:
+                $this->state = $event;
                 return $this->start();
+            case Server::STARTED:
+                $this->state = $event;
+                return new Success;
             case Server::STOPPING:
+                $this->state = $event;
                 return $this->stop();
+            case Server::STOPPED:
+                $this->state = $event;
+                break;
         }
     }
 
-    /**
-     * Notify the application that the server is ready to start
-     *
-     * @return \Amp\Promise Returns a Promise that resolves on app startup completion
-     */
-    public function start() {
-        if (empty($this->startPromisor)) {
-            $this->startPromisor = $promisor = new Future($this->reactor);
-            $promisor->when(function($e, $r) { $this->onStartCompletion($e, $r); });
-            $this->notifyAppStart();
-        } else {
-            $promisor = $this->startPromisor;
+    private function start() {
+        try {
+            $result = $this->endpoint->onStart();
+            if ($result instanceof \Generator) {
+                $promise = $this->resolveGenerator($result);
+            } elseif ($result instanceof Promise) {
+                $promise = $result;
+            } else {
+                $promise = new Success($result);
+            }
+
+            $promise->when(function($e, $r) {
+                if (empty($e)) {
+                    $this->now = time();
+                    $this->timeoutWatcher = $this->reactor->repeat([$this, 'timeout'], $msInterval = 1000);
+                    $this->reactor->disable($this->timeoutWatcher);
+                }
+            });
+
+        } catch (\Exception $e) {
+            return new Failure($e);
         }
+    }
+
+    private function stop() {
+        $code = Codes::GOING_AWAY;
+        $reason = 'Server is shutting down!';
+        $closePromises = [];
+        foreach ($this->sessions as $session) {
+            $closePromises[] = $this->closeSession($session, $code, $reason);
+        }
+
+        $promisor = new Future($this->reactor);
+        $sessionClose = $this->combinator->any($closePromises);
+        $sessionClose->when(function($e, $r) use ($promisor) {
+            $promisor->succeed($this->notifyEndpointOnStop());
+        });
 
         return $promisor;
     }
 
-    private function notifyAppStart() {
-        try {
-            $startResult = $this->app->start($this->broker);
-            $this->startPromisor->succeed($startResult);
-        } catch (\Exception $e) {
-            $this->startPromisor->fail($e);
-        }
-    }
-
-    private function onStartCompletion($e, $r) {
-        $this->startPromisor = null;
-        if (empty($e)) {
-            $this->now = time();
-            $this->timeoutWatcher = $this->reactor->repeat([$this, 'timeout'], $msInterval = 1000);
-        }
-    }
-
     /**
-     * Stop the endpoint
-     *
-     * @return \Amp\Promise Returns a Promise that will resolve when all sessions are closed
-     */
-    public function stop() {
-        if (!$this->isStopping) {
-            $this->stopPromisor = new Future($this->reactor);
-            $this->initializeStop();
-        }
-
-        return $this->stopPromisor->promise();
-    }
-
-    private function initializeStop() {
-        if (empty($this->sessions)) {
-            return $this->notifyAppStop();
-        }
-
-        $code = Codes::GOING_AWAY;
-        $reason = 'Server is shutting down!';
-        foreach ($this->sessions as $session) {
-            $this->closeSession($session, $code, $reason);
-        }
-
-        $this->stopPromisor->when(function() {
-            $this->isStopping = null;
-        });
-    }
-
-    /**
-     * Accepts new sockets exported by the Aerys HTTP server
+     * Accepts new client sockets exported from the HTTP server
      *
      * @param resource $socket A raw TCP socket stream
+     * @param callable $closer A callback that MUST be invoked when the socket disconnects
      * @param array $request   The HTTP request that led to this import operation
-     * @param callable $closer A callback that MUST be invoked when the socket is disconnected
-     *                         to notify Aerys that the client is gone.
      */
     public function import($socket, callable $closer, array $request) {
         $session = new Session;
 
-        $socketId = (int) $socket;
-
-        $session->id = $socketId;
+        $clientId = (int) $socket;
+        $session->serverCloseCallback = $closer;
+        $session->connectedAt = $this->now;
+        $session->clientId = $clientId;
         $session->socket = $socket;
-        $session->closer = $closer;
-        $session->stats = new SessionStats;
-        $session->stats->connectedAt = $this->now;
         $session->parser = [$this, 'parseRfc6455'];
         $session->parseState = new ParseState;
         $session->writeState = new SessionWriteState;
-        $session->closeState = new SessionCloseState;
         $session->readWatcher = $this->reactor->onReadable($socket, function() use ($session) {
             $this->read($session);
         });
         $session->writeWatcher = $this->reactor->onWritable($socket, function() use ($session) {
             $this->write($session);
-        }, $enableNow = FALSE);
+        }, $enableNow = false);
 
-        $this->sessions[$socketId] = $session;
-        $this->renewHeartbeatTimeout($socketId);
-        $this->notifyAppOnOpen($socketId, $request);
+        if (empty($this->sessions)) {
+            $this->reactor->enable($this->timeoutWatcher);
+        }
+
+        $this->sessions[$clientId] = $session;
+        $this->renewHeartbeatTimeout($clientId);
+        $this->notifyEndpointOnOpen($clientId, $request);
     }
 
-    private function renewHeartbeatTimeout($socketId) {
+    private function renewHeartbeatTimeout($clientId) {
         if ($this->heartbeatPeriod > 0) {
-            unset($this->heartbeatTimeouts[$socketId]);
-            $this->heartbeatTimeouts[$socketId] = $this->now + $this->heartbeatPeriod;
+            unset($this->heartbeatTimeouts[$clientId]);
+            $this->heartbeatTimeouts[$clientId] = $this->now + $this->heartbeatPeriod;
         }
     }
 
-    private function notifyAppOnOpen($socketId, $httpEnvironment) {
+    private function notifyEndpointOnOpen($clientId, $httpEnvironment) {
         try {
-            $result = $this->app->onOpen($socketId, $httpEnvironment);
+            $result = $this->endpoint->onOpen($clientId, $httpEnvironment);
             if ($result instanceof \Generator) {
-                $this->resolver->resolve($result)->when($this->onGeneratorResolve);
+                $this->resolveGenerator($result, $clientId);
             }
         } catch (\Exception $e) {
             // @TODO Log error (app threw uncaught exception)
@@ -193,11 +188,11 @@ class Endpoint implements ServerObserver {
         }
     }
 
-    private function notifyAppOnData($socketId, $payload, $context) {
+    private function notifyEndpointOnData($clientId, $payload, $context) {
         try {
-            $result = $this->app->onData($socketId, $payload, $context);
+            $result = $this->endpoint->onData($clientId, $payload, $context);
             if ($result instanceof \Generator) {
-                $this->resolver->resolve($result)->when($this->onGeneratorResolve);
+                $this->resolveGenerator($result, $clientId);
             }
         } catch (\Exception $e) {
             // @TODO Log error (app threw uncaught exception)
@@ -205,11 +200,11 @@ class Endpoint implements ServerObserver {
         }
     }
 
-    private function notifyAppOnClose($socketId, $code, $reason) {
+    private function notifyEndpointOnClose($clientId, $code, $reason) {
         try {
-            $result = $this->app->onClose($socketId, $code, $reason);
+            $result = $this->endpoint->onClose($clientId, $code, $reason);
             if ($result instanceof \Generator) {
-                $this->resolver->resolve($result)->when($this->onGeneratorResolve);
+                $this->resolveGenerator($result, $clientId);
             }
         } catch (\Exception $e) {
             // @TODO Log error (app threw uncaught exception)
@@ -217,43 +212,326 @@ class Endpoint implements ServerObserver {
         }
     }
 
-    /**
-     * @TODO Docs
-     */
-    public function stats($socketId) {
-        if (isset($this->sessions[$socketId])) {
-            $session = $this->sessions[$socketId];
-            return clone $session->stats;
+    private function resolveGenerator(\Generator $generator, $clientId) {
+        $promisor = new Future($this->reactor);
+        $promisor->when($this->errorLogger);
+
+        $rs = new ResolverStruct;
+        $rs->generator = $generator;
+        $rs->promisor  = $promisor;
+        $rs->clientId  = $clientId;
+
+        $this->advanceGenerator($rs);
+
+        return $promisor;
+    }
+
+    private function advanceGenerator(ResolverStruct $rs, $previousResult = null) {
+        try {
+            $generator = $rs->generator;
+            if ($generator->valid()) {
+                $key = $generator->key();
+                $current = $generator->current();
+                $promise = $this->promisifyYield($key, $current);
+                $this->reactor->immediately(function() use ($rs) {
+                    $promise->when(function($error, $result) use ($rs) {
+                        $this->sendToGenerator($rs, $error, $result);
+                    });
+                });
+            } else {
+                $rs->promisor->succeed($previousResult);
+            }
+        } catch (\Exception $error) {
+            $rs->promisor->fail($error);
+        }
+    }
+
+    private function promisifyYield($rs, $key, $current) {
+        if ($current instanceof Promise) {
+            return $current;
+        } elseif ($key === (string) $key) {
+            goto explicit_key;
         } else {
-            throw new \DomainException;
+            goto implicit_key;
+        }
+
+        explicit_key: {
+            switch ($key) {
+                case Websocket::SEND:
+                    return isset($rs->clientId)
+                        ? $this->send($current, [$rs->clientId])
+                        : new Failure(new \LogicException(
+                            'Cannot execute implicit send: ambiguous client target'
+                        ));
+                case Websocket::BROADCAST:
+                    return $this->send($current, []);
+                case Websocket::INSPECT:
+                    return $this->inspect($current);
+                case Websocket::CLOSE:
+                    return $this->close($current);
+                case Websocket::WATCH_STREAM:
+                    goto watch_stream;
+                case Websocket::IMMEDIATELY:
+                    goto immediately;
+                case Websocket::ONCE:
+                    // fallthrough
+                case Websocket::REPEAT:
+                    goto schedule;
+                case Websocket::ENABLE:
+                    // fallthrough
+                case Websocket::DISABLE:
+                    // fallthrough
+                case Websocket::CANCEL:
+                    goto watcher_control;
+                case Websocket::WAIT:
+                    goto wait;
+                case Websocket::ALL:
+                    // fallthrough
+                case Websocket::ANY:
+                    // fallthrough
+                case Websocket::SOME:
+                    goto combinator;
+                default:
+                    return new Failure(new \DomainException(
+                        sprintf('Unknown yield key: "%s"', $key)
+                    ));
+            }
+        }
+
+        implicit_key: {
+            if (is_array($current)) {
+                // An array without an explicit key is assumed to be an "all" combinator
+                $key = Websocket::ALL;
+                goto combinator;
+            } elseif ($current instanceof \Generator) {
+                return $this->resolveGenerator($current, $rs->clientId);
+            } elseif ($current instanceof Send || $current instanceof Broadcast) {
+                list($data, $include, $exclude) = $current->toArray();
+                return $this->send($data, $include, $exclude);
+            } elseif ($current instanceof Close) {
+                list($clientId, $code, $reason) = $current->toArray();
+                return $this->close($clientId, $code, $reason);
+            } else {
+                return new Success($current);
+            }
+        }
+
+        immediately: {
+            if (!is_callable($current)) {
+                return new Failure(new \DomainException(
+                    sprintf(
+                        '"%s" yield requires callable; %s provided',
+                        $key,
+                        gettype($current)
+                    )
+                ));
+            }
+
+            $watcherId = $this->reactor->immediately($current);
+
+            return new Success($watcherId);
+        }
+
+        schedule: {
+            if (!($current && isset($current[0], $current[1]) && is_array($current))) {
+                return new Failure(new \DomainException(
+                    sprintf(
+                        '"%s" yield requires [callable $func, int $msDelay]; %s provided',
+                        $key,
+                        gettype($current)
+                    )
+                ));
+            }
+
+            list($func, $msDelay) = $current;
+            $watcherId = $this->reactor->{$key}($func, $msDelay);
+
+            return new Success($watcherId);
+        }
+
+        watch_stream: {
+            if (!($current &&
+                isset($current[0], $current[1], $current[2]) &&
+                is_array($current) &&
+                is_callable($current[1])
+            )) {
+                return new Failure(new \DomainException(
+                    sprintf(
+                        '"%s" yield requires [resource $stream, callable $func, int $flags]; %s provided',
+                        $key,
+                        gettype($current)
+                    )
+                ));
+            }
+
+            list($stream, $callback, $flags) = $current;
+
+            try {
+                $watcherId = $this->reactor->watchStream($stream, $callback, $flags);
+                return new Success($watcherId);
+            } catch (\Exception $error) {
+                return new Failure($error);
+            }
+        }
+
+        watcher_control: {
+            $this->reactor->{$key}($current);
+            return new Success;
+        }
+
+        wait: {
+            $promisor = new Future($this->reactor);
+            $this->reactor->once(function() use ($promisor) {
+                $promisor->succeed();
+            }, (int) $current);
+
+            return $promisor;
+        }
+
+        combinator: {
+            $promises = [];
+            foreach ($current as $index => $element) {
+                if ($element instanceof Promise) {
+                    $promise = $element;
+                } elseif ($element instanceof \Generator) {
+                    $promise = $this->resolve($element);
+                } elseif ($element instanceof Send || $element instanceof Broadcast) {
+                    list($data, $include, $exclude) = $current->toArray();
+                    $promise = $this->send($data, $include, $exclude);
+                } elseif ($element instanceof Close) {
+                    list($clientId, $code, $reason) = $current->toArray();
+                    $promise = $this->close($clientId, $code, $reason);
+                } else {
+                    $promise = new Success($element);
+                }
+
+                $promises[$index] = $promise;
+            }
+
+            return $this->combinator->{$key}($promises);
         }
     }
 
+    private function sendToGenerator(ResolverStruct $rs, \Exception $error = null, $result = null) {
+        try {
+            if ($error) {
+                $rs->generator->throw($error);
+            } else {
+                $rs->generator->send($result);
+            }
+            $this->advanceGenerator($rs, $result);
+        } catch (\Exception $error) {
+            $rs->promisor->fail($error);
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     /**
-     * Push the specified Data object out to its recipients
+     * Retrieve information about the specified client
+     *
+     * @param int $clientId
+     * @return \Amp\Promise
+     */
+    public function inspect($clientId) {
+        if (empty($this->sessions[$clientId]) {
+            new Failure(new \DomainException(
+                sprintf('Unkown clientId: %s', $clientId)
+            ));
+        }
+
+        $session = $this->sessions[$clientId];
+
+        return new Success([
+            'bytes_read'    => $session->bytesRead,
+            'bytes_sent'    => $session->bytesSent,
+            'frames_read'   => $session->framesRead,
+            'frames_sent'   => $session->framesSent,
+            'messages_read' => $session->messagesRead,
+            'messages_sent' => $session->messagesSent,
+            'connected_at'  => $session->connectedAt,
+            'last_read_at'  => $session->lastReadAt,
+            'last_send_at'  => $session->lastSendAt,
+        ]);
+    }
+
+    /**
+     * Send $payload to $recipients excluding any clients listed in the $exclude array
      *
      * @param string $payload
-     * @param array $recipients
+     * @param int|array $sendTo
+     * @param array $exclude
+     * @return \Amp\Promise
      */
-    public function send($payload, array $recipients) {
-        $recipients = empty($recipients)
+    public function send($payload, array $sendTo = [], array $exclude = []) {
+        if ($this->state < Server::STARTED) {
+            // This check is necessary because onStart() generators
+            // may pointlessly try to send things
+            return new Failure(new \LogicException(
+                'Cannot send: server has not started'
+            ));
+        }
+
+        $recipients = empty($sendTo)
             ? $this->sessions
-            : array_intersect_key($this->sessions, array_flip($recipients));
+            : array_intersect_key($this->sessions, array_flip($sendTo));
+
+        if ($exclude) {
+            $recipients = array_diff_key($recipients, array_flip($exclude));
+        }
 
         if (empty($recipients)) {
-            return;
+            return new Success;
         }
 
         $opcode = preg_match('//u', $payload) ? Frame::OP_TEXT : Frame::OP_BIN;
-
         $frameStructs = $this->generateDataFrameStructs($opcode, $payload);
 
+        $promises = [];
         foreach ($recipients as $session) {
-            foreach ($frameStructs as $frameStruct) {
-                $session->writeState->dataQueue[] = $frameStruct;
+            if ($session->closeState & Session::CLOSE_INIT) {
+                $promisor = new Failure(new ClientGoneException(
+                    'Cannot send: close handshake initiated'
+                ));
+            } else {
+                $promisor = new Future($this);
+                $promises[] = $promisor;
+                $session->writeState->dataQueue[] = [$frameStructs, $promisor];
+                $this->write($session);
             }
-            $this->write($session);
         }
+
+        return (count($promises) > 1) ? $this->combinator->any($promises) : current($promises);
     }
 
     private function generateDataFrameStructs($opcode, $payload) {
@@ -280,7 +558,8 @@ class Endpoint implements ServerObserver {
         $length = strlen($payload);
 
         if ($length > 0xFFFF) {
-            // Yes, this limits payloads to 2.1GB ...
+            // Yes, this limits payloads to 2.1GB. Whatever ...
+            // @TODO update to use new pack() functionality in 5.6.2
             $lengthHeader = 0x7F;
             $lengthBody = "\x00\x00\x00\x00" . pack('N', $length);
         } elseif ($length > 0x7D) {
@@ -316,20 +595,19 @@ class Endpoint implements ServerObserver {
     private function read(Session $session) {
         $data = @fread($session->socket, $this->readGranularity);
 
-        if ($data || $data === '0') {
+        if ($data === false) {
+            $session->closeCode = Codes::ABNORMAL_CLOSE;
+            $session->closeReason = "Socket connection severed";
+            $this->endSession($session);
+        } else {
             $dataLen = strlen($data);
             $session->parseState->buffer .= $data;
 
             $session->parseState->bufferSize += $dataLen;
-            $session->stats->lastReadAt = $this->now;
-            $session->stats->bytesRead += $dataLen;
-            $this->renewHeartbeatTimeout($session->id);
+            $session->lastReadAt = $this->now;
+            $session->bytesRead += $dataLen;
+            $this->renewHeartbeatTimeout($session->clientId);
             $this->parse($session);
-        } elseif (!is_resource($session->socket) || @feof($session->socket)) {
-            $closeState = $session->closeState;
-            $closeState->code = Codes::ABNORMAL_CLOSE;
-            $closeState->reason = "Socket connection severed unexpectedly";
-            $this->endSession($session);
         }
     }
 
@@ -342,8 +620,8 @@ class Endpoint implements ServerObserver {
         } catch (PolicyException $e) {
             $this->closeSession($session, Codes::POLICY_VIOLATION, $e->getMessage());
         } catch (ParseException $e) {
-            $session->closeState->code = Codes::PROTOCOL_ERROR;
-            $session->closeState->reason = $e->getMessage();
+            $session->closeCode = Codes::PROTOCOL_ERROR;
+            $session->closeReason = $e->getMessage();
             $this->endSession($session);
         }
     }
@@ -586,8 +864,8 @@ class Endpoint implements ServerObserver {
     private function receiveFrame(Session $session, array $parseStruct) {
         list($payload, $opcode, $fin) = $parseStruct;
 
-        $session->stats->framesRead++;
-        $session->stats->messagesRead += $fin;
+        $session->framesRead++;
+        $session->messagesRead += $fin;
 
         switch ($opcode) {
             case Frame::OP_PING:
@@ -600,25 +878,22 @@ class Endpoint implements ServerObserver {
                 $this->receiveClose($session, $payload);
                 break;
             default:
-                $this->receiveData($session, $payload, $opcode, $fin);
+                $this->receiveData($session, $payload, $fin);
         }
     }
 
-    private function receiveData(Session $session, $payload, $opcode, $fin) {
+    private function receiveData(Session $session, $payload, $fin) {
         $session->messageBuffer .= $payload;
         if ($fin || $this->notifyFrames) {
             $payload = $session->messageBuffer;
             $session->messageBuffer = '';
-            $this->notifyAppOnData($session->id, $payload, $context = [
-                'opcode' => $opcode,
-                'fin' => $fin
-            ]);
+            $this->notifyEndpointOnData($session->clientId, $payload);
         }
     }
 
     private function receivePing(Session $session, $payload) {
         $frameStruct = $this->buildFrameStruct(Frame::OP_PONG, $payload, $fin=1);
-        $session->writeState->controlQueue[] = $frameStruct;
+        $session->writeState->controlQueue[] = [$frameStruct, null];
         $this->write($session);
     }
 
@@ -634,9 +909,9 @@ class Endpoint implements ServerObserver {
     }
 
     private function receiveClose(Session $session, $payload) {
-        $session->closeState->state |= SessionCloseState::RECD;
+        $session->closeState |= Session::CLOSE_RECD;
 
-        if ($session->closeState->state & SessionCloseState::DONE) {
+        if ($session->closeState & Session::CLOSE_DONE) {
             $this->endSession($session);
         } else {
             @stream_socket_shutdown($session->socket, STREAM_SHUT_RD);
@@ -662,7 +937,6 @@ class Endpoint implements ServerObserver {
     }
 
     private function write(Session $session) {
-        $stats = $session->stats;
         $writeState = $session->writeState;
 
         start: {
@@ -681,29 +955,25 @@ class Endpoint implements ServerObserver {
 
         dequeue_next_frame: {
             $key = key($queue);
-            list($writeState->buffer, $writeState->opcode, $writeState->fin) = $queue[$key];
+            list($writeState->buffer, $writeState->opcode, $writeState->fin) = array_shift($queue[$key][0]);
             $writeState->bufferSize = strlen($writeState->buffer);
-            unset($queue[$key]);
             goto write;
         }
 
         write: {
-            if ($bytesWritten = @fwrite($session->socket, $writeState->buffer)) {
-                goto renew_heartbeat;
+            $bytesWritten = @fwrite($session->socket, $writeState->buffer);
+            if ($bytesWritten === false) {
+                goto socket_gone;
             } else {
-                goto after_empty_write;
+                goto after_write;
             }
         }
 
-        renew_heartbeat: {
-            $this->renewHeartbeatTimeout($session->id);
-            goto after_write;
-        }
-
         after_write: {
+            $this->renewHeartbeatTimeout($session->clientId);
             $writeState->bufferSize -= $bytesWritten;
-            $stats->bytesSent += $bytesWritten;
-            $stats->lastSendAt = $this->now;
+            $session->bytesSent += $bytesWritten;
+            $session->lastSendAt = $this->now;
 
             if ($writeState->bufferSize === 0) {
                 $writeState->buffer = '';
@@ -715,21 +985,24 @@ class Endpoint implements ServerObserver {
             }
         }
 
-        after_empty_write: {
-            if (is_resource($session->socket)) {
-                goto further_write_needed;
+        after_completed_frame_write: {
+            $session->framesSent++;
+            $session->messagesSent += $writeState->fin;
+
+            if ($writeState->opcode & Frame::OP_CLOSE) {
+                goto after_control_message;
+            } elseif ($writeState->fin) {
+                goto after_data_message;
             } else {
-                goto socket_gone;
+                goto further_write_needed;
             }
         }
 
-        after_completed_frame_write: {
-            $stats->framesSent++;
-            $stats->messagesSent += $writeState->fin;
-
+        after_control_message: {
+            list(, $promise) = array_shift($writeState->controlQueue);
+            $promise->succeed();
             if ($writeState->opcode === Frame::OP_CLOSE) {
-                goto after_close_frame;
-            // @TODO handle PING/PONG here too!
+                goto after_close_message;
             } elseif ($writeState->dataQueue || $writeState->controlQueue) {
                 goto further_write_needed;
             } else {
@@ -737,19 +1010,28 @@ class Endpoint implements ServerObserver {
             }
         }
 
-        after_close_frame: {
+        after_close_message: {
             $this->reactor->disable($session->writeWatcher);
-            $closeState = $session->closeState;
-            $closeState->state |= SessionCloseState::SENT;
+            $session->closeState |= Session::CLOSE_SENT;
 
-            if ($closeState->state & SessionCloseState::DONE) {
+            if ($session->closeState & Session::CLOSE_DONE) {
                 $this->endSession($session);
             } else {
                 @stream_socket_shutdown($session->socket, STREAM_SHUT_WR);
-                $this->closeTimeouts[$session->id] = $this->now + $this->closePeriod;
+                $this->closeTimeouts[$session->clientId] = $this->now + $this->closePeriod;
             }
 
             return;
+        }
+
+        after_data_message: {
+            $promisor = array_shift($writeState->dataQueue)[1];
+            $promisor->succeed();
+            if ($writeState->dataQueue || $writeState->controlQueue) {
+                goto further_write_needed;
+            } else {
+                goto all_data_sent;
+            }
         }
 
         further_write_needed: {
@@ -763,9 +1045,8 @@ class Endpoint implements ServerObserver {
         }
 
         socket_gone: {
-            $closeState = $session->closeState;
-            $closeState->code = Codes::ABNORMAL_CLOSE;
-            $closeState->reason = "Socket connection severed unexpectedly";
+            $session->closeCode = Codes::ABNORMAL_CLOSE;
+            $session->closeReason = "Socket connection severed unexpectedly";
             $this->endSession($session);
             return;
         }
@@ -777,22 +1058,22 @@ class Endpoint implements ServerObserver {
     public function timeout() {
         $this->now = $now = time();
 
-        foreach ($this->heartbeatTimeouts as $socketId => $expiryTime) {
+        foreach ($this->heartbeatTimeouts as $clientId => $expiryTime) {
             if ($expiryTime < $now) {
-                $session = $this->sessions[$socketId];
-                unset($this->heartbeatTimeouts[$socketId]);
-                $this->heartbeatTimeouts[$socketId] = $now;
+                $session = $this->sessions[$clientId];
+                unset($this->heartbeatTimeouts[$clientId]);
+                $this->heartbeatTimeouts[$clientId] = $now;
                 $this->sendHeartbeatPing($session);
             } else {
                 break;
             }
         }
 
-        foreach ($this->closeTimeouts as $socketId => $expiryTime) {
+        foreach ($this->closeTimeouts as $clientId => $expiryTime) {
             if ($expiryTime < $now) {
-                $session = $this->sessions[$socketId];
-                $session->closeState->code = Codes::ABNORMAL_CLOSE;
-                $session->closeState->reason = 'CLOSE handshake timeout';
+                $session = $this->sessions[$clientId];
+                $session->closeCode = Codes::ABNORMAL_CLOSE;
+                $session->closeReason = 'CLOSE handshake timeout';
                 $this->endSession($session);
             } else {
                 break;
@@ -810,98 +1091,121 @@ class Endpoint implements ServerObserver {
             $this->closeSession($session, $code, $reason);
         } else {
             $frameStruct = $this->buildFrameStruct(Frame::OP_PING, $payload, $fin=1);
-            $session->writeState->controlQueue[] = $frameStruct;
+            $session->writeState->controlQueue[] = [$frameStruct, null];
             $this->write($session);
         }
     }
 
     /**
      * @TODO Docs
+     *
+     * @param int $clientId
+     * @param int $code
+     * @param string $reason
+     * @return \Amp\Promise
      */
-    public function close($socketId, $code = Codes::NORMAL_CLOSE, $reason = '') {
-        if (!isset($this->sessions[$socketId])) {
-            return;
+    public function close($clientId, $code = Codes::NORMAL_CLOSE, $reason = '') {
+        if (!isset($this->sessions[$clientId])) {
+            return new Failure(new \DomainException(
+                sprintf("Unknown clientId: %s", $clientId)
+            ));
         }
 
-        $code = filter_var($code, FILTER_VALIDATE_INT, ['options' => [
-            'default' => Codes::NONE,
-            'min_range' => 1000,
-            'max_range' => 4999
-        ]]);
+        $code = (int) $code;
+        if ($code < Codes::MIN || $code > Codes::MAX) {
+            $code = Codes::NONE;
+        }
 
+        // RFC6455 limits close reasons to 125 characters
         $reason = (string) $reason;
         if (isset($reason[125])) {
             $reason = substr($reason, 0, 125);
         }
 
-        $session = $this->sessions[$socketId];
-        $this->closeSession($session, $code, $reason);
+        $session = $this->sessions[$clientId];
+
+        return $this->closeSession($session, $code, $reason);
     }
 
     private function closeSession(Session $session, $code, $reason = '') {
-        $closeState = $session->closeState;
-
-        if (!($closeState->state & SessionCloseState::INIT)) {
-            $closeState->state |= SessionCloseState::INIT;
-            $closeState->code = $code;
-            $closeState->reason = isset($reason[125]) ? substr($reason, 0, 125) : $reason;
-            $closeState->payload = pack('S', $code) . $reason;
-            $frameStruct = $this->buildFrameStruct(Frame::OP_CLOSE, $closeState->payload, $fin=1);
-            $session->writeState->controlQueue[] = $frameStruct;
+        if (!($session->closeState && Session::CLOSE_INIT)) {
+            $promisor = new Future($this->reactor);
+            $session->closeState |= Session::CLOSE_INIT;
+            $session->closePromisor = $promisor;
+            $session->closecode = $code;
+            $session->closeReason = isset($reason[125]) ? substr($reason, 0, 125) : $reason;
+            $session->closePayload = pack('S', $code) . $reason;
+            $frameStruct = $this->buildFrameStruct(Frame::OP_CLOSE, $session->closePayload, $fin=1);
+            $session->writeState->controlQueue[] = [$frameStruct, $promisor];
             $this->write($session);
+        } elseif ($session->closeState & Session::CLOSE_DONE) {
+            $this->endSession($session);
+            $promisor = $session->closePromisor;
         }
 
-        if ($closeState->state & SessionCloseState::DONE) {
-            $this->endSession($session);
-        }
+        return $promisor;
     }
 
     private function endSession(Session $session) {
         $this->reactor->cancel($session->readWatcher);
         $this->reactor->cancel($session->writeWatcher);
 
-        $socketId = $session->id;
+        foreach ($session->writeState->dataQueue as $framesAndPromise) {
+            end($framesAndPromise)->fail(new ClientGoneException(
+                'Socket connection closed'
+            ));
+        }
+
+        foreach ($session->writeState->controlQueue as $framesAndPromise) {
+            list(,$promise) = $framesAndPromise;
+            // Only close frames have an associated promise
+            if ($promise) {
+                $promise->succeed();
+            }
+        }
 
         unset(
-            $this->sessions[$socketId],
-            $this->closeTimeouts[$socketId],
-            $this->heartbeatTimeouts[$socketId]
+            $this->sessions[$clientId],
+            $this->closeTimeouts[$clientId],
+            $this->heartbeatTimeouts[$clientId]
         );
+
+        $clientId = $session->clientId;
 
         $noSessionsRemaining = empty($this->sessions);
 
-        // Don't wakeup every second to execute timeouts if no clients are connected
+        // Don't wake up every 1000ms to execute timeouts if no clients are connected
         if ($noSessionsRemaining) {
-            $this->reactor->cancel($this->timeoutWatcher);
+            $this->reactor->disable($this->timeoutWatcher);
         }
 
-        // Inform the HTTP server that we're finished with this socket
-        call_user_func($session->closer);
+        // Inform the HTTP server that we're finished with this socket. This is critically
+        // important as the server *will not* release resources associated with exported
+        // sockets until told to do so via this callback.
+        $serverOnCloseCallback = $session->serverCloseCallback;
+        $serverOnCloseCallback();
 
-        $code = $session->closeState->code;
-        $reason = $session->closeState->reason;
-        $this->notifyAppOnClose($socketId, $code, $reason);
+        $code = $session->closeCode;
+        $reason = $session->closeReason;
+        $this->notifyEndpointOnClose($clientId, $code, $reason);
 
-        if ($this->isStopping && empty($this->sessions)) {
-            $this->notifyAppStop();
+        if ($this->state === Server::STOPPING && $noSessionsRemaining) {
+            $this->notifyEndpointOnStop();
         }
     }
 
-    private function notifyAppStop() {
+    private function notifyEndpointOnStop() {
         try {
-            $result = $this->app->stop();
-            $this->stopPromisor->resolveSafely(null, $result);
+            $result = $this->endpoint->onStop();
+            if ($result instanceof \Generator) {
+                return $this->resolveGenerator($result);
+            } elseif ($result instanceof Promise) {
+                return $result;
+            } else {
+                return new Success($result);
+            }
         } catch (\Exception $e) {
-            $this->stopPromisor->resolveSafely(null, $e);
-        }
-    }
-
-    /**
-     * @TODO Documentation
-     */
-    public function setAllOptions(array $options) {
-        foreach ($options as $option => $value) {
-            $this->setOption($option, $value);
+            return new Failure($e);
         }
     }
 
@@ -910,11 +1214,11 @@ class Endpoint implements ServerObserver {
      */
     public function allowsOrigin($origin) {
         if (empty($this->allowedOrigins)) {
-            return TRUE;
+            return true;
         } elseif (in_array(strtolower($origin), $this->allowedOrigins)) {
-            return TRUE;
+            return true;
         } else {
-            return FALSE;
+            return false;
         }
     }
 
@@ -928,7 +1232,16 @@ class Endpoint implements ServerObserver {
             }
         }
 
-        return FALSE;
+        return false;
+    }
+
+    /**
+     * @TODO Documentation
+     */
+    public function setAllOptions(array $options) {
+        foreach ($options as $option => $value) {
+            $this->setOption($option, $value);
+        }
     }
 
     /**
