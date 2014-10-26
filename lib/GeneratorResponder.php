@@ -145,25 +145,6 @@ class GeneratorResponder {
         }
     }
 
-    private function finalizeWrite() {
-        if ($this->isSocketGone) {
-            return;
-        }
-
-        if ($this->isFinalWrite || !$this->isChunking) {
-            $this->promisor->succeed($this->struct->mustClose);
-            return;
-        }
-
-        $this->isFinalWrite = true;
-        $this->buffer .= "0\r\n\r\n";
-        $this->bufferSize += 5;
-
-        if (!$this->isWatcherEnabled) {
-            $this->doWrite();
-        }
-    }
-
     private function promisifyYield($key, $current) {
         if ($this->isSocketGone && $this->shouldNotifyUserAbort) {
             $this->shouldNotifyUserAbort = false;
@@ -455,5 +436,24 @@ class GeneratorResponder {
 
         $this->buffer = "HTTP/{$protocol} {$status}{$reason}\r\n{$headers}\r\n\r\n";
         $this->bufferSize = strlen($this->buffer);
+    }
+
+    private function finalizeWrite() {
+        if ($this->isSocketGone) {
+            return;
+        }
+
+        if ($this->isFinalWrite || !$this->isChunking) {
+            $this->promisor->succeed($this->struct->mustClose);
+            return;
+        }
+
+        $this->isFinalWrite = true;
+        $this->buffer .= "0\r\n\r\n";
+        $this->bufferSize += 5;
+
+        if (!$this->isWatcherEnabled) {
+            $this->doWrite();
+        }
     }
 }
