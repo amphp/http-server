@@ -4,6 +4,7 @@ namespace Aerys\Websocket;
 
 use Amp\Reactor;
 use Amp\Future;
+use Amp\Promise;
 use Amp\Success;
 use Amp\Failure;
 use Amp\Combinator;
@@ -274,6 +275,12 @@ class Endpoint implements ServerObserver {
                     // fallthrough
                 case Websocket::REPEAT:
                     goto schedule;
+                case Websocket::ON_READABLE:
+                    $ioWatchMethod = 'onReadable';
+                    goto stream_io_watcher;
+                case Websocket::ON_WRITABLE:
+                    $ioWatchMethod = 'onWritable';
+                    goto stream_io_watcher;
                 case Websocket::ENABLE:
                     // fallthrough
                 case Websocket::DISABLE:
@@ -324,7 +331,8 @@ class Endpoint implements ServerObserver {
                 ));
             }
 
-            $watcherId = $this->reactor->immediately($current);
+            $func = $this->wrapWatcherCallback($rs, $current);
+            $watcherId = $this->reactor->immediately($func);
 
             return new Success($watcherId);
         }
@@ -341,7 +349,26 @@ class Endpoint implements ServerObserver {
             }
 
             list($func, $msDelay) = $current;
+            $func = $this->wrapWatcherCallback($rs, $func);
             $watcherId = $this->reactor->{$key}($func, $msDelay);
+
+            return new Success($watcherId);
+        }
+
+        stream_io_watcher: {
+            if (!($current && isset($current[0], $current[1], $current[1]) && is_array($current))) {
+                return new Failure(new \DomainException(
+                    sprintf(
+                        '"%s" yield requires [resource $stream, callable $func, bool $enableNow]; %s provided',
+                        $key,
+                        gettype($current)
+                    )
+                ));
+            }
+
+            list($stream, $func, $enableNow) = $current;
+            $func = $this->wrapWatcherCallback($rs, $func);
+            $watcherId = $this->reactor->{$ioWatchMethod}($stream, $func, $enableNow);
 
             return new Success($watcherId);
         }
@@ -382,6 +409,15 @@ class Endpoint implements ServerObserver {
 
             return $this->combinator->{$key}($promises);
         }
+    }
+
+    private function wrapWatcherCallback(ResolverStruct $rs, callable $func) {
+        return function($reactor, $watcherId, $stream) use ($rs, $func) {
+            $result = $func($reactor, $watcherId, $stream);
+            if ($result instanceof \Generator) {
+                $this->resolveGenerator($result, $rs->clientId);
+            }
+        };
     }
 
     private function sendToGenerator(ResolverStruct $rs, \Exception $error = null, $result = null) {
@@ -567,19 +603,18 @@ class Endpoint implements ServerObserver {
     private function read(Session $session) {
         $data = @fread($session->socket, $this->readGranularity);
 
-        if ($data === false) {
-            $session->closeCode = Codes::ABNORMAL_CLOSE;
-            $session->closeReason = "Socket connection severed";
-            $this->endSession($session);
-        } else {
+        if ($data != '') {
             $dataLen = strlen($data);
             $session->parseState->buffer .= $data;
-
             $session->parseState->bufferSize += $dataLen;
             $session->lastReadAt = $this->now;
             $session->bytesRead += $dataLen;
             $this->renewHeartbeatTimeout($session->clientId);
             $this->parse($session);
+        } elseif (!is_resource($session->socket) || feof($session->socket)) {
+            $session->closeCode = Codes::ABNORMAL_CLOSE;
+            $session->closeReason = "Socket connection severed";
+            $this->endSession($session);
         }
     }
 
@@ -883,7 +918,7 @@ class Endpoint implements ServerObserver {
     private function receiveClose(Session $session, $payload) {
         $session->closeState |= Session::CLOSE_RECD;
 
-        if ($session->closeState & Session::CLOSE_DONE) {
+        if ($session->closeState === Session::CLOSE_DONE) {
             $this->endSession($session);
         } else {
             @stream_socket_shutdown($session->socket, STREAM_SHUT_RD);
@@ -947,7 +982,6 @@ class Endpoint implements ServerObserver {
 
             if ($writeState->bufferSize === 0) {
                 $writeState->buffer = '';
-                $writeState->bufferSize = 0;
                 goto after_completed_frame_write;
             } else {
                 $writeState->buffer = substr($writeState->buffer, $bytesWritten);
@@ -1008,12 +1042,18 @@ class Endpoint implements ServerObserver {
         }
 
         further_write_needed: {
-            $this->reactor->enable($session->writeWatcher);
+            if (!$session->isWriteWatcherEnabled) {
+                $session->isWriteWatcherEnabled = true;
+                $this->reactor->enable($session->writeWatcher);
+            }
             return;
         }
 
         all_data_sent: {
-            $this->reactor->disable($session->writeWatcher);
+            if ($session->isWriteWatcherEnabled) {
+                $session->isWriteWatcherEnabled = false;
+                $this->reactor->disable($session->writeWatcher);
+            }
             return;
         }
 
@@ -1101,11 +1141,11 @@ class Endpoint implements ServerObserver {
     }
 
     private function closeSession(Session $session, $code, $reason = '') {
-        if (!($session->closeState && Session::CLOSE_INIT)) {
+        if (!($session->closeState & Session::CLOSE_INIT)) {
             $promisor = new Future($this->reactor);
             $session->closeState |= Session::CLOSE_INIT;
             $session->closePromisor = $promisor;
-            $session->closecode = $code;
+            $session->closeCode = $code;
             $session->closeReason = isset($reason[125]) ? substr($reason, 0, 125) : $reason;
             $session->closePayload = pack('S', $code) . $reason;
             $frameStruct = $this->buildFrameStruct(Frame::OP_CLOSE, $session->closePayload, $fin=1);
@@ -1146,10 +1186,8 @@ class Endpoint implements ServerObserver {
 
         $clientId = $session->clientId;
 
-        $noSessionsRemaining = empty($this->sessions);
-
         // Don't wake up every 1000ms to execute timeouts if no clients are connected
-        if ($noSessionsRemaining) {
+        if (empty($this->sessions)) {
             $this->reactor->disable($this->timeoutWatcher);
         }
 
@@ -1161,6 +1199,7 @@ class Endpoint implements ServerObserver {
 
         $code = $session->closeCode;
         $reason = $session->closeReason;
+
         $this->notifyEndpointOnClose($clientId, $code, $reason);
     }
 

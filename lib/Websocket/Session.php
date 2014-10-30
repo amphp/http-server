@@ -17,6 +17,7 @@ class Session {
     public $writeState;
     public $readWatcher;
     public $writeWatcher;
+    public $isWriteWatcherEnabled;
     public $pendingPings = [];
     public $serverCloseCallback;
     public $messageBuffer = '';

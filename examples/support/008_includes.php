@@ -12,8 +12,7 @@ class ExampleWebsocket implements Websocket {
     }
 
     public function onOpen($clientId, array $httpEnvironment) {
-        $this->clientCount++;
-        $msg = json_encode(['type' => 'count', 'data' => $this->clientCount]);
+        $msg = json_encode(['type' => 'count', 'data' => ++$this->clientCount]);
 
         // Broadcast the current user count to all users. Yielding the
         // "broadcast" key with a string element is a shortcut for sending
@@ -30,8 +29,7 @@ class ExampleWebsocket implements Websocket {
         $include = [];
 
         // Exclude the client that sent us this message from the broadcast
-        // because our javascript has already displayed the message on the
-        // client end of things.
+        // because our javascript has already displayed it at the front end
         $exclude = [$clientId];
 
         // Broadcast the message.
@@ -39,8 +37,7 @@ class ExampleWebsocket implements Websocket {
     }
 
     public function onClose($clientId, $code, $reason) {
-        $this->clientCount--;
-        $msg = json_encode(['type' => 'count', 'data' => $this->clientCount]);
+        $msg = json_encode(['type' => 'count', 'data' => --$this->clientCount]);
 
         // Broadcast the current user count to all connected users
         yield 'broadcast' => $msg;

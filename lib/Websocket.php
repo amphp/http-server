@@ -14,6 +14,8 @@ interface Websocket {
     const IMMEDIATELY = 'immediately';
     const ONCE = 'once';
     const REPEAT = 'repeat';
+    const ON_READABLE = 'on-readable';
+    const ON_WRITABLE = 'on-writable';
     const ENABLE = 'enable';
     const DISABLE = 'disable';
     const CANCEL = 'cancel';
