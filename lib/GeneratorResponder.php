@@ -129,11 +129,16 @@ class GeneratorResponder {
             if ($gen->valid()) {
                 $key = $gen->key();
                 $current = $gen->current();
-                $promise = $this->promisifyYield($key, $current);
-                $this->struct->reactor->immediately(function() use ($gen, $promisor, $promise) {
-                    $promise->when(function($error, $result) use ($gen, $promisor) {
-                        $this->sendToGenerator($gen, $promisor, $error, $result);
-                    });
+                $promiseStruct = $this->promisifyYield($key, $current);
+                $this->struct->reactor->immediately(function() use ($gen, $promisor, $promiseStruct) {
+                    list($promise, $noWait) = $promiseStruct;
+                    if ($noWait) {
+                        $this->sendToGenerator($gen, $promisor, $error = null, $result = null);
+                    } else {
+                        $promise->when(function($error, $result) use ($gen, $promisor) {
+                            $this->sendToGenerator($gen, $promisor, $error, $result);
+                        });
+                    }
                 });
             } elseif ($promisor === $this->promisor) {
                 $this->finalizeWrite();
@@ -146,11 +151,12 @@ class GeneratorResponder {
     }
 
     private function promisifyYield($key, $current) {
+        $noWait = false;
+
         if ($this->isSocketGone && $this->shouldNotifyUserAbort) {
             $this->shouldNotifyUserAbort = false;
-            return new Failure(new ClientGoneException);
-        } elseif ($current instanceof Promise) {
-            return $current;
+            $promise = new Failure(new ClientGoneException);
+            goto return_struct;
         } elseif ($key === (string) $key) {
             goto explicit_key;
         } else {
@@ -158,7 +164,15 @@ class GeneratorResponder {
         }
 
         explicit_key: {
+            $key = strtolower($key);
+            if ($key[0]) === self::NOWAIT_PREFIX) {
+                $noWait = true;
+                $key = substr($key, 1);
+            }
+
             switch ($key) {
+                case Websocket::NO_WAIT:
+                    goto implicit_key;
                 case self::STATUS:
                     goto status;
                 case self::REASON:
@@ -188,29 +202,37 @@ class GeneratorResponder {
                 case Resolver::SOME:
                     goto combinator;
                 default:
-                    return new Failure(new \DomainException(
+                    $promise = new Failure(new \DomainException(
                         sprintf('Unknown yield key: "%s"', $key)
                     ));
+                    goto return_struct;
             }
         }
 
         implicit_key: {
-            if (is_string($current)) {
+            if ($current instanceof Promise) {
+                $promise = $current;
+            } elseif ($current instanceof \Generator) {
+                $promise = $this->resolveGenerator($current);
+            } elseif (is_string($current)) {
                 goto body;
             } elseif (is_array($current)) {
                 // An array without an explicit key is assumed to be an "all" combinator
                 $key = Resolver::ALL;
                 goto combinator;
-            } elseif ($current instanceof \Generator) {
-                return $this->resolveGenerator($current);
             } else {
-                return new Success($current);
+                $promise = new Success($current);
             }
+
+            goto return_struct;
         }
 
         immediately: {
-            if (!is_callable($current)) {
-                return new Failure(new \DomainException(
+            if (is_callable($current)) {
+                $watcherId = $this->struct->reactor->immediately($current);
+                $promise = new Success($watcherId);
+            } else {
+                $promise = new Failure(new \DomainException(
                     sprintf(
                         '"%s" yield requires callable; %s provided',
                         $key,
@@ -219,14 +241,16 @@ class GeneratorResponder {
                 ));
             }
 
-            $watcherId = $this->struct->reactor->immediately($current);
-
-            return new Success($watcherId);
+            goto return_struct;
         }
 
         schedule: {
-            if (!($current && isset($current[0], $current[1]) && is_array($current))) {
-                return new Failure(new \DomainException(
+            if ($current && isset($current[0], $current[1]) && is_array($current)) {
+                list($func, $msDelay) = $current;
+                $watcherId = $this->struct->reactor->{$key}($func, $msDelay);
+                $promise = new Success($watcherId);
+            } else {
+                $promise = new Failure(new \DomainException(
                     sprintf(
                         '"%s" yield requires [callable $func, int $msDelay]; %s provided',
                         $key,
@@ -235,24 +259,23 @@ class GeneratorResponder {
                 ));
             }
 
-            list($func, $msDelay) = $current;
-            $watcherId = $this->struct->reactor->{$key}($func, $msDelay);
-
-            return new Success($watcherId);
+            goto return_struct;
         }
 
         watcher_control: {
             $this->struct->reactor->{$key}($current);
-            return new Success;
+            $promise = new Success;
+
+            goto return_struct;
         }
 
         wait: {
-            $promisor = new Future($this->struct->reactor);
-            $this->struct->reactor->once(function() use ($promisor) {
-                $promisor->succeed();
+            $promise = new Future($this->struct->reactor);
+            $this->struct->reactor->once(function() use ($promise) {
+                $promise->succeed();
             }, (int) $current);
 
-            return $promisor;
+            goto return_struct;
         }
 
         combinator: {
@@ -269,54 +292,55 @@ class GeneratorResponder {
                 $promises[$index] = $promise;
             }
 
-            return $this->combinator->{$key}($promises);
+            $promise = $this->combinator->{$key}($promises);
+
+            goto return_struct;
         }
 
         status: {
             if ($this->isOutputStarted) {
-                return new Failure(new \LogicException(
+                $promise = new Failure(new \LogicException(
                     'Cannot assign status code: output already started'
                 ));
-            }
-
-            $status = (int) $current;
-
-            if ($status < 100 || $status > 599) {
-                return new Failure(new \DomainException(
+            } elseif ($status < 100 || $status > 599) {
+                $promise = new Failure(new \DomainException(
                     'Cannot assign status code: integer in the set [100,599] required'
                 ));
+            } else {
+                $status = (int) $current;
+                $this->status = $status;
+                $promise = new Success($status);
             }
 
-            $this->status = $status;
-
-            return new Success($status);
+            goto return_struct;
         }
 
         reason: {
             if ($this->isOutputStarted) {
-                return new Failure(new \LogicException(
+                $promise = new Failure(new \LogicException(
                     'Cannot assign reason phrase: output already started'
                 ));
+            } else {
+                $this->reason = $reason = (string) $current;
+                $promise = new Success($reason);
             }
 
-            $this->reason = $reason = (string) $current;
-
-            return new Success($reason);
+            goto return_struct;
         }
 
         header: {
             if ($this->isOutputStarted) {
-                return new Failure(new \LogicException(
+                $promise = new Failure(new \LogicException(
                     'Cannot assign header: output already started'
                 ));
-            }
-
-            if (is_array($current)) {
+            } elseif (is_array($current)) {
                 $this->headers += $current;
+                $promise = new Success($current);
             } elseif (is_string($current)) {
                 $this->headers[] = (string) $current;
+                $promise = new Success($current);
             } else {
-                return new Failure(new \DomainException(
+                $promise = new Failure(new \DomainException(
                     sprintf(
                         '"header" key expects a string or array of strings; %s yielded',
                         gettype($current)
@@ -324,7 +348,7 @@ class GeneratorResponder {
                 ));
             }
 
-            return new Success($current);
+            goto return_struct;
         }
 
         body: {
@@ -333,7 +357,9 @@ class GeneratorResponder {
                 // caugh the ClientGoneException and chosen to continue
                 // processing. Indicate success to the generator but do
                 // not buffer any further data for writing.
-                return new Success;
+                $promise = new Success;
+
+                goto return_struct;
             }
 
             if (!$this->isOutputStarted) {
@@ -348,7 +374,13 @@ class GeneratorResponder {
                 $this->doWrite();
             }
 
-            return new Success($current);
+            $promise = new Success($current);
+
+            goto return_struct;
+        }
+
+        return_struct: {
+            return [$promise, $noWait];
         }
     }
 
