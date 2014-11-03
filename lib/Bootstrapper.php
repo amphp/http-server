@@ -321,20 +321,28 @@ class Bootstrapper {
     }
 
     private function buildWebsocketRouteHandlers(RouteCollector $rc, array $routes) {
-        $handshaker = $this->injector->make('Aerys\\Websocket\\Handshaker');
-        foreach ($routes as list($uriPath, $websocketClass, $endpointOptions)) {
-            $endpoint = $this->makeWebsocketEndpoint($websocketClass);
-            $handshaker->addEndpoint($uriPath, $endpoint);
+        $uris = [];
+        $endpoints = [];
+        foreach ($routes as list($uri, $websocketClass, $endpointOptions)) {
+            $uris[] = $uri;
+            $endpoints[$uri] = $endpoint = $this->makeWebsocketEndpoint($websocketClass);
             $this->configureWebsocketEndpoint($endpoint, $endpointOptions);
-            $rc->addRoute('GET', $uriPath, $handshaker);
+        }
+
+        $handshaker = $this->injector->make('Aerys\\Websocket\\Handshaker', [
+            ':endpoints' => $endpoints
+        ]);
+
+        foreach ($uris as $uri) {
+            $rc->addRoute('GET', $uri, $handshaker);
         }
     }
 
-    private function makeWebsocketEndpoint($websocketClass) {
+    private function makeWebsocketEndpoint($websocketClassOrInstance) {
         try {
-            $definitionKey = is_string($websocketClass) ? 'websocket' : ':websocket';
+            $definitionKey = is_string($websocketClassOrInstance) ? 'websocket' : ':websocket';
             return $this->injector->make('Aerys\\Websocket\\Endpoint',  [
-                $definitionKey => $websocketClass
+                $definitionKey => $websocketClassOrInstance
             ]);
         } catch (\Exception $e) {
             throw new BootException("Failed building websocket endpoint: {$websocketClass}", $code = 0, $e);

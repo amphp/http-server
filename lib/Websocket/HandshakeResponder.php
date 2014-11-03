@@ -2,97 +2,49 @@
 
 namespace Aerys\Websocket;
 
-use Amp\Success;
-use Amp\Failure;
-use Amp\Future;
-use Aerys\Server;
 use Aerys\Responder;
 use Aerys\ResponderStruct;
-use Aerys\ClientGoneException;
 
 class HandshakeResponder implements Responder {
-    private $responderStruct;
     private $endpoint;
-    private $buffer;
-    private $bufferSize;
-    private $isWatcherEnabled;
-    private $promisor;
+    private $responderStruct;
 
     /**
-     * @param \Aerys\Websocket\Endpoint $endpoint
-     * @param string $handshakeResponse
+     * @param Endpoint $endpoint
      */
-    public function __construct(Endpoint $endpoint, $handshakeResponse) {
+    public function __construct(Endpoint $endpoint) {
         $this->endpoint = $endpoint;
-        $this->buffer = $handshakeResponse;
-        $this->bufferSize = strlen($handshakeResponse);
     }
 
     /**
      * Prepare the Responder
      *
-     * @param Aerys\ResponderStruct $responderStruct
+     * @param \Aerys\ResponderStruct $responderStruct
      */
     public function prepare(ResponderStruct $responderStruct) {
         $this->responderStruct = $responderStruct;
     }
 
     /**
-     * Write the prepared response
+     * Invoked by the server when it's time to write the response to the client
      *
-     * @return \Amp\Promise
+     * Instead of writing the handshake response at this time we export the socket
+     * from the server. This allows us to JIT the handshake response based on what
+     * the application's Websocket::onOpen() method chooses to do with the client
+     * socket given the HTTP handshake request.
+     *
+     * Exporting the socket at this time is safe because we're either going to proceed
+     * with the protocol upgrade or we're going to fail the handshake and close the
+     * connection. Neither execution path requires further interaction with the HTTP
+     * server.
+     *
+     * @return void
      */
     public function write() {
-        $responderStruct = $this->responderStruct;
-        $bytesWritten = @fwrite($responderStruct->socket, $this->buffer);
-
-        if ($bytesWritten === $this->bufferSize) {
-            goto write_complete;
-        } elseif ($bytesWritten !== false) {
-            goto write_incomplete;
-        } else {
-            goto write_error;
-        }
-
-        write_complete: {
-            if ($this->isWatcherEnabled) {
-                $responderStruct->reactor->disable($responderStruct->writeWatcher);
-                $this->isWatcherEnabled = false;
-            }
-
-            $mustClose = false;
-            $request = $responderStruct->request;
-            $server = $responderStruct->server;
-            $socketId = $request['AERYS_SOCKET_ID'];
-            list($socket, $onClose) = $server->exportSocket($socketId);
-            $this->endpoint->import($socket, $onClose, $request);
-
-            return $this->promisor ? $this->promisor->succeed($mustClose) : new Success($mustClose);
-        }
-
-        write_incomplete: {
-            $this->bufferSize -= $bytesWritten;
-            $this->buffer = substr($this->buffer, $bytesWritten);
-
-            if (!$this->isWatcherEnabled) {
-                $this->isWatcherEnabled = true;
-                $responderStruct->reactor->enable($responderStruct->writeWatcher);
-            }
-
-            return $this->promisor ?: ($this->promisor = new Future($responderStruct->reactor));
-        }
-
-        write_error: {
-            if ($this->isWatcherEnabled) {
-                $this->isWatcherEnabled = false;
-                $responderStruct->reactor->disable($responderStruct->writeWatcher);
-            }
-
-            $error = new ClientGoneException(
-                'Write failed: destination stream went away'
-            );
-
-            return $this->promisor ? $this->promisor->fail($error) : new Failure($error);
-        }
+        $server = $this->responderStruct->server;
+        $request = $this->responderStruct->request;
+        $socketId = $request['AERYS_SOCKET_ID'];
+        list($socket, $onClose) = $server->exportSocket($socketId);
+        $this->endpoint->import($socket, $onClose, $request);
     }
 }

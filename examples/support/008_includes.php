@@ -7,10 +7,6 @@ use Aerys\Websocket\Broadcast;
 class ExampleWebsocket implements Websocket {
     private $clientCount = 0;
 
-    public function onStart() {
-        return new Success;
-    }
-
     public function onOpen($clientId, array $httpEnvironment) {
         $msg = json_encode(['type' => 'count', 'data' => ++$this->clientCount]);
 
@@ -32,8 +28,8 @@ class ExampleWebsocket implements Websocket {
         // because our javascript has already displayed it at the front end
         $exclude = [$clientId];
 
-        // Broadcast the message.
-        yield new Broadcast($msg, $include, $exclude);
+        // Broadcast the message using our include/exclude constraints
+        yield 'broadcast' => [$msg, $include, $exclude];
     }
 
     public function onClose($clientId, $code, $reason) {
@@ -41,9 +37,5 @@ class ExampleWebsocket implements Websocket {
 
         // Broadcast the current user count to all connected users
         yield 'broadcast' => $msg;
-    }
-
-    public function onStop() {
-        return new Success;
     }
 }

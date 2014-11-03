@@ -842,6 +842,12 @@ class Server {
 
         $client->pendingResponder = $responder;
         $promise = $responder->write();
+
+        if ($client->isGone) {
+            // Allow responders to export the client socket
+            return;
+        }
+
         $promise->when(function($error, $mustClose) use ($client) {
             $client->pendingResponder = null;
 
@@ -980,10 +986,6 @@ class Server {
     private function clearClientReferences($client, $decrementClientCount) {
         $this->reactor->cancel($client->readWatcher);
         $this->reactor->cancel($client->writeWatcher);
-
-        if ($client->cycles) {
-            // @TODO Account for in-progress future responses?
-        }
 
         // We might have pending async jobs out for this client. Set a flag so async
         // jobs holding a reference to the client will know to ignore future values

@@ -3,18 +3,25 @@
 namespace Aerys\Websocket;
 
 class Session {
+    const HANDSHAKE_NONE = 0;
+    const HANDSHAKE_INIT = 1;
+    const HANDSHAKE_DONE = 2;
     const CLOSE_NONE = 0b000;
     const CLOSE_INIT = 0b001;
-    const CLOSE_RECD = 0b010;
+    const CLOSE_RCVD = 0b010;
     const CLOSE_SENT = 0b100;
     const CLOSE_DONE = 0b111;
 
+    public $handshakeState = self::HANDSHAKE_NONE;
+    public $status;
+    public $reason;
+    public $header;
+    public $request;
+
     public $clientId;
     public $socket;
-    public $stats;
     public $parser;
     public $parseState;
-    public $writeState;
     public $readWatcher;
     public $writeWatcher;
     public $isWriteWatcherEnabled;
@@ -27,6 +34,13 @@ class Session {
     public $closeReason;
     public $closePayload;
     public $closePromisor;
+
+    public $writeBuffer = '';
+    public $writeBufferSize = 0;
+    public $writeDataQueue = [];
+    public $writeControlQueue = [];
+    public $writeOpcode;
+    public $writeIsFin;
 
     public $bytesRead;
     public $bytesSent;
