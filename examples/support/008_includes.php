@@ -1,10 +1,6 @@
 <?php
 
-use Amp\Success;
-use Aerys\Websocket;
-use Aerys\Websocket\Broadcast;
-
-class ExampleWebsocket implements Websocket {
+class ExampleWebsocket implements Aerys\Websocket {
     private $clientCount = 0;
 
     public function onOpen($clientId, array $httpEnvironment) {
