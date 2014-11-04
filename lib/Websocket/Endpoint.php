@@ -130,7 +130,6 @@ class Endpoint implements ServerObserver {
         $session->connectedAt = $this->now ?: time();
         $session->clientId = $clientId;
         $session->socket = $socket;
-        $session->parser = [$this, 'parseRfc6455'];
         $session->parseState = new ParseState;
         $this->pendingSessions[$clientId] = $session;
         $this->notifyApplicationOnOpen($session);
@@ -158,15 +157,15 @@ class Endpoint implements ServerObserver {
     }
 
     private function handshake(Session $session) {
-        $status = $session->handshakeStatus;
-        $header = $session->handshakeHeader ? implode("\r\n", $session->handshakeHeader) : '';
+        $status = $session->handshakeHttpStatus;
+        $header = $session->handshakeHttpHeader ? implode("\r\n", $session->handshakeHttpHeader) : '';
 
         if ($status) {
             // It's important to *always* close the connection after failing the
             // handshake because we've already exported the socket from the HTTP
             // server and it's our job to close the socket when we're finished.
             $header = \Aerys\setHeader($header, 'Connection', 'close');
-            $reason = $session->handshakeReason ? " {$session->handshakeReason}" : '';
+            $reason = $session->handshakeHttpReason ? " {$session->handshakeHttpReason}" : '';
             $rawResponse = "HTTP/1.1 {$status}{$reason}\r\n{$header}\r\n\r\n";
         } else {
             $request = $session->request;
@@ -186,7 +185,7 @@ class Endpoint implements ServerObserver {
         $session->writeBuffer = $rawResponse;
         $session->writeBufferSize = strlen($rawResponse);
         $session->isWriteWatcherEnabled = true;
-        $session->writeWatcher = $this->reactor->onWritable($socket, function() use ($session) {
+        $session->writeWatcher = $this->reactor->onWritable($session->socket, function() use ($session) {
             $this->write($session);
         });
     }
@@ -481,8 +480,8 @@ class Endpoint implements ServerObserver {
                     'Cannot assign status code: handshake already initiated'
                 ));
             } elseif ($current >= 400 && $current <= 599) {
-                $session->handshakeStatus = (int) $current;
-                $promise = new Success($session->handshakeStatus);
+                $session->handshakeHttpStatus = (int) $current;
+                $promise = new Success($session->handshakeHttpStatus);
             } else {
                 $promise = new Failure(new \DomainException(
                     'Cannot assign status code: integer in the range [400-599] required'
@@ -511,10 +510,10 @@ class Endpoint implements ServerObserver {
                     'Cannot assign header: handshake already initiated'
                 ));
             } elseif (is_array($current)) {
-                $session->handshakeHeader += $current;
+                $session->handshakeHttpHeader += $current;
                 $promise = new Success($current);
             } elseif (is_string($current)) {
-                $session->handshakeHeader[] = (string) $current;
+                $session->handshakeHttpHeader[] = (string) $current;
                 $promise = new Success($current);
             } else {
                 $promise = new Failure(new \DomainException(
@@ -677,17 +676,32 @@ class Endpoint implements ServerObserver {
     }
 
     private function parse(Session $session) {
-        try {
-            $parser = $session->parser;
-            while ($parseStruct = $parser($session->parseState)) {
-                $this->receiveFrame($session, $parseStruct);
+        while ($frameStruct = $this->parseRfc6455($session->parseState)) {
+            switch (array_shift($frameStruct)) {
+                case ParseState::PARSE_FRAME:
+                    $this->receiveFrame($session, $frameStruct);
+                    break;
+                case ParseState::PARSE_ERR_SYNTAX:
+                    $errorMsg = $frameStruct[0];
+                    if ($session->closeState & Session::CLOSE_INIT) {
+                        // If the close has already been initiated we don't tolerate
+                        // errors and immediately unload the client session.
+                        $this->unloadSession($session);
+                    } else {
+                        $this->closeSession($session, Codes::PROTOCOL_ERROR, $errorMsg);
+                    }
+                    break;
+                case ParseState::PARSE_ERR_POLICY:
+                    $errorMsg = $frameStruct[0];
+                    $session->closeCode = Codes::POLICY_VIOLATION;
+                    $session->closeReason = $errorMsg;
+                    $this->unloadSession($session);
+                    break;
+                default:
+                    throw new \UnexpectedValueException(
+                        'Unexpected frame parse result code'
+                    );
             }
-        } catch (PolicyException $e) {
-            $this->closeSession($session, Codes::POLICY_VIOLATION, $e->getMessage());
-        } catch (ParseException $e) {
-            $session->closeCode = Codes::PROTOCOL_ERROR;
-            $session->closeReason = $e->getMessage();
-            $this->unloadSession($session);
         }
     }
 
@@ -775,9 +789,9 @@ class Endpoint implements ServerObserver {
 
         validate_length_127_32bit: {
             if ($lengthLong32Pair[0] !== 0 || $lengthLong32Pair[1] < 0) {
-                throw new PolicyException(
-                    'Payload exceeds maximum allowable size'
-                );
+                $resultCode = ParseState::PARSE_ERR_POLICY;
+                $errorMsg = 'Payload exceeds maximum allowable size';
+                goto error;
             }
             $ps->frameLength = $lengthLong32Pair[1];
 
@@ -798,29 +812,29 @@ class Endpoint implements ServerObserver {
 
         validate_header: {
             if ($ps->isControlFrame && !$ps->fin) {
-                throw new ParseException(
-                    'Illegal control frame fragmentation'
-                );
+                $resultCode = ParseState::PARSE_ERR_SYNTAX;
+                $errorMsg = 'Illegal control frame fragmentation';
+                goto error;
             } elseif ($this->maxFrameSize && $ps->frameLength > $this->maxFrameSize) {
-                throw new PolicyException(
-                    'Payload exceeds maximum allowable frame size'
-                );
+                $resultCode = ParseState::PARSE_ERR_POLICY;
+                $errorMsg = 'Payload exceeds maximum allowable frame size';
+                goto error;
             } elseif ($this->maxMsgSize && ($ps->frameLength + $ps->dataMsgBytesRecd) > $this->maxMsgSize) {
-                throw new PolicyException(
-                    'Payload exceeds maximum allowable message size'
-                );
+                $resultCode = ParseState::PARSE_ERR_POLICY;
+                $errorMsg = 'Payload exceeds maximum allowable message size';
+                goto error;
             } elseif ($this->textOnly && $ps->opcode === 0x02) {
-                throw new PolicyException(
-                    'BINARY opcodes (0x02) not accepted'
-                );
+                $resultCode = ParseState::PARSE_ERR_POLICY;
+                $errorMsg = 'BINARY opcodes (0x02) not accepted';
+                goto error;
             } elseif ($ps->frameLength > 0 && !$ps->isMasked) {
-                throw new ParseException(
-                    'Payload mask required'
-                );
+                $resultCode = ParseState::PARSE_ERR_SYNTAX;
+                $errorMsg = 'Payload mask required';
+                goto error;
             } elseif (!($ps->opcode || $ps->isControlFrame)) {
-                throw new ParseException(
-                    'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY'
-                );
+                $resultCode = ParseState::PARSE_ERR_SYNTAX;
+                $errorMsg = 'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY';
+                goto error;
             }
 
             if (!$ps->frameLength) {
@@ -874,9 +888,9 @@ class Endpoint implements ServerObserver {
                 && $this->validateUtf8
                 && !preg_match('//u', $data)
             ) {
-                throw new ParseException(
-                    'Invalid TEXT data; UTF-8 required'
-                );
+                $resultCode = ParseState::PARSE_ERR_SYNTAX;
+                $errorMsg = 'Invalid TEXT data; UTF-8 required';
+                goto error;
             }
 
             $ps->buffer = substr($ps->buffer, $dataLen);
@@ -894,14 +908,13 @@ class Endpoint implements ServerObserver {
             if ($ps->frameBytesRecd == $ps->frameLength) {
                 goto frame_complete;
             } else {
-
                 goto more_data_needed;
             }
         }
 
         frame_complete: {
             $payloadReference = isset($payloadReference) ? $payloadReference : '';
-            $frameStruct = [$payloadReference, $ps->opcode, $ps->fin];
+            $frameStruct = [ParseState::PARSE_FRAME, $payloadReference, $ps->opcode, $ps->fin];
             $payloadReference = '';
 
             if ($ps->fin && $ps->opcode < Frame::OP_CLOSE) {
@@ -919,6 +932,10 @@ class Endpoint implements ServerObserver {
             $ps->isControlFrame = null;
 
             return $frameStruct;
+        }
+
+        error: {
+            return [$resultCode, $errorMsg];
         }
 
         more_data_needed: {
@@ -1056,7 +1073,7 @@ class Endpoint implements ServerObserver {
             if ($session->writeBufferSize > 0) {
                 $session->writeBuffer = substr($session->writeBuffer, $bytesWritten);
                 goto further_write_needed;
-            } elseif ($session->status) {
+            } elseif ($session->handshakeHttpStatus) {
                 // An non-empty status code means we sent an HTTP error response for the
                 // handshake. We now need to close the socket and unload the session.
                 @fclose($session->socket);
@@ -1288,7 +1305,7 @@ class Endpoint implements ServerObserver {
 
         // Only notify onClose if the application didn't fail the websocket handshake with
         // a custom HTTP error response.
-        if (empty($session->status)) {
+        if (empty($session->handshakeHttpStatus)) {
             $this->notifyApplicationOnClose($session);
         }
     }

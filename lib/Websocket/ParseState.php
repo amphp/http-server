@@ -3,6 +3,10 @@
 namespace Aerys\Websocket;
 
 class ParseState {
+    const PARSE_FRAME = 1;
+    const PARSE_ERR_SYNTAX = 2;
+    const PARSE_ERR_POLICY = 3;
+
     const START = 0;
     const LENGTH_126 = 1;
     const LENGTH_127 = 2;

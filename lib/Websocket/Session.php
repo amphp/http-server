@@ -13,9 +13,9 @@ class Session {
     const CLOSE_DONE = 0b111;
 
     public $handshakeState = self::HANDSHAKE_NONE;
-    public $status;
-    public $reason;
-    public $header;
+    public $handshakeHttpStatus;
+    public $handshakeHttpReason;
+    public $handshakeHttpHeader;
     public $request;
 
     public $clientId;
