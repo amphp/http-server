@@ -284,8 +284,7 @@ class Endpoint implements ServerObserver {
                 case Websocket::INSPECT:
                     goto inspect;
                 case Websocket::CLOSE:
-                    $promise = $this->close($current);
-                    goto return_struct;
+                    goto close;
                 case Websocket::IMMEDIATELY:
                     goto immediately;
                 case Websocket::ONCE:
@@ -364,6 +363,21 @@ class Endpoint implements ServerObserver {
             } else {
                 $promise = new Failure(new \DomainException(
                     'Invalid broadcast yield: string or [string $msg, array $include, array $exclude] expected'
+                ));
+            }
+
+            goto return_struct;
+        }
+
+        close: {
+            if (is_scalar($current)) {
+                $promise = $this->close($current);
+            } elseif ($current && isset($current[0], $current[1], $current[2]) && is_array($current)) {
+                list($clientId, $code, $reason) = $current;
+                $promise = $this->close($clientId, $code, $reason);
+            } else {
+                $promise = new Failure(new \DomainException(
+                    'Invalid close yield: string or [$clientId, $code, $reason] array expected'
                 ));
             }
 
