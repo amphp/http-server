@@ -46,7 +46,6 @@ class Endpoint implements ServerObserver {
     private $validateUtf8 = false;
     private $textOnly = true;
     private $queuedPingLimit = 3;
-    private $notifyFrames = false;
     // @TODO add minimum average frame size rate threshold to prevent tiny-frame DoS
 
     private $errorLogger;
@@ -857,9 +856,9 @@ class Endpoint implements ServerObserver {
         validate_length_127_64bit: {
             $length = ($lengthLong32Pair[0] << 32) | $lengthLong32Pair[1];
             if ($length < 0) {
-                throw new ParseException(
-                    'Most significant bit of 64-bit length field set'
-                );
+                $resultCode = ParseState::PARSE_ERR_SYNTAX;
+                $errorMsg = 'Most significant bit of 64-bit length field set';
+                goto error;
             }
             $ps->frameLength = $length;
 
