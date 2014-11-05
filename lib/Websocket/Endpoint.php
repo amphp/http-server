@@ -346,7 +346,14 @@ class Endpoint implements ServerObserver {
             if (empty($session->handshakeState)) {
                 $this->handshake($session);
             }
-            $promise = $this->send($current, [$session->clientId]);
+            if (empty($session->handshakeHttpStatus)) {
+                $promise = $this->send($current, [$session->clientId]);
+            } else {
+                $promise = new Failure(new \LogicException(
+                    'Invalid send yield: websocket handshake already failed'
+                ));
+            }
+            
             goto return_struct;
         }
 
