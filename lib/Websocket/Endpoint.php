@@ -383,7 +383,7 @@ class Endpoint implements ServerObserver {
 
             if (is_string($current)) {
                 $promise = $this->send($current, []);
-            } elseif ($current && isset($current[0], $current[1], $current[2]) && is_array($current)) {
+            } elseif (is_array($current) && isset($current[0], $current[1], $current[2])) {
                 list($msg, $include, $exclude) = $current;
                 $promise = $this->send($msg, $include, $exclude);
             } else {
@@ -463,7 +463,7 @@ class Endpoint implements ServerObserver {
         }
 
         stream_io_watcher: {
-            if ($current && isset($current[0], $current[1], $current[2]) && is_array($current)) {
+            if (is_array($current) && isset($current[0], $current[1], $current[2])) {
                 list($stream, $func, $enableNow) = $current;
                 $func = $this->wrapWatcherCallback($rs, $func);
                 $watcherId = $this->reactor->{$ioWatchMethod}($stream, $func, $enableNow);
