@@ -44,7 +44,7 @@ class Endpoint implements ServerObserver {
     private $heartbeatPeriod = 10;
     private $closePeriod = 3;
     private $validateUtf8 = false;
-    private $textOnly = true;
+    private $textOnly = false;
     private $queuedPingLimit = 3;
     // @TODO add minimum average frame size rate threshold to prevent tiny-frame DoS
 
