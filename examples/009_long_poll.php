@@ -21,10 +21,10 @@ date_default_timezone_set('UTC');
 function longPoller($request) {
     $msDelay = 1000;
 
-    yield "<h1>longPoller()</h1>";
+    yield 'body' => "<h1>longPoller()</h1>";
 
     while (true) {
-        yield sprintf("The current time is %s</br>\n", date('r'));
+        yield 'body' => sprintf("The current time is %s</br>\n", date('r'));
 
         // Yielding the "wait" key tells the server to wait $msDelay milliseconds
         // before giving control back to our generator to resume the loop.

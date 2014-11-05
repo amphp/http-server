@@ -85,7 +85,7 @@ class BasicRouting {
         return $body;
     }
 
-    function myStaticHandler($request) {
+    static function myStaticHandler($request) {
         $body = '<html><body><h1>Ex202_MoreRouting::myStaticHandler</h1>';
         $body.= '<hr/>';
         $body.= self::generateLinkList($request['REQUEST_URI_PATH']);
