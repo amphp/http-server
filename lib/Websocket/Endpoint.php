@@ -279,7 +279,7 @@ class Endpoint implements ServerObserver {
         $session = $rs->session;
         $noWait = false;
 
-        if ($key && $key === (string) $key) {
+        if ($key === (string) $key) {
             goto explicit_key;
         } else {
             goto implicit_key;
