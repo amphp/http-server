@@ -143,16 +143,28 @@ class Endpoint implements ServerObserver {
             if ($result instanceof \Generator) {
                 $promise = $this->resolveGenerator($result, $session);
                 $promise->when(function($error, $result) use ($session) {
-                    // If the websocket handshake wasn't JIT'd as a result of output
-                    // to the client we should execute it now.
-                    if ($session->handshakeState === Session::HANDSHAKE_NONE) {
+                    if ($error) {
+                        $this->onApplicationError($session, $error);
+                    } elseif ($session->handshakeState === Session::HANDSHAKE_NONE) {
                         $this->handshake($session);
                     }
                 });
             }
-        } catch (\Exception $e) {
-            $errorLogger = $this->errorLogger;
-            $errorLogger($e);
+        } catch (\Exception $error) {
+            $this->onApplicationError($session, $error);
+        }
+    }
+
+    private function onApplicationError(Session $session, \Exception $error) {
+        $errorLogger = $this->errorLogger;
+        $errorLogger($error);
+
+        if (empty($session->handshakeState)) {
+            $session->handshakeHttpStatus = 500;
+            $session->handshakeHttpReason = 'Internal Server Error';
+            $this->handshake($session);
+        } elseif (empty($session->closeState)) {
+            $this->close($session->clientId, Codes::UNEXPECTED_SERVER_ERROR, $error->getMessage());
         }
     }
 
@@ -194,11 +206,15 @@ class Endpoint implements ServerObserver {
         try {
             $result = $this->websocket->onData($session->clientId, $payload);
             if ($result instanceof \Generator) {
-                $this->resolveGenerator($result, $session);
+                $promise = $this->resolveGenerator($result, $session);
+                $promise->when(function($error, $result) use ($session) {
+                    if ($error) {
+                        $this->onApplicationError($session, $error);
+                    }
+                });
             }
-        } catch (\Exception $e) {
-            $errorLogger = $this->errorLogger;
-            $errorLogger($e);
+        } catch (\Exception $error) {
+            $this->onApplicationError($session, $error);
         }
     }
 
@@ -209,11 +225,15 @@ class Endpoint implements ServerObserver {
             $reason = $session->closeReason;
             $result = $this->websocket->onClose($clientId, $code, $reason);
             if ($result instanceof \Generator) {
-                $this->resolveGenerator($result, $session);
+                $promise = $this->resolveGenerator($result, $session);
+                $promise->when(function($error, $result) use ($session) {
+                    if ($error) {
+                        $this->onApplicationError($session, $error);
+                    }
+                });
             }
-        } catch (\Exception $e) {
-            $errorLogger = $this->errorLogger;
-            $errorLogger($e);
+        } catch (\Exception $error) {
+            $this->onApplicationError($session, $error);
         }
     }
 
@@ -353,7 +373,7 @@ class Endpoint implements ServerObserver {
                     'Invalid send yield: websocket handshake already failed'
                 ));
             }
-            
+
             goto return_struct;
         }
 
