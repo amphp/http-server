@@ -4,21 +4,31 @@ use Amp\Success;
 use Amp\Failure;
 
 // In reality we'd use non-blocking libraries here to return promises.
-// For the purpose of this example we'll just return resolved promises
-// whose values are already fulfilled.
+// For the purpose of this example we'll just wait for a moment then
+// yield the final result at some point in the future.
 
+/**
+ * Multiply $x and $y after 25 milliseconds
+ */
 function asyncMultiply($x, $y) {
-    return new Success($x*$y);
+    yield 'wait' => 25;
+    yield ($x*$y);
 }
 
+/**
+ * Subtract $y from $x after 25 milliseconds
+ */
 function asyncSubtract($x, $y) {
-    return new Success($x-$y);
+    yield 'wait' => 25;
+    yield ($x-$y);
 }
 
+/**
+ * Fail after 25 milliseconds
+ */
 function asyncFailure() {
-    return new Failure(new \RuntimeException(
-        'Example async failure'
-    ));
+    yield 'wait' => 25;
+    throw new \RuntimeException('Example async failure');
 }
 
 
