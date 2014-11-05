@@ -371,13 +371,28 @@ class Endpoint implements ServerObserver {
 
         close: {
             if (is_scalar($current)) {
-                $promise = $this->close($current);
+                $clientId = $current;
+                $code = Codes::NORMAL_CLOSE;
+                $reason = '';
             } elseif ($current && isset($current[0], $current[1], $current[2]) && is_array($current)) {
                 list($clientId, $code, $reason) = $current;
-                $promise = $this->close($clientId, $code, $reason);
             } else {
                 $promise = new Failure(new \DomainException(
                     'Invalid close yield: string or [$clientId, $code, $reason] array expected'
+                ));
+                goto return_struct;
+            }
+
+            if (isset($this->sessions[$clientId])) {
+                $promise = $this->close($clientId, $code, $reason);
+            } elseif ($clientId == $session->clientId) {
+                $promise = new Failure(new \DomainException(
+                    'Invalid close yield: handshake not yet sent. A "status" command should be ' .
+                    'yielded instead to fail websocket handshakes.'
+                ));
+            } else {
+                $promise = new Failure(new \DomainException(
+                    sprintf('Invalid close yield: unkown clientId (%d)', $clientId)
                 ));
             }
 
