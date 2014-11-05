@@ -17,7 +17,7 @@ require __DIR__ . '/support/004_includes.php';
 
 function gen1($request) {
     $result = (yield asyncMultiply(6, 7));
-    yield "<html><body><h1>gen1: {$result}</h1></body></html>";
+    yield 'body' => "<html><body><h1>gen1: {$result}</h1></body></html>";
 }
 
 function gen2($request) {
@@ -25,7 +25,7 @@ function gen2($request) {
     $async17 = (yield asyncSubtract($async42, 25));
     $async34 = (yield asyncMultiply($async17, 2));
 
-    yield "<html><body><h1>gen2: {$async34}</h1></body></html>";
+    yield 'body' => "<html><body><h1>gen2: {$async34}</h1></body></html>";
 }
 
 function gen3($request) {
@@ -35,7 +35,7 @@ function gen3($request) {
         'result3' => asyncMultiply(5, 5)
     ]);
 
-    yield "<html><body><h1>{$result1} | {$result2} | {$result3} (gen3)</h1></body></html>";
+    yield 'body' => "<html><body><h1>{$result1} | {$result2} | {$result3} (gen3)</h1></body></html>";
 }
 
 function gen4($request) {
@@ -45,7 +45,7 @@ function gen4($request) {
         asyncMultiply(5, 5)
     ]);
 
-    yield "<html><body><h1>{$result1} | {$result2} | {$result3} (gen4)</h1></body></html>";
+    yield 'body' => "<html><body><h1>{$result1} | {$result2} | {$result3} (gen4)</h1></body></html>";
 }
 
 function gen5($request) {
@@ -53,18 +53,18 @@ function gen5($request) {
     yield 'reason' => 'OK';
     yield 'header' => 'X-My-Header: hello world';
     yield 'header' => 'X-My-Other-Header: hello again!';
-    yield '<html><body><h1>Hello, world (gen5).</h1></body></html>';
+    yield 'body' => '<html><body><h1>Hello, world (gen5).</h1></body></html>';
 }
 
 function gen6($request) {
     yield 'status' => 200;
-    yield '<html><body><h1>Hello, world (gen6).</h1></body></html>';
+    yield 'body' => '<html><body><h1>Hello, world (gen6).</h1></body></html>';
 }
 
 function gen7($request) {
     try {
         $result = (yield asyncFailure());
-        yield "<html><body><h1>You'll never see this</h1></body></html>";
+        yield 'body' => "<html><body><h1>You'll never see this</h1></body></html>";
     } catch (\Exception $e) {
         yield 'status' => 500;
         yield 'body' => "<html><h1>500 Internal Server Error (gen7)</h1><pre>{$e}</pre>";
@@ -77,20 +77,20 @@ function gen8($request) {
         'X-My-Header-2: hello again',
     ];
     yield 'header' => 'X-My-Header-3: hello three';
-    yield '<html><body><h1>Hello, world (gen8).</h1></body></html>';
+    yield 'body' => '<html><body><h1>Hello, world (gen8).</h1></body></html>';
 }
 
 function gen9($request) {
     try {
         // Start output
-        yield '<html><body><h1>Click your browser\'s STOP button now ...</h1>';
+        yield 'body' => '<html><body><h1>Click your browser\'s STOP button now ...</h1>';
 
         // Pause for thirty seconds. Click your browser's stop button
         // during this pause to see the } catch() { result in your console.
         yield 'wait' => 5000;
 
         // If the client never aborts we'll finish the HTML message ...
-        yield 'You were supposed to click stop!</body></html>';
+        yield 'body' => 'You were supposed to click stop!</body></html>';
 
     } catch (Aerys\ClientGoneException $e) {
         echo "Woot! we caught the client abort!\n";

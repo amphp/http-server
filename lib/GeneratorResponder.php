@@ -9,13 +9,10 @@ use Amp\Success;
 use Amp\Promisor;
 use Amp\Resolver;
 use Amp\Combinator;
+use Amp\YieldCommands as SystemYieldCommands;
+use Aerys\YieldCommands as HttpYieldCommands;
 
 class GeneratorResponder {
-    const STATUS = 'status';
-    const REASON = 'reason';
-    const HEADER = 'header';
-    const BODY = 'body';
-
     private $struct;
     private $isWatcherEnabled;
     private $isOutputStarted;
@@ -165,45 +162,51 @@ class GeneratorResponder {
 
         explicit_key: {
             $key = strtolower($key);
-            if ($key[0]) === self::NOWAIT_PREFIX) {
+            if ($key[0] === SystemYieldCommands::NOWAIT_PREFIX) {
                 $noWait = true;
                 $key = substr($key, 1);
             }
 
             switch ($key) {
-                case Websocket::NO_WAIT:
-                    goto implicit_key;
-                case self::STATUS:
+                case HttpYieldCommands::STATUS:
                     goto status;
-                case self::REASON:
+                case HttpYieldCommands::REASON:
                     goto reason;
-                case self::HEADER:
+                case HttpYieldCommands::HEADER:
                     goto header;
-                case self::BODY:
+                case HttpYieldCommands::BODY:
                     goto body;
-                case Resolver::IMMEDIATELY:
+                case SystemYieldCommands::IMMEDIATELY:
                     goto immediately;
-                case Resolver::ONCE:
+                case SystemYieldCommands::ONCE:
                     // fallthrough
-                case Resolver::REPEAT:
+                case SystemYieldCommands::REPEAT:
                     goto schedule;
-                case Resolver::ENABLE:
+                case SystemYieldCommands::ON_READABLE:
+                    $ioWatchMethod = 'onReadable';
+                    goto stream_io_watcher;
+                case SystemYieldCommands::ON_WRITABLE:
+                    $ioWatchMethod = 'onWritable';
+                    goto stream_io_watcher;
+                case SystemYieldCommands::ENABLE:
                     // fallthrough
-                case Resolver::DISABLE:
+                case SystemYieldCommands::DISABLE:
                     // fallthrough
-                case Resolver::CANCEL:
+                case SystemYieldCommands::CANCEL:
                     goto watcher_control;
-                case Resolver::WAIT:
+                case SystemYieldCommands::WAIT:
                     goto wait;
-                case Resolver::ALL:
+                case SystemYieldCommands::ALL:
                     // fallthrough
-                case Resolver::ANY:
+                case SystemYieldCommands::ANY:
                     // fallthrough
-                case Resolver::SOME:
+                case SystemYieldCommands::SOME:
                     goto combinator;
+                case SystemYieldCommands::NO_WAIT:
+                    goto implicit_key;
                 default:
                     $promise = new Failure(new \DomainException(
-                        sprintf('Unknown yield key: "%s"', $key)
+                        sprintf('Unknown or invalid yield command key: "%s"', $key)
                     ));
                     goto return_struct;
             }
@@ -214,11 +217,9 @@ class GeneratorResponder {
                 $promise = $current;
             } elseif ($current instanceof \Generator) {
                 $promise = $this->resolveGenerator($current);
-            } elseif (is_string($current)) {
-                goto body;
             } elseif (is_array($current)) {
                 // An array without an explicit key is assumed to be an "all" combinator
-                $key = Resolver::ALL;
+                $key = SystemYieldCommands::ALL;
                 goto combinator;
             } else {
                 $promise = new Success($current);
@@ -229,12 +230,13 @@ class GeneratorResponder {
 
         immediately: {
             if (is_callable($current)) {
-                $watcherId = $this->struct->reactor->immediately($current);
+                $func = $this->wrapWatcherCallback($current);
+                $watcherId = $this->struct->reactor->immediately($func);
                 $promise = new Success($watcherId);
             } else {
                 $promise = new Failure(new \DomainException(
                     sprintf(
-                        '"%s" yield requires callable; %s provided',
+                        '%s yield command requires callable; %s provided',
                         $key,
                         gettype($current)
                     )
@@ -247,12 +249,32 @@ class GeneratorResponder {
         schedule: {
             if ($current && isset($current[0], $current[1]) && is_array($current)) {
                 list($func, $msDelay) = $current;
+                $func = $this->wrapWatcherCallback($func);
                 $watcherId = $this->struct->reactor->{$key}($func, $msDelay);
                 $promise = new Success($watcherId);
             } else {
                 $promise = new Failure(new \DomainException(
                     sprintf(
-                        '"%s" yield requires [callable $func, int $msDelay]; %s provided',
+                        '%s yield command requires [callable $func, int $msDelay]; %s provided',
+                        $key,
+                        gettype($current)
+                    )
+                ));
+            }
+
+            goto return_struct;
+        }
+
+        stream_io_watcher: {
+            if (is_array($current) && isset($current[0], $current[1], $current[2]) && is_callable($current[1])) {
+                list($stream, $func, $enableNow) = $current;
+                $func = $this->wrapWatcherCallback($func);
+                $watcherId = $this->reactor->{$ioWatchMethod}($stream, $func, $enableNow);
+                $promise = new Success($watcherId);
+            } else {
+                $promise = new Failure(new \DomainException(
+                    sprintf(
+                        '%s yield command requires [resource $stream, callable $func, bool $enableNow]; %s provided',
                         $key,
                         gettype($current)
                     )
@@ -298,6 +320,7 @@ class GeneratorResponder {
         }
 
         status: {
+            $status = (int) $current;
             if ($this->isOutputStarted) {
                 $promise = new Failure(new \LogicException(
                     'Cannot assign status code: output already started'
@@ -307,7 +330,6 @@ class GeneratorResponder {
                     'Cannot assign status code: integer in the set [100,599] required'
                 ));
             } else {
-                $status = (int) $current;
                 $this->status = $status;
                 $promise = new Success($status);
             }
@@ -342,7 +364,7 @@ class GeneratorResponder {
             } else {
                 $promise = new Failure(new \DomainException(
                     sprintf(
-                        '"header" key expects a string or array of strings; %s yielded',
+                        'header yield command expects a string or array of strings; %s yielded',
                         gettype($current)
                     )
                 ));
@@ -354,7 +376,7 @@ class GeneratorResponder {
         body: {
             if ($this->isSocketGone) {
                 // If we've gotten this far the application has already
-                // caugh the ClientGoneException and chosen to continue
+                // caught the ClientGoneException and chosen to continue
                 // processing. Indicate success to the generator but do
                 // not buffer any further data for writing.
                 $promise = new Success;
@@ -382,6 +404,19 @@ class GeneratorResponder {
         return_struct: {
             return [$promise, $noWait];
         }
+    }
+
+    private function wrapWatcherCallback(callable $func) {
+        return function($reactor, $watcherId, $stream = null) use ($func) {
+            try {
+                $result = $func($reactor, $watcherId, $stream);
+                if ($result instanceof \Generator) {
+                    $this->resolveGenerator($result);
+                }
+            } catch (\Exception $e) {
+                // @TODO how to handle a processing eror?
+            }
+        };
     }
 
     private function sendToGenerator(\Generator $gen, Promisor $promisor, \Exception $error = null, $result = null) {

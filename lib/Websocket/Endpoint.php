@@ -12,6 +12,9 @@ use Aerys\Server;
 use Aerys\Websocket;
 use Aerys\ServerObserver;
 use Aerys\ClientGoneException;
+use Amp\YieldCommands as SystemYieldCommands;
+use Aerys\YieldCommands as HttpYieldCommands;
+use Aerys\Websocket\YieldCommands as WebsocketYieldCommands;
 
 class Endpoint implements ServerObserver {
     const HANDSHAKE_ACCEPT_CONCAT = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
@@ -287,58 +290,58 @@ class Endpoint implements ServerObserver {
 
         explicit_key: {
             $key = strtolower($key);
-            if ($key[0] === Websocket::NOWAIT_PREFIX) {
+            if ($key[0] === SystemYieldCommands::NOWAIT_PREFIX) {
                 $noWait = true;
                 $key = substr($key, 1);
             }
 
             switch ($key) {
-                case Websocket::NOWAIT:
-                    $noWait = true;
-                    goto implicit_key;
-                case Websocket::SEND:
+                case WebsocketYieldCommands::SEND:
                     goto send;
-                case Websocket::BROADCAST:
+                case WebsocketYieldCommands::BROADCAST:
                     goto broadcast;
-                case Websocket::INSPECT:
+                case WebsocketYieldCommands::INSPECT:
                     goto inspect;
-                case Websocket::CLOSE:
+                case WebsocketYieldCommands::CLOSE:
                     goto close;
-                case Websocket::IMMEDIATELY:
+                case SystemYieldCommands::IMMEDIATELY:
                     goto immediately;
-                case Websocket::ONCE:
+                case SystemYieldCommands::ONCE:
                     // fallthrough
-                case Websocket::REPEAT:
+                case SystemYieldCommands::REPEAT:
                     goto schedule;
-                case Websocket::ON_READABLE:
+                case SystemYieldCommands::ON_READABLE:
                     $ioWatchMethod = 'onReadable';
                     goto stream_io_watcher;
-                case Websocket::ON_WRITABLE:
+                case SystemYieldCommands::ON_WRITABLE:
                     $ioWatchMethod = 'onWritable';
                     goto stream_io_watcher;
-                case Websocket::ENABLE:
+                case SystemYieldCommands::ENABLE:
                     // fallthrough
-                case Websocket::DISABLE:
+                case SystemYieldCommands::DISABLE:
                     // fallthrough
-                case Websocket::CANCEL:
+                case SystemYieldCommands::CANCEL:
                     goto watcher_control;
-                case Websocket::WAIT:
+                case SystemYieldCommands::WAIT:
                     goto wait;
-                case Websocket::ALL:
+                case SystemYieldCommands::ALL:
                     // fallthrough
-                case Websocket::ANY:
+                case SystemYieldCommands::ANY:
                     // fallthrough
-                case Websocket::SOME:
+                case SystemYieldCommands::SOME:
                     goto combinator;
-                case Websocket::STATUS:
+                case SystemYieldCommands::NOWAIT:
+                    $noWait = true;
+                    goto implicit_key;
+                case HttpYieldCommands::STATUS:
                     goto status;
-                case Websocket::REASON:
+                case HttpYieldCommands::REASON:
                     goto reason;
-                case Websocket::HEADER:
+                case HttpYieldCommands::HEADER:
                     goto header;
                 default:
                     $promise = new Failure(new \DomainException(
-                        sprintf('Unknown yield key: "%s"', $key)
+                        sprintf('Unknown or invalid yield command: "%s"', $key)
                     ));
                     goto return_struct;
             }
@@ -347,18 +350,17 @@ class Endpoint implements ServerObserver {
         implicit_key: {
             if ($current instanceof Promise) {
                 $promise = $current;
-                goto return_struct;
             } elseif ($current instanceof \Generator) {
                 $promise = $this->resolveGenerator($current, $session);
-                goto return_struct;
             } elseif (is_array($current)) {
                 // An array without an explicit key is assumed to be an "all" combinator
-                $key = Websocket::ALL;
+                $key = SystemYieldCommands::ALL;
                 goto combinator;
             } else {
                 $promise = new Success($current);
-                goto return_struct;
             }
+
+            goto return_struct;
         }
 
         send: {
@@ -369,7 +371,7 @@ class Endpoint implements ServerObserver {
                 $promise = $this->send($current, [$session->clientId]);
             } else {
                 $promise = new Failure(new \LogicException(
-                    'Invalid send yield: websocket handshake already failed'
+                    'Invalid "send" yield command: websocket handshake already failed'
                 ));
             }
 
@@ -388,7 +390,8 @@ class Endpoint implements ServerObserver {
                 $promise = $this->send($msg, $include, $exclude);
             } else {
                 $promise = new Failure(new \DomainException(
-                    'Invalid broadcast yield: string or [string $msg, array $include, array $exclude] expected'
+                    'Invalid "broadcast" yield command: string or [string $msg, array $include, ' .
+                    'array $exclude] expected.'
                 ));
             }
 
@@ -404,7 +407,7 @@ class Endpoint implements ServerObserver {
                 list($clientId, $code, $reason) = $current;
             } else {
                 $promise = new Failure(new \DomainException(
-                    'Invalid close yield: string or [$clientId, $code, $reason] array expected'
+                    'Invalid "close" yield command: string or [$clientId, $code, $reason] array expected.'
                 ));
                 goto return_struct;
             }
@@ -413,12 +416,12 @@ class Endpoint implements ServerObserver {
                 $promise = $this->close($clientId, $code, $reason);
             } elseif ($clientId == $session->clientId) {
                 $promise = new Failure(new \DomainException(
-                    'Invalid close yield: handshake not yet sent. A "status" command should be ' .
-                    'yielded instead to fail websocket handshakes.'
+                    'Invalid "close" yield command: handshake not yet sent. A status command should ' .
+                    'be yielded instead to fail the websocket handshake.'
                 ));
             } else {
                 $promise = new Failure(new \DomainException(
-                    sprintf('Invalid close yield: unkown clientId (%d)', $clientId)
+                    sprintf('Invalid close yield command: unkown clientId (%d)', $clientId)
                 ));
             }
 
@@ -433,7 +436,7 @@ class Endpoint implements ServerObserver {
             } else {
                 $promise = new Failure(new \DomainException(
                     sprintf(
-                        '"%s" yield requires callable; %s provided',
+                        '"immediately" yield command requires callable; %s provided',
                         $key,
                         gettype($current)
                     )
@@ -444,7 +447,7 @@ class Endpoint implements ServerObserver {
         }
 
         schedule: {
-            if ($current && isset($current[0], $current[1]) && is_array($current)) {
+            if (is_array($current) && isset($current[0], $current[1]) && is_callable($current[0])) {
                 list($func, $msDelay) = $current;
                 $func = $this->wrapWatcherCallback($rs, $func);
                 $watcherId = $this->reactor->{$key}($func, $msDelay);
@@ -452,7 +455,7 @@ class Endpoint implements ServerObserver {
             } else {
                 $promise = new Failure(new \DomainException(
                     sprintf(
-                        '"%s" yield requires [callable $func, int $msDelay]; %s provided',
+                        '"%s" yield command requires [callable $func, int $msDelay]; %s provided',
                         $key,
                         gettype($current)
                     )
@@ -463,7 +466,7 @@ class Endpoint implements ServerObserver {
         }
 
         stream_io_watcher: {
-            if (is_array($current) && isset($current[0], $current[1], $current[2])) {
+            if (is_array($current) && isset($current[0], $current[1], $current[2]) && is_callable($current[1])) {
                 list($stream, $func, $enableNow) = $current;
                 $func = $this->wrapWatcherCallback($rs, $func);
                 $watcherId = $this->reactor->{$ioWatchMethod}($stream, $func, $enableNow);
@@ -471,7 +474,7 @@ class Endpoint implements ServerObserver {
             } else {
                 $promise = new Failure(new \DomainException(
                     sprintf(
-                        '"%s" yield requires [resource $stream, callable $func, bool $enableNow]; %s provided',
+                        '"%s" yield command requires [resource $stream, callable $func, bool $enableNow]; %s provided',
                         $key,
                         gettype($current)
                     )
@@ -526,20 +529,21 @@ class Endpoint implements ServerObserver {
                 'last_read_at'  => $session->lastReadAt,
                 'last_send_at'  => $session->lastSendAt,
             ]);
+
             goto return_struct;
         }
 
         status: {
             if ($session->handshakeState) {
                 $promise = new Failure(new \LogicException(
-                    'Cannot assign status code: handshake already initiated'
+                    'Cannot assign handshake status: handshake already initiated'
                 ));
             } elseif ($current >= 400 && $current <= 599) {
                 $session->handshakeHttpStatus = (int) $current;
                 $promise = new Success($session->handshakeHttpStatus);
             } else {
                 $promise = new Failure(new \DomainException(
-                    'Cannot assign status code: integer in the range [400-599] required'
+                    'Cannot assign handshake status: integer in the range [400-599] required'
                 ));
             }
 
@@ -549,7 +553,7 @@ class Endpoint implements ServerObserver {
         reason: {
             if ($session->handshakeState) {
                 $promise = new Failure(new \LogicException(
-                    'Cannot assign reason phrase: handshake already initiated'
+                    'Cannot assign handshake reason: handshake already initiated'
                 ));
             } else {
                 $session->handshakeReason = $reason = (string) $current;
@@ -562,7 +566,7 @@ class Endpoint implements ServerObserver {
         header: {
             if ($session->handshakeState) {
                 $promise = new Failure(new \LogicException(
-                    'Cannot assign header: handshake already initiated'
+                    'Cannot assign handshake header: handshake already initiated'
                 ));
             } elseif (is_array($current)) {
                 $session->handshakeHttpHeader += $current;
@@ -573,7 +577,7 @@ class Endpoint implements ServerObserver {
             } else {
                 $promise = new Failure(new \DomainException(
                     sprintf(
-                        '"header" key expects a string or array of strings; %s yielded',
+                        '"header" yield command expects a string or array of strings; %s yielded',
                         gettype($current)
                     )
                 ));
@@ -590,9 +594,7 @@ class Endpoint implements ServerObserver {
     private function wrapWatcherCallback(ResolverStruct $rs, callable $func) {
         return function($reactor, $watcherId, $stream = null) use ($rs, $func) {
             try {
-                $result = $stream
-                    ? $func($reactor, $watcherId, $stream)
-                    : $func($reactor, $watcherId);
+                $result = $func($reactor, $watcherId, $stream);
                 if ($result instanceof \Generator) {
                     $this->resolveGenerator($result, $rs->session);
                 }
