@@ -6,7 +6,7 @@ namespace Aerys;
  * Client objects aggregate all information relevant to a connected socket
  * client in one place.
  */
-class Client {
+class Client extends Struct {
     public $id;
     public $socket;
     public $clientAddress;

@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-class ResponderStruct {
+class ResponderStruct extends Struct {
     public $server;
     public $debug;
     public $socket;

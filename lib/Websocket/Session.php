@@ -2,7 +2,9 @@
 
 namespace Aerys\Websocket;
 
-class Session {
+use Aerys\Struct;
+
+class Session extends Struct {
     const HANDSHAKE_NONE = 0;
     const HANDSHAKE_INIT = 1;
     const HANDSHAKE_DONE = 2;
