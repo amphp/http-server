@@ -101,21 +101,22 @@ class Host {
     }
 
     /**
-     * Specify an optional filesystem directory from which to serve static files
+     * Specify a filesystem directory from which to serve static files
      *
      * The $options array takes the form:
      *
-     * $options = [
-     *     'indexes'                   => ['index.html', 'index.htm'],
-     *     'eTagMode'                  => 'all',
-     *     'expiresHeaderPeriod'       => 300,
-     *     'defaultMimeType'           => 'text/plain',
-     *     'customMimeTypes'           => [],
-     *     'defaultTextCharset'        => 'utf-8',
-     *     'cacheTtl'                  => 5,
-     *     'memoryCacheMaxSize'        => 67108864,
-     *     'memoryCacheMaxFileSize'    => 1048576
-     * ];
+     *  $options = [
+     *      'indexes'                   => ['index.html', 'index.htm'],
+     *      'etagMode'                  => 'all',
+     *      'expiresPeriod'             => 3600,
+     *      'mimeFile'                  => 'etc/mime',
+     *      'mimeTypes'                 => [],
+     *      'defaultMimeType'           => 'text/plain',
+     *      'defaultCharset'            => 'utf-8',
+     *      'cacheTtl'                  => 10,
+     *      'maxBufferEntries'          => 50,
+     *      'maxBufferEntrySize'        => 500000,
+     *  ];
      *
      * Note: websocket endpoint and dynamic HTTP route URIs always take precedence over filesystem
      * resources in the event of a routing conflict.
@@ -159,13 +160,13 @@ class Host {
      * endpoint.
      *
      * @param string $uriPath The URI path on which to bind the endpoint
-     * @param mixed $websocketClass A websocket endpoint class name or an instance of Aerys\Websocket
+     * @param mixed $websocketClassOrObj A websocket class name or Aerys\Websocket instance
      * @param array $options An array specifying key-value options for this websocket endpoint
      * @return self
      */
-    public function addWebsocketRoute($uriPath, $websocketClass, array $options = []) {
+    public function addWebsocketRoute($uriPath, $websocketClassOrObj, array $options = []) {
         $uriPath = '/' . ltrim($uriPath, '/');
-        $this->websocketRoutes[] = [$uriPath, $websocketClass, $options];
+        $this->websocketRoutes[] = [$uriPath, $websocketClassOrObj, $options];
 
         return $this;
     }

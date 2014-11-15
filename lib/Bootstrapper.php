@@ -394,22 +394,83 @@ class Bootstrapper {
 
     private function buildRootResponder(array $rootSettings) {
         try {
+            $rootSettings = array_change_key_case($rootSettings);
             $rootPath = $rootSettings['root'];
-            unset($rootSettings['root']);
-            // @TODO Choose the UvRoot if possible once implemented
-            $responder = $this->injector->make('Aerys\\Root\\NaiveRoot', [
-                ':rootPath' => $rootPath
-            ]);
-            $responder->setAllOptions($rootSettings);
 
-            return $responder;
+            // Use array_key_exists() so we can capture NULL values and allow applications
+            // to avoid loading mime types from a file altogether
+            $mimeFile = array_key_exists('mimefile', $rootSettings)
+                ? $rootSettings['mimefile']
+                : __DIR__ . '/../etc/mime-types';
+
+            $additionalMimeTypes = isset($rootSettings['mimetypes'])
+                ? $rootSettings['mimetypes']
+                : [];
+
+            $rootSettings['mimetypes'] = $this->loadRootMimeTypes($mimeFile, $additionalMimeTypes);
+
+            // These aren't actual root option keys; they're bootstrap-only values
+            // that we use to configure the document root in the Host instance. We
+            // remove them because we don't want to get an error when passing the
+            // remaining settings to Root::setAllOptions().
+            unset(
+                $rootSettings['root'],
+                $rootSettings['mimefile']
+            );
+
+            $reactor = $this->injector->make('Amp\Reactor');
+            $rootClass = ($reactor instanceof \Amp\UvReactor)
+                ? 'Aerys\\Root\\UvRoot'
+                : 'Aerys\\Root\\NaiveRoot';
+
+            $root = $this->injector->make($rootClass, [':rootPath' => $rootPath]);
+            $root->setAllOptions($rootSettings);
+
+            return $root;
 
         } catch (\Exception $previousException) {
             throw new BootException(
-                'Root build failure: ' . $previousException->getMessage(),
+                'Failed building document root handler: ' . $previousException->getMessage(),
                 $errorCode = 0,
                 $previousException
             );
         }
+    }
+
+    private function loadRootMimeTypes($mimeFile, $additionalTypes) {
+        // Allow applications to avoid load mime types from a file if the value is NULL
+        $mimeTypes = isset($mimeFile) ? $this->loadRootMimeTypesFromFile($mimeFile) : [];
+        $additionalTypes = array_change_key_case($additionalTypes);
+
+        // DO NOT use array_merge() here because we don't want numeric
+        // file extension keys to be re-indexed.
+        foreach ($additionalTypes as $key => $value) {
+            $mimeTypes[$key] = $value;
+        }
+
+        return $mimeTypes;
+    }
+
+    private function loadRootMimeTypesFromFile($mimeFile) {
+        $mimeFile = str_replace('\\', '/', $mimeFile);
+        $mimeStr = @file_get_contents($mimeFile);
+        if ($mimeStr === false) {
+            throw new BootException(
+                sprintf('Failed loading mime associations from file: %s', $mimeFile)
+            );
+        }
+
+        if (!preg_match_all("#\s*([a-z0-9]+)\s+(.+)#i", $mimeStr, $matches)) {
+            throw new BootException(
+                sprintf('No mime associations found in file: %s', $mimeFile)
+            );
+        }
+
+        $mimeTypes = [];
+        foreach ($matches[1] as $key => $value) {
+            $mimeTypes[strtolower($value)] = $matches[2][$key];
+        }
+
+        return $mimeTypes;
     }
 }
