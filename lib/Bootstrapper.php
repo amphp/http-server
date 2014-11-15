@@ -401,7 +401,7 @@ class Bootstrapper {
             // to avoid loading mime types from a file altogether
             $mimeFile = array_key_exists('mimefile', $rootSettings)
                 ? $rootSettings['mimefile']
-                : __DIR__ . '/../etc/mime-types';
+                : __DIR__ . '/../etc/mime';
 
             $additionalMimeTypes = isset($rootSettings['mimetypes'])
                 ? $rootSettings['mimetypes']
