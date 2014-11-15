@@ -105,6 +105,15 @@ class Server {
     }
 
     /**
+     * Was the server constructed in DEBUG mode?
+     *
+     * @return bool
+     */
+    public function isInDebugMode() {
+        return $this->debug;
+    }
+
+    /**
      * Attach a server event observer
      *
      * @param \Aerys\ServerObserver $observer
@@ -117,17 +126,12 @@ class Server {
     }
 
     private function notifyObservers($event) {
-        $futures = [];
+        $promises = [];
         foreach ($this->observers as $observer) {
-            $result = $observer->onServerUpdate($this, $event, NULL);
-            if ($result instanceof Future) {
-                $futures[] = $result;
-            } elseif (isset($result)) {
-                // @TODO Log error?
-            }
+            $promises[] = $observer->onServerUpdate($this, $event, null);
         }
 
-        return $futures ? $this->combinator->all($futures) : new Success;
+        return $promises ? $this->combinator->all($promises) : new Success;
     }
 
     /**
