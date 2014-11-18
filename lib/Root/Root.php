@@ -35,6 +35,15 @@ abstract class Root implements ServerObserver {
     private $fileEntryCache;
     private $rootPath;
     private $mimeTypes = [];
+    private $multipartBoundary;
+    private $multipartHeaderTemplate;
+    private $now;
+    private $cache = [];
+    private $cacheTimeouts = [];
+    private $cacheBufferEntryCount = 0;
+    private $cacheCollectWatcher;
+    private $isCacheCollectWatcherEnabled;
+
     private $indexes = ['index.html', 'index.htm'];
     private $etagMode = self::ETAG_SIZE;
     private $expiresPeriod = 3600;
@@ -44,13 +53,6 @@ abstract class Root implements ServerObserver {
     private $cacheMaxBufferEntries = 50;
     private $cacheMaxBufferEntrySize = 500000;
     private $debug;
-
-    private $now;
-    private $cache = [];
-    private $cacheTimeouts = [];
-    private $cacheBufferEntryCount = 0;
-    private $cacheCollectWatcher;
-    private $isCacheCollectWatcherEnabled;
 
     /**
      * Generate a FileEntry instance from the given path and index file list
@@ -99,6 +101,8 @@ abstract class Root implements ServerObserver {
 
         $this->reactor = $reactor;
         $this->responderFactory = $responderFactory;
+        $this->multipartBoundary = uniqid('', true);
+        $this->multipartHeaderTemplate = "\r\n--%s\r\nContent-Type: %s\r\nContent-Range: bytes %d-%d/%d\r\n\r\n";
         $cacheCollector = function() { $this->collectStaleCacheEntries(); };
         $this->cacheCollectWatcher = $reactor->repeat($cacheCollector, $msInterval = 1000);
         $reactor->disable($this->cacheCollectWatcher);
@@ -304,20 +308,28 @@ abstract class Root implements ServerObserver {
         $fileEntry = $rootRequest->fileEntry;
         $mtime = $fileEntry->mtime;
         $etag = $fileEntry->etag;
+        $size = $fileEntry->size;
+
         $preCode = $this->checkPreconditions($request, $mtime, $etag);
 
         if ($preCode === self::$PRECONDITION_NOT_MODIFIED) {
             $response = $this->makeNotModifiedResponse($mtime, $etag);
-            return $promisor->succeed($response);
         } elseif ($preCode === self::$PRECONDITION_FAILED) {
             $response = ['status' => Status::PRECONDITION_FAILED];
-            return $promisor->succeed($response);
+        } elseif (empty($request['HTTP_RANGE'])) {
+            $headerLines = $this->buildNonRangeHeaders($fileEntry);
+            $response = $this->responderFactory->make($fileEntry, $headerLines, $request);
+        } elseif ($range = $this->normalizeByteRanges($size, $request['HTTP_RANGE'])) {
+            $headerLines = $this->buildRangeHeaders($fileEntry, $range);
+            $response = $this->responderFactory->make($fileEntry, $headerLines, $request, $range);
+        } else {
+            $response = [
+                'status' => Status::REQUESTED_RANGE_NOT_SATISFIABLE,
+                'header' => "Content-Range: */{$size}",
+            ];
         }
 
-        $headerLines = $this->buildResponseHeaders($fileEntry);
-        $responder = $this->responderFactory->make($fileEntry, $headerLines, $request);
-
-        $promisor->succeed($responder);
+        $promisor->succeed($response);
     }
 
     private function checkPreconditions(array $request, $mtime, $etag) {
@@ -383,28 +395,19 @@ abstract class Root implements ServerObserver {
         ];
     }
 
-    private function buildResponseHeaders(FileEntry $fileEntry) {
+    private function buildNonRangeHeaders(FileEntry $fileEntry) {
+        $headerLines = $this->buildCommonHeaders($fileEntry);
+        $headerLines[] = "Content-Length: {$fileEntry->size}";
+        $headerLines[] = 'Content-Type: ' . $this->selectMimeTypeFromPath($fileEntry->path);
+
+        return $headerLines;
+    }
+
+    private function buildCommonHeaders(FileEntry $fileEntry) {
         $headerLines = [
             'Accept-Ranges: bytes',
             'Cache-Control: public',
-            "Content-Length: {$fileEntry->size}",
         ];
-
-        $ext = pathinfo($fileEntry->path, PATHINFO_EXTENSION);
-        if (empty($ext)) {
-            $mimeType = $this->defaultMimeType;
-        } else {
-            $ext = strtolower($ext);
-            $mimeType = isset($this->mimeTypes[$ext])
-                ? $this->mimeTypes[$ext]
-                : $this->defaultMimeType;
-        }
-
-        if (stripos($mimeType, 'text/') === 0 && stripos($mimeType, 'charset=') === false) {
-            $mimeType .= "; charset={$this->defaultCharset}";
-        }
-
-        $headerLines[] = "Content-Type: {$mimeType}";
 
         if ($fileEntry->etag) {
             $headerLines[] = "Etag: {$fileEntry->etag}";
@@ -420,6 +423,116 @@ abstract class Root implements ServerObserver {
         $headerLines[] = 'Last-Modified: ' . gmdate('D, d M Y H:i:s', $fileEntry->mtime) . ' UTC';
 
         return $headerLines;
+    }
+
+    private function selectMimeTypeFromPath($path) {
+        $ext = pathinfo($path, PATHINFO_EXTENSION);
+        if (empty($ext)) {
+            $mimeType = $this->defaultMimeType;
+        } else {
+            $ext = strtolower($ext);
+            $mimeType = isset($this->mimeTypes[$ext])
+                ? $this->mimeTypes[$ext]
+                : $this->defaultMimeType;
+        }
+
+        if (stripos($mimeType, 'text/') === 0 && stripos($mimeType, 'charset=') === false) {
+            $mimeType .= "; charset={$this->defaultCharset}";
+        }
+
+        return $mimeType;
+    }
+
+    /**
+     * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
+     */
+    private function normalizeByteRanges($size, $rawRanges) {
+        $rawRanges = str_ireplace([' ', 'bytes='], '', $rawRanges);
+        $rawRanges = explode(',', $rawRanges);
+
+        $ranges = [];
+
+        foreach ($rawRanges as $range) {
+            // If a range is missing the dash separator it's malformed; pull out here.
+            if (false === strpos($range, '-')) {
+                return null;
+            }
+
+            list($startPos, $endPos) = explode('-', rtrim($range));
+
+            if ($startPos === '' && $endPos === '') {
+                return null;
+            } elseif ($startPos === '' && $endPos !== '') {
+                // The -1 is necessary and not a hack because byte ranges are inclusive and start
+                // at 0. DO NOT REMOVE THE -1.
+                $startPos = $size - $endPos - 1;
+                $endPos = $size - 1;
+            } elseif ($endPos === '' && $startPos !== '') {
+                $startPos = (int) $startPos;
+                // The -1 is necessary and not a hack because byte ranges are inclusive and start
+                // at 0. DO NOT REMOVE THE -1.
+                $endPos = $size - 1;
+            } else {
+                $startPos = (int) $startPos;
+                $endPos = (int) $endPos;
+            }
+
+            // If the requested range(s) can't be satisfied we're finished
+            if ($startPos >= $size || $endPos <= $startPos || $endPos <= 0) {
+                return null;
+            }
+
+            $ranges[] = [$startPos, $endPos];
+        }
+
+        $rangeStruct = new Range;
+        $rangeStruct->boundary = $this->multipartBoundary;
+        $rangeStruct->headerTemplate = $this->multipartHeaderTemplate;
+        $rangeStruct->ranges = $ranges;
+
+        return $rangeStruct;
+    }
+
+    private function buildRangeHeaders(FileEntry $fileEntry, Range $range) {
+        $size = $fileEntry->size;
+        $range->contentType = $mime = $this->selectMimeTypeFromPath($fileEntry->path);
+        $headerLines = $this->buildCommonHeaders($fileEntry);
+        $rangeArray = $range->ranges;
+
+        if (isset($rangeArray[1])) {
+            $headers[] = 'Content-Length: ' . $this->calculateMultipartLength($rangeArray, $size, $mime);
+            $headers[] = "Content-Type:  multipart/byteranges; boundary={$this->multipartBoundary}";
+        } else {
+            list($startPos, $endPos) = $rangeArray[0];
+            $headerLines[] = 'Content-Length: ' . ($endPos - $startPos);
+            $headerLines[] = "Content-Range: bytes {$startPos}-{$endPos}/{$size}";
+            $headerLines[] = "Content-Type: {$mime}";
+        }
+
+        return $headerLines;
+    }
+
+    private function calculateMultipartLength($ranges, $size, $mime) {
+        $totalSize = 0;
+        $boundarySize = strlen($this->multipartBoundary);
+        $templateSize = strlen($this->multipartHeaderTemplate) - 10; // Don't count sprintf format strings
+        $mimeSize = strlen($mime);
+        $sizeSize = strlen($size);
+
+        $baseHeaderSize = $boundarySize + $mimeSize + $sizeSize + $templateSize;
+
+        foreach ($ranges as list($startPos, $endPos)) {
+            $totalSize += ($endPos - $startPos);
+            $totalSize += $baseHeaderSize;
+            $totalSize += strlen($startPos);
+            $totalSize += strlen($endPos);
+            $totalSize += 2; // <-- Extra \r\n after range content
+        }
+
+        $closingBoundarySize = $boundarySize + 4; // --{$boundary}--
+        $totalSize += $closingBoundarySize;
+
+        return $totalSize;
     }
 
     /**
