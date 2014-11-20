@@ -24,6 +24,6 @@ require_once __DIR__ . '/support/008_includes.php';
 
 $myApp = (new Aerys\Host)
     ->setPort(1337)
-    ->addWebsocketRoute('/echo', 'ExampleWebsocket')
+    ->addWebsocket('/echo', 'ExampleWebsocket')
     ->setRoot(__DIR__ . '/support/docroot/websockets')
 ;

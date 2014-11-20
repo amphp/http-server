@@ -164,7 +164,7 @@ class Host {
      * @param array $options An array specifying key-value options for this websocket endpoint
      * @return self
      */
-    public function addWebsocketRoute($uriPath, $websocketClassOrObj, array $options = []) {
+    public function addWebsocket($uriPath, $websocketClassOrObj, array $options = []) {
         $uriPath = '/' . ltrim($uriPath, '/');
         $this->websocketRoutes[] = [$uriPath, $websocketClassOrObj, $options];
 
