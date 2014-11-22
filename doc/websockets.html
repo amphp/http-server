@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>websockets</title>
+<link rel="stylesheet" href="https://stackedit.io/res-min/themes/base.css" />
+<script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML"></script>
+</head>
+<body><div class="container"><h1 id="websockets">Websockets</h1>
+
+<blockquote>
+  <p><strong><a href="#table-of-contents">Table of Contents</a></strong></p>
+</blockquote>
+
+
+
+<h2 id="the-websocket-api">The Websocket API</h2>
+
+<p>Aerys exposes a simple but powerful websocket API:</p>
+
+
+
+<pre class="prettyprint"><code class=" hljs php"><span class="hljs-class"><span class="hljs-keyword">interface</span> <span class="hljs-title">Websocket</span> {</span>
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onOpen</span><span class="hljs-params">(int <span class="hljs-variable">$clientId</span>, array <span class="hljs-variable">$httpRequestEnv</span>)</span>;</span>
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onData</span><span class="hljs-params">(int <span class="hljs-variable">$clientId</span>, string <span class="hljs-variable">$data</span>)</span>;</span>
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onClose</span><span class="hljs-params">(int <span class="hljs-variable">$clientId</span>, int <span class="hljs-variable">$code</span>, string <span class="hljs-variable">$reason</span>)</span>;</span>
+}</code></pre>
+
+<p>These three methods expose the full range of websocket possibilities to your aerys application. A brief description of each method follows .</p>
+
+
+
+<h3 id="onopen">onOpen()</h3>
+
+<p>This method is invoked when a valid client upgrade request is made to the websocket endpoint. At the time this method called the handshake response has <em>not yet</em> been dispatched to the client. At this time websocket applications have the ability to fail the handshake, send data to any/all connected clients and otherwise do anything they like.</p>
+
+<p>Like all websocket methods the first parameter is a unique integer <code>$clientId</code> identifying the client connection responsible for the event. The second parameter <code>$httpRequestEnv</code> is the HTTP request array provided to all aerys HTTP endpoints. Applications may optionally use the request environment to load cookie/session data or otherwise validate that the client has permission to access the websocket resource.</p>
+
+
+
+<h3 id="ondata">onData()</h3>
+
+<p>This method is invoked any time a websocket message arrives from a client socket. Like all websocket methods the first parameter is a unique integer <code>$clientId</code> identifying the client connection responsible for the event. The second parameter is the buffered string <code>$payload</code> received from the client.</p>
+
+
+
+<h3 id="onclose">onClose()</h3>
+
+<p>This method is invoked when a client connection has closed. A close can result from any one of several instigating factors:</p>
+
+<ul>
+<li>The client closed the connection as specified in the websocket protocol</li>
+<li>The TCP connection to the client was unexpectedly severed</li>
+<li>The client failed to respond to heartbeat PINGs in a timely manner</li>
+<li>The client sent malformed data</li>
+<li>The client violated an internal policy such as allowable frame/message size constraints</li>
+<li>The websocket endpoint initiated the close handshake and it has now completed successfully</li>
+<li>The server is shutting down</li>
+</ul>
+
+<p>Like all websocket methods the first parameter is a unique integer <code>$clientId</code> identifying the client connection responsible for the event.  The second parameter is an integer close <code>$code</code> describing the circumstances surrounding the close. The third parameter is a (potentially empty) string <code>$reason</code> specifying additional information describing the close.</p>
+
+<blockquote>
+  <p><strong>NOTE</strong></p>
+  
+  <p>Remember that <code>onClose()</code> is invoked <em>after</em> the client in question has already disconnected. If your application attempts to send data to the closed client an <code>Aerys\ClientGone</code> exception will be thrown into your <code>onClose()</code> generator.</p>
+</blockquote>
+
+
+
+<h2 id="yield-for-great-justice">Yield For Great Justice</h2>
+
+
+
+<h3 id="generators-and-you">Generators and You</h3>
+
+<p>Aerys websocket endpoints use the <code>Generator</code> functionality introduced in PHP 5.5 not only to minimize the cognitive load required for concurrent programming, but also as a means for message passing between your application and the server. <code>yield</code> keys act as “commands” to the websocket endpoint telling the server what your application wishes to do at any given stage. The best way to demonstrate this functionality is to look at some example code …</p>
+
+
+
+<h4 id="sending-data">Sending Data</h4>
+
+<p>This example demonstrates using the <code>"send"</code> and <code>"broadcast"</code> yield commands to push data out to connected websocket clients. There are a couple of important takeaways from this example:</p>
+
+<ul>
+<li>Any time your websocket methods yield a <code>"send"</code> command the associated string value will be relayed to the specific <code>$clientId</code> that instigated the current event.</li>
+<li>If you yield a <code>"send"</code> command inside your <code>onClose()</code> method an <code>Aerys\ClientGoneException</code> will be thrown back into your generator; it should be obvious why.</li>
+<li>Yielding the <code>"broadcast"</code> command will send the associated string to all clients currently connected to this specific endpoint.</li>
+</ul>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ExampleWebsocket</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">Aerys</span>\<span class="hljs-title">Websocket</span> {</span>
+    <span class="hljs-keyword">private</span> <span class="hljs-variable">$clientCount</span> = <span class="hljs-number">0</span>;
+
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onOpen</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, array <span class="hljs-variable">$httpEnvironment</span>)</span> {</span>
+        <span class="hljs-comment">// Broadcast $msg to all connected clients</span>
+        <span class="hljs-variable">$msg</span> = <span class="hljs-string">"user count: "</span> . ++<span class="hljs-variable">$this</span>-&gt;clientCount;
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'broadcast'</span> =&gt; <span class="hljs-variable">$msg</span>;
+    }
+
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onData</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$payload</span>)</span> {</span>
+        <span class="hljs-comment">// Send $msg only to the $clientId client</span>
+        <span class="hljs-variable">$msg</span> = <span class="hljs-string">"echo chamber: {$payload}"</span>;
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'send'</span> =&gt; <span class="hljs-variable">$msg</span>;
+    }
+
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onClose</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$code</span>, <span class="hljs-variable">$reason</span>)</span> {</span>
+        <span class="hljs-comment">// Broadcast $msg to all connected clients</span>
+        <span class="hljs-variable">$msg</span> = <span class="hljs-string">"user count: "</span> . ++<span class="hljs-variable">$this</span>-&gt;clientCount;
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'broadcast'</span> =&gt; <span class="hljs-variable">$msg</span>;
+    }
+}</code></pre>
+
+
+
+<h4 id="advanced-broadcasts">Advanced Broadcasts</h4>
+
+<p>In previous examples we’ve demonstrated a simple <code>"broadcast"</code> command to send data to all connected clients. However, often we wish to broadcast messages only to specific clients or groups of clients. In these cases we use the array argument form when yielding the <code>"broadcast"</code> command:</p>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ExampleWebsocket</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">Aerys</span>\<span class="hljs-title">Websocket</span> {</span>
+    <span class="hljs-keyword">private</span> <span class="hljs-variable">$evenClients</span> = [];
+    <span class="hljs-keyword">private</span> <span class="hljs-variable">$oddClients</span> = [];
+
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onOpen</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, array <span class="hljs-variable">$httpEnvironment</span>)</span> {</span>
+        <span class="hljs-keyword">if</span> (time() % <span class="hljs-number">2</span> === <span class="hljs-number">0</span>) {
+            <span class="hljs-variable">$this</span>-&gt;evenClients[<span class="hljs-variable">$clientId</span>] = <span class="hljs-variable">$clientId</span>;
+        } <span class="hljs-keyword">else</span> {
+            <span class="hljs-variable">$this</span>-&gt;oddClients[<span class="hljs-variable">$clientId</span>] = <span class="hljs-variable">$clientId</span>;
+        }
+
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'send'</span> =&gt; <span class="hljs-string">"Hello, {$clientId}"</span>;
+    }
+
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onData</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$payload</span>)</span> {</span>
+        <span class="hljs-comment">// An array of client IDs that should receive the message.</span>
+        <span class="hljs-comment">// An empty $include array indicates "all clients connected</span>
+        <span class="hljs-comment">// to this endpoint"</span>
+        <span class="hljs-variable">$include</span> = (time() % <span class="hljs-number">2</span> === <span class="hljs-number">0</span>)
+            ? <span class="hljs-variable">$this</span>-&gt;evenClients
+            : <span class="hljs-variable">$this</span>-&gt;oddClients;
+
+        <span class="hljs-comment">// An array specifying which clients to exclude. An empty</span>
+        <span class="hljs-comment">// array means "don't exclude any clients from the list of</span>
+        <span class="hljs-comment">// client IDs in the $include array"</span>
+        <span class="hljs-variable">$exclude</span> = [];
+
+        <span class="hljs-comment">// Echo this message only to appropriate even/odd clients</span>
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'broadcast'</span> =&gt; [<span class="hljs-string">"new message!"</span>, <span class="hljs-variable">$include</span>, <span class="hljs-variable">$exclude</span>];
+    }
+
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onClose</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$code</span>, <span class="hljs-variable">$reason</span>)</span> {</span>
+        <span class="hljs-comment">// clean up after ourselves when a client goes away</span>
+        <span class="hljs-keyword">unset</span>(
+            <span class="hljs-variable">$this</span>-&gt;evenClients[<span class="hljs-variable">$clientId</span>],
+            <span class="hljs-variable">$this</span>-&gt;oddClients[<span class="hljs-variable">$clientId</span>]
+        );
+    }
+}</code></pre>
+
+
+
+<h4 id="close-commands">Close Commands</h4>
+
+<p>Most applications do not need to manually close connections as the server handles the common situations automatically. However, for those that do, the <code>"close"</code> command works similarly to the <code>"broadcast"</code> command.</p>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MyWebsocket</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">Aerys</span>\<span class="hljs-title">Websocket</span> {</span>
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onOpen</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$httpRequestEnv</span>)</span> {</span>
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'send'</span> =&gt; <span class="hljs-string">'hi and goodbye!'</span>;
+        <span class="hljs-keyword">echo</span> <span class="hljs-string">"onOpen() - before close command\n"</span>;
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'close'</span> =&gt; <span class="hljs-variable">$clientId</span>;
+        <span class="hljs-keyword">echo</span> <span class="hljs-string">"onOpen() - after close command\n"</span>;
+    }
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onData</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$payload</span>)</span> {</span>
+        <span class="hljs-comment">// do nothing, we don't care right now</span>
+    }
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onClose</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$code</span>, <span class="hljs-variable">$reason</span>)</span> {</span>
+        <span class="hljs-keyword">echo</span> <span class="hljs-string">"onClose()\n"</span>;
+    }
+}</code></pre>
+
+<p>If you were to run the above websocket you would observe the following output in your console each time a client connected:</p>
+
+
+
+<pre class="prettyprint"><code class="language-bash hljs ">onOpen() - before close command
+onClose()
+onOpen() - after close command</code></pre>
+
+<p>If you wish to specify your own custom close code and reason phrase you may do so by yielding the <code>"close"</code> command with an array as follows:</p>
+
+
+
+<pre class="prettyprint"><code class=" hljs php"><span class="hljs-keyword">yield</span> <span class="hljs-string">'close'</span> =&gt; [<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$closeCode</span>, <span class="hljs-variable">$closeReason</span>];</code></pre>
+
+
+
+<h4 id="nested-command-resolution">Nested Command Resolution</h4>
+
+<p>Of course, websocket applications aren’t limited to the three public API methods. In non-trivial applications we can yield <em>nested</em> generators and the server will automatically resolve them and process any endpoint command keys along the way.</p>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">someAsyncCall</span><span class="hljs-params">()</span> {</span>
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> Amp\Success(<span class="hljs-number">21</span>);
+}
+
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MyWebsocket</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">Aerys</span>\<span class="hljs-title">Websocket</span> {</span>
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onOpen</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, array <span class="hljs-variable">$httpEnvironment</span>)</span> {</span>
+        <span class="hljs-keyword">yield</span> <span class="hljs-variable">$this</span>-&gt;doSomethingAsynchronous();
+    }
+
+    <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">doSomethingAsynchronous</span><span class="hljs-params">()</span> {</span>
+        <span class="hljs-comment">// Yield control until our async operation completes</span>
+        <span class="hljs-variable">$result</span> = (<span class="hljs-keyword">yield</span> someAsyncCall()) * <span class="hljs-number">2</span>;
+        assert(<span class="hljs-variable">$result</span> === <span class="hljs-number">42</span>);
+
+        <span class="hljs-comment">// This send command is bound to the $clientId in</span>
+        <span class="hljs-comment">// onOpen() where we originally invoked this function.</span>
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'send'</span> =&gt; <span class="hljs-variable">$result</span>;
+    }
+
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onData</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$payload</span>)</span> {</span>
+        <span class="hljs-comment">// ...</span>
+    }
+
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onClose</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$code</span>, <span class="hljs-variable">$reason</span>)</span> {</span>
+        <span class="hljs-comment">// ...</span>
+    }
+}</code></pre>
+
+<p>The above example demonstrates how a nested generator’s <code>"send"</code> command scope is bound to the <code>$clientId</code> from the original calling context.</p>
+
+<blockquote>
+  <p><strong>NOTE</strong></p>
+  
+  <p>Any event reactor timer or stream IO callbacks registered using commands such as <code>"once"</code>, <code>"repeat"</code>, etc also have their <code>"send"</code> commands bound to the <code>$clientId</code> associated with the calling context.</p>
+</blockquote>
+
+
+
+<h4 id="error-handling">Error Handling</h4>
+
+<p>There is no need for a dedicated error handling mechanism in the <code>Aerys\Websocket</code> API because generator yields coalesce the process into a form with which programmers are already familiar: <code>try/catch</code> blocks.</p>
+
+<p>The <code>yield</code> statements won’t return control to an application’s generator function until the associated operation completes. For <code>"send"</code> commands this means that control is returned in one of two states:</p>
+
+<ol>
+<li>The message send completed successfully;</li>
+<li>The client connection was severed before the message could be fully delivered.</li>
+</ol>
+
+<p>In the event of a failure an <code>Aerys\ClientGoneException</code> is thrown into your generator. This means that applications wishing to verify message send completion should catch these errors. For example:</p>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MyWebsocket</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">Aerys</span>\<span class="hljs-title">Websocket</span> {</span>
+    <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onOpen</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$httpRequestEnv</span>)</span> {</span>
+        <span class="hljs-keyword">try</span> {
+            <span class="hljs-keyword">yield</span> <span class="hljs-string">'send'</span> =&gt; <span class="hljs-string">'Thus spake Zarathustra'</span>;
+        } <span class="hljs-keyword">catch</span> (Aerys\ClientGoneException <span class="hljs-variable">$e</span>) {
+            <span class="hljs-comment">// oh noes! the send didn't finish :(</span>
+        }
+    }
+
+    ...
+}</code></pre>
+
+<blockquote>
+  <p><strong>TIP</strong></p>
+  
+  <p>There is <em>NO</em> need for Websocket applications to wrap all of their code inside endless try/catch blocks to prevent <code>ClientGoneException</code> instances from bubbling up the stack. The server automatically handles these cases for you. There is no harm to an application if a client disconnects mid-generator execution and the associated exception goes uncaught. The exception simply provides a hook for applications that need to verify that a specific message was received by the client.</p>
+</blockquote>
+
+
+
+<h4 id="nowait-prefix">NOWAIT Prefix</h4>
+
+<p>When an application yields commands the server does not return control to the generator until the command resolves successfully (or fails resulting in an exception object thrown into the generator). This may not always be the preferred behavior, though. For example, an application may not care to wait until <em>all</em> recipients of a broadcast have received a message before proceeding.</p>
+
+<p>In such cases applications may prefix their yield commands with the “NOWAIT” prefix, <code>@</code> to indicate that the success or failure of the operation is not important . Consider:</p>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MyWebsocket</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">Aerys</span>\<span class="hljs-title">Websocket</span> {</span>
+    <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onOpen</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$httpRequestEnv</span>)</span> {</span>
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'send'</span> =&gt; <span class="hljs-string">'You know nothing, Jon Snow.'</span>;
+        <span class="hljs-comment">// this line isn't reached until the send completes</span>
+
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'@send'</span> =&gt; <span class="hljs-string">'I know some things.\n'</span>;
+        <span class="hljs-comment">// this line is reached immediately -- you won't</span>
+        <span class="hljs-comment">// know when or if this send actually completes</span>
+    }
+
+    ...
+}</code></pre>
+
+<blockquote>
+  <p><strong>NOTE</strong></p>
+  
+  <p>The <code>@</code> NOWAIT operator is similar to PHP’s error suppression operator in that it will mask any errors that occur while performing the requested command. Its use also means that <code>ClientGoneException</code> instances <em>will not</em> be thrown into application generators in the event a client disconnects prior to send completion.</p>
+</blockquote>
+
+
+
+<h2 id="handshakes">Handshakes</h2>
+
+<p>As previously mentioned, the websocket handshake has not yet been sent at <code>Websocket::onOpen()</code> invocation time. By sending the handshake just in time (JIT) aerys affords applications the opportunity to perform such tasks as subprotocol/extension negotiation, user authorization, etc.</p>
+
+
+
+<h3 id="the-jit-handshake">The JIT Handshake</h3>
+
+<p>There are three execution points at which aerys may send the HTTP websocket handshake to a new client:</p>
+
+<ol>
+<li>When a <code>"send"</code> command is issued inside <code>onOpen()</code> or a nested generator executing inside the <code>onOpen()</code> context;</li>
+<li>When a <code>"broadcast"</code> command is issued inside <code>onOpen()</code> or a nested generator executing inside the <code>onOpen()</code> context;</li>
+<li>When the <code>onOpen()</code>  generator resolves and no <code>"send"</code> or <code>"broadcast"</code> yield commands were issued.</li>
+</ol>
+
+
+
+<h4 id="assigning-handshake-values">Assigning Handshake Values</h4>
+
+<p>There are three types of information an application may assign to the websocket handshake response inside <code>onOpen()</code>:</p>
+
+<ol>
+<li>HTTP status code (must be &gt;= 400);</li>
+<li>HTTP reason phrase</li>
+<li>HTTP headers (may be assigned whether the handshake succeeds or fails);</li>
+</ol>
+
+<p>In the following example we fail the websocket handshake with a 401 response if we determine that the client is not authorized to connect to this endpoint. Otherwise aerys automatically sends the JIT succcess handshake when we yield the <code>"send"</code> command.</p>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">asyncAuthorizationMock</span><span class="hljs-params">()</span> {</span>
+    <span class="hljs-variable">$isAuthorized</span> = (time() % <span class="hljs-number">2</span> === <span class="hljs-number">0</span>);
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> Success(<span class="hljs-variable">$isAuthorized</span>);
+}
+
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MyWebsocket</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">Aerys</span>\<span class="hljs-title">Websocket</span> {</span>
+    <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onOpen</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$httpRequestEnv</span>)</span> {</span>
+        <span class="hljs-variable">$isAuthorized</span> = (<span class="hljs-keyword">yield</span> asyncAuthorizationMock());
+        <span class="hljs-keyword">if</span> (<span class="hljs-variable">$isAuthorized</span>) {
+            <span class="hljs-keyword">yield</span> <span class="hljs-string">'send'</span> =&gt; <span class="hljs-string">'Welcome!'</span>;
+        } <span class="hljs-keyword">else</span> {
+            <span class="hljs-keyword">yield</span> <span class="hljs-string">'status'</span> =&gt; <span class="hljs-number">401</span>;
+            <span class="hljs-keyword">yield</span> <span class="hljs-string">'reason'</span> =&gt; <span class="hljs-string">'Authorization required'</span>;
+        }
+    }
+
+    ...
+}</code></pre>
+
+<blockquote>
+  <p><strong>NOTE</strong></p>
+  
+  <p>It’s important to note that only HTTP status codes &gt;= 400 are accepted when yielding <code>"status"</code> commands. The 101 status code is implied unless an application explicitly wishes to fail the handshake with a 4xx or 5xx error response. Also note that reason phrases assigned are discarded if the handshake is not explicitly failed. Any headers assigned via the <code>"header"</code> yield command are relayed to the client regardless of whether or not the handshake is a success.</p>
+</blockquote>
+
+
+
+<h4 id="subprotocols-extensions-and-origins">Subprotocols, Extensions and Origins</h4>
+
+<p>The websocket specification allows for the negotiation of custom subprotocols and extensions in addition to verification based on an HTTP request’s origin. Application endpoints have full access to the <code>$httpRequestEnv</code> array inside <code>onOpen()</code> and may negotiate these values by comparing their available capabilities to the HTTP headers present in the request environment. Here we demonstrate a simple example of denying connections from requests specifying an origin header that we don’t wish to support:</p>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MyWebsocket</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">Aerys</span>\<span class="hljs-title">Websocket</span> {</span>
+    <span class="hljs-keyword">private</span> <span class="hljs-variable">$origin</span> = <span class="hljs-string">'mysite.com'</span>;
+
+    <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onOpen</span><span class="hljs-params">(<span class="hljs-variable">$clientId</span>, <span class="hljs-variable">$httpRequestEnv</span>)</span> {</span>
+        <span class="hljs-variable">$origin</span> = <span class="hljs-keyword">empty</span>(<span class="hljs-variable">$httpRequestEnv</span>[<span class="hljs-string">'HTTP_ORIGIN'</span>])
+            ? <span class="hljs-keyword">null</span>
+            : <span class="hljs-variable">$httpRequestEnv</span>[<span class="hljs-string">'HTTP_ORIGIN'</span>];
+
+        <span class="hljs-keyword">if</span> (<span class="hljs-variable">$origin</span> !== <span class="hljs-variable">$this</span>-&gt;origin) {
+            <span class="hljs-keyword">yield</span> <span class="hljs-string">'status'</span> =&gt; <span class="hljs-number">400</span>;
+            <span class="hljs-keyword">yield</span> <span class="hljs-string">'reason'</span> =&gt; <span class="hljs-string">'Bad request: origin not allowed'</span>;
+            <span class="hljs-keyword">yield</span> <span class="hljs-string">'header'</span> =&gt; <span class="hljs-string">"Access-Control-Allow-Origin: {$this-&gt;origin}"</span>;
+            <span class="hljs-keyword">return</span>;
+        }
+
+        <span class="hljs-keyword">yield</span> <span class="hljs-string">'send'</span> =&gt; <span class="hljs-string">'hello!'</span>;
+    }
+
+    ...
+}</code></pre>
+
+<p>Negotiating extensions and subprotocols would follow a similar path as the above origin example. The relevant <code>$httpRequestEnv</code> keys are listed here:</p>
+
+<table>
+<thead>
+<tr>
+  <th>Negotiable Value</th>
+  <th>Request Environment Header Key</th>
+</tr>
+</thead>
+<tbody><tr>
+  <td>Extension</td>
+  <td><code>HTTP_SEC_WEBSOCKET_EXTENSIONS</code></td>
+</tr>
+<tr>
+  <td>Subprotocol</td>
+  <td><code>HTTP_SEC_WEBSOCKET_PROTOCOL</code></td>
+</tr>
+<tr>
+  <td>Origin</td>
+  <td><code>HTTP_ORIGIN</code></td>
+</tr>
+</tbody></table>
+
+
+
+
+<h2 id="configuring-endpoints">Configuring Endpoints</h2>
+
+<p>Like all routed aerys endpoints websockets are defined using <code>Aerys\Host</code> instances in the server configuration file. Hosts expose the following method to add websocket routes:</p>
+
+
+
+<pre class="prettyprint"><code class=" hljs lasso">Host<span class="hljs-tag">::addWebsocket</span>(<span class="hljs-built_in">string</span> <span class="hljs-variable">$uri</span>, mixed <span class="hljs-variable">$websocketClassOrObj</span>, <span class="hljs-built_in">array</span> <span class="hljs-variable">$options</span> <span class="hljs-subst">=</span><span class="hljs-preprocessor">[</span><span class="hljs-preprocessor">]</span><span class="hljs-markup">);</span></code></pre>
+
+<p>The following simple aerys configuration exposes a websocket endpoint at <code>http://mysite.com/mywebsocket</code>. The behavior of the websocket endpoint is defined by the <code>MyWebsocketClass</code>. In this example we pass a string class name but note that applications may also manually instantiate their own instance of the <code>Aerys\Websocket</code> interface and pass the instance itself. In the event of a string the server will automatically provision a new instance of the specified class and use it as the endpoint controller.</p>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-preprocessor">&lt;?php</span> <span class="hljs-comment">// Server config with a websocket endpoint</span>
+<span class="hljs-variable">$mySite</span> = <span class="hljs-keyword">new</span> Aerys\Host;
+<span class="hljs-variable">$mySite</span>-&gt;setName(<span class="hljs-string">'mysite.com'</span>);
+<span class="hljs-variable">$mySite</span>-&gt;addWebsocket(<span class="hljs-string">'/mywebsocket'</span>, <span class="hljs-string">'MyWebsocketClass'</span>);</code></pre>
+
+<p>As websocket endpoints aren’t terribly useful on their own without accompanying HTML and Javascript files we’ll generally also add static file serving capability to our configuration:</p>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-preprocessor">&lt;?php</span> <span class="hljs-comment">// Server config with websocket endpoint + static files</span>
+<span class="hljs-variable">$mySite</span> = <span class="hljs-keyword">new</span> Aerys\Host;
+<span class="hljs-variable">$mySite</span>-&gt;setName(<span class="hljs-string">'mysite.com'</span>);
+<span class="hljs-variable">$mySite</span>-&gt;addWebsocket(<span class="hljs-string">'/mywebsocket'</span>, <span class="hljs-string">'MyWebsocketClass'</span>);
+<span class="hljs-variable">$mySite</span>-&gt;addRoot(<span class="hljs-string">'/hard/path/to/docroot'</span>);</code></pre>
+
+<p>Using the above configuration aerys routes any requests to <code>/mywebsocket</code> to our websocket endpoint handler. All other requests will be handled as requests for static files and served from the specified document root.</p>
+
+
+
+<h3 id="assigning-endpoint-options">Assigning Endpoint Options</h3>
+
+<p>The <code>$options</code> parameter allows users to fine-tune the behavior of their websocket endpoints as shown here:</p>
+
+
+
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-preprocessor">&lt;?php</span> <span class="hljs-comment">// Server config customizing websocket endpoint options</span>
+<span class="hljs-keyword">use</span> <span class="hljs-title">Aerys</span>\<span class="hljs-title">Host</span>, <span class="hljs-title">Aerys</span>\<span class="hljs-title">Websocket</span>\<span class="hljs-title">Endpoint</span>;
+
+<span class="hljs-variable">$mySite</span> = <span class="hljs-keyword">new</span> Host;
+<span class="hljs-variable">$mySite</span>-&gt;setName(<span class="hljs-string">'mysite.com'</span>);
+<span class="hljs-variable">$mySite</span>-&gt;addWebsocket(<span class="hljs-string">'/mywebsocket'</span>, <span class="hljs-string">'MyWebsocketClass'</span>, <span class="hljs-variable">$options</span> = [
+    Endpoint::OP_MAX_FRAME_SIZE =&gt; <span class="hljs-number">4096</span>,
+    Endpoint::OP_MAX_MSG_SIZE =&gt; <span class="hljs-number">32768</span>,
+]);</code></pre>
+
+<p>In the above example we’ve set the maximum allowable size (in bytes) of frames and messages that we will accept from clients.</p>
+
+
+
+<h3 id="available-options">Available Options</h3>
+
+<p>The following websocket endpoint options are available for assignment in configuration files:</p>
+
+<table>
+<thead>
+<tr>
+  <th>Endpoint Constant</th>
+  <th>Description</th>
+  <th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+  <td>OP_MAX_FRAME_SIZE</td>
+  <td>The maximum allowed size (in bytes) of any one inbound frame</td>
+  <td>2097152</td>
+</tr>
+<tr>
+  <td>OP_MAX_MSG_SIZE</td>
+  <td>The maximum allowed aggregate size (in bytes) of any one inbound message</td>
+  <td>10485760</td>
+</tr>
+<tr>
+  <td>OP_HEARTBEAT_PERIOD</td>
+  <td>The number of seconds of inactivity on a connected client session before a heartbeat PING is sent; if &lt;= 0 no heartbeats are sent</td>
+  <td>10</td>
+</tr>
+<tr>
+  <td>OP_CLOSE_PERIOD</td>
+  <td>The number of seconds to wait for clients to respond to a CLOSE frame before the connection is severed by the server</td>
+  <td>3</td>
+</tr>
+<tr>
+  <td>OP_VALIDATE_UTF8</td>
+  <td>Should the server validate incoming TEXT frames to be sure they only contain UTF-8 data?</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td>OP_TEXT_ONLY</td>
+  <td>Does the server only ever deal in TEXT frames (optimization to avoid determining which opcode the server should send with each frame)</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td>OP_AUTO_FRAME_SIZE</td>
+  <td>The size in bytes at which the server will automatically fragment an outbound message into multiple frames</td>
+  <td>32768</td>
+</tr>
+<tr>
+  <td>OP_QUEUED_PING_LIMIT</td>
+  <td>How many consecutive unanswered PING frames the server will tolerate before severing a connection (prevents memory overflow DoS because servers must retain PING payloads to compare against PONG responses)</td>
+  <td>3</td>
+</tr>
+</tbody></table>
+
+
+
+
+<h2 id="appendix">Appendix</h2>
+
+
+
+<h3 id="yield-command-reference">Yield Command Reference</h3>
+
+
+
+<h4 id="websocket-commands">Websocket Commands</h4>
+
+<table>
+<thead>
+<tr>
+  <th>Command</th>
+  <th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+  <td>send</td>
+  <td>Send the yielded string to the client responsible for the current event</td>
+</tr>
+<tr>
+  <td>broadcast</td>
+  <td>Broadcast the associated message to all clients or a filtered set of clients</td>
+</tr>
+<tr>
+  <td>close</td>
+  <td>Close the client specified in the yield value</td>
+</tr>
+<tr>
+  <td>inspect</td>
+  <td>Retrieve an array of stats regarding the yielded client ID</td>
+</tr>
+</tbody></table>
+
+
+
+
+<h4 id="handshake-commands">Handshake Commands</h4>
+
+<table>
+<thead>
+<tr>
+  <th>Command</th>
+  <th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+  <td>status</td>
+  <td>Fail a websocket handshake with the yielded HTTP status code</td>
+</tr>
+<tr>
+  <td>reason</td>
+  <td>Specify an HTTP reason phrase to send when failing the websocket handshake</td>
+</tr>
+<tr>
+  <td>header</td>
+  <td>Assign a string (or an array of strings) to send with the handshake response</td>
+</tr>
+</tbody></table>
+
+
+
+
+<h4 id="amp-system-commands">Amp System Commands</h4>
+
+<table>
+<thead>
+<tr>
+  <th>Command</th>
+  <th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+  <td>wait</td>
+  <td>Pause generator execution for the yielded number of milliseconds</td>
+</tr>
+<tr>
+  <td>immediately</td>
+  <td>Resolve the yielded callback on the next iteration of the event loop</td>
+</tr>
+<tr>
+  <td>once</td>
+  <td>Resolve the yielded callback at array index 0 in array index 1 milliseconds</td>
+</tr>
+<tr>
+  <td>repeat</td>
+  <td>Repeatedly resolve the yielded callback at array index 0 every array index 1 milliseconds</td>
+</tr>
+<tr>
+  <td>onreadable</td>
+  <td>Resolve the yielded callback at array index 1 when the stream resource at index 0 reports as readable</td>
+</tr>
+<tr>
+  <td>onwritable</td>
+  <td>Resolve the yielded callback at array index 1 when the stream resource at index 0 reports as writable</td>
+</tr>
+<tr>
+  <td>enable</td>
+  <td>Enable the yielded event watcher ID</td>
+</tr>
+<tr>
+  <td>disable</td>
+  <td>Disable the yielded event watcher ID</td>
+</tr>
+<tr>
+  <td>cancel</td>
+  <td>Cancel the yielded event watcher ID</td>
+</tr>
+<tr>
+  <td>all</td>
+  <td>Flatten the array of promises/generators and return control when all individual elements resolve successfully; fail the result if any individual resolution fails</td>
+</tr>
+<tr>
+  <td>any</td>
+  <td>Flatten the array of promises/generators and return control when all individual elements resolve; never fail the result regardless of component failures</td>
+</tr>
+<tr>
+  <td>some</td>
+  <td>Flatten the array of promises/generators and return control when all individual elements resolve; only fail the result if all components fail</td>
+</tr>
+<tr>
+  <td>nowait</td>
+  <td>Don’t wait on the yielded promise or generator to resolve before returning control to the generator</td>
+</tr>
+<tr>
+  <td>@ (prefix)</td>
+  <td>Prefixed to another command to indicate the result should not be waited on before returning control to the generator</td>
+</tr>
+</tbody></table>
+
+
+<hr>
+
+
+
+<h2 id="table-of-contents">Table of Contents</h2>
+
+<p><div class="toc">
+<ul>
+<li><a href="#websockets">Websockets</a><ul>
+<li><a href="#the-websocket-api">The Websocket API</a><ul>
+<li><a href="#onopen">onOpen()</a></li>
+<li><a href="#ondata">onData()</a></li>
+<li><a href="#onclose">onClose()</a></li>
+</ul>
+</li>
+<li><a href="#yield-for-great-justice">Yield For Great Justice</a><ul>
+<li><a href="#generators-and-you">Generators and You</a><ul>
+<li><a href="#sending-data">Sending Data</a></li>
+<li><a href="#advanced-broadcasts">Advanced Broadcasts</a></li>
+<li><a href="#close-commands">Close Commands</a></li>
+<li><a href="#nested-command-resolution">Nested Command Resolution</a></li>
+<li><a href="#error-handling">Error Handling</a></li>
+<li><a href="#nowait-prefix">NOWAIT Prefix</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#handshakes">Handshakes</a><ul>
+<li><a href="#the-jit-handshake">The JIT Handshake</a><ul>
+<li><a href="#assigning-handshake-values">Assigning Handshake Values</a></li>
+<li><a href="#subprotocols-extensions-and-origins">Subprotocols, Extensions and Origins</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#configuring-endpoints">Configuring Endpoints</a><ul>
+<li><a href="#assigning-endpoint-options">Assigning Endpoint Options</a></li>
+<li><a href="#available-options">Available Options</a></li>
+</ul>
+</li>
+<li><a href="#appendix">Appendix</a><ul>
+<li><a href="#yield-command-reference">Yield Command Reference</a><ul>
+<li><a href="#websocket-commands">Websocket Commands</a></li>
+<li><a href="#handshake-commands">Handshake Commands</a></li>
+<li><a href="#amp-system-commands">Amp System Commands</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#table-of-contents">Table of Contents</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</p></div></body>
+</html>

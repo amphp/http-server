@@ -232,7 +232,7 @@ class MyWebsocket implements Aerys\Websocket {
 
 > **TIP**
 > 
-> There is *NO* need for Websocket applications to wrap all of their code inside endless try/catch blocks to prevent `ClientGoneException` instances from bubbling up the stack. The server automatically handles these cases for you. There is no harm to an application if a client disconnects mid-generator execution and the associated exception goes uncaught. The exception simply provides a hook for applications who requiring verification of whether or not a specific message was received by the client.
+> There is *NO* need for Websocket applications to wrap all of their code inside endless try/catch blocks to prevent `ClientGoneException` instances from bubbling up the stack. The server automatically handles these cases for you. There is no harm to an application if a client disconnects mid-generator execution and the associated exception goes uncaught. The exception simply provides a hook for applications that need to verify that a specific message was received by the client.
 
 #### NOWAIT Prefix
 
@@ -431,7 +431,7 @@ Command       | Description
 | header      | Assign a string (or an array of strings) to send with the handshake response |
 
 
-#### Event Reactor Commands
+#### Amp System Commands
 
 Command       | Description
 ------------- | ----------------------
@@ -444,20 +444,9 @@ Command       | Description
 | enable      | Enable the yielded event watcher ID |
 | disable     | Disable the yielded event watcher ID |
 | cancel      | Cancel the yielded event watcher ID |
-
-
-#### Promise Combinator Commands
-
-Command       | Description
-------------- | ----------------------
 | all         | Flatten the array of promises/generators and return control when all individual elements resolve successfully; fail the result if any individual resolution fails |
 | any         | Flatten the array of promises/generators and return control when all individual elements resolve; never fail the result regardless of component failures |
 | some        | Flatten the array of promises/generators and return control when all individual elements resolve; only fail the result if all components fail |
-
-#### Other Commands
-
-Command       | Description
-------------- | ----------------------
 | nowait      | Don't wait on the yielded promise or generator to resolve before returning control to the generator |
 | @ (prefix)  | Prefixed to another command to indicate the result should not be waited on before returning control to the generator |
 
