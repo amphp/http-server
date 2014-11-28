@@ -2,6 +2,7 @@
 
 namespace Aerys\Root;
 
+use Amp\Future;
 use Amp\Success;
 use Amp\Failure;
 use Aerys\Responder;
