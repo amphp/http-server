@@ -175,7 +175,7 @@ class Bootstrapper {
             return new HostDefinition($ip, $port, $name, $responder);
         } catch (\Exception $previousException) {
             throw new BootException(
-                sprintf('HostDefinition build failure: %s', $e->getMessage()),
+                sprintf('HostDefinition build failure: %s', $previousException->getMessage()),
                 $code = 0,
                 $previousException
             );
@@ -187,7 +187,7 @@ class Bootstrapper {
             $host->setEncryptionContext($tlsDefinition);
         } catch (\Exception $previousException) {
             throw new BootException(
-                sprintf('HostDefinition build failure: %s', $lastException->getMessage()),
+                sprintf('HostDefinition build failure: %s', $previousException->getMessage()),
                 $code = 0,
                 $previousException
             );
