@@ -741,6 +741,10 @@ class Endpoint implements ServerObserver {
                 case ParseState::PARSE_ERR_SYNTAX:
                     $errorMsg = $frameStruct[0];
                     if ($session->closeState & Session::CLOSE_INIT) {
+                        if ($session->closeState === Session::CLOSE_DONE) {
+                            // We must not unload the session again if it already has CLOSE_DONE state
+                            break;
+                        }
                         // If the close has already been initiated we don't tolerate
                         // errors and immediately unload the client session.
                         $this->unloadSession($session);
