@@ -608,7 +608,11 @@ class Server {
             unset($__headers['CONTENT-LENGTH']);
         }
 
-        $request['QUERY'] = $requestCycle->uriQuery ? parse_str($requestCycle->uriQuery, $request['QUERY']) : [];
+        if ($requestCycle->uriQuery == "") {
+            $request['QUERY'] = [];
+        } else {
+            parse_str($requestCycle->uriQuery, $request['QUERY']);
+        } 
 
         // @TODO Add cookie parsing
         //if (!empty($headers['COOKIE']) && ($cookies = $this->parseCookies($headers['COOKIE']))) {
