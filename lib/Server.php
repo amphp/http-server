@@ -544,7 +544,7 @@ class Server {
         $requestCycle->uri = $__uri;
 
         if (stripos($__uri, 'http://') === 0 || stripos($__uri, 'https://') === 0) {
-            extract(parse_url($__uri, $flags = EXTR_PREFIX_ALL, $prefix = '__uri_'));
+            extract(parse_url($__uri), $flags = EXTR_PREFIX_ALL, $prefix = '__uri_');
             $requestCycle->hasAbsoluteUri = TRUE;
             $requestCycle->uriHost = $__uri_host;
             $requestCycle->uriPort = $__uri_port;
