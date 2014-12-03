@@ -114,8 +114,8 @@ class Host {
      *      'defaultMimeType'           => 'text/plain',
      *      'defaultCharset'            => 'utf-8',
      *      'cacheTtl'                  => 10,
-     *      'maxBufferEntries'          => 50,
-     *      'maxBufferEntrySize'        => 500000,
+     *      'cacheMaxBuffers'           => 50,
+     *      'cacheMaxBufferSize'        => 500000,
      *  ];
      *
      * Note: websocket endpoint and dynamic HTTP route URIs always take precedence over filesystem
