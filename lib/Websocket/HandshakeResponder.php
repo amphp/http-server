@@ -3,11 +3,11 @@
 namespace Aerys\Websocket;
 
 use Aerys\Responder;
-use Aerys\ResponderStruct;
+use Aerys\ResponderEnvironment;
 
 class HandshakeResponder implements Responder {
     private $endpoint;
-    private $responderStruct;
+    private $responderEnv;
 
     /**
      * @param Endpoint $endpoint
@@ -19,10 +19,10 @@ class HandshakeResponder implements Responder {
     /**
      * Prepare the Responder
      *
-     * @param \Aerys\ResponderStruct $responderStruct
+     * @param \Aerys\ResponderEnvironment $responderEnv
      */
-    public function prepare(ResponderStruct $responderStruct) {
-        $this->responderStruct = $responderStruct;
+    public function prepare(ResponderEnvironment $responderEnv) {
+        $this->responderEnv = $responderEnv;
     }
 
     /**
@@ -41,10 +41,11 @@ class HandshakeResponder implements Responder {
      * @return void
      */
     public function write() {
-        $server = $this->responderStruct->server;
-        $request = $this->responderStruct->request;
-        $socketId = $request['AERYS_SOCKET_ID'];
-        list($socket, $onClose) = $server->exportSocket($socketId);
-        $this->endpoint->import($socket, $onClose, $request);
+        $responderEnv = $this->responderEnv;
+        $request = $responderEnv->request;
+        $socket = $responderEnv->socket;
+        $server = $responderEnv->server;
+        $onCloseCallback = $server->exportSocket($socket);
+        $this->endpoint->importSocket($socket, $onCloseCallback, $request);
     }
 }

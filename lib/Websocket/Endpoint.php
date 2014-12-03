@@ -124,11 +124,11 @@ class Endpoint implements ServerObserver {
      * @param callable $closer A callback that MUST be invoked when the socket disconnects
      * @param array $request   The HTTP request that led to this import operation
      */
-    public function import($socket, callable $serverCloseCallback, array $request) {
+    public function importSocket($socket, callable $onCloseCallback, array $request) {
         $clientId = (int) $socket;
         $session = new Session;
         $session->request = $request;
-        $session->serverCloseCallback = $serverCloseCallback;
+        $session->onCloseCallback = $onCloseCallback;
         $session->connectedAt = $this->now ?: time();
         $session->clientId = $clientId;
         $session->socket = $socket;
@@ -556,7 +556,7 @@ class Endpoint implements ServerObserver {
                     'Cannot assign handshake reason: handshake already initiated'
                 ));
             } else {
-                $session->handshakeReason = $reason = (string) $current;
+                $session->handshakeHttpReason = $reason = (string) $current;
                 $promise = new Success($reason);
             }
 
@@ -1357,8 +1357,8 @@ class Endpoint implements ServerObserver {
         // Inform the HTTP server that we're finished with this socket. This is critically
         // important as the server *will not* release resources associated with exported
         // sockets until told to do so via this callback.
-        $serverOnCloseCallback = $session->serverCloseCallback;
-        $serverOnCloseCallback();
+        $onCloseCallback = $session->onCloseCallback;
+        $onCloseCallback();
 
         // Only notify onClose if the application didn't fail the websocket handshake with
         // a custom HTTP error response.

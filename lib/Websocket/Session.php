@@ -28,7 +28,7 @@ class Session extends Struct {
     public $writeWatcher;
     public $isWriteWatcherEnabled;
     public $pendingPings = [];
-    public $serverCloseCallback;
+    public $onCloseCallback;
     public $messageBuffer = '';
 
     public $closeState = self::CLOSE_NONE;
