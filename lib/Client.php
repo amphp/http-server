@@ -22,5 +22,4 @@ class Client extends Struct {
     public $readWatcher;
     public $writeWatcher;
     public $pendingResponder;
-    public $isGone;
 }
