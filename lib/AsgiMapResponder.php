@@ -48,8 +48,6 @@ class AsgiMapResponder implements Responder {
             return;
         }
 
-        $header = setHeader($header, 'Content-Length', strlen($body));
-
         if ($env->mustClose || $protocol < 1.1 || headerMatches($header, 'Connection', 'close')) {
             $env->mustClose = true;
             $header = setHeader($header, 'Connection', 'close');
@@ -60,17 +58,24 @@ class AsgiMapResponder implements Responder {
             $header = setHeader($header, 'Keep-Alive', $env->keepAlive);
         }
 
-        $contentType = hasHeader($header, 'Content-Type')
-            ? getHeader($header, 'Content-Type')
-            : $env->defaultContentType;
-
-        if (stripos($contentType, 'text/') === 0 && stripos($contentType, 'charset=') === false) {
-            $contentType .= "; charset={$env->defaultTextCharset}";
-        }
-
         // @TODO Apply Content-Encoding: gzip if the originating HTTP request supports it
 
-        $header = setHeader($header, 'Content-Type', $contentType);
+        if ($status >= 200 && ($status < 300 || $status >= 400)) {
+            $contentType = hasHeader($header, 'Content-Type')
+                ? getHeader($header, 'Content-Type')
+                : $env->defaultContentType;
+
+            if (stripos($contentType, 'text/') === 0 && stripos($contentType, 'charset=') === false) {
+                $contentType .= "; charset={$env->defaultTextCharset}";
+            }
+
+            $header = setHeader($header, 'Content-Type', $contentType);
+            $header = setHeader($header, 'Content-Length', strlen($body));
+        } else {
+            $header = removeHeader($header, 'Content-Type');
+            $header = removeHeader($header, 'Content-Length');
+        }
+
         $header = setHeader($header, 'Date', $env->httpDate);
 
         if ($env->serverToken) {
