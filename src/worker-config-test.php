@@ -1,6 +1,16 @@
 <?php
 
-require_once __DIR__ . '/../vendor/autoload.php';
+// <composer_hack>
+// Stupid hack to autoload correctly if installed via composer and not git
+// @TODO update this path to amphp/aerys once the server is moved to amphp
+$dir = str_replace('\\', '/', __DIR__);
+$autoloadPath = strpos($dir, 'vendor/rdlowrey/aerys/')
+    ? __DIR__ . '/../../../autoload.php'
+    : __DIR__ . '/../vendor/autoload.php';
+
+require $autoloadPath;
+// </composer_hack>
+
 
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
