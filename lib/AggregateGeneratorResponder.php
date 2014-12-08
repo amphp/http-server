@@ -490,19 +490,17 @@ class AggregateGeneratorResponder implements Responder {
         // @TODO Apply Content-Encoding: gzip if the originating HTTP request supports it
 
         if ($status >= 200 && ($status < 300 || $status >= 400)) {
-            $contentType = hasHeader($header, 'Content-Type')
-                ? getHeader($header, 'Content-Type')
+            $contentType = hasHeader($headers, 'Content-Type')
+                ? getHeader($headers, 'Content-Type')
                 : $env->defaultContentType;
 
             if (stripos($contentType, 'text/') === 0 && stripos($contentType, 'charset=') === false) {
                 $contentType .= "; charset={$env->defaultTextCharset}";
             }
 
-            $header = setHeader($header, 'Content-Type', $contentType);
-            $header = setHeader($header, 'Content-Length', strlen($body));
+            $headers = setHeader($headers, 'Content-Type', $contentType);
         } else {
-            $header = removeHeader($header, 'Content-Type');
-            $header = removeHeader($header, 'Content-Length');
+            $headers = removeHeader($headers, 'Content-Type');
         }
 
         $headers = setHeader($headers, 'Date', $env->httpDate);
