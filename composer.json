@@ -28,13 +28,13 @@
     "autoload": {
         "psr-4": {
             "Aerys\\": "lib/"
-        }
+        },
+        "files": ["lib/functions.php"]
     },
     "autoload-dev": {
         "psr-4": {
             "Aerys\\Test\\": "test/"
-        },
-        "files": ["lib/functions.php"]
+        }
     },
     "extra": {
         "branch-alias": {

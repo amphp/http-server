@@ -661,7 +661,7 @@ class Server {
         $requestCycle->uri = $__uri;
 
         if (stripos($__uri, 'http://') === 0 || stripos($__uri, 'https://') === 0) {
-            extract(parse_url($__uri, $flags = EXTR_PREFIX_ALL, $prefix = '__uri_'));
+            extract(parse_url($__uri), $flags = EXTR_PREFIX_ALL, $prefix = '__uri_');
             $requestCycle->hasAbsoluteUri = TRUE;
             $requestCycle->uriHost = $__uri_host;
             $requestCycle->uriPort = $__uri_port;
@@ -724,7 +724,11 @@ class Server {
             unset($__headers['CONTENT-LENGTH']);
         }
 
-        $request['QUERY'] = $requestCycle->uriQuery ? parse_str($requestCycle->uriQuery, $request['QUERY']) : [];
+        if ($requestCycle->uriQuery == "") {
+            $request['QUERY'] = [];
+        } else {
+            parse_str($requestCycle->uriQuery, $request['QUERY']);
+        } 
 
         // @TODO Add cookie parsing
         //if (!empty($headers['COOKIE']) && ($cookies = $this->parseCookies($headers['COOKIE']))) {
