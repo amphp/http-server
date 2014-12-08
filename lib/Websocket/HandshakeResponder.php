@@ -7,7 +7,7 @@ use Aerys\ResponderEnvironment;
 
 class HandshakeResponder implements Responder {
     private $endpoint;
-    private $responderEnv;
+    private $preparedEnvironment;
 
     /**
      * @param Endpoint $endpoint
@@ -17,16 +17,16 @@ class HandshakeResponder implements Responder {
     }
 
     /**
-     * Prepare the Responder
+     * Prepare the Responder for client output
      *
-     * @param \Aerys\ResponderEnvironment $responderEnv
+     * @param \Aerys\ResponderEnvironment $env
      */
-    public function prepare(ResponderEnvironment $responderEnv) {
-        $this->responderEnv = $responderEnv;
+    public function prepare(ResponderEnvironment $env) {
+        $this->preparedEnvironment = $env;
     }
 
     /**
-     * Invoked by the server when it's time to write the response to the client
+     * Assume control of the client socket and output the prepared response
      *
      * Instead of writing the handshake response at this time we export the socket
      * from the server. This allows us to JIT the handshake response based on what
@@ -40,12 +40,23 @@ class HandshakeResponder implements Responder {
      *
      * @return void
      */
-    public function write() {
-        $responderEnv = $this->responderEnv;
-        $request = $responderEnv->request;
-        $socket = $responderEnv->socket;
-        $server = $responderEnv->server;
+    public function assumeSocketControl() {
+        $env = $this->preparedEnvironment;
+        $request = $env->request;
+        $socket = $env->socket;
+        $server = $env->server;
         $onCloseCallback = $server->exportSocket($socket);
         $this->endpoint->importSocket($socket, $onCloseCallback, $request);
     }
+
+    /**
+     * The Responder API contract requires this method
+     *
+     * Websocket endpoints register their own IO writability watchers so we don't have any use
+     * for the write watcher registered by the HTTP server at client connect time. As a result
+     * we can safely leave this empty as it's never used as part of the websocket handshake.
+     *
+     * @return void
+     */
+    public function write() {}
 }

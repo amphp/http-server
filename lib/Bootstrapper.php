@@ -3,10 +3,10 @@
 namespace Aerys;
 
 use Amp\Reactor;
-use Amp\ReactorFactory;
 use Amp\Promise;
 use Auryn\Injector;
 use Auryn\Provider;
+use Aerys\Root\Root;
 use FastRoute\RouteCollector;
 
 class Bootstrapper {
@@ -14,6 +14,7 @@ class Bootstrapper {
     const E_CONFIG_VARNAME = "Illegal variable name; \"%s\" must not be used in config files";
     const E_MISSING_CONFIG = "No Host instances found in config file: %s";
 
+    private $reactor;
     private $injector;
     private $serverOptMap = [
         'MAX_CONNECTIONS'       => Server::OP_MAX_CONNECTIONS,
@@ -33,55 +34,48 @@ class Bootstrapper {
         'DEFAULT_HOST'          => Server::OP_DEFAULT_HOST,
     ];
 
+    public function __construct(Reactor $reactor = null) {
+        $this->reactor = $reactor ?: \Amp\getReactor();
+    }
+
     /**
      * Bootstrap a server and its host definitions from command line arguments
      *
-     * @param string $config The server config file path
+     * @param string $configFile The server config file path
      * @param array $options
-     * @throws \Aerys\BootException
-     * @return array Returns three-element array of the form [$reactor, $server, $hosts]
+     * @throws BootException
+     * @return array Returns index array of the form [Server $server, HostGroup $hostGroup]
      */
-    public function boot($config, array $opts = []) {
-        $bindOpt = isset($opts['bind']) ? (bool) $opts['bind'] : TRUE;
-        $socksOpt = isset($opts['socks']) ? (array) $opts['socks'] : [];
-        $debugOpt = isset($opts['debug']) ? (bool) $opts['debug'] : FALSE;
+    public function boot($configFile, array $opts = []) {
+        list($hostConfigs, $serverOptions) = $this->parseServerConfigFile($configFile);
 
-        list($hostConfigs, $serverOptions) = $this->parseHostConfigs($config);
+        $this->injector = $injector = new Provider;
 
-        $reactor = \Amp\reactor();
-        $injector = new Provider;
-        $this->injector = $injector;
-
-        $injector->alias('Amp\Reactor', get_class($reactor));
-        $injector->share($reactor);
+        $injector->alias('Amp\Reactor', get_class($this->reactor));
+        $injector->share($this->reactor);
         $injector->share('Aerys\Server');
-        $injector->share('Amp\Resolver');
-        $server = $injector->make('Aerys\Server', [':debug' => $debugOpt]);
+        $injector->share('Aerys\AsgiResponderFactory');
+        $server = $injector->make('Aerys\Server');
 
         // Automatically register any ServerObserver implementations with the server
         $injector->prepare('Aerys\ServerObserver', function($observer) use ($server) {
-            $server->addObserver($observer);
+            $server->attachObserver($observer);
         });
 
-        $hosts = new HostGroup;
+        $hostGroup = new HostGroup;
         foreach ($hostConfigs as $hostConfig) {
             $host = $this->buildHost($hostConfig);
-            $hosts->addHost($host);
+            $hostGroup->addHost($host);
         }
-        $this->injector = NULL;
 
         foreach ($serverOptions as $option => $value) {
             $server->setOption($option, $value);
         }
 
-        if ($bindOpt) {
-            $server->start($hosts, $socksOpt);
-        }
-
-        return [$reactor, $server, $hosts];
+        return [$server, $hostGroup];
     }
 
-    private function parseHostConfigs($__configFile) {
+    private function parseServerConfigFile($__configFile) {
         if (!include($__configFile)) {
             throw new BootException(
                 sprintf(self::E_CONFIG_INCLUDE, $__configFile)
@@ -208,45 +202,29 @@ class Bootstrapper {
         }
 
         if ($conf = $hostArr[Host::ROOT]) {
-            $responders[Host::ROOT] = $this->buildRootResponder($conf);
-        }
-
-        switch (count($responders)) {
-            case 0:  return $this->buildDefaultResponder();
-            case 1:  return current($responders);
-            default: return $this->buildAggregateResponder($responders);
-        }
-    }
-
-    private function buildAggregateResponder(array $responders) {
-        $http404 = [
-            'status' => Status::NOT_FOUND,
-            'header' => 'Content-Type: text/html; charset=utf-8',
-            'body'   => '<html><body><h1>404 Not Found</h1></body></html>',
-        ];
-
-        return function($request) use ($responders, $http404) {
-            foreach ($responders as $responder) {
-                $response = call_user_func($responder, $request);
-                if ($response instanceof Responder
-                    || $response instanceof \Generator
-                    || $response instanceof Promise
-                    || is_string($response)
-                    || empty($response['status'])
-                    || $response['status'] != Status::NOT_FOUND
-                ) {
-                    return $response;
-                }
+            list($root, $isPublicRoot) = $this->buildRootResponder($conf);
+            if ($isPublicRoot) {
+                $responders[Host::ROOT] = $root;
             }
+        } else {
+            $root = null;
+        }
 
-            return $http404;
-        };
+        return empty($responders)
+            ? $this->buildDefaultResponder()
+            : $this->buildResponderAggregate($responders, $root);
     }
 
     private function buildDefaultResponder() {
         return function() {
             return "<html><body><h1>It works!</h1></body></html>";
         };
+    }
+
+    private function buildResponderAggregate($requestHandlers) {
+        return $this->injector->make('Aerys\\AggregateRequestHandler', [
+            ':requestHandlers' => $requestHandlers
+        ]);
     }
 
     private function buildRouter(array $standard, array $websockets) {
@@ -367,9 +345,9 @@ class Bootstrapper {
             }
 
             if ($responder instanceof ServerObserver) {
-                $server->addObserver($responder);
+                $server->attachObserver($responder);
             } elseif (is_array($responder) && $responder[0] instanceof ServerObserver) {
-                $server->addObserver($responder[0]);
+                $server->attachObserver($responder[0]);
             }
 
             $responders[] = $responder;
@@ -377,7 +355,7 @@ class Bootstrapper {
 
         return (count($responders) === 1)
             ? current($responders)
-            : $this->buildAggregateResponder($responders);
+            : $this->buildResponderAggregate($responders);
     }
 
     private function buildExecutableUserResponder($responder) {
@@ -396,6 +374,7 @@ class Bootstrapper {
         try {
             $rootSettings = array_change_key_case($rootSettings);
             $rootPath = $rootSettings['root'];
+            $isPublicRoot = empty($rootSettings['private']);
 
             // Use array_key_exists() so we can capture NULL values and allow applications
             // to avoid loading mime types from a file altogether
@@ -415,7 +394,8 @@ class Bootstrapper {
             // remaining settings to Root::setAllOptions().
             unset(
                 $rootSettings['root'],
-                $rootSettings['mimefile']
+                $rootSettings['mimefile'],
+                $rootSettings['private']
             );
 
             $reactor = $this->injector->make('Amp\Reactor');
@@ -426,7 +406,7 @@ class Bootstrapper {
             $root = $this->injector->make($rootClass, [':rootPath' => $rootPath]);
             $root->setAllOptions($rootSettings);
 
-            return $root;
+            return [$root, $isPublicRoot];
 
         } catch (\Exception $previousException) {
             throw new BootException(

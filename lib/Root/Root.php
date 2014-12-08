@@ -10,19 +10,14 @@ use Aerys\ServerObserver;
 
 abstract class Root implements ServerObserver {
     const OP_INDEXES = 'indexes';
-    const OP_ETAG_MODE = 'etagmode';
+    const OP_ETAG_USE_INODE = 'useetaginode';
     const OP_EXPIRES_PERIOD = 'expiresperiod';
     const OP_MIME_TYPES = 'mimetypes';
     const OP_DEFAULT_MIME_TYPE = 'defaultmimetype';
     const OP_DEFAULT_CHARSET = 'defaultcharset';
     const OP_CACHE_TTL = 'cachettl';
-    const OP_CACHE_MAX_BUFFER_ENTRIES = 'cachemaxbufferentries';
-    const OP_CACHE_MAX_BUFFER_ENTRY_SIZE = 'cachemaxbufferentrysize';
-
-    const ETAG_NONE = 0;
-    const ETAG_SIZE = 1;
-    const ETAG_INODE = 2;
-    const ETAG_ALL = 3;
+    const OP_CACHE_MAX_BUFFERS = 'cachemaxbuffers';
+    const OP_CACHE_MAX_BUFFER_SIZE = 'cachemaxbuffersize';
 
     private static $PRECONDITION_NOT_MODIFIED = 1;
     private static $PRECONDITION_FAILED = 2;
@@ -45,13 +40,13 @@ abstract class Root implements ServerObserver {
     private $isCacheCollectWatcherEnabled;
 
     private $indexes = ['index.html', 'index.htm'];
-    private $etagMode = self::ETAG_SIZE;
+    private $useEtagInode = true;
     private $expiresPeriod = 3600;
     private $defaultMimeType = 'text/plain';
     private $defaultCharset = 'utf-8';
     private $cacheTtl = 10;
     private $cacheMaxBufferEntries = 50;
-    private $cacheMaxBufferEntrySize = 500000;
+    private $cacheMaxBufferEntrySize = 524288;
     private $debug;
 
     /**
@@ -263,12 +258,9 @@ abstract class Root implements ServerObserver {
     }
 
     private function onFileEntry(RootRequest $rootRequest, FileEntry $fileEntry) {
-        $etag = $fileEntry->path . $fileEntry->mtime;
+        $etag = "{$fileEntry->path}{$fileEntry->mtime}{$fileEntry->size}";
 
-        if ($this->etagMode & self::ETAG_SIZE) {
-            $etag .= $fileEntry->size;
-        }
-        if ($this->etagMode & self::ETAG_INODE) {
+        if ($this->useEtagInode) {
             $etag .= $fileEntry->inode;
         }
         $fileEntry->etag = md5($etag);
@@ -316,7 +308,7 @@ abstract class Root implements ServerObserver {
             $response = $this->makeNotModifiedResponse($mtime, $etag);
         } elseif ($preCode === self::$PRECONDITION_FAILED) {
             $response = ['status' => Status::PRECONDITION_FAILED];
-        } elseif (empty($request['HTTP_RANGE'])) {
+        } elseif ($preCode === self::$PRECONDITION_IF_RANGE_FAILED || empty($request['HTTP_RANGE'])) {
             $headerLines = $this->buildNonRangeHeaders($fileEntry);
             $response = $this->responderFactory->make($fileEntry, $headerLines, $request);
         } elseif ($range = $this->normalizeByteRanges($size, $request['HTTP_RANGE'])) {
@@ -478,7 +470,7 @@ abstract class Root implements ServerObserver {
             }
 
             // If the requested range(s) can't be satisfied we're finished
-            if ($startPos >= $size || $endPos <= $startPos || $endPos <= 0) {
+            if ($startPos >= $size || $endPos < $startPos || $endPos < 0) {
                 return null;
             }
 
@@ -560,8 +552,8 @@ abstract class Root implements ServerObserver {
             case self::OP_INDEXES:
                 $this->setIndexes($value);
                 break;
-            case self::OP_ETAG_MODE:
-                $this->setEtagMode($value);
+            case self::OP_ETAG_USE_INODE:
+                $this->setUseEtagInode($value);
                 break;
             case self::OP_EXPIRES_PERIOD:
                 $this->setExpiresPeriod($value);
@@ -578,10 +570,10 @@ abstract class Root implements ServerObserver {
             case self::OP_CACHE_TTL:
                 $this->setCacheTtl($value);
                 break;
-            case self::OP_CACHE_MAX_BUFFER_ENTRIES:
+            case self::OP_CACHE_MAX_BUFFERS:
                 $this->setCacheMaxBufferEntries($value);
                 break;
-            case self::OP_CACHE_MAX_BUFFER_ENTRY_SIZE:
+            case self::OP_CACHE_MAX_BUFFER_SIZE:
                 $this->setCacheMaxBufferEntrySize($value);
                 break;
             default:
@@ -611,8 +603,8 @@ abstract class Root implements ServerObserver {
         $this->indexes = array_filter($indexes);
     }
 
-    private function setEtagMode($mode) {
-        $this->etagMode = (int) $mode;
+    private function setUseEtagInode($useInode) {
+        $this->useEtagInode = (bool) $useInode;
     }
 
     private function setExpiresPeriod($seconds) {
@@ -731,13 +723,12 @@ abstract class Root implements ServerObserver {
      * Receive notifications from the server when it starts/stops
      *
      * @param \Aerys\Server $server
-     * @param int $event
      * @return void
      */
-    final public function onServerUpdate(Server $server, $event) {
-        switch ($event) {
+    final public function onServerUpdate(Server $server) {
+        switch ($server->getState()) {
             case Server::STARTING:
-                $this->debug = $server->isInDebugMode();
+                $this->debug = $server->getDebugFlag();
                 break;
             case Server::STOPPED:
                 $this->reactor->disable($this->cacheCollectWatcher);

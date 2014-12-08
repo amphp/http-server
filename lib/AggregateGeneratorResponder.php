@@ -7,143 +7,141 @@ use Amp\Promise;
 use Amp\Failure;
 use Amp\Success;
 use Amp\Promisor;
-use Amp\Resolver;
-use Amp\Combinator;
 use Amp\YieldCommands as SystemYieldCommands;
 use Aerys\YieldCommands as HttpYieldCommands;
 
-class GeneratorResponder {
-    private $struct;
-    private $isWatcherEnabled;
+class AggregateGeneratorResponder implements Responder {
+    private $aggregateHandler;
+    private $nextHandlerIndex;
+    private $request;
+    private $generator;
+    private $promisor;
+    private $environment;
     private $isOutputStarted;
     private $isSocketGone;
     private $shouldNotifyUserAbort;
-    private $generator;
-    private $promisor;
-    private $combinator;
     private $isChunking;
     private $isFinalWrite;
     private $buffer = '';
-    private $bufferSize = 0;
     private $status = 200;
     private $reason = '';
     private $headers = [];
 
+    public function __construct(
+        AggregateRequestHandler $aggregateHandler,
+        $nextHandlerIndex,
+        array $request,
+        \Generator $gen
+    ) {
+        $this->aggregateHandler = $aggregateHandler;
+        $this->nextHandlerIndex = $nextHandlerIndex;
+        $this->request = $request;
+        $this->generator = $gen;
+    }
+
     /**
-     * Prepare the Responder
+     * Prepare the Responder for client output
      *
-     * @param \Aerys\ResponderStruct $responderStruct
+     * @param ResponderEnvironment $env
+     */
+    public function prepare(ResponderEnvironment $env) {
+        $this->environment = $env;
+        $this->promisor = new Future;
+    }
+
+    /**
+     * Assume control of the client socket and output the prepared response
+     *
      * @return void
      */
-    public function prepare(ResponderStruct $struct) {
-        $this->struct = $struct;
-        $this->generator = $struct->response;
-        $this->promisor = new Future($struct->reactor);
-        $this->combinator = new Combinator($struct->reactor);
+    public function assumeSocketControl() {
+        $this->write();
     }
 
     /**
      * Write the prepared Response
-     *
-     * @return \Amp\Promise
      */
     public function write() {
-        if ($this->bufferSize) {
+        if (isset($this->buffer[0])) {
             $this->doWrite();
         } else {
             $this->advanceGenerator($this->generator, $this->promisor);
         }
-
-        return $this->promisor;
     }
 
     private function doWrite() {
-        $bytesWritten = @fwrite($this->struct->socket, $this->buffer);
-        $this->bufferSize -= $bytesWritten;
-        $isBufferEmpty = empty($this->bufferSize);
+        $env = $this->environment;
+        $bytesWritten = @fwrite($env->socket, $this->buffer);
 
-        if ($this->isFinalWrite && $isBufferEmpty) {
-            goto write_complete;
-        } elseif ($isBufferEmpty) {
-            goto awaiting_more_data;
-        } elseif ($bytesWritten !== false) {
-            goto write_incomplete;
-        } else {
-            goto write_error;
-        }
-
-        write_complete: {
-            $this->promisor->succeed($this->struct->mustClose);
-            if ($this->isWatcherEnabled) {
-                $this->isWatcherEnabled = false;
-                $this->struct->reactor->disable($this->struct->writeWatcher);
-            }
-            return;
-        }
-
-        awaiting_more_data: {
+        if ($bytesWritten === strlen($this->buffer)) {
+            $this->onBufferDrain();
+        } elseif ($bytesWritten === false) {
             $this->buffer = '';
-            if ($this->isWatcherEnabled) {
-                $this->isWatcherEnabled = false;
-                $this->struct->reactor->disable($this->struct->writeWatcher);
-            }
-            return;
-        }
-
-        write_incomplete: {
-            $this->buffer = substr($this->buffer, $bytesWritten);
-            if (!$this->isWatcherEnabled) {
-                $this->struct->reactor->enable($this->struct->writeWatcher);
-                $this->isWatcherEnabled = true;
-            }
-            return;
-        }
-
-        write_error: {
-            $this->buffer = '';
-            $this->bufferSize = 0;
             $this->isSocketGone = $this->shouldNotifyUserAbort = true;
-            $this->struct->reactor->disable($this->struct->writeWatcher);
+            $env->reactor->disable($env->writeWatcher);
 
-            // We always notify the HTTP server immediately in the event
-            // of a client disconnect even though the application may choose
-            // to continue processing. Be sure not to fail the top-level
-            // promisor again later or an error will result.
-            $this->promisor->fail(new ClientGoneException);
-            return;
+            // Always notify the HTTP server immediately in the event of a
+            // client disconnect even though the application may choose to
+            // continue processing.
+            $env->server->resumeSocketControl($env->requestId, $mustClose = true);
+        } else {
+            $this->buffer = substr($this->buffer, $bytesWritten);
+            $env->reactor->enable($env->writeWatcher);
         }
     }
 
-    private function resolveGenerator(\Generator $generator) {
-        $promisor = new Future($this->struct->reactor);
-        $this->advanceGenerator($generator, $promisor);
-
-        return $promisor;
+    private function onBufferDrain() {
+        $this->buffer = '';
+        $env = $this->environment;
+        $env->reactor->disable($env->writeWatcher);
+        if ($this->isFinalWrite) {
+            $env->server->resumeSocketControl($env->requestId, $env->mustClose);
+        }
     }
 
-    private function advanceGenerator(\Generator $gen, Promisor $promisor, $previousResult = null) {
+    private function resolveGenerator(\Generator $gen) {
+        $prom = new Future;
+        $this->advanceGenerator($gen, $prom);
+
+        return $prom;
+    }
+
+    private function advanceGenerator(\Generator $gen, Promisor $prom, $previousResult = null) {
         try {
             if ($gen->valid()) {
                 $key = $gen->key();
                 $current = $gen->current();
                 $promiseStruct = $this->promisifyYield($key, $current);
-                $this->struct->reactor->immediately(function() use ($gen, $promisor, $promiseStruct) {
+
+                // An empty result means our aggregate handler short-circuited this
+                // responder and we're finished.
+                if (empty($promiseStruct)) {
+                    return;
+                }
+
+                $this->environment->reactor->immediately(function() use ($gen, $prom, $promiseStruct) {
                     list($promise, $noWait) = $promiseStruct;
                     if ($noWait) {
-                        $this->sendToGenerator($gen, $promisor, $error = null, $result = null);
+                        $this->sendToGenerator($gen, $prom, $error = null, $result = null);
                     } else {
-                        $promise->when(function($error, $result) use ($gen, $promisor) {
-                            $this->sendToGenerator($gen, $promisor, $error, $result);
+                        $promise->when(function($error, $result) use ($gen, $prom) {
+                            $this->sendToGenerator($gen, $prom, $error, $result);
                         });
                     }
                 });
-            } elseif ($promisor === $this->promisor) {
+            } elseif ($prom !== $this->promisor) {
+                $prom->succeed($previousResult);
+            } elseif ($this->isOutputStarted) {
                 $this->finalizeWrite();
             } else {
-                $promisor->succeed($previousResult);
+                $this->startOutput();
             }
         } catch (\Exception $error) {
-            $promisor->fail($error);
+            if ($prom === $this->promisor) {
+                $this->onTopLevelError($error);
+            } else {
+                $prom->fail($error);
+            }
         }
     }
 
@@ -194,21 +192,25 @@ class GeneratorResponder {
                     // fallthrough
                 case SystemYieldCommands::CANCEL:
                     goto watcher_control;
-                case SystemYieldCommands::WAIT:
-                    goto wait;
+                case SystemYieldCommands::PAUSE:
+                    goto pause;
                 case SystemYieldCommands::ALL:
                     // fallthrough
                 case SystemYieldCommands::ANY:
                     // fallthrough
                 case SystemYieldCommands::SOME:
                     goto combinator;
-                case SystemYieldCommands::NO_WAIT:
+                case SystemYieldCommands::NOWAIT:
                     goto implicit_key;
                 default:
-                    $promise = new Failure(new \DomainException(
-                        sprintf('Unknown or invalid yield command key: "%s"', $key)
-                    ));
-                    goto return_struct;
+                    if ($noWait) {
+                        goto implicit_key;
+                    } else {
+                        $promise = new Failure(new \DomainException(
+                            sprintf('Unknown or invalid yield command key: "%s"', $key)
+                        ));
+                        goto return_struct;
+                    }
             }
         }
 
@@ -231,7 +233,7 @@ class GeneratorResponder {
         immediately: {
             if (is_callable($current)) {
                 $func = $this->wrapWatcherCallback($current);
-                $watcherId = $this->struct->reactor->immediately($func);
+                $watcherId = $this->environment->reactor->immediately($func);
                 $promise = new Success($watcherId);
             } else {
                 $promise = new Failure(new \DomainException(
@@ -250,7 +252,7 @@ class GeneratorResponder {
             if ($current && isset($current[0], $current[1]) && is_array($current)) {
                 list($func, $msDelay) = $current;
                 $func = $this->wrapWatcherCallback($func);
-                $watcherId = $this->struct->reactor->{$key}($func, $msDelay);
+                $watcherId = $this->environment->reactor->{$key}($func, $msDelay);
                 $promise = new Success($watcherId);
             } else {
                 $promise = new Failure(new \DomainException(
@@ -285,15 +287,15 @@ class GeneratorResponder {
         }
 
         watcher_control: {
-            $this->struct->reactor->{$key}($current);
+            $this->environment->reactor->{$key}($current);
             $promise = new Success;
 
             goto return_struct;
         }
 
-        wait: {
-            $promise = new Future($this->struct->reactor);
-            $this->struct->reactor->once(function() use ($promise) {
+        pause: {
+            $promise = new Future;
+            $this->environment->reactor->once(function() use ($promise) {
                 $promise->succeed();
             }, (int) $current);
 
@@ -301,20 +303,14 @@ class GeneratorResponder {
         }
 
         combinator: {
-            $promises = [];
             foreach ($current as $index => $element) {
-                if ($element instanceof Promise) {
-                    $promise = $element;
-                } elseif ($element instanceof \Generator) {
-                    $promise = $this->resolveGenerator($element);
-                } else {
-                    $promise = new Success($element);
+                if ($element instanceof \Generator) {
+                    $current[$index] = $this->resolveGenerator($element);
                 }
-
-                $promises[$index] = $promise;
             }
 
-            $promise = $this->combinator->{$key}($promises);
+            $combinator = "\\Amp\\{$key}";
+            $promise = $combinator($current);
 
             goto return_struct;
         }
@@ -374,6 +370,12 @@ class GeneratorResponder {
         }
 
         body: {
+            // If our $beforeOutput callback short-circuits the responder we're finished.
+            // Return null so advanceGenerator() knows not to proceed any further.
+            if (!($this->isOutputStarted || $this->startOutput())) {
+                return null;
+            }
+
             if ($this->isSocketGone) {
                 // If we've gotten this far the application has already
                 // caught the ClientGoneException and chosen to continue
@@ -384,18 +386,9 @@ class GeneratorResponder {
                 goto return_struct;
             }
 
-            if (!$this->isOutputStarted) {
-                $this->startOutput();
-            }
-
             $chunk = $this->isChunking ? dechex(strlen($current)) . "\r\n{$current}\r\n" : $current;
             $this->buffer .= $chunk;
-            $this->bufferSize = strlen($this->buffer);
-
-            if (!$this->isWatcherEnabled) {
-                $this->doWrite();
-            }
-
+            $this->doWrite();
             $promise = new Success($current);
 
             goto return_struct;
@@ -414,12 +407,14 @@ class GeneratorResponder {
                     $this->resolveGenerator($result);
                 }
             } catch (\Exception $e) {
-                // @TODO how to handle a processing eror?
+                $this->environment->server->log($e);
+                // @TODO Add information about the request that resulted in this watcher
+                // registration to make debugging easier
             }
         };
     }
 
-    private function sendToGenerator(\Generator $gen, Promisor $promisor, \Exception $error = null, $result = null) {
+    private function sendToGenerator(\Generator $gen, Promisor $prom, \Exception $error = null, $result = null) {
         try {
             if ($this->shouldNotifyUserAbort) {
                 $this->shouldNotifyUserAbort = false;
@@ -429,53 +424,63 @@ class GeneratorResponder {
             } else {
                 $gen->send($result);
             }
-            $this->advanceGenerator($gen, $promisor, $result);
+            $this->advanceGenerator($gen, $prom, $result);
         } catch (ClientGoneException $error) {
             // There's nothing else to do. The application didn't catch
             // the user abort and the server has already been notified
             // that the client disconnected. We're finished.
             return;
         } catch (\Exception $error) {
-            $promisor->fail($error);
+            if ($prom === $this->promisor) {
+                $this->onTopLevelError($error);
+            } else {
+                $prom->fail($error);
+            }
         }
     }
 
     private function startOutput() {
+        if ($this->status == Status::NOT_FOUND) {
+            $responder = $this->aggregateHandler->__invoke($this->request, $this->nextHandlerIndex);
+            $responder->prepare($this->environment);
+            $responder->assumeSocketControl();
+            return false;
+        }
+
         $this->isOutputStarted = true;
 
-        $struct = $this->struct;
-        $request = $struct->request;
+        $env = $this->environment;
+        $request = $env->request;
         $protocol = $request['SERVER_PROTOCOL'];
         $status = $this->status;
         $reason = $this->reason;
         $reason = ($reason === '') ? $reason : " {$reason}"; // leading space is important!
 
         if ($status < 200) {
-            $struct->mustClose = false;
+            $env->mustClose = false;
             $this->buffer = "HTTP/{$protocol} {$status}{$reason}\r\n\r\n";
-            $this->bufferSize = strlen($this->buffer);
             $this->isFinalWrite = true;
-            return;
+            return true;
         }
 
         $headers = $this->headers ? implode("\r\n", $this->headers) : '';
         $headers = removeHeader($headers, 'Content-Length');
 
-        if ($struct->mustClose) {
+        if ($env->mustClose) {
             $headers = setHeader($headers, 'Connection', 'close');
             $transferEncoding = 'identity';
         } elseif (headerMatches($headers, 'Connection', 'close')) {
-            $struct->mustClose = true;
+            $env->mustClose = true;
             $transferEncoding = 'identity';
         } elseif ($protocol >= 1.1) {
             // Append Connection header, don't set. There are scenarios where
             // multiple Connection headers are required (e.g. websocket handshakes).
             $headers = addHeaderLine($headers, "Connection: keep-alive");
-            $headers = setHeader($headers, 'Keep-Alive', $struct->keepAlive);
+            $headers = setHeader($headers, 'Keep-Alive', $env->keepAlive);
             $this->isChunking = true;
             $transferEncoding = 'chunked';
         } else {
-            $struct->mustClose = true;
+            $env->mustClose = true;
             $headers = setHeader($headers, 'Connection', 'close');
             $transferEncoding = 'identity';
         }
@@ -484,17 +489,19 @@ class GeneratorResponder {
 
         $contentType = hasHeader($headers, 'Content-Type')
             ? getHeader($headers, 'Content-Type')
-            : $struct->defaultContentType;
+            : $env->defaultContentType;
 
         if (stripos($contentType, 'text/') === 0 && stripos($contentType, 'charset=') === false) {
-            $contentType .= "; charset={$struct->defaultTextCharset}";
+            $contentType .= "; charset={$env->defaultTextCharset}";
         }
 
-        $headers = setHeader($headers, 'Content-Type', $contentType);
-        $headers = setHeader($headers, 'Date', $struct->httpDate);
+        // @TODO Apply Content-Encoding: gzip if the originating HTTP request supports it
 
-        if ($struct->serverToken) {
-            $headers = setHeader($headers, 'Server', $struct->serverToken);
+        $headers = setHeader($headers, 'Content-Type', $contentType);
+        $headers = setHeader($headers, 'Date', $env->httpDate);
+
+        if ($env->serverToken) {
+            $headers = setHeader($headers, 'Server', $env->serverToken);
         }
 
         if ($request['REQUEST_METHOD'] === 'HEAD') {
@@ -502,7 +509,8 @@ class GeneratorResponder {
         }
 
         $this->buffer = "HTTP/{$protocol} {$status}{$reason}\r\n{$headers}\r\n\r\n";
-        $this->bufferSize = strlen($this->buffer);
+
+        return true;
     }
 
     private function finalizeWrite() {
@@ -511,16 +519,40 @@ class GeneratorResponder {
         }
 
         if ($this->isFinalWrite || !$this->isChunking) {
-            $this->promisor->succeed($this->struct->mustClose);
+            $env = $this->environment;
+            $env->server->resumeSocketControl($env->requestId, $env->mustClose);
             return;
         }
 
         $this->isFinalWrite = true;
         $this->buffer .= "0\r\n\r\n";
-        $this->bufferSize += 5;
+        $this->doWrite();
+    }
 
-        if (!$this->isWatcherEnabled) {
+    private function onTopLevelError(\Exception $error) {
+        $env = $this->environment;
+        $env->mustClose = true;
+        $this->isFinalWrite = true;
+
+        if (!$this->isOutputStarted) {
+            // If output hasn't started yet we send a 500 response
+            $responder = $this->aggregateHandler->makeErrorResponder($error);
+            $responder->prepare($env);
+            $responder->assumeSocketControl();
+        } elseif ($this->aggregateHandler->getDebugFlag()) {
+            // If output has started and we're running in debug mode dump the error to the buffer
+            // and don't worry about logging it
+            $msg = "<pre>{$error}</pre>";
+            $chunk = $this->isChunking ? dechex(strlen($msg)) . "\r\n{$msg}\r\n0\r\n\r\n" : $msg;
+            $this->buffer .= $chunk;
             $this->doWrite();
+        } elseif ($this->isChunking) {
+            $this->buffer .= "0\r\n\r\n";
+            $this->doWrite();
+        } else {
+            // If debug mode isn't enabled then log the error and end response output when the
+            // current write buffer is flushed
+            $env->server->log($error);
         }
     }
 }

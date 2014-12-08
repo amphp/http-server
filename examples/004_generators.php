@@ -26,5 +26,7 @@ $myHost = (new Aerys\Host)
     ->addRoute('GET', '/gen7', 'gen7')
     ->addRoute('GET', '/gen8', 'gen8')
     ->addRoute('GET', '/gen9', 'gen9')
+    ->addRoute('GET', '/gen10', 'gen10')
+    ->addRoute('GET', '/gen11', 'gen11')
     ->addResponder('myFallbackResponder')
 ;

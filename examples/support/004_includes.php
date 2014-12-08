@@ -11,7 +11,7 @@ use Amp\Failure;
  * Multiply $x and $y after 25 milliseconds
  */
 function asyncMultiply($x, $y) {
-    yield 'wait' => 25;
+    yield 'pause' => 25;
     yield ($x*$y);
 }
 
@@ -19,7 +19,7 @@ function asyncMultiply($x, $y) {
  * Subtract $y from $x after 25 milliseconds
  */
 function asyncSubtract($x, $y) {
-    yield 'wait' => 25;
+    yield 'pause' => 25;
     yield ($x-$y);
 }
 
@@ -27,7 +27,7 @@ function asyncSubtract($x, $y) {
  * Fail after 25 milliseconds
  */
 function asyncFailure() {
-    yield 'wait' => 25;
+    yield 'pause' => 25;
     throw new \RuntimeException('Example async failure');
 }
 
@@ -104,7 +104,7 @@ function gen9($request) {
 
         // Pause for the specified number of milliseconds. Click your browser's stop
         // button during this pause to see the } catch() { result in your console.
-        yield 'wait' => 5000;
+        yield 'pause' => 5000;
 
         // If the client never aborts we'll finish the HTML message ...
         yield 'body' => 'You were supposed to click stop!</body></html>';
@@ -113,6 +113,16 @@ function gen9($request) {
         echo "Woot! we caught the client abort!\n";
         // Do other stuff after the client has disconnected here.
     }
+}
+
+function gen10($request) {
+    yield;
+    throw new RuntimeException('test exception');
+}
+
+function gen11($request) {
+    yield "body" => "<html><body><p>start output</p>";
+    throw new RuntimeException('test exception');
 }
 
 function myFallbackResponder($request) {

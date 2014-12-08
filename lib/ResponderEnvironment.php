@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-class ResponderEnvironment extends Struct {
+class ResponderEnvironment extends \Amp\Struct {
     public $reactor;
     public $server;
     public $socket;

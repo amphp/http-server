@@ -2,9 +2,7 @@
 
 namespace Aerys\Websocket;
 
-use Aerys\Struct;
-
-class ResolverStruct extends Struct {
+class ResolverStruct extends \Amp\Struct {
     public $generator;
     public $promisor;
     public $session;

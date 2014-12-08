@@ -3,5 +3,5 @@
 namespace Aerys;
 
 interface ServerObserver {
-    public function onServerUpdate(Server $server, $event);
+    public function onServerUpdate(Server $server);
 }

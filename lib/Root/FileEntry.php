@@ -2,9 +2,7 @@
 
 namespace Aerys\Root;
 
-use Aerys\Struct;
-
-class FileEntry extends Struct {
+class FileEntry extends \Amp\Struct {
     public $path;
     public $handle;
     public $size;

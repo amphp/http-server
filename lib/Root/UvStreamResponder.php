@@ -2,21 +2,14 @@
 
 namespace Aerys\Root;
 
-use Amp\Future;
 use Aerys\Responder;
-use Aerys\ResponderStruct;
-use Aerys\ClientGoneException;
+use Aerys\ResponderEnvironment;
 
 class UvStreamResponder implements Responder {
     private $uvLoop;
     private $fileEntry;
     private $headerLines;
-    private $reactor;
-    private $writeWatcher;
-    private $isWriteWatcherEnabled;
-    private $socket;
-    private $mustClose;
-    private $promisor;
+    private $environment;
     private $buffer;
     private $fsBytesRead;
 
@@ -29,33 +22,29 @@ class UvStreamResponder implements Responder {
     }
 
     /**
-     * Prepare the Responder
+     * Prepare the Responder for client output
      *
-     * @param Aerys\ResponderStruct $responderStruct
+     * @param Aerys\ResponderStruct $env
      */
-    public function prepare(ResponderStruct $responderStruct) {
-        $this->reactor = $reactor = $responderStruct->reactor;
-        $this->promisor = new Future($reactor);
-        $this->writeWatcher = $responderStruct->writeWatcher;
-        $this->socket = $responderStruct->socket;
-        $this->mustClose = $mustClose = $responderStruct->mustClose;
+    public function prepare(ResponderEnvironment $env) {
+        $this->environment = $env;
 
-        $request = $responderStruct->request;
+        $request = $env->request;
         $protocol = $request['SERVER_PROTOCOL'];
         $headerLines = $this->headerLines;
 
-        if ($mustClose || $protocol < 1.1) {
-            $this->mustClose = true;
+        if ($env->mustClose || $protocol < 1.1) {
+            $env->mustClose = true;
             $headerLines[] = 'Connection: close';
         } else {
             $headerLines[] = 'Connection: keep-alive';
-            $headerLines[] = "Keep-Alive: {$responderStruct->keepAlive}";
+            $headerLines[] = "Keep-Alive: {$env->keepAlive}";
         }
 
-        $headerLines[] = "Date: {$responderStruct->httpDate}";
+        $headerLines[] = "Date: {$env->httpDate}";
 
-        if ($responderStruct->serverToken) {
-            $headerLines[] = "Server: {$responderStruct->serverToken}";
+        if ($env->serverToken) {
+            $headerLines[] = "Server: {$env->serverToken}";
         }
 
         $headers = implode("\r\n", $headerLines);
@@ -96,68 +85,48 @@ class UvStreamResponder implements Responder {
     }
 
     private function onFsReadError() {
-        if ($this->isWriteWatcherEnabled) {
-            $this->isWriteWatcherEnabled = false;
-            $this->reactor->disable($this->writeWatcher);
-        }
+        $env = $this->environment;
+        $server = $env->server;
+        $env->reactor->disable($env->writeWatcher);
+        $server->log("File system read failure: {$this->fileEntry->path}");
+        $env->server->resumeSocketControl($env->requestId, $mustClose = true);
+    }
 
-        $this->promisor->fail(new \RuntimeException(
-            sprintf('File system read failure: %s', $this->fileEntry->path)
-        ));
+    /**
+     * Assume control of the client socket and output the prepared response
+     *
+     * @return void
+     */
+    public function assumeSocketControl() {
+        $this->write();
     }
 
     /**
      * Write the prepared response
      *
-     * @return \Amp\Promise Returns a promise that resolves to TRUE if the connection should be
-     *                      closed and FALSE if not.
+     * @return void
      */
     public function write() {
-        $bytesWritten = @fwrite($this->socket, $this->buffer);
+        $env = $this->environment;
+        $bytesWritten = @fwrite($env->socket, $this->buffer);
 
         if ($bytesWritten === strlen($this->buffer)) {
-            goto write_complete;
-        } elseif ($bytesWritten !== false) {
-            goto write_incomplete;
+            $this->onBufferWriteCompletion();
+        } elseif ($bytesWritten === false) {
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->resumeSocketControl($env->requestId, $mustClose = true);
         } else {
-            goto write_error;
-        }
-
-        write_complete: {
-            $this->buffer = '';
-            if ($this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = false;
-                $this->reactor->disable($this->writeWatcher);
-            }
-            if ($this->fsBytesRead === $this->fileEntry->size) {
-                $this->promisor->succeed($this->mustClose);
-            }
-
-            return $this->promisor;
-        }
-
-        write_incomplete: {
             $this->buffer = substr($this->buffer, $bytesWritten);
-
-            if (!$this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = true;
-                $this->reactor->enable($this->writeWatcher);
-            }
-
-            return $this->promisor;
+            $env->reactor->enable($env->writeWatcher);
         }
+    }
 
-        write_error: {
-            if ($this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = false;
-                $this->reactor->disable($this->writeWatcher);
-            }
-
-            $this->promisor->fail(new ClientGoneException(
-                'Write failed: destination stream went away'
-            ));
-
-            return $this->promisor;
+    private function onBufferWriteCompletion() {
+        $this->buffer = '';
+        $env = $this->environment;
+        $env->reactor->disable($env->writeWatcher);
+        if ($this->fsBytesRead === $this->fileEntry->size) {
+            $env->server->resumeSocketControl($env->requestId, $env->mustClose);
         }
     }
 }

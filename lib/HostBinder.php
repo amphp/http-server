@@ -8,38 +8,32 @@ class HostBinder {
     /**
      * Bind server sockets for all hosts in the collection
      *
-     * We allow an optional array of existing sockets to reuse when binding to avoid bind errors
-     * when reloading configuration in environments without access to SO_REUSEPORT.
-     *
      * @param \Aerys\HostGroup $hosts
-     * @param array $existingSockets An array of previously bound sockets to reuse
      * @throws \LogicException if no hosts exist in the specified collection
      * @throws \RuntimeException on socket bind failure
      * @return array Returns an array of bound sockets mapped by address
      */
-    public function bindHosts(HostGroup $hosts, array $existingSockets = []) {
+    public function bindHosts(HostGroup $hosts) {
         if (!$hosts->count()) {
             throw new \LogicException(
                 'Cannot bind sockets: no hosts added'
             );
         }
 
-        return $this->doAddressBind($hosts->getBindableAddresses(), $existingSockets);
+        return $this->doAddressBind($hosts->getBindableAddresses());
     }
 
-    private function doAddressBind(array $bindAddresses, array $existingSockets) {
+    private function doAddressBind(array $bindAddresses) {
         $bindAddresses = array_unique($bindAddresses);
         $boundAddresses = [];
         $context = stream_context_create(['socket' => ['backlog' => $this->socketBacklogSize]]);
 
+        $boundSockets = [];
         foreach ($bindAddresses as $address) {
-            if (!isset($existingSockets[$address])) {
-                $existingSockets[$address] = $this->bindSocket($address, $context);
-            }
-            $boundAddresses[] = $address;
+            $boundSockets[$address] = $this->bindSocket($address, $context);
         }
 
-        return array_intersect_key($existingSockets, array_flip($boundAddresses));
+        return $boundSockets;
     }
 
     private function bindSocket($address, $context) {
@@ -59,17 +53,16 @@ class HostBinder {
      * Bind server sockets for each address
      *
      * @param array $bindAddresses An array of bind URIs of the form "tcp://ip:port"
-     * @param array $existingSockets An array of previously bound sockets to reuse
      * @return array Returns an array of bound sockets mapped by address
      */
-    public function bindAddresses(array $bindAddresses, array $existingSockets = []) {
+    public function bindAddresses(array $bindAddresses) {
         if (!$bindAddresses) {
             throw new \LogicException(
                 'Cannot bind sockets: no addresses specified'
             );
         }
 
-        return $this->doAddressBind($bindAddresses, $existingSockets);
+        return $this->doAddressBind($bindAddresses);
     }
 
     /**

@@ -26,9 +26,9 @@ function longPoller($request) {
     while (true) {
         yield 'body' => sprintf("The current time is %s</br>\n", date('r'));
 
-        // Yielding the "wait" key tells the server to wait $msDelay milliseconds
+        // Yielding the "pause" key tells the server to pause $msDelay milliseconds
         // before giving control back to our generator to resume the loop.
-        yield 'wait' => $msDelay;
+        yield 'pause' => $msDelay;
     }
 }
 

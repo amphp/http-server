@@ -2,9 +2,7 @@
 
 namespace Aerys\Websocket;
 
-use Aerys\Struct;
-
-class Session extends Struct {
+class Session extends \Amp\Struct {
     const HANDSHAKE_NONE = 0;
     const HANDSHAKE_INIT = 1;
     const HANDSHAKE_DONE = 2;
@@ -26,7 +24,6 @@ class Session extends Struct {
     public $parseState;
     public $readWatcher;
     public $writeWatcher;
-    public $isWriteWatcherEnabled;
     public $pendingPings = [];
     public $onCloseCallback;
     public $messageBuffer = '';
@@ -53,4 +50,6 @@ class Session extends Struct {
     public $connectedAt;
     public $lastReadAt;
     public $lastSendAt;
+    public $lastDataReadAt;
+    public $lastDataSendAt;
 }

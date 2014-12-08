@@ -2,9 +2,7 @@
 
 namespace Aerys\Websocket;
 
-use Aerys\Struct;
-
-class ParseState extends Struct {
+class ParseState extends \Amp\Struct {
     const PARSE_FRAME = 1;
     const PARSE_ERR_SYNTAX = 2;
     const PARSE_ERR_POLICY = 3;

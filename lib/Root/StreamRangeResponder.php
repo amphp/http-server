@@ -2,9 +2,8 @@
 
 namespace Aerys\Root;
 
-use Amp\Future;
 use Aerys\Responder;
-use Aerys\ResponderStruct;
+use Aerys\ResponderEnvironment;
 
 abstract class StreamRangeResponder implements Responder {
     private $fileEntry;
@@ -13,14 +12,7 @@ abstract class StreamRangeResponder implements Responder {
     private $rangeBoundary;
     private $rangeContentType;
     private $rangeHeaderTemplate;
-
-    private $reactor;
-    private $promisor;
-    private $socket;
-    private $mustClose;
-    private $writeWatcher;
-    private $isWriteWatcherEnabled;
-
+    private $env;
     private $streamPos;
     private $startPos;
     private $endPos;
@@ -47,29 +39,31 @@ abstract class StreamRangeResponder implements Responder {
         $this->rangeHeaderTemplate = $range->headerTemplate;
     }
 
-    public function prepare(ResponderStruct $responderStruct) {
-        $this->reactor = $reactor = $responderStruct->reactor;
-        $this->promisor = new Future($reactor);
-        $this->socket = $responderStruct->socket;
-        $this->mustClose = $mustClose = $responderStruct->mustClose;
-        $this->writeWatcher = $responderStruct->writeWatcher;
+    /**
+     * Prepare the Responder for client output
+     *
+     * @param \Aerys\ResponderEnvironment $env
+     * @return void
+     */
+    public function prepare(ResponderEnvironment $env) {
+        $this->environment = $env;
 
         $headerLines = $this->headerLines;
 
-        if ($mustClose) {
+        if ($env->mustClose) {
             $headerLines[] = 'Connection: close';
         } else {
             $headerLines[] = 'Connection: keep-alive';
-            $headerLines[] = "Keep-Alive: {$responderStruct->keepAlive}";
+            $headerLines[] = "Keep-Alive: {$env->keepAlive}";
         }
 
-        $headerLines[] = "Date: {$responderStruct->httpDate}";
+        $headerLines[] = "Date: {$env->httpDate}";
 
-        if ($responderStruct->serverToken) {
-            $headerLines[] = "Server: {$responderStruct->serverToken}";
+        if ($env->serverToken) {
+            $headerLines[] = "Server: {$env->serverToken}";
         }
 
-        $request = $responderStruct->request;
+        $request = $env->request;
         $method = $request['REQUEST_METHOD'];
         $protocol = $request['SERVER_PROTOCOL'];
         $headers = implode("\r\n", $headerLines);
@@ -82,9 +76,29 @@ abstract class StreamRangeResponder implements Responder {
         if ($method === 'HEAD') {
             $this->isFinalWrite = true;
         }
+
+        // If the request was for a single zero-length byterange we don't need any further writes
+        if (empty($this->ranges[1]) && $this->ranges[0][0] === $this->ranges[0][1]) {
+            $this->isFinalWrite = true;
+        }
     }
 
+    /**
+     * Assume control of the client socket and output the prepared response
+     *
+     * @return void
+     */
+    public function assumeSocketControl() {
+        $this->write();
+    }
+
+    /**
+     * Write the prepared response
+     *
+     * @return void
+     */
     public function write() {
+        $env = $this->environment;
         if (isset($this->buffer[0])) {
             goto write;
         } else {
@@ -92,7 +106,7 @@ abstract class StreamRangeResponder implements Responder {
         }
 
         write: {
-            $bytesWritten = @fwrite($this->socket, $this->buffer);
+            $bytesWritten = @fwrite($env->socket, $this->buffer);
 
             if ($bytesWritten === strlen($this->buffer)) {
                 goto completed_buffer_write;
@@ -100,9 +114,7 @@ abstract class StreamRangeResponder implements Responder {
                 $this->buffer = substr($this->buffer, $bytesWritten);
                 goto interleaved_write;
             } else {
-                $error = new ClientGoneException(
-                    'Write failed: destination stream went away'
-                );
+                $mustClose = true;
                 goto finalize;
             }
         }
@@ -110,6 +122,7 @@ abstract class StreamRangeResponder implements Responder {
         completed_buffer_write: {
             $this->buffer = '';
             if ($this->isFinalWrite) {
+                $mustClose = $env->mustClose;
                 goto finalize;
             } else {
                 goto interleaved_write;
@@ -126,25 +139,13 @@ abstract class StreamRangeResponder implements Responder {
                 $length = self::$IO_GRANULARITY;
             }
 
-            if ($this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = false;
-                $this->reactor->disable($this->writeWatcher);
-            }
+            $env->reactor->disable($env->writeWatcher);
 
             $handle = $this->fileEntry->handle;
             $offset = $this->streamPos;
 
-            $this->bufferFileChunk($handle, $offset, $length, function($buffer) use ($length) {
-                if ($buffer === false) {
-                    $this->onBufferFailure($length);
-                } else {
-                    $this->buffer .= $buffer;
-                    $this->streamPos += $length;
-                    $this->write();
-                }
-            });
-
-            return $this->promisor;
+            $this->bufferFileChunk($handle, $offset, $length, [$this, 'onBuffer']);
+            return;
         }
 
         buffer_next_header: {
@@ -153,7 +154,6 @@ abstract class StreamRangeResponder implements Responder {
                 $this->isFinalWrite = true;
                 goto write;
             }
-
 
             $current = current($this->ranges);
             next($this->ranges);
@@ -176,37 +176,27 @@ abstract class StreamRangeResponder implements Responder {
         }
 
         interleaved_write: {
-            if (!$this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = true;
-                $this->reactor->enable($this->writeWatcher);
-            }
-
-            return $this->promisor;
+            $env->reactor->enable($env->writeWatcher);
+            return;
         }
 
         finalize: {
-            if ($this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = false;
-                $this->reactor->disable($this->writeWatcher);
-            }
-
-            if (empty($error)) {
-                $this->promisor->succeed($this->mustClose);
-            } else {
-                $this->promise->fail($error);
-            }
-
-            return $this->promisor;
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->resumeSocketControl($env->requestId, $mustClose);
+            return;
         }
     }
 
-    private function onBufferFailure($length) {
-        $this->promisor->fail(new \RuntimeException(
-            sprintf('Failed reading %s bytes from stream', $length)
-        ));
-        if ($this->isWriteWatcherEnabled) {
-            $this->isWriteWatcherEnabled = false;
-            $this->reactor->disable($this->writeWatcher);
+    public function onBuffer($buffer) {
+        if ($buffer === false) {
+            $env = $this->environment;
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->log("Filesystem read failed: {$this->fileEntry->path}");
+            $env->server->resumeSocketControl($env->requestId, $mustClose = true);
+        } else {
+            $this->buffer .= $buffer;
+            $this->streamPos += strlen($buffer);
+            $this->write();
         }
     }
 }

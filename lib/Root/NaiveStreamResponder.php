@@ -2,22 +2,15 @@
 
 namespace Aerys\Root;
 
-use Amp\Future;
 use Aerys\Responder;
-use Aerys\ResponderStruct;
-use Aerys\ClientGoneException;
+use Aerys\ResponderEnvironment;
 
 class NaiveStreamResponder implements Responder {
     private $fileEntry;
     private $headerLines;
-    private $reactor;
-    private $promisor;
-    private $writeWatcher;
-    private $socket;
-    private $mustClose;
+    private $env;
     private $buffer;
     private $streamOffset;
-    private $isWriteWatcherEnabled;
     private $isStreamCopyComplete;
 
     private static $IO_GRANULARITY = 32768;
@@ -28,34 +21,31 @@ class NaiveStreamResponder implements Responder {
     }
 
     /**
-     * Prepare the Responder
+     * Prepare the Responder for client output
      *
-     * @param \Aerys\ResponderStruct $responderStruct
+     * @param \Aerys\ResponderEnvironment $env
      * @return void
      */
-    public function prepare(ResponderStruct $responderStruct) {
-        $this->reactor = $reactor = $responderStruct->reactor;
-        $this->promisor = new Future($reactor);
-        $this->writeWatcher = $responderStruct->writeWatcher;
-        $this->socket = $responderStruct->socket;
+    public function prepare(ResponderEnvironment $env) {
+        $this->environment = $env;
 
-        $request = $responderStruct->request;
+        $request = $env->request;
         $protocol = $request['SERVER_PROTOCOL'];
         $headerLines = $this->headerLines;
 
-        if ($responderStruct->mustClose || $protocol < 1.1) {
+        if ($env->mustClose || $protocol < 1.1) {
             $this->mustClose = true;
             $headerLines[] = 'Connection: close';
         } else {
             $this->mustClose = false;
             $headerLines[] = 'Connection: keep-alive';
-            $headerLines[] = "Keep-Alive: {$responderStruct->keepAlive}";
+            $headerLines[] = "Keep-Alive: {$env->keepAlive}";
         }
 
-        $headerLines[] = "Date: {$responderStruct->httpDate}";
+        $headerLines[] = "Date: {$env->httpDate}";
 
-        if ($responderStruct->serverToken) {
-            $headerLines[] = "Server: {$responderStruct->serverToken}";
+        if ($env->serverToken) {
+            $headerLines[] = "Server: {$env->serverToken}";
         }
 
         $headers = implode("\r\n", $headerLines);
@@ -67,9 +57,18 @@ class NaiveStreamResponder implements Responder {
     }
 
     /**
+     * Assume control of the client socket and output the prepared response
+     *
+     * @return void
+     */
+    public function assumeSocketControl() {
+        $this->write();
+    }
+
+    /**
      * Write the prepared Response
      *
-     * @return \Amp\Promise
+     * @return void
      */
     public function write() {
         if (isset($this->buffer[0])) {
@@ -77,58 +76,36 @@ class NaiveStreamResponder implements Responder {
         } else {
             $this->copyStream();
         }
-
-        return $this->promisor;
     }
 
     private function writeBuffer() {
-        $bytesWritten = @fwrite($this->socket, $this->buffer);
+        $env = $this->environment;
+        $bytesWritten = @fwrite($env->socket, $this->buffer);
 
         if ($bytesWritten === strlen($this->buffer)) {
-            goto write_complete;
-        } elseif ($bytesWritten !== false) {
-            goto write_incomplete;
-        } else {
-            goto write_error;
-        }
-
-        write_complete: {
             $this->buffer = '';
-            if (!$this->isStreamCopyComplete) {
-                return $this->copyStream();
-            }
-
-            if ($this->isWriteWatcherEnabled) {
-                $this->reactor->disable($this->writeWatcher);
-                $this->isWriteWatcherEnabled = false;
-            }
-
-            return $this->promisor->succeed($this->mustClose);
-        }
-
-        write_incomplete: {
+            $this->onBufferWriteCompletion();
+        } elseif ($bytesWritten === false) {
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->resumeSocketControl($env->requestId, $mustClose = true);
+        } else {
             $this->buffer = substr($this->buffer, $bytesWritten);
-
-            if (!$this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = true;
-                $this->reactor->enable($this->writeWatcher);
-            }
-            return;
+            $env->reactor->enable($env->writeWatcher);
         }
+    }
 
-        write_error: {
-            if ($this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = false;
-                $this->reactor->disable($this->writeWatcher);
-            }
-
-            return $this->promisor->fail(new ClientGoneException(
-                'Write failed: destination stream went away'
-            ));
+    private function onBufferWriteCompletion() {
+        if ($this->isStreamCopyComplete) {
+            $env = $this->environment;
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->resumeSocketControl($env->requestId, $env->mustClose);
+        } else {
+            $this->copyStream();
         }
     }
 
     private function copyStream() {
+        $env = $this->environment;
         $maxLength = $this->fileEntry->size - $this->streamOffset;
         if ($maxLength > self::$IO_GRANULARITY) {
             $maxLength = self::$IO_GRANULARITY;
@@ -136,9 +113,9 @@ class NaiveStreamResponder implements Responder {
 
         @fseek($this->fileEntry->handle, $this->streamOffset);
 
-        $bytesWritten = stream_copy_to_stream(
+        $bytesWritten = @stream_copy_to_stream(
             $this->fileEntry->handle,
-            $this->socket,
+            $env->socket,
             $maxLength,
             $this->streamOffset
         );
@@ -146,41 +123,26 @@ class NaiveStreamResponder implements Responder {
         $this->streamOffset += $bytesWritten;
 
         if ($bytesWritten === false) {
-            goto copy_error;
+            $errorMsg = error_get_last()['message'];
+            $this->onStreamCopyFailure($errorMsg);
         } elseif ($this->fileEntry->size - $this->streamOffset) {
-            goto copy_incomplete;
+            $env->reactor->enable($env->writeWatcher);
         } else {
-            goto copy_complete;
-        }
-
-        copy_complete: {
             $this->isStreamCopyComplete = true;
-            if ($this->isWriteWatcherEnabled) {
-                $this->reactor->disable($this->writeWatcher);
-                $this->isWriteWatcherEnabled = false;
-            }
-
-            $this->promisor->succeed($this->mustClose);
-            return;
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->resumeSocketControl($env->requestId, $env->mustClose);
         }
+    }
 
-        copy_incomplete: {
-            if (!$this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = true;
-                $this->reactor->enable($this->writeWatcher);
-            }
-
-            return;
-        }
-
-        copy_error: {
-            if ($this->isWriteWatcherEnabled) {
-                $this->reactor->disable($this->writeWatcher);
-                $this->isWriteWatcherEnabled = false;
-            }
-
-            $this->promisor->fail(new ClientGoneException);
-            return;
+    private function onStreamCopyFailure($errorMsg) {
+        $env = $this->environment;
+        if (strpos($errorMsg, 'errno=11')) {
+            // EAGAIN or EWOULDBLOCK -- all we can do is try again when the socket is writable
+            $env->reactor->enable($env->writeWatcher);
+        } else {
+            // The write failed for some other reason (it's probably dead)
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->resumeSocketControl($env->requestId, $mustClose = true);
         }
     }
 }

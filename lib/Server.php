@@ -3,14 +3,11 @@
 namespace Aerys;
 
 use Amp\Reactor;
-use Amp\Future;
 use Amp\Success;
-use Amp\Promise;
-use Amp\Resolver;
-use Amp\Combinator;
+use Amp\Future;
 
 class Server {
-    const NAME = 'Aerys/0.1.0-devel';
+    const NAME = 'Aerys/0.1.0-dev';
     const VERSION = '0.1.0-dev';
 
     const STOPPED = 0;
@@ -35,22 +32,22 @@ class Server {
     const OP_ALLOWED_METHODS = 15;
     const OP_DEFAULT_HOST = 16;
 
-    private $state;
+    private $state = self::STOPPED;
     private $reactor;
     private $hostBinder;
-    private $combinator;
-    private $debug;
-    private $stopFuture;
+    private $responderFactory;
     private $observers;
+    private $debug;
 
     private $hosts;
     private $listeningSockets = [];
     private $acceptWatchers = [];
     private $pendingTlsWatchers = [];
     private $clients = [];
+    private $requestIdClientMap = [];
     private $exportedSocketIdMap = [];
     private $cachedClientCount = 0;
-    private $lastRequestId;
+    private $lastRequestId = 0;
 
     private $now;
     private $httpDateNow;
@@ -74,24 +71,16 @@ class Server {
     private $allowedMethods;
     private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER; // @TODO Add option setter
     private $readGranularity = 262144; // @TODO Add option setter
-    private $isExtSocketsEnabled;
+    private $hasSocketsExtension;
 
-    public function __construct(
-        Reactor $reactor,
-        HostBinder $hb = null,
-        Combinator $combinator = null,
-        Resolver $resolver = null,
-        $debug = false
-    ) {
-        $this->reactor = $reactor;
+    private $stopPromisor;
+
+    public function __construct(Reactor $r, HostBinder $hb = null, AsgiResponderFactory $rf = null) {
+        $this->reactor = $r;
         $this->hostBinder = $hb ?: new HostBinder;
-        $this->combinator = $combinator ?: new Combinator($reactor);
-        $this->resolver = $resolver ?: new Resolver($reactor);
-        $this->debug = (bool) $debug;
+        $this->responderFactory = $rf ?: new AsgiResponderFactory;
         $this->observers = new \SplObjectStorage;
-        $this->isExtSocketsEnabled = extension_loaded('sockets');
-        $this->lastRequestId = PHP_INT_MAX * -1; // <-- 5.5 compatibility
-        $this->state = self::STOPPED;
+        $this->hasSocketsExtension = extension_loaded('sockets');
         $this->allowedMethods = [
             'GET' => 1,
             'HEAD' => 1,
@@ -105,39 +94,157 @@ class Server {
     }
 
     /**
-     * Was the server constructed in DEBUG mode?
+     * Retrieve the current server state
+     *
+     * @return int
+     */
+    public function getState() {
+        return $this->state;
+    }
+
+    /**
+     * Is the server running in debug mode?
      *
      * @return bool
      */
-    public function isInDebugMode() {
+    public function getDebugFlag() {
         return $this->debug;
+    }
+
+    /**
+     * Assign the server debug flag
+     *
+     * @param $bool
+     * @throws \LogicException If the Server is already running
+     */
+    public function setDebugFlag($bool) {
+        if ($this->state === self::STOPPED) {
+            $this->debug = (bool) $bool;
+        } else {
+            throw new \LogicException(
+                'Cannot modify debug settings while server is running'
+            );
+        }
     }
 
     /**
      * Attach a server event observer
      *
-     * @param \Aerys\ServerObserver $observer
-     * @return \Aerys\Server Returns the current object instance
+     * @param ServerObserver $observer
+     * @return void
      */
-    public function addObserver(ServerObserver $observer) {
+    public function attachObserver(ServerObserver $observer) {
         $this->observers->attach($observer);
-
-        return $this;
     }
 
-    private function notifyObservers($event) {
-        $promises = [];
-        foreach ($this->observers as $observer) {
-            $promises[] = $observer->onServerUpdate($this, $event, null);
+    /**
+     * Detach a server event observer
+     *
+     * @param ServerObserver $observer
+     * @return void
+     */
+    public function detachObserver(ServerObserver $observer) {
+        $this->observers->detach($observer);
+    }
+
+    /**
+     * Log an error
+     *
+     * @param string $error
+     * @return void
+     * @TODO Allow custom logger injection. For now we're just going to write to STDERR
+     */
+    public function log($error) {
+        fwrite(STDERR, "{$error}\n");
+    }
+
+    /**
+     * Return socket control from a Responder back to the Server upon response completion
+     *
+     * NOTE: Theoretically this function could take a $clientId instead of a $requestId because
+     * we're simply ensuring pipelined response for HTTP/1.1 clients are sent in the correct
+     * order. However, we're using $requestId because HTTP/2 will allow multiplexing on the same
+     * TCP connection. Using the $requestId now will allow us to use the same code regardless of
+     * the protocol in use once HTTP/2 support is implemented.
+     *
+     * @param int $requestId
+     * @param bool $mustClose
+     * @throws \DomainException On unknown control code
+     * @return void
+     */
+    public function resumeSocketControl($requestId, $mustClose) {
+        if (empty($this->requestIdClientMap[$requestId])) {
+            return;
         }
 
-        return $promises ? $this->combinator->all($promises) : new Success;
+        $client = $this->requestIdClientMap[$requestId];
+
+        if ($mustClose) {
+            $this->closeClient($client);
+            return;
+        }
+
+        unset(
+            $this->requestIdClientMap[$requestId],
+            $client->pipeline[$requestId],
+            $client->cycles[$requestId]
+        );
+
+        $client->pendingResponder = null;
+
+        $nextRequestId = key($client->cycles);
+        if (isset($client->pipeline[$nextRequestId])) {
+            $this->cedeResponderSocketControl($client, $nextRequestId);
+        } elseif (empty($client->pipeline)) {
+            $this->renewKeepAliveTimeout($client->id);
+        }
+    }
+
+    /**
+     * Export the specified socket to the calling code
+     *
+     * Exported sockets continue to count against the server's maxConnections limit to protect
+     * against resource overflow. Applications MUST invoke the returned callback in order to free
+     * the occupied connection slot.
+     *
+     * Applications that export sockets do not need to close the socket manually themselves -- the
+     * socket will be closed subject to the server's settings once the discharge callback is
+     * invoked.
+     *
+     * @param resource $socket
+     * @throws \DomainException On unknown socket
+     * @return Closure A callback to discharge any remaining server references to the exported socket
+     */
+    public function exportSocket($socket) {
+        $socketId = (int) $socket;
+        if (empty($this->clients[$socketId])) {
+            throw new \DomainException(
+                sprintf('Cannot export unknown socket: %s', $socket)
+            );
+        }
+
+        $client = $this->clients[$socketId];
+        $socket = $client->socket;
+        $this->exportedSocketIdMap[$socketId] = $socket;
+        $this->clearClientReferences($client);
+
+        // We just decremented the client count when clearing references to the client. Let's
+        // re-increment it back up so we can keep track of resource usage until the exported
+        // client is explicitly discharged by the application code that exported it.
+        $this->cachedClientCount++;
+
+        return function() use ($socketId) {
+            if (isset($this->exportedSocketIdMap[$socketId])) {
+                $socket = $this->exportedSocketIdMap[$socketId];
+                $this->cachedClientCount--;
+                $this->doSocketClose($socket);
+                unset($this->exportedSocketIdMap[$socketId]);
+            }
+        };
     }
 
     /**
      * Start the server
-     *
-     * IMPORTANT: The server's event reactor must still be started externally.
      *
      * @param mixed $hosts A HostDefinition, HostGroup or array of HostDefinition instances
      * @param array $listeningSockets Optional array mapping bind addresses to existing sockets
@@ -145,7 +252,7 @@ class Server {
      * @throws \RuntimeException On socket bind failure
      * @return \Amp\Promise Returns a Promise that resolves once all startup tasks complete
      */
-    public function start($hosts, array $listeningSockets = []) {
+    public function start($hosts) {
         if ($this->state !== self::STOPPED) {
             throw new \LogicException(
                 'Server already started'
@@ -153,7 +260,7 @@ class Server {
         }
 
         $this->hosts = $this->normalizeStartHosts($hosts);
-        $this->listeningSockets = $this->hostBinder->bindHosts($this->hosts, $listeningSockets);
+        $this->listeningSockets = $this->hostBinder->bindHosts($this->hosts);
         $tlsMap = $this->hosts->getTlsBindingsByAddress();
         $acceptor = function($r, $w, $s) { $this->accept($s); };
         $tlsAcceptor = function($r, $w, $s) { $this->acceptTls($s); };
@@ -172,10 +279,19 @@ class Server {
         }
 
         $this->state = self::STARTING;
-        $startPromise = $this->notifyObservers(self::STARTING);
+        $startPromise = $this->notifyObservers();
         $startPromise->when(function($e, $r) { $this->onStartCompletion($e, $r); });
 
         return $startPromise;
+    }
+
+    private function notifyObservers() {
+        $promises = [];
+        foreach ($this->observers as $observer) {
+            $promises[] = $observer->onServerUpdate($this);
+        }
+
+        return \Amp\all($promises);
     }
 
     private function normalizeStartHosts($hostOrCollection) {
@@ -206,7 +322,7 @@ class Server {
 
             $this->state = self::STARTED;
         } else {
-            // @TODO Log $e;
+            $this->log($e);
             $this->stop();
         }
     }
@@ -218,12 +334,10 @@ class Server {
      * New client acceptance is suspended, previously assigned responses are sent in full and any
      * currently unfulfilled requests receive a 503 Service Unavailable response.
      *
-     * @return \Amp\Promise Returns a Promise that resolves when shutdown completes.
+     * @return \Amp\Promise
      */
     public function stop() {
-        if ($this->state === self::STOPPING) {
-            return $this->stopFuture->promise();
-        } elseif ($this->state === self::STOPPED) {
+        if ($this->state === self::STOPPED) {
             return new Success;
         }
 
@@ -235,58 +349,62 @@ class Server {
             $this->failTlsConnection($client);
         }
 
-        // Do we want to do this? It could break partially received in-progress requests ...
         foreach ($this->clients as $client) {
             @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
         }
 
-        $observerFuture = $this->notifyObservers(self::STOPPING);
+        $observerPromise = $this->notifyObservers();
 
-        // If no clients are connected we need only resolve the observer future
+        // If no clients are connected we need only resolve the observer promise
         if (empty($this->clients)) {
-            $stopFuture = $observerFuture;
-        } else {
-            $this->stopFuture = new Future($this->reactor);
-            $response = [
+            return $observerPromise;
+        }
+
+        $this->stopPromisor = new Future;
+
+        foreach ($this->clients as $client) {
+            $this->stopClient($client);
+        }
+
+        $returnPromise = \Amp\all([$this->stopPromisor->promise(), $observerPromise]);
+        $returnPromise->when(function($e, $r) {
+            $this->stopPromisor = null;
+            $this->reactor->cancel($this->keepAliveWatcher);
+            $this->acceptWatchers = [];
+            $this->listeningSockets = [];
+            $this->state = self::STOPPED;
+
+            if ($e) {
+                $this->log($e);
+            }
+        });
+
+        return $returnPromise;
+    }
+
+    private function stopClient($client) {
+        if (empty($client->cycles)) {
+            $this->closeClient($client);
+            return;
+        }
+
+        $unassignedRequestIds = array_keys(array_diff_key($client->cycles, $client->pipeline));
+        foreach ($unassignedRequestIds as $requestId) {
+            $responder = $this->responderFactory->make([
                 'status' => Status::SERVICE_UNAVAILABLE,
                 'header' => ['Connection: close'],
                 'body'   => '<html><body><h1>503 Service Unavailable</h1></body></html>'
-            ];
-
-            foreach ($this->clients as $client) {
-                $this->stopClient($client, $response);
-            }
-
-            $stopFuture = $this->combinator->all([$this->stopFuture->promise(), $observerFuture]);
+            ]);
+            $requestCycle = $client->cycles[$requestId];
+            $requestCycle->responder = $responder;
         }
+        $this->hydrateClientResponderPipeline($client);
 
-        $stopFuture->when(function($e, $r) { $this->onStopCompletion($e, $r); });
-
-        return $stopFuture;
-    }
-
-    private function stopClient($client, $response) {
-        if ($client->cycles) {
-            $unassignedRequestIds = array_keys(array_diff_key($client->cycles, $client->pipeline));
-            foreach ($unassignedRequestIds as $requestId) {
-                $requestCycle = $client->cycles[$requestId];
-                $requestCycle->response = $response;
-                $this->hydrateResponderPipeline($requestCycle);
-            }
-        } else {
-            $this->closeClient($client);
-        }
-    }
-
-    private function onStopCompletion(\Exception $e = null, $r = null) {
-        $this->stopFuture = NULL;
-        $this->reactor->cancel($this->keepAliveWatcher);
-        $this->acceptWatchers = [];
-        $this->listeningSockets = [];
-        $this->state = self::STOPPED;
-
-        if ($e) {
-            // @TODO There was an error; log $e
+        if (empty($client->pendingResponder) &&
+            ($nextRequestId = key($client->cycles)) &&
+            isset($client->pipeline[$nextRequestId])
+        ) {
+            $this->cedeResponderSocketControl($client, $nextRequestId);
         }
     }
 
@@ -379,13 +497,12 @@ class Server {
         }
     }
 
-    /**
-     * Date string generation is (relatively) expensive. Since we only need HTTP dates at a
-     * granularity of one second we're better off to generate this information once per second and
-     * cache it. Because we also timeout keep-alive connections at one-second intervals we cache
-     * the unix timestamp for comparisons against client activity times.
-     */
     private function renewHttpDate() {
+        // Date string generation is (relatively) expensive. Since we only need HTTP
+        // dates at a granularity of one second we're better off to generate this
+        // information once per second and cache it. Because we also timeout keep-alive
+        // connections at one-second intervals we cache the unix timestamp for
+        // comparisons against client activity times.
         $time = time();
         $this->now = $time;
         $this->httpDateNow = gmdate('D, d M Y H:i:s', $time) . ' UTC';
@@ -393,14 +510,16 @@ class Server {
         return $time;
     }
 
-    /**
-     * IMPORTANT: DO NOT REMOVE THE CALL TO unset(). It looks superfluous, but it's not. Keep-alive
-     * timeout entries must be ordered by value. This means that it's not enough to replace the
-     * existing map entry -- we have to remove it completely and push it back onto the end of the
-     * array to maintain the correct order.
-     */
     private function renewKeepAliveTimeout($socketId) {
+        // *** IMPORTANT ***
+        //
+        // DO NOT remove the call to unset(); it looks superfluous but it's not.
+        // Keep-alive timeout entries must be ordered by value. This means that
+        // it's not enough to replace the existing map entry -- we have to remove
+        // it completely and push it back onto the end of the array to maintain the
+        // correct order.
         unset($this->keepAliveTimeouts[$socketId]);
+
         $this->keepAliveTimeouts[$socketId] = $this->now + $this->keepAliveTimeout;
     }
 
@@ -443,9 +562,9 @@ class Server {
         return [$address, $port];
     }
 
-    private function readClientSocketData($client) {
+    private function readClientSocketData(Client $client) {
         $data = @fread($client->socket, $this->readGranularity);
-        if ($data || $data === '0') {
+        if ($data != '') {
             $this->renewKeepAliveTimeout($client->id);
             $this->parseClientSocketData($client, $data);
         } elseif (!is_resource($client->socket) || @feof($client->socket)) {
@@ -453,7 +572,7 @@ class Server {
         }
     }
 
-    private function parseClientSocketData($client, $data) {
+    private function parseClientSocketData(Client $client, $data) {
         try {
             while ($parsedRequest = $client->parser->parse($data)) {
                 if ($parsedRequest['headersOnly']) {
@@ -469,55 +588,50 @@ class Server {
                 }
             }
         } catch (ParserException $e) {
-            $this->onParseError($client, $e);
+            if ($client->partialCycle) {
+                $requestCycle = $client->partialCycle;
+                $client->partialCycle = null;
+            } else {
+                list($requestCycle) = $this->initializeCycle($client, $e->getParsedMsgArr());
+            }
+
+            $display = $this->debug ? "<pre>{$e}</pre>" : '<p>Malformed HTTP request</p>';
+            $responder = $this->responderFactory->make([
+                'status' => $e->getCode() ?: Status::BAD_REQUEST,
+                'header' => ['Connection: close'],
+                'body'   => sprintf("<html><body>%s</body></html>", $display)
+            ]);
+
+            $this->assignResponder($requestCycle, $responder);
         }
-    }
-
-    private function onParseError($client, ParserException $e) {
-        if ($client->partialCycle) {
-            $requestCycle = $client->partialCycle;
-            $client->partialCycle = NULL;
-        } else {
-            $requestCycle = $this->initializeCycle($client, $e->getParsedMsgArr());
-        }
-
-        $requestCycle->response = [
-            'status' => $e->getCode() ?: Status::BAD_REQUEST,
-            'header' => ['Connection: close'],
-            'body'   => sprintf("<html><body><p>%s</p></body></html>", $e->getMessage())
-        ];
-
-        $this->hydrateResponderPipeline($requestCycle);
     }
 
     /**
-     * @TODO Invoke HostDefinition application partial responders here (not yet implemented). These responders
-     * (if present) should be used to answer request Expect headers (or whatever people wish to do
-     * before the body arrives).
+     * @TODO Invoke HostDefinition application partial responders here (not yet implemented). These
+     * responders (if present) should be used to answer request Expect headers (or whatever people
+     * wish to do before the body arrives).
      *
      * @TODO Support generator multitasking in partial responders
      */
-    private function onPartialRequest($client, array $parsedRequest) {
-        $requestCycle = $this->initializeCycle($client, $parsedRequest);
+    private function onPartialRequest(Client $client, array $parsedRequest) {
+        list($requestCycle, $responder) = $this->initializeCycle($client, $parsedRequest);
 
-        // @TODO Apply Host application partial responders here (not yet implemented)
-
-        if (!$requestCycle->response && $requestCycle->expectsContinue) {
-            $requestCycle->response = [
+        if ($requestCycle->expectsContinue && empty($responder)) {
+            $responder = $this->responderFactory->make([
                 'status' => Status::CONTINUE_100,
                 'body' => ''
-            ];
+            ]);
         }
 
         // @TODO After responding to an expectation we probably need to modify the request parser's
         // state to avoid parse errors after a non-100 response. Otherwise we really have no choice
         // but to close the connection after this response.
-        if ($requestCycle->response) {
-            $this->hydrateResponderPipeline($requestCycle);
+        if ($responder) {
+            $this->assignResponder($requestCycle, $responder);
         }
     }
 
-    private function initializeCycle($client, array $parsedRequestMap) {
+    private function initializeCycle(Client $client, array $parsedRequestMap) {
         extract($parsedRequestMap, $flags = EXTR_PREFIX_ALL, $prefix = '_');
 
         //$__protocol
@@ -534,8 +648,11 @@ class Server {
 
         $__method = $this->normalizeMethodCase ? strtoupper($__method) : $__method;
 
+        $requestId = ++$this->lastRequestId;
+        $this->requestIdClientMap[$requestId] = $client;
+
         $requestCycle = new RequestCycle;
-        $requestCycle->requestId = ++$this->lastRequestId;
+        $requestCycle->requestId = $requestId;
         $requestCycle->client = $client;
         $requestCycle->protocol = $__protocol;
         $requestCycle->method = $__method;
@@ -567,7 +684,7 @@ class Server {
 
         $client->requestCount++;
         $client->cycles[$requestCycle->requestId] = $requestCycle;
-        $client->partialCycle = $__headersOnly ? $requestCycle : NULL;
+        $client->partialCycle = $__headersOnly ? $requestCycle : null;
 
         list($host, $isValidHost) = $this->hosts->selectHost($requestCycle, $this->defaultHost);
         $requestCycle->host = $host;
@@ -582,9 +699,8 @@ class Server {
         $request = [
             'ASGI_VERSION'      => '0.1',
             'ASGI_NON_BLOCKING' => TRUE,
-            'ASGI_ERROR'        => NULL,
+            'ASGI_ERROR'        => null,
             'ASGI_INPUT'        => $requestCycle->body,
-            'AERYS_SOCKET_ID'   => $client->id,
             'SERVER_PORT'       => $client->serverPort,
             'SERVER_ADDR'       => $client->serverAddress,
             'SERVER_NAME'       => $serverName,
@@ -617,7 +733,6 @@ class Server {
 
         // @TODO Add multipart entity parsing
 
-        // @TODO Maybe put headers into their own "HEADERS" array
         foreach ($__headers as $field => $value) {
             $field = 'HTTP_' . str_replace('-', '_', $field);
             $value = isset($value[1]) ? implode(',', $value) : $value[0];
@@ -627,66 +742,71 @@ class Server {
         $requestCycle->request = $request;
 
         if (!$isValidHost) {
-            $requestCycle->response = [
+            $responder = $this->responderFactory->make([
                 'status' => Status::BAD_REQUEST,
                 'reason' => 'Bad Request: Invalid Host',
                 'body'   => '<html><body><h1>400 Bad Request: Invalid Host</h1></body></html>',
-            ];
+            ]);
         } elseif (!isset($this->allowedMethods[$__method])) {
-            $requestCycle->response = [
+            $responder = $this->responderFactory->make([
                 'status' => Status::METHOD_NOT_ALLOWED,
                 'header' => [
                     'Connection: close',
                     'Allow: ' . implode(',', array_keys($this->allowedMethods)),
                 ],
                 'body'   => '<html><body><h1>405 Method Not Allowed</h1></body></html>',
-            ];
+            ]);
         } elseif ($__method === 'TRACE' && empty($requestCycle->headers['MAX_FORWARDS'])) {
             // @TODO Max-Forwards needs some additional server flag because that check shouldn't
             // be used unless the server is acting as a reverse proxy
-            $requestCycle->response = [
+            $responder = $this->responderFactory->make([
                 'status' => Status::OK,
                 'header' => ['Content-Type: message/http'],
                 'body'   => $__trace,
-            ];
+            ]);
         } elseif ($__method === 'OPTIONS' && $requestCycle->uri === '*') {
-            $requestCycle->response = [
+            $responder = $this->responderFactory->make([
                 'status' => Status::OK,
                 'header' => ['Allow: ' . implode(',', array_keys($this->allowedMethods))],
-            ];
+            ]);
         } elseif ($this->requireBodyLength && $__headersOnly && empty($requestCycle->headers['CONTENT-LENGTH'])) {
-            $requestCycle->response = [
+            $responder = $this->responderFactory->make([
                 'status' => Status::LENGTH_REQUIRED,
                 'reason' => 'Content Length Required',
                 'header' => ['Connection: close'],
-            ];
+            ]);
+        } else {
+            $responder = null;
         }
 
-        return $requestCycle;
+        return [$requestCycle, $responder];
     }
 
-    private function onCompletedRequest($client, array $parsedRequest) {
+    private function onCompletedRequest(Client $client, array $parsedRequest) {
         unset($this->keepAliveTimeouts[$client->id]);
 
         if ($requestCycle = $client->partialCycle) {
+            $responder = null;
             $this->updateRequestAfterEntity($requestCycle, $parsedRequest['headers']);
         } else {
-            $requestCycle = $this->initializeCycle($client, $parsedRequest);
+            list($requestCycle, $responder) = $this->initializeCycle($client, $parsedRequest);
         }
 
-        if ($requestCycle->response) {
-            $this->hydrateResponderPipeline($requestCycle);
+        if ($responder) {
+            $this->assignResponder($requestCycle, $responder);
         } else {
             $this->invokeHostApplication($requestCycle);
         }
     }
 
-    private function updateRequestAfterEntity($requestCycle, array $parsedHeadersArray) {
-        $requestCycle->client->partialCycle = NULL;
+    private function updateRequestAfterEntity(RequestCycle $requestCycle, array $parsedHeadersArray) {
+        $requestCycle->client->partialCycle = null;
 
         if ($needsNewRequestId = $requestCycle->expectsContinue) {
-            $requestCycle->requestId = ++$this->lastRequestId;
-            $requestCycle->client->cycles[$requestCycle->requestId] = $requestCycle;
+            $requestId = ++$this->lastRequestId;
+            $requestCycle->requestId = $requestId;
+            $requestCycle->client->cycles[$requestId] = $requestCycle;
+            $this->requestIdClientMap[$requestId] = $requestCycle->client;
         }
 
         if (isset($requestCycle->request['HTTP_TRAILERS'])) {
@@ -695,7 +815,7 @@ class Server {
 
         $contentType = isset($requestCycle->request['CONTENT_TYPE'])
             ? $requestCycle->request['CONTENT_TYPE']
-            : NULL;
+            : null;
 
         if (stripos($contentType, 'application/x-www-form-urlencoded') === 0) {
             $bufferedBody = stream_get_contents($requestCycle->body);
@@ -707,7 +827,7 @@ class Server {
     /**
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.40
      */
-    private function updateTrailerHeaders($requestCycle, array $headers) {
+    private function updateTrailerHeaders(RequestCycle $requestCycle, array $headers) {
         // The Host header is ignored in trailers to prevent unsanitized values from bypassing the
         // original safety check when headers are first processed. The other values are expressly
         // disallowed by RFC 2616 Section 14.40.
@@ -723,166 +843,94 @@ class Server {
         }
     }
 
-    private function invokeHostApplication($requestCycle) {
+    private function invokeHostApplication(RequestCycle $requestCycle) {
         try {
             $application = $requestCycle->host->getApplication();
-            $response = $application($requestCycle->request);
-            $this->assignResponse($requestCycle, $response);
-        } catch (\Exception $exception) {
-            $this->assignExceptionResponse($requestCycle, $exception);
+            $responder = $application($requestCycle->request);
+        } catch (\Exception $error) {
+            $responder = $this->generateErrorResponder($error);
+        } finally {
+            $this->assignResponder($requestCycle, $responder);
         }
     }
 
-    private function assignResponse($requestCycle, $response) {
-        if ($requestCycle->client->isGone) {
-            // If the client disconnected while we were generating
-            // the response there's nothing else to do.
-            return;
+    private function generateErrorResponder(\Exception $error) {
+        $isDebugEnabled = $this->debug;
+
+        if (empty($isDebugEnabled)) {
+            $this->log($error);
         }
 
-        switch (gettype($response)) {
-            case 'string':
-                $requestCycle->response = [
-                    'status' => 200,
-                    'reason' => '',
-                    'header' => [],
-                    'body'   => $response,
-                ];
-                $this->hydrateResponderPipeline($requestCycle);
-                break;
-            case 'array':
-                $baseResponse = ['status' => 200, 'reason' => '', 'header' => [], 'body' => ''];
-                $response = array_merge($baseResponse, $response);
-                if (is_string($response['body'])) {
-                    $requestCycle->response = $response;
-                    $this->hydrateResponderPipeline($requestCycle);
-                } else {
-                    $this->assignExceptionResponse($requestCycle, new \UnexpectedValueException(
-                        sprintf(
-                            "Invalid response body type: %s",
-                            gettype($response['body'])
-                        )
-                    ));
-                }
-                break;
-            case 'object':
-                $this->assignObjectResponse($requestCycle, $response);
-                break;
-            default:
-                $this->assignExceptionResponse($requestCycle, new \UnexpectedValueException(
-                    "Invalid response type: {$type}"
-                ));
-        }
-    }
-
-    private function assignObjectResponse($requestCycle, $response) {
-        if ($response instanceof Responder || $response instanceof \Generator) {
-            $requestCycle->response = $response;
-            $this->hydrateResponderPipeline($requestCycle);
-        } elseif ($response instanceof Promise) {
-            $response->when(function($error, $response) use ($requestCycle) {
-                if ($error) {
-                    $this->assignExceptionResponse($requestCycle, $error);
-                } else {
-                    $this->assignResponse($requestCycle, $response);
-                }
-            });
-        } else {
-            $this->assignExceptionResponse($requestCycle, new \UnexpectedValueException(
-                sprintf(
-                    "Invalid response object; Responder, Generator or Promise expected. %s provided",
-                    get_class($response)
-                )
-            ));
-        }
-    }
-
-    private function assignExceptionResponse($requestCycle, \Exception $exception) {
-        if (empty($this->debug)) {
-            // @TODO Log the error here. For now we'll just send it to STDERR:
-            @fwrite(STDERR, $exception);
-        }
-
-        $displayMsg = $this->debug
-            ? "<pre>{$exception}</pre>"
-            : '<p>Something went terribly wrong</p>';
-
+        $display = $isDebugEnabled ? "<pre>{$error}</pre>" : '<p>Something went terribly wrong</p>';
         $status = Status::INTERNAL_SERVER_ERROR;
         $reason = Reason::HTTP_500;
-        $body = "<html><body><h1>{$status} {$reason}</h1><p>{$displayMsg}</p></body></html>";
-        $requestCycle->response = [
+        $body = "<html><body><h1>{$status} {$reason}</h1><p>{$display}</p></body></html>";
+
+        return $this->responderFactory->make([
             'status' => $status,
             'reason' => $reason,
             'body'   => $body,
-        ];
-
-        $this->hydrateResponderPipeline($requestCycle);
+        ]);
     }
 
-    private function hydrateResponderPipeline($requestCycle) {
-        // @TODO Retrieve and execute HostDefinition::getBeforeResponse() here ...
-
+    private function assignResponder(RequestCycle $requestCycle, Responder $responder) {
+        $requestCycle->responder = $responder;
         $client = $requestCycle->client;
+        $this->hydrateClientResponderPipeline($client);
 
+        // If there's already a pending responder we need to wait until it completes before
+        // dispatching the next one ...
+        if ($client->pendingResponder) {
+            return;
+        }
+
+        $nextRequestId = key($client->cycles);
+        if (isset($client->pipeline[$nextRequestId])) {
+            $this->cedeResponderSocketControl($client, $nextRequestId);
+        }
+    }
+
+    private function hydrateClientResponderPipeline(Client $client) {
         foreach ($client->cycles as $requestId => $requestCycle) {
             if (isset($client->pipeline[$requestId])) {
                 continue;
-            } elseif ($requestCycle->response) {
-                $client->pipeline[$requestId] = $this->makeResponder($requestCycle);
+            } elseif ($requestCycle->responder) {
+                $responderEnv = $this->makeResponderEnvironment($requestCycle);
+                $responder = $requestCycle->responder;
+                $responder->prepare($responderEnv);
+                $client->pipeline[$requestId] = $responder;
             } else {
                 break;
             }
         }
 
-        // IMPORTANT: reset the $client->cycles array to avoid breaking the pipeline order
+        // IMPORTANT: reset these arrays to avoid sending pipelined responses out of order
         reset($client->cycles);
-
-        if ($client->pendingResponder || !($responder = current($client->pipeline))) {
-            // If we already have a pending responder in progress we have to wait until
-            // it's complete before starting the next one. Otherwise we need to ensure
-            // the first request in the pipeline has a responder before proceeding.
-            return;
-        }
-
-        $client->pendingResponder = $responder;
-        $promise = $responder->write();
-
-        if ($client->isGone) {
-            // Allow responders to export the client socket
-            return;
-        }
-
-        $promise->when(function($error, $mustClose) use ($client) {
-            $client->pendingResponder = null;
-
-            if (empty($error)) {
-                return $this->afterResponseWrite($client, $mustClose);
-            }
-
-            if (!$error instanceof ClientGoneException) {
-                // @TODO Log $e
-                // Write failure occurred for some reason other than a premature client
-                // disconnect. This represents an error in our program and requires logging.
-            }
-
-            // Always close the connection if an error occurred while writing
-            $this->closeClient($client);
-        });
+        reset($client->pipeline);
     }
 
-    private function makeResponder($requestCycle) {
-        $struct = new ResponderStruct;
-        $struct->server = $this;
-        $struct->debug = $this->debug;
-        $struct->socket = $requestCycle->client->socket;
-        $struct->reactor = $this->reactor;
-        $struct->writeWatcher = $requestCycle->client->writeWatcher;
-        $struct->httpDate = $this->httpDateNow;
-        $struct->serverToken = $this->sendServerToken ? self::NAME : null;
-        $struct->defaultContentType = $this->defaultContentType;
-        $struct->defaultTextCharset = $this->defaultTextCharset;
-        $struct->request = $requestCycle->request;
-        $struct->response = $response = $requestCycle->response;
+    private function cedeResponderSocketControl(Client $client, $requestId) {
+        $requestCycle = $client->cycles[$requestId];
+        $responder = $client->pipeline[$requestId];
+        $client->pendingResponder = $responder;
+        $responder->assumeSocketControl();
+    }
+
+    private function makeResponderEnvironment(RequestCycle $requestCycle) {
+        $client = $requestCycle->client;
+
+        $env = new ResponderEnvironment;
+        $env->reactor = $this->reactor;
+        $env->server = $this;
+        $env->socket = $client->socket;
+        $env->writeWatcher = $client->writeWatcher;
+        $env->requestId = $requestCycle->requestId;
+        $env->request = $requestCycle->request;
+
+        $env->httpDate = $this->httpDateNow;
+        $env->serverToken = $this->sendServerToken ? self::NAME : null;
+        $env->defaultContentType = $this->defaultContentType;
+        $env->defaultTextCharset = $this->defaultTextCharset;
 
         $protocol = $requestCycle->request['SERVER_PROTOCOL'];
         $reqConnHdr = isset($requestCycle->request['HTTP_CONNECTION'])
@@ -892,119 +940,50 @@ class Server {
         if ($this->disableKeepAlive || $this->state === self::STOPPING) {
             // If keep-alive is disabled or the server is stopping we always close
             // after the response is written.
-            $struct->mustClose = true;
+            $env->mustClose = true;
         } elseif ($this->maxRequests > 0 && $requestCycle->client->requestCount >= $this->maxRequests) {
             // If the client has exceeded the max allowable requests per connection
             // we always close after the response is written.
-            $struct->mustClose = true;
+            $env->mustClose = true;
         } elseif (isset($reqConnHdr)) {
             // If the request indicated a close preference we agree to that. If the request uses
             // HTTP/1.0 we may still have to close if the response content length is unknown.
             // This potential need must be determined based on whether or not the response
             // content length is known at the time output starts.
-            $struct->mustClose = (stripos($reqConnHdr, 'close') !== false);
+            $env->mustClose = (stripos($reqConnHdr, 'close') !== false);
         } elseif ($protocol < 1.1) {
             // HTTP/1.0 defaults to a close after each response if not otherwise specified.
-            $struct->mustClose = true;
+            $env->mustClose = true;
         } else {
-            $struct->mustClose = false;
+            $env->mustClose = false;
         }
 
-        if (!$struct->mustClose) {
+        if (!$env->mustClose) {
             $keepAlive = "timeout={$this->keepAliveTimeout}, max=";
             $keepAlive.= $this->maxRequests - $requestCycle->client->requestCount;
-            $struct->keepAlive = $keepAlive;
+            $env->keepAlive = $keepAlive;
         }
 
-        if ($response instanceof Responder) {
-            $responder = $response;
-        } elseif ($response instanceof \Generator) {
-            $responder = new GeneratorResponder;
-        } else {
-            $responder = new StringResponder;
-        }
-
-        $responder->prepare($struct);
-
-        return $responder;
+        return $env;
     }
 
-    private function afterResponseWrite(Client $client, $shouldClose) {
-        if ($client->isGone) {
-            // Nothing to do; the client socket has already disconnected or been exported.
-            return;
-        }
-
-        $requestId = key($client->cycles);
-        $requestCycle = $client->cycles[$requestId];
-
-        if ($shouldClose) {
-            $this->closeClient($client);
-        } else {
-            $this->shiftClientPipeline($client, $requestId);
-        }
-    }
-
-    /**
-     * Assume control of the specified socket
-     *
-     * Note that exported sockets continue to count against the server's maxConnections limit to
-     * protect against DoS. When an application is finished with the exported socket it MUST
-     * invoke the callback returned at index 1 of this function's return array.
-     *
-     * @param int $socketId
-     * @throws DomainException on unknown socket ID
-     * @return array[int $socketId, Closure $closeCallback]
-     */
-    public function exportSocket($socketId) {
-        if (isset($this->clients[$socketId])) {
-            $client = $this->clients[$socketId];
-            $socket = $client->socket;
-            $this->exportedSocketIdMap[$socketId] = $socket;
-
-            // Don't decrement the client count because we want to keep track of
-            // resource usage as long as the exported client is still open.
-            $this->clearClientReferences($client, $decrementClientCount = false);
-            $closeCallback = function() use ($socketId) {
-                $this->closeExportedSocket($socketId);
-            };
-
-            return [$socket, $closeCallback];
-
-        } else {
-            throw new \DomainException(
-                sprintf("Unknown socket ID: %s", $socketId)
-            );
-        }
-    }
-
-    private function closeExportedSocket($socketId) {
-        if (isset($this->exportedSocketIdMap[$socketId])) {
-            $socket = $this->exportedSocketIdMap[$socketId];
-            $this->cachedClientCount--;
-            $this->doSocketClose($socket);
-            unset($this->exportedSocketIdMap[$socketId]);
-        }
-    }
-
-    private function clearClientReferences($client, $decrementClientCount) {
+    private function clearClientReferences($client) {
         $this->reactor->cancel($client->readWatcher);
         $this->reactor->cancel($client->writeWatcher);
-
-        // We might have pending async jobs out for this client. Set a flag so async
-        // jobs holding a reference to the client will know to ignore future values
-        // when they are eventually resolved.
-        $client->isGone = TRUE;
-
-        $client->parser = NULL;
-        $client->cycles = NULL;
 
         unset(
             $this->clients[$client->id],
             $this->keepAliveTimeouts[$client->id]
         );
 
-        $this->cachedClientCount -= $decrementClientCount;
+        if ($client->cycles) {
+            foreach (array_keys($client->cycles) as $requestId) {
+                unset($this->requestIdClientMap[$requestId]);
+            }
+        }
+
+        $this->cachedClientCount--;
+        $client->parser = $client->cycles = $client->pipeline = null;
 
         if ($this->state === self::PAUSED
             && $this->maxConnections > 0
@@ -1014,13 +993,13 @@ class Server {
         }
     }
 
-    private function closeClient($client) {
-        $this->clearClientReferences($client, $decrementClientCount = TRUE);
+    private function closeClient(Client $client) {
+        $this->clearClientReferences($client);
         $this->doSocketClose($client->socket);
 
-        // If we're shutting down and no more clients remain we can fulfill our stop promise
+        // If we're shutting down and no more clients remain we can resolve our stop promise
         if ($this->state === self::STOPPING && empty($this->clients)) {
-            $this->stopFuture->succeed();
+            $this->stopPromisor->succeed();
         }
     }
 
@@ -1052,19 +1031,6 @@ class Server {
         ]);
 
         socket_close($socket);
-    }
-
-    private function shiftClientPipeline($client, $requestId) {
-        unset(
-            $client->pipeline[$requestId],
-            $client->cycles[$requestId]
-        );
-
-        // Disable active onWritable stream watchers if the pipeline is no longer write-ready
-        if (!current($client->pipeline)) {
-            $this->reactor->disable($client->writeWatcher);
-            $this->renewKeepAliveTimeout($client->id);
-        }
     }
 
     /**
@@ -1177,7 +1143,7 @@ class Server {
     private function setSocketSoLingerZero($boolFlag) {
         $boolFlag = (bool) $boolFlag;
 
-        if ($boolFlag && !$this->isExtSocketsEnabled) {
+        if ($boolFlag && !$this->hasSocketsExtension) {
             throw new \RuntimeException(
                 'Cannot enable socketSoLingerZero; PHP sockets extension required'
             );

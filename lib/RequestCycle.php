@@ -10,7 +10,7 @@ namespace Aerys;
  * client and (expensive-to-parse) URI data associated with various message cycle
  * operations.
  */
-class RequestCycle extends Struct {
+class RequestCycle extends \Amp\Struct {
     public $requestId;
     public $client;
     public $host;
@@ -25,6 +25,6 @@ class RequestCycle extends Struct {
     public $uriQuery;
     public $hasAbsoluteUri;
     public $request;
-    public $response;
+    public $responder;
     public $expectsContinue;
 }

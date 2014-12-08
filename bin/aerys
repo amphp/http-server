@@ -1,6 +1,11 @@
 #!/usr/bin/env php
 
 <?php
+
+if (extension_loaded('pcntl')) {
+    declare(ticks=1);
+}
+
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -15,37 +20,33 @@ $help = <<<EOT
     -d, --debug       Start the server in debug mode
     -c, --config      Use the specified config file to bootstrap the server
     -w, --workers     Manually specify worker count (default: CPU core count)
-    -z, --control     A port number on which to listen for stop/reload commands
+    -r, --remote      @TODO A port number on which to listen for stop/reload commands
 
     Example Usage:
 
     aerys --help
     aerys -c /path/to/app/config.php
     aerys --config /path/to/app/config.php --workers 4
-    aerys -c /my/config.php -z tcp://127.0.0.1:23456
+    aerys -c /my/config.php -r 23456
 
 
 EOT;
 
 try {
+    Amp\run(function() {
+        $options = Aerys\parseCommandLineOptions();
 
-    $options = (new Aerys\BinOptions)->loadOptions();
+        if ($options['help']) {
+            echo $help;
+            exit(0);
+        }
 
-    if ($options->getHelp()) {
-        echo $help;
-        exit(0);
-    } elseif ($options->getDebug()) {
-        $watcher = new Aerys\WatchDebugger;
-    } elseif (extension_loaded('pthreads') && extension_loaded('libevent')) {
-        $watcher = new Aerys\WatchThreader;
-    } elseif (extension_loaded('pcntl')) {
-        $watcher = new Aerys\WatchForker;
-    } else {
-        $watcher = new Aerys\WatchProcessor;
-    }
+        $watcher = ($options['debug'] || php_sapi_name() === 'phpdbg')
+            ? new Aerys\DebugWatcher
+            : new Aerys\WorkerWatcher($options['workers']);
 
-    $watcher->watch($options);
-
+        yield $watcher->watch($options['config']);
+    });
 } catch (Exception $e) {
     printf("\n%s\n\n", $e->getMessage());
     exit(1);

@@ -7,7 +7,6 @@ use Amp\Future;
 use Amp\Promise;
 use Amp\Success;
 use Amp\Failure;
-use Amp\Combinator;
 use Aerys\Server;
 use Aerys\Websocket;
 use Aerys\ServerObserver;
@@ -30,7 +29,6 @@ class Endpoint implements ServerObserver {
 
     private $reactor;
     private $websocket;
-    private $combinator;
     private $state = Server::STOPPED;
 
     private $pendingSessions = [];
@@ -53,10 +51,9 @@ class Endpoint implements ServerObserver {
 
     private $errorLogger;
 
-    public function __construct(Reactor $reactor, Websocket $websocket, Combinator $combinator = null) {
+    public function __construct(Reactor $reactor, Websocket $websocket) {
         $this->reactor = $reactor;
         $this->websocket = $websocket;
-        $this->combinator = $combinator ?: new Combinator($reactor);
         $this->errorLogger = function($error) {
             if (!$error instanceof ClientGoneException) {
                 fwrite(STDERR, $error);
@@ -71,23 +68,17 @@ class Endpoint implements ServerObserver {
      * application bootstrapping and graceful shutdown.
      *
      * @param \Aerys\Server $server
-     * @param int $event
      * @return \Amp\Promise
      */
-    public function onServerUpdate(Server $server, $event) {
-        switch ($event) {
+    public function onServerUpdate(Server $server) {
+        $state = $server->getState();
+        switch ($state) {
             case Server::STARTING:
-                $this->state = $event;
+                $this->state = $state;
                 return $this->start();
-            case Server::STARTED:
-                $this->state = $event;
-                return new Success;
             case Server::STOPPING:
-                $this->state = $event;
+                $this->state = $state;
                 return $this->stop();
-            case Server::STOPPED:
-                $this->state = $event;
-                break;
         }
     }
 
@@ -108,8 +99,8 @@ class Endpoint implements ServerObserver {
             $closePromises[] = $this->closeSession($session, $code, $reason);
         }
 
-        $promisor = new Future($this->reactor);
-        $sessionClose = $this->combinator->any($closePromises);
+        $promisor = new Future;
+        $sessionClose = \Amp\any($closePromises);
         $sessionClose->when(function($e, $r) use ($promisor) {
             $promisor->succeed();
         });
@@ -151,6 +142,8 @@ class Endpoint implements ServerObserver {
                         $this->handshake($session);
                     }
                 });
+            } else {
+                $this->handshake($session);
             }
         } catch (\Exception $error) {
             $this->onApplicationError($session, $error);
@@ -198,7 +191,6 @@ class Endpoint implements ServerObserver {
         $session->handshakeState = Session::HANDSHAKE_INIT;
         $session->writeBuffer = $rawResponse;
         $session->writeBufferSize = strlen($rawResponse);
-        $session->isWriteWatcherEnabled = true;
         $session->writeWatcher = $this->reactor->onWritable($session->socket, function() use ($session) {
             $this->write($session);
         });
@@ -240,7 +232,7 @@ class Endpoint implements ServerObserver {
     }
 
     private function resolveGenerator(\Generator $generator, Session $session) {
-        $promisor = new Future($this->reactor);
+        $promisor = new Future;
         $promisor->when($this->errorLogger);
 
         $rs = new ResolverStruct;
@@ -322,8 +314,8 @@ class Endpoint implements ServerObserver {
                     // fallthrough
                 case SystemYieldCommands::CANCEL:
                     goto watcher_control;
-                case SystemYieldCommands::WAIT:
-                    goto wait;
+                case SystemYieldCommands::PAUSE:
+                    goto pause;
                 case SystemYieldCommands::ALL:
                     // fallthrough
                 case SystemYieldCommands::ANY:
@@ -491,8 +483,8 @@ class Endpoint implements ServerObserver {
             goto return_struct;
         }
 
-        wait: {
-            $promisor = $promise = new Future($this->reactor);
+        pause: {
+            $promisor = $promise = new Future;
             $this->reactor->once(function() use ($promisor) {
                 $promisor->succeed();
             }, (int) $current);
@@ -512,7 +504,8 @@ class Endpoint implements ServerObserver {
                 }
             }
 
-            $promise = $this->combinator->{$key}($promises);
+            $combinator = "\\Amp\\{$key}";
+            $promise = $combinator($promises);
 
             goto return_struct;
         }
@@ -528,6 +521,8 @@ class Endpoint implements ServerObserver {
                 'connected_at'  => $session->connectedAt,
                 'last_read_at'  => $session->lastReadAt,
                 'last_send_at'  => $session->lastSendAt,
+                'last_data_read_at'  => $session->lastDataReadAt,
+                'last_data_send_at'  => $session->lastDataSendAt,
             ]);
 
             goto return_struct;
@@ -646,14 +641,14 @@ class Endpoint implements ServerObserver {
                     'Cannot send: close handshake initiated'
                 ));
             } else {
-                $promise = new Future($this->reactor);
+                $promise = new Future;
                 $session->writeDataQueue[] = [$frameStructs, $promise];
                 $this->write($session);
             }
             $promises[] = $promise;
         }
 
-        return (count($promises) > 1) ? $this->combinator->any($promises) : current($promises);
+        return (count($promises) > 1) ? \Amp\any($promises) : current($promises);
     }
 
     private function generateDataFrameStructs($opcode, $payload) {
@@ -740,7 +735,10 @@ class Endpoint implements ServerObserver {
                     break;
                 case ParseState::PARSE_ERR_SYNTAX:
                     $errorMsg = $frameStruct[0];
-                    if ($session->closeState & Session::CLOSE_INIT) {
+                    if ($session->closeState === Session::CLOSE_DONE) {
+                        // We must not unload the session again if it already has CLOSE_DONE state
+                        break;
+                    } elseif ($session->closeState & Session::CLOSE_INIT) {
                         // If the close has already been initiated we don't tolerate
                         // errors and immediately unload the client session.
                         $this->unloadSession($session);
@@ -1023,6 +1021,7 @@ class Endpoint implements ServerObserver {
 
     private function receiveData(Session $session, $payload, $fin) {
         $session->messageBuffer .= $payload;
+        $session->lastDataReadAt = $this->now;
         if ($fin) {
             $payload = $session->messageBuffer;
             $session->messageBuffer = '';
@@ -1098,10 +1097,13 @@ class Endpoint implements ServerObserver {
 
         write: {
             $bytesWritten = @fwrite($session->socket, $session->writeBuffer);
-            if ($bytesWritten === false) {
-                goto socket_gone;
-            } else {
+
+            if ($bytesWritten !== false) {
                 goto after_write;
+            } elseif (is_resource($session->socket) && !@feof($session->socket)) {
+                goto further_write_needed;
+            } else {
+                goto socket_gone;
             }
         }
 
@@ -1142,10 +1144,11 @@ class Endpoint implements ServerObserver {
                 $onReadable = function() use ($session) { $this->read($session); };
                 $session->readWatcher = $this->reactor->onReadable($session->socket, $onReadable);
                 $this->renewHeartbeatTimeout($session->clientId);
+
+                // If this is the only connected session we need to enable timeout watching.
+                // This watcher is disabled when no clients are connected to avoid waking the
+                // script for no reason.
                 if (count($this->sessions) === 1) {
-                    // If this is the only connected session we need to enable timeout watching.
-                    // This watcher is disabled when no clients are connected to avoid waking the
-                    // script for no reason.
                     $this->reactor->enable($this->timeoutWatcher);
                 }
                 goto start;
@@ -1161,6 +1164,7 @@ class Endpoint implements ServerObserver {
             } elseif ($session->writeIsFin) {
                 goto after_data_message;
             } else {
+                $session->lastDataSendAt = $this->now;
                 goto further_write_needed;
             }
         }
@@ -1197,6 +1201,7 @@ class Endpoint implements ServerObserver {
         }
 
         after_data_message: {
+            $session->lastDataSendAt = $this->now;
             $key = key($session->writeDataQueue);
             $promisor = $session->writeDataQueue[$key][1];
             unset($session->writeDataQueue[$key]);
@@ -1209,18 +1214,12 @@ class Endpoint implements ServerObserver {
         }
 
         further_write_needed: {
-            if (!$session->isWriteWatcherEnabled) {
-                $session->isWriteWatcherEnabled = true;
-                $this->reactor->enable($session->writeWatcher);
-            }
+            $this->reactor->enable($session->writeWatcher);
             return;
         }
 
         all_data_sent: {
-            if ($session->isWriteWatcherEnabled) {
-                $session->isWriteWatcherEnabled = false;
-                $this->reactor->disable($session->writeWatcher);
-            }
+            $this->reactor->disable($session->writeWatcher);
             return;
         }
 
@@ -1305,7 +1304,7 @@ class Endpoint implements ServerObserver {
 
     private function closeSession(Session $session, $code, $reason = '') {
         if (!($session->closeState & Session::CLOSE_INIT)) {
-            $promisor = new Future($this->reactor);
+            $promisor = new Future;
             $session->closeState |= Session::CLOSE_INIT;
             $session->closePromisor = $promisor;
             $session->closeCode = $code;

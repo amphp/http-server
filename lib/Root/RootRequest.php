@@ -2,9 +2,7 @@
 
 namespace Aerys\Root;
 
-use Aerys\Struct;
-
-class RootRequest extends Struct {
+class RootRequest extends \Amp\Struct {
     public $path;
     public $request;
     public $promisor;

@@ -2,9 +2,7 @@
 
 namespace Aerys\Root;
 
-use Aerys\Struct;
-
-class Range extends Struct {
+class Range extends \Amp\Struct {
     public $ranges;
     public $boundary;
     public $contentType;

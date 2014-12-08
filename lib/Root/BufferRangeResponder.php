@@ -2,11 +2,8 @@
 
 namespace Aerys\Root;
 
-use Amp\Future;
-use Amp\Success;
-use Amp\Failure;
 use Aerys\Responder;
-use Aerys\ResponderStruct;
+use Aerys\ResponderEnvironment;
 
 class BufferRangeResponder implements Responder {
     private $fileEntry;
@@ -15,12 +12,7 @@ class BufferRangeResponder implements Responder {
     private $rangeBoundary;
     private $rangeContentType;
     private $rangeHeaderTemplate;
-    private $reactor;
-    private $socket;
-    private $mustClose;
-    private $writeWatcher;
-    private $isWriteWatcherEnabled;
-    private $promisor;
+    private $environment;
 
     public function __construct(FileEntry $fileEntry, array $headerLines, Range $range) {
         $this->fileEntry = $fileEntry;
@@ -31,28 +23,31 @@ class BufferRangeResponder implements Responder {
         $this->rangeHeaderTemplate = $range->headerTemplate;
     }
 
-    public function prepare(ResponderStruct $responderStruct) {
-        $this->reactor = $responderStruct->reactor;
-        $this->socket = $responderStruct->socket;
-        $this->mustClose = $mustClose = $responderStruct->mustClose;
-        $this->writeWatcher = $responderStruct->writeWatcher;
+    /**
+     * Prepare the Responder for client output
+     *
+     * @param \Aerys\ResponderEnvironment $env
+     * @return void
+     */
+    public function prepare(ResponderEnvironment $env) {
+        $this->environment = $env;
 
         $headerLines = $this->headerLines;
 
-        if ($mustClose) {
+        if ($env->mustClose) {
             $headerLines[] = 'Connection: close';
         } else {
             $headerLines[] = 'Connection: keep-alive';
-            $headerLines[] = "Keep-Alive: {$responderStruct->keepAlive}";
+            $headerLines[] = "Keep-Alive: {$env->keepAlive}";
         }
 
-        $headerLines[] = "Date: {$responderStruct->httpDate}";
+        $headerLines[] = "Date: {$env->httpDate}";
 
-        if ($responderStruct->serverToken) {
-            $headerLines[] = "Server: {$responderStruct->serverToken}";
+        if ($env->serverToken) {
+            $headerLines[] = "Server: {$env->serverToken}";
         }
 
-        $request = $responderStruct->request;
+        $request = $env->request;
         $method = $request['REQUEST_METHOD'];
         $protocol = $request['SERVER_PROTOCOL'];
         $headers = implode("\r\n", $headerLines);
@@ -94,50 +89,33 @@ class BufferRangeResponder implements Responder {
         return "\r\n" . substr($this->fileEntry->buffer, $startPos, $endPos);
     }
 
+    /**
+     * Assume control of the client socket and output the prepared response
+     *
+     * @return void
+     */
+    public function assumeSocketControl() {
+        $this->write();
+    }
+
+    /**
+     * Write the prepared response
+     *
+     * @return void
+     */
     public function write() {
-        $bytesWritten = @fwrite($this->socket, $this->buffer);
+        $env = $this->environment;
+        $bytesWritten = @fwrite($env->socket, $this->buffer);
 
         if ($bytesWritten === strlen($this->buffer)) {
-            goto write_complete;
-        } elseif ($bytesWritten !== false) {
-            goto write_incomplete;
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->resumeSocketControl($env->requestId, $env->mustClose);
+        } elseif ($bytesWritten === false) {
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->resumeSocketControl($env->requestId, $mustClose = true);
         } else {
-            goto write_error;
-        }
-
-        write_complete: {
-            if ($this->isWriteWatcherEnabled) {
-                $this->reactor->disable($this->writeWatcher);
-                $this->isWriteWatcherEnabled = false;
-            }
-
-            return $this->promisor
-                ? $this->promisor->succeed($this->mustClose)
-                : new Success($this->mustClose);
-        }
-
-        write_incomplete: {
             $this->buffer = substr($this->buffer, $bytesWritten);
-
-            if (!$this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = true;
-                $this->reactor->enable($this->writeWatcher);
-            }
-
-            return $this->promisor ?: ($this->promisor = new Future($this->reactor));
-        }
-
-        write_error: {
-            if ($this->isWriteWatcherEnabled) {
-                $this->isWriteWatcherEnabled = false;
-                $this->reactor->disable($this->writeWatcher);
-            }
-
-            $error = new ClientGoneException(
-                'Write failed: destination stream went away'
-            );
-
-            return $this->promisor ? $this->promisor->fail($error) : new Failure($error);
+            $env->reactor->enable($env->writeWatcher);
         }
     }
 }

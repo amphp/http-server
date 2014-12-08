@@ -3,6 +3,48 @@
 namespace Aerys;
 
 /**
+ * Parse server command line options
+ *
+ * Returns an array with the following keys:
+ *
+ *  - help
+ *  - debug
+ *  - config
+ *  - workers
+ *  - remote
+ *
+ * @return array
+ */
+function parseCommandLineOptions() {
+    $shortOpts = 'hdc:w:r:';
+    $longOpts = ['help', 'debug', 'config:', 'workers:', 'remote:'];
+    $parsedOpts = getopt($shortOpts, $longOpts);
+    $shortOptMap = [
+        'c' => 'config',
+        'w' => 'workers',
+        'r' => 'remote',
+    ];
+
+    $options = [
+        'config' => '',
+        'workers' => 0,
+        'remote' => '',
+    ];
+
+    foreach ($parsedOpts as $key => $value) {
+        $key = empty($shortOptMap[$key]) ? $key : $shortOptMap[$key];
+        if (isset($options[$key])) {
+            $options[$key] = $value;
+        }
+    }
+
+    $options['debug'] = isset($parsedOpts['d']) || isset($parsedOpts['debug']);
+    $options['help'] = isset($parsedOpts['h']) || isset($parsedOpts['help']);
+
+    return $options;
+}
+
+/**
  * Count the number of available CPU cores on this system
  *
  * @return int

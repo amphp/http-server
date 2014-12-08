@@ -2,12 +2,12 @@
 
 namespace Aerys\Root;
 
-use Aerys\ResponderStruct;
+use Aerys\ResponderEnvironment;
 
 final class NaiveStreamRangeResponder extends StreamRangeResponder {
     private $reactor;
 
-    public function prepare(ResponderStruct $responderStruct) {
+    public function prepare(ResponderEnvironment $responderStruct) {
         $this->reactor = $responderStruct->reactor;
         parent::prepare($responderStruct);
     }
