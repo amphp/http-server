@@ -388,7 +388,7 @@ class AggregateGeneratorResponder implements Responder {
                 goto return_struct;
             }
 
-            if ($current !== "") {
+            if ("" !== (string) $current) {
                 $chunk = $this->isChunking ? dechex(strlen($current)) . "\r\n{$current}\r\n" : $current;
                 $this->buffer .= $chunk;
                 $this->doWrite();
