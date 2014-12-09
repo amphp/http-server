@@ -385,11 +385,16 @@ class AggregateGeneratorResponder implements Responder {
 
                 goto return_struct;
             }
+            
+            $promise = new Success($current);
+            
+            if ("" === (string) $current) {
+                goto return_struct;
+            }
 
             $chunk = $this->isChunking ? dechex(strlen($current)) . "\r\n{$current}\r\n" : $current;
             $this->buffer .= $chunk;
             $this->doWrite();
-            $promise = new Success($current);
 
             goto return_struct;
         }
