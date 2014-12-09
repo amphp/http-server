@@ -728,7 +728,7 @@ abstract class Root implements ServerObserver {
     final public function onServerUpdate(Server $server) {
         switch ($server->getState()) {
             case Server::STARTING:
-                $this->debug = $server->getDebugFlag();
+                $this->debug = $server->getOption(Server::OP_DEBUG);
                 break;
             case Server::STOPPED:
                 $this->reactor->disable($this->cacheCollectWatcher);

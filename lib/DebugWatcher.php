@@ -18,7 +18,7 @@ class DebugWatcher {
         list($this->server, $hosts) = (new Bootstrapper($this->reactor))->boot($configFile);
         register_shutdown_function([$this, 'shutdown']);
         $this->registerInterruptHandler();
-        $this->server->setDebugFlag(true);
+        $this->server->setOption(Server::OP_DEBUG, true);
 
         $this->server->bind($hosts);
         yield $this->server->listen();

@@ -17,6 +17,7 @@ class Server {
     const PAUSED = 4;
     const STOPPING = 5;
 
+    const OP_DEBUG = -1;
     const OP_MAX_CONNECTIONS = 1;
     const OP_MAX_REQUESTS = 2;
     const OP_KEEP_ALIVE_TIMEOUT = 3;
@@ -38,7 +39,6 @@ class Server {
     private $hostBinder;
     private $responderFactory;
     private $observers;
-    private $debug;
 
     private $hosts;
     private $boundSockets = [];
@@ -56,6 +56,7 @@ class Server {
     private $keepAliveWatcher;
     private $keepAliveTimeouts = [];
 
+    private $debug = false;
     private $maxConnections = 1500;
     private $maxRequests = 150;
     private $keepAliveTimeout = 10;
@@ -101,31 +102,6 @@ class Server {
      */
     public function getState() {
         return $this->state;
-    }
-
-    /**
-     * Is the server running in debug mode?
-     *
-     * @return bool
-     */
-    public function getDebugFlag() {
-        return $this->debug;
-    }
-
-    /**
-     * Assign the server debug flag
-     *
-     * @param $bool
-     * @throws \LogicException If the Server is already running
-     */
-    public function setDebugFlag($bool) {
-        if ($this->state === self::STOPPED) {
-            $this->debug = (bool) $bool;
-        } else {
-            throw new \LogicException(
-                'Cannot modify debug settings while server is running'
-            );
-        }
     }
 
     /**
@@ -1091,6 +1067,8 @@ class Server {
      */
     public function setOption($option, $value) {
         switch ($option) {
+            case self::OP_DEBUG:
+                $this->setDebug($value); break;
             case self::OP_MAX_CONNECTIONS:
                 $this->setMaxConnections($value); break;
             case self::OP_MAX_REQUESTS:
@@ -1125,6 +1103,16 @@ class Server {
                 throw new \DomainException(
                     "Unknown server option: {$option}"
                 );
+        }
+    }
+
+    private function setDebug($bool) {
+        if ($this->state === self::STOPPED) {
+            $this->debug = (bool) $bool;
+        } else {
+            throw new \LogicException(
+                'Cannot modify debug setting; server is running'
+            );
         }
     }
 
@@ -1245,6 +1233,8 @@ class Server {
      */
     public function getOption($option) {
         switch ($option) {
+            case self::OP_DEBUG:
+                return $this->debug;
             case self::OP_MAX_CONNECTIONS:
                 return $this->maxConnections;
             case self::OP_MAX_REQUESTS:
@@ -1289,6 +1279,7 @@ class Server {
      */
     public function getAllOptions() {
         return [
+            self::OP_DEBUG                  => $this->debug,
             self::OP_MAX_CONNECTIONS        => $this->maxConnections,
             self::OP_MAX_REQUESTS           => $this->maxRequests,
             self::OP_KEEP_ALIVE_TIMEOUT     => $this->keepAliveTimeout,

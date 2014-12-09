@@ -105,7 +105,7 @@ class AggregateRequestHandler implements ServerObserver {
      */
     public function onServerUpdate(Server $server) {
         if ($server->getState() === Server::STARTING) {
-            $this->debug = $server->getDebugFlag();
+            $this->debug = $server->getOption(Server::OP_DEBUG);
         }
     }
 }
