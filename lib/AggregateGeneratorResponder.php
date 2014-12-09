@@ -376,25 +376,23 @@ class AggregateGeneratorResponder implements Responder {
                 return null;
             }
 
+            $current = (string) $current;
+            $promise = new Success($current);
+
             if ($this->isSocketGone) {
                 // If we've gotten this far the application has already
                 // caught the ClientGoneException and chosen to continue
                 // processing. Indicate success to the generator but do
                 // not buffer any further data for writing.
-                $promise = new Success;
 
                 goto return_struct;
             }
-            
-            $promise = new Success($current);
-            
-            if ("" === (string) $current) {
-                goto return_struct;
-            }
 
-            $chunk = $this->isChunking ? dechex(strlen($current)) . "\r\n{$current}\r\n" : $current;
-            $this->buffer .= $chunk;
-            $this->doWrite();
+            if ($current !== "") {
+                $chunk = $this->isChunking ? dechex(strlen($current)) . "\r\n{$current}\r\n" : $current;
+                $this->buffer .= $chunk;
+                $this->doWrite();
+            }
 
             goto return_struct;
         }
