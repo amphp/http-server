@@ -1,7 +1,7 @@
 {
-    "name":           "amphp/aerys",
-    "homepage":       "https://github.com/amphp/aerys",
-    "description":    "Non-blocking HTTP/Websocket server",
+    "name": "amphp/aerys",
+    "homepage": "https://github.com/amphp/aerys",
+    "description": "Non-blocking HTTP/Websocket server",
     "keywords": [
         "http",
         "websocket",
@@ -10,12 +10,16 @@
         "non-blocking",
         "aerys"
     ],
-    "license":        "MIT",
+    "license": "MIT",
     "authors": [
         {
             "name": "Daniel Lowrey",
-            "email": "rdlowrey@gmail.com",
+            "email": "rdlowrey@php.net",
             "role": "Creator / Lead Developer"
+        },
+        {
+            "name": "Bob Weinand",
+            "role": "Developer / API Coordinator"
         }
     ],
     "require": {
@@ -24,6 +28,9 @@
         "rdlowrey/auryn": "~0.14",
         "nikic/fast-route": "~0.1"
 
+    },
+    "require-dev": {
+        "amphp/artax": "dev-master"
     },
     "autoload": {
         "psr-4": {
