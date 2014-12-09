@@ -20,6 +20,8 @@ Amp\run(function() {
     $workerId = $opts['id'];
     $configFile = $opts['config'];
     list($server, $hosts) = (new Aerys\Bootstrapper)->boot($configFile);
-    $worker = new Aerys\Worker($workerId, $ipcUri, $server, $hosts);
+    $worker = new Aerys\Worker($workerId, $ipcUri, $server);
     $worker->start();
+    $server->bind($hosts);
+    yield $server->listen();
 });

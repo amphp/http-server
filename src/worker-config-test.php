@@ -23,6 +23,7 @@ set_error_handler(function($code, $msg, $file, $line) {
 try {
     ob_start();
     list($server, $hosts) = (new Aerys\Bootstrapper)->boot(getopt('', ['config:'])['config']);
+    $server->bind($hosts);
     $data['error'] = 0;
     $data['hosts'] = $hosts->getBindableAddresses();
     $data['options'] = $server->getAllOptions();

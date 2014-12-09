@@ -11,10 +11,11 @@ class Server {
     const VERSION = '0.1.0-dev';
 
     const STOPPED = 0;
-    const STARTING = 1;
-    const STARTED = 2;
-    const PAUSED = 3;
-    const STOPPING = 4;
+    const BOUND = 1;
+    const STARTING = 2;
+    const STARTED = 3;
+    const PAUSED = 4;
+    const STOPPING = 5;
 
     const OP_MAX_CONNECTIONS = 1;
     const OP_MAX_REQUESTS = 2;
@@ -40,7 +41,7 @@ class Server {
     private $debug;
 
     private $hosts;
-    private $listeningSockets = [];
+    private $boundSockets = [];
     private $acceptWatchers = [];
     private $pendingTlsWatchers = [];
     private $clients = [];
@@ -64,6 +65,7 @@ class Server {
     private $sendServerToken = FALSE;
     private $disableKeepAlive = FALSE;
     private $socketSoLingerZero = FALSE;
+    private $socketBacklogSize = 128;
     private $normalizeMethodCase = TRUE;
     private $requireBodyLength = TRUE;
     private $maxHeaderBytes = 8192;
@@ -75,9 +77,8 @@ class Server {
 
     private $stopPromisor;
 
-    public function __construct(Reactor $r, HostBinder $hb = null, AsgiResponderFactory $rf = null) {
-        $this->reactor = $r;
-        $this->hostBinder = $hb ?: new HostBinder;
+    public function __construct(Reactor $reactor = null, AsgiResponderFactory $rf = null) {
+        $this->reactor = $reactor ?: \Amp\getReactor();
         $this->responderFactory = $rf ?: new AsgiResponderFactory;
         $this->observers = new \SplObjectStorage;
         $this->hasSocketsExtension = extension_loaded('sockets');
@@ -244,45 +245,111 @@ class Server {
     }
 
     /**
-     * Start the server
+     * Bind sockets from the specified host definitions (but don't listen yet)
      *
-     * @param mixed $hosts A HostDefinition, HostGroup or array of HostDefinition instances
-     * @param array $listeningSockets Optional array mapping bind addresses to existing sockets
-     * @throws \LogicException If no hosts have been added to the specified collection
+     * @param HostDefinition|HostGroup|array|null $hosts
+     * @throws \LogicException If server sockets already bound
      * @throws \RuntimeException On socket bind failure
-     * @return \Amp\Promise Returns a Promise that resolves once all startup tasks complete
+     * @return void
      */
-    public function start($hosts) {
+    public function bind($hosts) {
         if ($this->state !== self::STOPPED) {
             throw new \LogicException(
-                'Server already started'
+                'Server sockets already bound; please stop the server before calling bind()'
             );
         }
 
-        $this->hosts = $this->normalizeStartHosts($hosts);
-        $this->listeningSockets = $this->hostBinder->bindHosts($this->hosts);
-        $tlsMap = $this->hosts->getTlsBindingsByAddress();
-        $acceptor = function($r, $w, $s) { $this->accept($s); };
-        $tlsAcceptor = function($r, $w, $s) { $this->acceptTls($s); };
+        $this->hosts = $this->normalizeHosts($hosts);
 
-        foreach ($this->listeningSockets as $bindAddress => $serverSocket) {
-            if (isset($tlsMap[$bindAddress])) {
-                stream_context_set_option($serverSocket, $tlsMap[$bindAddress]);
-                $acceptCallback = $tlsAcceptor;
-            } else {
-                $acceptCallback = $acceptor;
+        $addresses = array_unique($this->hosts->getBindableAddresses());
+        $tlsBindings = $this->hosts->getTlsBindingsByAddress();
+        foreach ($addresses as $address) {
+            $context = stream_context_create(['socket' => ['backlog' => $this->socketBacklogSize]]);
+            if (isset($tlsBindings[$address])) {
+                stream_context_set_option($context, $tlsBindings[$address]);
             }
 
-            // Don't enable these watchers now -- wait until start observers report completion
-            $acceptWatcher = $this->reactor->onReadable($serverSocket, $acceptCallback, $enabled = FALSE);
-            $this->acceptWatchers[$bindAddress] = $acceptWatcher;
+            $this->boundSockets[$address] = $this->bindSocket($address, $context);
         }
 
-        $this->state = self::STARTING;
-        $startPromise = $this->notifyObservers();
-        $startPromise->when(function($e, $r) { $this->onStartCompletion($e, $r); });
+        $this->state = self::BOUND;
+    }
 
-        return $startPromise;
+    private function normalizeHosts($hostOrCollection) {
+        if ($hostOrCollection instanceof HostGroup) {
+            $hosts = $hostOrCollection;
+        } elseif ($hostOrCollection instanceof HostDefinition) {
+            $hosts = new HostGroup;
+            $hosts->addHost($hostOrCollection);
+        } elseif ($hostOrCollection && is_array($hostOrCollection)) {
+            $hosts = new HostGroup;
+            foreach ($hostOrCollection as $host) {
+                $hosts->addHost($host);
+            }
+        } else {
+            throw new \DomainException(
+                'Invalid host definition; Host, HostGroup or an array of Host instances required'
+            );
+        }
+
+        return $hosts;
+    }
+
+    private function bindSocket($address, $context) {
+        $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+        if (!$socket = @stream_socket_server($address, $errno, $errstr, $flags, $context)) {
+            throw new \RuntimeException(
+                sprintf('Failed binding socket on %s: [Err# %s] %s', $address, $errno, $errstr)
+            );
+        }
+
+        return $socket;
+    }
+
+    /**
+     * Initiate listening on bound sockets
+     *
+     * Technically the bound sockets are already listening as far as the OS is concerned. However,
+     * our server will not accept any new connections until the promise resulting from
+     * Server::listen() resolves so that startup observers have a chance to complete boot tasks.
+     *
+     * @throws \LogicException
+     * @return \Amp\Promise
+     */
+    public function listen() {
+        if ($this->state === self::STOPPED) {
+            throw new \LogicException(
+                'No host sockets bound; please bind() prior to listen()ing.'
+            );
+        } elseif ($this->state !== self::BOUND) {
+            throw new \LogicException(
+                'Server sockets already bound and listening.'
+            );
+        }
+
+        foreach ($this->boundSockets as $address => $socket) {
+            $context = stream_context_get_options($socket);
+            // Don't enable these watchers now -- wait until start observers report completion
+            $acceptWatcher = $this->reactor->onReadable($socket, [$this, 'accept'], $enableNow = false);
+            $this->acceptWatchers[$address] = $acceptWatcher;
+        }
+
+        return $this->notifyObservers()->when(function($e, $r) {
+            if (empty($e)) {
+                foreach ($this->acceptWatchers as $acceptWatcher) {
+                    $this->reactor->enable($acceptWatcher);
+                }
+                $this->renewHttpDate();
+                $this->keepAliveWatcher = $this->reactor->repeat(function() {
+                    $this->timeoutKeepAlives();
+                }, $msInterval = 1000);
+
+                $this->state = self::STARTED;
+            } else {
+                $this->log($e);
+                $this->stop();
+            }
+        });
     }
 
     private function notifyObservers() {
@@ -292,39 +359,6 @@ class Server {
         }
 
         return \Amp\all($promises);
-    }
-
-    private function normalizeStartHosts($hostOrCollection) {
-        if ($hostOrCollection instanceof HostGroup) {
-            $hosts = $hostOrCollection;
-        } elseif ($hostOrCollection instanceof HostDefinition) {
-            $hosts = new HostGroup;
-            $hosts->addHost($hostOrCollection);
-        } elseif (is_array($hostOrCollection)) {
-            $hosts = new HostGroup;
-            foreach ($hostOrCollection as $host) {
-                $hosts->addHost($host);
-            }
-        }
-
-        return $hosts;
-    }
-
-    private function onStartCompletion(\Exception $e = null, $r = null) {
-        if (empty($e)) {
-            foreach ($this->acceptWatchers as $acceptWatcher) {
-                $this->reactor->enable($acceptWatcher);
-            }
-            $this->renewHttpDate();
-            $this->keepAliveWatcher = $this->reactor->repeat(function() {
-                $this->timeoutKeepAlives();
-            }, $msInterval = 1000);
-
-            $this->state = self::STARTED;
-        } else {
-            $this->log($e);
-            $this->stop();
-        }
     }
 
     /**
@@ -371,7 +405,7 @@ class Server {
             $this->stopPromisor = null;
             $this->reactor->cancel($this->keepAliveWatcher);
             $this->acceptWatchers = [];
-            $this->listeningSockets = [];
+            $this->boundSockets = [];
             $this->state = self::STOPPED;
 
             if ($e) {
@@ -426,11 +460,29 @@ class Server {
         }
     }
 
-    private function accept($serverSocket) {
-        while ($client = @stream_socket_accept($serverSocket, $timeout = 0)) {
-            stream_set_blocking($client, FALSE);
+    /**
+     * Accept new client socket(s)
+     *
+     * This method is invoked by the event reactor when a server socket has clients waiting to
+     * connect.
+     *
+     * @param \Amp\Reactor $reactor
+     * @param int $watcherId
+     * @param resource $server
+     */
+    public function accept($reactor, $watcherId, $server) {
+        while ($client = @stream_socket_accept($server, $timeout = 0)) {
+            stream_set_blocking($client, false);
             $this->cachedClientCount++;
-            $this->onClient($client, $isEncrypted = FALSE);
+
+            if (isset(stream_context_get_options($client)['ssl'])) {
+                $socketId = (int) $client;
+                $tlsWatcher = $this->reactor->onReadable($client, [$this, 'doTlsHandshake']);
+                $this->pendingTlsWatchers[$socketId] = $tlsWatcher;
+            } else {
+                $this->onClient($client, $isEncrypted = false);
+            }
+
             if ($this->maxConnections > 0 && $this->cachedClientCount >= $this->maxConnections) {
                 $this->pauseClientAcceptance();
                 break;
@@ -438,51 +490,30 @@ class Server {
         }
     }
 
-    private function acceptTls($serverSocket) {
-        while ($client = @stream_socket_accept($serverSocket, $timeout = 0)) {
-            stream_set_blocking($client, FALSE);
-            $this->cachedClientCount++;
-            $cryptoEnabler = function() use ($client) { $this->doTlsHandshake($client); };
-            $clientId = (int) $client;
-            $tlsWatcher = $this->reactor->onReadable($client, $cryptoEnabler);
-            $this->pendingTlsWatchers[$clientId] = $tlsWatcher;
-            if ($this->maxConnections > 0 && $this->cachedClientCount >= $this->maxConnections) {
-                $this->pauseClientAcceptance();
-                break;
-            }
+    public function doTlsHandshake($reactor, $watcherId, $socket) {
+        $handshakeStatus = @stream_socket_enable_crypto($socket, true, $this->cryptoType);
+        if ($handshakeStatus) {
+            $this->clearPendingTlsClient($socket);
+            $this->onClient($socket, $isEncrypted = true);
+        } elseif ($handshakeStatus === false) {
+            $this->failTlsConnection($socket);
         }
     }
 
-    private function doTlsHandshake($client) {
-        $handshakeSucceeded = @stream_socket_enable_crypto($client, TRUE, $this->cryptoType);
-        if ($handshakeSucceeded) {
-            $this->clearPendingTlsClient($client);
-            $this->onClient($client, $isEncrypted = TRUE);
-        } elseif ($handshakeSucceeded === FALSE) {
-            $this->failTlsConnection($client);
-        }
+    private function clearPendingTlsClient($socket) {
+        $socketId = (int) $socket;
+        $cryptoWatcher = $this->pendingTlsWatchers[$socketId];
+        $this->reactor->cancel($cryptoWatcher);
+        unset($this->pendingTlsWatchers[$socketId]);
     }
 
-    private function failTlsConnection($client) {
+    private function failTlsConnection($socket) {
         $this->cachedClientCount--;
-        $this->clearPendingTlsClient($client);
-        if (is_resource($client)) {
-            @fclose($client);
-        }
-        if ($this->state === self::PAUSED
-            && $this->maxConnections > 0
-            && $this->cachedClientCount <= $this->maxConnections
-        ) {
+        $this->clearPendingTlsClient($socket);
+        @fclose($socket);
+        if ($this->state === self::PAUSED && $this->cachedClientCount <= $this->maxConnections) {
             $this->resumeClientAcceptance();
         }
-    }
-
-    private function clearPendingTlsClient($client) {
-        $clientId = (int) $client;
-        if ($cryptoWatcher = $this->pendingTlsWatchers[$clientId]) {
-            $this->reactor->cancel($cryptoWatcher);
-        }
-        unset($this->pendingTlsWatchers[$clientId]);
     }
 
     private function timeoutKeepAlives() {
@@ -728,7 +759,7 @@ class Server {
             $request['QUERY'] = [];
         } else {
             parse_str($requestCycle->uriQuery, $request['QUERY']);
-        } 
+        }
 
         // @TODO Add cookie parsing
         //if (!empty($headers['COOKIE']) && ($cookies = $this->parseCookies($headers['COOKIE']))) {
@@ -1156,8 +1187,15 @@ class Server {
         $this->socketSoLingerZero = $boolFlag;
     }
 
-    private function setSocketBacklogSize($backlogSize) {
-        $this->hostBinder->setSocketBacklogSize($backlogSize);
+    private function setSocketBacklogSize($size) {
+        $size = (int) $size;
+        if ($size <= 0) {
+            $size = 128;
+        }
+
+        $this->socketBacklogSize = $size;
+
+        return $size;
     }
 
     private function setAllowedMethods(array $methods) {
@@ -1232,7 +1270,7 @@ class Server {
             case self::OP_SOCKET_SO_LINGER_ZERO:
                 return $this->socketSoLingerZero;
             case self::OP_SOCKET_BACKLOG_SIZE:
-                return $this->hostBinder->getSocketBacklogSize();
+                return $this->socketBacklogSize;
             case self::OP_ALLOWED_METHODS:
                 return array_keys($this->allowedMethods);
             case self::OP_DEFAULT_HOST:
@@ -1263,7 +1301,7 @@ class Server {
             self::OP_NORMALIZE_METHOD_CASE  => $this->normalizeMethodCase,
             self::OP_REQUIRE_BODY_LENGTH    => $this->requireBodyLength,
             self::OP_SOCKET_SO_LINGER_ZERO  => $this->socketSoLingerZero,
-            self::OP_SOCKET_BACKLOG_SIZE    => $this->hostBinder->getSocketBacklogSize(),
+            self::OP_SOCKET_BACKLOG_SIZE    => $this->socketBacklogSize,
             self::OP_ALLOWED_METHODS        => array_keys($this->allowedMethods),
             self::OP_DEFAULT_HOST           => $this->defaultHost
         ];

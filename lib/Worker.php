@@ -9,17 +9,15 @@ use Amp\LibeventReactor;
 class Worker {
     private $workerId;
     private $server;
-    private $hosts;
     private $reactor;
     private $ipcSocket;
     private $ipcWatcher;
     private $isStopping;
 
-    public function __construct($workerId, $ipcUri, Server $server, HostGroup $hosts, Reactor $reactor = null) {
+    public function __construct($workerId, $ipcUri, Server $server, Reactor $reactor = null) {
         $this->workerId = $workerId;
         $this->ipcUri = $ipcUri;
         $this->server = $server;
-        $this->hosts = $hosts;
         $this->reactor = $reactor ?: \Amp\getReactor();
     }
 
@@ -48,7 +46,6 @@ class Worker {
 
         stream_set_blocking($this->ipcSocket, false);
         $this->ipcWatcher = $this->reactor->onReadable($this->ipcSocket, [$this, 'stop']);
-        $this->server->start($this->hosts);
     }
 
     public function stop() {

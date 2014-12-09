@@ -10,18 +10,18 @@ class DebugWatcher {
     private $reactor;
     private $server;
 
-    public function __construct(Reactor $reactor = null, Bootstrapper $bootstrapper = null) {
+    public function __construct(Reactor $reactor = null) {
         $this->reactor = $reactor ?: \Amp\getReactor();
-        $this->bootstrapper = $bootstrapper ?: new Bootstrapper($this->reactor);
     }
 
     public function watch($configFile) {
-        list($this->server, $hosts) = $this->bootstrapper->boot($configFile);
+        list($this->server, $hosts) = (new Bootstrapper($this->reactor))->boot($configFile);
         register_shutdown_function([$this, 'shutdown']);
         $this->registerInterruptHandler();
         $this->server->setDebugFlag(true);
 
-        yield $this->server->start($hosts);
+        $this->server->bind($hosts);
+        yield $this->server->listen();
 
         foreach ($hosts->getBindableAddresses() as $addr) {
             $addr = substr(str_replace('0.0.0.0', '*', $addr), 6);
