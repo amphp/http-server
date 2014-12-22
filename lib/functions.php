@@ -39,7 +39,7 @@ function parseCommandLineOptions() {
     }
 
     $options['debug'] = isset($parsedOpts['d']) || isset($parsedOpts['debug']);
-    $options['help'] = isset($parsedOpts['h']) || isset($parsedOpts['help']);
+    $options['help'] = isset($parsedOpts['h']) || isset($parsedOpts['help']) || count($parsedOpts) == 0;
 
     return $options;
 }
