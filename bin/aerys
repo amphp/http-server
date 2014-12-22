@@ -42,7 +42,7 @@ $help = <<<EOT
 EOT;
 
 try {
-    Amp\run(function() {
+    Amp\run(function() use ($help) {
         $options = Aerys\parseCommandLineOptions();
 
         if ($options['help']) {
