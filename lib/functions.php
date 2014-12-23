@@ -1,6 +1,7 @@
 <?php
 
 namespace Aerys;
+use Colors\Color;
 
 /**
  * Parse server command line options
@@ -41,26 +42,14 @@ function parseCommandLineOptions() {
     $emptyConfig = empty($options['config']) || !is_readable($options['config']);
 
     if ($emptyConfig) {
-        printError("You didn't specify any config file or it's not readable!");
+        $c = new Color;
+        echo $c("\n\n  You didn't specify any config file or it's not readable!\n")->bg_red->black, "\n\n";
     }
 
     $options['debug'] = isset($parsedOpts['d']) || isset($parsedOpts['debug']);
     $options['help'] = isset($parsedOpts['h']) || isset($parsedOpts['help']) || $emptyConfig;
 
     return $options;
-}
-
-/**
-* Print an critical error message on red background with black color
-*
-* @param string $message
-* @return void
-*/
-function printError($message) {
-    echo "\x1b[41m\x1b[30m\n\n";
-    // TODO: Add padding for every line, not just the first
-    print "  " . $message;
-    print "\n\x1b[0m\n";
 }
 
 /**
