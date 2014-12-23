@@ -21,9 +21,11 @@ require $autoloadPath;
 // </composer_hack>
 
 $help = <<<EOT
-
-    Aerys HTTP Server
-    -----------------
+      ____ _ ___   _____ __  __ _____
+     / __ `// _ \ / ___// / / // ___/
+    / /_/ //  __// /   / /_/ //__  /
+    \__,_/ \___//_/    \__, //____/
+                      /____/
 
     -h, --help        Display help screen
     -d, --debug       Start the server in debug mode
