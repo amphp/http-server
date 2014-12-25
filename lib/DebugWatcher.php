@@ -16,7 +16,9 @@ class DebugWatcher {
 
     public function watch($configFile) {
         list($this->server, $hosts) = (new Bootstrapper($this->reactor))->boot($configFile);
-        register_shutdown_function([$this, 'shutdown']);
+        register_shutdown_function(function() {
+            $this->shutdown();
+        });
         $this->registerInterruptHandler();
         $this->server->setOption(Server::OP_DEBUG, true);
 
@@ -49,7 +51,7 @@ class DebugWatcher {
         }
     }
 
-    public function shutdown() {
+    private function shutdown() {
         if (!$err = error_get_last()) {
             return;
         }
