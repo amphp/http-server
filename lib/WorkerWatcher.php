@@ -88,6 +88,7 @@ class WorkerWatcher {
     }
 
     private function buildConfigTestCmd($config) {
+        $cmd = [];
         $cmd[] = PHP_BINARY;
         if ($ini = get_cfg_var('cfg_file_path')) {
             $cmd[] = "-c $ini";
