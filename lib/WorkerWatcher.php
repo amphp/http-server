@@ -229,6 +229,7 @@ class WorkerWatcher {
 
     private function spawn() {
         $workerId = ++$this->lastWorkerId;
+        $parts = [];
         $parts[] = PHP_BINARY;
         if ($ini = get_cfg_var('cfg_file_path')) {
             $parts[] = "-c \"{$ini}\"";
