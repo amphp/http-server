@@ -9,21 +9,21 @@ use Amp\LibeventReactor;
 class DebugWatcher {
     private $reactor;
     private $server;
+    private $hosts;
 
-    public function __construct(Reactor $reactor = null) {
-        $this->reactor = $reactor ?: \Amp\getReactor();
+    public function __construct(Reactor $reactor, Server $server, HostGroup $hosts) {
+        $this->reactor = $reactor;
+        $this->server = $server;
+        $this->hosts = $hosts;
+        $this->server->setOption(Server::OP_DEBUG, true);
     }
 
-    public function watch($configFile) {
-        list($this->server, $hosts) = (new Bootstrapper($this->reactor))->boot($configFile);
+    public function watch() {
         register_shutdown_function([$this, 'shutdown']);
         $this->registerInterruptHandler();
-        $this->server->setOption(Server::OP_DEBUG, true);
-
-        $this->server->bind($hosts);
+        $this->server->bind($this->hosts);
         yield $this->server->listen();
-
-        foreach ($hosts->getBindableAddresses() as $addr) {
+        foreach ($this->hosts->getBindableAddresses() as $addr) {
             $addr = substr(str_replace('0.0.0.0', '*', $addr), 6);
             printf("Listening for HTTP traffic on %s ...\n", $addr);
         }
@@ -36,17 +36,18 @@ class DebugWatcher {
             return;
         }
 
-        $interruptHandler = function() {
-            $this->server->stop()->when(function(){ exit(0); });
-        };
-
         if ($this->reactor instanceof UvReactor) {
-            $this->reactor->onSignal(\UV::SIGINT, $interruptHandler);
+            $this->reactor->onSignal(\UV::SIGINT, [$this, 'onInterrupt']);
         } elseif ($this->reactor instanceof LibeventReactor) {
-            $this->reactor->onSignal($sigint = 2, $interruptHandler);
+            $this->reactor->onSignal($sigint = 2, [$this, 'onInterrupt']);
         } elseif (extension_loaded('pcntl')) {
-            pcntl_signal(SIGINT, $interruptHandler);
+            pcntl_signal(SIGINT, [$this, 'onInterrupt']);
         }
+    }
+
+    public function onInterrupt() {
+        yield $this->server->stop();
+        exit(0);
     }
 
     public function shutdown() {

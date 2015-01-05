@@ -2,11 +2,7 @@
 
 namespace Aerys;
 
-use Amp\Reactor;
-use Amp\Promise;
 use Auryn\Injector;
-use Auryn\Provider;
-use Aerys\Root\Root;
 use FastRoute\RouteCollector;
 
 class Bootstrapper {
@@ -14,7 +10,6 @@ class Bootstrapper {
     const E_CONFIG_VARNAME = "Illegal variable name; \"%s\" must not be used in config files";
     const E_MISSING_CONFIG = "No Host instances found in config file: %s";
 
-    private $reactor;
     private $injector;
     private $serverOptMap = [
         'MAX_CONNECTIONS'       => Server::OP_MAX_CONNECTIONS,
@@ -34,45 +29,53 @@ class Bootstrapper {
         'DEFAULT_HOST'          => Server::OP_DEFAULT_HOST,
     ];
 
-    public function __construct(Reactor $reactor = null) {
-        $this->reactor = $reactor ?: \Amp\getReactor();
+    public function __construct(Injector $injector) {
+        $this->injector = $injector;
     }
 
     /**
      * Bootstrap a server and its host definitions from command line arguments
      *
-     * @param string $configFile The server config file path
-     * @param array $options
-     * @throws BootException
-     * @return array Returns index array of the form [Server $server, HostGroup $hostGroup]
+     * @param array $options An array of options parsed from command line switches
+     * @throws BootException On missing config file option
+     * @return Watcher
      */
-    public function boot($configFile, array $opts = []) {
-        list($hostConfigs, $serverOptions) = $this->parseServerConfigFile($configFile);
+    public function boot(array $options) {
+        if (empty($options['config'])) {
+            throw new BootException(
+                'Cannot boot server: no config file specified (-c, --config)'
+            );
+        }
 
-        $this->injector = $injector = new Provider;
+        list($hostConfigs, $serverOptions) = $this->parseServerConfigFile($options['config']);
 
-        $injector->alias('Amp\Reactor', get_class($this->reactor));
-        $injector->share($this->reactor);
-        $injector->share('Aerys\Server');
-        $injector->share('Aerys\AsgiResponderFactory');
-        $server = $injector->make('Aerys\Server');
+        $this->injector->share('Aerys\Server');
+        $this->injector->share('Aerys\HostGroup');
+        $this->injector->share('Aerys\AsgiResponderFactory');
+
+        $hosts  = $this->injector->make('Aerys\HostGroup');
+        $server = $this->injector->make('Aerys\Server');
 
         // Automatically register any ServerObserver implementations with the server
-        $injector->prepare('Aerys\ServerObserver', function($observer) use ($server) {
+        $this->injector->prepare('Aerys\ServerObserver', function($observer) use ($server) {
             $server->attachObserver($observer);
         });
 
-        $hostGroup = new HostGroup;
         foreach ($hostConfigs as $hostConfig) {
             $host = $this->buildHost($hostConfig);
-            $hostGroup->addHost($host);
+            $hosts->addHost($host);
         }
 
         foreach ($serverOptions as $option => $value) {
             $server->setOption($option, $value);
         }
 
-        return [$server, $hostGroup];
+        // @TODO Allow non-debug watcher once process signal issues are fixed
+        //$watcherClass = $options['debug'] ? 'Aerys\DebugWatcher' : 'Aerys\WorkerWatcher';
+        $watcherClass = 'Aerys\DebugWatcher';
+        $watcher = $this->injector->make($watcherClass);
+
+        return $watcher;
     }
 
     private function parseServerConfigFile($__configFile) {

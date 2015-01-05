@@ -9,16 +9,7 @@ if (extension_loaded('pcntl')) {
 error_reporting(E_ALL);
 ini_set('display_errors', 'stderr');
 
-// <composer_hack>
-// Stupid hack to autoload correctly if installed via composer and not git
-// @TODO update this path to amphp/aerys once the server is moved to amphp
-$dir = str_replace('\\', '/', __DIR__);
-$autoloadPath = strpos($dir, 'vendor/amphp/aerys/')
-    ? __DIR__ . '/../../../autoload.php'
-    : __DIR__ . '/../vendor/autoload.php';
-
-require $autoloadPath;
-// </composer_hack>
+require __DIR__ . '/../src/autoload.php';
 
 $help = <<<EOT
 
@@ -41,26 +32,24 @@ $help = <<<EOT
 
 EOT;
 
+
+$options = Aerys\parseCommandLineOptions();
+
+if ($options['help']) {
+    echo $help;
+    exit(0);
+}
+
 try {
-    Amp\run(function() {
-        $options = Aerys\parseCommandLineOptions();
-
-        if ($options['help']) {
-            echo $help;
-            exit(0);
-        }
-
-        $watcher = new Aerys\DebugWatcher;
-        /*
-        // @TODO Allow non-debug watcher once process signal control issues are fixed
-        $watcher = ($options['debug'] || php_sapi_name() === 'phpdbg')
-            ? new Aerys\DebugWatcher
-            : new Aerys\WorkerWatcher($options['workers']);
-        */
-
-        yield $watcher->watch($options['config']);
+    Amp\run(function($reactor) use ($options) {
+        $injector = new Auryn\Provider;
+        $injector->alias('Amp\Reactor', get_class($reactor));
+        $injector->share($reactor);
+        $bootstrapper = new Aerys\Bootstrapper($injector);
+        $watcher = $bootstrapper->boot($options);
+        yield $watcher->watch();
     });
 } catch (Exception $e) {
-    printf("\n%s\n\n", $e->getMessage());
+    echo "\n", $e->getMessage(), "\n\n";
     exit(1);
 }
