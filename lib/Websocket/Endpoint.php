@@ -296,6 +296,8 @@ class Endpoint implements ServerObserver {
                     goto inspect;
                 case WebsocketYieldCommands::CLOSE:
                     goto close;
+                case SystemYieldCommands::BIND:
+                    goto bind;
                 case SystemYieldCommands::IMMEDIATELY:
                     goto immediately;
                 case SystemYieldCommands::ONCE:
@@ -350,6 +352,23 @@ class Endpoint implements ServerObserver {
                 goto combinator;
             } else {
                 $promise = new Success($current);
+            }
+
+            goto return_struct;
+        }
+
+        bind: {
+            if (is_callable($current)) {
+                $promise = new Success(function() use ($current, $session) {
+                    $result = call_user_func_array($current, func_get_args());
+                    return $result instanceof \Generator
+                        ? $this->resolveGenerator($result, $session)
+                        : $result;
+                });
+            } else {
+                $promise = new Failure(new \DomainException(
+                    sprintf('"bind" yield command requires callable; %s provided', gettype($current))
+                ));
             }
 
             goto return_struct;

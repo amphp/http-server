@@ -174,6 +174,8 @@ class AggregateGeneratorResponder implements Responder {
                     goto header;
                 case HttpYieldCommands::BODY:
                     goto body;
+                case SystemYieldCommands::BIND:
+                    goto bind;
                 case SystemYieldCommands::IMMEDIATELY:
                     goto immediately;
                 case SystemYieldCommands::ONCE:
@@ -225,6 +227,23 @@ class AggregateGeneratorResponder implements Responder {
                 goto combinator;
             } else {
                 $promise = new Success($current);
+            }
+
+            goto return_struct;
+        }
+
+        bind: {
+            if (is_callable($current)) {
+                $promise = new Success(function() use ($current) {
+                    $result = call_user_func_array($current, func_get_args());
+                    return $result instanceof \Generator
+                        ? $this->resolveGenerator($result)
+                        : $result;
+                });
+            } else {
+                $promise = new Failure(new \DomainException(
+                    sprintf('"bind" yield command requires callable; %s provided', gettype($current))
+                ));
             }
 
             goto return_struct;
