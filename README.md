@@ -11,6 +11,7 @@ A performant non-blocking HTTP/1.1 application/websocket server written in PHP.
 $ git clone https://github.com/rdlowrey/Aerys.git
 $ cd Aerys
 $ composer install
+$ chmod +x bin/aerys
 ```
 
 ## Running a Server

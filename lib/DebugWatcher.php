@@ -19,7 +19,10 @@ class DebugWatcher {
     }
 
     public function watch() {
-        register_shutdown_function([$this, 'shutdown']);
+        register_shutdown_function(function() {
+            $this->shutdown();
+        });
+
         $this->registerInterruptHandler();
         $this->server->bind($this->hosts);
         yield $this->server->listen();
@@ -50,7 +53,7 @@ class DebugWatcher {
         exit(0);
     }
 
-    public function shutdown() {
+    private function shutdown() {
         if (!$err = error_get_last()) {
             return;
         }
