@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>websockets</title>
+<title>Aerys: Websockets</title>
 <link rel="stylesheet" href="https://stackedit.io/res-min/themes/base.css" />
 <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML"></script>
 </head>
@@ -22,14 +22,19 @@
 
 
 <pre class="prettyprint"><code class=" hljs php"><span class="hljs-class"><span class="hljs-keyword">interface</span> <span class="hljs-title">Websocket</span> {</span>
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onStart</span><span class="hljs-params">()</span>;</span>
     <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onOpen</span><span class="hljs-params">(int <span class="hljs-variable">$clientId</span>, array <span class="hljs-variable">$httpRequestEnv</span>)</span>;</span>
     <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onData</span><span class="hljs-params">(int <span class="hljs-variable">$clientId</span>, string <span class="hljs-variable">$data</span>)</span>;</span>
     <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onClose</span><span class="hljs-params">(int <span class="hljs-variable">$clientId</span>, int <span class="hljs-variable">$code</span>, string <span class="hljs-variable">$reason</span>)</span>;</span>
+    <span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">onStop</span><span class="hljs-params">()</span>;</span>
 }</code></pre>
 
-<p>These three methods expose the full range of websocket possibilities to your aerys application. A brief description of each method follows .</p>
+<p>The above methods expose the full range of websocket possibilities to your aerys application. A brief description of each method follows .</p>
 
+<h3 id="onstart">onStart()</h3>
 
+<p>Websocket applications may use <code>onStart()</code> to initialize resources (e.g. database/socket connections) during the server startup routine. If <code>onStart()</code> returns an instance of <code>Amp\Promise</code> the Aerys server will not start accepting connections until the promise resolves. Likewise, if <code>onStart()</code> is a generator the server will <br>
+resolve the generator result prior to completing its startup routine.</p>
 
 <h3 id="onopen">onOpen()</h3>
 
@@ -68,6 +73,16 @@
 </blockquote>
 
 
+
+<h3 id="onstop">onStop()</h3>
+
+<p>The <code>Websocket::onStop()</code>  method is invoked when the server is shutting down. Applications may use this hook to close/unload any resources opened during the <code>onStart()</code> routine. Note that applications <em>DO NOT</em> need to manually close connected websocket clients in the event of a server shutdown; Aerys automatically does this for you. The <code>onStop()</code> method is only invoked <em>after</em> all connected clients have already been closed.</p>
+
+<blockquote>
+  <p><strong>NOTE</strong></p>
+  
+  <p>Like the <code>onStart()</code> method, <code>onStop()</code> implementations may return an <code>Amp\Promise</code> instance and the server will not shutdown until this promise resolves. If <code>onStop()</code> is a generator the server will fully resolve its result prior to shutting down.</p>
+</blockquote>
 
 <h2 id="yield-for-great-justice">Yield For Great Justice</h2>
 
@@ -561,9 +576,11 @@ onOpen() - after close command</code></pre>
   <td>inspect</td>
   <td>Retrieve an array of stats regarding the yielded client ID</td>
 </tr>
+<tr>
+  <td>bind</td>
+  <td>Bind a callable to the websocket endpoint for generator resolution</td>
+</tr>
 </tbody></table>
-
-
 
 
 <h4 id="handshake-commands">Handshake Commands</h4>
@@ -666,13 +683,15 @@ onOpen() - after close command</code></pre>
 
 <h2 id="table-of-contents">Table of Contents</h2>
 
-<p><div class="toc">
+<p><div class="toc"><div class="toc">
 <ul>
 <li><a href="#websockets">Websockets</a><ul>
 <li><a href="#the-websocket-api">The Websocket API</a><ul>
+<li><a href="#onstart">onStart()</a></li>
 <li><a href="#onopen">onOpen()</a></li>
 <li><a href="#ondata">onData()</a></li>
 <li><a href="#onclose">onClose()</a></li>
+<li><a href="#onstop">onStop()</a></li>
 </ul>
 </li>
 <li><a href="#yield-for-great-justice">Yield For Great Justice</a><ul>
@@ -713,6 +732,7 @@ onOpen() - after close command</code></pre>
 </ul>
 </li>
 </ul>
+</div>
 </div>
 </p></div></body>
 </html>

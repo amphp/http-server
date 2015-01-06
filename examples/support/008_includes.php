@@ -2,6 +2,8 @@
 
 class ExampleWebsocket implements Aerys\Websocket {
     private $clientCount = 0;
+    
+    public function onStart() {}
 
     public function onOpen($clientId, array $httpEnvironment) {
         $msg = json_encode(['type' => 'count', 'data' => ++$this->clientCount]);
@@ -34,4 +36,6 @@ class ExampleWebsocket implements Aerys\Websocket {
         // Broadcast the current user count to all connected users
         yield 'broadcast' => $msg;
     }
+    
+    public function onStop() {}
 }

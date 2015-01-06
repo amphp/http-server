@@ -9,13 +9,20 @@ Aerys exposes a simple but powerful websocket API:
 
 ```
 interface Websocket {
+    public function onStart();
 	public function onOpen(int $clientId, array $httpRequestEnv);
 	public function onData(int $clientId, string $data);
 	public function onClose(int $clientId, int $code, string $reason);
+	public function onStop();
 }
 ```
 
-These three methods expose the full range of websocket possibilities to your aerys application. A brief description of each method follows .
+The above methods expose the full range of websocket possibilities to your aerys application. A brief description of each method follows .
+
+### onStart()
+
+Websocket applications may use `onStart()` to initialize resources (e.g. database/socket connections) during the server startup routine. If `onStart()` returns an instance of `Amp\Promise` the Aerys server will not start accepting connections until the promise resolves. Likewise, if `onStart()` is a generator the server will
+resolve the generator result prior to completing its startup routine.
 
 ### onOpen()
 
@@ -45,6 +52,13 @@ Like all websocket methods the first parameter is a unique integer `$clientId` i
 > 
 > Remember that `onClose()` is invoked *after* the client in question has already disconnected. If your application attempts to send data to the closed client an `Aerys\ClientGone` exception will be thrown into your `onClose()` generator.
 
+### onStop()
+
+The `Websocket::onStop()`  method is invoked when the server is shutting down. Applications may use this hook to close/unload any resources opened during the `onStart()` routine. Note that applications *DO NOT* need to manually close connected websocket clients in the event of a server shutdown; Aerys automatically does this for you. The `onStop()` method is only invoked *after* all connected clients have already been closed.
+
+> **NOTE**
+> 
+> Like the `onStart()` method, `onStop()` implementations may return an `Amp\Promise` instance and the server will not shutdown until this promise resolves. If `onStop()` is a generator the server will fully resolve its result prior to shutting down.
 
 ## Yield For Great Justice
 
@@ -420,6 +434,7 @@ Command       | Description
 | broadcast   | Broadcast the associated message to all clients or a filtered set of clients |
 | close       | Close the client specified in the yield value |
 | inspect     | Retrieve an array of stats regarding the yielded client ID |
+| bind     | Bind a callable to the websocket endpoint for generator resolution |
 
 
 #### Handshake Commands

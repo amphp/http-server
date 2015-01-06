@@ -88,7 +88,12 @@ class Endpoint implements ServerObserver {
         $this->timeoutWatcher = $this->reactor->repeat([$this, 'timeout'], $msInterval = 1000);
         $this->reactor->disable($this->timeoutWatcher);
 
-        return new Success;
+        $result = $this->websocket->onStop();
+        if ($result instanceof \Generator) {
+            $result = $this->resolveGenerator($result, $session = null);
+        }
+        
+        return $result;
     }
 
     private function stop() {
@@ -102,10 +107,14 @@ class Endpoint implements ServerObserver {
         $promisor = new Future;
         $sessionClose = \Amp\any($closePromises);
         $sessionClose->when(function($e, $r) use ($promisor) {
-            $promisor->succeed();
+            $result = $this->websocket->onStop();
+            if ($result instanceof \Generator) {
+                $result = $this->resolveGenerator($result, $session = null);
+            }
+            $promisor->succeed($result);
         });
 
-        return $promisor;
+        return $promisor->promise();
     }
 
     /**
@@ -231,7 +240,7 @@ class Endpoint implements ServerObserver {
         }
     }
 
-    private function resolveGenerator(\Generator $generator, Session $session) {
+    private function resolveGenerator(\Generator $generator, Session $session = null) {
         $promisor = new Future;
         $promisor->when($this->errorLogger);
 
@@ -375,6 +384,13 @@ class Endpoint implements ServerObserver {
         }
 
         send: {
+            if (empty($session)) {
+                $promise = new Failure(new \LogicException(
+                    'Invalid "send" yield command: ambiguous target client'
+                ));
+                goto return_struct;
+            }
+            
             if (empty($session->handshakeState)) {
                 $this->handshake($session);
             }
@@ -390,7 +406,7 @@ class Endpoint implements ServerObserver {
         }
 
         broadcast: {
-            if (empty($session->handshakeState)) {
+            if ($session && empty($session->handshakeState)) {
                 $this->handshake($session);
             }
 
@@ -401,7 +417,7 @@ class Endpoint implements ServerObserver {
                 $promise = $this->send($msg, $include, $exclude);
             } else {
                 $promise = new Failure(new \DomainException(
-                    'Invalid "broadcast" yield command: string or [string $msg, array $include, ' .
+                    'Invalid `broadcast` command: string or [string $msg, array $include, ' .
                     'array $exclude] expected.'
                 ));
             }
@@ -425,14 +441,14 @@ class Endpoint implements ServerObserver {
 
             if (isset($this->sessions[$clientId])) {
                 $promise = $this->close($clientId, $code, $reason);
-            } elseif ($clientId == $session->clientId) {
+            } elseif ($session && ($clientId == $session->clientId)) {
                 $promise = new Failure(new \DomainException(
                     'Invalid "close" yield command: handshake not yet sent. A status command should ' .
                     'be yielded instead to fail the websocket handshake.'
                 ));
             } else {
                 $promise = new Failure(new \DomainException(
-                    sprintf('Invalid close yield command: unkown clientId (%d)', $clientId)
+                    'Invalid `close` command: ambiguous client'
                 ));
             }
 
@@ -530,25 +546,35 @@ class Endpoint implements ServerObserver {
         }
 
         inspect: {
-            $promise = new Success([
-                'bytes_read'    => $session->bytesRead,
-                'bytes_sent'    => $session->bytesSent,
-                'frames_read'   => $session->framesRead,
-                'frames_sent'   => $session->framesSent,
-                'messages_read' => $session->messagesRead,
-                'messages_sent' => $session->messagesSent,
-                'connected_at'  => $session->connectedAt,
-                'last_read_at'  => $session->lastReadAt,
-                'last_send_at'  => $session->lastSendAt,
-                'last_data_read_at'  => $session->lastDataReadAt,
-                'last_data_send_at'  => $session->lastDataSendAt,
-            ]);
+            if ($session) {
+                $promise = new Success([
+                    'bytes_read'    => $session->bytesRead,
+                    'bytes_sent'    => $session->bytesSent,
+                    'frames_read'   => $session->framesRead,
+                    'frames_sent'   => $session->framesSent,
+                    'messages_read' => $session->messagesRead,
+                    'messages_sent' => $session->messagesSent,
+                    'connected_at'  => $session->connectedAt,
+                    'last_read_at'  => $session->lastReadAt,
+                    'last_send_at'  => $session->lastSendAt,
+                    'last_data_read_at'  => $session->lastDataReadAt,
+                    'last_data_send_at'  => $session->lastDataSendAt,
+                ]);
+            } else {
+                $promise = new Failure(new \LogicException(
+                    'Invalid `inspect` command: ambiguous client'
+                ));
+            }
 
             goto return_struct;
         }
 
         status: {
-            if ($session->handshakeState) {
+            if (empty($session)) {
+                $promise = new Failure(new \LogicException(
+                    'Invalid `status` command: ambiguous client'
+                ));
+            } elseif ($session->handshakeState) {
                 $promise = new Failure(new \LogicException(
                     'Cannot assign handshake status: handshake already initiated'
                 ));
@@ -565,7 +591,11 @@ class Endpoint implements ServerObserver {
         }
 
         reason: {
-            if ($session->handshakeState) {
+            if (empty($session)) {
+                $promise = new Failure(new \LogicException(
+                    'Invalid `reason` command: ambiguous client'
+                ));
+            } elseif ($session->handshakeState) {
                 $promise = new Failure(new \LogicException(
                     'Cannot assign handshake reason: handshake already initiated'
                 ));
@@ -578,7 +608,11 @@ class Endpoint implements ServerObserver {
         }
 
         header: {
-            if ($session->handshakeState) {
+            if (empty($session)) {
+                $promise = new Failure(new \LogicException(
+                    'Invalid `header` command: ambiguous client'
+                ));
+            } elseif ($session->handshakeState) {
                 $promise = new Failure(new \LogicException(
                     'Cannot assign handshake header: handshake already initiated'
                 ));
