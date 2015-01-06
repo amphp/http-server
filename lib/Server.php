@@ -352,7 +352,10 @@ class Server {
         if ($this->state === self::STOPPED) {
             return new Success;
         }
-
+        if ($this->stopPromisor) {
+            return $this->stopPromisor;
+        }
+        
         foreach ($this->acceptWatchers as $watcherId) {
             $this->reactor->cancel($watcherId);
         }
@@ -365,11 +368,12 @@ class Server {
             @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
         }
 
+        $this->state = self::STOPPING;
         $observerPromise = $this->notifyObservers();
 
         // If no clients are connected we need only resolve the observer promise
         if (empty($this->clients)) {
-            return $observerPromise;
+            return ($this->stopPromisor = $observerPromise);
         }
 
         $this->stopPromisor = new Future;
