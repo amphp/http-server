@@ -72,6 +72,7 @@ class Endpoint implements ServerObserver {
      */
     public function onServerUpdate(Server $server) {
         $state = $server->getState();
+
         switch ($state) {
             case Server::STARTING:
                 $this->state = $state;
@@ -88,7 +89,7 @@ class Endpoint implements ServerObserver {
         $this->timeoutWatcher = $this->reactor->repeat([$this, 'timeout'], $msInterval = 1000);
         $this->reactor->disable($this->timeoutWatcher);
 
-        $result = $this->websocket->onStop();
+        $result = $this->websocket->onStart();
         if ($result instanceof \Generator) {
             $result = $this->resolveGenerator($result, $session = null);
         }

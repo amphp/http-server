@@ -309,6 +309,8 @@ class Server {
             $acceptWatcher = $this->reactor->onReadable($socket, [$this, 'accept'], $enableNow = false);
             $this->acceptWatchers[$address] = $acceptWatcher;
         }
+        
+        $this->state = self::STARTING;
 
         return $this->notifyObservers()->when(function($e, $r) {
             if (empty($e)) {
