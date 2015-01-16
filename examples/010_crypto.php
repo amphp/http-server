@@ -10,29 +10,27 @@
  *
  * $ bin/aerys -c examples/010_crypto.php
  *
- * Once started, load https://domain1.com:1337/ or https://domain2.com:1337/ in your browser.
+ * Once started, load https://domain1.com/ or https://domain2.com/ in your browser.
  */
 
 
 namespace Aerys;
 
-/* --- https://domain1.com:1337/ ---------------------------------------------------------------- */
+/* --- https://domain1.com/ --------------------------------------------------------------------- */
 
 $domain1 = (new Host)
-    ->setPort(1337)
     ->setName('domain1.com')
-    ->setCrypto('/home/daniel/dev/ca/server.pem')
+    ->setCrypto('/path/to/domain1.pem')
     ->addResponder(function($request) {
         return '<html><body><h1>Hello, world (domain1).</h1></body></html>';
     })
 ;
 
-/* --- https://domain2.com:1337/ ---------------------------------------------------------------- */
+/* --- https://domain2.com/ --------------------------------------------------------------------- */
 
 $domain2 = (new Host)
-    ->setPort(1337)
     ->setName('domain2.com')
-    ->setCrypto('/home/daniel/dev/ca/server2.pem')
+    ->setCrypto('/path/to/domain2.pem')
     ->addResponder(function($request) {
         return '<html><body><h1>Hello, world (domain2).</h1></body></html>';
     })
