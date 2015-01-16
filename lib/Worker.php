@@ -7,18 +7,19 @@ use Amp\UvReactor;
 use Amp\LibeventReactor;
 
 class Worker {
-    private $workerId;
-    private $server;
     private $reactor;
+    private $server;
+    private $workerId;
+    private $ipcUri;
     private $ipcSocket;
     private $ipcWatcher;
     private $isStopping;
 
-    public function __construct($workerId, $ipcUri, Server $server, Reactor $reactor = null) {
+    public function __construct(Reactor $reactor, Server $server, $workerId, $ipcUri) {
+        $this->reactor = $reactor;
+        $this->server = $server;
         $this->workerId = $workerId;
         $this->ipcUri = $ipcUri;
-        $this->server = $server;
-        $this->reactor = $reactor ?: \Amp\getReactor();
     }
 
     public function start() {
@@ -46,6 +47,8 @@ class Worker {
 
         stream_set_blocking($this->ipcSocket, false);
         $this->ipcWatcher = $this->reactor->onReadable($this->ipcSocket, [$this, 'stop']);
+
+        yield $this->server->listen();
     }
 
     public function stop() {
@@ -75,6 +78,7 @@ class Worker {
             case E_CORE_WARNING:
             case E_COMPILE_ERROR:
             case E_COMPILE_WARNING:
+            case E_RECOVERABLE_ERROR:
                 stream_set_blocking($this->ipcSocket, true);
                 fwrite($this->ipcSocket, "fatal {$this->workerId}\n");
                 stream_set_blocking($this->ipcSocket, false);

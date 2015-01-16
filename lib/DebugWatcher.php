@@ -9,24 +9,17 @@ use Amp\LibeventReactor;
 class DebugWatcher {
     private $reactor;
     private $server;
-    private $hosts;
 
-    public function __construct(Reactor $reactor, Server $server, HostGroup $hosts) {
+    public function __construct(Reactor $reactor, Server $server) {
         $this->reactor = $reactor;
         $this->server = $server;
-        $this->hosts = $hosts;
-        $this->server->setOption(Server::OP_DEBUG, true);
     }
 
     public function watch() {
-        register_shutdown_function(function() {
-            $this->shutdown();
-        });
-
+        register_shutdown_function(function() { $this->shutdown(); });
         $this->registerInterruptHandler();
-        $this->server->bind($this->hosts);
         yield $this->server->listen();
-        foreach ($this->hosts->getBindableAddresses() as $addr) {
+        foreach ($this->server->getBindableAddresses() as $addr) {
             $addr = substr(str_replace('0.0.0.0', '*', $addr), 6);
             printf("Listening for HTTP traffic on %s ...\n", $addr);
         }
@@ -49,8 +42,7 @@ class DebugWatcher {
     }
 
     public function onInterrupt() {
-        yield $this->server->stop();
-        exit(0);
+        $this->server->stop()->when(function() { exit(0); });
     }
 
     private function shutdown() {
@@ -66,6 +58,7 @@ class DebugWatcher {
             case E_CORE_WARNING:
             case E_COMPILE_ERROR:
             case E_COMPILE_WARNING:
+            case E_RECOVERABLE_ERROR:
                 extract($err);
                 printf("%s in %s on line %d\n", $message, $file, $line);
                 $this->server->stop()->when(function() { exit(1); });

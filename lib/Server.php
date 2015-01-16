@@ -240,7 +240,10 @@ class Server {
         $addresses = array_unique($this->hosts->getBindableAddresses());
         $tlsBindings = $this->hosts->getTlsBindingsByAddress();
         foreach ($addresses as $address) {
-            $context = stream_context_create(['socket' => ['backlog' => $this->socketBacklogSize]]);
+            $context = stream_context_create(['socket' => [
+                'backlog' => $this->socketBacklogSize,
+                'so_reuseport' => true,
+            ]]);
             if (isset($tlsBindings[$address])) {
                 stream_context_set_option($context, $tlsBindings[$address]);
             }
@@ -280,6 +283,10 @@ class Server {
         }
 
         return $socket;
+    }
+
+    public function getBindableAddresses() {
+        return $this->hosts ? $this->hosts->getBindableAddresses() : [];
     }
 
     /**

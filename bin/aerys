@@ -2,7 +2,7 @@
 
 <?php
 
-if (extension_loaded('pcntl')) {
+if (!(extension_loaded('uv') || extension_loaded('libevent')) && extension_loaded('pcntl')) {
     declare(ticks=1);
 }
 
@@ -44,12 +44,9 @@ if ($options['help']) {
 
 try {
     Amp\run(function($reactor) use ($options) {
-        $injector = new Auryn\Provider;
-        $injector->alias('Amp\Reactor', get_class($reactor));
-        $injector->share($reactor);
-        $bootstrapper = new Aerys\Bootstrapper($injector);
-        $watcher = $bootstrapper->boot($options);
-        yield $watcher->watch();
+        $bootstrapper = new Aerys\Bootstrapper($reactor);
+        $watcher = $bootstrapper->bootWatcher($options);
+        yield $watcher->watch($options);
     });
 } catch (Exception $e) {
     echo "\n", $e->getMessage(), "\n\n";

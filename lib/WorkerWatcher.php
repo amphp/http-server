@@ -11,7 +11,6 @@ class WorkerWatcher {
     private $reactor;
     private $config;
     private $ipcUri;
-    private $hostAddrs;
     private $processes = [];
     private $ipcClients = [];
     private $workerFatalWatchers = [];
@@ -19,39 +18,24 @@ class WorkerWatcher {
     private $isReloading = false;
     private $lastWorkerId = 0;
 
-    /**
-     * We can't bind the same IP:PORT in multiple separate processes if we aren't
-     * in a Windows environment. Non-windows operating systems should have ext/pcntl
-     * or pecl/pthreads, so this limitation is really only enforced in development
-     * environments.
-     *
-     * @TODO Allow multiple workers in non-windows environments if SO_REUSEPORT is available
-     */
-    public function __construct($workerCount, Reactor $reactor = null) {
-        $workerCount = (int) $workerCount;
-
-        if (stripos(PHP_OS, 'WIN') !== 0) {
-            $this->workerCount = 1;
-        } elseif ($workerCount > 0) {
-            $this->workerCount = $workerCount;
-        } else {
-            $this->workerCount = countCpuCores();
-        }
-
+    public function __construct(Reactor $reactor = null) {
         $this->reactor = $reactor ?: \Amp\getReactor();
     }
 
-    public function watch($configFile) {
-        $this->validateConfig($configFile);
+    public function watch($options) {
+        $this->config = $options['config'];
+        $workerCount = empty($options['workers']) ? 0 : (int) $options['workers'];
+        if ($workerCount < 1) {
+            $workerCount = countCpuCores();
+        }
+        $this->workerCount = canReusePort() ? $workerCount : 1;
+
+        $hosts = $this->validateConfig($options['config']);
+
         $this->startIpcServer();
 
         for ($i=0; $i < $this->workerCount; $i++) {
             $this->spawn();
-        }
-
-        foreach ($this->hostAddrs as $address) {
-            $address = substr(str_replace('0.0.0.0', '*', $address), 6);
-            printf("Listening for HTTP traffic on %s ...\n", $address);
         }
 
         if ($this->reactor instanceof UvReactor) {
@@ -60,6 +44,11 @@ class WorkerWatcher {
             $this->reactor->onSignal($sigint = 2, [$this, 'stop']);
         } elseif (extension_loaded('pcntl')) {
             pcntl_signal(SIGINT, [$this, 'stop']);
+        }
+        
+        foreach ($hosts as $addr) {
+            $addr = substr(str_replace('0.0.0.0', '*', $addr), 6);
+            printf("Listening for HTTP traffic on %s ...\n", $addr);
         }
     }
 
@@ -84,7 +73,8 @@ class WorkerWatcher {
         }
 
         $this->config = $config;
-        $this->hostAddrs = $data['hosts'];
+        
+        return $data['hosts'];
     }
 
     private function buildConfigTestCmd($config) {
@@ -155,18 +145,18 @@ class WorkerWatcher {
     }
 
     /**
-     * Set a timer to kill the worker in 1000ms if it doesn't report stop completion
+     * Set a timer to forcefully kill the worker in 2500ms if it doesn't report stop completion
      */
     private function onWorkerFatal($ipcClient) {
         $clientId = (int) $ipcClient;
         $this->workerFatalWatchers[$clientId] = $this->reactor->once(function() use ($ipcClient) {
-            $this->unloadIpcClient($ipcClient);
-        }, $msDelay = 1000);
+            $this->unloadIpcClient($ipcClient, $kill = true);
+        }, $msDelay = 2500);
 
         $this->spawn();
     }
 
-    private function unloadIpcClient($ipcClient) {
+    private function unloadIpcClient($ipcClient, $kill = false) {
         $clientId = (int) $ipcClient;
 
         list($workerId, $watcherId) = $this->ipcClients[$clientId];
@@ -182,7 +172,13 @@ class WorkerWatcher {
         }
 
         $procHandle = $this->processes[$workerId];
-        @proc_terminate($procHandle);
+
+        if ($kill) {
+            @proc_terminate($procHandle);
+        }
+        
+        @proc_close($procHandle);
+
         unset($this->processes[$workerId]);
 
         if ($this->isStopping && empty($this->ipcClients)) {

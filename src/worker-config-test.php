@@ -10,18 +10,21 @@ set_error_handler(function($code, $msg, $file, $line) {
     }
 });
 
-try {
-    ob_start();
-    list($server, $hosts) = (new Aerys\Bootstrapper)->boot(getopt('', ['config:'])['config']);
-    $server->bind($hosts);
-    $data['error'] = 0;
-    $data['hosts'] = $hosts->getBindableAddresses();
-    $data['options'] = $server->getAllOptions();
-} catch (Exception $e) {
-    $data['error'] = 1;
-    $data['error_msg'] = $e->getMessage();
-} finally {
-    $data['output'] = ob_get_clean();
-    echo serialize($data);
-    exit($data['error']);
-}
+Amp\run(function($reactor) {
+    try {
+        ob_start();
+        $opts = getopt('', ['config:']);
+        $bootstrapper = new Aerys\Bootstrapper($reactor);
+        $server = $bootstrapper->bootServer($opts);
+        $data['error'] = 0;
+        $data['hosts'] = $server->getBindableAddresses();
+        $data['options'] = $server->getAllOptions();
+    } catch (Exception $e) {
+        $data['error'] = 1;
+        $data['error_msg'] = $e->getMessage();
+    } finally {
+        $data['output'] = ob_get_clean();
+        echo serialize($data);
+        exit($data['error']);
+    }
+});

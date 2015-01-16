@@ -44,6 +44,13 @@ function parseCommandLineOptions() {
     return $options;
 }
 
+function canReusePort() {
+    // Solaris is the only OS we know of that can't do this. SCREW YOU, Oracle, fix your garbage
+    // socket options implementation. If you're running Solaris ... sorry.
+    // @TODO Find out what the PHP_OS string is in Solaris so we can check for this.
+    return stripos(PHP_OS, 'WIN') === 0 || PHP_MAJOR_VERSION >= 7;
+}
+
 /**
  * Count the number of available CPU cores on this system
  *

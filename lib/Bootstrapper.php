@@ -2,7 +2,9 @@
 
 namespace Aerys;
 
+use Amp\Reactor;
 use Auryn\Injector;
+use Auryn\Provider;
 use FastRoute\RouteCollector;
 
 class Bootstrapper {
@@ -29,8 +31,10 @@ class Bootstrapper {
         'DEFAULT_HOST'          => Server::OP_DEFAULT_HOST,
     ];
 
-    public function __construct(Injector $injector) {
-        $this->injector = $injector;
+    public function __construct(Reactor $reactor, Injector $injector = null) {
+        $this->injector = $injector ?: new Provider;
+        $this->injector->alias('Amp\Reactor', get_class($reactor));
+        $this->injector->share($reactor);
     }
 
     /**
@@ -40,7 +44,15 @@ class Bootstrapper {
      * @throws BootException On missing config file option
      * @return Watcher
      */
-    public function boot(array $options) {
+    public function bootWatcher(array $options) {
+        $this->bootServer($options);
+        $watcherClass = $options['debug'] ? 'Aerys\DebugWatcher' : 'Aerys\WorkerWatcher';
+        $watcher = $this->injector->make($watcherClass);
+
+        return $watcher;
+    }
+
+    public function bootServer(array $options) {
         if (empty($options['config'])) {
             throw new BootException(
                 'Cannot boot server: no config file specified (-c, --config)'
@@ -70,12 +82,13 @@ class Bootstrapper {
             $server->setOption($option, $value);
         }
 
-        // @TODO Allow non-debug watcher once process signal issues are fixed
-        //$watcherClass = $options['debug'] ? 'Aerys\DebugWatcher' : 'Aerys\WorkerWatcher';
-        $watcherClass = 'Aerys\DebugWatcher';
-        $watcher = $this->injector->make($watcherClass);
+        if ($options['debug']) {
+            $server->setOption(Server::OP_DEBUG, true);
+        }
 
-        return $watcher;
+        $server->bind($hosts);
+
+        return $server;
     }
 
     private function parseServerConfigFile($__configFile) {
