@@ -72,7 +72,6 @@ class Server {
     private $maxHeaderBytes = 8192;
     private $maxBodyBytes = 2097152;
     private $allowedMethods;
-    private $cryptoType = STREAM_CRYPTO_METHOD_TLS_SERVER; // @TODO Add option setter
     private $readGranularity = 262144; // @TODO Add option setter
     private $hasSocketsExtension;
 
@@ -245,7 +244,7 @@ class Server {
                 'so_reuseport' => true,
             ]]);
             if (isset($tlsBindings[$address])) {
-                stream_context_set_option($context, $tlsBindings[$address]);
+                stream_context_set_option($context, ['ssl' => $tlsBindings[$address]]);
             }
 
             $this->boundSockets[$address] = $this->bindSocket($address, $context);
@@ -480,7 +479,7 @@ class Server {
     }
 
     public function doTlsHandshake($reactor, $watcherId, $socket) {
-        $handshakeStatus = @stream_socket_enable_crypto($socket, true, $this->cryptoType);
+        $handshakeStatus = @stream_socket_enable_crypto($socket, true);
         if ($handshakeStatus) {
             $this->clearPendingTlsClient($socket);
             $this->onClient($socket, $isEncrypted = true);

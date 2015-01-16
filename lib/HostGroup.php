@@ -50,7 +50,7 @@ class HostGroup implements \Countable {
             $host = $this->singleHost;
         } elseif ($cycle->hasAbsoluteUri) {
             $host = $this->selectHostByAbsoluteUri($cycle);
-        } elseif ($cycle->protocol == '1.1' || !empty($cycle->ucHeaders['HOST'])) {
+        } elseif ($cycle->protocol == '1.1' || !empty($cycle->headers['HOST'])) {
             $host = $this->selectHostByHeader($cycle);
         } elseif ($cycle->protocol == '1.0') {
             $host = $this->selectDefaultHost($defaultHostId);
@@ -82,7 +82,7 @@ class HostGroup implements \Countable {
     }
 
     private function selectHostByHeader(RequestCycle $cycle) {
-        $hostHeader = $cycle->ucHeaders['HOST'][0];
+        $hostHeader = $cycle->headers['HOST'][0];
         $isEncrypted = $cycle->client->isEncrypted;
 
         if ($portStartPos = strrpos($hostHeader, ']')) {
@@ -113,7 +113,7 @@ class HostGroup implements \Countable {
 
         // IMPORTANT: Wildcard IP hosts without names that are running both encrypted and plaintext
         // apps on the same interface (via separate ports) must be checked for encryption to avoid
-        // displaying unencrypted data as a result of carefully crafted HostDefinition headers. This is an
+        // displaying unencrypted data as a result of carefully crafted Host headers. This is an
         // extreme edge case but it's potentially exploitable without this check.
         // DO NOT REMOVE THIS UNLESS YOU'RE SURE YOU KNOW WHAT YOU'RE DOING.
         if ($host && $host->isEncrypted() && !$isEncrypted) {
@@ -126,7 +126,7 @@ class HostGroup implements \Countable {
     private function attemptIpHostSelection($hostHeader, $ipComparison) {
         if (count($this->hosts) !== 1) {
             $host = NULL;
-        } elseif (!filter_var($ipComparison, FILTER_VALIDATE_IP)) {
+        } elseif (!@inet_pton($ipComparison)) {
             $host = NULL;
         } elseif (!(($host = current($this->hosts))
             && ($host->getAddress() === $ipComparison || $host->hasWildcardAddress())
@@ -166,17 +166,32 @@ class HostGroup implements \Countable {
      */
     public function getTlsBindingsByAddress() {
         $bindMap = [];
+        $sniNameMap = [];
         foreach ($this->hosts as $host) {
-            if ($host->isEncrypted()) {
-                $bindAddress = $host->getBindableAddress();
-                $contextArr = $host->getTlsContextArr();
-                $bindMap[$bindAddress] = $contextArr;
+            if (!$host->isEncrypted()) {
+                continue;
+            }
+
+            $bindAddress = $host->getBindableAddress();
+            $contextArr = $host->getTlsContextArr();
+            $bindMap[$bindAddress] = $contextArr;
+
+            if ($host->hasName()) {
+                $sniNameMap[$bindAddress][$host->getName()] = $contextArr['local_cert'];
             }
         }
 
         // We use current($this->hosts) in places so it's important to reset the array's internal
         // pointer after iterating above.
         reset($this->hosts);
+
+        // If we have multiple different TLS certs on the same bind address we need to assign
+        // the "SNI_server_name" key to enable the SNI extension.
+        foreach (array_keys($bindMap) as $bindAddress) {
+            if (isset($sniNameMap[$bindAddress]) && count($sniNameMap[$bindAddress]) > 1) {
+                $bindMap[$bindAddress]['SNI_server_certs'] = $sniNameMap[$bindAddress];
+            }
+        }
 
         return $bindMap;
     }

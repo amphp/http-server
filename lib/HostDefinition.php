@@ -7,24 +7,21 @@ class HostDefinition {
     private $port;
     private $name;
     private $application;
-    private $isTlsAvailable;
     private $tlsContextArr = [];
     private $tlsDefaults = [
-        /*
-        'single_ecdh_use'       => TRUE,
-        'honor_cipher_order'    => TRUE,
-        'disable_compression'   => TRUE,
+        'local_cert'            => null,
+        'passphrase'            => null,
+        'allow_self_signed'     => false,
+        'verify_peer'           => false,
+        'ciphers'               => null,
+        'cafile'                => null,
+        'capath'                => null,
+        'single_ecdh_use'       => false,
+        'honor_cipher_order'    => true,
+        'disable_compression'   => true,
         'reneg_limit'           => 0,
-        'reneg_limit_callback'  => NULL,
-        'SNI_server_names'      => [],
-        */
-        'local_cert'            => NULL,
-        'passphrase'            => NULL,
-        'allow_self_signed'     => FALSE,
-        'verify_peer'           => FALSE,
-        'ciphers'               => NULL,
-        'cafile'                => NULL,
-        'capath'                => NULL
+        'reneg_limit_callback'  => null,
+        'crypto_method'         => STREAM_CRYPTO_METHOD_TLS_SERVER,
     ];
 
     public function __construct($address, $port, $name, callable $application) {
@@ -33,7 +30,6 @@ class HostDefinition {
         $this->name = strtolower($name);
         $this->id = ($this->name ? $this->name : $this->address) . ':' . $this->port;
         $this->application = $application;
-        $this->isTlsAvailable = extension_loaded('openssl');
     }
 
     private function setAddress($address) {
@@ -42,28 +38,23 @@ class HostDefinition {
             $this->address = $address;
         } elseif ($address === '::') {
             $this->address = '[::]';
-        } elseif (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
-            $this->address = "[{$address}]";
-        } elseif (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            $this->address = $address;
-        } else {
+        } elseif (!$packedAddress = @inet_pton($address)) {
             throw new \InvalidArgumentException(
                 "IPv4, IPv6 or wildcard address required: {$address}"
             );
+        } else {
+            $this->address = isset($packedAddress[4]) ? $address : "[{$address}]";
         }
     }
 
     private function setPort($port) {
-        if ($port = filter_var($port, FILTER_VALIDATE_INT, ['options' => [
-            'min_range' => 1,
-            'max_range' => 65535
-        ]])) {
-            $this->port = (int) $port;
-        } else {
+        if ($port != (string)(int) $port || $port < 1 || $port > 65535) {
             throw new \InvalidArgumentException(
-                "Invalid host port: {$port}"
+                "Invalid host port: {$port}; integer in the range [1-65535] required"
             );
         }
+
+        $this->port = (int) $port;
     }
 
     /**
@@ -143,7 +134,7 @@ class HostDefinition {
     /**
      * Has this host been assigned a TLS encryption context?
      *
-     * @return bool Returns TRUE if a TLS context is assigned, FALSE otherwise
+     * @return bool Returns true if a TLS context is assigned, false otherwise
      */
     public function isEncrypted() {
         return (bool) $this->tlsContextArr;
@@ -154,35 +145,13 @@ class HostDefinition {
      *
      * @param array An array mapping TLS stream context values
      * @link http://php.net/manual/en/context.ssl.php
-     * @throws \RuntimeException If required PHP OpenSSL extension not loaded
-     * @throws \InvalidArgumentException On missing local_cert key
      * @return void
      */
-    public function setEncryptionContext(array $tlsDefinition) {
-        if ($this->isTlsAvailable) {
-            $this->tlsContextArr = $tlsDefinition ? $this->generateTlsContext($tlsDefinition) : [];
-        } else {
-            throw new \RuntimeException(
-                sprintf('Cannot enable crypto on %s; openssl extension required', $this->id)
-            );
-        }
-    }
-
-    private function generateTlsContext(array $tls) {
-        $tls = array_filter($tls, function($value) { return isset($value); });
+    public function setCrypto(array $tls) {
         $tls = array_merge($this->tlsDefaults, $tls);
+        $tls = array_filter($tls, function($value) { return isset($value); });
 
-        if (empty($tls['local_cert'])) {
-            throw new \InvalidArgumentException(
-                '"local_cert" key required to bind crypto-enabled server socket'
-            );
-        } elseif (!(is_file($tls['local_cert']) && is_readable($tls['local_cert']))) {
-            throw new \InvalidArgumentException(
-                "Certificate file not found: {$tls['local_cert']}"
-            );
-        }
-
-        return ['ssl' => $tls];
+        $this->tlsContextArr = $tls;
     }
 
     /**
@@ -198,11 +167,11 @@ class HostDefinition {
      * Determine if this host matches the specified HostDefinition ID string
      *
      * @param string $hostId
-     * @return bool Returns TRUE if a match is found, FALSE otherwise
+     * @return bool Returns true if a match is found, false otherwise
      */
     public function matches($hostId) {
         if ($hostId === $this->id || $hostId === '*') {
-            $isMatch = TRUE;
+            $isMatch = true;
         } elseif (substr($hostId, 0, 2) === '*:') {
             $portToMatch = substr($hostId, 2);
             $isMatch = ($portToMatch === '*' || $this->port == $portToMatch);
@@ -210,7 +179,7 @@ class HostDefinition {
             $addrToMatch = substr($hostId, 0, -2);
             $isMatch = ($addrToMatch === '*' || $this->address === $addrToMatch || $this->name === $addrToMatch);
         } else {
-            $isMatch = FALSE;
+            $isMatch = false;
         }
 
         return $isMatch;

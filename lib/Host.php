@@ -6,20 +6,26 @@ class Host {
     const PORT       = 'port';
     const ADDRESS    = 'address';
     const NAME       = 'name';
-    const ENCRYPTION = 'encryption';
+    const CRYPTO     = 'crypto';
     const ROUTES     = 'routes';
     const ROOT       = 'root';
     const WEBSOCKETS = 'websockets';
     const RESPONDERS = 'responders';
 
-    private $port = 80;
-    private $address = '*';
     private $name = '';
+    private $port = null;
+    private $address = '*';
     private $httpRoutes = [];
     private $websocketRoutes = [];
     private $responders = [];
-    private $encryption = [];
+    private $crypto = [];
     private $root = [];
+
+    private $hasOpenssl;
+
+    public function __construct() {
+        $this->hasOpenssl = extension_loaded('openssl');
+    }
 
     /**
      * Optionally define the host's domain name (e.g. localhost or mysite.com or subdomain.mysite.com)
@@ -28,8 +34,10 @@ class Host {
      * server will fallback to "localhost" for its name.
      *
      * @param string $name
+     * @throws \InvalidArgumentException if a non-string is passed
+     * @return self
      */
-    public function __construct($name = '') {
+    public function setName($name) {
         if (!is_string($name)) {
             throw new \InvalidArgumentException(
                 sprintf("%s requires a string at Argument 1", __METHOD__)
@@ -37,6 +45,8 @@ class Host {
         }
 
         $this->name = $name;
+
+        return $this;
     }
 
     /**
@@ -78,24 +88,49 @@ class Host {
     /**
      * Define TLS encryption settings for this host
      *
-     * The $tlsOptions array takes the following form:
+     * An example $tlsOptions array takes the following form:
      *
      * $tlsOptions = [
-     *     'local_cert'             => '/path/to/mycert.pem', // *required
-     *     'passphrase'             => 'mypassphrase',
-     *     'allow_self_signed'      => TRUE,
-     *     'verify_peer'            => FALSE,
-     *     'ciphers'                => 'RC4-SHA:HIGH:!MD5:!aNULL:!EDH',
-     *     'disable_compression'    => TRUE,
-     *     'cafile'                 => NULL,
-     *     'capath'                 => NULL
+     *     'passphrase'             => null,
+     *     'verify_peer'            => false,
+     *     'allow_self_signed'      => true,
+     *     'cafile'                 => null,
+     *     'capath'                 => null,
+     *     'ciphers'                => '<cipher list here>',
+     *     'disable_compression'    => true,
+     *     'crypto_method'          => STREAM_CRYPTO_METHOD_TLS_SERVER,
      * ];
      *
-     * @param array $tlsOptions
+     * NOTE: If specified, the local_cert array key will be overwritten using the required
+     *       $certificate parameter value.
+     *
+     * NOTE: If specified, the "SNI_server_certs" key will be ignored. Aerys servers will
+     *       automatically generate this value based on the virtual host names specified in the
+     *       server config file.
+     *
+     * @TODO Parse CN and SAN fields from the cert to validate they match the Host's name to
+     *       make things tougher to screw up for people who have no idea what they're doing.
+     *
+     * @param string $certificate A string path pointing to your SSL/TLS certificate
+     * @param array $tlsOptions An optional array mapping additional SSL/TLS settings
      * @return self
      */
-    public function setEncryption(array $tlsOptions) {
-        $this->encryption = $tlsOptions;
+    public function setCrypto($certificate, array $tlsOptions = []) {
+        if (!$this->hasOpenssl) {
+            throw new \LogicException(
+                'Cannot assign crypto settings; ext/openssl required'
+            );
+        }
+
+        if (!@openssl_x509_read(@file_get_contents($certificate))) {
+            throw new \InvalidArgumentException(
+                '$certificate expects a string path to a valid X.509 certificate'
+            );
+        }
+
+        unset($tlsOptions['SNI_server_certs']);
+        $tlsOptions['local_cert'] = $certificate;
+        $this->crypto = $tlsOptions;
 
         return $this;
     }
@@ -192,10 +227,10 @@ class Host {
      */
     public function toArray() {
         return [
-            self::PORT          => $this->port,
+            self::PORT          => $this->port ?: ($this->crypto ? 443 : 80),
             self::ADDRESS       => $this->address,
             self::NAME          => $this->name,
-            self::ENCRYPTION    => $this->encryption,
+            self::CRYPTO        => $this->crypto,
             self::ROOT          => $this->root,
             self::ROUTES        => $this->httpRoutes,
             self::WEBSOCKETS    => $this->websocketRoutes,

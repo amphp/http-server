@@ -38,7 +38,7 @@ class Bootstrapper {
     }
 
     /**
-     * Bootstrap a server and its host definitions from command line arguments
+     * Bootstrap a server watcher from command line options
      *
      * @param array $options An array of options parsed from command line switches
      * @throws BootException On missing config file option
@@ -52,6 +52,13 @@ class Bootstrapper {
         return $watcher;
     }
 
+    /**
+     * Bootstrap a server from command line options
+     *
+     * @param array $options An array of options parsed from command line switches
+     * @throws BootException On missing config file option
+     * @return Server
+     */
     public function bootServer(array $options) {
         if (empty($options['config'])) {
             throw new BootException(
@@ -65,7 +72,7 @@ class Bootstrapper {
         $this->injector->share('Aerys\HostGroup');
         $this->injector->share('Aerys\AsgiResponderFactory');
 
-        $hosts  = $this->injector->make('Aerys\HostGroup');
+        $hostGroup = $this->injector->make('Aerys\HostGroup');
         $server = $this->injector->make('Aerys\Server');
 
         // Automatically register any ServerObserver implementations with the server
@@ -74,8 +81,8 @@ class Bootstrapper {
         });
 
         foreach ($hostConfigs as $hostConfig) {
-            $host = $this->buildHost($hostConfig);
-            $hosts->addHost($host);
+            $hostDefinition = $this->buildHostDefinition($hostConfig);
+            $hostGroup->addHost($hostDefinition);
         }
 
         foreach ($serverOptions as $option => $value) {
@@ -86,7 +93,7 @@ class Bootstrapper {
             $server->setOption(Server::OP_DEBUG, true);
         }
 
-        $server->bind($hosts);
+        $server->bind($hostGroup);
 
         return $server;
     }
@@ -164,37 +171,22 @@ class Bootstrapper {
         }
     }
 
-    private function buildHost(Host $hostConfig) {
-        $hostConfigArr = $hostConfig->toArray();
-        $ip   = $hostConfigArr[Host::ADDRESS];
-        $port = $hostConfigArr[Host::PORT];
-        $name = $hostConfigArr[Host::NAME] ?: $ip;
-        $tls  = $hostConfigArr[Host::ENCRYPTION];
-        $responder = $this->aggregateHostResponders($hostConfigArr);
-        $host = $this->tryHost($ip, $port, $name, $responder);
-
-        if ($tls) {
-            $this->tryHostEncryption($host, $tls);
-        }
-
-        return $host;
-    }
-
-    private function tryHost($ip, $port, $name, $responder) {
+    private function buildHostDefinition(Host $hostConfig) {
         try {
-            return new HostDefinition($ip, $port, $name, $responder);
-        } catch (\Exception $previousException) {
-            throw new BootException(
-                sprintf('HostDefinition build failure: %s', $previousException->getMessage()),
-                $code = 0,
-                $previousException
-            );
-        }
-    }
+            $hostConfigArr = $hostConfig->toArray();
+            $ip   = $hostConfigArr[Host::ADDRESS];
+            $port = $hostConfigArr[Host::PORT];
+            $name = $hostConfigArr[Host::NAME] ?: $ip;
+            $tls  = $hostConfigArr[Host::CRYPTO];
+            $responder = $this->aggregateHostResponders($hostConfigArr);
+            $host = new HostDefinition($ip, $port, $name, $responder);
 
-    private function tryHostEncryption(HostDefinition $host, array $tls) {
-        try {
-            $host->setEncryptionContext($tlsDefinition);
+            if ($tls) {
+                $host->setCrypto($tls);
+            }
+
+            return $host;
+
         } catch (\Exception $previousException) {
             throw new BootException(
                 sprintf('HostDefinition build failure: %s', $previousException->getMessage()),
