@@ -82,7 +82,7 @@ class Bootstrapper {
             $server->setOption($option, $value);
         }
 
-        if ($options['debug']) {
+        if (!empty($options['debug'])) {
             $server->setOption(Server::OP_DEBUG, true);
         }
 
