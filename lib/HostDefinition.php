@@ -184,4 +184,23 @@ class HostDefinition {
 
         return $isMatch;
     }
+
+    /**
+     * Simplify debug output
+     *
+     * @return array
+     */
+    public function __debugInfo() {
+        $appType = is_object($this->application)
+            ? get_class($this->application)
+            : gettype($this->application);
+
+        return [
+            'address' => $this->address,
+            'port' => $this->port,
+            'name' => $this->name,
+            'tls' => $this->tlsContextArr,
+            'application' => $appType,
+        ];
+    }
 }
