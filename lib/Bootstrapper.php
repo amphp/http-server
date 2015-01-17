@@ -81,8 +81,11 @@ class Bootstrapper {
         });
 
         foreach ($hostConfigs as $hostConfig) {
-            $hostDefinition = $this->buildHostDefinition($hostConfig);
+            list($hostDefinition, $redirectHost) = $this->buildHostDefinition($hostConfig);
             $hostGroup->addHost($hostDefinition);
+            if ($redirectHost) {
+                $hostGroup->addHost($redirectHost);
+            }
         }
 
         foreach ($serverOptions as $option => $value) {
@@ -179,13 +182,10 @@ class Bootstrapper {
             $name = $hostConfigArr[Host::NAME] ?: $ip;
             $tls  = $hostConfigArr[Host::CRYPTO];
             $responder = $this->aggregateHostResponders($hostConfigArr);
-            $host = new HostDefinition($ip, $port, $name, $responder);
+            $hostDefinition = new HostDefinition($ip, $port, $name, $responder);
+            $redirectHost = $tls ? $this->buildCryptoHost($hostDefinition, $tls) : null;
 
-            if ($tls) {
-                $host->setCrypto($tls);
-            }
-
-            return $host;
+            return [$hostDefinition, $redirectHost];
 
         } catch (\Exception $previousException) {
             throw new BootException(
@@ -194,6 +194,30 @@ class Bootstrapper {
                 $previousException
             );
         }
+    }
+
+    private function buildCryptoHost(HostDefinition $hostDefinition, array $tls) {
+        $hostDefinition->setCrypto($tls);
+
+        // If the "auto_redirect" option isn't enabled we don't need to create a redirect host
+        if (empty($tls['auto_redirect'])) {
+            return;
+        }
+
+        $name = $hostDefinition->getName();
+        $code = empty($tls['auto_redirect_code']) ? 307 : (int) $tls['auto_redirect_code'];
+        $port = empty($tls['auto_redirect_port']) ? 80 : (int) $tls['auto_redirect_port'];
+        $displayPort = ($port = 80) ? '' : ":{$port}";
+
+        $uri = 'https://' . $name . $displayPort;
+        $responder = function($request) use ($uri, $code) {
+            return new AsgiMapResponder([
+                'status' => $code,
+                'header' => "Location: {$uri}" . $request['REQUEST_URI'],
+            ]);
+        };
+
+        return new HostDefinition($hostDefinition->getAddress(), $port, $name, $responder);
     }
 
     private function aggregateHostResponders(array $hostArr) {
