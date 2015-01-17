@@ -28,9 +28,11 @@ class WorkerWatcher {
         if ($workerCount < 1) {
             $workerCount = countCpuCores();
         }
-        $this->workerCount = canReusePort() ? $workerCount : 1;
+        $this->workerCount = $this->canReusePort() ? $workerCount : 1;
 
         $hosts = $this->validateConfig($options['config']);
+
+        // @TODO Start remote control server (only if so_reuseport available)
 
         $this->startIpcServer();
 
@@ -45,11 +47,36 @@ class WorkerWatcher {
         } elseif (extension_loaded('pcntl')) {
             pcntl_signal(SIGINT, [$this, 'stop']);
         }
-        
+
         foreach ($hosts as $addr) {
             $addr = substr(str_replace('0.0.0.0', '*', $addr), 6);
             printf("Listening for HTTP traffic on %s ...\n", $addr);
         }
+    }
+
+    private function canReusePort() {
+        // Windows can always bind on the same port across processes
+        if (stripos(PHP_OS, 'WIN') === 0) {
+            return true;
+        }
+
+        // Support for SO_REUSEPORT not present prior to PHP7
+        if (PHP_MAJOR_VERSION < 7) {
+            return false;
+        }
+
+        // @TODO don't be so heavy-handed :)
+        $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+        $ctx = stream_context_create(['socket' => ['so_reuseport' => true]]);
+        if (!$sock1 = @stream_socket_server('127.0.0.1:0', $errno, $errstr, $flags, $ctx)) {
+            return false;
+        }
+        $addr = stream_socket_get_name($sock1, false);
+        if (!$sock2 = @stream_socket_server($addr, $errno, $errstr, $flags, $ctx)) {
+            return false;
+        }
+
+        return true;
     }
 
     private function validateConfig($config) {
@@ -73,7 +100,7 @@ class WorkerWatcher {
         }
 
         $this->config = $config;
-        
+
         return $data['hosts'];
     }
 
@@ -176,7 +203,7 @@ class WorkerWatcher {
         if ($kill) {
             @proc_terminate($procHandle);
         }
-        
+
         @proc_close($procHandle);
 
         unset($this->processes[$workerId]);
