@@ -22,14 +22,31 @@ class HostGroup implements \Countable {
         $hostId = $host->getId();
         $this->hosts[$hostId] = $host;
         $hostCount = count($this->hosts);
-
-        if ($hostCount === 1) {
-            $this->singleHost = $host;
-        } else {
-            $this->singleHost = NULL;
-        }
+        $this->singleHost = ($hostCount > 1) ? null : $host;
+        $this->preventCryptoSocketConflict($host);
 
         return $hostCount;
+    }
+
+    private function preventCryptoSocketConflict(HostDefinition $host) {
+        $newHostIsEncrypted = $host->isEncrypted();
+        foreach ($this->hosts as $existing) {
+            if ($host === $existing || ($newHostIsEncrypted + $existing->isEncrypted()) != 1) {
+                continue;
+            }
+            $address = $existing->getAddress();
+            if ($host->matchesAddress($address) && ($existing->getPort() == $host->getPort())) {
+                throw new BootException(
+                    sprintf(
+                        'Cannot register encrypted host `%s`; unencrypted ' .
+                        'host `%s` registered on conflicting port `%s`',
+                        $newHostIsEncrypted ? $host->getId() : $existing->getId(),
+                        $newHostIsEncrypted ? $existing->getId() : $host->getId(),
+                        $host->getAddress() . ':' . $host->getPort()
+                    )
+                );
+            }
+        }
     }
 
     /**

@@ -123,6 +123,23 @@ class HostDefinition {
     }
 
     /**
+     * Does the specified IP address (or wildcard) match this host's address?
+     *
+     * @param string $address
+     * @return bool
+     */
+    public function matchesAddress($address) {
+        if ($this->address === '*' || $this->address === '[::]') {
+            return true;
+        }
+        if ($address === '*' || $address === '[::]') {
+            return true;
+        }
+
+        return (@inet_pton($this->address) === @inet_pton($address));
+    }
+    
+    /**
      * Does this host have a name?
      *
      * @return bool
