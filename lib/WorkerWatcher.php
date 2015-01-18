@@ -42,10 +42,13 @@ class WorkerWatcher {
 
         if ($this->reactor instanceof UvReactor) {
             $this->reactor->onSignal(\UV::SIGINT, [$this, 'stop']);
+            $this->reactor->onSignal(\UV::SIGTERM, [$this, 'stop']);
         } elseif ($this->reactor instanceof LibeventReactor) {
             $this->reactor->onSignal($sigint = 2, [$this, 'stop']);
+            $this->reactor->onSignal($sigint = 15, [$this, 'stop']);
         } elseif (extension_loaded('pcntl')) {
             pcntl_signal(SIGINT, [$this, 'stop']);
+            pcntl_signal(SIGTERM, [$this, 'stop']);
         }
 
         foreach ($hosts as $addr) {

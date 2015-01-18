@@ -33,15 +33,18 @@ class DebugWatcher {
         }
 
         if ($this->reactor instanceof UvReactor) {
-            $this->reactor->onSignal(\UV::SIGINT, [$this, 'onInterrupt']);
+            $this->reactor->onSignal(\UV::SIGINT, [$this, 'onSignal']);
+            $this->reactor->onSignal(\UV::SIGTERM, [$this, 'onSignal']);
         } elseif ($this->reactor instanceof LibeventReactor) {
-            $this->reactor->onSignal($sigint = 2, [$this, 'onInterrupt']);
+            $this->reactor->onSignal($sigint = 2, [$this, 'onSignal']);
+            $this->reactor->onSignal($sigint = 15, [$this, 'onSignal']);
         } elseif (extension_loaded('pcntl')) {
-            pcntl_signal(SIGINT, [$this, 'onInterrupt']);
+            pcntl_signal(SIGINT, [$this, 'onSignal']);
+            pcntl_signal(SIGTERM, [$this, 'onSignal']);
         }
     }
 
-    public function onInterrupt() {
+    public function onSignal() {
         $this->server->stop()->when(function() { exit(0); });
     }
 
