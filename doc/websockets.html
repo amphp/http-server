@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://stackedit.io/res-min/themes/base.css" />
 <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML"></script>
 </head>
-<body><div class="container"><h1 id="websockets">Websockets</h1>
+<body><div class="container"><h1 id="aerys-websockets">Aerys: Websockets</h1>
 
 <blockquote>
   <p><strong><a href="#table-of-contents">Table of Contents</a></strong></p>
@@ -31,10 +31,13 @@
 
 <p>The above methods expose the full range of websocket possibilities to your aerys application. A brief description of each method follows .</p>
 
+
+
 <h3 id="onstart">onStart()</h3>
 
-<p>Websocket applications may use <code>onStart()</code> to initialize resources (e.g. database/socket connections) during the server startup routine. If <code>onStart()</code> returns an instance of <code>Amp\Promise</code> the Aerys server will not start accepting connections until the promise resolves. Likewise, if <code>onStart()</code> is a generator the server will <br>
-resolve the generator result prior to completing its startup routine.</p>
+<p>Websocket applications may use <code>onStart()</code> to initialize resources (e.g. database/socket connections) during the server startup routine. If <code>onStart()</code> returns an instance of <code>Amp\Promise</code> the Aerys server will not start accepting connections until the promise resolves. Likewise, if <code>onStart()</code> is a generator the server will resolve the generator result prior to completing its startup routine.</p>
+
+
 
 <h3 id="onopen">onOpen()</h3>
 
@@ -83,6 +86,8 @@ resolve the generator result prior to completing its startup routine.</p>
   
   <p>Like the <code>onStart()</code> method, <code>onStop()</code> implementations may return an <code>Amp\Promise</code> instance and the server will not shutdown until this promise resolves. If <code>onStop()</code> is a generator the server will fully resolve its result prior to shutting down.</p>
 </blockquote>
+
+
 
 <h2 id="yield-for-great-justice">Yield For Great Justice</h2>
 
@@ -583,6 +588,8 @@ onOpen() - after close command</code></pre>
 </tbody></table>
 
 
+
+
 <h4 id="handshake-commands">Handshake Commands</h4>
 
 <table>
@@ -619,7 +626,7 @@ onOpen() - after close command</code></pre>
 </tr>
 </thead>
 <tbody><tr>
-  <td>wait</td>
+  <td>pause</td>
   <td>Pause generator execution for the yielded number of milliseconds</td>
 </tr>
 <tr>
@@ -679,13 +686,11 @@ onOpen() - after close command</code></pre>
 
 <hr>
 
-
-
 <h2 id="table-of-contents">Table of Contents</h2>
 
 <p><div class="toc"><div class="toc">
 <ul>
-<li><a href="#websockets">Websockets</a><ul>
+<li><a href="#aerys-websockets">Aerys: Websockets</a><ul>
 <li><a href="#the-websocket-api">The Websocket API</a><ul>
 <li><a href="#onstart">onStart()</a></li>
 <li><a href="#onopen">onOpen()</a></li>

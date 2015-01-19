@@ -1,5 +1,5 @@
-Static Files
-=========
+Aerys: Static Files
+===============
 
 > **[Table of Contents](#table-of-contents)**
 

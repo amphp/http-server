@@ -1,5 +1,5 @@
-Websockets
-==========
+Aerys: Websockets
+===============
 
 > **[Table of Contents](#table-of-contents)**
 
@@ -21,8 +21,7 @@ The above methods expose the full range of websocket possibilities to your aerys
 
 ### onStart()
 
-Websocket applications may use `onStart()` to initialize resources (e.g. database/socket connections) during the server startup routine. If `onStart()` returns an instance of `Amp\Promise` the Aerys server will not start accepting connections until the promise resolves. Likewise, if `onStart()` is a generator the server will
-resolve the generator result prior to completing its startup routine.
+Websocket applications may use `onStart()` to initialize resources (e.g. database/socket connections) during the server startup routine. If `onStart()` returns an instance of `Amp\Promise` the Aerys server will not start accepting connections until the promise resolves. Likewise, if `onStart()` is a generator the server will resolve the generator result prior to completing its startup routine.
 
 ### onOpen()
 
@@ -450,7 +449,7 @@ Command       | Description
 
 Command       | Description
 ------------- | ----------------------
-| wait        | Pause generator execution for the yielded number of milliseconds |
+| pause       | Pause generator execution for the yielded number of milliseconds |
 | immediately | Resolve the yielded callback on the next iteration of the event loop |
 | once        | Resolve the yielded callback at array index 0 in array index 1 milliseconds |
 | repeat      | Repeatedly resolve the yielded callback at array index 0 every array index 1 milliseconds |
