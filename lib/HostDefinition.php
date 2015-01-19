@@ -17,6 +17,7 @@ class HostDefinition {
         'cafile'                => null,
         'capath'                => null,
         'single_ecdh_use'       => false,
+        'ecdh_curve'            => 'prime256v1',
         'honor_cipher_order'    => true,
         'disable_compression'   => true,
         'reneg_limit'           => 0,
