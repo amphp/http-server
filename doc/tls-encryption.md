@@ -103,7 +103,7 @@ Aerys utilizes the SNI TLS extension to serve multiple encrypted hosts on the sa
 ```php
 <?php
 
-namespace Aerys;
+use Aerys\Host;
 
 $domain1 = (new Host)
     ->setName('domain1.com')
