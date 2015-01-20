@@ -18,8 +18,8 @@ class WorkerWatcher {
     private $isReloading = false;
     private $lastWorkerId = 0;
 
-    public function __construct(Reactor $reactor = null) {
-        $this->reactor = $reactor ?: \Amp\getReactor();
+    public function __construct(Reactor $reactor) {
+        $this->reactor = $reactor;
     }
 
     public function watch($options) {
