@@ -7,7 +7,7 @@
  * constants to configure options that apply to all hosts on the server. For example:
  *
  *     <?php
- *     namespace Aerys;
+ *     use Aerys;
  *
  *     const MAX_CONNECTIONS = 1000;
  *     const MAX_REQUESTS = 100;
@@ -27,7 +27,7 @@
  * expose multiple HTTP virtual hosts. For example:
  *
  *     <?php
- *     namespace Aerys;
+ *     use Aerys;
  *
  *     // Global server option constants here
  *
@@ -71,7 +71,7 @@
  */
 
 
-namespace Aerys;
+use Aerys;
 
 /* --- Global server options here --------------------------------------------------------------- */
 
