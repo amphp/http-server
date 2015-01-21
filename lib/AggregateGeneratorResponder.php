@@ -131,7 +131,7 @@ class AggregateGeneratorResponder implements Responder {
                 });
             } elseif ($prom !== $this->promisor) {
                 $prom->succeed($previousResult);
-            } elseif ($this->isOutputStarted) {
+            } elseif ($this->isOutputStarted && !isset($this->buffer[0])) {
                 $this->finalizeWrite();
             } else {
                 $this->startOutput();
@@ -407,11 +407,12 @@ class AggregateGeneratorResponder implements Responder {
                 goto return_struct;
             }
 
-            if ("" !== (string) $current) {
+            if ("" !== $current) {
                 $chunk = $this->isChunking ? dechex(strlen($current)) . "\r\n{$current}\r\n" : $current;
                 $this->buffer .= $chunk;
-                $this->doWrite();
             }
+
+            $this->doWrite();
 
             goto return_struct;
         }
