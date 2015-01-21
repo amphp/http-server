@@ -131,10 +131,11 @@ class AggregateGeneratorResponder implements Responder {
                 });
             } elseif ($prom !== $this->promisor) {
                 $prom->succeed($previousResult);
-            } elseif ($this->isOutputStarted && !isset($this->buffer[0])) {
+            } elseif ($this->isOutputStarted) {
                 $this->finalizeWrite();
             } else {
                 $this->startOutput();
+                $this->finalizeWrite();
             }
         } catch (\Exception $error) {
             if ($prom === $this->promisor) {
