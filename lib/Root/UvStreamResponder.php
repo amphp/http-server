@@ -11,9 +11,10 @@ class UvStreamResponder implements Responder {
     private $headerLines;
     private $environment;
     private $buffer;
-    private $fsBytesRead;
+    private $fsBytesRead = 0;
+    private $isReadComplete;
 
-    private static $IO_GRANULARITY = 8192;
+    private static $IO_GRANULARITY = 32768;
 
     public function __construct(UvFileEntry $fileEntry, array $headerLines) {
         $this->uvLoop = $fileEntry->uvLoop;
@@ -52,6 +53,7 @@ class UvStreamResponder implements Responder {
 
         if ($request['REQUEST_METHOD'] === 'HEAD') {
             $this->fsBytesRead = $this->fileEntry->size;
+            $this->isReadComplete = true;
         } else {
             $this->bufferFromFileSystem();
         }
@@ -65,31 +67,37 @@ class UvStreamResponder implements Responder {
             $length = self::$IO_GRANULARITY;
         }
 
+        $offset = $this->fsBytesRead;
+
         uv_fs_read($this->uvLoop, $handle, $this->fsBytesRead, $length, [$this, 'onFsRead']);
     }
 
     private function onFsRead($handle, $nread, $buffer) {
+        $env = $this->environment;
+
         if ($nread < 0) {
-            $this->onFsReadError();
+            $msg = sprintf("uv_fs_read() error: [%s] %s", uv_err_name($nread), uv_strerror($nread));
+            $env->server->log($msg);
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->resumeSocketControl($env->requestId, $mustClose = true);
             return;
         }
 
-        $this->fsBytesRead += $nread;
-        $this->buffer .= $buffer;
-
-        if ($this->fileEntry->size - $this->fsBytesRead) {
-            $this->bufferFromFileSystem();
+        if ($nread > 0) {
+            $this->fsBytesRead += $nread;
+            $this->buffer .= $buffer;
+            $this->environment->reactor->enable($this->environment->writeWatcher);
         }
 
-        $this->write();
-    }
+        if (($this->fileEntry->size - $this->fsBytesRead) > 0) {
+            $this->bufferFromFileSystem();
+        } else {
+            $this->isReadComplete = true;
+        }
 
-    private function onFsReadError() {
-        $env = $this->environment;
-        $server = $env->server;
-        $env->reactor->disable($env->writeWatcher);
-        $server->log("File system read failure: {$this->fileEntry->path}");
-        $env->server->resumeSocketControl($env->requestId, $mustClose = true);
+        if (isset($this->buffer[0])) {
+            $this->write();
+        }
     }
 
     /**
@@ -125,7 +133,7 @@ class UvStreamResponder implements Responder {
         $this->buffer = '';
         $env = $this->environment;
         $env->reactor->disable($env->writeWatcher);
-        if ($this->fsBytesRead === $this->fileEntry->size) {
+        if ($this->isReadComplete) {
             $env->server->resumeSocketControl($env->requestId, $env->mustClose);
         }
     }
