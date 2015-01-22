@@ -37,7 +37,7 @@ class UvRoot extends Root {
 
     private function coalesceIndex($dirPath, array $indexes, callable $onComplete) {
         if (empty($indexes)) {
-            return $onComplete(null);
+            return $onComplete(null, null);
         }
 
         $indexPath = rtrim($dirPath, "/") . "/" . array_shift($indexes);
