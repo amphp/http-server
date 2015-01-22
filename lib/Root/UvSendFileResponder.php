@@ -10,10 +10,13 @@ class UvSendFileResponder implements Responder {
     private $headerLines;
     private $environment;
     private $buffer;
+    private $bodyBytesRemaining;
+    private $isSendingFile;
 
     public function __construct(UvFileEntry $fileEntry, array $headerLines) {
         $this->fileEntry = $fileEntry;
         $this->headerLines = $headerLines;
+        $this->bodyBytesRemaining = $fileEntry->size;
     }
 
     /**
@@ -61,11 +64,19 @@ class UvSendFileResponder implements Responder {
      */
     public function write() {
         $env = $this->environment;
+
+        if ($this->isSendingFile) {
+            $env->reactor->disable($env->writeWatcher);
+            $this->sendFile();
+            return;
+        }
+
         $bytesWritten = @fwrite($env->socket, $this->buffer);
 
         if ($bytesWritten === strlen($this->buffer)) {
             $this->buffer = null;
             $env->reactor->disable($env->writeWatcher);
+            $this->isSendingFile = true;
             $this->sendFile();
         } elseif ($bytesWritten === false) {
             $env->reactor->disable($env->writeWatcher);
@@ -86,22 +97,34 @@ class UvSendFileResponder implements Responder {
         }
 
         $uvLoop = $env->reactor->getUnderlyingLoop();
+        $socket = $env->socket;
         $handle = $this->fileEntry->handle;
-        $offset = 0;
-        $length = $this->fileEntry->size;
+        $offset = $this->fileEntry->size - $this->bodyBytesRemaining;
+        $length = $this->bodyBytesRemaining;
 
-        // We must set the stream to blocking, else uv_fs_sendfile may just send an incomplete response
-        // This is the alternative to manually watching if the stream is readable and using uv_fs_sendfile() when possible
-        // In this special case this is *not* a problem as libuv internally does the blocking sendfile() syscall in a separate thread
-        stream_set_blocking($env->socket, true);
-        uv_fs_sendfile($uvLoop, $env->socket, $handle, $offset, $length, [$this, 'onComplete']);
+        uv_fs_sendfile($uvLoop, $socket, $handle, $offset, $length, [$this, 'onComplete']);
     }
 
     private function onComplete($handle, $nwrite) {
         $env = $this->environment;
-        // We have explicitely set to blocking for uv_fs_sendfile, now reset to non blocking if we want to send any other data on this socket 
-        stream_set_blocking($env->socket, false);
-        $mustClose = ($nwrite < 0) ? true : $env->mustClose;
-        $env->server->resumeSocketControl($env->requestId, $mustClose);
+
+        if ($nwrite > 0) {
+            $this->bodyBytesRemaining -= $nwrite;
+        } elseif ($nwrite === -11) {
+            // Error code -11 is "resource temporarily unavailable" ... this simply
+            // means the write would block and we should try again later
+            $env->reactor->enable($env->writeWatcher);
+        } elseif ($nwrite < 0) {
+            // Error -- we're finished.
+            $env->reactor->disable($env->writeWatcher);
+            $env->server->resumeSocketControl($env->requestId, $mustClose = true);
+            return;
+        }
+
+        if ($this->bodyBytesRemaining <= 0) {
+            $env->server->resumeSocketControl($env->requestId, $env->mustClose);
+        } else {
+            $this->sendFile();
+        }
     }
 }

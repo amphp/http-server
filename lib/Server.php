@@ -167,6 +167,7 @@ class Server {
         );
 
         $client->pendingResponder = null;
+        $this->reactor->disable($client->writeWatcher);
 
         $nextRequestId = key($client->cycles);
         if (isset($client->pipeline[$nextRequestId])) {
