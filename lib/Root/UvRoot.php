@@ -16,7 +16,7 @@ class UvRoot extends Root {
 
     final protected function generateFileEntry($path, array $indexes, callable $onComplete) {
         uv_fs_open($this->uvLoop, $path, \UV::O_RDONLY, 0, function($handle) use ($path, $indexes, $onComplete) {
-            if ($handle === -1) {
+            if ($handle === -1 || $handle === false) {
                 return $onComplete(null, null);
             }
 
@@ -43,7 +43,7 @@ class UvRoot extends Root {
         $indexPath = rtrim($dirPath, "/") . "/" . array_shift($indexes);
 
         $onOpen = function($handle) use ($dirPath, $onComplete, $indexes, $indexPath) {
-            if ($handle === -1) {
+            if ($handle === -1 || $handle === false) {
                 // The path doesn't exist -- try the next index file
                 $this->coalesceIndex($dirPath, $indexes, $onComplete);
                 return;
