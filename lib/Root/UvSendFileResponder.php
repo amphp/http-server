@@ -86,16 +86,21 @@ class UvSendFileResponder implements Responder {
         }
 
         $uvLoop = $env->reactor->getUnderlyingLoop();
-        $socket = $env->socket;
         $handle = $this->fileEntry->handle;
         $offset = 0;
         $length = $this->fileEntry->size;
 
-        uv_fs_sendfile($uvLoop, $socket, $handle, $offset, $length, [$this, 'onComplete']);
+        // We must set the stream to blocking, else uv_fs_sendfile may just send an incomplete response
+        // This is the alternative to manually watching if the stream is readable and using uv_fs_sendfile() when possible
+        // In this special case this is *not* a problem as libuv internally does the blocking sendfile() syscall in a separate thread
+        stream_set_blocking($env->socket, true);
+        uv_fs_sendfile($uvLoop, $env->socket, $handle, $offset, $length, [$this, 'onComplete']);
     }
 
     private function onComplete($handle, $nwrite) {
         $env = $this->environment;
+        // We have explicitely set to blocking for uv_fs_sendfile, now reset to non blocking if we want to send any other data on this socket 
+        stream_set_blocking($env->socket, false);
         $mustClose = ($nwrite < 0) ? true : $env->mustClose;
         $env->server->resumeSocketControl($env->requestId, $mustClose);
     }
