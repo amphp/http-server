@@ -567,7 +567,16 @@ class Server {
         $onReadable = function() use ($client) { $this->readClientSocketData($client); };
         $client->readWatcher = $this->reactor->onReadable($socket, $onReadable);
 
-        $onWritable = function() use ($client) { $client->pendingResponder->write(); };
+        $onWritable = function() use ($client) {
+            // @TODO: This conditional shouldn't be necessary. Figure out why
+            // the write watcher is still active when it shouldn't be in the
+            // UvSendfile responder.
+            if ($client->pendingResponder) {
+                $client->pendingResponder->write();
+            } else {
+                $this->reactor->disable($client->writeWatcher);
+            }
+        };
         $client->writeWatcher = $this->reactor->onWritable($socket, $onWritable, $enableNow = FALSE);
 
         $this->clients[$socketId] = $client;
