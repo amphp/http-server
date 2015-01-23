@@ -12,10 +12,8 @@ class UvResponderFactory extends ResponderFactory {
                 : new UvStreamRangeResponder($fileEntry, $headerLines, $range);
         } elseif ($isBuffered) {
             return new BufferResponder($fileEntry, $headerLines);
-        } elseif ($request['HTTPS']) {
-            return new UvStreamResponder($fileEntry, $headerLines);
         } else {
-            return new UvSendFileResponder($fileEntry, $headerLines);
+            return new UvStreamResponder($fileEntry, $headerLines);
         }
     }
 }
