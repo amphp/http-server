@@ -12,8 +12,15 @@ class UvResponderFactory extends ResponderFactory {
                 : new UvStreamRangeResponder($fileEntry, $headerLines, $range);
         } elseif ($isBuffered) {
             return new BufferResponder($fileEntry, $headerLines);
-        } else {
+        } elseif ($request['HTTPS']) {
+            // We have to run data through userland so our stream
+            // wrapper can encrypt it.
             return new UvStreamResponder($fileEntry, $headerLines);
+        } else {
+            // If the transfer doesn't require encryption we can
+            // avoid bringing the data into userland altogether and
+            // use sendfile().
+            return new UvSendfileResponder($fileEntry, $headerLines);
         }
     }
 }

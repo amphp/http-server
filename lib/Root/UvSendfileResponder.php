@@ -5,7 +5,7 @@ namespace Aerys\Root;
 use Aerys\Responder;
 use Aerys\ResponderEnvironment;
 
-class UvSendFileResponder implements Responder {
+class UvSendfileResponder implements Responder {
     private $fileEntry;
     private $headerLines;
     private $environment;
@@ -114,6 +114,7 @@ class UvSendFileResponder implements Responder {
             // Error code -11 is "resource temporarily unavailable" ... this simply
             // means the write would block and we should try again later
             $env->reactor->enable($env->writeWatcher);
+            return;
         } elseif ($nwrite < 0) {
             // Error -- we're finished.
             $env->reactor->disable($env->writeWatcher);
