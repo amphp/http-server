@@ -45,9 +45,16 @@ class Bootstrapper {
      * @return Watcher
      */
     public function bootWatcher(array $options) {
-        $this->bootServer($options);
-        $watcherClass = $options['debug'] ? 'Aerys\DebugWatcher' : 'Aerys\WorkerWatcher';
-        $watcher = $this->injector->make($watcherClass);
+        if ($options['debug']) {
+            // The debug watcher doesn't spawn any worker processes so we
+            // need to go ahead and boot up a running server now.
+            $this->bootServer($options);
+            $watcher = $this->injector->make('Aerys\DebugWatcher');
+        } else {
+            // Worker processes are in charge of booting up their own
+            // servers. DO NOT boot a server here or cthulu will be summoned.
+            $watcher = $this->injector->make('Aerys\WorkerWatcher');
+        }
 
         return $watcher;
     }
