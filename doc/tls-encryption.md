@@ -69,7 +69,7 @@ Option Key    | Description        | Default
 | `"cafile"`  | If `"verify_peer"` is true, this directive specifies the trusted CA file to use for peer verification.  | `null` |
 | `"capath"`  | If `"verify_peer"` is true, this directive specifies a directory in which trusted CA files may be found for use in peer verification. | `null` |
 | `"ciphers"` | The list of allowed ciphers to negotiate during the crypto handshake. Aerys uses PHP's default stream cipher list by default. These ciphers may be viewed by executing this code snippet: `var_dump(OPENSSL_DEFAULT_STREAM_CIPHERS);` | `null` |
-| `"crypto_method"` | Bitwise flags specifying the protocols available for negotiation during the crypto handshake. The default protocols are `TLSv1`, `TLSv1.1` and `TLSv1.2`. | [reference](#crypto-method-flag-reference) |
+| `"crypto_method"` | A list of string flags specifying the protocols available for negotiation during the crypto handshake. The default protocols are `TLSv1`, `TLSv1.1` and `TLSv1.2`. | [reference](#crypto-method-flag-reference) |
 | `"disable_compression"` | Set to `true` to disable TLS protocol compression | `true` |
 | `"honor_cipher_order"` | Prefer the ciphers in the order specified by the server during the TLS handshake. | `true` |
 | `"passphrase"` | If your private key requires a passphrase you need to specify it here. IMPORTANT: if you store your passphrase here be very careful about who is able to  view your config file. | `null` |
@@ -83,18 +83,41 @@ Option Key    | Description        | Default
 
 ### Crypto Method Flag Reference
 
-By default Aerys will negotiate the best available TLS protocol supported by the connecting client. The encryption protocols a host supports can be customized by specifying bitwise flags consisting of the following constants in the `"crypto_method"` TLS option array.
+By default Aerys will negotiate the best available TLS protocol supported by the connecting client. The encryption protocols a host supports can be customized by specifying either a string or an array consisting of the following flags in the `"crypto_method"` TLS option array.
 
 Method Flag   | Description
 ------------- | -----------
-`STREAM_CRYPTO_METHOD_ANY_SERVER` | Allow any *SSL* or *TLS* protocol (not recommended)
-`STREAM_CRYPTO_METHOD_TLS_SERVER` | Allow any *TLS* protocol (default)
-`STREAM_CRYPTO_METHOD_TLSv1_0_SERVER` | Allow TLSv1
-`STREAM_CRYPTO_METHOD_TLSv1_1_SERVER` | Allow TLSv1.1
-`STREAM_CRYPTO_METHOD_TLSv1_2_SERVER` | Allow TLSv1.2
-`STREAM_CRYPTO_METHOD_SSLv2_SERVER` | Allow SSLv2 (not recommended)
-`STREAM_CRYPTO_METHOD_SSLv3_SERVER` | Allow SSLv3 (not recommended)
-`STREAM_CRYPTO_METHOD_SSLv23_SERVER` | Allow SSLv2 or SSLv3 (not recommended)
+`tls` | Allow any *TLS* protocol (default)
+`tls1`, `tlsv1`, `tlsv1.0` | Allow TLSv1
+`tls1.1`, `tlsv1.1` | Allow TLSv1.1
+`tls1.2`, `tlsv1.2` | Allow TLSv1.1
+`ssl2`, `sslv2` | Allow SSLv2 (not recommended)
+`ssl3`, `sslv3` | Allow SSLv3 (not recommended)
+`sslv23` | Allow SSLv2 and SSLv3 (not recommended)
+`any` | Allow *any* protocol (not recommended)
+
+
+**Example**
+
+```php
+<?php // The string and array methods shown here are equivalent
+
+// defining crypto protocols in string form (space delimited)
+$cryptoMethods = "tlsv1.1 tls1.2"
+
+// defining allowed crypto protocols in array form
+$cryptoMethods = ["tls1.1", "tlsv1.2"];
+
+$host = new Aerys\Host;
+$host->setName('mysite.com')
+$host->setCrypto('/path/to/mysite.pem', $options = [
+    'crypto_method' => $cryptoMethods
+]);
+```
+
+> **NOTE**
+> 
+> Crypto method strings are case-insensitive so there's no need to worry about capitalization
 
 ## Encrypting Multiple Hosts
 
@@ -103,7 +126,7 @@ Aerys utilizes the SNI TLS extension to serve multiple encrypted hosts on the sa
 ```php
 <?php
 
-use Aerys\Host;
+namespace Aerys;
 
 $domain1 = (new Host)
     ->setName('domain1.com')

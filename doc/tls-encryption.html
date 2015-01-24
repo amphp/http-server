@@ -129,7 +129,7 @@
 </tr>
 <tr>
   <td><code>"crypto_method"</code></td>
-  <td>Bitwise flags specifying the protocols available for negotiation during the crypto handshake. The default protocols are <code>TLSv1</code>, <code>TLSv1.1</code> and <code>TLSv1.2</code>.</td>
+  <td>A list of string flags specifying the protocols available for negotiation during the crypto handshake. The default protocols are <code>TLSv1</code>, <code>TLSv1.1</code> and <code>TLSv1.2</code>.</td>
   <td><a href="#crypto-method-flag-reference">reference</a></td>
 </tr>
 <tr>
@@ -180,11 +180,9 @@
 </tbody></table>
 
 
-
-
 <h3 id="crypto-method-flag-reference">Crypto Method Flag Reference</h3>
 
-<p>By default Aerys will negotiate the best available TLS protocol supported by the connecting client. The encryption protocols a host supports can be customized by specifying bitwise flags consisting of the following constants in the <code>"crypto_method"</code> TLS option array.</p>
+<p>By default Aerys will negotiate the best available TLS protocol supported by the connecting client. The encryption protocols a host supports can be customized by specifying either a string or an array consisting of the following flags in the <code>"crypto_method"</code> TLS option array.</p>
 
 <table>
 <thead>
@@ -194,41 +192,61 @@
 </tr>
 </thead>
 <tbody><tr>
-  <td><code>STREAM_CRYPTO_METHOD_ANY_SERVER</code></td>
-  <td>Allow any <em>SSL</em> or <em>TLS</em> protocol (not recommended)</td>
-</tr>
-<tr>
-  <td><code>STREAM_CRYPTO_METHOD_TLS_SERVER</code></td>
+  <td><code>tls</code></td>
   <td>Allow any <em>TLS</em> protocol (default)</td>
 </tr>
 <tr>
-  <td><code>STREAM_CRYPTO_METHOD_TLSv1_0_SERVER</code></td>
+  <td><code>tls1</code>, <code>tlsv1</code>, <code>tlsv1.0</code></td>
   <td>Allow TLSv1</td>
 </tr>
 <tr>
-  <td><code>STREAM_CRYPTO_METHOD_TLSv1_1_SERVER</code></td>
+  <td><code>tls1.1</code>, <code>tlsv1.1</code></td>
   <td>Allow TLSv1.1</td>
 </tr>
 <tr>
-  <td><code>STREAM_CRYPTO_METHOD_TLSv1_2_SERVER</code></td>
-  <td>Allow TLSv1.2</td>
+  <td><code>tls1.2</code>, <code>tlsv1.2</code></td>
+  <td>Allow TLSv1.1</td>
 </tr>
 <tr>
-  <td><code>STREAM_CRYPTO_METHOD_SSLv2_SERVER</code></td>
+  <td><code>ssl2</code>, <code>sslv2</code></td>
   <td>Allow SSLv2 (not recommended)</td>
 </tr>
 <tr>
-  <td><code>STREAM_CRYPTO_METHOD_SSLv3_SERVER</code></td>
+  <td><code>ssl3</code>, <code>sslv3</code></td>
   <td>Allow SSLv3 (not recommended)</td>
 </tr>
 <tr>
-  <td><code>STREAM_CRYPTO_METHOD_SSLv23_SERVER</code></td>
-  <td>Allow SSLv2 or SSLv3 (not recommended)</td>
+  <td><code>sslv23</code></td>
+  <td>Allow SSLv2 and SSLv3 (not recommended)</td>
+</tr>
+<tr>
+  <td><code>any</code></td>
+  <td>Allow <em>any</em> protocol (not recommended)</td>
 </tr>
 </tbody></table>
 
 
+<p><strong>Example</strong></p>
 
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-preprocessor">&lt;?php</span> <span class="hljs-comment">// The string and array methods shown here are equivalent</span>
+
+<span class="hljs-comment">// defining crypto protocols in string form (space delimited)</span>
+<span class="hljs-variable">$cryptoMethods</span> = <span class="hljs-string">"tlsv1.1 tls1.2"</span>
+
+<span class="hljs-comment">// defining allowed crypto protocols in array form</span>
+<span class="hljs-variable">$cryptoMethods</span> = [<span class="hljs-string">"tls1.1"</span>, <span class="hljs-string">"tlsv1.2"</span>];
+
+<span class="hljs-variable">$host</span> = <span class="hljs-keyword">new</span> Aerys\Host;
+<span class="hljs-variable">$host</span>-&gt;setName(<span class="hljs-string">'mysite.com'</span>)
+<span class="hljs-variable">$host</span>-&gt;setCrypto(<span class="hljs-string">'/path/to/mysite.pem'</span>, <span class="hljs-variable">$options</span> = [
+    <span class="hljs-string">'crypto_method'</span> =&gt; <span class="hljs-variable">$cryptoMethods</span>
+]);</code></pre>
+
+<blockquote>
+  <p><strong>NOTE</strong></p>
+  
+  <p>Crypto method strings are case-insensitive so there’s no need to worry about capitalization</p>
+</blockquote>
 
 <h2 id="encrypting-multiple-hosts">Encrypting Multiple Hosts</h2>
 
@@ -291,6 +309,8 @@
 
 <p><strong>A:</strong> This is accomplished by setting <code>"auto_redirect" =&gt; true</code> in your crypto <code>$options</code> array as demonstrated here:</p>
 
+
+
 <pre class="prettyprint"><code class="language-php hljs "><span class="hljs-variable">$mySite</span>-&gt;setCrypto(<span class="hljs-string">'/path/to/mydomain.pem'</span>, <span class="hljs-variable">$options</span> = [
     <span class="hljs-string">"auto_redirect"</span> =&gt; <span class="hljs-keyword">true</span>
 ]);</code></pre>
@@ -301,9 +321,13 @@
 
 <p><strong>A:</strong> Yes! Simply specify the appropriate cert path for each encrypted host you wish to expose. It’s perfectly valid to reuse the same path for multiple hosts.</p>
 
+
+
 <h3 id="q-how-do-i-customize-which-ssltls-protocols-my-encrypted-host-supports"><strong>Q:</strong> How do I customize which SSL/TLS protocols my encrypted host supports?</h3>
 
 <p><strong>A:</strong> By default all TLS protocols (1, 1.1, 1.2) are supported. Users wishing to customize the allowed protocols may do so using bitwise crypto method flags as follows:</p>
+
+
 
 <pre class="prettyprint"><code class="language-php hljs "><span class="hljs-preprocessor">&lt;?php</span> <span class="hljs-comment">// Only allow TLSv1.1 and TLSv1.2</span>
 <span class="hljs-variable">$cryptoMethods</span> = STREAM_CRYPTO_METHOD_TLSv1_1_SERVER | STREAM_CRYPTO_METHOD_TLSv1_2_SERVER;
@@ -327,6 +351,8 @@
 </ol>
 
 <p>For added security at the cost of additional computation time applications may set the <code>"single_ecdh_use" =&gt; true</code> TLS option to avoid reusing the same ephemeral key for multiple client sessions, though this isn’t strictly necessary.</p>
+
+
 
 <h4 id="generating-an-ec-key">Generating an EC Key</h4>
 

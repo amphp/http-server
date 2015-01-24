@@ -25,6 +25,23 @@ class HostDefinition {
         'crypto_method'         => STREAM_CRYPTO_METHOD_TLS_SERVER,
     ];
 
+    private static $cryptoMethodMap = [
+        'tls'       => STREAM_CRYPTO_METHOD_TLS_SERVER,
+        'tls1'      => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
+        'tlsv1'     => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
+        'tlsv1.0'   => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
+        'tls1.1'    => STREAM_CRYPTO_METHOD_TLSv1_1_SERVER,
+        'tlsv1.1'   => STREAM_CRYPTO_METHOD_TLSv1_1_SERVER,
+        'tls1.2'    => STREAM_CRYPTO_METHOD_TLSv1_2_SERVER,
+        'tlsv1.2'   => STREAM_CRYPTO_METHOD_TLSv1_2_SERVER,
+        'ssl2'      => STREAM_CRYPTO_METHOD_SSLv2_SERVER,
+        'sslv2'     => STREAM_CRYPTO_METHOD_SSLv2_SERVER,
+        'ssl3'      => STREAM_CRYPTO_METHOD_SSLv3_SERVER,
+        'sslv3'     => STREAM_CRYPTO_METHOD_SSLv3_SERVER,
+        'sslv23'    => STREAM_CRYPTO_METHOD_SSLv23_SERVER,
+        'any'       => STREAM_CRYPTO_METHOD_ANY_SERVER,
+    ];
+
     public function __construct($address, $port, $name, callable $application) {
         $this->setAddress($address);
         $this->setPort($port);
@@ -139,7 +156,7 @@ class HostDefinition {
 
         return (@inet_pton($this->address) === @inet_pton($address));
     }
-    
+
     /**
      * Does this host have a name?
      *
@@ -166,10 +183,45 @@ class HostDefinition {
      * @return void
      */
     public function setCrypto(array $tls) {
+        if (isset($tls['crypto_method'])) {
+            $tls = $this->normalizeTlsCryptoMethod($tls);
+        }
+
         $tls = array_merge($this->tlsDefaults, $tls);
         $tls = array_filter($tls, function($value) { return isset($value); });
 
         $this->tlsContextArr = $tls;
+    }
+
+    private function normalizeTlsCryptoMethod(array $tls) {
+        $cryptoMethod = $tls['crypto_method'];
+
+        if (is_string($cryptoMethod)) {
+            $cryptoMethodArray = explode(' ', strtolower($cryptoMethod));
+        } elseif (is_array($cryptoMethod)) {
+            $cryptoMethodArray =& $cryptoMethod;
+        } else {
+            throw new \DomainException(
+                sprintf('Invalid crypto method type: %s. String or array required', gettype($cryptoMethod))
+            );
+        }
+
+        $bitmask = 0;
+        foreach ($cryptoMethodArray as $method) {
+            if (isset(self::$cryptoMethodMap[$method])) {
+                $bitmask |= self::$cryptoMethodMap[$method];
+            }
+        }
+
+        if (empty($bitmask)) {
+            throw new \DomainException(
+                'Invalid crypto method value: no valid methods found'
+            );
+        }
+
+        $tls['crypto_method'] = $bitmask;
+
+        return $tls;
     }
 
     /**
