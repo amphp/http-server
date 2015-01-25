@@ -1008,7 +1008,7 @@ class Endpoint implements ServerObserver {
             if ($ps->isMasked) {
                 // This is memory hungry but it's ~70x faster than iterating byte-by-byte
                 // over the masked string. Deal with it; manual iteration is untenable.
-                $payloadReference ^= str_repeat($ps->maskingKey, ($ps->frameLength + 1) >> 2);
+                $payloadReference ^= str_repeat($ps->maskingKey, ($ps->frameLength + 3) >> 2);
             }
 
             if ($ps->opcode === Frame::OP_TEXT
