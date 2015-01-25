@@ -347,6 +347,9 @@ class AggregateGeneratorResponder implements Responder {
                 ));
             } else {
                 $this->status = $status;
+                if ($this->reason === '' && defined("\\Aerys\\Reason::HTTP_{$status}")) {
+                    $this->reason = constant("\\Aerys\\Reason::HTTP_{$status}");
+                }
                 $promise = new Success($status);
             }
 
