@@ -971,11 +971,9 @@ class Endpoint implements ServerObserver {
 
             if (!$ps->frameLength) {
                 goto frame_complete;
-            } elseif ($ps->isControlFrame) {
-                $ps->state = $ps->isControlFrame ? ParseState::CONTROL_PAYLOAD : ParseState::PAYLOAD;
-                goto payload;
             }
-
+            
+            $ps->state = $ps->isControlFrame ? ParseState::CONTROL_PAYLOAD : ParseState::PAYLOAD;
             goto payload;
         }
 
@@ -984,27 +982,6 @@ class Endpoint implements ServerObserver {
                 ? $ps->frameLength - $ps->frameBytesRecd
                 : $ps->bufferSize;
 
-            $data = substr($ps->buffer, 0, $dataLen);
-            $ps->frameBytesRecd += $dataLen;
-
-            if ($ps->isMasked) {
-                // This is memory hungry but it's ~70x faster than iterating byte-by-byte
-                // over the masked string. Deal with it; manual iteration is untenable.
-                $data ^= str_pad('', $dataLen, $ps->maskingKey, STR_PAD_RIGHT);
-            }
-
-            if ($ps->opcode === Frame::OP_TEXT
-                && $this->validateUtf8
-                && !preg_match('//u', $data)
-            ) {
-                $resultCode = ParseState::PARSE_ERR_SYNTAX;
-                $errorMsg = 'Invalid TEXT data; UTF-8 required';
-                goto error;
-            }
-
-            $ps->buffer = substr($ps->buffer, $dataLen);
-            $ps->bufferSize -= $dataLen;
-
             if ($ps->state === ParseState::CONTROL_PAYLOAD) {
                 $payloadReference =& $this->controlPayload;
             } else {
@@ -1012,7 +989,11 @@ class Endpoint implements ServerObserver {
                 $ps->dataMsgBytesRecd += $dataLen;
             }
 
-            $payloadReference .= $data;
+            $payloadReference .= substr($ps->buffer, 0, $dataLen);
+            $ps->frameBytesRecd += $dataLen;
+
+            $ps->buffer = substr($ps->buffer, $dataLen);
+            $ps->bufferSize -= $dataLen;
 
             if ($ps->frameBytesRecd == $ps->frameLength) {
                 goto frame_complete;
@@ -1023,6 +1004,22 @@ class Endpoint implements ServerObserver {
 
         frame_complete: {
             $payloadReference = isset($payloadReference) ? $payloadReference : '';
+            
+            if ($ps->isMasked) {
+                // This is memory hungry but it's ~70x faster than iterating byte-by-byte
+                // over the masked string. Deal with it; manual iteration is untenable.
+                $payloadReference ^= str_repeat($ps->maskingKey, ($ps->frameLength + 1) >> 2);
+            }
+
+            if ($ps->opcode === Frame::OP_TEXT
+                && $this->validateUtf8
+                && !preg_match('//u', $payloadReference)
+            ) {
+                $resultCode = ParseState::PARSE_ERR_SYNTAX;
+                $errorMsg = 'Invalid TEXT data; UTF-8 required';
+                goto error;
+            }
+
             $frameStruct = [ParseState::PARSE_FRAME, $payloadReference, $ps->opcode, $ps->fin];
             $payloadReference = '';
 
