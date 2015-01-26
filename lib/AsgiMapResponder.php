@@ -30,10 +30,10 @@ class AsgiMapResponder implements Responder {
         $protocol = $request['SERVER_PROTOCOL'];
 
         $asgiResponse = $this->asgiResponse;
-        $status = isset($asgiResponse['status']) ? $asgiResponse['status'] : 200;
+        $status = isset($asgiResponse['status']) ? $asgiResponse['status'] : HTTP_STATUS["OK"];
         $reason = isset($asgiResponse['reason'])
             ? $asgiResponse['reason']
-            : (isset(HTTP_REASON[$status]) ? HTTP_REASON[$status] : '');
+            : (HTTP_REASON[$status] ?: '');
         $header = isset($asgiResponse['header']) ? $asgiResponse['header'] : '';
         $body = isset($asgiResponse['body']) ? $asgiResponse['body'] : '';
 

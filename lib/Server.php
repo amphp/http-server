@@ -896,7 +896,7 @@ class Server {
 
         $display = $isDebugEnabled ? "<pre>{$error}</pre>" : '<p>Something went terribly wrong</p>';
         $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
-        $reason = 'Internal Server Error';
+        $reason = HTTP_REASON[$status];
         $body = "<html><body><h1>{$status} {$reason}</h1><p>{$display}</p></body></html>";
 
         return $this->responderFactory->make([

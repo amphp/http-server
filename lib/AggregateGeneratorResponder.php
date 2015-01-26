@@ -23,7 +23,7 @@ class AggregateGeneratorResponder implements Responder {
     private $isChunking;
     private $isFinalWrite;
     private $buffer = '';
-    private $status = 200;
+    private $status = HTTP_STATUS["OK"];
     private $reason;
     private $headers = [];
 
@@ -479,7 +479,7 @@ class AggregateGeneratorResponder implements Responder {
         $status = $this->status;
         $reason = isset($this->reason)
             ? $this->reason
-            : (isset(HTTP_REASON[$status]) ? HTTP_REASON[$status] : '');
+            : (HTTP_REASON[$status] ?: '');
 
         if ($status < 200) {
             $env->mustClose = false;

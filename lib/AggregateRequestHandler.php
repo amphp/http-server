@@ -10,7 +10,7 @@ class AggregateRequestHandler implements ServerObserver {
     private $debug;
     private $notFoundResponse = [
         'status' => HTTP_STATUS["NOT_FOUND"],
-        'reason' => HTTP_REASON[404],
+        'reason' => HTTP_REASON[HTTP_STATUS["NOT_FOUND"]],
         'body'   => '<html><body><h1>404 Not Found</h1></body></html>',
     ];
 
@@ -74,7 +74,7 @@ class AggregateRequestHandler implements ServerObserver {
     }
 
     /**
-     * Create a 500 error Responder (and adhere to server debug settings)
+     * Create a internal server error Responder (and adhere to server debug settings)
      *
      * @param \Exception $error
      * @return AsgiMapResponder
@@ -84,7 +84,7 @@ class AggregateRequestHandler implements ServerObserver {
         $entity = "<html><body><h1>500 Internal Server Error</h1><hr/><p>{$msg}</p></body></html>";
 
         return $this->asgiResponderFactory->make([
-            'status' => 500,
+            'status' => HTTP_STATUS["INTERNAL_SERVER_ERROR"],
             'body' => $entity
         ]);
     }
