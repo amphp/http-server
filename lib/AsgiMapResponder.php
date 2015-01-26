@@ -33,7 +33,7 @@ class AsgiMapResponder implements Responder {
         $status = isset($asgiResponse['status']) ? $asgiResponse['status'] : HTTP_STATUS["OK"];
         $reason = isset($asgiResponse['reason'])
             ? $asgiResponse['reason']
-            : (HTTP_REASON[$status] ?: '');
+            : (@HTTP_REASON[$status] ?: '');
         $header = isset($asgiResponse['header']) ? $asgiResponse['header'] : '';
         $body = isset($asgiResponse['body']) ? $asgiResponse['body'] : '';
 

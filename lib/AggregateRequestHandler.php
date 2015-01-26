@@ -74,7 +74,7 @@ class AggregateRequestHandler implements ServerObserver {
     }
 
     /**
-     * Create a internal server error Responder (and adhere to server debug settings)
+     * Create an internal server error Responder (and adhere to server debug settings)
      *
      * @param \Exception $error
      * @return AsgiMapResponder

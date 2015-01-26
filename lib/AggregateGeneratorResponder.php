@@ -479,7 +479,7 @@ class AggregateGeneratorResponder implements Responder {
         $status = $this->status;
         $reason = isset($this->reason)
             ? $this->reason
-            : (HTTP_REASON[$status] ?: '');
+            : (@HTTP_REASON[$status] ?: '');
 
         if ($status < 200) {
             $env->mustClose = false;
