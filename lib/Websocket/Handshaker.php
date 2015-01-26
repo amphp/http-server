@@ -3,6 +3,7 @@
 namespace Aerys\Websocket;
 
 use Aerys\Status;
+use const Aerys\HTTP_REASON;
 
 class Handshaker {
     private $endpoints;
