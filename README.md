@@ -32,7 +32,7 @@ and server-wide option settings. Here's an example:
 ```php
 <?php
 
-namespace Aerys;
+use Aerys;
 
 // --- global server options -----------------------------------------------------------------------
 

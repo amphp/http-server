@@ -10,7 +10,7 @@
  * Once started, load http://127.0.0.1:1337/ or http://localhost:1337/ in your browser.
  */
 
-namespace Aerys;
+use Aerys;
 
 require_once __DIR__ . '/support/006_includes.php';
 
