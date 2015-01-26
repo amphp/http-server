@@ -3,18 +3,18 @@
 namespace Aerys;
 
 class AsgiMapResponder implements Responder {
-    private $asgiResponseMap;
+    private $asgiResponse;
     private $environment;
     private $buffer = '';
 
     /**
-     * We specifically avoid typehinting the $asgiResponseMap parameter as an array here to allow
+     * We specifically avoid typehinting the $asgiResponse parameter as an array here to allow
      * for ArrayAccess instances.
      *
-     * @param array|ArrayAccess $asgiResponseMap
+     * @param array|ArrayAccess $asgiResponse
      */
-    public function __construct($asgiResponseMap) {
-        $this->asgiResponseMap = $asgiResponseMap;
+    public function __construct($asgiResponse) {
+        $this->asgiResponse = $asgiResponse;
     }
 
     /**
@@ -29,22 +29,21 @@ class AsgiMapResponder implements Responder {
         $request = $env->request;
         $protocol = $request['SERVER_PROTOCOL'];
 
-        $asgiResponseMap = $this->asgiResponseMap;
-        $status = isset($asgiResponseMap['status']) ? $asgiResponseMap['status'] : 200;
-        $reason = isset($asgiResponseMap['reason']) ? $asgiResponseMap['reason'] : '';
-        $header = isset($asgiResponseMap['header']) ? $asgiResponseMap['header'] : '';
-        $body = isset($asgiResponseMap['body']) ? $asgiResponseMap['body'] : '';
+        $asgiResponse = $this->asgiResponse;
+        $status = isset($asgiResponse['status']) ? $asgiResponse['status'] : 200;
+        $reason = isset($asgiResponse['reason'])
+            ? $asgiResponse['reason']
+            : (isset(HTTP_REASON[$status]) ? HTTP_REASON[$status] : '');
+        $header = isset($asgiResponse['header']) ? $asgiResponse['header'] : '';
+        $body = isset($asgiResponse['body']) ? $asgiResponse['body'] : '';
 
         if ($header && is_array($header)) {
             $header = implode("\r\n", $header);
         }
-        if ($reason) {
-            $reason = " {$reason}"; // leading space is important!
-        }
 
         if ($status < 200) {
             $env->mustClose = false;
-            $this->buffer = "HTTP/{$protocol} {$status}{$reason}\r\n\r\n";
+            $this->buffer = "HTTP/{$protocol} {$status} {$reason}\r\n\r\n";
             return;
         }
 
@@ -89,7 +88,7 @@ class AsgiMapResponder implements Responder {
             $body = '';
         }
 
-        $this->buffer = "HTTP/{$protocol} {$status}{$reason}\r\n{$header}\r\n\r\n{$body}";
+        $this->buffer = "HTTP/{$protocol} {$status} {$reason}\r\n{$header}\r\n\r\n{$body}";
     }
 
     /**

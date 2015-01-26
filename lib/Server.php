@@ -414,7 +414,7 @@ class Server {
         $unassignedRequestIds = array_keys(array_diff_key($client->cycles, $client->pipeline));
         foreach ($unassignedRequestIds as $requestId) {
             $responder = $this->responderFactory->make([
-                'status' => Status::SERVICE_UNAVAILABLE,
+                'status' => HTTP_STATUS["SERVICE_UNAVAILABLE"],
                 'header' => ['Connection: close'],
                 'body'   => '<html><body><h1>503 Service Unavailable</h1></body></html>'
             ]);
@@ -626,7 +626,7 @@ class Server {
 
             $display = $this->debug ? "<pre>{$e}</pre>" : '<p>Malformed HTTP request</p>';
             $responder = $this->responderFactory->make([
-                'status' => $e->getCode() ?: Status::BAD_REQUEST,
+                'status' => $e->getCode() ?: HTTP_STATUS["BAD_REQUEST"],
                 'header' => ['Connection: close'],
                 'body'   => sprintf("<html><body>%s</body></html>", $display)
             ]);
@@ -647,7 +647,7 @@ class Server {
 
         if ($requestCycle->expectsContinue && empty($responder)) {
             $responder = $this->responderFactory->make([
-                'status' => Status::CONTINUE_100,
+                'status' => HTTP_STATUS["CONTINUE"],
                 'body' => ''
             ]);
         }
@@ -776,13 +776,13 @@ class Server {
 
         if (!$isValidHost) {
             $responder = $this->responderFactory->make([
-                'status' => Status::BAD_REQUEST,
+                'status' => HTTP_STATUS["BAD_REQUEST"],
                 'reason' => 'Bad Request: Invalid Host',
                 'body'   => '<html><body><h1>400 Bad Request: Invalid Host</h1></body></html>',
             ]);
         } elseif (!isset($this->allowedMethods[$__method])) {
             $responder = $this->responderFactory->make([
-                'status' => Status::METHOD_NOT_ALLOWED,
+                'status' => HTTP_STATUS["METHOD_NOT_ALLOWED"],
                 'header' => [
                     'Connection: close',
                     'Allow: ' . implode(',', array_keys($this->allowedMethods)),
@@ -793,18 +793,18 @@ class Server {
             // @TODO Max-Forwards needs some additional server flag because that check shouldn't
             // be used unless the server is acting as a reverse proxy
             $responder = $this->responderFactory->make([
-                'status' => Status::OK,
+                'status' => HTTP_STATUS["OK"],
                 'header' => ['Content-Type: message/http'],
                 'body'   => $__trace,
             ]);
         } elseif ($__method === 'OPTIONS' && $requestCycle->uri === '*') {
             $responder = $this->responderFactory->make([
-                'status' => Status::OK,
+                'status' => HTTP_STATUS["OK"],
                 'header' => ['Allow: ' . implode(',', array_keys($this->allowedMethods))],
             ]);
         } elseif ($this->requireBodyLength && $__headersOnly && empty($requestCycle->headers['CONTENT-LENGTH'])) {
             $responder = $this->responderFactory->make([
-                'status' => Status::LENGTH_REQUIRED,
+                'status' => HTTP_STATUS["LENGTH_REQUIRED"],
                 'reason' => 'Content Length Required',
                 'header' => ['Connection: close'],
             ]);
@@ -895,8 +895,8 @@ class Server {
         }
 
         $display = $isDebugEnabled ? "<pre>{$error}</pre>" : '<p>Something went terribly wrong</p>';
-        $status = Status::INTERNAL_SERVER_ERROR;
-        $reason = Reason::HTTP_500;
+        $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
+        $reason = 'Internal Server Error';
         $body = "<html><body><h1>{$status} {$reason}</h1><p>{$display}</p></body></html>";
 
         return $this->responderFactory->make([

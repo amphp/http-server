@@ -50,45 +50,45 @@ class Handshaker {
             $endpoint = $this->endpoints[$uriPath];
         } else {
             return [
-                'status' => Status::NOT_FOUND
+                'status' => HTTP_STATUS["NOT_FOUND"]
             ];
         }
 
         if ($request['REQUEST_METHOD'] != 'GET') {
             return [
-                'status' => Status::METHOD_NOT_ALLOWED
+                'status' => HTTP_STATUS["METHOD_NOT_ALLOWED"]
             ];
         }
 
         if ($request['SERVER_PROTOCOL'] < 1.1) {
             return [
-                'status' => Status::HTTP_VERSION_NOT_SUPPORTED
+                'status' => HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]
             ];
         }
 
         if (empty($request['HTTP_UPGRADE']) || strcasecmp($request['HTTP_UPGRADE'], 'websocket') !== 0) {
             return [
-                'status' => Status::UPGRADE_REQUIRED
+                'status' => HTTP_STATUS["UPGRADE_REQUIRED"]
             ];
         }
 
         if (empty($request['HTTP_CONNECTION']) || stripos($request['HTTP_CONNECTION'], 'Upgrade') === FALSE) {
             return [
-                'status' => Status::BAD_REQUEST,
+                'status' => HTTP_STATUS["BAD_REQUEST"],
                 'reason' => 'Bad Request: "Connection: Upgrade" header required',
             ];
         }
 
         if (empty($request['HTTP_SEC_WEBSOCKET_KEY'])) {
             return [
-                'status' => Status::BAD_REQUEST,
+                'status' => HTTP_STATUS["BAD_REQUEST"],
                 'reason' => 'Bad Request: "Sec-Broker-Key" header required',
             ];
         }
 
         if (empty($request['HTTP_SEC_WEBSOCKET_VERSION'])) {
             return [
-                'status' => Status::BAD_REQUEST,
+                'status' => HTTP_STATUS["BAD_REQUEST"],
                 'reason' => 'Bad Request: "Sec-WebSocket-Version" header required',
             ];
         }
@@ -104,7 +104,7 @@ class Handshaker {
 
         if (empty($version)) {
             return [
-                'status' => Status::BAD_REQUEST,
+                'status' => HTTP_STATUS["BAD_REQUEST"],
                 'reason' => 'Bad Request: Requested WebSocket version(s) unavailable',
                 'header' => 'Sec-WebSocket-Version: 13',
             ];

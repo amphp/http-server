@@ -277,7 +277,7 @@ class Bootstrapper {
         };
         $routeDispatcher = \FastRoute\simpleDispatcher($routeBuilder);
         $http404 = [
-            'status' => Status::NOT_FOUND,
+            'status' => HTTP_STATUS["NOT_FOUND"],
             'header' => 'Content-Type: text/html; charset=utf-8',
             'body'   => '<html><body><h1>404 Not Found</h1></body></html>',
         ];
@@ -296,7 +296,7 @@ class Bootstrapper {
                     return $http404;
                 case \FastRoute\Dispatcher::METHOD_NOT_ALLOWED:
                     return [
-                        'status' => Status::METHOD_NOT_ALLOWED,
+                        'status' => HTTP_STATUS["METHOD_NOT_ALLOWED"],
                         'header' => 'Allow: ' . implode(',', $matchArr[1]),
                         'body'   => '<html><body><h1>405 Method Not Allowed</h1></body></html>',
                     ];

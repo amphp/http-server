@@ -7,6 +7,7 @@ use Amp\Reactor;
 use Aerys\Status;
 use Aerys\Server;
 use Aerys\ServerObserver;
+use const Aerys\HTTP_STATUS;
 
 abstract class Root implements ServerObserver {
     const OP_INDEXES = 'indexes';
@@ -111,7 +112,7 @@ abstract class Root implements ServerObserver {
      */
     public function __invoke(array $request) {
         if (!$path = $this->normalizePath($request['REQUEST_URI_PATH'])) {
-            return ['status' => Status::FORBIDDEN];
+            return ['status' => HTTP_STATUS["FORBIDDEN"]];
         }
 
         $rootRequest = new RootRequest;
@@ -129,7 +130,7 @@ abstract class Root implements ServerObserver {
                     $this->onFileEntry($rootRequest, $result);
                 } else {
                     $rootRequest->promisor->succeed([
-                        'status' => Status::NOT_FOUND,
+                        'status' => HTTP_STATUS["NOT_FOUND"],
                         'header' => 'Content-Type: text/html; charset=utf-8',
                         'body'   => '<html><body><h1>404 Not Found</h1></body></html>',
                     ]);
@@ -282,7 +283,7 @@ abstract class Root implements ServerObserver {
 
         if ($method === 'OPTIONS') {
             return $promisor->succeed([
-                'status' => Status::OK,
+                'status' => HTTP_STATUS["OK"],
                 'header' => [
                     'Allow: GET, HEAD, OPTIONS',
                     'Accept-Ranges: bytes',
@@ -292,7 +293,7 @@ abstract class Root implements ServerObserver {
 
         if (!($method === 'GET' || $method === 'HEAD')) {
             return $promisor->succeed([
-                'status' => Status::METHOD_NOT_ALLOWED,
+                'status' => HTTP_STATUS["METHOD_NOT_ALLOWED"],
                 'header' => ['Allow: GET, HEAD, OPTIONS'],
             ]);
         }
@@ -307,7 +308,7 @@ abstract class Root implements ServerObserver {
         if ($preCode === self::$PRECONDITION_NOT_MODIFIED) {
             $response = $this->makeNotModifiedResponse($mtime, $etag);
         } elseif ($preCode === self::$PRECONDITION_FAILED) {
-            $response = ['status' => Status::PRECONDITION_FAILED];
+            $response = ['status' => HTTP_STATUS["PRECONDITION_FAILED"]];
         } elseif ($preCode === self::$PRECONDITION_IF_RANGE_FAILED || empty($request['HTTP_RANGE'])) {
             $headerLines = $this->buildNonRangeHeaders($fileEntry);
             $response = $this->responderFactory->make($fileEntry, $headerLines, $request);
@@ -316,7 +317,7 @@ abstract class Root implements ServerObserver {
             $response = $this->responderFactory->make($fileEntry, $headerLines, $request, $range);
         } else {
             $response = [
-                'status' => Status::REQUESTED_RANGE_NOT_SATISFIABLE,
+                'status' => HTTP_STATUS["REQUESTED_RANGE_NOT_SATISFIABLE"],
                 'header' => "Content-Range: */{$size}",
             ];
         }
@@ -382,7 +383,7 @@ abstract class Root implements ServerObserver {
         }
 
         return [
-            'status' => Status::NOT_MODIFIED,
+            'status' => HTTP_STATUS["NOT_MODIFIED"],
             'header' => $headers,
         ];
     }

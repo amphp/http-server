@@ -14,6 +14,7 @@ use Aerys\ClientGoneException;
 use Amp\YieldCommands as SystemYieldCommands;
 use Aerys\YieldCommands as HttpYieldCommands;
 use Aerys\Websocket\YieldCommands as WebsocketYieldCommands;
+use const Aerys\HTTP_REASON;
 
 class Endpoint implements ServerObserver {
     const HANDSHAKE_ACCEPT_CONCAT = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
@@ -182,8 +183,10 @@ class Endpoint implements ServerObserver {
             // handshake because we've already exported the socket from the HTTP
             // server and it's our job to close the socket when we're finished.
             $header = \Aerys\setHeader($header, 'Connection', 'close');
-            $reason = $session->handshakeHttpReason ? " {$session->handshakeHttpReason}" : '';
-            $rawResponse = "HTTP/1.1 {$status}{$reason}\r\n{$header}\r\n\r\n";
+            $reason = isset($session->handshakeHttpReason)
+                ? $session->handshakeHttpReason
+                : (isset(HTTP_REASON[$status]) ? HTTP_REASON[$status] : '');
+            $rawResponse = "HTTP/1.1 {$status} {$reason}\r\n{$header}\r\n\r\n";
         } else {
             $request = $session->request;
             $concatKeyStr = $request['HTTP_SEC_WEBSOCKET_KEY'] . self::HANDSHAKE_ACCEPT_CONCAT;

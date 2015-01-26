@@ -9,8 +9,8 @@ class AggregateRequestHandler implements ServerObserver {
     private $asgiResponderFactory;
     private $debug;
     private $notFoundResponse = [
-        'status' => Status::NOT_FOUND,
-        'reason' => Reason::HTTP_404,
+        'status' => HTTP_STATUS["NOT_FOUND"],
+        'reason' => HTTP_REASON[404],
         'body'   => '<html><body><h1>404 Not Found</h1></body></html>',
     ];
 
@@ -65,7 +65,7 @@ class AggregateRequestHandler implements ServerObserver {
     private function makeResponderFromArray($request, $response, $nextHandlerIndex) {
         if (empty($this->requestHandlers[$nextHandlerIndex]) ||
             empty($response['status']) ||
-            $response['status'] != Status::NOT_FOUND
+            $response['status'] != HTTP_STATUS["NOT_FOUND"]
         ) {
             return $this->asgiResponderFactory->make($response);
         } else {

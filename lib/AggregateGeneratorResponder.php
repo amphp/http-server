@@ -24,7 +24,7 @@ class AggregateGeneratorResponder implements Responder {
     private $isFinalWrite;
     private $buffer = '';
     private $status = 200;
-    private $reason = '';
+    private $reason;
     private $headers = [];
 
     public function __construct(
@@ -464,7 +464,7 @@ class AggregateGeneratorResponder implements Responder {
     }
 
     private function startOutput() {
-        if ($this->status == Status::NOT_FOUND) {
+        if ($this->status == HTTP_STATUS["NOT_FOUND"]) {
             $responder = $this->aggregateHandler->__invoke($this->request, $this->nextHandlerIndex);
             $responder->prepare($this->environment);
             $responder->assumeSocketControl();
@@ -477,12 +477,13 @@ class AggregateGeneratorResponder implements Responder {
         $request = $env->request;
         $protocol = $request['SERVER_PROTOCOL'];
         $status = $this->status;
-        $reason = $this->reason;
-        $reason = ($reason === '') ? $reason : " {$reason}"; // leading space is important!
+        $reason = isset($this->reason)
+            ? $this->reason
+            : (isset(HTTP_REASON[$status]) ? HTTP_REASON[$status] : '');
 
         if ($status < 200) {
             $env->mustClose = false;
-            $this->buffer = "HTTP/{$protocol} {$status}{$reason}\r\n\r\n";
+            $this->buffer = "HTTP/{$protocol} {$status} {$reason}\r\n\r\n";
             $this->isFinalWrite = true;
             return true;
         }
@@ -537,7 +538,7 @@ class AggregateGeneratorResponder implements Responder {
             $this->isFinalWrite = true;
         }
 
-        $this->buffer = "HTTP/{$protocol} {$status}{$reason}\r\n{$headers}\r\n\r\n";
+        $this->buffer = "HTTP/{$protocol} {$status} {$reason}\r\n{$headers}\r\n\r\n";
 
         return true;
     }
