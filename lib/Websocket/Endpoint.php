@@ -14,7 +14,7 @@ use Aerys\ClientGoneException;
 use Amp\YieldCommands as SystemYieldCommands;
 use Aerys\YieldCommands as HttpYieldCommands;
 use Aerys\Websocket\YieldCommands as WebsocketYieldCommands;
-use const Aerys\HTTP_REASON;
+use const Aerys\HTTP_REASON, Aerys\HTTP_STATUS;
 
 class Endpoint implements ServerObserver {
     const HANDSHAKE_ACCEPT_CONCAT = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
@@ -166,8 +166,8 @@ class Endpoint implements ServerObserver {
         $errorLogger($error);
 
         if (empty($session->handshakeState)) {
-            $session->handshakeHttpStatus = 500;
-            $session->handshakeHttpReason = 'Internal Server Error';
+            $session->handshakeHttpStatus = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
+            $session->handshakeHttpReason = HTTP_REASON[$session->handshakeHttpStatus];
             $this->handshake($session);
         } elseif (empty($session->closeState)) {
             $this->close($session->clientId, Codes::UNEXPECTED_SERVER_ERROR, $error->getMessage());
@@ -178,7 +178,7 @@ class Endpoint implements ServerObserver {
         $status = $session->handshakeHttpStatus;
         $header = $session->handshakeHttpHeader ? implode("\r\n", $session->handshakeHttpHeader) : '';
 
-        if ($status) {
+        if ($status && $status != HTTP_STATUS["SWITCHING_PROTOCOLS"]) {
             // It's important to *always* close the connection after failing the
             // handshake because we've already exported the socket from the HTTP
             // server and it's our job to close the socket when we're finished.
