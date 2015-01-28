@@ -183,7 +183,8 @@ class Bootstrapper {
         $name = $hostDefinition->getName();
         $code = empty($tls['auto_redirect_code']) ? 307 : (int) $tls['auto_redirect_code'];
         $port = empty($tls['auto_redirect_port']) ? 80 : (int) $tls['auto_redirect_port'];
-        $displayPort = ($port == 80) ? '' : ":{$port}";
+        $redirectPort = $hostDefinition->getPort();
+        $displayPort = ($redirectPort == 443) ? '' : ":{$redirectPort}";
 
         $uri = 'https://' . $name . $displayPort;
         $responder = function($request) use ($uri, $code) {
