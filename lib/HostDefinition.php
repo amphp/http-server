@@ -220,9 +220,9 @@ class HostDefinition {
         $names = $this->parseNamesFromTlsCertArray($cert);
         if (!in_array($this->name, $names)) {
             trigger_error(
-                E_USER_WARNING,
                 "TLS certificate `{$certBase}` has no CN or SAN name match for host `{$this}`; " .
-                "web browsers will not trust the validity of your certificate :("
+                "web browsers will not trust the validity of your certificate :(",
+                E_USER_WARNING
             );
         }
 
@@ -230,9 +230,9 @@ class HostDefinition {
             date_default_timezone_set(@date_default_timezone_get() ?: 'UTC');
             $expiration = date('Y-m-d', $cert['validTo_time_t']);
             trigger_error(
-                E_USER_WARNING,
                 "TLS certificate `{$certBase}` for host `{$this}` expired {$expiration}; web " .
-                "browsers will not trust the validity of your certificate :("
+                "browsers will not trust the validity of your certificate :(",
+                E_USER_WARNING
             );
         }
 
