@@ -90,7 +90,7 @@ class HostGroup implements \Countable {
      */
     private function selectHostByAbsoluteUri(RequestCycle $cycle) {
         if (!$port = $cycle->uriPort) {
-            $port = $cycle->isEncrypted ? 443 : 80;
+            $port = $cycle->client->isEncrypted ? 443 : 80;
         }
 
         $hostId = "{$cycle->uriHost}:{$port}";
