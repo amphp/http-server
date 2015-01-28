@@ -183,6 +183,59 @@ class HostDefinition {
      * @return void
      */
     public function setCrypto(array $tls) {
+        if (!extension_loaded('openssl')) {
+            throw new \LogicException(
+                "Cannot assign crypto settings in host `{$this}`; ext/openssl required"
+            );
+        }
+
+        $certPath = $tls['local_cert'];
+        $certBase = basename($certPath);
+        if (!$rawCert = @file_get_contents($certPath)) {
+            throw new \RuntimeException(
+                "TLS certificate path `{$certPath}` could not be read in host `{$this}`"
+            );
+        }
+
+        if (!$cert = @openssl_x509_read($rawCert)) {
+            throw new \RuntimeException(
+                "`{$certBase}` does not appear to be a valid X.509 certificate in host `{$this}`"
+            );
+        }
+
+        if (!preg_match("#-----BEGIN [A-Z]+ PRIVATE KEY-----#", $rawCert)) {
+            throw new \RuntimeException(
+                "TLS certificate `{$certBase}` appears to be missing the private key in host " .
+                "`{$this}`; encrypted hosts must concatenate their private key into the same " .
+                "file with the public key and any intermediate CA certs."
+            );
+        }
+
+        if (!$cert = openssl_x509_parse($cert)) {
+            throw new \RuntimeException(
+                "Failed parsing X.509 certificate `{$certBase}` in host `{$this}`"
+            );
+        }
+
+        $names = $this->parseNamesFromTlsCertArray($cert);
+        if (!in_array($this->name, $names)) {
+            trigger_error(
+                E_USER_WARNING,
+                "TLS certificate `{$certBase}` has no CN or SAN name match for host `{$this}`; " .
+                "web browsers will not trust the validity of your certificate :("
+            );
+        }
+
+        if (time() > $cert['validTo_time_t']) {
+            date_default_timezone_set(@date_default_timezone_get() ?: 'UTC');
+            $expiration = date('Y-m-d', $cert['validTo_time_t']);
+            trigger_error(
+                E_USER_WARNING,
+                "TLS certificate `{$certBase}` for host `{$this}` expired {$expiration}; web " .
+                "browsers will not trust the validity of your certificate :("
+            );
+        }
+
         if (isset($tls['crypto_method'])) {
             $tls = $this->normalizeTlsCryptoMethod($tls);
         }
@@ -191,6 +244,26 @@ class HostDefinition {
         $tls = array_filter($tls, function($value) { return isset($value); });
 
         $this->tlsContextArr = $tls;
+    }
+
+    private function parseNamesFromTlsCertArray(array $cert) {
+        $names = [];
+        if (!empty($cert['subject']['CN'])) {
+            $names[] = $cert['subject']['CN'];
+        }
+
+        if (empty($cert["extensions"]["subjectAltName"])) {
+            return $names;
+        }
+
+        $parts = array_map('trim', explode(',', $cert["extensions"]["subjectAltName"]));
+        foreach ($parts as $part) {
+            if (stripos($part, 'DNS:') === 0) {
+                $names[] = substr($part, 4);
+            }
+        }
+
+        return array_map('strtolower', $names);
     }
 
     private function normalizeTlsCryptoMethod(array $tls) {
@@ -253,6 +326,15 @@ class HostDefinition {
         }
 
         return $isMatch;
+    }
+
+    /**
+     * Returns the host name
+     *
+     * @return string
+     */
+    public function __toString() {
+        return $this->name;
     }
 
     /**

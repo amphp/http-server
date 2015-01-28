@@ -9,8 +9,9 @@ use FastRoute\RouteCollector;
 
 class Bootstrapper {
     const E_CONFIG_INCLUDE = "Config file inclusion failure: %s";
-    const E_CONFIG_VARNAME = "Illegal variable name; \"%s\" must not be used in config files";
     const E_MISSING_CONFIG = "No Host instances found in config file: %s";
+    const E_BAD_OPT_CONST =  "Invalid AERYS_OPTIONS constant: array expected, got %s";
+    const E_BAD_OPT_CONST_KEY = "Unknown AERYS_OPTIONS key: %s";
 
     private $injector;
     private $serverOptMap = [
@@ -108,77 +109,45 @@ class Bootstrapper {
         return $server;
     }
 
-    private function parseServerConfigFile($__configFile) {
-        if (!include($__configFile)) {
+    private function parseServerConfigFile($configFile) {
+        if (!include($configFile)) {
             throw new BootException(
-                sprintf(self::E_CONFIG_INCLUDE, $__configFile)
+                sprintf(self::E_CONFIG_INCLUDE, $configFile)
             );
         }
 
-        if (!(isset($__configFile) && $__configFile === func_get_args()[0])) {
+        if (!$hostConfigs = Host::getDefinitions()) {
             throw new BootException(
-                sprintf(self::E_CONFIG_VARNAME, "__configFile")
+                sprintf(self::E_MISSING_CONFIG, $configFile)
             );
         }
 
-        if (isset($__configVars)) {
-            throw new BootException(
-                sprintf(self::E_CONFIG_VARNAME, "__configVars")
-            );
-        }
+        $serverOptions = $this->getServerWideOptions();
 
-        $__configVars = get_defined_vars();
-        $this->validateVars($__configVars);
-
-        $__hostConfigs = [];
-
-        foreach ($__configVars as $__cvKey => $__cvValue) {
-            if ($__cvValue instanceof Host) {
-                $__hostConfigs[] = $__cvValue;
-            }
-        }
-
-        if (empty($__hostConfigs)) {
-            throw new BootException(
-                sprintf(self::E_MISSING_CONFIG, $__configFile)
-            );
-        }
-
-        $__serverOptions = [];
-        foreach ($this->serverOptMap as $const => $serverConst) {
-            $const = "Aerys\\{$const}";
-            if (defined($const)) {
-                $__serverOptions[$serverConst] = constant($const);
-            }
-        }
-
-        return [$__hostConfigs, $__serverOptions];
+        return [$hostConfigs, $serverOptions];
     }
 
-    private function validateVars(array $vars) {
-        if (isset($vars['__hostConfigs'])) {
+    private function getServerWideOptions() {
+        if (!defined('AERYS_OPTIONS')) {
+            return [];
+        }
+        if (!is_array(AERYS_OPTIONS)) {
             throw new BootException(
-                sprintf(self::E_CONFIG_VARNAME, "__hostConfigs")
+                sprintf(self::E_BAD_OPT_CONST, gettype(AERYS_OPTIONS))
             );
+        }
+        $serverOptions = [];
+        foreach (AERYS_OPTIONS as $key => $value) {
+            if (isset($this->serverOptMap[$key])) {
+                $serverOptions[$this->serverOptMap[$key]] = AERYS_OPTIONS[$key];
+            } else {
+                throw new BootException(
+                    sprintf(self::E_BAD_OPT_CONST_KEY, $key)
+                );
+            }
         }
 
-        if (isset($vars['__serverOptions'])) {
-            throw new BootException(
-                sprintf(self::E_CONFIG_VARNAME, "__serverOptions")
-            );
-        }
-
-        if (isset($vars['__cvKey'])) {
-            throw new BootException(
-                sprintf(self::E_CONFIG_VARNAME, "__cvKey")
-            );
-        }
-
-        if (isset($vars['__cvValue'])) {
-            throw new BootException(
-                sprintf(self::E_CONFIG_VARNAME, "__cvValue")
-            );
-        }
+        return $serverOptions;
     }
 
     private function buildHostDefinition(Host $hostConfig) {
@@ -456,6 +425,10 @@ class Bootstrapper {
         }
     }
 
+    private function loadGzipMimeTypes($gzipMimeFile) {
+        // @TODO Currently the server just uses its defaults: text/* and application/javascript
+    }
+
     private function loadRootMimeTypes($mimeFile, $additionalTypes) {
         // Allow applications to avoid load mime types from a file if the value is NULL
         $mimeTypes = isset($mimeFile) ? $this->loadRootMimeTypesFromFile($mimeFile) : [];
@@ -479,7 +452,7 @@ class Bootstrapper {
             );
         }
 
-        if (!preg_match_all("#\s*([a-z0-9]+)\s+(.+)#i", $mimeStr, $matches)) {
+        if (!preg_match_all("#\s*([a-z0-9]+)\s+([a-z0-9\-]+/[a-z0-9\-]+)#i", $mimeStr, $matches)) {
             throw new BootException(
                 sprintf('No mime associations found in file: %s', $mimeFile)
             );

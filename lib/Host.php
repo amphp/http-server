@@ -12,6 +12,8 @@ class Host {
     const WEBSOCKETS = 'websockets';
     const RESPONDERS = 'responders';
 
+    private static $definitions = [];
+
     private $name = '';
     private $port = null;
     private $address = '*';
@@ -21,17 +23,19 @@ class Host {
     private $crypto = [];
     private $root = [];
 
-    private $hasOpenssl;
-
     public function __construct() {
-        $this->hasOpenssl = extension_loaded('openssl');
+        self::$definitions[] = $this;
+    }
+
+    public function __clone() {
+        self::$definitions[] = $this;
     }
 
     /**
      * Optionally define the host's domain name (e.g. localhost or mysite.com or subdomain.mysite.com)
      *
      * A host name is only required if a server exposes more than one host. If not defined the
-     * server will fallback to "localhost" for its name.
+     * server will fallback to "localhost" for the host's name.
      *
      * @param string $name
      * @throws \InvalidArgumentException if a non-string is passed
@@ -108,23 +112,18 @@ class Host {
      *       automatically generate this value based on the virtual host names specified in the
      *       server config file.
      *
-     * @TODO Parse CN and SAN fields from the cert to validate they match the Host's name to
-     *       make things tougher to screw up for people who have no idea what they're doing.
+     * NOTE: The server will attempt to validate your certificate at boot time to ensure your
+     *       settings are indeed correct. If neither the CN nor SAN names from the certificate
+     *       match the host's name an error is generated but the server will still boot succesfully.
      *
      * @param string $certificate A string path pointing to your SSL/TLS certificate
      * @param array $tlsOptions An optional array mapping additional SSL/TLS settings
      * @return self
      */
     public function setCrypto($certificate, array $tlsOptions = []) {
-        if (!$this->hasOpenssl) {
-            throw new \LogicException(
-                'Cannot assign crypto settings; ext/openssl required'
-            );
-        }
-
-        if (!@openssl_x509_read(@file_get_contents($certificate))) {
+        if (!is_string($certificate)) {
             throw new \InvalidArgumentException(
-                '$certificate expects a string path to a valid X.509 certificate'
+                'Invalid $certificate parameter; string expected (got '.gettype($certificate).')'
             );
         }
 
@@ -236,5 +235,43 @@ class Host {
             self::WEBSOCKETS    => $this->websocketRoutes,
             self::RESPONDERS    => $this->responders,
         ];
+    }
+
+    /**
+     * Unregister this host so that the server will not use it at boot time
+     *
+     * This method is useful if you wish to create a "template" Host to use as a base to then clone
+     * it as a baseline for multiple other hosts. Any Host instances calling this method will be
+     * ignored by the server at boot time.
+     *
+     * Example:
+     *
+     *     <?php
+     *     $template = (new Aerys\Host)->unregister();
+     *     $template->setCrypto('/path/to/san/cert.pem');
+     *
+     *     $mysite = (clone $template)->setName('mysite.com')->addResponder(...);
+     *     $files  = (clone $template)->setName('static.mysite.com')->setRoot(...);
+     *
+     *
+     * @return self
+     */
+    public function unregister() {
+        $key = array_search($this, self::$definitions, true);
+        if ($key !== false) {
+            unset(self::$definitions[$key]);
+            self::$definitions = array_values(self::$definitions);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Used by the server bootstrapper to access host configs created by the application
+     *
+     * @return array
+     */
+    public static function getDefinitions() {
+        return self::$definitions;
     }
 }
