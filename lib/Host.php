@@ -238,35 +238,6 @@ class Host {
     }
 
     /**
-     * Unregister this host so that the server will not use it at boot time
-     *
-     * This method is useful if you wish to create a "template" Host to use as a base to then clone
-     * it as a baseline for multiple other hosts. Any Host instances calling this method will be
-     * ignored by the server at boot time.
-     *
-     * Example:
-     *
-     *     <?php
-     *     $template = (new Aerys\Host)->unregister();
-     *     $template->setCrypto('/path/to/san/cert.pem');
-     *
-     *     $mysite = (clone $template)->setName('mysite.com')->addResponder(...);
-     *     $files  = (clone $template)->setName('static.mysite.com')->setRoot(...);
-     *
-     *
-     * @return self
-     */
-    public function unregister() {
-        $key = array_search($this, self::$definitions, true);
-        if ($key !== false) {
-            unset(self::$definitions[$key]);
-            self::$definitions = array_values(self::$definitions);
-        }
-
-        return $this;
-    }
-
-    /**
      * Used by the server bootstrapper to access host configs created by the application
      *
      * @return array
