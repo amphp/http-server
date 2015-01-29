@@ -1209,35 +1209,28 @@ class Server {
 
     private function setAllowedMethods(array $methods) {
         if (is_string($methods)) {
-            $methods = array_map('trim', explode(',', $methods));
+            $methods = array_filter(array_map('trim', explode(' ', $methods)));
         }
-
         if (!($methods && is_array($methods))) {
             throw new \DomainException(
                 'Allowed method assignment requires a comma delimited string or an array of HTTP methods'
             );
         }
-
         $methods = array_unique($methods);
-
         if (!in_array('GET', $methods)) {
-            throw new ConfigException(
+            throw new \DomainException(
                 'Cannot disallow GET method'
             );
         }
-
         if (!in_array('HEAD', $methods)) {
-            throw new ConfigException(
+            throw new \DomainException(
                 'Cannot disallow HEAD method'
             );
         }
-
         // @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec2.html#sec2.2
         // @TODO Validate characters in method names match the RFC 2616 ABNF token definition:
         // token          = 1*<any CHAR except CTLs or separators>
-
         $methods = array_filter($methods, function($m) { return $m && is_string($m); });
-
         $this->allowedMethods = $methods;
     }
 
