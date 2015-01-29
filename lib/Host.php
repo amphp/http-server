@@ -11,6 +11,7 @@ class Host {
     const ROOT       = 'root';
     const WEBSOCKETS = 'websockets';
     const RESPONDERS = 'responders';
+    const REDIRECT   = 'redirect';
 
     private static $definitions = [];
 
@@ -22,6 +23,7 @@ class Host {
     private $responders = [];
     private $crypto = [];
     private $root = [];
+    private $redirect = [];
 
     public function __construct() {
         self::$definitions[] = $this;
@@ -220,6 +222,57 @@ class Host {
     }
 
     /**
+     * Redirect all requests to this host that aren't serviced by another route/websocket/file
+     *
+     * NOTE: the redirect URI must match the format "scheme://hostname.tld" (with optional port).
+     *
+     * Example:
+     *
+     *      <?php
+     *      // Redirect http://mysite.com to https://mysite.com
+     *      (new Aerys\Host)->setName('mysite.com')->redirectTo('https://mysite.com');
+     *
+     * @param string $absoluteUri The site to which we want to redirect
+     * @param int $redirectCode The HTTP redirect status code (300-399)
+     */
+    public function redirectTo($absoluteUri, $redirectCode = 307) {
+        if (!is_string($absoluteUri)) {
+            throw new \InvalidArgumentException(
+                'String expected at ' . __METHOD__ . ' parameter 1, '. gettype($absoluteUri) .' provided'
+            );
+        }
+        if (!$url = @parse_url(strtolower($absoluteUri))) {
+            throw new \InvalidArgumentException(
+                'Failed parsing redirect URI at ' . __METHOD__ . ' parameter 1'
+            );
+        }
+        if (empty($url['scheme']) || ($url['scheme'] !== 'http' && $url['scheme'] !== 'https')) {
+            throw new \DomainException(
+                'Invalid redirect URI at '. __METHOD__ .' parameter 1: "http" or "https" scheme required'
+            );
+        }
+        if (isset($url['path']) && $url['path'] !== '/') {
+            throw new \DomainException(
+                'Invalid redirect URI at '. __METHOD__ .' parameter 1: URI must not contain a path component'
+            );
+        }
+
+        $redirectToPort = empty($url['port']) ? "" : ":{$url['port']}";
+        $redirectUri = sprintf("%s://%s%s", $url['scheme'], $url['host'], $redirectToPort);
+
+        $redirectCode = (int) $redirectCode;
+        if (!(300 <= $redirectCode && $redirectCode <= 399)) {
+            throw new \DomainException(
+                'Invalid redirect code at ' . __METHOD__ . ' parameter 2; integer in the range [300-399] required'
+            );
+        }
+
+        $this->redirect = [$redirectUri, $redirectCode];
+
+        return $this;
+    }
+
+    /**
      * Retrieve an associative array summarizing the host definition
      *
      * @return array
@@ -234,6 +287,7 @@ class Host {
             self::ROUTES        => $this->httpRoutes,
             self::WEBSOCKETS    => $this->websocketRoutes,
             self::RESPONDERS    => $this->responders,
+            self::REDIRECT      => $this->redirect,
         ];
     }
 

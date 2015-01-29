@@ -63,9 +63,6 @@ While many applications can get by specifying a certificate and nothing else, so
 Option Key    | Description        | Default
 ------------- | -------------------|--------
 | `"allow_self_signed"` | Allow self-signed client certificates when verifying peer certificates. This option requires `"verify_peer" => true` to have any effect.  | `false` |
-| `"auto_redirect"` | If `true` (or truthy), this option will cause the server to redirect all requests for unencrypted resources to the encrypted equivalent. | `false` |
-| `"auto_redirect_code"` | Customize the HTTP redirect code used to forward unencrypted requests to the encrypted equivalent.  | `307` |
-| `"auto_redirect_port"` | By default the `"auto_redirect"` functionality listens for and redirects unencrypted requests on port 80. Use this key to specify a different port number. | `80` |
 | `"cafile"`  | If `"verify_peer"` is true, this directive specifies the trusted CA file to use for peer verification.  | `null` |
 | `"capath"`  | If `"verify_peer"` is true, this directive specifies a directory in which trusted CA files may be found for use in peer verification. | `null` |
 | `"ciphers"` | The list of allowed ciphers to negotiate during the crypto handshake. Aerys uses PHP's default stream cipher list by default. These ciphers may be viewed by executing this code snippet: `var_dump(OPENSSL_DEFAULT_STREAM_CIPHERS);` | `null` |
@@ -168,21 +165,37 @@ There a couple of limitations to serving encrypted hosts on the same IP:PORT int
 
 ## Frequently Asked Questions
 
-### **Q:** How do I redirect all unencrypted requests to the equivalent encrypted resource?
+### Q: How do I redirect all unencrypted requests to the equivalent encrypted resource?
 
-**A:** This is accomplished by setting `"auto_redirect" => true` in your crypto `$options` array as demonstrated here:
+**A:** This is accomplished by creating a second unencrypted host and setting it to redirect all requests to the encrypted host as shown here:
 
 ```php
-$mySite->setCrypto('/path/to/mydomain.pem', $options = [
-    "auto_redirect" => true
-]);
+<?php
+// Our encrypted host listening on port 443
+(new Aerys\Host)
+	->setPort(443)
+    ->setName('mydomain.com')
+    ->setCrypto('/path/to/mydomain.pem')
+    ->addResponder(function($request) {
+        return '<html>Hello, world</html>';
+    })
+;
+
+// Unencrypted host; redirect all unencrypted requests
+// to our encrypted host at https://mydomain.com
+(new Aerys\Host)
+	->setPort(80)
+	->setName('mydomain.com')
+	->redirectTo('https://domain1.com')
+;
+
 ```
 
-### **Q:** Can I use the same wildcard/SAN certificate for multiple hosts?
+### Q: Can I use the same wildcard/SAN certificate for multiple hosts?
 
 **A:** Yes! Simply specify the appropriate cert path for each encrypted host you wish to expose. It's perfectly valid to reuse the same path for multiple hosts.
 
-### **Q:** How do I customize which SSL/TLS protocols my encrypted host supports?
+### Q: How do I customize which SSL/TLS protocols my encrypted host supports?
 
 **A:** By default all TLS protocols (1, 1.1, 1.2) are supported. Users wishing to customize the allowed protocols may do so using bitwise crypto method flags as follows:
 
@@ -196,7 +209,7 @@ $host->setCrypto('/path/to/cert.pem', $options = [
 ]);
 ```
 
-### **Q:** How do I achieve perfect forward secrecy (PFS) for maximum security in my encrypted host?
+### Q: How do I achieve perfect forward secrecy (PFS) for maximum security in my encrypted host?
 
 The main requirement to achieve "perfect forward secrecy" is ephemeral key exchange. This state protects transfers from being retroactively decrypted in the event that a host's private key is somehow compromised.
 

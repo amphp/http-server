@@ -98,21 +98,6 @@
   <td><code>false</code></td>
 </tr>
 <tr>
-  <td><code>"auto_redirect"</code></td>
-  <td>If <code>true</code> (or truthy), this option will cause the server to redirect all requests for unencrypted resources to the encrypted equivalent.</td>
-  <td><code>false</code></td>
-</tr>
-<tr>
-  <td><code>"auto_redirect_code"</code></td>
-  <td>Customize the HTTP redirect code used to forward unencrypted requests to the encrypted equivalent.</td>
-  <td><code>307</code></td>
-</tr>
-<tr>
-  <td><code>"auto_redirect_port"</code></td>
-  <td>By default the <code>"auto_redirect"</code> functionality listens for and redirects unencrypted requests on port 80. Use this key to specify a different port number.</td>
-  <td><code>80</code></td>
-</tr>
-<tr>
   <td><code>"cafile"</code></td>
   <td>If <code>"verify_peer"</code> is true, this directive specifies the trusted CA file to use for peer verification.</td>
   <td><code>null</code></td>
@@ -228,6 +213,8 @@
 
 <p><strong>Example</strong></p>
 
+
+
 <pre class="prettyprint"><code class="language-php hljs "><span class="hljs-preprocessor">&lt;?php</span> <span class="hljs-comment">// The string and array methods shown here are equivalent</span>
 
 <span class="hljs-comment">// defining crypto protocols in string form (space delimited)</span>
@@ -247,6 +234,8 @@
   
   <p>Crypto method strings are case-insensitive so there’s no need to worry about capitalization</p>
 </blockquote>
+
+
 
 <h2 id="encrypting-multiple-hosts">Encrypting Multiple Hosts</h2>
 
@@ -305,29 +294,37 @@
 
 
 
-<h3 id="q-how-do-i-redirect-all-unencrypted-requests-to-the-equivalent-encrypted-resource"><strong>Q:</strong> How do I redirect all unencrypted requests to the equivalent encrypted resource?</h3>
+<h3 id="q-how-do-i-redirect-all-unencrypted-requests-to-the-equivalent-encrypted-resource">Q: How do I redirect all unencrypted requests to the equivalent encrypted resource?</h3>
 
-<p><strong>A:</strong> This is accomplished by setting <code>"auto_redirect" =&gt; true</code> in your crypto <code>$options</code> array as demonstrated here:</p>
+<p><strong>A:</strong> This is accomplished by creating a second unencrypted host and setting it to redirect all requests to the encrypted host as shown here:</p>
 
+<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-preprocessor">&lt;?php</span>
+<span class="hljs-comment">// Our encrypted host listening on port 443</span>
+(<span class="hljs-keyword">new</span> Aerys\Host)
+    -&gt;setPort(<span class="hljs-number">443</span>)
+    -&gt;setName(<span class="hljs-string">'mydomain.com'</span>)
+    -&gt;setCrypto(<span class="hljs-string">'/path/to/mydomain.pem'</span>)
+    -&gt;addResponder(<span class="hljs-function"><span class="hljs-keyword">function</span><span class="hljs-params">(<span class="hljs-variable">$request</span>)</span> {</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-string">'&lt;html&gt;Hello, world&lt;/html&gt;'</span>;
+    })
+;
 
+<span class="hljs-comment">// Unencrypted host; redirect all unencrypted requests</span>
+<span class="hljs-comment">// to our encrypted host at https://mydomain.com</span>
+(<span class="hljs-keyword">new</span> Aerys\Host)
+    -&gt;setPort(<span class="hljs-number">80</span>)
+    -&gt;setName(<span class="hljs-string">'mydomain.com'</span>)
+    -&gt;redirectTo(<span class="hljs-string">'https://domain1.com'</span>)
+;
+</code></pre>
 
-<pre class="prettyprint"><code class="language-php hljs "><span class="hljs-variable">$mySite</span>-&gt;setCrypto(<span class="hljs-string">'/path/to/mydomain.pem'</span>, <span class="hljs-variable">$options</span> = [
-    <span class="hljs-string">"auto_redirect"</span> =&gt; <span class="hljs-keyword">true</span>
-]);</code></pre>
-
-
-
-<h3 id="q-can-i-use-the-same-wildcardsan-certificate-for-multiple-hosts"><strong>Q:</strong> Can I use the same wildcard/SAN certificate for multiple hosts?</h3>
+<h3 id="q-can-i-use-the-same-wildcardsan-certificate-for-multiple-hosts">Q: Can I use the same wildcard/SAN certificate for multiple hosts?</h3>
 
 <p><strong>A:</strong> Yes! Simply specify the appropriate cert path for each encrypted host you wish to expose. It’s perfectly valid to reuse the same path for multiple hosts.</p>
 
-
-
-<h3 id="q-how-do-i-customize-which-ssltls-protocols-my-encrypted-host-supports"><strong>Q:</strong> How do I customize which SSL/TLS protocols my encrypted host supports?</h3>
+<h3 id="q-how-do-i-customize-which-ssltls-protocols-my-encrypted-host-supports">Q: How do I customize which SSL/TLS protocols my encrypted host supports?</h3>
 
 <p><strong>A:</strong> By default all TLS protocols (1, 1.1, 1.2) are supported. Users wishing to customize the allowed protocols may do so using bitwise crypto method flags as follows:</p>
-
-
 
 <pre class="prettyprint"><code class="language-php hljs "><span class="hljs-preprocessor">&lt;?php</span> <span class="hljs-comment">// Only allow TLSv1.1 and TLSv1.2</span>
 <span class="hljs-variable">$cryptoMethods</span> = STREAM_CRYPTO_METHOD_TLSv1_1_SERVER | STREAM_CRYPTO_METHOD_TLSv1_2_SERVER;
@@ -339,7 +336,7 @@
 
 
 
-<h3 id="q-how-do-i-achieve-perfect-forward-secrecy-pfs-for-maximum-security-in-my-encrypted-host"><strong>Q:</strong> How do I achieve perfect forward secrecy (PFS) for maximum security in my encrypted host?</h3>
+<h3 id="q-how-do-i-achieve-perfect-forward-secrecy-pfs-for-maximum-security-in-my-encrypted-host">Q: How do I achieve perfect forward secrecy (PFS) for maximum security in my encrypted host?</h3>
 
 <p>The main requirement to achieve “perfect forward secrecy” is ephemeral key exchange. This state protects transfers from being retroactively decrypted in the event that a host’s private key is somehow compromised.</p>
 
@@ -351,8 +348,6 @@
 </ol>
 
 <p>For added security at the cost of additional computation time applications may set the <code>"single_ecdh_use" =&gt; true</code> TLS option to avoid reusing the same ephemeral key for multiple client sessions, though this isn’t strictly necessary.</p>
-
-
 
 <h4 id="generating-an-ec-key">Generating an EC Key</h4>
 
@@ -369,6 +364,8 @@
 <pre class="prettyprint"><code class="language-bash hljs ">openssl ecparam -list_curves</code></pre>
 
 <hr>
+
+
 
 <h2 id="table-of-contents">Table of Contents</h2>
 

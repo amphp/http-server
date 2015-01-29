@@ -89,7 +89,7 @@ class Bootstrapper {
         });
 
         foreach ($hostConfigs as $hostConfig) {
-            list($hostDefinition, $redirectHost) = $this->buildHostDefinition($hostConfig);
+            $hostDefinition = $this->buildHostDefinition($hostConfig);
             $hostGroup->addHost($hostDefinition);
             if ($redirectHost) {
                 $hostGroup->addHost($redirectHost);
@@ -159,9 +159,9 @@ class Bootstrapper {
             $tls  = $hostConfigArr[Host::CRYPTO];
             $responder = $this->aggregateHostResponders($hostConfigArr);
             $hostDefinition = new HostDefinition($ip, $port, $name, $responder);
-            $redirectHost = $tls ? $this->buildCryptoHost($hostDefinition, $tls) : null;
+            $hostDefinition->setCrypto($tls);
 
-            return [$hostDefinition, $redirectHost];
+            return $hostDefinition;
 
         } catch (\Exception $previousException) {
             throw new BootException(
@@ -170,31 +170,6 @@ class Bootstrapper {
                 $previousException
             );
         }
-    }
-
-    private function buildCryptoHost(HostDefinition $hostDefinition, array $tls) {
-        $hostDefinition->setCrypto($tls);
-
-        // If the "auto_redirect" option isn't enabled we don't need to create a redirect host
-        if (empty($tls['auto_redirect'])) {
-            return;
-        }
-
-        $name = $hostDefinition->getName();
-        $code = empty($tls['auto_redirect_code']) ? 307 : (int) $tls['auto_redirect_code'];
-        $port = empty($tls['auto_redirect_port']) ? 80 : (int) $tls['auto_redirect_port'];
-        $redirectPort = $hostDefinition->getPort();
-        $displayPort = ($redirectPort == 443) ? '' : ":{$redirectPort}";
-
-        $uri = 'https://' . $name . $displayPort;
-        $responder = function($request) use ($uri, $code) {
-            return new AsgiMapResponder([
-                'status' => $code,
-                'header' => "Location: {$uri}" . $request['REQUEST_URI'],
-            ]);
-        };
-
-        return new HostDefinition($hostDefinition->getAddress(), $port, $name, $responder);
     }
 
     private function aggregateHostResponders(array $hostArr) {
@@ -217,6 +192,10 @@ class Bootstrapper {
             }
         } else {
             $root = null;
+        }
+
+        if ($conf = $hostArr[Host::REDIRECT]) {
+            $responders[Host::REDIRECT] = $this->buildRedirectResponder($conf);
         }
 
         return empty($responders)
@@ -465,5 +444,16 @@ class Bootstrapper {
         }
 
         return $mimeTypes;
+    }
+
+    private function buildRedirectResponder(array $redirectStruct) {
+        list($redirectUri, $redirectCode) = $redirectStruct;
+
+        return function($request) use ($redirectUri, $redirectCode) {
+            return new AsgiMapResponder([
+                'status' => $redirectCode,
+                'header' => "Location: {$redirectUri}" . $request['REQUEST_URI'],
+            ]);
+        };
     }
 }
