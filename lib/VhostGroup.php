@@ -3,46 +3,46 @@
 namespace Aerys;
 
 /**
- * The HostGroup class aggregates the individual virtual hosts exposed by Server instances in
- * one place. The collection encapsulates RFC2616-compliant logic for selecting which HostDefinition should
+ * The VhostGroup class aggregates the individual virtual hosts exposed by Server instances in
+ * one place. The collection encapsulates RFC2616-compliant logic for selecting which Vhost should
  * service individual requests in multi-host environments.
  */
-class HostGroup implements \Countable {
-    private $hosts = [];
+class VhostGroup implements \Countable {
+    private $vhosts = [];
     private $singleHost;
 
     /**
      * Add a host to the collection
      *
-     * @param \Aerys\HostDefinition The host instance to add
+     * @param \Aerys\Vhost The host instance to add
      * @return int Returns the number of hosts in the collection after the addition
      * @TODO Validate to prevent conflicts between wildcard and specific IPs
      */
-    public function addHost(HostDefinition $host) {
-        $hostId = $host->getId();
-        $this->hosts[$hostId] = $host;
-        $hostCount = count($this->hosts);
-        $this->singleHost = ($hostCount > 1) ? null : $host;
-        $this->preventCryptoSocketConflict($host);
+    public function addHost(Vhost $vhost) {
+        $vhostId = $vhost->getId();
+        $this->vhosts[$vhostId] = $vhost;
+        $vhostCount = count($this->vhosts);
+        $this->singleHost = ($vhostCount > 1) ? null : $vhost;
+        $this->preventCryptoSocketConflict($vhost);
 
-        return $hostCount;
+        return $vhostCount;
     }
 
-    private function preventCryptoSocketConflict(HostDefinition $host) {
-        $newHostIsEncrypted = $host->isEncrypted();
-        foreach ($this->hosts as $existing) {
-            if ($host === $existing || ($newHostIsEncrypted + $existing->isEncrypted()) != 1) {
+    private function preventCryptoSocketConflict(Vhost $vhost) {
+        $newHostIsEncrypted = $vhost->isEncrypted();
+        foreach ($this->vhosts as $existing) {
+            if ($vhost === $existing || ($newHostIsEncrypted + $existing->isEncrypted()) != 1) {
                 continue;
             }
             $address = $existing->getAddress();
-            if ($host->matchesAddress($address) && ($existing->getPort() == $host->getPort())) {
+            if ($vhost->matchesAddress($address) && ($existing->getPort() == $vhost->getPort())) {
                 throw new BootException(
                     sprintf(
                         'Cannot register encrypted host `%s`; unencrypted ' .
                         'host `%s` registered on conflicting port `%s`',
-                        $newHostIsEncrypted ? $host->getId() : $existing->getId(),
-                        $newHostIsEncrypted ? $existing->getId() : $host->getId(),
-                        $host->getAddress() . ':' . $host->getPort()
+                        $newHostIsEncrypted ? $vhost->getId() : $existing->getId(),
+                        $newHostIsEncrypted ? $existing->getId() : $vhost->getId(),
+                        $vhost->getAddress() . ':' . $vhost->getPort()
                     )
                 );
             }
@@ -53,7 +53,7 @@ class HostGroup implements \Countable {
      * Select a virtual host match for the specified request according to RFC 2616 criteria
      *
      * @param \Aerys\RequestCycle $cycle
-     * @return array Returns a HostDefinition object and boolean TRUE if a valid host selected, FALSE otherwise
+     * @return array Returns a Vhost object and boolean TRUE if a valid host selected, FALSE otherwise
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.6.1.1
      */
@@ -64,23 +64,23 @@ class HostGroup implements \Countable {
             // > An origin server that does not allow resources to differ by the requested host MAY
             // > ignore the Host header field value when determining the resource identified by an
             // > HTTP/1.1 request.
-            $host = $this->singleHost;
+            $vhost = $this->singleHost;
         } elseif ($cycle->hasAbsoluteUri) {
-            $host = $this->selectHostByAbsoluteUri($cycle);
+            $vhost = $this->selectHostByAbsoluteUri($cycle);
         } elseif ($cycle->protocol == '1.1' || !empty($cycle->headers['HOST'])) {
-            $host = $this->selectHostByHeader($cycle);
+            $vhost = $this->selectHostByHeader($cycle);
         } elseif ($cycle->protocol == '1.0') {
-            $host = $this->selectDefaultHost($defaultHostId);
+            $vhost = $this->selectDefaultHost($defaultHostId);
         }
 
-        if (isset($host)) {
+        if (isset($vhost)) {
             $isRequestedHostValid = TRUE;
         } else {
-            $host = $this->selectDefaultHost($defaultHostId);
+            $vhost = $this->selectDefaultHost($defaultHostId);
             $isRequestedHostValid = FALSE;
         }
 
-        return [$host, $isRequestedHostValid];
+        return [$vhost, $isRequestedHostValid];
     }
 
     /**
@@ -93,9 +93,9 @@ class HostGroup implements \Countable {
             $port = $cycle->client->isEncrypted ? 443 : 80;
         }
 
-        $hostId = "{$cycle->uriHost}:{$port}";
+        $vhostId = "{$cycle->uriHost}:{$port}";
 
-        return isset($this->hosts[$hostId]) ? $this->hosts[$hostId] : NULL;
+        return isset($this->vhosts[$vhostId]) ? $this->vhosts[$vhostId] : NULL;
     }
 
     private function selectHostByHeader(RequestCycle $cycle) {
@@ -118,14 +118,14 @@ class HostGroup implements \Countable {
         $wildcardHost = "*:{$port}";
         $ipv6WildcardHost = "[::]:{$port}";
 
-        if (isset($this->hosts[$hostHeader])) {
-            $host = $this->hosts[$hostHeader];
-        } elseif (isset($this->hosts[$wildcardHost])) {
-            $host = $this->hosts[$wildcardHost];
-        } elseif (isset($this->hosts[$ipv6WildcardHost])) {
-            $host = $this->hosts[$ipv6WildcardHost];
+        if (isset($this->vhosts[$hostHeader])) {
+            $vhost = $this->vhosts[$hostHeader];
+        } elseif (isset($this->vhosts[$wildcardHost])) {
+            $vhost = $this->vhosts[$wildcardHost];
+        } elseif (isset($this->vhosts[$ipv6WildcardHost])) {
+            $vhost = $this->vhosts[$ipv6WildcardHost];
         } else {
-            $host = $this->attemptIpHostSelection($hostHeader, $ipComparison);
+            $vhost = $this->attemptIpHostSelection($hostHeader, $ipComparison);
         }
 
         // IMPORTANT: Wildcard IP hosts without names that are running both encrypted and plaintext
@@ -133,36 +133,36 @@ class HostGroup implements \Countable {
         // displaying unencrypted data as a result of carefully crafted Host headers. This is an
         // extreme edge case but it's potentially exploitable without this check.
         // DO NOT REMOVE THIS UNLESS YOU'RE SURE YOU KNOW WHAT YOU'RE DOING.
-        if ($host && $host->isEncrypted() && !$isEncrypted) {
-            $host = NULL;
+        if ($vhost && $vhost->isEncrypted() && !$isEncrypted) {
+            $vhost = NULL;
         }
 
-        return $host;
+        return $vhost;
     }
 
     private function attemptIpHostSelection($hostHeader, $ipComparison) {
-        if (count($this->hosts) !== 1) {
-            $host = NULL;
+        if (count($this->vhosts) !== 1) {
+            $vhost = NULL;
         } elseif (!@inet_pton($ipComparison)) {
-            $host = NULL;
-        } elseif (!(($host = current($this->hosts))
-            && ($host->getAddress() === $ipComparison || $host->hasWildcardAddress())
+            $vhost = NULL;
+        } elseif (!(($vhost = current($this->vhosts))
+            && ($vhost->getAddress() === $ipComparison || $vhost->hasWildcardAddress())
         )) {
-            $host = NULL;
+            $vhost = NULL;
         }
 
-        return $host;
+        return $vhost;
     }
 
     /**
      * Return the fallback host when no other hosts can be matched
      *
-     * @return \Aerys\HostDefinition
+     * @return \Aerys\Vhost
      */
     public function selectDefaultHost($defaultHostId) {
-        return isset($this->hosts[$defaultHostId])
-            ? $this->hosts[$defaultHostId]
-            : current($this->hosts);
+        return isset($this->vhosts[$defaultHostId])
+            ? $this->vhosts[$defaultHostId]
+            : current($this->vhosts);
     }
 
     /**
@@ -171,9 +171,9 @@ class HostGroup implements \Countable {
      * @return array Returns an array of unique host addresses in the form: tcp://ip:port
      */
     public function getBindableAddresses() {
-        return array_unique(array_map(function($host) {
-            return $host->getBindableAddress();
-        }, $this->hosts));
+        return array_unique(array_map(function($vhost) {
+            return $vhost->getBindableAddress();
+        }, $this->vhosts));
     }
 
     /**
@@ -184,23 +184,23 @@ class HostGroup implements \Countable {
     public function getTlsBindingsByAddress() {
         $bindMap = [];
         $sniNameMap = [];
-        foreach ($this->hosts as $host) {
-            if (!$host->isEncrypted()) {
+        foreach ($this->vhosts as $vhost) {
+            if (!$vhost->isEncrypted()) {
                 continue;
             }
 
-            $bindAddress = $host->getBindableAddress();
-            $contextArr = $host->getTlsContextArr();
+            $bindAddress = $vhost->getBindableAddress();
+            $contextArr = $vhost->getTlsContextArr();
             $bindMap[$bindAddress] = $contextArr;
 
-            if ($host->hasName()) {
-                $sniNameMap[$bindAddress][$host->getName()] = $contextArr['local_cert'];
+            if ($vhost->hasName()) {
+                $sniNameMap[$bindAddress][$vhost->getName()] = $contextArr['local_cert'];
             }
         }
 
-        // We use current($this->hosts) in places so it's important to reset the array's internal
+        // We use current($this->vhosts) in places so it's important to reset the array's internal
         // pointer after iterating above.
-        reset($this->hosts);
+        reset($this->vhosts);
 
         // If we have multiple different TLS certs on the same bind address we need to assign
         // the "SNI_server_name" key to enable the SNI extension.
@@ -214,6 +214,6 @@ class HostGroup implements \Countable {
     }
 
     public function count() {
-        return count($this->hosts);
+        return count($this->vhosts);
     }
 }

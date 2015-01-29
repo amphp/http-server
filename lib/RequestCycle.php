@@ -13,7 +13,7 @@ namespace Aerys;
 class RequestCycle extends \Amp\Struct {
     public $requestId;
     public $client;
-    public $host;
+    public $vhost;
     public $protocol;
     public $method;
     public $headers = [];

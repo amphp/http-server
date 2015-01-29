@@ -74,13 +74,13 @@ class Bootstrapper {
             );
         }
 
-        list($hostConfigs, $serverOptions) = $this->parseServerConfigFile($options['config']);
+        list($hosts, $serverOptions) = $this->parseServerConfigFile($options['config']);
 
         $this->injector->share('Aerys\Server');
-        $this->injector->share('Aerys\HostGroup');
+        $this->injector->share('Aerys\VhostGroup');
         $this->injector->share('Aerys\AsgiResponderFactory');
 
-        $hostGroup = $this->injector->make('Aerys\HostGroup');
+        $vhostGroup = $this->injector->make('Aerys\VhostGroup');
         $server = $this->injector->make('Aerys\Server');
 
         // Automatically register any ServerObserver implementations with the server
@@ -88,9 +88,12 @@ class Bootstrapper {
             $server->attachObserver($observer);
         });
 
-        foreach ($hostConfigs as $hostConfig) {
-            $hostDefinition = $this->buildHostDefinition($hostConfig);
-            $hostGroup->addHost($hostDefinition);
+        foreach ($hosts as $host) {
+            $vhost = $this->buildVhost($host);
+            $vhostGroup->addHost($vhost);
+            if ($redirectHost) {
+                $vhostGroup->addHost($redirectHost);
+            }
         }
 
         foreach ($serverOptions as $option => $value) {
@@ -101,7 +104,7 @@ class Bootstrapper {
             $server->setOption(Server::OP_DEBUG, true);
         }
 
-        $server->bind($hostGroup);
+        $server->bind($vhostGroup);
 
         return $server;
     }
@@ -113,7 +116,7 @@ class Bootstrapper {
             );
         }
 
-        if (!$hostConfigs = Host::getDefinitions()) {
+        if (!$hosts = Host::getDefinitions()) {
             throw new BootException(
                 sprintf(self::E_MISSING_CONFIG, $configFile)
             );
@@ -121,7 +124,7 @@ class Bootstrapper {
 
         $serverOptions = $this->getServerWideOptions();
 
-        return [$hostConfigs, $serverOptions];
+        return [$hosts, $serverOptions];
     }
 
     private function getServerWideOptions() {
@@ -147,22 +150,22 @@ class Bootstrapper {
         return $serverOptions;
     }
 
-    private function buildHostDefinition(Host $hostConfig) {
+    private function buildVhost(Host $host) {
         try {
-            $hostConfigArr = $hostConfig->toArray();
-            $ip   = $hostConfigArr[Host::ADDRESS];
-            $port = $hostConfigArr[Host::PORT];
-            $name = $hostConfigArr[Host::NAME] ?: $ip;
-            $tls  = $hostConfigArr[Host::CRYPTO];
-            $responder = $this->aggregateHostResponders($hostConfigArr);
-            $hostDefinition = new HostDefinition($ip, $port, $name, $responder);
-            $hostDefinition->setCrypto($tls);
+            $hostArr = $host->toArray();
+            $ip   = $hostArr[Host::ADDRESS];
+            $port = $hostArr[Host::PORT];
+            $name = $hostArr[Host::NAME] ?: $ip;
+            $tls  = $hostArr[Host::CRYPTO];
+            $responder = $this->aggregateHostResponders($hostArr);
+            $vhost = new Vhost($ip, $port, $name, $responder);
+            $vhost->setCrypto($tls);
 
-            return $hostDefinition;
+            return $vhost;
 
         } catch (\Exception $previousException) {
             throw new BootException(
-                sprintf('HostDefinition build failure: %s', $previousException->getMessage()),
+                'Vhost build failure',
                 $code = 0,
                 $previousException
             );

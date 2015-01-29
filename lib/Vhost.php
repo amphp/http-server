@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-class HostDefinition {
+class Vhost {
     private $address;
     private $port;
     private $name;
@@ -307,7 +307,7 @@ class HostDefinition {
     }
 
     /**
-     * Determine if this host matches the specified HostDefinition ID string
+     * Determine if this host matches the specified Vhost ID string
      *
      * @param string $hostId
      * @return bool Returns true if a match is found, false otherwise

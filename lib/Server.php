@@ -36,11 +36,10 @@ class Server {
 
     private $state = self::STOPPED;
     private $reactor;
-    private $hostBinder;
     private $responderFactory;
     private $observers;
 
-    private $hosts;
+    private $vhosts;
     private $boundSockets = [];
     private $acceptWatchers = [];
     private $pendingTlsWatchers = [];
@@ -221,24 +220,24 @@ class Server {
     }
 
     /**
-     * Bind sockets from the specified host definitions (but don't listen yet)
+     * Bind sockets from the specified virtual host definitions (but don't listen yet)
      *
-     * @param HostDefinition|HostGroup|array|null $hosts
+     * @param Vhost|VhostGroup|array $vhosts
      * @throws \LogicException If server sockets already bound
      * @throws \RuntimeException On socket bind failure
      * @return void
      */
-    public function bind($hosts) {
+    public function bind($vhosts) {
         if ($this->state !== self::STOPPED) {
             throw new \LogicException(
                 'Server sockets already bound; please stop the server before calling bind()'
             );
         }
 
-        $this->hosts = $this->normalizeHosts($hosts);
+        $this->vhosts = $this->normalizeVhosts($vhosts);
 
-        $addresses = array_unique($this->hosts->getBindableAddresses());
-        $tlsBindings = $this->hosts->getTlsBindingsByAddress();
+        $addresses = array_unique($this->vhosts->getBindableAddresses());
+        $tlsBindings = $this->vhosts->getTlsBindingsByAddress();
         foreach ($addresses as $address) {
             $context = stream_context_create(['socket' => [
                 'backlog' => $this->socketBacklogSize,
@@ -254,24 +253,24 @@ class Server {
         $this->state = self::BOUND;
     }
 
-    private function normalizeHosts($hostOrCollection) {
-        if ($hostOrCollection instanceof HostGroup) {
-            $hosts = $hostOrCollection;
-        } elseif ($hostOrCollection instanceof HostDefinition) {
-            $hosts = new HostGroup;
-            $hosts->addHost($hostOrCollection);
-        } elseif ($hostOrCollection && is_array($hostOrCollection)) {
-            $hosts = new HostGroup;
-            foreach ($hostOrCollection as $host) {
-                $hosts->addHost($host);
+    private function normalizeVhosts($vhostOrGroup) {
+        if ($vhostOrGroup instanceof VhostGroup) {
+            $vhosts = $vhostOrGroup;
+        } elseif ($vhostOrGroup instanceof Vhost) {
+            $vhosts = new VhostGroup;
+            $vhosts->addHost($vhostOrGroup);
+        } elseif ($vhostOrGroup && is_array($vhostOrGroup)) {
+            $vhosts = new VhostGroup;
+            foreach ($vhostOrGroup as $vhost) {
+                $vhosts->addHost($vhost);
             }
         } else {
             throw new \DomainException(
-                'Invalid host definition; Host, HostGroup or an array of Host instances required'
+                'Invalid host definition; Vhost, VhostGroup or array of Vhost instances required'
             );
         }
 
-        return $hosts;
+        return $vhosts;
     }
 
     private function bindSocket($address, $context) {
@@ -286,7 +285,7 @@ class Server {
     }
 
     public function getBindableAddresses() {
-        return $this->hosts ? $this->hosts->getBindableAddresses() : [];
+        return $this->vhosts ? $this->vhosts->getBindableAddresses() : [];
     }
 
     /**
@@ -636,7 +635,7 @@ class Server {
     }
 
     /**
-     * @TODO Invoke HostDefinition application partial responders here (not yet implemented). These
+     * @TODO Invoke Vhost application partial responders here (not yet implemented). These
      * responders (if present) should be used to answer request Expect headers (or whatever people
      * wish to do before the body arrives).
      *
@@ -715,10 +714,10 @@ class Server {
         $client->cycles[$requestCycle->requestId] = $requestCycle;
         $client->partialCycle = $__headersOnly ? $requestCycle : null;
 
-        list($host, $isValidHost) = $this->hosts->selectHost($requestCycle, $this->defaultHost);
-        $requestCycle->host = $host;
+        list($vhost, $isValidHost) = $this->vhosts->selectHost($requestCycle, $this->defaultHost);
+        $requestCycle->vhost = $vhost;
 
-        $serverName = $host->hasName() ? $host->getName() : $client->serverAddress;
+        $serverName = $vhost->hasName() ? $vhost->getName() : $client->serverAddress;
         if ($serverName === '*') {
             $sp = $client->serverPort;
             $serverNamePort = ($sp == 80 || $sp == 443) ? '' : ":{$sp}";
@@ -878,7 +877,7 @@ class Server {
 
     private function invokeHostApplication(RequestCycle $requestCycle) {
         try {
-            $application = $requestCycle->host->getApplication();
+            $application = $requestCycle->vhost->getApplication();
             $responder = $application($requestCycle->request);
         } catch (\Exception $error) {
             $responder = $this->generateErrorResponder($error);
@@ -1242,8 +1241,8 @@ class Server {
         $this->allowedMethods = $methods;
     }
 
-    private function setDefaultHost($hostId) {
-        $this->defaultHost = $hostId;
+    private function setDefaultHost($vhostId) {
+        $this->defaultHost = $vhostId;
     }
 
     /**
