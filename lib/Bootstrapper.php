@@ -159,7 +159,9 @@ class Bootstrapper {
             $tls  = $hostArr[Host::CRYPTO];
             $responder = $this->aggregateHostResponders($hostArr);
             $vhost = new Vhost($ip, $port, $name, $responder);
-            $vhost->setCrypto($tls);
+            if ($tls) {
+                $vhost->setCrypto($tls);
+            }
 
             return $vhost;
 
