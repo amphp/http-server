@@ -3,21 +3,17 @@
 /**
  * GLOBAL SERVER OPTIONS
  *
- * Global server options are defined using constants inside the "Aerys\" namespace. Use these
- * constants to configure options that apply to all hosts on the server. For example:
+ * Global server options are defined using a constant array in the global namespace. Use
+ * the AERYS_OPTIONS constant to define options applicable to all hosts on the server:
  *
  *     <?php
- *     namespace Aerys;
- *
- *     const MAX_CONNECTIONS = 1000;
- *     const MAX_REQUESTS = 100;
- *     const KEEP_ALIVE_TIMEOUT = 5;
+ *     const AERYS_OPTIONS = [
+ *         "MAX_CONNECTIONS" => 1000,
+ *         "MAX_REQUESTS" => 100,
+ *         "KEEP_ALIVE_TIMEOUT" => 5,
+ *     ];
  *
  *     // Individual host definitions here
- *
- * This is by no means an exhaustive list of the available options. The takeaway here is that these
- * namespaced constants are how you configure globally-applicable server options inside your config
- * file.
  *
  *
  * HOSTS
@@ -71,15 +67,15 @@
  */
 
 
-namespace Aerys;
-
 /* --- Global server options here --------------------------------------------------------------- */
 
-const KEEP_ALIVE_TIMEOUT = 30;
+const AERYS_OPTIONS = [
+    "KEEP_ALIVE_TIMEOUT" => 30
+];
 
 /* --- http://localhost:1337/ or http://127.0.0.1:1337/  (all IPv4 interfaces) ------------------ */
 
-$myHost = (new Host)
+$myHost = (new Aerys\Host)
     ->setPort(1337)
     ->setAddress('*')
     ->addResponder(function($request) {
