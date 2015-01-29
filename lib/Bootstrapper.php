@@ -91,9 +91,6 @@ class Bootstrapper {
         foreach ($hosts as $host) {
             $vhost = $this->buildVhost($host);
             $vhostGroup->addHost($vhost);
-            if ($redirectHost) {
-                $vhostGroup->addHost($redirectHost);
-            }
         }
 
         foreach ($serverOptions as $option => $value) {
