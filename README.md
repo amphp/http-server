@@ -32,34 +32,34 @@ and server-wide option settings. Here's an example:
 ```php
 <?php
 
-namespace Aerys;
+// --- global server options --- //
+const AERYS_OPTIONS = [
+    "MAX_CONNECTIONS" => 1000,
+    "MAX_REQUESTS" => 100,
+    "KEEP_ALIVE_TIMEOUT" => 5,
+    "MAX_HEADER_BYTES" => 8192,
+    "MAX_BODY_BYTES" => 2097152,
+    "DEFAULT_CONTENT_TYPE" => 'text/html',
+    "DEFAULT_TEXT_CHARSET" => 'utf-8',
+    "AUTO_REASON_PHRASE" => true,
+    "SEND_SERVER_TOKEN" => false,
+    "SOCKET_BACKLOG_SIZE" => 128,
+    "ALLOWED_METHODS" => 'GET HEAD PUT POST PATCH OPTIONS',
+];
 
-// --- global server options -----------------------------------------------------------------------
-
-const MAX_CONNECTIONS = 1000;
-const MAX_REQUESTS = 100;
-const KEEP_ALIVE_TIMEOUT = 5;
-const MAX_HEADER_BYTES = 8192;
-const MAX_BODY_BYTES = 2097152;
-const DEFAULT_CONTENT_TYPE = 'text/html';
-const DEFAULT_TEXT_CHARSET = 'utf-8';
-const AUTO_REASON_PHRASE = TRUE;
-const SEND_SERVER_TOKEN = FALSE;
-const SOCKET_BACKLOG_SIZE = 128;
-const ALLOWED_METHODS = 'GET, HEAD, OPTIONS, TRACE, PUT, POST, PATCH, DELETE';
-
-
-// --- mysite.com ----------------------------------------------------------------------------------
-
-$mySite = (new Host('mysite.com'))
+// --- mysite.com --- //
+(new Aerys\Host)
+    ->setName('mysite.com')
     ->addRoute('GET', '/', 'myIndexCallable')
     ->addRoute('GET', '/hello', 'myHelloCallable')
     ->addResponder('myFallbackResponder')
 ;
 
-// --- static.mysite.com ---------------------------------------------------------------------------
-
-$staticFiles = new Host('static.mysite.com')->setRoot('/path/to/static/files');
+// --- static.mysite.com --- //
+(new Aerys\Host)
+    ->setName('static.mysite.com')
+    ->setRoot('/path/to/static/files')
+;
 ```
 
 ##### Hello World
@@ -71,7 +71,7 @@ the returned string to clients (similar to the classic PHP web SAPI).
 <?php
 
 // Send a basic 200 response to all requests on port 80.
-$myApp = (new Aerys\Host)->addResponder(function() {
+(new Aerys\Host)->addResponder(function() {
     return '<html><body><h1>OMG PHP is Webscale!</h1></body></html>';
 });
 ```
@@ -85,7 +85,7 @@ Aerys passes request details to applications using a map structure similar to th
 <?php
 
 // Responders are passed an environment array
-$myApp = (new Aerys\Host)->addResponder(function(array $request) {
+(new Aerys\Host)->addResponder(function(array $request) {
     return "<html><body><pre>" . print_r($request, TRUE) . "</pre></body></html>";
 });
 ```
@@ -101,12 +101,31 @@ associative array.
 ```php
 <?php
 
-$myApp = (new Aerys\Host)->addResponder(function($request) {
+(new Aerys\Host)->addResponder(function($request) {
     return [
         'status' => 200,
         'header' => 'X-My-Header: 42',
         'body'   =>'<html><body><h1>ZOMG PGP!!!11</h1></body></html>',
     ];
+});
+```
+
+##### Async Generated Responses
+
+When an application requires IO to generate a response it uses generators to `yield` Promise
+instances or other generators.
+
+```php
+<?php
+
+(new Aerys\Host)->addResponder(function($request) {
+    $asyncResult = yield someAsyncCall();
+    yield "status" => 200;
+    yield "header" => "X-My-Header1: hola";
+    yield "header" => "X-My-Header2: amigo";
+    yield "body" => "<html>{$asyncResult}</br>";
+    $moreAsyncResults = yield anotherAsyncCall();
+    yield "body" => "The rest: {$moreAsyncResults}</html>"
 });
 ```
 
@@ -118,27 +137,30 @@ separate app for each domain/subdomain they wish to expose. For example ...
 ```php
 <?php
 
-// mysite.com
-$mySite = (new Aerys\Host)
-    ->setPort(80) // <-- Defaults to 80, so this isn't technically necessary
+// --- mysite.com --- //
+(new Aerys\Host)
+    ->setPort(80) // <-- Defaults to 80, so not technically necessary
     ->setName('mysite.com')
     ->addResponder(function() {
         return '<html><body><h1>mysite.com</h1></body></html>';
-    });
+    })
+;
 
-// subdomain.mysite.com
-$mySubdomain = (new Aerys\Host)
+// --- subdomain.mysite.com --- //
+(new Aerys\Host)
     ->setName('subdomain.mysite.com')
     ->addResponder(function() {
         return '<html><body><h1>subdomain.mysite.com</h1></body></html>';
-    });
+    })
+;
 
-// omgphpiswebscale.com
-$omgPhpIsWebscale = (new Aerys\Host)
+// --- omgphpiswebscale.com --- //
+(new Aerys\Host)
     ->setName('omgphpiswebscale.com')
     ->addResponder(function() {
         return '<html><body><h1>omgphpiswebscale.com</h1></body></html>';
-    });
+    })
+;
 ```
 
 ##### Serving Static Files
@@ -150,11 +172,12 @@ serving to your applications.
 <?php
 
 // Any URI not matched by another handler is treated as a static file request
-$myApp = (new Aerys\Host)
+(new Aerys\Host)
     ->setName('mysite.com')
     ->addRoute('GET', '/', 'MyClass::myGetHandlerMethod')
     ->addRoute('POST', '/', 'MyClass::myPostHandlerMethod')
-    ->setRoot('/path/to/static/file/root/');
+    ->setRoot('/path/to/static/file/root/')
+;
 ```
 
 ##### Basic Routing
@@ -168,15 +191,16 @@ applications all the benefits of clean code and dependency injection.
 <?php
 
 // Any PHP callable may be specified as a route target (instance methods, too!)
-$myApp = (new Aerys\Host)
+(new Aerys\Host)
     ->addRoute('GET', '/', 'MyClass::myGetHandler')
     ->addRoute('POST', '/', 'MyClass::myPostHandler')
     ->addRoute('PUT', '/', 'MyClass::myPutHandler')
     ->addRoute('GET', '/info', 'MyClass::anotherInstanceMethod')
     ->addRoute('GET', '/static', 'SomeClass::staticMethod')
     ->addRoute('GET', '/function', 'some_global_function')
-    ->addRoute('GET', '/lambda', function() { return '<html><body>hello</body></html>'; })
-    ->setRoot('/path/to/static/files'); // <-- only used if no routes match
+    ->addRoute('GET', '/lambda', function() { return '<html>hello</html>'; })
+    ->setRoot('/path/to/static/files') // <-- only used if no routes match
+;
 ```
 
 > **NOTE:** Aerys uses [FastRoute](https://github.com/nikic/FastRoute) for routing. Full regex
@@ -188,39 +212,6 @@ URI arguments parsed from request URIs are available in the request environment 
 ##### Dependency Injection
 
 @TODO
-
-##### Generated Responses
-
-The most important thing to remember about Aerys (and indeed any server running inside a non-blocking
-event loop) is that your application callables must not block execution of the event loop with slow
-operations like synchronous database or disk IO. Application callables may employ `yield` to act
-as a `Generator` and cooperatively multitask with the server using non-blocking libraries.
-
-
-```php
-<?php
-
-function asyncResponder($request) {
-    $result = (yield asyncMultiply(6, 7));
-    yield "<html><body><h1>6 x 7 = {$result}</h1></body></html>";
-};
-
-
-function multiAsyncResponder($request) {
-    list($result1, $result2, $result3) = (yield [
-        asyncMultiply(6, 7),
-        asyncMultiply(3, 3),
-        asyncMultiply(2, 9)
-    ]);
-
-    yield "<html><body><h1>{$result1} | {$result2} | {$result3}</h1></body></html>";
-}
-
-$myApp = (new Aerys\Host)
-    ->setPort(1337)
-    ->addRoute('GET', '/', 'asyncResponder')
-    ->addRoute('GET', '/multi', 'multiAsyncResponder');
-```
 
 ##### TLS Encryption
 
