@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-class AsgiMapResponder implements Responder {
+class AsgiResponder implements Responder {
     private $asgiResponse;
     private $environment;
     private $buffer = '';

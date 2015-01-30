@@ -4,28 +4,29 @@ namespace Aerys;
 
 use Amp\Promise;
 
-class AggregateRequestHandler implements ServerObserver {
-    private $requestHandlers;
-    private $asgiResponderFactory;
+class MultiApplication implements ServerObserver {
     private $debug;
-    private $notFoundResponse = [
-        'status' => HTTP_STATUS["NOT_FOUND"],
-        'reason' => HTTP_REASON[HTTP_STATUS["NOT_FOUND"]],
-        'body'   => '<html><body><h1>404 Not Found</h1></body></html>',
-    ];
+    private $applications;
+    private $asgiResponderFactory;
+    private $notFoundResponse;
 
-    public function __construct(array $requestHandlers, AsgiResponderFactory $arf = null) {
-        // We reference numeric index positions in the handler array so array_values() matters!
-        $this->requestHandlers = array_values($requestHandlers);
+    public function __construct(array $applications, AsgiResponderFactory $arf = null) {
+        // We reference numeric indexes in the app array so array_values() matters here!
+        $this->applications = array_values($applications);
         $this->asgiResponderFactory = $arf ?: new AsgiResponderFactory;
+        $this->notFoundResponse = [
+            'status' => HTTP_STATUS["NOT_FOUND"],
+            'reason' => HTTP_REASON[HTTP_STATUS["NOT_FOUND"]],
+            'body'   => '<html><body><h1>404 Not Found</h1></body></html>',
+        ];
     }
 
-    public function __invoke(array $request, $nextHandlerIndex = 0) {
+    public function __invoke(array $request, $nextAppIndex = 0) {
         try {
-            if (isset($this->requestHandlers[$nextHandlerIndex])) {
-                $requestHandler = $this->requestHandlers[$nextHandlerIndex++];
+            if (isset($this->applications[$nextAppIndex])) {
+                $requestHandler = $this->applications[$nextAppIndex++];
                 $result = $requestHandler($request);
-                return $this->makeResponderFromHandlerResult($request, $result, $nextHandlerIndex);
+                return $this->makeResponderFromHandlerResult($request, $result, $nextAppIndex);
             } else {
                 return $this->asgiResponderFactory->make($this->notFoundResponse);
             }
@@ -39,18 +40,18 @@ class AggregateRequestHandler implements ServerObserver {
      *
      * @param array $request
      * @param mixed $result
-     * @param int $nextHandlerIndex
+     * @param int $nextAppIndex
      * @return Responder
      */
-    public function makeResponderFromHandlerResult(array $request, $result, $nextHandlerIndex) {
+    public function makeResponderFromHandlerResult(array $request, $result, $nextAppIndex) {
         if ($result instanceof Responder) {
             return $result;
         } elseif ($result instanceof \Generator) {
-            return new AggregateGeneratorResponder($this, $nextHandlerIndex, $request, $result);
+            return new MultiYieldResponder($this, $nextAppIndex, $request, $result);
         } elseif ($result instanceof Promise) {
-            return new AggregatePromiseResponder($this, $nextHandlerIndex, $request, $result);
+            return new MultiPromiseResponder($this, $nextAppIndex, $request, $result);
         } elseif ($result instanceof \ArrayAccess || is_array($result)) {
-            return $this->makeResponderFromArray($request, $result, $nextHandlerIndex);
+            return $this->makeResponderFromArray($request, $result, $nextAppIndex);
         } elseif (is_string($result)) {
             return $this->asgiResponderFactory->make([
                 'body' => $result
@@ -62,14 +63,14 @@ class AggregateRequestHandler implements ServerObserver {
         }
     }
 
-    private function makeResponderFromArray($request, $response, $nextHandlerIndex) {
-        if (empty($this->requestHandlers[$nextHandlerIndex]) ||
+    private function makeResponderFromArray($request, $response, $nextAppIndex) {
+        if (empty($this->applications[$nextAppIndex]) ||
             empty($response['status']) ||
             $response['status'] != HTTP_STATUS["NOT_FOUND"]
         ) {
             return $this->asgiResponderFactory->make($response);
         } else {
-            return $this->__invoke($request, $nextHandlerIndex);
+            return $this->__invoke($request, $nextAppIndex);
         }
     }
 
@@ -77,7 +78,7 @@ class AggregateRequestHandler implements ServerObserver {
      * Create an internal server error Responder (and adhere to server debug settings)
      *
      * @param \Exception $error
-     * @return AsgiMapResponder
+     * @return AsgiResponder
      */
     public function makeErrorResponder(\Exception $error) {
         $msg = $this->debug ? "<pre>{$error}</pre>" : "Something went wrong :(";

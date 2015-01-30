@@ -9,10 +9,10 @@ class AsgiResponderFactory {
      * We specifically avoid typehinting the $asgiResponseMap parameter as an array here to allow
      * for ArrayAccess instances.
      *
-     * @param array|ArrayAccess $asgiResponseMap
-     * @return AsgiMapResponder
+     * @param array|ArrayAccess $asgiResponse
+     * @return AsgiResponder
      */
-    public function make($asgiResponseMap) {
-        return new AsgiMapResponder($asgiResponseMap);
+    public function make($asgiResponse) {
+        return new AsgiResponder($asgiResponse);
     }
 }

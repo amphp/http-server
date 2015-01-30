@@ -172,34 +172,34 @@ class Bootstrapper {
     }
 
     private function aggregateHostResponders(array $hostArr) {
-        $responders = [];
+        $applications = [];
 
         if ($hostArr[Host::ROUTES] || $hostArr[Host::WEBSOCKETS]) {
             $standard = $hostArr[Host::ROUTES];
             $websockets = $hostArr[Host::WEBSOCKETS];
-            $responders[Host::ROUTES] = $this->buildRouter($standard, $websockets);
+            $applications[Host::ROUTES] = $this->buildRouter($standard, $websockets);
         }
 
         if ($conf = $hostArr[Host::RESPONDERS]) {
-            $responders[Host::RESPONDERS] = $this->buildUserResponder($conf);
+            $applications[Host::RESPONDERS] = $this->buildUserResponder($conf);
         }
 
         if ($conf = $hostArr[Host::ROOT]) {
             list($root, $isPublicRoot) = $this->buildRootResponder($conf);
             if ($isPublicRoot) {
-                $responders[Host::ROOT] = $root;
+                $applications[Host::ROOT] = $root;
             }
         } else {
             $root = null;
         }
 
         if ($conf = $hostArr[Host::REDIRECT]) {
-            $responders[Host::REDIRECT] = $this->buildRedirectResponder($conf);
+            $applications[Host::REDIRECT] = $this->buildRedirectResponder($conf);
         }
 
-        return empty($responders)
+        return empty($applications)
             ? $this->buildDefaultResponder()
-            : $this->buildResponderAggregate($responders, $root);
+            : $this->buildMultiApp($applications, $root);
     }
 
     private function buildDefaultResponder() {
@@ -208,9 +208,9 @@ class Bootstrapper {
         };
     }
 
-    private function buildResponderAggregate($requestHandlers) {
-        return $this->injector->make('Aerys\\AggregateRequestHandler', [
-            ':requestHandlers' => $requestHandlers
+    private function buildMultiApp(array $applications) {
+        return $this->injector->make('Aerys\MultiApplication', [
+            ':applications' => $applications
         ]);
     }
 
@@ -323,7 +323,7 @@ class Bootstrapper {
     }
 
     private function buildUserResponder(array $userResponders) {
-        $responders = [];
+        $applications = [];
         $server = $this->injector->make('Aerys\Server');
 
         foreach ($userResponders as $responder) {
@@ -337,12 +337,12 @@ class Bootstrapper {
                 $server->attachObserver($responder[0]);
             }
 
-            $responders[] = $responder;
+            $applications[] = $responder;
         }
 
-        return (count($responders) === 1)
-            ? current($responders)
-            : $this->buildResponderAggregate($responders);
+        return (count($applications) === 1)
+            ? current($applications)
+            : $this->buildMultiApp($applications);
     }
 
     private function buildExecutableUserResponder($responder) {
@@ -449,7 +449,7 @@ class Bootstrapper {
         list($redirectUri, $redirectCode) = $redirectStruct;
 
         return function($request) use ($redirectUri, $redirectCode) {
-            return new AsgiMapResponder([
+            return new AsgiResponder([
                 'status' => $redirectCode,
                 'header' => "Location: {$redirectUri}" . $request['REQUEST_URI'],
             ]);

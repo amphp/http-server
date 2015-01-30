@@ -10,9 +10,9 @@ use Amp\Promisor;
 use Amp\YieldCommands as SystemYieldCommands;
 use Aerys\YieldCommands as HttpYieldCommands;
 
-class AggregateGeneratorResponder implements Responder {
-    private $aggregateHandler;
-    private $nextHandlerIndex;
+class MultiYieldResponder implements Responder {
+    private $multiApp;
+    private $nextAppIndex;
     private $request;
     private $generator;
     private $promisor;
@@ -28,13 +28,13 @@ class AggregateGeneratorResponder implements Responder {
     private $headers = [];
 
     public function __construct(
-        AggregateRequestHandler $aggregateHandler,
-        $nextHandlerIndex,
+        MultiApplication $multiApp,
+        $nextAppIndex,
         array $request,
         \Generator $gen
     ) {
-        $this->aggregateHandler = $aggregateHandler;
-        $this->nextHandlerIndex = $nextHandlerIndex;
+        $this->multiApp = $multiApp;
+        $this->nextAppIndex = $nextAppIndex;
         $this->request = $request;
         $this->generator = $gen;
     }
@@ -465,7 +465,7 @@ class AggregateGeneratorResponder implements Responder {
 
     private function startOutput() {
         if ($this->status == HTTP_STATUS["NOT_FOUND"]) {
-            $responder = $this->aggregateHandler->__invoke($this->request, $this->nextHandlerIndex);
+            $responder = $this->multiApp->__invoke($this->request, $this->nextAppIndex);
             $responder->prepare($this->environment);
             $responder->assumeSocketControl();
             return false;
@@ -566,10 +566,10 @@ class AggregateGeneratorResponder implements Responder {
 
         if (!$this->isOutputStarted) {
             // If output hasn't started yet we send a 500 response
-            $responder = $this->aggregateHandler->makeErrorResponder($error);
+            $responder = $this->multiApp->makeErrorResponder($error);
             $responder->prepare($env);
             $responder->assumeSocketControl();
-        } elseif ($this->aggregateHandler->getDebugFlag()) {
+        } elseif ($this->multiApp->getDebugFlag()) {
             // If output has started and we're running in debug mode dump the error to the buffer
             // and don't worry about logging it
             $msg = "<pre>{$error}</pre>";

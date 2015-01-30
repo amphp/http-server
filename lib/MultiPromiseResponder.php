@@ -4,22 +4,17 @@ namespace Aerys;
 
 use Amp\Promise;
 
-class AggregatePromiseResponder implements Responder {
-    private $aggregateHandler;
-    private $nextHandlerIndex;
+class MultiPromiseResponder implements Responder {
+    private $multiApp;
+    private $nextAppIndex;
     private $request;
     private $environment;
     private $responder;
     private $hasSocketControl;
 
-    public function __construct(
-        AggregateRequestHandler $aggregateHandler,
-        $nextHandlerIndex,
-        array $request,
-        Promise $promise
-    ) {
-        $this->aggregateHandler = $aggregateHandler;
-        $this->nextHandlerIndex = $nextHandlerIndex;
+    public function __construct(MultiApplication $multiApp, $nextAppIndex, array $request, Promise $promise) {
+        $this->multiApp = $multiApp;
+        $this->nextAppIndex = $nextAppIndex;
         $this->request = $request;
         $promise->when([$this, 'onResolution']);
     }
@@ -31,11 +26,11 @@ class AggregatePromiseResponder implements Responder {
      * @param mixed $result
      */
     public function onResolution(\Exception $error = null, $result = null) {
-        $ah = $this->aggregateHandler;
+        $ah = $this->multiApp;
 
         $this->responder = $responder = ($error)
             ? $ah->makeErrorResponder($error)
-            : $ah->makeResponderFromHandlerResult($this->request, $result, $this->nextHandlerIndex);
+            : $ah->makeResponderFromHandlerResult($this->request, $result, $this->nextAppIndex);
 
         if ($this->environment) {
             $responder->prepare($this->environment);
