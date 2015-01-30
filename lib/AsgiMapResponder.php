@@ -37,7 +37,7 @@ class AsgiMapResponder implements Responder {
         $header = isset($asgiResponse['header']) ? $asgiResponse['header'] : '';
         $body = isset($asgiResponse['body']) ? $asgiResponse['body'] : '';
 
-        if ($header && is_array($header)) {
+        if (is_array($header)) {
             $header = implode("\r\n", $header);
         }
 
