@@ -81,6 +81,8 @@ The following document root option keys (case-insensitive) are available in the 
 
 Option Key              | Description            | Default
 ----------------------- | ---------------------- | --------------
+| aggressiveCacheHeaderEnabled | If enabled, send `post-check`, `pre-check`, and `max-age` extensions as part of resource `Cache-Control:` headers | false |
+| aggressiveCacheMultiplier | If `aggressiveCacheHeaderEnabled` is enabled, this value is multiplied by `expiresPeriod` to assign the `Cache-Control:` post-check value. | 0.9 |
 | cacheTtl              | The number of seconds to cache filesystem stat results, open file descriptors and buffered file contents | 10 |
 | cacheMaxBuffers<sup>†</sup>      | The maximum number of files that will be buffered in memory at any given time. | 50 |
 | cacheMaxBufferSize<sup>†</sup>   | The maximum file size above which request file contents will no longer be buffered in-memory | 524288 |

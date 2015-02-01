@@ -19,6 +19,8 @@ abstract class Root implements ServerObserver {
     const OP_CACHE_TTL = 'cachettl';
     const OP_CACHE_MAX_BUFFERS = 'cachemaxbuffers';
     const OP_CACHE_MAX_BUFFER_SIZE = 'cachemaxbuffersize';
+    const OP_AGGRESSIVE_CACHE_HEADER_ENABLED = 'aggressivecacheheaderenabled';
+    const OP_AGGRESSIVE_CACHE_MULTIPLIER = 'aggressivecachemultiplier';
 
     private static $PRECONDITION_NOT_MODIFIED = 1;
     private static $PRECONDITION_FAILED = 2;
@@ -48,6 +50,8 @@ abstract class Root implements ServerObserver {
     private $cacheTtl = 10;
     private $cacheMaxBufferEntries = 50;
     private $cacheMaxBufferEntrySize = 524288;
+    private $aggressiveCacheHeaderEnabled = false;
+    private $aggressiveCacheMultiplier = 0.9;
     private $debug;
 
     /**
@@ -406,8 +410,15 @@ abstract class Root implements ServerObserver {
             $headerLines[] = "Etag: {$fileEntry->etag}";
         }
 
-        if ($this->expiresPeriod > 0) {
-            $expiry =  time() + $this->expiresPeriod;
+        $canCache = ($this->expiresPeriod > 0);
+        
+        if ($canCache && $this->aggressiveCacheHeaderEnabled) {
+            $postCheck = (int) ($this->expiresPeriod * $this->aggressiveCacheMultiplier);
+            $preCheck = $this->expiresPeriod - $postCheck;
+            $expiry = $this->expiresPeriod;
+            $headerLines[] = "Cache-Control: post-check={$postCheck}, pre-check={$preCheck}, max-age={$expiry}";
+        } elseif ($canCache) {
+            $expiry =  $this->now + $this->expiresPeriod;
             $headerLines[] = 'Expires: ' . gmdate('D, d M Y H:i:s', $expiry) . ' UTC';
         } else {
             $headerLines[] = 'Expires: 0';
@@ -577,6 +588,12 @@ abstract class Root implements ServerObserver {
             case self::OP_CACHE_MAX_BUFFER_SIZE:
                 $this->setCacheMaxBufferEntrySize($value);
                 break;
+            case self::OP_AGGRESSIVE_CACHE_HEADER_ENABLED:
+                $this->setAggressiveCacheHeaderEnabled($value);
+                break;
+            case self::OP_AGGRESSIVE_CACHE_MULTIPLIER:
+                $this->setAggressiveCacheMultiplier($value);
+                break;
             default:
                 throw new \DomainException(
                     "Unknown root option: {$option}"
@@ -665,6 +682,20 @@ abstract class Root implements ServerObserver {
             $bytes = 500000;
         }
         $this->cacheMaxBufferEntrySize = $bytes;
+    }
+
+    private function setAggressiveCacheHeaderEnabled($bool) {
+        $this->aggressiveCacheHeaderEnabled = (bool) $bool;
+    }
+    
+    private function setAggressiveCacheMultiplier($multiplier) {
+        if (is_float($multiplier) && $multiplier < 1) {
+            $this->aggressiveCacheMultiplier = $multiplier;
+        } else {
+            throw new \InvalidArgumentException(
+                "Aggressive cache multiplier expects a float < 1; {$multiplier} specified"
+            );
+        }
     }
 
     private function collectStaleCacheEntries() {

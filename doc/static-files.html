@@ -1,13 +1,4 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aerys: Static Files</title>
-<link rel="stylesheet" href="https://stackedit.io/res-min/themes/base.css" />
-<script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML"></script>
-</head>
-<body><div class="container"><h1 id="aerys-static-files">Aerys: Static Files</h1>
+<h1 id="aerys-static-files">Aerys: Static Files</h1>
 
 <blockquote>
   <p><strong><a href="#table-of-contents">Table of Contents</a></strong></p>
@@ -108,6 +99,16 @@
 </tr>
 </thead>
 <tbody><tr>
+  <td>aggressiveCacheHeaderEnabled</td>
+  <td>If enabled, send <code>post-check</code>, <code>pre-check</code>, and <code>max-age</code> extensions as part of resource <code>Cache-Control:</code> headers</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td>aggressiveCacheMultiplier</td>
+  <td>If <code>aggressiveCacheHeaderEnabled</code> is enabled, this value is multiplied by <code>expiresPeriod</code> to assign the <code>Cache-Control:</code> post-check value.</td>
+  <td>0.9</td>
+</tr>
+<tr>
   <td>cacheTtl</td>
   <td>The number of seconds to cache filesystem stat results, open file descriptors and buffered file contents</td>
   <td>10</td>
@@ -168,8 +169,6 @@
 <blockquote>
   <p><strong><sup>†</sup></strong> cached file content buffers are NOT shared across server process instances. The maximum memory exposure from cached file buffers at any one time grows linearly with the number of concurrent server processes. The use of cached content buffers may be disabled by setting <code>"cacheMaxBuffers" =&gt; 0</code>.</p>
 </blockquote>
-
-
 
 <h2 id="features-and-considerations">Features and Considerations</h2>
 
@@ -281,7 +280,7 @@
 
 <h2 id="table-of-contents">Table of Contents</h2>
 
-<p><div class="toc">
+<p><div class="toc"><div class="toc">
 <ul>
 <li><a href="#aerys-static-files">Aerys: Static Files</a><ul>
 <li><a href="#serving-static-files">Serving Static Files</a></li>
@@ -302,5 +301,5 @@
 </li>
 </ul>
 </div>
-</p></div></body>
-</html>
+</div>
+</p>
