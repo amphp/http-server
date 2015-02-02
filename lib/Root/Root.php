@@ -411,10 +411,10 @@ abstract class Root implements ServerObserver {
         }
 
         $canCache = ($this->expiresPeriod > 0);
-        
+
         if ($canCache && $this->aggressiveCacheHeaderEnabled) {
-            $postCheck = (int) ($this->expiresPeriod * $this->aggressiveCacheMultiplier);
-            $preCheck = $this->expiresPeriod - $postCheck;
+            $postCheck = $this->now + (int) ($this->expiresPeriod * $this->aggressiveCacheMultiplier);
+            $preCheck = $this->now + $this->expiresPeriod;
             $expiry = $this->expiresPeriod;
             $headerLines[] = "Cache-Control: post-check={$postCheck}, pre-check={$preCheck}, max-age={$expiry}";
         } elseif ($canCache) {
@@ -687,7 +687,7 @@ abstract class Root implements ServerObserver {
     private function setAggressiveCacheHeaderEnabled($bool) {
         $this->aggressiveCacheHeaderEnabled = (bool) $bool;
     }
-    
+
     private function setAggressiveCacheMultiplier($multiplier) {
         if (is_float($multiplier) && $multiplier < 1) {
             $this->aggressiveCacheMultiplier = $multiplier;
