@@ -381,7 +381,7 @@ abstract class Root implements ServerObserver {
     }
 
     private function makeNotModifiedResponse($mtime, $etag = null) {
-        $headers[] = 'Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' UTC';
+        $headers[] = 'Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' GMT';
         if ($etag) {
             $headers[] = "ETag: {$etag}";
         }
@@ -419,12 +419,12 @@ abstract class Root implements ServerObserver {
             $headerLines[] = "Cache-Control: post-check={$postCheck}, pre-check={$preCheck}, max-age={$expiry}";
         } elseif ($canCache) {
             $expiry =  $this->now + $this->expiresPeriod;
-            $headerLines[] = 'Expires: ' . gmdate('D, d M Y H:i:s', $expiry) . ' UTC';
+            $headerLines[] = 'Expires: ' . gmdate('D, d M Y H:i:s', $expiry) . ' GMT';
         } else {
             $headerLines[] = 'Expires: 0';
         }
 
-        $headerLines[] = 'Last-Modified: ' . gmdate('D, d M Y H:i:s', $fileEntry->mtime) . ' UTC';
+        $headerLines[] = 'Last-Modified: ' . gmdate('D, d M Y H:i:s', $fileEntry->mtime) . ' GMT';
 
         return $headerLines;
     }
