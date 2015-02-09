@@ -75,7 +75,7 @@ class Bootstrapper {
         }
         if (!is_file($options['config']) || !is_readable($options['config'])) {
             throw new BootException(
-                'Cannot boot server: config file either does not exist or not readable (-c, --config)'
+                'Cannot boot server: config file either does not exist or not is readable (-c, --config)'
             );
         }
 
