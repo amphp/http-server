@@ -18,8 +18,10 @@ class Client extends \Amp\Struct {
     public $cycles = [];
     public $partialCycle;
     public $requestCount;
-    public $parser;
+    public $parseContext;
     public $readWatcher;
     public $writeWatcher;
     public $pendingResponder;
+    
+    public $body; // @TODO Kill this as it's only temporary for BC
 }

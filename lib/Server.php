@@ -315,7 +315,7 @@ class Server {
             $acceptWatcher = $this->reactor->onReadable($socket, [$this, 'accept'], $enableNow = false);
             $this->acceptWatchers[$address] = $acceptWatcher;
         }
-        
+
         $this->state = self::STARTING;
 
         return $this->notifyObservers()->when(function($e, $r) {
@@ -361,7 +361,7 @@ class Server {
         if ($this->stopPromisor) {
             return $this->stopPromisor;
         }
-        
+
         foreach ($this->acceptWatchers as $watcherId) {
             $this->reactor->cancel($watcherId);
         }
@@ -557,11 +557,11 @@ class Server {
         list($client->clientAddress, $client->clientPort) = $this->parseSocketName($clientName);
         list($client->serverAddress, $client->serverPort) = $this->parseSocketName($serverName);
 
-        $client->parser = (new Parser)->setOptions([
-            'maxHeaderBytes' => $this->maxHeaderBytes,
-            'maxBodyBytes' => $this->maxBodyBytes,
-            'returnBeforeEntity' => TRUE
-        ]);
+        $client->parseContext = $parseContext = new ParseRequestContext;
+        $parseContext->appData = $client;
+        $parseContext->maxBodySize = $this->maxBodyBytes;
+        $parseContext->maxHeaderSize = $this->maxHeaderBytes;
+        $parseContext->emitCallback = [$this, 'onRequestParseEvent'];
 
         $onReadable = function() use ($client) { $this->readClientSocketData($client); };
         $client->readWatcher = $this->reactor->onReadable($socket, $onReadable);
@@ -594,43 +594,55 @@ class Server {
         $data = @fread($client->socket, $this->readGranularity);
         if ($data != '') {
             $this->renewKeepAliveTimeout($client->id);
-            $this->parseClientSocketData($client, $data);
+            Parser::parseRequest($data, $client->parseContext);
         } elseif (!is_resource($client->socket) || @feof($client->socket)) {
             $this->closeClient($client);
         }
     }
 
-    private function parseClientSocketData(Client $client, $data) {
-        try {
-            while ($parsedRequest = $client->parser->parse($data)) {
-                if ($parsedRequest['headersOnly']) {
-                    $this->onPartialRequest($client, $parsedRequest);
+    public function onRequestParseEvent(array $parseData, Client $client) {
+        list($eventType, $parseResult, $errorStruct) = $parseData;
+        switch ($eventType) {
+            case Parser::HEADERS:
+                $parseResult['headersOnly'] = true; // @TODO <-- kill this eventually
+                $this->onPartialRequest($client, $parseResult);
+                break;
+            case Parser::BODY_PART:
+                // @TODO This is only temporary to retain compat with the existing method of
+                // accessing request entity bodies through a stream. It's going away sooner
+                // rather than later.
+                $client->body = $client->body ?: fopen("php://memory", "r+");
+                fwrite($client->body, $parseResult['body']);
+            case Parser::RESULT:
+                if ($client->body) {
+                    fwrite($client->body, $parseResult['body']);
+                    rewind($client->body);
+                    $parseResult['body'] = $client->body;
+                }
+                $parseResult['headersOnly'] = false; // @TODO <-- kill this eventually
+                $this->onCompletedRequest($client, $parseResult);
+                break;
+            case Parser::ERROR:
+                if ($client->partialCycle) {
+                    $requestCycle = $client->partialCycle;
+                    $client->partialCycle = null;
                 } else {
-                    $this->onCompletedRequest($client, $parsedRequest);
+                    list($requestCycle) = $this->initializeCycle($client, $parseResult);
                 }
 
-                if ($client->parser && $client->parser->getBuffer()) {
-                    $data = '';
-                } else {
-                    break;
-                }
-            }
-        } catch (ParserException $e) {
-            if ($client->partialCycle) {
-                $requestCycle = $client->partialCycle;
-                $client->partialCycle = null;
-            } else {
-                list($requestCycle) = $this->initializeCycle($client, $e->getParsedMsgArr());
-            }
+                list($errorCode, $errorMessage) = $errorStruct;
+                $display = $this->debug ? "<pre>{$errorMessage}</pre>" : '<p>Malformed HTTP request</p>';
+                $responder = $this->responderFactory->make([
+                    'status' => $errorCode,
+                    'header' => ['Connection: close'],
+                    'body'   => sprintf("<html><body>%s</body></html>", $display)
+                ]);
 
-            $display = $this->debug ? "<pre>{$e}</pre>" : '<p>Malformed HTTP request</p>';
-            $responder = $this->responderFactory->make([
-                'status' => $e->getCode() ?: HTTP_STATUS["BAD_REQUEST"],
-                'header' => ['Connection: close'],
-                'body'   => sprintf("<html><body>%s</body></html>", $display)
-            ]);
-
-            $this->assignResponder($requestCycle, $responder);
+                $this->assignResponder($requestCycle, $responder);
+            default:
+                throw new \RuntimeException(
+                    'Unexpected parser result code encountered'
+                );
         }
     }
 
@@ -659,20 +671,14 @@ class Server {
         }
     }
 
-    private function initializeCycle(Client $client, array $parsedRequestMap) {
-        extract($parsedRequestMap, $flags = EXTR_PREFIX_ALL, $prefix = '_');
-
-        //$__protocol
-        //$__method
-        //$__uri
-        //$__headers
-        //$__body
-        //$__trace
-        //$__headersOnly
-
-        if (empty($__protocol) || $__protocol === '?') {
-            $__protocol = '1.0';
-        }
+    private function initializeCycle(Client $client, array $parseResult) {
+        $__protocol = empty($parseResult["protocol"]) ? "1.0" : $parseResult["protocol"];
+        $__method = empty($parseResult["method"]) ? "?" : $parseResult["method"];
+        $__uri = empty($parseResult["uri"]) ? "?" : $parseResult["uri"];
+        $__headers = empty($parseResult["headers"]) ? [] : $parseResult["headers"];
+        $__body = $parseResult["body"];
+        $__trace = $parseResult["trace"];
+        $__headersOnly = $parseResult["headersOnly"];
 
         $__method = $this->normalizeMethodCase ? strtoupper($__method) : $__method;
 
@@ -1015,7 +1021,7 @@ class Server {
         }
 
         $this->cachedClientCount--;
-        $client->parser = $client->cycles = $client->pipeline = null;
+        $client->cycles = $client->pipeline = null;
 
         if ($this->state === self::PAUSED
             && $this->maxConnections > 0
