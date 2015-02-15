@@ -18,7 +18,7 @@ class Client extends \Amp\Struct {
     public $cycles = [];
     public $partialCycle;
     public $requestCount;
-    public $parseContext;
+    public $requestParser;
     public $readWatcher;
     public $writeWatcher;
     public $pendingResponder;

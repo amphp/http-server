@@ -557,11 +557,12 @@ class Server {
         list($client->clientAddress, $client->clientPort) = $this->parseSocketName($clientName);
         list($client->serverAddress, $client->serverPort) = $this->parseSocketName($serverName);
 
-        $client->parseContext = $parseContext = new ParseRequestContext;
-        $parseContext->appData = $client;
-        $parseContext->maxBodySize = $this->maxBodyBytes;
-        $parseContext->maxHeaderSize = $this->maxHeaderBytes;
-        $parseContext->emitCallback = [$this, 'onRequestParseEvent'];
+        $onParseEmit = [$this, 'onRequestParseEvent'];
+        $client->requestParser = new RequestParser($onParseEmit, $options = [
+            'maxBodySize' => $this->maxBodyBytes,
+            'maxHeaderSize' => $this->maxHeaderBytes,
+            'appData' => $client,
+        ]);
 
         $onReadable = function() use ($client) { $this->readClientSocketData($client); };
         $client->readWatcher = $this->reactor->onReadable($socket, $onReadable);
@@ -594,7 +595,8 @@ class Server {
         $data = @fread($client->socket, $this->readGranularity);
         if ($data != '') {
             $this->renewKeepAliveTimeout($client->id);
-            Parser::parseRequest($data, $client->parseContext);
+            $requestParser = $client->requestParser;
+            $requestParser->parse($data);
         } elseif (!is_resource($client->socket) || @feof($client->socket)) {
             $this->closeClient($client);
         }
@@ -603,17 +605,17 @@ class Server {
     public function onRequestParseEvent(array $parseData, Client $client) {
         list($eventType, $parseResult, $errorStruct) = $parseData;
         switch ($eventType) {
-            case Parser::HEADERS:
+            case RequestParser::HEADERS:
                 $parseResult['headersOnly'] = true; // @TODO <-- kill this eventually
                 $this->onPartialRequest($client, $parseResult);
                 break;
-            case Parser::BODY_PART:
+            case RequestParser::BODY_PART:
                 // @TODO This is only temporary to retain compat with the existing method of
                 // accessing request entity bodies through a stream. It's going away sooner
                 // rather than later.
                 $client->body = $client->body ?: fopen("php://memory", "r+");
                 fwrite($client->body, $parseResult['body']);
-            case Parser::RESULT:
+            case RequestParser::RESULT:
                 if ($client->body) {
                     fwrite($client->body, $parseResult['body']);
                     rewind($client->body);
@@ -622,7 +624,7 @@ class Server {
                 $parseResult['headersOnly'] = false; // @TODO <-- kill this eventually
                 $this->onCompletedRequest($client, $parseResult);
                 break;
-            case Parser::ERROR:
+            case RequestParser::ERROR:
                 if ($client->partialCycle) {
                     $requestCycle = $client->partialCycle;
                     $client->partialCycle = null;
