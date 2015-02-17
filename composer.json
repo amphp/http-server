@@ -24,13 +24,10 @@
     ],
     "require": {
         "php": ">=5.5.0",
-        "amphp/amp": "~0.15.0",
+        "amphp/amp": "~0.16.0",
         "rdlowrey/auryn": "~0.14",
         "nikic/fast-route": "~0.1"
 
-    },
-    "require-dev": {
-        "amphp/artax": "dev-master"
     },
     "autoload": {
         "psr-4": {
