@@ -73,6 +73,11 @@ class Bootstrapper {
                 'Cannot boot server: no config file specified (-c, --config)'
             );
         }
+        if (!is_file($options['config']) || !is_readable($options['config'])) {
+            throw new BootException(
+                'Cannot boot server: config file either does not exist or not is readable (-c, --config)'
+            );
+        }
 
         list($hosts, $serverOptions) = $this->parseServerConfigFile($options['config']);
 
