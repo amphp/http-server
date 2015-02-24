@@ -1239,7 +1239,7 @@ class Server {
         // @TODO Validate characters in method names match the RFC 2616 ABNF token definition:
         // token          = 1*<any CHAR except CTLs or separators>
         $methods = array_filter($methods, function($m) { return $m && is_string($m); });
-        $this->allowedMethods = $methods;
+        $this->allowedMethods = array_combine($methods, array_fill(0, count($methods), 1));
     }
 
     private function setDefaultHost($vhostId) {
