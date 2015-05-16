@@ -3,84 +3,85 @@
 namespace Aerys;
 
 class Vhost {
+    private $application;
     private $address;
     private $port;
     private $name;
-    private $application;
+    private $filters = [];
     private $tlsContextArr = [];
     private $tlsDefaults = [
-        'local_cert'            => null,
-        'passphrase'            => null,
-        'allow_self_signed'     => false,
-        'verify_peer'           => false,
-        'ciphers'               => null,
-        'cafile'                => null,
-        'capath'                => null,
-        'single_ecdh_use'       => false,
-        'ecdh_curve'            => 'prime256v1',
-        'honor_cipher_order'    => true,
-        'disable_compression'   => true,
-        'reneg_limit'           => 0,
-        'reneg_limit_callback'  => null,
-        'crypto_method'         => STREAM_CRYPTO_METHOD_TLS_SERVER,
+        "local_cert"            => null,
+        "passphrase"            => null,
+        "allow_self_signed"     => false,
+        "verify_peer"           => false,
+        "ciphers"               => null,
+        "cafile"                => null,
+        "capath"                => null,
+        "single_ecdh_use"       => false,
+        "ecdh_curve"            => "prime256v1",
+        "honor_cipher_order"    => true,
+        "disable_compression"   => true,
+        "reneg_limit"           => 0,
+        "reneg_limit_callback"  => null,
+        "crypto_method"         => STREAM_CRYPTO_METHOD_TLS_SERVER,
     ];
 
     private static $cryptoMethodMap = [
-        'tls'       => STREAM_CRYPTO_METHOD_TLS_SERVER,
-        'tls1'      => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
-        'tlsv1'     => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
-        'tlsv1.0'   => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
-        'tls1.1'    => STREAM_CRYPTO_METHOD_TLSv1_1_SERVER,
-        'tlsv1.1'   => STREAM_CRYPTO_METHOD_TLSv1_1_SERVER,
-        'tls1.2'    => STREAM_CRYPTO_METHOD_TLSv1_2_SERVER,
-        'tlsv1.2'   => STREAM_CRYPTO_METHOD_TLSv1_2_SERVER,
-        'ssl2'      => STREAM_CRYPTO_METHOD_SSLv2_SERVER,
-        'sslv2'     => STREAM_CRYPTO_METHOD_SSLv2_SERVER,
-        'ssl3'      => STREAM_CRYPTO_METHOD_SSLv3_SERVER,
-        'sslv3'     => STREAM_CRYPTO_METHOD_SSLv3_SERVER,
-        'sslv23'    => STREAM_CRYPTO_METHOD_SSLv23_SERVER,
-        'any'       => STREAM_CRYPTO_METHOD_ANY_SERVER,
+        "tls"       => STREAM_CRYPTO_METHOD_TLS_SERVER,
+        "tls1"      => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
+        "tlsv1"     => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
+        "tlsv1.0"   => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
+        "tls1.1"    => STREAM_CRYPTO_METHOD_TLSv1_1_SERVER,
+        "tlsv1.1"   => STREAM_CRYPTO_METHOD_TLSv1_1_SERVER,
+        "tls1.2"    => STREAM_CRYPTO_METHOD_TLSv1_2_SERVER,
+        "tlsv1.2"   => STREAM_CRYPTO_METHOD_TLSv1_2_SERVER,
+        "ssl2"      => STREAM_CRYPTO_METHOD_SSLv2_SERVER,
+        "sslv2"     => STREAM_CRYPTO_METHOD_SSLv2_SERVER,
+        "ssl3"      => STREAM_CRYPTO_METHOD_SSLv3_SERVER,
+        "sslv3"     => STREAM_CRYPTO_METHOD_SSLv3_SERVER,
+        "sslv23"    => STREAM_CRYPTO_METHOD_SSLv23_SERVER,
+        "any"       => STREAM_CRYPTO_METHOD_ANY_SERVER,
     ];
 
-    public function __construct($address, $port, $name, callable $application) {
+    public function __construct(string $name, string $address, int $port, callable $application, array $filters) {
+        $this->name = isset($name) ? strtolower($name) : "";
         $this->setAddress($address);
         $this->setPort($port);
-        $this->name = strtolower($name);
-        $this->id = ($this->name ? $this->name : $this->address) . ':' . $this->port;
         $this->application = $application;
+        $this->filters = $filters;
+        $this->id = ($this->name ?? $this->address) . ":" . $this->port;
     }
 
-    private function setAddress($address) {
+    private function setAddress(string $address) {
         $address = trim($address, "[]");
-        if ($address === '*') {
+        if ($address === "*") {
             $this->address = $address;
-        } elseif ($address === '::') {
-            $this->address = '[::]';
+        } elseif ($address === "::") {
+            $this->address = "[::]";
         } elseif (!$packedAddress = @inet_pton($address)) {
             throw new \InvalidArgumentException(
                 "IPv4, IPv6 or wildcard address required: {$address}"
             );
         } else {
-            $this->address = isset($packedAddress[4]) ? $address : "[{$address}]";
+            $this->address = isset($packedAddress[4]) ? "[{$address}]" : $address;
         }
     }
 
-    private function setPort($port) {
-        if ($port != (string)(int) $port || $port < 1 || $port > 65535) {
+    private function setPort(int $port) {
+        if ($port < 1 || $port > 65535) {
             throw new \InvalidArgumentException(
                 "Invalid host port: {$port}; integer in the range [1-65535] required"
             );
         }
-
-        $this->port = (int) $port;
+        $this->port = $port;
     }
 
     /**
-     * Retrieve the ID for this host
+     * Retrieve the name:port ID for this host
      *
      * @return string
      */
-    public function getId() {
+    public function getId(): string {
         return $this->id;
     }
 
@@ -89,7 +90,7 @@ class Vhost {
      *
      * @return string
      */
-    public function getAddress() {
+    public function getAddress(): string {
         return $this->address;
     }
 
@@ -98,7 +99,7 @@ class Vhost {
      *
      * @return int
      */
-    public function getPort() {
+    public function getPort(): int {
         return $this->port;
     }
 
@@ -107,25 +108,25 @@ class Vhost {
      *
      * @return string
      */
-    public function getBindableAddress() {
-        $ip = ($this->address === '*') ? '0.0.0.0' : $this->address;
+    public function getBindableAddress(): string {
+        $ip = ($this->address === "*") ? "0.0.0.0" : $this->address;
 
-        return sprintf('tcp://%s:%d', $ip, $this->port);
+        return "tcp://{$ip}:{$this->port}";
     }
 
     /**
-     * Retrieve the host's name
+     * Retrieve the host's name (may be an empty string)
      *
      * @return string
      */
-    public function getName() {
+    public function getName(): string {
         return $this->name;
     }
 
     /**
-     * Retrieve the callable application for this host
+     * Retrieve the host's callable application
      *
-     * @return mixed
+     * @return callable
      */
     public function getApplication() {
         return $this->application;
@@ -136,8 +137,8 @@ class Vhost {
      *
      * @return bool
      */
-    public function hasWildcardAddress() {
-        return ($this->address === '*' || $this->address === '[::]');
+    public function hasWildcardAddress(): bool {
+        return ($this->address === "*" || $this->address === "[::]");
     }
 
     /**
@@ -146,7 +147,7 @@ class Vhost {
      * @param string $address
      * @return bool
      */
-    public function matchesAddress($address) {
+    public function matchesAddress(string $address): bool {
         if ($this->address === '*' || $this->address === '[::]') {
             return true;
         }
@@ -162,8 +163,8 @@ class Vhost {
      *
      * @return bool
      */
-    public function hasName() {
-        return $this->name != '';
+    public function hasName(): bool {
+        return ($this->name !== "");
     }
 
     /**
@@ -171,7 +172,7 @@ class Vhost {
      *
      * @return bool Returns true if a TLS context is assigned, false otherwise
      */
-    public function isEncrypted() {
+    public function isEncrypted(): bool {
         return (bool) $this->tlsContextArr;
     }
 
@@ -307,25 +308,22 @@ class Vhost {
     }
 
     /**
-     * Determine if this host matches the specified Vhost ID string
+     * Add a write filter to this host
      *
-     * @param string $hostId
-     * @return bool Returns true if a match is found, false otherwise
+     * @param callable $callable
+     * @return void
      */
-    public function matches($hostId) {
-        if ($hostId === $this->id || $hostId === '*') {
-            $isMatch = true;
-        } elseif (substr($hostId, 0, 2) === '*:') {
-            $portToMatch = substr($hostId, 2);
-            $isMatch = ($portToMatch === '*' || $this->port == $portToMatch);
-        } elseif (substr($hostId, -2) === ':*') {
-            $addrToMatch = substr($hostId, 0, -2);
-            $isMatch = ($addrToMatch === '*' || $this->address === $addrToMatch || $this->name === $addrToMatch);
-        } else {
-            $isMatch = false;
-        }
+    public function addFilter(callable $callable) {
+        $this->filters[] = $callable;
+    }
 
-        return $isMatch;
+    /**
+     * Retrieve filters registered for this host
+     *
+     * @return array
+     */
+    public function getFilters(): array {
+        return $this->filters;
     }
 
     /**
@@ -333,7 +331,7 @@ class Vhost {
      *
      * @return string
      */
-    public function __toString() {
+    public function __toString(): string {
         return $this->name;
     }
 
@@ -348,11 +346,11 @@ class Vhost {
             : gettype($this->application);
 
         return [
-            'address' => $this->address,
-            'port' => $this->port,
-            'name' => $this->name,
-            'tls' => $this->tlsContextArr,
-            'application' => $appType,
+            "address" => $this->address,
+            "port" => $this->port,
+            "name" => $this->name,
+            "tls" => $this->tlsContextArr,
+            "application" => $appType,
         ];
     }
 }

@@ -4,9 +4,10 @@ namespace Aerys;
 
 class RequestParser {
     const ERROR = 1;
-    const HEADERS = 2;
-    const BODY_PART = 4;
-    const RESULT = 8;
+    const RESULT = 4;
+    const ENTITY_HEADERS = 4;
+    const ENTITY_PART = 8;
+    const ENTITY_RESULT = 16;
 
     const S_AWAITING_HEADERS = 0;
     const S_BODY_IDENTITY = 1;
@@ -15,7 +16,7 @@ class RequestParser {
     const S_TRAILERS_START = 4;
     const S_TRAILERS = 5;
 
-    const HEADERS_PATTERN = "/
+    const ENTITY_HEADERS_PATTERN = "/
         ([^\(\)<>@,;:\\\"\/\[\]\?\={}\x20\x09\x01-\x1F\x7F]+):[\x20\x09]*
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
     /x";
@@ -25,7 +26,7 @@ class RequestParser {
     private $maxHeaderSize = 32768;
     private $maxBodySize = 131072;
     private $bodyEmitSize = 32768;
-    private $appData;
+    private $callbackData;
     private $buffer;
     private $traceBuffer;
     private $protocol;
@@ -33,6 +34,7 @@ class RequestParser {
     private $method;
     private $uri;
     private $body = "";
+    private $hasBody;
     private $isChunked;
     private $contentLength;
     private $bodyBufferSize;
@@ -43,18 +45,10 @@ class RequestParser {
     public function __construct(callable $emitCallback, array $options = []) {
         $this->state = self::S_AWAITING_HEADERS;
         $this->emitCallback = $emitCallback;
-        if (isset($options['maxHeaderSize'])) {
-            $this->maxHeaderSize = (int) $options['maxHeaderSize'];
-        }
-        if (isset($options['maxBodySize'])) {
-            $this->maxBodySize = (int) $options['maxBodySize'];
-        }
-        if (isset($options['bodyEmitSize'])) {
-            $this->bodyEmitSize = (int) $options['bodyEmitSize'];
-        }
-        if (isset($options['appData'])) {
-            $this->appData = $options['appData'];
-        }
+        $this->maxHeaderSize = $options["max_header_size"] ?? 32768;
+        $this->maxBodySize = $options["max_body_size"] ?? 131072;
+        $this->bodyEmitSize = $options["body_emit_size"] ?? 32768;
+        $this->callbackData = @$options["callback_data"];
     }
 
     public function parse($data) {
@@ -146,7 +140,7 @@ class RequestParser {
                 goto complete;
             }
 
-            if (!preg_match_all(self::HEADERS_PATTERN, $rawHeaders, $matches)) {
+            if (!preg_match_all(self::ENTITY_HEADERS_PATTERN, $rawHeaders, $matches)) {
                 $error = [400, "Bad Request: header syntax violation"];
                 goto complete;
             }
@@ -195,21 +189,22 @@ class RequestParser {
                 goto complete;
             }
 
-            $partialResult = [
-                "trace"    => $this->traceBuffer,
-                "protocol" => $this->protocol,
-                "method"   => $this->method,
-                "uri"      => $this->uri,
-                "headers"  => $this->headers,
-                "body"     => null,
+            $this->hasBody = true;
+
+            $parseResult = [
+                "trace"     => $this->traceBuffer,
+                "protocol"  => $this->protocol,
+                "method"    => $this->method,
+                "uri"       => $this->uri,
+                "headers"   => $this->headers,
             ];
 
             $cb = $this->emitCallback;
             $emit = empty($error)
-                ? [self::HEADERS, $partialResult, null]
-                : [self::ERROR, $partialResult, $error];
+                ? [self::ENTITY_HEADERS, $parseResult, null]
+                : [self::ERROR, $parseResult, $error];
 
-            $cb($emit, $this->appData);
+            $cb($emit, $this->callbackData);
 
             goto start;
         }
@@ -336,7 +331,7 @@ class RequestParser {
                 goto complete;
             }
 
-            if (!preg_match_all(self::HEADERS_PATTERN, $trailers, $matches)) {
+            if (!preg_match_all(self::ENTITY_HEADERS_PATTERN, $trailers, $matches)) {
                 $error = [400, "Bad Request: trailer syntax violation"];
                 goto complete;
             }
@@ -381,33 +376,33 @@ class RequestParser {
             $this->body = '';
             $this->bodyBufferSize = 0;
 
-            $parseResult = [
-                "trace"       => $this->traceBuffer,
-                "protocol"    => $this->protocol,
-                "method"      => $this->method,
-                "uri"         => $this->uri,
-                "headers"     => $this->headers,
-                "body"        => $bodyPart,
-            ];
-
             $cb = $this->emitCallback;
-            $cb([self::BODY_PART, $parseResult, null], $this->appData);
+            $cb([self::ENTITY_PART, $bodyPart, null], $this->callbackData);
 
-            goto start;
+            if (empty($isFinalBodyPart)) {
+                goto start;
+            } else {
+                unset($isFinalBodyPart);
+                goto complete;
+            }
         }
 
         complete: {
+            if ($this->body != '') {
+                $isFinalBodyPart = true;
+                goto emit_body_part;
+            }
+
             $parseResult = [
-                "trace"       => $this->traceBuffer,
-                "protocol"    => $this->protocol,
-                "method"      => $this->method,
-                "uri"         => $this->uri,
-                "headers"     => $this->headers,
-                "body"        => $this->body,
+                "trace"     => $this->traceBuffer,
+                "protocol"  => $this->protocol,
+                "method"    => $this->method,
+                "uri"       => $this->uri,
+                "headers"   => $this->headers,
             ];
 
             if (empty($error)) {
-                $resultCode = self::RESULT;
+                $resultCode = $this->hasBody ? self::ENTITY_RESULT : self::RESULT;
                 $error = null;
             } else {
                 $resultCode = self::ERROR;
@@ -417,6 +412,7 @@ class RequestParser {
             $this->traceBuffer = null;
             $this->headers = [];
             $this->body = null;
+            $this->hasBody = null;
             $this->bodyBufferSize = 0;
             $this->bodyBytesConsumed = 0;
             $this->remainingBodyBytes = null;
@@ -426,7 +422,7 @@ class RequestParser {
             $this->method = null;
 
             $cb = $this->emitCallback;
-            $cb([$resultCode, $parseResult, $error], $this->appData);
+            $cb([$resultCode, $parseResult, $error], $this->callbackData);
 
             if ($error) {
                 return;

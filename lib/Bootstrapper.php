@@ -3,456 +3,226 @@
 namespace Aerys;
 
 use Amp\Reactor;
-use Auryn\Injector;
-use Auryn\Provider;
-use FastRoute\RouteCollector;
 
 class Bootstrapper {
-    const E_CONFIG_INCLUDE = "Config file inclusion failure: %s";
-    const E_MISSING_CONFIG = "No Host instances found in config file: %s";
-    const E_BAD_OPT_CONST =  "Invalid AERYS_OPTIONS constant: array expected, got %s";
-    const E_BAD_OPT_CONST_KEY = "Unknown AERYS_OPTIONS key: %s";
+    private $reactor;
 
-    private $injector;
-    private $serverOptMap = [
-        'MAX_CONNECTIONS'       => Server::OP_MAX_CONNECTIONS,
-        'MAX_REQUESTS'          => Server::OP_MAX_REQUESTS,
-        'KEEP_ALIVE_TIMEOUT'    => Server::OP_KEEP_ALIVE_TIMEOUT,
-        'DISABLE_KEEP_ALIVE'    => Server::OP_DISABLE_KEEP_ALIVE,
-        'MAX_HEADER_BYTES'      => Server::OP_MAX_HEADER_BYTES,
-        'MAX_BODY_BYTES'        => Server::OP_MAX_BODY_BYTES,
-        'DEFAULT_CONTENT_TYPE'  => Server::OP_DEFAULT_CONTENT_TYPE,
-        'DEFAULT_TEXT_CHARSET'  => Server::OP_DEFAULT_TEXT_CHARSET,
-        'SEND_SERVER_TOKEN'     => Server::OP_SEND_SERVER_TOKEN,
-        'NORMALIZE_METHOD_CASE' => Server::OP_NORMALIZE_METHOD_CASE,
-        'REQUIRE_BODY_LENGTH'   => Server::OP_REQUIRE_BODY_LENGTH,
-        'SOCKET_SO_LINGER_ZERO' => Server::OP_SOCKET_SO_LINGER_ZERO,
-        'SOCKET_BACKLOG_SIZE'   => Server::OP_SOCKET_BACKLOG_SIZE,
-        'ALLOWED_METHODS'       => Server::OP_ALLOWED_METHODS,
-        'DEFAULT_HOST'          => Server::OP_DEFAULT_HOST,
-    ];
+    public function __construct(Reactor $reactor) {
+        $this->reactor = $reactor;
+    }
 
-    public function __construct(Reactor $reactor, Injector $injector = null) {
-        $this->injector = $injector ?: new Provider;
-        $this->injector->alias('Amp\Reactor', get_class($reactor));
-        $this->injector->share($reactor);
+    /**
+     * Parse server command line options
+     *
+     * Returns an array with the following keys:
+     *
+     *  - help
+     *  - debug
+     *  - config
+     *  - workers
+     *  - remote
+     *
+     * @return array
+     */
+    public static function parseCommandLineOptions() {
+        $shortOpts = "hdc:w:r:";
+        $longOpts = ["help", "debug", "config:", "workers:", "remote:"];
+        $parsedOpts = getopt($shortOpts, $longOpts);
+        $shortOptMap = [
+            "c" => "config",
+            "w" => "workers",
+            "r" => "remote",
+        ];
+
+        $options = [
+            "config" => "",
+            "workers" => 0,
+            "remote" => "",
+        ];
+
+        foreach ($parsedOpts as $key => $value) {
+            $key = empty($shortOptMap[$key]) ? $key : $shortOptMap[$key];
+            if (isset($options[$key])) {
+                $options[$key] = $value;
+            }
+        }
+
+        $options["debug"] = isset($parsedOpts["d"]) || isset($parsedOpts["debug"]);
+        $options["help"] = isset($parsedOpts["h"]) || isset($parsedOpts["help"]);
+
+        return $options;
     }
 
     /**
      * Bootstrap a server watcher from command line options
      *
-     * @param array $options An array of options parsed from command line switches
-     * @throws BootException On missing config file option
-     * @return Watcher
+     * @param string $configFile The server config file to bootstrap
+     * @param bool $forceDebug Should the config file debug setting be overridden?
+     * @return array [$server, $addrCtxMap, $onClient]
      */
-    public function bootWatcher(array $options) {
-        if ($options['debug']) {
-            // The debug watcher doesn't spawn any worker processes so we
-            // need to go ahead and boot up a running server now.
-            $this->bootServer($options);
-            $watcher = $this->injector->make('Aerys\DebugWatcher');
-        } else {
-            // Worker processes are in charge of booting up their own
-            // servers. DO NOT boot a server here or cthulu will be summoned.
-            $watcher = $this->injector->make('Aerys\WorkerWatcher');
-        }
+    public function boot(string $configFile, bool $forceDebug): array {
+        list($hosts, $options) = $this->loadConfigFile($configFile, $forceDebug);
 
-        return $watcher;
-    }
+        $server = new Server($this->reactor);
 
-    /**
-     * Bootstrap a server from command line options
-     *
-     * @param array $options An array of options parsed from command line switches
-     * @throws BootException On missing config file option
-     * @return Server
-     */
-    public function bootServer(array $options) {
-        if (empty($options['config'])) {
-            throw new BootException(
-                'Cannot boot server: no config file specified (-c, --config)'
-            );
-        }
-
-        list($hosts, $serverOptions) = $this->parseServerConfigFile($options['config']);
-
-        $this->injector->share('Aerys\Server');
-        $this->injector->share('Aerys\VhostGroup');
-        $this->injector->share('Aerys\AsgiResponderFactory');
-
-        $vhostGroup = $this->injector->make('Aerys\VhostGroup');
-        $server = $this->injector->make('Aerys\Server');
-
-        // Automatically register any ServerObserver implementations with the server
-        $this->injector->prepare('Aerys\ServerObserver', function($observer) use ($server) {
-            $server->attachObserver($observer);
-        });
-
+        $vhostGroup = new VhostGroup;
         foreach ($hosts as $host) {
-            $vhost = $this->buildVhost($host);
+            $vhost = $this->buildVhost($server, $host);
             $vhostGroup->addHost($vhost);
         }
 
-        foreach ($serverOptions as $option => $value) {
-            $server->setOption($option, $value);
-        }
+        $addressContextMap = [];
+        $addresses = $vhostGroup->getBindableAddresses();
+        $tlsBindings = $vhostGroup->getTlsBindingsByAddress();
+        $backlogSize = $options->socketBacklogSize;
+        $shouldReusePort = empty($options->debug);
 
-        if (!empty($options['debug'])) {
-            $server->setOption(Server::OP_DEBUG, true);
-        }
-
-        $server->bind($vhostGroup);
-
-        return $server;
-    }
-
-    private function parseServerConfigFile($configFile) {
-        if (!include($configFile)) {
-            throw new BootException(
-                sprintf(self::E_CONFIG_INCLUDE, $configFile)
-            );
-        }
-
-        if (!$hosts = Host::getDefinitions()) {
-            throw new BootException(
-                sprintf(self::E_MISSING_CONFIG, $configFile)
-            );
-        }
-
-        $serverOptions = $this->getServerWideOptions();
-
-        return [$hosts, $serverOptions];
-    }
-
-    private function getServerWideOptions() {
-        if (!defined('AERYS_OPTIONS')) {
-            return [];
-        }
-        if (!is_array(AERYS_OPTIONS)) {
-            throw new BootException(
-                sprintf(self::E_BAD_OPT_CONST, gettype(AERYS_OPTIONS))
-            );
-        }
-        $serverOptions = [];
-        foreach (AERYS_OPTIONS as $key => $value) {
-            if (isset($this->serverOptMap[$key])) {
-                $serverOptions[$this->serverOptMap[$key]] = AERYS_OPTIONS[$key];
-            } else {
-                throw new BootException(
-                    sprintf(self::E_BAD_OPT_CONST_KEY, $key)
-                );
+        foreach ($addresses as $address) {
+            $context = stream_context_create(["socket" => [
+                "backlog"      => $backlogSize,
+                "so_reuseport" => $shouldReusePort,
+            ]]);
+            if (isset($tlsBindings[$address])) {
+                stream_context_set_option($context, ["ssl" => $tlsBindings[$address]]);
             }
+            $addressContextMap[$address] = $context;
         }
 
-        return $serverOptions;
+        $rfc7230Server = new Rfc7230Server($this->reactor, $vhostGroup, $options);
+        $server->attach($rfc7230Server);
+
+        return [$server, $addressContextMap, [$rfc7230Server, "import"]];
     }
 
-    private function buildVhost(Host $host) {
+    private function loadConfigFile(string $configFile, bool $forceDebug): array {
+        if (empty($configFile)) {
+            $hosts = [new Host];
+        } elseif (include($configFile)) {
+            $hosts = Host::getDefinitions() ?: [new Host];
+        } else {
+            throw new \DomainException(
+                "Config file inclusion failure: {$configFile}"
+            );
+        }
+
+        if (!defined("AERYS_OPTIONS")) {
+            $optionsArray = [];
+        } elseif (is_array(AERYS_OPTIONS)) {
+            $optionsArray = AERYS_OPTIONS;
+        } else {
+            throw new \DomainException(
+                "Invalid AERYS_OPTIONS constant: array expected, got " . gettype(AERYS_OPTIONS)
+            );
+        }
+
+        $options = $this->generateOptions($optionsArray, $forceDebug);
+
+        return [$hosts, $options];
+    }
+
+    /**
+     * When in debug mode the server will bootstrap the normal Options instance with
+     * access/assignment verification. If debug mode is disabled a duplicate object
+     * with public properties is used to maximize performance in production.
+     */
+    private function generateOptions(array $optionsArray, bool $forceDebug): Options {
         try {
-            $hostArr = $host->toArray();
-            $ip   = $hostArr[Host::ADDRESS];
-            $port = $hostArr[Host::PORT];
-            $name = $hostArr[Host::NAME] ?: $ip;
-            $tls  = $hostArr[Host::CRYPTO];
-            $responder = $this->aggregateHostResponders($hostArr);
-            $vhost = new Vhost($ip, $port, $name, $responder);
-            if ($tls) {
-                $vhost->setCrypto($tls);
+            $optionsObj = new Options;
+            foreach ($optionsArray as $key => $value) {
+                $optionsObj->{$key} = $value;
+            }
+
+            // The CLI debug switch always overrides the config file setting
+            if ($forceDebug) {
+                $optionsObj->debug = true;
+            }
+
+            return $optionsObj->debug
+                ? $optionsObj
+                : $this->generatePublicOptionsStruct($optionsObj);
+
+        } catch (\BaseException $e) {
+            throw new \DomainException(
+                "Failed assigning options from config file", 0, $e
+            );
+        }
+    }
+
+    private function generatePublicOptionsStruct(Options $options): Options {
+        $code = "return new class extends \Aerys\Options {\n\tuse \Amp\Struct;\n";
+        foreach ((new \ReflectionClass($options))->getProperties() as $property) {
+            $name = $property->getName();
+            $value = $options->{$name};
+            $code .= "\tpublic \${$property} = " . var_export($value, true) . ";\n";
+        }
+        $code .= "};\n";
+
+        return eval($code);
+    }
+
+    private function buildVhost(Server $server, Host $host) {
+        try {
+            $hostExport = $host->export();
+            $address = $hostExport["address"];
+            $port = $hostExport["port"];
+            $name = $hostExport["name"];
+            $actions = $hostExport["actions"];
+            $filters = $hostExport["filters"];
+            $application = $this->buildApplication($server, $actions);
+            $vhost = new Vhost($name, $address, $port, $application, $filters);
+            if ($crypto = $hostExport["crypto"]) {
+                $vhost->setCrypto($crypto);
             }
 
             return $vhost;
-
-        } catch (\Exception $previousException) {
-            throw new BootException(
-                'Vhost build failure',
+        } catch (\BaseException $previousException) {
+            throw new \DomainException(
+                "Failed building Vhost instance",
                 $code = 0,
                 $previousException
             );
         }
     }
 
-    private function aggregateHostResponders(array $hostArr) {
-        $applications = [];
-
-        if ($hostArr[Host::ROUTES] || $hostArr[Host::WEBSOCKETS]) {
-            $standard = $hostArr[Host::ROUTES];
-            $websockets = $hostArr[Host::WEBSOCKETS];
-            $applications[Host::ROUTES] = $this->buildRouter($standard, $websockets);
-        }
-
-        if ($conf = $hostArr[Host::RESPONDERS]) {
-            $applications[Host::RESPONDERS] = $this->buildUserResponder($conf);
-        }
-
-        if ($conf = $hostArr[Host::ROOT]) {
-            list($root, $isPublicRoot) = $this->buildRootResponder($conf);
-            if ($isPublicRoot) {
-                $applications[Host::ROOT] = $root;
+    private function buildApplication(Server $server, array $actions) {
+        foreach ($actions as $key => $action) {
+            if (!is_callable($action)) {
+                throw new \DomainException(
+                    "Application action at index {$key} is not callable"
+                );
             }
-        } else {
-            $root = null;
+            if ($action instanceof ServerObserver) {
+                $server->attach($action);
+            }
         }
 
-        if ($conf = $hostArr[Host::REDIRECT]) {
-            $applications[Host::REDIRECT] = $this->buildRedirectResponder($conf);
+        switch (count($actions)) {
+            case 0:
+                return $this->buildDefaultApplication();
+            case 1:
+                return current($actions);
+            default:
+                return $this->buildMultiActionApplication($actions);
         }
-
-        return empty($applications)
-            ? $this->buildDefaultResponder()
-            : $this->buildMultiApp($applications, $root);
     }
 
-    private function buildDefaultResponder() {
-        return function() {
-            return "<html><body><h1>It works!</h1></body></html>";
+    private function buildDefaultApplication() {
+        return function(Request $request, Response $response) {
+            $response->end("<html><body><h1>It works!</h1></body></html>");
         };
     }
 
-    private function buildMultiApp(array $applications) {
-        return $this->injector->make('Aerys\MultiApplication', [
-            ':applications' => $applications
-        ]);
-    }
-
-    private function buildRouter(array $standard, array $websockets) {
-        $routeBuilder = function(\FastRoute\RouteCollector $rc) use ($standard, $websockets) {
-            if ($standard) {
-                $this->buildStandardRouteHandlers($rc, $standard);
-            }
-            if ($websockets) {
-                $this->buildWebsocketRouteHandlers($rc, $websockets);
-            }
-        };
-        $routeDispatcher = \FastRoute\simpleDispatcher($routeBuilder);
-        $http404 = [
-            'status' => HTTP_STATUS["NOT_FOUND"],
-            'header' => 'Content-Type: text/html; charset=utf-8',
-            'body'   => '<html><body><h1>404 Not Found</h1></body></html>',
-        ];
-
-        return function($request) use ($routeDispatcher, $http404) {
-            $httpMethod = $request['REQUEST_METHOD'];
-            $uriPath = $request['REQUEST_URI_PATH'];
-            $matchArr = $routeDispatcher->dispatch($httpMethod, $uriPath);
-
-            switch ($matchArr[0]) {
-                case \FastRoute\Dispatcher::FOUND:
-                    $handler = $matchArr[1];
-                    $request['URI_ROUTE_ARGS'] = $matchArr[2];
-                    return $handler($request);
-                case \FastRoute\Dispatcher::NOT_FOUND:
-                    return $http404;
-                case \FastRoute\Dispatcher::METHOD_NOT_ALLOWED:
-                    return [
-                        'status' => HTTP_STATUS["METHOD_NOT_ALLOWED"],
-                        'header' => 'Allow: ' . implode(',', $matchArr[1]),
-                        'body'   => '<html><body><h1>405 Method Not Allowed</h1></body></html>',
-                    ];
-                default:
-                    throw new \UnexpectedValueException(
-                        'Unexpected match code returned from route dispatcher'
-                    );
-            }
-        };
-    }
-
-    private function buildStandardRouteHandlers(\FastRoute\RouteCollector $rc, array $routes) {
-        try {
-            foreach ($routes as list($httpMethod, $uriPath, $handler)) {
-                if (!($handler instanceof \Closure || @function_exists($handler))) {
-                    $handler = $this->buildStandardRouteExecutable($handler);
+    private function buildMultiActionApplication(array $actions) {
+        return function(Request $request, Response $response) use ($actions): \Generator {
+            foreach ($actions as $action) {
+                $result = ($action)($request, $response);
+                if ($result instanceof \Generator) {
+                    yield from $result;
                 }
-                $rc->addRoute($httpMethod, $uriPath, $handler);
+                if ($response->state() & Response::STARTED) {
+                    return;
+                }
             }
-        } catch (BootException $previousException) {
-            throw new BootException(
-                sprintf('Failed building callable for route: %s %s', $httpMethod, $uriPath),
-                $errorCode = 0,
-                $previousException
-            );
-        }
-    }
-
-    private function buildStandardRouteExecutable($routeHandler) {
-        try {
-            return $this->injector->buildExecutable($routeHandler);
-        } catch (\Exception $previousException) {
-            throw new BootException(
-                'Failed building route handler: ' . $previousException->getMessage(),
-                $errorCode = 0,
-                $previousException
-            );
-        }
-    }
-
-    private function buildWebsocketRouteHandlers(RouteCollector $rc, array $routes) {
-        $uris = [];
-        $endpoints = [];
-        foreach ($routes as list($uri, $websocketClass, $endpointOptions)) {
-            $uris[] = $uri;
-            $endpoints[$uri] = $endpoint = $this->makeWebsocketEndpoint($websocketClass);
-            $this->configureWebsocketEndpoint($endpoint, $endpointOptions);
-        }
-
-        $handshaker = $this->injector->make('Aerys\\Websocket\\Handshaker', [
-            ':endpoints' => $endpoints
-        ]);
-
-        foreach ($uris as $uri) {
-            $rc->addRoute('GET', $uri, $handshaker);
-        }
-    }
-
-    private function makeWebsocketEndpoint($websocketClassOrInstance) {
-        try {
-            $definitionKey = is_string($websocketClassOrInstance) ? 'websocket' : ':websocket';
-            return $this->injector->make('Aerys\\Websocket\\Endpoint',  [
-                $definitionKey => $websocketClassOrInstance
-            ]);
-        } catch (\Exception $e) {
-            throw new BootException("Failed building websocket endpoint: {$websocketClass}", $code = 0, $e);
-        }
-    }
-
-    private function configureWebsocketEndpoint($endpoint, $options) {
-        try {
-            $endpoint->setAllOptions($options);
-        } catch (\Exception $e) {
-            throw new BootException("Failed configuring websocket endpoint", $code = 0, $e);
-        }
-    }
-
-    private function buildUserResponder(array $userResponders) {
-        $applications = [];
-        $server = $this->injector->make('Aerys\Server');
-
-        foreach ($userResponders as $responder) {
-            if (!($responder instanceof \Closure || (is_string($responder) && function_exists($responder)))) {
-                $responder = $this->buildExecutableUserResponder($responder);
-            }
-
-            if ($responder instanceof ServerObserver) {
-                $server->attachObserver($responder);
-            } elseif (is_array($responder) && $responder[0] instanceof ServerObserver) {
-                $server->attachObserver($responder[0]);
-            }
-
-            $applications[] = $responder;
-        }
-
-        return (count($applications) === 1)
-            ? current($applications)
-            : $this->buildMultiApp($applications);
-    }
-
-    private function buildExecutableUserResponder($responder) {
-        try {
-            return $this->injector->buildExecutable($responder);
-        } catch (\Exception $previousException) {
-            throw new BootException(
-                'Callable user responder build failure: ' . $previousException->getMessage(),
-                $errorCode = 0,
-                $previousException
-            );
-        }
-    }
-
-    private function buildRootResponder(array $rootSettings) {
-        try {
-            $rootSettings = array_change_key_case($rootSettings);
-            $rootPath = $rootSettings['root'];
-            $isPublicRoot = empty($rootSettings['private']);
-
-            // Use array_key_exists() so we can capture NULL values and allow applications
-            // to avoid loading mime types from a file altogether
-            $mimeFile = array_key_exists('mimefile', $rootSettings)
-                ? $rootSettings['mimefile']
-                : __DIR__ . '/../etc/mime';
-
-            $additionalMimeTypes = isset($rootSettings['mimetypes'])
-                ? $rootSettings['mimetypes']
-                : [];
-
-            $rootSettings['mimetypes'] = $this->loadRootMimeTypes($mimeFile, $additionalMimeTypes);
-
-            // These aren't actual root option keys; they're bootstrap-only values
-            // that we use to configure the document root in the Host instance. We
-            // remove them because we don't want to get an error when passing the
-            // remaining settings to Root::setAllOptions().
-            unset(
-                $rootSettings['root'],
-                $rootSettings['mimefile'],
-                $rootSettings['private']
-            );
-
-            $reactor = $this->injector->make('Amp\Reactor');
-            $rootClass = ($reactor instanceof \Amp\UvReactor)
-                ? 'Aerys\\Root\\UvRoot'
-                : 'Aerys\\Root\\NaiveRoot';
-
-            $root = $this->injector->make($rootClass, [':rootPath' => $rootPath]);
-            $root->setAllOptions($rootSettings);
-
-            return [$root, $isPublicRoot];
-
-        } catch (\Exception $previousException) {
-            throw new BootException(
-                'Failed building document root handler: ' . $previousException->getMessage(),
-                $errorCode = 0,
-                $previousException
-            );
-        }
-    }
-
-    private function loadGzipMimeTypes($gzipMimeFile) {
-        // @TODO Currently the server just uses its defaults: text/* and application/javascript
-    }
-
-    private function loadRootMimeTypes($mimeFile, $additionalTypes) {
-        // Allow applications to avoid load mime types from a file if the value is NULL
-        $mimeTypes = isset($mimeFile) ? $this->loadRootMimeTypesFromFile($mimeFile) : [];
-        $additionalTypes = array_change_key_case($additionalTypes);
-
-        // DO NOT use array_merge() here because we don't want numeric
-        // file extension keys to be re-indexed.
-        foreach ($additionalTypes as $key => $value) {
-            $mimeTypes[$key] = $value;
-        }
-
-        return $mimeTypes;
-    }
-
-    private function loadRootMimeTypesFromFile($mimeFile) {
-        $mimeFile = str_replace('\\', '/', $mimeFile);
-        $mimeStr = @file_get_contents($mimeFile);
-        if ($mimeStr === false) {
-            throw new BootException(
-                sprintf('Failed loading mime associations from file: %s', $mimeFile)
-            );
-        }
-
-        if (!preg_match_all("#\s*([a-z0-9]+)\s+([a-z0-9\-]+/[a-z0-9\-]+)#i", $mimeStr, $matches)) {
-            throw new BootException(
-                sprintf('No mime associations found in file: %s', $mimeFile)
-            );
-        }
-
-        $mimeTypes = [];
-        foreach ($matches[1] as $key => $value) {
-            $mimeTypes[strtolower($value)] = $matches[2][$key];
-        }
-
-        return $mimeTypes;
-    }
-
-    private function buildRedirectResponder(array $redirectStruct) {
-        list($redirectUri, $redirectCode) = $redirectStruct;
-
-        return function($request) use ($redirectUri, $redirectCode) {
-            return new AsgiResponder([
-                'status' => $redirectCode,
-                'header' => "Location: {$redirectUri}" . $request['REQUEST_URI'],
-            ]);
         };
     }
 }

@@ -2,14 +2,19 @@
 
 <?php
 
-if (!(extension_loaded('uv') || extension_loaded('libevent')) && extension_loaded('pcntl')) {
+if (!extension_loaded("uv") && extension_loaded("pcntl")) {
     declare(ticks=1);
 }
 
-error_reporting(E_ALL);
-ini_set('display_errors', 'stderr');
+if (PHP_MAJOR_VERSION < 7) {
+    echo "Aerys requires PHP >= 7.0.0\n\n";
+    exit(1);
+}
 
-require __DIR__ . '/../src/autoload.php';
+error_reporting(E_ALL);
+ini_set("display_errors", "stderr");
+
+require __DIR__ . "/../autoload.php";
 
 $help = <<<EOT
       ____ _ ___   _____ __  __ _____
@@ -34,24 +39,26 @@ $help = <<<EOT
 
 EOT;
 
-
-$options = Aerys\parseCommandLineOptions();
-
-if ($options['help']) {
+$cliOptions = Aerys\Bootstrapper::parseCommandLineOptions();
+if ($cliOptions["help"]) {
     echo $help;
     exit(0);
 }
 
 try {
-    Amp\run(function($reactor) use ($options) {
-        $bootstrapper = new Aerys\Bootstrapper($reactor);
-        $watcher = $bootstrapper->bootWatcher($options);
-        yield $watcher->watch($options);
+    Amp\run(function($reactor) use ($cliOptions) {
+        if ($cliOptions["debug"]) {
+            $watcher = new Aerys\DebugWatcher($reactor, new Aerys\Bootstrapper($reactor));
+        } elseif (stripos(PHP_OS, "WIN") === 0) {
+            die("Debug mode flag -d required (worker watchers not yet implemented)\n\n");
+            // @TODO: $watcher = new Aerys\WorkerSocketWatcher($reactor);
+        } else {
+            die("Debug mode flag -d required (worker watchers not yet implemented)\n\n");
+            // @TODO: $watcher = new Aerys\WorkerProcessWatcher($reactor);
+        }
+        yield from $watcher->watch($cliOptions);
     });
-} catch (Aerys\BootException $e) {
-    echo "\n", $e->getMessage(), "\n\n";
-    exit(1);
-} catch (Exception $e) {
-    echo "\n", $e->__toString(), "\n\n";
+} catch (BaseException $e) {
+    echo "\n", (empty($cliOptions["debug"]) ? $e->getMessage() : $e), "\n\n";
     exit(1);
 }

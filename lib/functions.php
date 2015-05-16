@@ -3,84 +3,6 @@
 namespace Aerys;
 
 /**
- * Parse server command line options
- *
- * Returns an array with the following keys:
- *
- *  - help
- *  - debug
- *  - config
- *  - workers
- *  - remote
- *
- * @return array
- */
-function parseCommandLineOptions() {
-    $shortOpts = 'hdc:w:r:';
-    $longOpts = ['help', 'debug', 'config:', 'workers:', 'remote:'];
-    $parsedOpts = getopt($shortOpts, $longOpts);
-    $shortOptMap = [
-        'c' => 'config',
-        'w' => 'workers',
-        'r' => 'remote',
-    ];
-
-    $options = [
-        'config' => '',
-        'workers' => 0,
-        'remote' => '',
-    ];
-
-    foreach ($parsedOpts as $key => $value) {
-        $key = empty($shortOptMap[$key]) ? $key : $shortOptMap[$key];
-        if (isset($options[$key])) {
-            $options[$key] = $value;
-        }
-    }
-
-    $options['debug'] = isset($parsedOpts['d']) || isset($parsedOpts['debug']);
-    $options['help'] = isset($parsedOpts['h']) || isset($parsedOpts['help']);
-
-    return $options;
-}
-
-/**
- * Count the number of available CPU cores on this system
- *
- * @return int
- */
-function countCpuCores() {
-    $os = (stripos(PHP_OS, "WIN") === 0) ? "win" : strtolower(trim(shell_exec("uname")));
-
-    switch ($os) {
-        case "win":
-        $cmd = "wmic cpu get NumberOfCores";
-        break;
-        case "linux":
-        $cmd = "cat /proc/cpuinfo | grep processor | wc -l";
-        break;
-        case "freebsd":
-        $cmd = "sysctl -a | grep 'hw.ncpu' | cut -d ':' -f2";
-        break;
-        case "darwin":
-        $cmd = "sysctl -a | grep 'hw.ncpu:' | awk '{ print $2 }'";
-        break;
-        default:
-        $cmd = NULL;
-    }
-
-    $execResult = $cmd ? shell_exec($cmd) : 1;
-
-    if ($os === 'win') {
-        $execResult = explode("\n", $execResult)[1];
-    }
-
-    $cores = intval(trim($execResult));
-
-    return $cores;
-}
-
-/**
  * Does the specified header field exist in the multi-line header string?
  *
  * @param string $headers
@@ -133,40 +55,6 @@ function getHeaderArray($headers, $field) {
     }
 
     return $values;
-}
-
-/**
- * Does the specified header $field exist AND contain the specified $value?
- *
- * @param string $headers
- * @param string $field
- * @param string $value
- * @return bool
- */
-function headerMatches($headers, $field, $value) {
-    $headers = trim($headers);
-    if (empty($headers)) {
-        return false;
-    }
-
-    $field = "\r\n" . rtrim($field, " :") . ':';
-    if (stripos("\r\n{$headers}", "\r\n{$field}") === false) {
-        return false;
-    }
-
-    $fieldLen = strlen($field);
-    $tok = strtok($headers, "\r\n");
-    while ($tok !== false) {
-        if (stripos($tok, $field) === 0 &&
-            strcasecmp($value, trim(substr($tok, $fieldLen))) === 0
-        ) {
-            return true;
-        } else {
-            $tok = strtok("\r\n");
-        }
-    }
-
-    return false;
 }
 
 /**
@@ -233,4 +121,80 @@ function removeHeader($headers, $field) {
     }
 
     return $newHeaders ? implode("\r\n", $newHeaders) : '';
+}
+
+/**
+ * Does the header $field exist AND contain the specified $value?
+ *
+ * @param string $headers
+ * @param string $field
+ * @param string $value
+ * @return bool
+ * @TODO Make this work when multiple headers of the same field are present in $headers
+ */
+function headerMatches(string $headers, string $field, string $value) {
+    if (empty($headers)) {
+        return false;
+    }
+
+    // Normalize values for searching
+    $headers = "\r\n{$headers}";
+    $field = "\r\n" . trim($field, "\r\n\t\x20:") . ":";
+
+    // If the header isn't found at all we're finished
+    if (($lineStartPos = \stripos($headers, $field)) === false) {
+        return false;
+    }
+
+    $valueLineOffset = $lineStartPos + \strlen($field);
+    $valueLine = (($lineEndPos = \stripos($headers, "\r\n", $lineStartPos + 4)) === false)
+        ? \substr($headers, $valueLineOffset)
+        : \substr($headers, $valueLineOffset, $lineEndPos - $valueLineOffset);
+
+    return (\stripos($valueLine, $value) !== false);
+}
+
+/**
+ * Is the specified reason phrase valid according to RFC7230?
+ *
+ * @TODO Validate reason phrase against RFC7230 ABNF
+ * @param string $phrase An HTTP reason phrase
+ * @return bool
+ * @link https://tools.ietf.org/html/rfc7230#section-3.1.2
+ */
+function isValidReasonPhrase(string $phrase): bool {
+    // reason-phrase  = *( HTAB / SP / VCHAR / obs-text )
+    return true;
+}
+
+/**
+ * Is the specified header field valid according to RFC7230?
+ *
+ * @TODO Validate field name against RFC7230 ABNF
+ * @param string $field An HTTP header field name
+ * @return bool
+ * @link https://tools.ietf.org/html/rfc7230#section-3.2
+ */
+function isValidHeaderField(string $field): bool {
+    // field-name     = token
+    return true;
+}
+
+/**
+ * Is the specified header value valid according to RFC7230?
+ *
+ * @TODO Validate field name against RFC7230 ABNF
+ * @param string $value An HTTP header field value
+ * @return bool
+ * @link https://tools.ietf.org/html/rfc7230#section-3.2
+ */
+function isValidHeaderValue(string $value): bool {
+    // field-value    = *( field-content / obs-fold )
+    // field-content  = field-vchar [ 1*( SP / HTAB ) field-vchar ]
+    // field-vchar    = VCHAR / obs-text
+    //
+    // obs-fold       = CRLF 1*( SP / HTAB )
+    //                ; obsolete line folding
+    //                ; see Section 3.2.4
+    return true;
 }

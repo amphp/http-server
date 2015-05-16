@@ -3,27 +3,14 @@
 namespace Aerys;
 
 class Host {
-    const PORT       = 'port';
-    const ADDRESS    = 'address';
-    const NAME       = 'name';
-    const CRYPTO     = 'crypto';
-    const ROUTES     = 'routes';
-    const ROOT       = 'root';
-    const WEBSOCKETS = 'websockets';
-    const RESPONDERS = 'responders';
-    const REDIRECT   = 'redirect';
-
     private static $definitions = [];
-
-    private $name = '';
-    private $port = null;
-    private $address = '*';
-    private $httpRoutes = [];
-    private $websocketRoutes = [];
-    private $responders = [];
+    private $name = "localhost";
+    private $port = 1337;
+    private $address = "*";
     private $crypto = [];
-    private $root = [];
-    private $redirect = [];
+    private $actions = [];
+    private $filters = [];
+    private $redirect;
 
     public function __construct() {
         self::$definitions[] = $this;
@@ -34,29 +21,11 @@ class Host {
     }
 
     /**
-     * Optionally define the host's domain name (e.g. localhost or mysite.com or subdomain.mysite.com)
+     * Assign the IP and port on which to listen
      *
-     * A host name is only required if a server exposes more than one host. If not defined the
-     * server will fallback to "localhost" for the host's name.
-     *
-     * @param string $name
-     * @throws \InvalidArgumentException if a non-string is passed
-     * @return self
-     */
-    public function setName($name) {
-        if (!is_string($name)) {
-            throw new \InvalidArgumentException(
-                sprintf("%s requires a string at Argument 1", __METHOD__)
-            );
-        }
-
-        $this->name = $name;
-
-        return $this;
-    }
-
-    /**
-     * Define the host's port, IP and domain name
+     * The address may be any valid IPv4 or IPv6 address. The "*" wildcard character indicates
+     * "all IPv4 interfaces" and is appropriate for most users. Use "[::]" to indicate "all IPv6
+     * interfaces."
      *
      * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
      * well-known services (like HTTP on port 80) and port numbers less than 1024 require root
@@ -65,28 +34,63 @@ class Host {
      * host you'll generally want to use port 443.
      *
      * @param int $port The port number on which to listen
-     * @param string $interface The IP address on which to bind this host
-     * @param string $name The host's domain name
      * @return self
+     * @TODO Make "*" listen on all IPv6 interfaces as well as IPv4
      */
-    public function setPort($port) {
+    public function expose(string $address = "*", int $port = 1337): Host {
+        if ($address !== "*" && !@inet_pton($address)) {
+            throw new \DomainException(
+                "Invalid IP address"
+            );
+        }
+        if ($port < 1 || $port > 65535) {
+            throw new \DomainException(
+                "Invalid port number; integer in the range 1..65535 required"
+            );
+        }
+
+        $this->address = $address;
         $this->port = $port;
 
         return $this;
     }
 
     /**
-     * Define the IP interface on which the host will listen for requests
+     * Assign a domain name (e.g. localhost or mysite.com or subdomain.mysite.com)
      *
-     * The default wildcard IP value "*" translates to "all IPv4 interfaces" and is appropriate for
-     * most scenarios. Valid values also include any IPv4 or IPv6 address. The string "[::]" denotes
-     * an IPv6 wildcard.
+     * A host name is only required if a server exposes more than one host. If a name is not defined
+     * the server will default to "localhost"
      *
-     * @param string $address The interface address (IP) on which the host is exposed
+     * @param string $name
      * @return self
      */
-    public function setAddress($address) {
-        $this->address = $address;
+    public function name(string $name): Host {
+        $this->name = $name;
+
+        return $this;
+    }
+
+    /**
+     * Add a callable request action
+     *
+     * User actions are invoked in response requests in the order in which they are added.
+     *
+     * @param callable $action
+     * @return self
+     */
+    public function add(callable $action): Host {
+        $this->actions[] = $action;
+
+        return $this;
+    }
+
+    /**
+     * Add a callable request filter
+     *
+     * @param callable $filter
+     */
+    public function filter(callable $filter): Host {
+        $this->filters[] = $filter;
 
         return $this;
     }
@@ -94,180 +98,67 @@ class Host {
     /**
      * Define TLS encryption settings for this host
      *
-     * An example $tlsOptions array takes the following form:
-     *
-     * $tlsOptions = [
-     *     'passphrase'             => null,
-     *     'verify_peer'            => false,
-     *     'allow_self_signed'      => true,
-     *     'cafile'                 => null,
-     *     'capath'                 => null,
-     *     'ciphers'                => '<cipher list here>',
-     *     'disable_compression'    => true,
-     *     'crypto_method'          => STREAM_CRYPTO_METHOD_TLS_SERVER,
-     * ];
-     *
-     * NOTE: If specified, the local_cert array key will be overwritten using the required
-     *       $certificate parameter value.
-     *
-     * NOTE: If specified, the "SNI_server_certs" key will be ignored. Aerys servers will
-     *       automatically generate this value based on the virtual host names specified in the
-     *       server config file.
-     *
-     * NOTE: The server will attempt to validate your certificate at boot time to ensure your
-     *       settings are indeed correct. If neither the CN nor SAN names from the certificate
-     *       match the host's name an error is generated but the server will still boot succesfully.
-     *
      * @param string $certificate A string path pointing to your SSL/TLS certificate
-     * @param array $tlsOptions An optional array mapping additional SSL/TLS settings
+     * @param array $options An optional array mapping additional SSL/TLS settings
      * @return self
      */
-    public function setCrypto($certificate, array $tlsOptions = []) {
-        if (!is_string($certificate)) {
-            throw new \InvalidArgumentException(
-                'Invalid $certificate parameter; string expected (got '.gettype($certificate).')'
-            );
-        }
-
-        unset($tlsOptions['SNI_server_certs']);
-        $tlsOptions['local_cert'] = $certificate;
-        $this->crypto = $tlsOptions;
+    public function encrypt(string $certificate, array $options = []): Host {
+        unset($options["SNI_server_certs"]);
+        $options["local_cert"] = $certificate;
+        $this->crypto = $options;
 
         return $this;
     }
 
     /**
-     * Specify a filesystem directory from which to serve static files
-     *
-     * The $options array takes the form:
-     *
-     *  $options = [
-     *      'indexes'                   => ['index.html', 'index.htm'],
-     *      'etagMode'                  => 'all',
-     *      'expiresPeriod'             => 3600,
-     *      'mimeFile'                  => 'etc/mime',
-     *      'mimeTypes'                 => [],
-     *      'defaultMimeType'           => 'text/plain',
-     *      'defaultCharset'            => 'utf-8',
-     *      'cacheTtl'                  => 10,
-     *      'cacheMaxBuffers'           => 50,
-     *      'cacheMaxBufferSize'        => 500000,
-     *  ];
-     *
-     * Note: websocket endpoint and dynamic HTTP route URIs always take precedence over filesystem
-     * resources in the event of a routing conflict.
-     *
-     * @param string $rootDirectory
-     * @param array $options An array specifying key-value options for static file serving
-     * @return self
-     */
-    public function setRoot($rootDirectory, array $options = []) {
-        $options['root'] = $rootDirectory;
-        $this->root = $options;
-
-        return $this;
-    }
-
-    /**
-     * Bind a non-blocking route handler for the specified HTTP method and URI path
-     *
-     * @param string $httpMethod The method for which this route applies
-     * @param string $uriPath The route's URI path
-     * @param mixed $handler Any callable or class::method construction string
-     * @return self
-     */
-    public function addRoute($httpMethod, $uriPath, $handler) {
-        $uriPath = '/' . ltrim($uriPath, '/');
-        $this->httpRoutes[] = [$httpMethod, $uriPath, $handler];
-
-        return $this;
-    }
-
-    /**
-     * Bind a websocket endpoint to the specified URI route
-     *
-     * Websocket routes are slightly different from other routes because they don't require an
-     * HTTP method (GET is mandated by the protocol). Websocket routes require two arguments:
-     *
-     * - The websocket endpoint's URI path (routing regex allowed like all other routes)
-     * - The name of the websocket endpoint class
-     *
-     * The third argument is an optional array specifying configuration values for this websocket
-     * endpoint.
-     *
-     * @param string $uriPath The URI path on which to bind the endpoint
-     * @param mixed $websocketClassOrObj A websocket class name or Aerys\Websocket instance
-     * @param array $options An array specifying key-value options for this websocket endpoint
-     * @return self
-     */
-    public function addWebsocket($uriPath, $websocketClassOrObj, array $options = []) {
-        $uriPath = '/' . ltrim($uriPath, '/');
-        $this->websocketRoutes[] = [$uriPath, $websocketClassOrObj, $options];
-
-        return $this;
-    }
-
-    /**
-     * Add a user responder to the request-response chain
-     *
-     * User responders are always invoked in the order in which they are added to the Host.
-     *
-     * @param mixed $responder Any callable or class::method construction string
-     * @return self
-     */
-    public function addResponder($responder) {
-        $this->responders[] = $responder;
-
-        return $this;
-    }
-
-    /**
-     * Redirect all requests to this host that aren't serviced by another route/websocket/file
+     * Redirect all requests that aren't serviced by an action callable
      *
      * NOTE: the redirect URI must match the format "scheme://hostname.tld" (with optional port).
      *
-     * Example:
+     * The following example redirects all unencrypted requests to the equivalent
+     * encrypted resource:
      *
      *      <?php
      *      // Redirect http://mysite.com to https://mysite.com
-     *      (new Aerys\Host)->setName('mysite.com')->redirectTo('https://mysite.com');
+     *      $host = new Aerys\Host;
+     *      $host->setName("mysite.com");
+     *      $host->redirect("https://mysite.com");
      *
-     * @param string $absoluteUri The site to which we want to redirect
+     * @param string $absoluteUri The location to which we wish to redirect
      * @param int $redirectCode The HTTP redirect status code (300-399)
+     * @return self
      */
-    public function redirectTo($absoluteUri, $redirectCode = 307) {
-        if (!is_string($absoluteUri)) {
-            throw new \InvalidArgumentException(
-                'String expected at ' . __METHOD__ . ' parameter 1, '. gettype($absoluteUri) .' provided'
-            );
-        }
+    public function redirect(string $absoluteUri, int $redirectCode = 307): Host {
         if (!$url = @parse_url(strtolower($absoluteUri))) {
-            throw new \InvalidArgumentException(
-                'Failed parsing redirect URI at ' . __METHOD__ . ' parameter 1'
+            throw new \DomainException(
+                "Invalid redirect URI"
             );
         }
-        if (empty($url['scheme']) || ($url['scheme'] !== 'http' && $url['scheme'] !== 'https')) {
+        if (empty($url["scheme"]) || ($url["scheme"] !== "http" && $url["scheme"] !== "https")) {
             throw new \DomainException(
-                'Invalid redirect URI at '. __METHOD__ .' parameter 1: "http" or "https" scheme required'
+                "Invalid redirect URI; \"http\" or \"https\" scheme required"
             );
         }
-        if (isset($url['path']) && $url['path'] !== '/') {
+        if (isset($url["path"]) && $url["path"] !== "/") {
             throw new \DomainException(
-                'Invalid redirect URI at '. __METHOD__ .' parameter 1: URI must not contain a path component'
+                "Invalid redirect URI; Host redirect must not contain a path component"
             );
         }
 
-        $redirectToPort = empty($url['port']) ? "" : ":{$url['port']}";
-        $redirectUri = sprintf("%s://%s%s", $url['scheme'], $url['host'], $redirectToPort);
+        $port = empty($url["port"]) ? "" : ":{$url['port']}";
+        $redirectUri = sprintf("%s://%s%s", $url["scheme"], $url["host"], $port);
 
-        $redirectCode = (int) $redirectCode;
-        if (!(300 <= $redirectCode && $redirectCode <= 399)) {
+        if ($redirectCode < 300 || $redirectCode > 399) {
             throw new \DomainException(
-                'Invalid redirect code at ' . __METHOD__ . ' parameter 2; integer in the range [300-399] required'
+                "Invalid redirect code; code in the range 300..399 required"
             );
         }
 
-        $this->redirect = [$redirectUri, $redirectCode];
+        $this->redirect = function(Request $req, Response $res) use ($redirectUri, $redirectCode) {
+            $res->setStatus($redirectCode);
+            $res->setHeader("Location", $redirectUri . $req->uri);
+            $res->end();
+        };
 
         return $this;
     }
@@ -277,17 +168,19 @@ class Host {
      *
      * @return array
      */
-    public function toArray() {
+    public function export(): array {
+        $actions = $this->actions;
+        if ($this->redirect) {
+            $actions[] = $this->redirect;
+        }
+
         return [
-            self::PORT          => $this->port ?: ($this->crypto ? 443 : 80),
-            self::ADDRESS       => $this->address,
-            self::NAME          => $this->name,
-            self::CRYPTO        => $this->crypto,
-            self::ROOT          => $this->root,
-            self::ROUTES        => $this->httpRoutes,
-            self::WEBSOCKETS    => $this->websocketRoutes,
-            self::RESPONDERS    => $this->responders,
-            self::REDIRECT      => $this->redirect,
+            "address"   => $this->address,
+            "port"      => $this->port,
+            "name"      => $this->name,
+            "crypto"    => $this->crypto,
+            "actions"   => $actions,
+            "filters"   => $this->filters,
         ];
     }
 
@@ -296,7 +189,7 @@ class Host {
      *
      * @return array
      */
-    public static function getDefinitions() {
+    public static function getDefinitions(): array {
         return self::$definitions;
     }
 }
