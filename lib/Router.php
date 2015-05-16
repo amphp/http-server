@@ -70,7 +70,11 @@ class Router implements ServerObserver {
 
         switch ($match[0]) {
             case Dispatcher::FOUND:
-                return $this->onRouteMatch($match, $request, $response);
+                list(, $action, $request->locals->routeArgs) = $match;
+                if ($this->enableCache) {
+                    $this->cacheDispatcherResult($action, $request);
+                }
+                return ($action)($request, $response);
             case Dispatcher::NOT_FOUND:
                 // Do nothing; allow actions further down the chain a chance to respond.
                 // If no other registered host actions respond the server will send a
@@ -88,26 +92,21 @@ class Router implements ServerObserver {
         }
     }
 
-    private function onRouteMatch(array $match, Request $request, Response $response) {
-        list(, $action, $request->locals->routeArgs) = $match;
-        if ($this->enableCache) {
-            if ($this->cacheSize < $this->maxCacheSize) {
-                $this->cacheSize++;
-            } else {
-                // Remove the oldest entry from the LRU cache to make room
-                $unsetMe = key($this->cache);
-                unset(
-                    $this->cache[$unsetMe],
-                    $this->cacheTimeouts[$unsetMe]
-                );
-            }
-
-            $cacheKey = $request->uriPath;
-            $this->cache[$cacheKey] = [$action, $request->locals->routeArgs];
-            $this->cacheTimeouts[$cacheKey] = $this->now + $this->cacheTtl;
+    private function cacheDispatchResult(callable $action, Request $request) {
+        if ($this->cacheSize < $this->maxCacheSize) {
+            $this->cacheSize++;
+        } else {
+            // Remove the oldest entry from the LRU cache to make room
+            $unsetMe = key($this->cache);
+            unset(
+                $this->cache[$unsetMe],
+                $this->cacheTimeouts[$unsetMe]
+            );
         }
 
-        return ($action)($request, $response);
+        $cacheKey = $request->uriPath;
+        $this->cache[$cacheKey] = [$action, $request->locals->routeArgs];
+        $this->cacheTimeouts[$cacheKey] = $this->now + $this->cacheTtl;
     }
 
     /**
