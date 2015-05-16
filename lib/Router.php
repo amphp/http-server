@@ -2,39 +2,52 @@
 
 namespace Aerys;
 
-use Amp\{
-    Promise,
-    Success,
-    Failure,
-    function resolve
-};
-
 use FastRoute\{
     Dispatcher,
     RouteCollector,
     function simpleDispatcher
 };
 
+use Amp\{
+    Promise,
+    Success,
+    Failure,
+    Reactor,
+    function resolve,
+    function getReactor
+};
+
 class Router implements ServerObserver {
+    private $reactor;
     private $canonicalRedirector;
     private $routeDispatcher;
     private $routes = [];
     private $cache = [];
+    private $cacheTimeouts = [];
+    private $cacheInvalidator;
+    private $cacheWatcher;
     private $cacheSize = 0;
-    private $maxCacheSize;
+    private $cacheTtl = 5;
+    private $maxCacheSize = 1024;
+    private $enableCache = true;
+    private $now;
 
-    public function __construct(int $maxCacheSize = 512) {
-        $this->maxCacheSize = $maxCacheSize;
+    public function __construct(Reactor $reactor = null) {
+        $this->reactor = $reactor ?: getReactor();
         $this->canonicalRedirector = function(Request $req, Response $res) {
             $res->setStatus(HTTP_STATUS["FOUND"]);
             $res->setHeader("Location", "{$req->uri}/");
             $res->setHeader("Content-Type", "text/plain; charset=utf-8");
             $res->end("Canonical resource URI: {$req->uri}/");
         };
+        $this->cacheInvalidator = (new \ReflectionClass($this))
+            ->getMethod("invalidateCacheEntries")
+            ->getClosure($this)
+        ;
     }
 
     /**
-     * Route requests to one of our registered route actions
+     * Route a request
      *
      * @param \Aerys\Request $request
      * @param \Aerys\Response $response
@@ -44,11 +57,11 @@ class Router implements ServerObserver {
     public function __invoke(Request $request, Response $response) {
         $toMatch = $request->uriPath;
 
-        if (isset($this->dispatchCache[$toMatch])) {
-            list($action, $request->locals->routeArgs) = $cache = $this->dispatchCache[$toMatch];
-            // Move the entry to the back of the LRU cache
-            unset($this->dispatchCache[$toMatch]);
-            $this->dispatchCache[$toMatch] = $cache;
+        if (isset($this->cache[$toMatch])) {
+            list($action, $request->locals->routeArgs) = $this->cache[$toMatch];
+            // Keep the most recently used entry at the back of the LRU cache
+            unset($this->cacheTimeouts[$toMatch]);
+            $this->cacheTimeouts[$toMatch] = $this->now + $this->cacheTtl;
 
             return ($action)($request, $response);
         }
@@ -57,18 +70,7 @@ class Router implements ServerObserver {
 
         switch ($match[0]) {
             case Dispatcher::FOUND:
-                $action = $match[1];
-                $request->locals->routeArgs = $routeArgs = $match[2];
-                if ($this->cacheSize === $this->maxCacheSize) {
-                    $unsetMe = key($this->cache);
-                    unset($this->cache[$unsetMe]);
-                } else {
-                    $this->cacheSize++;
-                }
-                $this->dispatchCache[$toMatch] = [$action, $routeArgs];
-
-                return ($action)($request, $response);
-
+                return $this->onRouteMatch($match, $request, $response);
             case Dispatcher::NOT_FOUND:
                 // Do nothing; allow actions further down the chain a chance to respond.
                 // If no other registered host actions respond the server will send a
@@ -85,6 +87,28 @@ class Router implements ServerObserver {
                     "Encountered unexpected Dispatcher code"
                 );
         }
+    }
+
+    private function onRouteMatch(array $match, Request $request, Response $response) {
+        list(, $action, $request->locals->routeArgs) = $match;
+        if ($this->enableCache) {
+            if ($this->cacheSize < $this->maxCacheSize) {
+                $this->cacheSize++;
+            } else {
+                // Remove the oldest entry from the LRU cache to make room
+                $unsetMe = key($this->cache);
+                unset(
+                    $this->cache[$unsetMe],
+                    $this->cacheTimeouts[$unsetMe]
+                );
+            }
+
+            $cacheKey = $request->uriPath;
+            $this->cache[$cacheKey] = [$action, $request->locals->routeArgs];
+            $this->cacheTimeouts[$cacheKey] = $this->now + $this->cacheTtl;
+        }
+
+        return ($action)($request, $response);
     }
 
     /**
@@ -184,24 +208,47 @@ class Router implements ServerObserver {
      * @param \SplSubject $subject The notifying Aerys\Server instance
      * @return \Amp\Promise
      */
-    public function update(\SplSubject $subject): Promise {
-        if ($subject->state() !== Server::STARTING) {
-            return new Success;
+    public function update(\SplSubject $server): Promise {
+        switch ($server->state()) {
+            case Server::STOPPED:
+                if (isset($this->cacheWatcher)) {
+                    $this->reactor->cancel($this->cacheWatcher);
+                    $this->cacheWatcher = null;
+                }
+                break;
+            case Server::STARTED:
+                if ($this->enableCache) {
+                    $this->cacheWatcher = $this->reactor->repeat($this->cacheInvalidator, 1000);
+                }
+                break;
+            case Server::STARTING:
+                if (empty($this->routes)) {
+                    return new Failure(new \DomainException(
+                        "Router start failure: no routes registered"
+                    ));
+                }
+                $this->routeDispatcher = simpleDispatcher(function(RouteCollector $rc) {
+                    foreach ($this->routes as list($method, $uri, $action)) {
+                        $rc->addRoute($method, $uri, $action);
+                    }
+                });
+                break;
         }
-
-        if (empty($this->routes)) {
-            return new Failure(new \DomainException(
-                "Router start failure: no routes registered"
-            ));
-        }
-
-        $this->routeDispatcher = simpleDispatcher(function(RouteCollector $routeCollector) {
-            foreach ($this->routes as list($method, $uri, $action)) {
-                $routeCollector->addRoute($method, $uri, $action);
-            }
-        });
 
         return new Success;
     }
 
+    private function invalidateCacheEntries() {
+        $this->now = $now = time();
+        foreach ($this->cacheTimeouts as $cacheKey => $expiresAt) {
+            if ($now < $expiresAt) {
+                return;
+            }
+            $this->cacheSize--;
+            unset(
+                $this->cache[$cacheKey],
+                $this->cacheTimeouts[$cacheKey]
+            );
+        }
+    }
 }
