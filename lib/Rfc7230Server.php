@@ -11,7 +11,7 @@ use Amp\{
     function resolve
 };
 
-class Rfc7230Server implements ServerObserver {
+class Rfc7230Server implements HttpServer {
     use Struct;
     private $reactor;
     private $vhostGroup;
@@ -214,7 +214,7 @@ class Rfc7230Server implements ServerObserver {
      * @param \Aerys\Rfc7230Client $client
      * @return void
      */
-    public function onWritable(Reactor $reactor, string $watcherId, $socket, Rfc7230Client $client) {
+    public function onWritable(Reactor $reactor, string $watcherId, $socket, $client) {
         $bytesWritten = @fwrite($socket, $client->writeBuffer);
         if ($bytesWritten === false) {
             if (!is_resource($socket) || @feof($socket)) {
@@ -257,7 +257,7 @@ class Rfc7230Server implements ServerObserver {
      * @param \Aerys\Rfc7230Client $client
      * @return void
      */
-    public function onReadable(Reactor $reactor, string $watcherId, $socket, Rfc7230Client $client) {
+    public function onReadable(Reactor $reactor, string $watcherId, $socket, $client) {
         $data = @fread($socket, $this->options->ioGranularity);
         if ($data == "") {
             if (!is_resource($socket) || @feof($socket)) {
@@ -283,7 +283,7 @@ class Rfc7230Server implements ServerObserver {
      * @param Aerys\Rfc7230Client $client
      * @return void
      */
-    public function onParse(array $parseStruct, Rfc7230Client $client) {
+    public function onParse(array $parseStruct, $client) {
         list($eventType, $parseResult, $errorStruct) = $parseStruct;
         switch ($eventType) {
             case RequestParser::RESULT:
