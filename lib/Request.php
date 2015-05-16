@@ -2,10 +2,30 @@
 
 namespace Aerys;
 
-/**
- * At this time Requests are strictly object "structs" without a method API.
- * This interface exists (and is implemented by Rfc7230Request) so that
- * applications using the RFC7230-compliant HTTP/1.1 server won't have to
- * modify any code once HTTP/2.0 support is added.
- */
-interface Request {}
+use Amp\Struct;
+
+class Request {
+    use Struct;
+    public $isEncrypted;
+    public $clientPort;
+    public $clientAddr;
+    public $serverPort;
+    public $serverAddr;
+    public $serverName;
+    public $trace;
+    public $protocol;
+    public $method;
+    public $headers;
+    public $body;
+    public $uri;
+    public $uriRaw;
+    public $uriHost;
+    public $uriPort;
+    public $uriPath;
+    public $uriQuery;
+    public $query;
+    public $time;
+    public $debug;
+    public $locals;
+    public $exporter;
+}

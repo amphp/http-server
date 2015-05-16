@@ -361,8 +361,8 @@ class Rfc7230Server implements HttpServer {
         $response->end();
     }
 
-    private function initializeRequestCycle(Rfc7230Client $client, array $parseResult): Rfc7230RequestCycle {
-        $requestCycle = new Rfc7230RequestCycle;
+    private function initializeRequestCycle(Rfc7230Client $client, array $parseResult): RequestCycle {
+        $requestCycle = new RequestCycle;
         $requestCycle->client = $client;
         $client->requestsRemaining--;
         $client->currentRequestCycle = $requestCycle;
@@ -381,7 +381,7 @@ class Rfc7230Server implements HttpServer {
             $headers[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
         }
 
-        $request = new Rfc7230Request;
+        $request = new Request;
         $requestCycle->request = $request;
 
         $request->debug = $this->options->debug;
@@ -455,7 +455,7 @@ class Rfc7230Server implements HttpServer {
         return $requestCycle;
     }
 
-    private function respond(Rfc7230RequestCycle $requestCycle) {
+    private function respond(RequestCycle $requestCycle) {
         if (!$requestCycle->isVhostValid) {
             $application = [$this, "sendPreAppInvalidHostResponse"];
         } elseif (!in_array($requestCycle->request->method, $this->options->allowedMethods)) {
@@ -511,7 +511,7 @@ class Rfc7230Server implements HttpServer {
         $response->end($body = null);
     }
 
-    private function initializeResponseFilter(Rfc7230RequestCycle $requestCycle): Filter {
+    private function initializeResponseFilter(RequestCycle $requestCycle): Filter {
         $try = [$this->genericResponseFilter];
 
         if ($userFilters = $requestCycle->vhost->getFilters()) {
@@ -607,7 +607,7 @@ class Rfc7230Server implements HttpServer {
         }
     }
 
-    private function tryApplication(Rfc7230RequestCycle $requestCycle, callable $application) {
+    private function tryApplication(RequestCycle $requestCycle, callable $application) {
         try {
             $requestCycle->response = new Rfc7230Response(
                 $this->initializeResponseFilter($requestCycle),
@@ -643,7 +643,7 @@ class Rfc7230Server implements HttpServer {
         }
     }
 
-    private function onApplicationError(\BaseException $error, Rfc7230RequestCycle $requestCycle) {
+    private function onApplicationError(\BaseException $error, RequestCycle $requestCycle) {
         if ($requestCycle->client->isDead || $requestCycle->client->isExported) {
             // Responder actions may catch the initial ClientException and continue
             // doing further work. If an error arises at this point we can end up
@@ -704,7 +704,7 @@ class Rfc7230Server implements HttpServer {
         }
     }
 
-    private function sendErrorResponse(\BaseException $error, Rfc7230RequestCycle $requestCycle) {
+    private function sendErrorResponse(\BaseException $error, RequestCycle $requestCycle) {
         $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
         $subHeading = "Requested: {$requestCycle->request->uri}";
         $msg = ($this->options->debug)

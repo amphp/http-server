@@ -12,7 +12,7 @@ use Aerys\{
     Router,
     Server,
     Response,
-    Rfc7230Request
+    Request
 };
 
 class RouterTest extends \PHPUnit_Framework_TestCase {
@@ -112,7 +112,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $mock = $this->mockServer(Server::STARTING);
         $router->update($mock);
 
-        $request = new Rfc7230Request;
+        $request = new Request;
         $request->locals = new \StdClass;
         $request->method = "GET";
         $request->uriPath = "/daniel/32";
