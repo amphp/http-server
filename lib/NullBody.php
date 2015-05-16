@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Amp\Promise;
+use Amp\{ Promise, Success };
 
 class NullBody extends Body {
     public function __construct() {
