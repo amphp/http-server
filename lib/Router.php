@@ -13,7 +13,6 @@ use Amp\{
     Success,
     Failure,
     Reactor,
-    function resolve,
     function getReactor
 };
 
