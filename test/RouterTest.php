@@ -34,7 +34,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
             function setReason(string $phrase): Response { return $this; }
             function addHeader(string $field, string $value): Response { return $this; }
             function setHeader(string $field, string $value): Response { return $this; }
-            function send(string $body): Response { return $this; }
+            function send(string $body): Response { $this->state = self::ENDED; return $this; }
             function stream(string $partialBodyChunk): Response { return $this; }
             function flush(): Response { return $this; }
             function end(string $finalBodyChunk = null): Response { return $this; }
@@ -103,9 +103,8 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $i = 0;
         $foo = function() use (&$i) { $i++; };
         $bar = function($request, $response) {
-            $prop = new \ReflectionProperty($response, "state");
-            $prop->setAccessible(true);
-            $prop->setValue($response, Response::ENDED);
+            $i++;
+            $response->send("test");
         };
 
         $router = new Router;
