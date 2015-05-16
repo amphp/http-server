@@ -40,10 +40,19 @@ class Router implements ServerObserver {
             $res->setHeader("Content-Type", "text/plain; charset=utf-8");
             $res->end("Canonical resource URI: {$req->uri}/");
         };
-        $this->cacheInvalidator = (new \ReflectionClass($this))
-            ->getMethod("invalidateCacheEntries")
-            ->getClosure($this)
-        ;
+        $this->cacheInvalidator = function() {
+            $this->now = $now = time();
+            foreach ($this->cacheTimeouts as $cacheKey => $expiresAt) {
+                if ($now < $expiresAt) {
+                    return;
+                }
+                $this->cacheSize--;
+                unset(
+                    $this->cache[$cacheKey],
+                    $this->cacheTimeouts[$cacheKey]
+                );
+            }
+        };
     }
 
     /**
@@ -235,19 +244,5 @@ class Router implements ServerObserver {
         }
 
         return new Success;
-    }
-
-    private function invalidateCacheEntries() {
-        $this->now = $now = time();
-        foreach ($this->cacheTimeouts as $cacheKey => $expiresAt) {
-            if ($now < $expiresAt) {
-                return;
-            }
-            $this->cacheSize--;
-            unset(
-                $this->cache[$cacheKey],
-                $this->cacheTimeouts[$cacheKey]
-            );
-        }
     }
 }
