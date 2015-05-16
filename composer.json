@@ -8,7 +8,9 @@
         "server",
         "async",
         "non-blocking",
-        "aerys"
+        "aerys",
+        "amp",
+        "amphp"
     ],
     "license": "MIT",
     "authors": [
@@ -41,7 +43,7 @@
     "bin": ["bin/aerys"],
     "extra": {
         "branch-alias": {
-            "dev-master": "0.1.x-dev"
+            "dev-master": "0.1.0-dev"
         }
     }
 }
