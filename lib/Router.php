@@ -210,6 +210,7 @@ class Router implements ServerObserver {
     public function update(\SplSubject $server): Promise {
         switch ($server->state()) {
             case Server::STOPPED:
+                $this->routeDispatcher = null;
                 if (isset($this->cacheWatcher)) {
                     $this->reactor->cancel($this->cacheWatcher);
                     $this->cacheWatcher = null;
