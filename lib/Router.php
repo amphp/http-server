@@ -17,22 +17,15 @@ use Amp\{
 };
 
 class Router implements ServerObserver {
-    private $reactor;
     private $canonicalRedirector;
     private $routeDispatcher;
     private $routes = [];
     private $cache = [];
-    private $cacheTimeouts = [];
-    private $cacheInvalidator;
-    private $cacheWatcher;
-    private $cacheSize = 0;
-    private $cacheTtl = 5;
-    private $maxCacheSize = 1024;
-    private $enableCache = true;
-    private $now;
+    private $cacheEntryCount = 0;
+    private $maxCacheEntries = 512;
 
-    public function __construct(Reactor $reactor = null) {
-        $this->reactor = $reactor ?: getReactor();
+    public function __construct(array $options = []) {
+        $this->setOptions($options);
         $this->canonicalRedirector = function(Request $req, Response $res) {
             $redirectTo = $req->uriQuery ? "{$req->uriPath}/?{$req->uriQuery}" : "{$req->uriPath}/";
             $res->setStatus(HTTP_STATUS["FOUND"]);
@@ -40,19 +33,26 @@ class Router implements ServerObserver {
             $res->setHeader("Content-Type", "text/plain; charset=utf-8");
             $res->end("Canonical resource URI: {$req->uri}/");
         };
-        $this->cacheInvalidator = function() {
-            $this->now = $now = time();
-            foreach ($this->cacheTimeouts as $cacheKey => $expiresAt) {
-                if ($now < $expiresAt) {
-                    return;
-                }
-                $this->cacheSize--;
-                unset(
-                    $this->cache[$cacheKey],
-                    $this->cacheTimeouts[$cacheKey]
-                );
+    }
+
+    private function setOptions(array $options) {
+        foreach ($options as $key => $value) {
+            switch ($key) {
+                case "max_cache_entries":
+                    if (!is_int($value)) {
+                        throw new \DomainException(sprintf(
+                            "max_cache_entries requires an integer; %s specified",
+                            is_object($value) ? get_class($value) : gettype($value)
+                        ));
+                    }
+                    $this->maxCacheEntries = ($value < 1) ? 0 : $value;
+                    break;
+                default:
+                    throw new \DomainException(
+                        "Unknown Router option: {$key}"
+                    );
             }
-        };
+        }
     }
 
     /**
@@ -67,12 +67,12 @@ class Router implements ServerObserver {
         $toMatch = $request->uriPath;
 
         if (isset($this->cache[$toMatch])) {
-            list($action, $request->locals->routeArgs) = $this->cache[$toMatch];
+            list($action, $request->locals->routeArgs) = $cache = $this->cache[$toMatch];
             // Keep the most recently used entry at the back of the LRU cache
-            unset($this->cacheTimeouts[$toMatch]);
-            $this->cacheTimeouts[$toMatch] = $this->now + $this->cacheTtl;
+            unset($this->cache[$toMatch]);
+            $this->cache[$toMatch] = $cache;
 
-            return ($action)($request, $response);
+            return $action($request, $response);
         }
 
         $match = $this->routeDispatcher->dispatch($request->method, $toMatch);
@@ -80,15 +80,18 @@ class Router implements ServerObserver {
         switch ($match[0]) {
             case Dispatcher::FOUND:
                 list(, $action, $request->locals->routeArgs) = $match;
-                if ($this->enableCache) {
-                    $this->cacheDispatcherResult($action, $request);
+                if ($this->maxCacheEntries > 0) {
+                    $this->cacheDispatchResult($action, $request);
                 }
-                return ($action)($request, $response);
+
+                return $action($request, $response);
+                break;
             case Dispatcher::NOT_FOUND:
                 // Do nothing; allow actions further down the chain a chance to respond.
                 // If no other registered host actions respond the server will send a
                 // 404 automatically anyway.
                 return;
+                break;
             case Dispatcher::METHOD_NOT_ALLOWED:
                 $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
                 $response->setHeader("Aerys-Generic-Response", "enable");
@@ -102,20 +105,16 @@ class Router implements ServerObserver {
     }
 
     private function cacheDispatchResult(callable $action, Request $request) {
-        if ($this->cacheSize < $this->maxCacheSize) {
-            $this->cacheSize++;
+        if ($this->cacheEntryCount < $this->maxCacheEntries) {
+            $this->cacheEntryCount++;
         } else {
             // Remove the oldest entry from the LRU cache to make room
             $unsetMe = key($this->cache);
-            unset(
-                $this->cache[$unsetMe],
-                $this->cacheTimeouts[$unsetMe]
-            );
+            unset($this->cache[$unsetMe]);
         }
 
         $cacheKey = $request->uriPath;
         $this->cache[$cacheKey] = [$action, $request->locals->routeArgs];
-        $this->cacheTimeouts[$cacheKey] = $this->now + $this->cacheTtl;
     }
 
     /**
@@ -132,7 +131,8 @@ class Router implements ServerObserver {
      * @return self
      */
     public function __call(string $method, array $args): Router {
-        $uri = $args ? array_shift($args) : null;
+        $uri = $args ? array_shift($args) : "";
+
         return $this->route(strtoupper($method), $uri, ...$args);
     }
 
@@ -156,13 +156,18 @@ class Router implements ServerObserver {
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
      * @param callable $actions The action(s) to invoke upon matching this route
-     * @throws \DomainException on empty $uri or $actions
+     * @throws \DomainException on invalid empty parameters
      * @return self
      */
     public function route(string $method, string $uri, callable ...$actions): Router {
+        if ($method === "") {
+            throw new \DomainException(
+                __METHOD__ . " requires a non-empty string HTTP method at Argument 1"
+            );
+        }
         if ($uri === "") {
             throw new \DomainException(
-                __METHOD__ . " requires a non-empty URI string at Argument 2"
+                __METHOD__ . " requires a non-empty string URI at Argument 2"
             );
         }
 
@@ -219,15 +224,6 @@ class Router implements ServerObserver {
         switch ($server->state()) {
             case Server::STOPPED:
                 $this->routeDispatcher = null;
-                if (isset($this->cacheWatcher)) {
-                    $this->reactor->cancel($this->cacheWatcher);
-                    $this->cacheWatcher = null;
-                }
-                break;
-            case Server::STARTED:
-                if ($this->enableCache) {
-                    $this->cacheWatcher = $this->reactor->repeat($this->cacheInvalidator, 1000);
-                }
                 break;
             case Server::STARTING:
                 if (empty($this->routes)) {
