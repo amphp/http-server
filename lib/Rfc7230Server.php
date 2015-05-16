@@ -17,6 +17,7 @@ class Rfc7230Server implements ServerObserver {
     private $vhostGroup;
     private $options;
     private $exports;
+    private $negotiateCrypto;
     private $updateTime;
     private $clearExport;
     private $onCompletedResponse;
@@ -48,6 +49,7 @@ class Rfc7230Server implements ServerObserver {
         // preferable to avoid the extra fcall needed to wrap them in a closure
         // with automatic $this scope binding. Instead we use reflection to turn
         // them into closures that we can pass as "public" callbacks.
+        $this->negotiateCrypto = $this->makePrivateMethodClosure("negotiateCrypto");
         $this->updateTime = $this->makePrivateMethodClosure("updateTime");
         $this->clearExport = $this->makePrivateMethodClosure("clearExport");
         $this->onCompletedResponse = $this->makePrivateMethodClosure("onCompletedResponse");
@@ -90,22 +92,14 @@ class Rfc7230Server implements ServerObserver {
         stream_set_blocking($socket, false);
         if (@stream_context_get_options($socket)["ssl"]) {
             $socketId = (int) $socket;
-            $watcherId = $this->reactor->onReadable($socket, [$this, "negotiateCrypto"]);
+            $watcherId = $this->reactor->onReadable($socket, $this->negotiateCrypto);
             $this->pendingTlsStreams[$socketId] = [$watcherId, $socket];
         } else {
             $this->finalizeImport($socket);
         }
     }
 
-    /**
-     * Negotiate crypto handshake when sockets have readable data
-     *
-     * @param Amp\Reactor $reactor
-     * @param string $watcherId
-     * @param resource $socket
-     * @return void
-     */
-    public function negotiateCrypto(Reactor $reactor, string $watcherId, $socket) {
+    private function negotiateCrypto(Reactor $reactor, string $watcherId, $socket) {
         if ($handshake = @stream_socket_enable_crypto($socket, true)) {
             $socketId = (int) $socket;
             $reactor->cancel($watcherId);
