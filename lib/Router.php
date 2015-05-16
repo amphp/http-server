@@ -35,8 +35,9 @@ class Router implements ServerObserver {
     public function __construct(Reactor $reactor = null) {
         $this->reactor = $reactor ?: getReactor();
         $this->canonicalRedirector = function(Request $req, Response $res) {
+            $redirectTo = $req->uriQuery ? "{$req->uriPath}/?{$req->uriQuery}" : "{$req->uriPath}/";
             $res->setStatus(HTTP_STATUS["FOUND"]);
-            $res->setHeader("Location", "{$req->uri}/");
+            $res->setHeader("Location", $redirectTo);
             $res->setHeader("Content-Type", "text/plain; charset=utf-8");
             $res->end("Canonical resource URI: {$req->uri}/");
         };
