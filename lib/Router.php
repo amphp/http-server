@@ -77,8 +77,7 @@ class Router implements ServerObserver {
                 // 404 automatically anyway.
                 return;
             case Dispatcher::METHOD_NOT_ALLOWED:
-                $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
-                $response->setStatus($status);
+                $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
                 $response->setHeader("Aerys-Generic-Response", "enable");
                 $response->end();
                 break;
