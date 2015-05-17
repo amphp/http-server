@@ -24,6 +24,7 @@ class Request {
     public $uriPath;
     public $uriQuery;
     public $query;
+    public $remaining;
     public $time;
     public $debug;
     public $locals;

@@ -21,6 +21,7 @@ class Rfc7230Server implements HttpServer {
     private $updateTime;
     private $clearExport;
     private $onCompletedResponse;
+    private $startResponseFilter;
     private $genericResponseFilter;
     private $headResponseFilter;
     private $deflateResponseFilter;
@@ -46,13 +47,14 @@ class Rfc7230Server implements HttpServer {
 
         // We have some internal callables that have to be passed to outside
         // code. We don't want these to be part of the public API and it's
-        // preferable to avoid the extra fcall needed to wrap them in a closure
+        // preferable to avoid the extra fcall from wrapping them in a closure
         // with automatic $this scope binding. Instead we use reflection to turn
         // them into closures that we can pass as "public" callbacks.
         $this->negotiateCrypto = $this->makePrivateMethodClosure("negotiateCrypto");
         $this->updateTime = $this->makePrivateMethodClosure("updateTime");
         $this->clearExport = $this->makePrivateMethodClosure("clearExport");
         $this->onCompletedResponse = $this->makePrivateMethodClosure("onCompletedResponse");
+        $this->startResponseFilter = $this->makePrivateMethodClosure("startResponseFilter");
         $this->genericResponseFilter = $this->makePrivateMethodClosure("genericResponseFilter");
         $this->headResponseFilter = $this->makePrivateMethodClosure("headResponseFilter");
         $this->deflateResponseFilter = $this->makePrivateMethodClosure("deflateResponseFilter");
@@ -61,7 +63,8 @@ class Rfc7230Server implements HttpServer {
     }
 
     public function __debugInfo() {
-        // $serverInfo isn't available until we observe a Server::STARTING notification
+        // Check for boolean on $this->serverInfo because it isn't available
+        // until we observe a Server::STARTING notification
         $serverInfo = $this->serverInfo ?: ["state" => "STOPPED", "boundAddresses" => []];
         $localInfo = [
             "clients"           => $this->clientCount,
@@ -361,8 +364,8 @@ class Rfc7230Server implements HttpServer {
         $response->end();
     }
 
-    private function initializeRequestCycle(Rfc7230Client $client, array $parseResult): RequestCycle {
-        $requestCycle = new RequestCycle;
+    private function initializeRequestCycle(Rfc7230Client $client, array $parseResult): Rfc7230RequestCycle {
+        $requestCycle = new Rfc7230RequestCycle;
         $requestCycle->client = $client;
         $client->requestsRemaining--;
         $client->currentRequestCycle = $requestCycle;
@@ -388,6 +391,7 @@ class Rfc7230Server implements HttpServer {
         $request->exporter = $client->exporter;
         $request->locals = new \StdClass;
         $request->time = $this->currentTime;
+        $request->remaining = $client->requestsRemaining;
         $request->isEncrypted = $client->isEncrypted;
         $request->trace = $trace;
         $request->protocol = $protocol;
@@ -420,18 +424,6 @@ class Rfc7230Server implements HttpServer {
             parse_str($request->uriQuery, $request->query);
         }
 
-        $responseContext = new Rfc7230ResponseContext;
-        $responseContext->isServerStopping = !empty($this->stopPromisor);
-        $responseContext->currentHttpDate = $this->currentHttpDate;
-        $responseContext->requestProtocol = $request->protocol;
-        $responseContext->requestsRemaining = $client->requestsRemaining;
-        $responseContext->keepAliveTimeout = $this->options->keepAliveTimeout;
-        $responseContext->autoReasonPhrase = $this->options->autoReasonPhrase;
-        $responseContext->sendServerToken = $this->options->sendServerToken;
-        $responseContext->defaultContentType = $this->options->defaultContentType;
-        $responseContext->defaultTextCharset = $this->options->defaultTextCharset;
-
-        $requestCycle->responseContext = $responseContext;
         $requestCycle->responseWriter = $this->generateResponseWriter($requestCycle->client);
         $requestCycle->responseFilter = null; // Created at app call-time
         $requestCycle->badFilterKeys = [];
@@ -455,7 +447,7 @@ class Rfc7230Server implements HttpServer {
         return $requestCycle;
     }
 
-    private function respond(RequestCycle $requestCycle) {
+    private function respond(Rfc7230RequestCycle $requestCycle) {
         if (!$requestCycle->isVhostValid) {
             $application = [$this, "sendPreAppInvalidHostResponse"];
         } elseif (!in_array($requestCycle->request->method, $this->options->allowedMethods)) {
@@ -511,8 +503,8 @@ class Rfc7230Server implements HttpServer {
         $response->end($body = null);
     }
 
-    private function initializeResponseFilter(RequestCycle $requestCycle): Filter {
-        $try = [$this->genericResponseFilter];
+    private function initializeResponseFilter(Rfc7230RequestCycle $requestCycle): Filter {
+        $try = [$this->startResponseFilter, $this->genericResponseFilter];
 
         if ($userFilters = $requestCycle->vhost->getFilters()) {
             $try = array_merge($try, array_values($userFilters));
@@ -607,11 +599,10 @@ class Rfc7230Server implements HttpServer {
         }
     }
 
-    private function tryApplication(RequestCycle $requestCycle, callable $application) {
+    private function tryApplication(Rfc7230RequestCycle $requestCycle, callable $application) {
         try {
-            $requestCycle->response = new Rfc7230Response(
+            $requestCycle->response = new StandardResponse(
                 $this->initializeResponseFilter($requestCycle),
-                $requestCycle->responseContext,
                 $requestCycle->responseWriter
             );
 
@@ -643,7 +634,7 @@ class Rfc7230Server implements HttpServer {
         }
     }
 
-    private function onApplicationError(\BaseException $error, RequestCycle $requestCycle) {
+    private function onApplicationError(\BaseException $error, Rfc7230RequestCycle $requestCycle) {
         if ($requestCycle->client->isDead || $requestCycle->client->isExported) {
             // Responder actions may catch the initial ClientException and continue
             // doing further work. If an error arises at this point we can end up
@@ -662,9 +653,8 @@ class Rfc7230Server implements HttpServer {
         // we no longer get errors.
         while (empty($requestCycle->response)) {
             try {
-                $requestCycle->response = new Rfc7230Response(
+                $requestCycle->response = new StandardResponse(
                     $this->initializeResponseFilter($requestCycle),
-                    $requestCycle->responseContext,
                     $requestCycle->responseWriter
                 );
             } catch (FilterException $e) {
@@ -704,7 +694,7 @@ class Rfc7230Server implements HttpServer {
         }
     }
 
-    private function sendErrorResponse(\BaseException $error, RequestCycle $requestCycle) {
+    private function sendErrorResponse(\BaseException $error, Rfc7230RequestCycle $requestCycle) {
         $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
         $subHeading = "Requested: {$requestCycle->request->uri}";
         $msg = ($this->options->debug)
@@ -761,6 +751,73 @@ class Rfc7230Server implements HttpServer {
             $this->currentHttpDate,
             $msg
         );
+    }
+
+    private function startResponseFilter(Request $request): \Generator {
+        $protocol = $request->protocol;
+        $requestsRemaining = $request->remaining;
+        $message = "";
+        $headerEndOffset = null;
+
+        do {
+            $message .= ($part = yield);
+        } while ($part !== Filter::END && ($headerEndOffset = \strpos($message, "\r\n\r\n")) === false);
+        if (!isset($headerEndOffset)) {
+            return $message;
+        }
+
+        $options = $this->options;
+        $startLineAndHeaders = substr($message, 0, $headerEndOffset);
+        $entity = substr($message, $headerEndOffset + 4);
+        list($startLine, $headers) = explode("\r\n", $startLineAndHeaders, 2);
+        $startLineParts = explode(" ", $startLine);
+        $status = $startLineParts[1];
+        $reason = $startLineParts[2] ?? "";
+
+        if (empty($reason) && $options->autoReasonPhrase) {
+            $reason = HTTP_REASON[$status] ?? "";
+        }
+        if ($options->sendServerToken) {
+            $headers = setHeader($headers, "Server", SERVER_TOKEN);
+        }
+
+        $contentLength = getHeader($headers, "__Aerys-Entity-Length");
+        $headers = removeHeader($headers, "__Aerys-Entity-Length");
+
+        if ($contentLength === "@") {
+            $hasContent = false;
+        } elseif ($contentLength !== "*") {
+            $hasContent = true;
+            $shouldClose = false;
+            $headers = setHeader($headers, "Content-Length", $contentLength);
+        } elseif ($protocol === "1.1") {
+            $hasContent = true;
+            $shouldClose = false;
+            $headers = setHeader($headers, "Transfer-Encoding", "chunked");
+        } else {
+            $hasContent = true;
+            $shouldClose = true;
+        }
+
+        if ($hasContent && $status >= 200 && ($status < 300 || $status >= 400)) {
+            $type = getHeader($headers, "Content-Type") ?? $options->defaultContentType;
+            if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
+                $type .= "; charset={$options->defaultTextCharset}";
+            }
+            $headers = setHeader($headers, "Content-Type", $type);
+        }
+
+        if ($shouldClose || $this->stopPromisor || $request->remaining === 0) {
+            $headers = setHeader($headers, "Connection", "close");
+        } else {
+            $keepAlive = "timeout={$options->keepAliveTimeout}, max={$requestsRemaining}";
+            $headers = setHeader($headers, "Keep-Alive", $keepAlive);
+        }
+
+        $headers = setHeader($headers, "Date", $this->currentHttpDate);
+        $headers = \trim($headers);
+
+        return "HTTP/{$protocol} {$status} {$reason}\r\n{$headers}\r\n\r\n{$entity}";
     }
 
     private function genericResponseFilter(Request $request): \Generator {

@@ -2,20 +2,20 @@
 
 namespace Aerys;
 
-class Rfc7230Response implements Response {
+class StandardResponse implements Response {
     private $filter;
-    private $context;
     private $writer;
+    private $status = 200;
+    private $reason = "";
+    private $headers = "";
     private $state = self::NONE;
 
     /**
      * @param \Aerys\Filter $filter
-     * @param \Aerys\Rfc7230ResponseContext $context
      * @param \Generator
      */
-    public function __construct(Filter $filter, Rfc7230ResponseContext $context, \Generator $writer) {
+    public function __construct(Filter $filter, \Generator $writer) {
         $this->filter = $filter;
-        $this->context = $context;
         $this->writer = $writer;
     }
 
@@ -31,7 +31,7 @@ class Rfc7230Response implements Response {
             );
         }
         assert(($code >= 100 && $code <= 599), "Invalid HTTP status code [100-599] expected");
-        $this->context->status = $code;
+        $this->status = $code;
 
         return $this;
     }
@@ -48,7 +48,7 @@ class Rfc7230Response implements Response {
             );
         }
         assert(isValidReasonPhrase($phrase), "Invalid reason phrase: {$phrase}");
-        $this->context->reason = $phrase;
+        $this->reason = $phrase;
 
         return $this;
     }
@@ -66,7 +66,7 @@ class Rfc7230Response implements Response {
         }
         assert(isValidHeaderField($field), "Invalid header field: {$field}");
         assert(isValidHeaderValue($value), "Invalid header value: {$value}");
-        $this->context->headers = addHeader($this->context->headers, $field, $value);
+        $this->headers = addHeader($this->headers, $field, $value);
 
         return $this;
     }
@@ -84,7 +84,7 @@ class Rfc7230Response implements Response {
         }
         assert(isValidHeaderField($field), "Invalid header field: {$field}");
         assert(isValidHeaderValue($value), "Invalid header value: {$value}");
-        $this->context->headers = setHeader($this->context->headers, $field, $value);
+        $this->headers = setHeader($this->headers, $field, $value);
 
         return $this;
     }
@@ -128,19 +128,24 @@ class Rfc7230Response implements Response {
                 "Cannot stream: response already sent"
             );
         }
-        $toFilter = ($this->state & self::STARTED)
-            ? $partialBody
-            : $this->start($stream = true, $partialBody)
-        ;
+
+        if ($this->state & self::STARTED) {
+            $toFilter = $partialBody;
+        } else {
+            // An * (as opposed to a numeric length) indicates "streaming entity content"
+            $headers = setHeader($this->headers, "__Aerys-Entity-Length", "*");
+            $headers = trim($headers);
+            $toFilter = "{proto} {$this->status} {$this->reason}\r\n{$headers}\r\n\r\n{$partialBody}";
+        }
+
         $filtered = $this->filter->sink($toFilter);
+        if ($filtered !== "") {
+            $this->writer->send($filtered);
+        }
 
         // Don't update the state until *AFTER* the filter operation so that if
         // it throws we can handle FilterException appropriately in the server.
         $this->state |= self::STREAMING;
-
-        if ($filtered !== "") {
-            $this->writer->send($filtered);
-        }
 
         return $this;
     }
@@ -198,12 +203,18 @@ class Rfc7230Response implements Response {
             }
             return $this;
         }
-        $toFilter = ($this->state & self::STARTED)
-            ? $finalBody
-            : $this->start($stream = false, (string) $finalBody)
-        ;
-        $filtered = $this->filter->end($toFilter);
 
+        if ($this->state & self::STARTED) {
+            $toFilter = $finalBody;
+        } else {
+            // An @ (as opposed to a numeric length) indicates "no entity content"
+            $entityValue = isset($finalBody) ? strlen($finalBody) : "@";
+            $headers = setHeader($this->headers, "__Aerys-Entity-Length", $entityValue);
+            $headers = trim($headers);
+            $toFilter = "{proto} {$this->status} {$this->reason}\r\n{$headers}\r\n\r\n{$finalBody}";
+        }
+
+        $filtered = $this->filter->end($toFilter);
         if ($filtered !== "") {
             $this->writer->send($filtered);
         }
@@ -214,64 +225,6 @@ class Rfc7230Response implements Response {
         $this->state |= self::ENDED;
 
         return $this;
-    }
-
-    private function start(bool $stream, string $entity): string {
-        $context  = $this->context;
-        $protocol = $context->requestProtocol;
-        $status   = $context->status ?? 200;
-        $reason   = $context->reason;
-        $headers  = $context->headers;
-
-        if (!isset($reason) && $context->autoReasonPhrase) {
-            $reason = HTTP_REASON[$status] ?? "";
-        }
-
-        if ($context->sendServerToken) {
-            $headers = setHeader($headers, "Server", SERVER_TOKEN);
-        }
-
-        $headers = setHeader($headers, "Date", $context->currentHttpDate);
-
-        if ($stream) {
-            if ($protocol === "1.1") {
-                $shouldClose = false;
-                $headers = setHeader($headers, "Transfer-Encoding", "chunked");
-            } else {
-                $shouldClose = true;
-                $headers = removeHeader($headers, "Content-Length");
-            }
-        } else {
-            $shouldClose = false;
-            if (isset($entity[0])) {
-                $headers = setHeader($headers, "Content-Length", \strlen($entity));
-            } else {
-                $headers = removeHeader($headers, "Content-Length");
-            }
-        }
-
-        if ($status >= 200 && ($status < 300 || $status >= 400)) {
-            $type = getHeader($headers, "Content-Type") ?? $context->defaultContentType;
-            if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-                $type .= "; charset={$context->defaultTextCharset}";
-            }
-            $headers = setHeader($headers, "Content-Type", $type);
-        }
-
-        if ($context->isServerStopping) {
-            $shouldClose = true;
-        }
-
-        if ($shouldClose) {
-            $headers = setHeader($headers, "Connection", "close");
-        } else {
-            $keepAlive = "timeout={$context->keepAliveTimeout}, max={$context->requestsRemaining}";
-            $headers = setHeader($headers, "Keep-Alive", $keepAlive);
-        }
-
-        $headers = \trim($headers);
-
-        return "HTTP/{$protocol} {$status} {$reason}\r\n{$headers}\r\n\r\n{$entity}";
     }
 
     /**

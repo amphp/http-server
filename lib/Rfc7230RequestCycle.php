@@ -14,7 +14,6 @@ class Rfc7230RequestCycle {
     public $bodyPromiseStream;
     public $response;
     public $responseFilter;
-    public $responseContext;
     public $responseWriter;
     public $badFilterKeys;
 }
