@@ -56,7 +56,7 @@ try {
             die("Debug mode flag -d required (worker watchers not yet implemented)\n\n");
             // @TODO: $watcher = new Aerys\WorkerProcessWatcher($reactor);
         }
-        yield from $watcher->watch($cliArgs);
+        Amp\resolve($watcher->watch($cliArgs));
     });
 } catch (BaseException $e) {
     echo "\n", (empty($cliArgs["debug"]) ? $e->getMessage() : $e), "\n\n";
