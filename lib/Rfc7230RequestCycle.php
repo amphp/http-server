@@ -16,4 +16,5 @@ class Rfc7230RequestCycle {
     public $responseFilter;
     public $responseWriter;
     public $badFilterKeys;
+    public $parseErrorResponder;
 }

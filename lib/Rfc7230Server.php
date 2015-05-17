@@ -296,7 +296,7 @@ class Rfc7230Server implements HttpServer {
                 $this->onParsedEntityHeaders($client, $parseResult);
                 break;
             case RequestParser::ENTITY_PART:
-                $this->onParsedEntityPart($client, $parseResult);
+                $client->currentRequestCycle->bodyPromiseStream->sink($parseResult);
                 break;
             case RequestParser::ENTITY_RESULT:
                 $this->onParsedMessageWithEntity($client, $parseResult);
@@ -331,12 +331,7 @@ class Rfc7230Server implements HttpServer {
         }
     }
 
-    private function onParsedEntityPart(Rfc7230Client $client, string $entityPart) {
-        $client->currentRequestCycle->bodyPromiseStream->sink($entityPart);
-    }
-
     private function onParsedMessageWithEntity(Rfc7230Client $client, array $parseResult) {
-        // Notify the body's promise stream of completion
         $client->currentRequestCycle->bodyPromiseStream->end();
         $this->clearKeepAliveTimeout($client);
 
@@ -350,18 +345,20 @@ class Rfc7230Server implements HttpServer {
 
     private function onParseError(Rfc7230Client $client, array $parseResult, array $errorStruct) {
         $this->clearKeepAliveTimeout($client);
+        $requestCycle = $this->initializeRequestCycle($client, $parseResult);
+        list($code, $msg) = $errorStruct;
+        $application = function(Request $request, Response $response) use ($code, $msg) {
+            $response->setStatus($code);
+            $response->setHeader("Connection", "close");
+            $response->end($body = $this->makeGenericBody($code, null, $msg));
+        };
 
-        // @TODO Create request context?
+        $requestCycle->parseErrorResponder = $application;
 
-        list($errorCode, $errorMessage) = $errorStruct;
-        $msg = $this->options->debug
-            ? "<pre>{$errorMessage}</pre>"
-            : "<p>Malformed HTTP request</p>";
-
-        $response->setStatus($errorCode);
-        $response->setHeader("Connection", "close");
-        $response->send("<html><body>{$msg}</body></html>");
-        $response->end();
+        // Only respond if this request is at the front of the queue
+        if ($client->requestCycleQueueSize === 1) {
+            $this->respond($requestCycle);
+        }
     }
 
     private function initializeRequestCycle(Rfc7230Client $client, array $parseResult): Rfc7230RequestCycle {
@@ -378,7 +375,7 @@ class Rfc7230Server implements HttpServer {
         if ($this->options->normalizeMethodCase) {
             $method = strtoupper($method);
         }
-        $uri = empty($parseResult["uri"]) ? "" : $parseResult["uri"];
+        $uri = empty($parseResult["uri"]) ? "/" : $parseResult["uri"];
         $headers = empty($parseResult["headers"]) ? [] : $parseResult["headers"];
         foreach ($headers as $field => $value) {
             $headers[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
@@ -448,7 +445,9 @@ class Rfc7230Server implements HttpServer {
     }
 
     private function respond(Rfc7230RequestCycle $requestCycle) {
-        if (!$requestCycle->isVhostValid) {
+        if ($requestCycle->parseErrorResponder) {
+            $application = $requestCycle->parseErrorResponder;
+        } elseif (!$requestCycle->isVhostValid) {
             $application = [$this, "sendPreAppInvalidHostResponse"];
         } elseif (!in_array($requestCycle->request->method, $this->options->allowedMethods)) {
             $application = [$this, "sendPreAppMethodNotAllowedResponse"];
