@@ -5,11 +5,6 @@ namespace Aerys;
 use Amp\Reactor;
 
 class Bootstrapper {
-    private $reactor;
-
-    public function __construct(Reactor $reactor) {
-        $this->reactor = $reactor;
-    }
 
     /**
      * Parse server command line options
@@ -24,7 +19,7 @@ class Bootstrapper {
      *
      * @return array
      */
-    public static function parseCommandLineOptions() {
+    public static function parseCommandLineArgs() {
         $shortOpts = "hdc:w:r:";
         $longOpts = ["help", "debug", "config:", "workers:", "remote:"];
         $parsedOpts = getopt($shortOpts, $longOpts);
@@ -56,18 +51,46 @@ class Bootstrapper {
     /**
      * Bootstrap a server watcher from command line options
      *
-     * @param string $configFile The server config file to bootstrap
-     * @param bool $forceDebug Should the config file debug setting be overridden?
-     * @return array [$server, $addrCtxMap, $onClient]
+     * @param \Amp\Reactor $reactor
+     * @param array $cliArgs An array of command line arguments
+     * @param array $observers An array of observers to attach to the bootstrapped Server
+     * @return \Generator
      */
-    public function boot(string $configFile, bool $forceDebug): array {
-        list($hosts, $options) = $this->loadConfigFile($configFile, $forceDebug);
+    public static function boot(Reactor $reactor, array $cliArgs, array $observers = []): \Generator {
+        $configFile = $cliArgs["config"];
+        $forceDebug = $cliArgs["debug"];
 
-        $server = new Server($this->reactor);
+        if (empty($configFile)) {
+            $hosts = [new Host];
+        } elseif (include($configFile)) {
+            $hosts = Host::getDefinitions() ?: [new Host];
+        } else {
+            throw new \DomainException(
+                "Config file inclusion failure: {$configFile}"
+            );
+        }
 
+        if (!defined("AERYS_OPTIONS")) {
+            $options = [];
+        } elseif (is_array(AERYS_OPTIONS)) {
+            $options = AERYS_OPTIONS;
+        } else {
+            throw new \DomainException(
+                "Invalid AERYS_OPTIONS constant: array expected, got " . gettype(AERYS_OPTIONS)
+            );
+        }
+
+        // Override the config file debug setting if indicated on the command line
+        if ($forceDebug) {
+            $options["debug"] = true;
+        }
+
+        $options = self::generateOptionsObjFromArray($options);
+
+        $server = new Server($reactor);
         $vhostGroup = new VhostGroup;
         foreach ($hosts as $host) {
-            $vhost = $this->buildVhost($server, $host);
+            $vhost = self::buildVhost($server, $host);
             $vhostGroup->addHost($vhost);
         }
 
@@ -88,59 +111,27 @@ class Bootstrapper {
             $addressContextMap[$address] = $context;
         }
 
-        $rfc7230Server = new Rfc7230Server($this->reactor, $vhostGroup, $options);
-        $server->attach($rfc7230Server);
-
-        return [$server, $addressContextMap, [$rfc7230Server, "import"]];
-    }
-
-    private function loadConfigFile(string $configFile, bool $forceDebug): array {
-        if (empty($configFile)) {
-            $hosts = [new Host];
-        } elseif (include($configFile)) {
-            $hosts = Host::getDefinitions() ?: [new Host];
-        } else {
-            throw new \DomainException(
-                "Config file inclusion failure: {$configFile}"
-            );
+        $observers[] = $rfc7230Server = new Rfc7230Server($reactor, $vhostGroup, $options);
+        // @TODO Instantiate the HTTP/2.0 server here.
+        // This will be attached to the Rfc7230Server instance in some way because
+        // h2 requests are initially negotiated via an HTTP/1.1 Upgrade request or
+        // through the TLS handshake executed by the Rfc7230Server.
+        foreach ($observers as $observer) {
+            $server->attach($observer);
         }
 
-        if (!defined("AERYS_OPTIONS")) {
-            $optionsArray = [];
-        } elseif (is_array(AERYS_OPTIONS)) {
-            $optionsArray = AERYS_OPTIONS;
-        } else {
-            throw new \DomainException(
-                "Invalid AERYS_OPTIONS constant: array expected, got " . gettype(AERYS_OPTIONS)
-            );
-        }
+        yield $server->start($addressContextMap, [$rfc7230Server, "import"]);
 
-        $options = $this->generateOptions($optionsArray, $forceDebug);
-
-        return [$hosts, $options];
+        return $server;
     }
 
-    /**
-     * When in debug mode the server will bootstrap the normal Options instance with
-     * access/assignment verification. If debug mode is disabled a duplicate object
-     * with public properties is used to maximize performance in production.
-     */
-    private function generateOptions(array $optionsArray, bool $forceDebug): Options {
+    private static function generateOptionsObjFromArray(array $optionsArray): Options {
         try {
             $optionsObj = new Options;
             foreach ($optionsArray as $key => $value) {
                 $optionsObj->{$key} = $value;
             }
-
-            // The CLI debug switch always overrides the config file setting
-            if ($forceDebug) {
-                $optionsObj->debug = true;
-            }
-
-            return $optionsObj->debug
-                ? $optionsObj
-                : $this->generatePublicOptionsStruct($optionsObj);
-
+            return $optionsObj->debug ? $optionsObj : self::generatePublicOptionsStruct($optionsObj);
         } catch (\BaseException $e) {
             throw new \DomainException(
                 "Failed assigning options from config file", 0, $e
@@ -148,7 +139,7 @@ class Bootstrapper {
         }
     }
 
-    private function generatePublicOptionsStruct(Options $options): Options {
+    private static function generatePublicOptionsStruct(Options $options): Options {
         $code = "return new class extends \Aerys\Options {\n\tuse \Amp\Struct;\n";
         foreach ((new \ReflectionClass($options))->getProperties() as $property) {
             $name = $property->getName();
@@ -160,7 +151,7 @@ class Bootstrapper {
         return eval($code);
     }
 
-    private function buildVhost(Server $server, Host $host) {
+    private static function buildVhost(Server $server, Host $host) {
         try {
             $hostExport = $host->export();
             $address = $hostExport["address"];
@@ -168,7 +159,7 @@ class Bootstrapper {
             $name = $hostExport["name"];
             $actions = $hostExport["actions"];
             $filters = $hostExport["filters"];
-            $application = $this->buildApplication($server, $actions);
+            $application = self::buildApplication($server, $actions);
             $vhost = new Vhost($name, $address, $port, $application, $filters);
             if ($crypto = $hostExport["crypto"]) {
                 $vhost->setCrypto($crypto);
@@ -184,7 +175,7 @@ class Bootstrapper {
         }
     }
 
-    private function buildApplication(Server $server, array $actions) {
+    private static function buildApplication(Server $server, array $actions) {
         foreach ($actions as $key => $action) {
             if (!is_callable($action)) {
                 throw new \DomainException(
@@ -198,31 +189,24 @@ class Bootstrapper {
 
         switch (count($actions)) {
             case 0:
-                return $this->buildDefaultApplication();
+                return function(Request $request, Response $response) {
+                    $response->end("<html><body><h1>It works!</h1></body></html>");
+                };
             case 1:
                 return current($actions);
             default:
-                return $this->buildMultiActionApplication($actions);
+                return function(Request $request, Response $response) use ($actions): \Generator {
+                    foreach ($actions as $action) {
+                        $result = ($action)($request, $response);
+                        if ($result instanceof \Generator) {
+                            yield from $result;
+                        }
+                        if ($response->state() & Response::STARTED) {
+                            return;
+                        }
+                    }
+                };
         }
     }
 
-    private function buildDefaultApplication() {
-        return function(Request $request, Response $response) {
-            $response->end("<html><body><h1>It works!</h1></body></html>");
-        };
-    }
-
-    private function buildMultiActionApplication(array $actions) {
-        return function(Request $request, Response $response) use ($actions): \Generator {
-            foreach ($actions as $action) {
-                $result = ($action)($request, $response);
-                if ($result instanceof \Generator) {
-                    yield from $result;
-                }
-                if ($response->state() & Response::STARTED) {
-                    return;
-                }
-            }
-        };
-    }
 }

@@ -39,16 +39,16 @@ $help = <<<EOT
 
 EOT;
 
-$cliOptions = Aerys\Bootstrapper::parseCommandLineOptions();
-if ($cliOptions["help"]) {
+$cliArgs = Aerys\Bootstrapper::parseCommandLineArgs();
+if ($cliArgs["help"]) {
     echo $help;
     exit(0);
 }
 
 try {
-    Amp\run(function($reactor) use ($cliOptions) {
-        if ($cliOptions["debug"]) {
-            $watcher = new Aerys\DebugWatcher($reactor, new Aerys\Bootstrapper($reactor));
+    Amp\run(function($reactor) use ($cliArgs) {
+        if ($cliArgs["debug"]) {
+            $watcher = new Aerys\DebugWatcher($reactor);
         } elseif (stripos(PHP_OS, "WIN") === 0) {
             die("Debug mode flag -d required (worker watchers not yet implemented)\n\n");
             // @TODO: $watcher = new Aerys\WorkerSocketWatcher($reactor);
@@ -56,9 +56,9 @@ try {
             die("Debug mode flag -d required (worker watchers not yet implemented)\n\n");
             // @TODO: $watcher = new Aerys\WorkerProcessWatcher($reactor);
         }
-        yield from $watcher->watch($cliOptions);
+        yield from $watcher->watch($cliArgs);
     });
 } catch (BaseException $e) {
-    echo "\n", (empty($cliOptions["debug"]) ? $e->getMessage() : $e), "\n\n";
+    echo "\n", (empty($cliArgs["debug"]) ? $e->getMessage() : $e), "\n\n";
     exit(1);
 }
