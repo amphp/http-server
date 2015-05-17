@@ -190,6 +190,7 @@ class Filter {
                 }
             }
 
+            // use (string) cast in case of empty filter array because $data can === null
             return (string) $data;
 
         } catch (\BaseException $e) {
