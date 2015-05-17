@@ -5,8 +5,8 @@ namespace Aerys;
 interface Response {
     const NONE      = 0b000;
     const STARTED   = 0b001;
-    const STREAMING = 0b011;
-    const ENDED     = 0b101;
+    const STREAMING = 0b010;
+    const ENDED     = 0b100;
 
     /**
      * Set the numeric HTTP status code

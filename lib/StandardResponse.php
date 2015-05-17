@@ -145,7 +145,7 @@ class StandardResponse implements Response {
 
         // Don't update the state until *AFTER* the filter operation so that if
         // it throws we can handle FilterException appropriately in the server.
-        $this->state |= self::STREAMING;
+        $this->state = self::STREAMING|self::STARTED;
 
         return $this;
     }
@@ -222,7 +222,7 @@ class StandardResponse implements Response {
 
         // Update the state *AFTER* the filter operation so that if it throws
         // we can handle things appropriately in the server.
-        $this->state |= self::ENDED;
+        $this->state = self::ENDED|self::STARTED;
 
         return $this;
     }
