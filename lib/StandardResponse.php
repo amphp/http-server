@@ -119,7 +119,6 @@ class StandardResponse implements Response {
      *
      * @param string $partialBody
      * @throws \LogicException If response output already complete
-     * @throws \Aerys\ClientException If the client has already disconnected
      * @return self
      */
     public function stream(string $partialBody): Response {
@@ -132,7 +131,7 @@ class StandardResponse implements Response {
         if ($this->state & self::STARTED) {
             $toFilter = $partialBody;
         } else {
-            // An * (as opposed to a numeric length) indicates "streaming entity content"
+            // A * (as opposed to a numeric length) indicates "streaming entity content"
             $headers = setHeader($this->headers, "__Aerys-Entity-Length", "*");
             $headers = trim($headers);
             $toFilter = "{proto} {$this->status} {$this->reason}\r\n{$headers}\r\n\r\n{$partialBody}";
@@ -157,7 +156,6 @@ class StandardResponse implements Response {
      * Invoking it before calling stream() or after send()/end() is a logic error.
      *
      * @throws \LogicException If invoked before stream() or after send()/end()
-     * @throws \Aerys\ClientException If the client has already disconnected
      * @return self
      */
     public function flush(): Response {
@@ -191,7 +189,6 @@ class StandardResponse implements Response {
      *     $response->end();
      *
      * @param string $finalBody Optional final body data to send
-     * @throws \Aerys\ClientException If the client has already disconnected
      * @return self
      */
     public function end(string $finalBody = null): Response {
