@@ -16,18 +16,8 @@ class Rfc7230Server implements HttpServer {
     private $reactor;
     private $vhostGroup;
     private $options;
-    private $exports;
-    private $negotiateCrypto;
-    private $updateTime;
-    private $clearExport;
-    private $onCompletedResponse;
-    private $startResponseFilter;
-    private $genericResponseFilter;
-    private $headResponseFilter;
-    private $deflateResponseFilter;
-    private $chunkResponseFilter;
-    private $bufferResponseFilter;
     private $nullBody;
+    private $exports;
     private $stopPromisor;
     private $currentTime;
     private $currentHttpDate;
@@ -38,6 +28,18 @@ class Rfc7230Server implements HttpServer {
     private $keepAliveTimeouts = [];
     private $keepAliveWatcher;
     private $serverInfo;
+
+    /* private callables that we pass to external code */
+    private $negotiateCrypto;
+    private $updateTime;
+    private $clearExport;
+    private $onCompletedResponse;
+    private $startResponseFilter;
+    private $genericResponseFilter;
+    private $headResponseFilter;
+    private $deflateResponseFilter;
+    private $chunkResponseFilter;
+    private $bufferResponseFilter;
 
     public function __construct(Reactor $reactor, VhostGroup $vhostGroup, Options $options) {
         $this->reactor = $reactor;
@@ -276,7 +278,7 @@ class Rfc7230Server implements HttpServer {
             $this->renewKeepAliveTimeout($client);
         }
 
-        $client->requestParser->parse($data);
+        $client->requestParser->sink($data);
     }
 
     /**
