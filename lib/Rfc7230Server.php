@@ -189,7 +189,7 @@ class Rfc7230Server implements HttpServer {
         $client->serverAddr = substr($serverName, 0, $portStartPos);
         $client->serverPort = substr($serverName, $portStartPos + 1);
         $client->exporter = function() use ($client) { return $this->export($client); };
-        $client->requestParser = new RequestParser([$this, "onParse"], $options = [
+        $client->requestParser = new Rfc7230RequestParser([$this, "onParse"], $options = [
             "max_body_size" => $this->options->maxBodySize,
             "max_header_size" => $this->options->maxHeaderSize,
             "body_emit_size" => $this->options->ioGranularity,
@@ -289,23 +289,23 @@ class Rfc7230Server implements HttpServer {
     public function onParse(array $parseStruct, $client) {
         list($eventType, $parseResult, $errorStruct) = $parseStruct;
         switch ($eventType) {
-            case RequestParser::RESULT:
+            case Rfc7230RequestParser::RESULT:
                 $this->onParsedMessageWithoutEntity($client, $parseResult);
                 break;
-            case RequestParser::ENTITY_HEADERS:
+            case Rfc7230RequestParser::ENTITY_HEADERS:
                 $this->onParsedEntityHeaders($client, $parseResult);
                 break;
-            case RequestParser::ENTITY_PART:
-                $client->currentRequestCycle->bodyPromiseStream->sink($parseResult);
+            case Rfc7230RequestParser::ENTITY_PART:
+                $client->currentRequestCycle->bodyPromiseStream->sink($parseResult["body"]);
                 break;
-            case RequestParser::ENTITY_RESULT:
+            case Rfc7230RequestParser::ENTITY_RESULT:
                 $this->onParsedMessageWithEntity($client, $parseResult);
                 break;
-            case RequestParser::ERROR:
+            case Rfc7230RequestParser::ERROR:
                 $this->onParseError($client, $parseResult, $errorStruct);
                 break;
             default:
-                assert(false, "Unexpected RequestParser result code encountered");
+                assert(false, "Unexpected Rfc7230RequestParser result code encountered");
         }
     }
 

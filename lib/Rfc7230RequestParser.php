@@ -1,13 +1,13 @@
 <?php
-//temp
+
 namespace Aerys;
 
-class RequestParser {
+class Rfc7230RequestParser {
     const ERROR = 1;
     const RESULT = 4;
-    const ENTITY_HEADERS = 4;
-    const ENTITY_PART = 8;
-    const ENTITY_RESULT = 16;
+    const ENTITY_HEADERS = 8;
+    const ENTITY_PART = 16;
+    const ENTITY_RESULT = 32;
 
     const S_AWAITING_HEADERS = 0;
     const S_BODY_IDENTITY = 1;
@@ -48,10 +48,13 @@ class RequestParser {
         $this->maxHeaderSize = $options["max_header_size"] ?? 32768;
         $this->maxBodySize = $options["max_body_size"] ?? 131072;
         $this->bodyEmitSize = $options["body_emit_size"] ?? 32768;
-        $this->callbackData = @$options["callback_data"];
+        $this->callbackData = $options["callback_data"] ?? null;
     }
 
-    public function parse($data) {
+    /**
+     * 
+     */
+    public function sink(string $data) {
         $buffer = $this->buffer .= $data;
 
         if ($buffer == "") {
@@ -197,6 +200,7 @@ class RequestParser {
                 "method"    => $this->method,
                 "uri"       => $this->uri,
                 "headers"   => $this->headers,
+                "body"      => "",
             ];
 
             $cb = $this->emitCallback;
@@ -377,7 +381,7 @@ class RequestParser {
             $this->bodyBufferSize = 0;
 
             $cb = $this->emitCallback;
-            $cb([self::ENTITY_PART, $bodyPart, null], $this->callbackData);
+            $cb([self::ENTITY_PART, ["body" => $bodyPart], null], $this->callbackData);
 
             if (empty($isFinalBodyPart)) {
                 goto start;
@@ -399,6 +403,7 @@ class RequestParser {
                 "method"    => $this->method,
                 "uri"       => $this->uri,
                 "headers"   => $this->headers,
+                "body"      => "",
             ];
 
             if (empty($error)) {
