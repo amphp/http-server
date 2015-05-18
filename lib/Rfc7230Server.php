@@ -341,7 +341,7 @@ class Rfc7230Server implements HttpServer {
 
         // Only respond if this request is at the front of the queue
         if ($client->requestCycleQueueSize === 1) {
-            $this->respond($requestCycle);
+            $this->respond($client->currentRequestCycle);
         }
     }
 
@@ -787,6 +787,7 @@ class Rfc7230Server implements HttpServer {
 
         if ($contentLength === "@") {
             $hasContent = false;
+            $shouldClose = ($protocol === "1.0");
         } elseif ($contentLength !== "*") {
             $hasContent = true;
             $shouldClose = false;
