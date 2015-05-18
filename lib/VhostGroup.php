@@ -175,10 +175,6 @@ class VhostGroup implements \Countable {
             }
         }
 
-        // We use current($this->vhosts) in places so it's important to reset the array's internal
-        // pointer after iterating above.
-        reset($this->vhosts);
-
         // If we have multiple different TLS certs on the same bind address we need to assign
         // the "SNI_server_name" key to enable the SNI extension.
         foreach (array_keys($bindMap) as $bindAddress) {
