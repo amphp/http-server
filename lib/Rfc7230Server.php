@@ -336,13 +336,8 @@ class Rfc7230Server implements HttpServer {
     private function onParsedMessageWithEntity(Rfc7230Client $client, array $parseResult) {
         $client->currentRequestCycle->bodyPromiseStream->end();
         $this->clearKeepAliveTimeout($client);
-
         // @TODO Update trailer headers if present
-
-        // Only respond if this request is at the front of the queue
-        if ($client->requestCycleQueueSize === 1) {
-            $this->respond($client->currentRequestCycle);
-        }
+        // We don't call respond() because we started the response when headers arrived
     }
 
     private function onParseError(Rfc7230Client $client, array $parseResult, array $errorStruct) {

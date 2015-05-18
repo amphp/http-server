@@ -8,54 +8,86 @@ use Amp\{
 };
 
 class PromiseStream {
+    const NONE      = 0b000;
+    const BUFFERING = 0b001;
+    const STREAMING = 0b010;
+    const ERROR     = 0b100;
+
     private $promisors;
-    private $index = 0;
-    private $fulfill = 0;
-    private $isBuffering;
-    private $buffer;
     private $bufferPromisor;
+    private $buffer = "";
+    private $index = 0;
+    private $state = self::NONE;
 
     public function __construct() {
         $this->promisors[] = new PrivateFuture;
+    }
+
+    public function fail(\Exception $e) {
+        $this->state = self::ERROR;
+        if ($this->state & self::BUFFERING) {
+            $this->buffer = null;
+            $this->bufferPromisor->fail($e);
+        } else {
+            current($this->promisors)->fail($e);
+        }
     }
 
     public function end(string $data = null) {
         if (isset($data)) {
             $this->sink($data);
         }
-        $this->promisors[$this->fulfill++]->succeed();
-        if ($this->isBuffering) {
+        if ($this->state & self::BUFFERING) {
             $this->bufferPromisor->succeed($this->buffer);
             $this->buffer = null;
+        } else {
+            $this->promisors[$this->index]->succeed();
+            $this->isEndOfStream = true;
         }
     }
 
     public function sink(string $data) {
-        if ($this->isBuffering) {
+        if ($this->state & self::BUFFERING) {
             $this->buffer .= $data;
         } else {
-            $this->promisors[$this->fulfill++]->succeed($data);
-            $this->promisors[++$this->index] = new PrivateFuture;
+            $this->promisors[$this->index + 1] = new PrivateFuture;
+            $this->promisors[$this->index++]->succeed($data);
         }
     }
 
     public function stream(): \Generator {
+        if ($this->state & self::BUFFERING) {
+            throw new \LogicException(
+                "Cannot stream once buffer() is invoked"
+            );
+        }
         while ($this->promisors) {
-            if ($this->isBuffering) {
-                throw new \LogicException(
-                    "Cannot stream once buffer() is invoked"
-                );
-            }
-            yield $this->promisors[$this->index]->promise();
-            unset($this->promisors[$this->index]);
+            $key = key($this->promisors);
+            yield $this->promisors[$key]->promise();
+            unset($this->promisors[$key]);
         }
     }
 
     public function buffer(): Promise {
+        if ($this->state & self::BUFFERING) {
+            return $this->bufferPromisor;
+        }
+        if ($this->state) {
+            throw new \LogicException(sprintf(
+                "Cannot buffer(); promise stream already in %s state",
+                ($this->state & ERROR) ? "ERROR" : "STREAMING"
+            ));
+        }
+
         $this->isBuffering = true;
         $this->bufferPromisor = new PrivateFuture;
-        for ($i=$this->index;$i<$this->fulfill;$i++) {
-            $this->promisors[$i]->promise()->when(function($e, $r) { $this->buffer .= $r; });
+        for ($i=0;$i<$this->index;$i++) {
+            $this->promisors[$i]->promise()->when(function($e, $r) {
+                if ($e) {
+                    throw $e;
+                }
+                $this->buffer .= $r;
+            });
         }
 
         return $this->bufferPromisor->promise();

@@ -147,6 +147,48 @@ class Rfc7230RequestParserTest extends \PHPUnit_Framework_TestCase {
         $this->assertSame($originalBody, $body);
     }
 
+    public function testStreamingBodyParseEmit() {
+        $body = "";
+        $invoked = 0;
+        $emitCallback = function($emitStruct) use (&$invoked, &$body) {
+            $invoked++;
+            list($parseCode, $parseResultArr) = $emitStruct;
+            switch($invoked) {
+                case 1:
+                    $this->assertSame(Rfc7230RequestParser::ENTITY_HEADERS, $parseCode);
+                    $this->assertSame("", $parseResultArr["body"]);
+                    break;
+                case 2:
+                    $this->assertSame(Rfc7230RequestParser::ENTITY_PART, $parseCode);
+                    $this->assertSame("1\r\n", $parseResultArr["body"]);
+                    break;
+                case 3:
+                    $this->assertSame(Rfc7230RequestParser::ENTITY_PART, $parseCode);
+                    $this->assertSame("2", $parseResultArr["body"]);
+                    break;
+                case 4:
+                    $this->assertSame(Rfc7230RequestParser::ENTITY_RESULT, $parseCode);
+                    break;
+            }
+            $body .= $emitStruct[1]["body"];
+        };
+
+        $parser = new Rfc7230RequestParser($emitCallback, ["body_emit_size" => 1]);
+        $headers =
+            "POST /post-endpoint HTTP/1.1\r\n" .
+            "Host: localhost\r\n" .
+            "Content-Length: 4\r\n\r\n"
+        ;
+        $part1 = "1\r\n";
+        $part2 = "2\r\n";
+        $parser->sink($headers);
+        $parser->sink($part1);
+        $parser->sink($part2);
+
+        $this->assertSame(4, $invoked);
+        $this->assertSame("1\r\n2", $body);
+    }
+
     public function testChunkedBodyParseEmit() {
         $msg =
             "POST /post-endpoint HTTP/1.0\r\n" .

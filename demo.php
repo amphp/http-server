@@ -39,6 +39,13 @@ $router = (new Router)
         $body = yield $req->body->buffer();
         $res->send("<html><body><h1>Buffer Body Echo:</h1><pre>{$body}</pre></body></html>");
     })
+    ->post("/body2", function(Request $req, Response $res) {
+        $body = "";
+        foreach ($req->body->stream() as $bodyPart) {
+            $body .= yield $bodyPart;
+        }
+        $res->send("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
+    })
 ;
 
 $fallback = function(Request $req, Response $res) {

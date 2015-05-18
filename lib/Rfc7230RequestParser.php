@@ -228,8 +228,8 @@ class Rfc7230RequestParser {
                 $this->remainingBodyBytes = 0;
                 goto complete;
             } else {
-                $this->body = substr($this->buffer, 0, $this->remainingBodyBytes);
-                $this->buffer = substr($this->buffer, $this->remainingBodyBytes);
+                $this->body .= substr($this->buffer, 0, $this->remainingBodyBytes);
+                $this->buffer = (string) substr($this->buffer, $this->remainingBodyBytes);
                 $this->remainingBodyBytes = 0;
                 goto complete;
             }
