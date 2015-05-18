@@ -438,7 +438,6 @@ class Rfc7230Server implements HttpServer {
             ? $vhost->getName()
             : $requestCycle->client->serverAddr
         ;
-        $requestCycle->userspaceRequest = clone $request;
 
         // @TODO Handle 100 Continue responses
         // $expectsContinue = empty($headers["EXPECT"]) ? false : stristr($headers["EXPECT"], "100-continue");
@@ -504,7 +503,7 @@ class Rfc7230Server implements HttpServer {
         $response->end($body = null);
     }
 
-    private function initializeResponseFilter(Rfc7230RequestCycle $requestCycle): Filter {
+    private function initializeResponseFilter(Rfc7230RequestCycle $requestCycle, Request $userRequest): Filter {
         $try = [$this->startResponseFilter, $this->genericResponseFilter];
 
         if ($userFilters = $requestCycle->vhost->getFilters()) {
@@ -526,7 +525,7 @@ class Rfc7230Server implements HttpServer {
         $filters = [];
         foreach ($try as $key => $filter) {
             try {
-                $result = ($filter)($requestCycle->userspaceRequest);
+                $result = ($filter)($userRequest);
                 if ($result instanceof \Generator && $result->valid()) {
                     $filters[] = $result;
                 }
@@ -602,12 +601,13 @@ class Rfc7230Server implements HttpServer {
 
     private function tryApplication(Rfc7230RequestCycle $requestCycle, callable $application) {
         try {
-            $requestCycle->response = new StandardResponse(
-                $this->initializeResponseFilter($requestCycle),
+            $userRequest = clone $requestCycle->request;
+            $response = $requestCycle->response = new StandardResponse(
+                $this->initializeResponseFilter($requestCycle, $userRequest),
                 $requestCycle->responseWriter
             );
 
-            $result = ($application)($requestCycle->userspaceRequest, $requestCycle->response);
+            $result = ($application)($userRequest, $response);
 
             if ($result instanceof \Generator) {
                 $promise = resolve($result, $this->reactor);
@@ -620,13 +620,13 @@ class Rfc7230Server implements HttpServer {
                         $this->onApplicationError($error, $requestCycle);
                     }
                 });
-            } elseif ($requestCycle->response->state() & Response::STARTED) {
-                $requestCycle->response->end();
+            } elseif ($response->state() & Response::STARTED) {
+                $response->end();
             } else {
                 $status = HTTP_STATUS["NOT_FOUND"];
                 $subHeading = "Requested: {$requestCycle->request->uri}";
-                $requestCycle->response->setStatus($status);
-                $requestCycle->response->end($this->makeGenericBody($status, $subHeading));
+                $response->setStatus($status);
+                $response->end($this->makeGenericBody($status, $subHeading));
             }
         } catch (ClientException $error) {
             // Do nothing -- responder actions aren't required to catch this

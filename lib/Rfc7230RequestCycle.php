@@ -10,7 +10,6 @@ class Rfc7230RequestCycle {
     public $vhost;
     public $isVhostValid;
     public $request;
-    public $userspaceRequest;
     public $bodyPromiseStream;
     public $response;
     public $responseFilter;
