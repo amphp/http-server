@@ -11,9 +11,7 @@ use FastRoute\{
 use Amp\{
     Promise,
     Success,
-    Failure,
-    Reactor,
-    function getReactor
+    Failure
 };
 
 class Router implements ServerObserver {

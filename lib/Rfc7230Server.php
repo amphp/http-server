@@ -7,7 +7,7 @@ use Amp\{
     Reactor,
     Promise,
     Success,
-    PrivateFuture,
+    Deferred,
     function resolve
 };
 
@@ -16,7 +16,7 @@ class Rfc7230Server implements HttpServer {
     private $reactor;
     private $vhostGroup;
     private $options;
-    private $nullBody;
+    private $bodyNull;
     private $exports;
     private $stopPromisor;
     private $currentTime;
@@ -33,6 +33,7 @@ class Rfc7230Server implements HttpServer {
     private $negotiateCrypto;
     private $updateTime;
     private $clearExport;
+    private $onCoroutineAppResolve;
     private $onCompletedResponse;
     private $startResponseFilter;
     private $genericResponseFilter;
@@ -45,7 +46,7 @@ class Rfc7230Server implements HttpServer {
         $this->reactor = $reactor;
         $this->vhostGroup = $vhostGroup;
         $this->options = $options;
-        $this->nullBody = new NullBody;
+        $this->bodyNull = new BodyNull;
 
         // We have some internal callables that have to be passed to outside
         // code. We don't want these to be part of the public API and it's
@@ -55,6 +56,7 @@ class Rfc7230Server implements HttpServer {
         $this->negotiateCrypto = $this->makePrivateMethodClosure("negotiateCrypto");
         $this->updateTime = $this->makePrivateMethodClosure("updateTime");
         $this->clearExport = $this->makePrivateMethodClosure("clearExport");
+        $this->onCoroutineAppResolve = $this->makePrivateMethodClosure("onCoroutineAppResolve");
         $this->onCompletedResponse = $this->makePrivateMethodClosure("onCompletedResponse");
         $this->startResponseFilter = $this->makePrivateMethodClosure("startResponseFilter");
         $this->genericResponseFilter = $this->makePrivateMethodClosure("genericResponseFilter");
@@ -195,15 +197,15 @@ class Rfc7230Server implements HttpServer {
             "max_body_size" => $this->options->maxBodySize,
             "max_header_size" => $this->options->maxHeaderSize,
             "body_emit_size" => $this->options->ioGranularity,
-            "callback_data" => $client
+            "cb_data" => $client
         ]);
         $client->readWatcher = $this->reactor->onReadable($socket, [$this, "onReadable"], $options = [
             "enable" => true,
-            "callback_data" => $client,
+            "cb_data" => $client,
         ]);
         $client->writeWatcher = $this->reactor->onWritable($socket, [$this, "onWritable"], $options = [
             "enable" => false,
-            "callback_data" => $client,
+            "cb_data" => $client,
         ]);
 
         $this->clients[$client->id] = $client;
@@ -298,7 +300,7 @@ class Rfc7230Server implements HttpServer {
                 $this->onParsedEntityHeaders($client, $parseResult);
                 break;
             case Rfc7230RequestParser::ENTITY_PART:
-                $client->currentRequestCycle->bodyPromiseStream->sink($parseResult["body"]);
+                $this->onParsedEntityPart($client, $parseResult);
                 break;
             case Rfc7230RequestParser::ENTITY_RESULT:
                 $this->onParsedMessageWithEntity($client, $parseResult);
@@ -321,11 +323,14 @@ class Rfc7230Server implements HttpServer {
         }
     }
 
+    private function onParsedEntityPart(Rfc7230Client $client, array $parseResult) {
+        $client->currentRequestCycle->bodyPromisor->update($parseResult["body"]);
+    }
+
     private function onParsedEntityHeaders(Rfc7230Client $client, array $parseResult) {
         $requestCycle = $this->initializeRequestCycle($client, $parseResult);
-        $promiseStream = new PromiseStream;
-        $requestCycle->bodyPromiseStream = $promiseStream;
-        $requestCycle->request->body = new Body($promiseStream);
+        $requestCycle->bodyPromisor = new Deferred;
+        $requestCycle->request->body = new BodyStream($requestCycle->bodyPromisor->promise());
 
         // Only respond if this request is at the front of the queue
         if ($client->requestCycleQueueSize === 1) {
@@ -334,13 +339,15 @@ class Rfc7230Server implements HttpServer {
     }
 
     private function onParsedMessageWithEntity(Rfc7230Client $client, array $parseResult) {
-        $client->currentRequestCycle->bodyPromiseStream->end();
+        $client->currentRequestCycle->bodyPromisor->succeed();
+        $client->currentRequestCycle->bodyPromisor = null;
         $this->clearKeepAliveTimeout($client);
         // @TODO Update trailer headers if present
         // We don't call respond() because we started the response when headers arrived
     }
 
     private function onParseError(Rfc7230Client $client, array $parseResult, array $errorStruct) {
+        // @TODO how to handle parse error with entity body after request cycle already started?
         $this->clearKeepAliveTimeout($client);
         $requestCycle = $this->initializeRequestCycle($client, $parseResult);
         list($code, $msg) = $errorStruct;
@@ -391,7 +398,7 @@ class Rfc7230Server implements HttpServer {
         $request->protocol = $protocol;
         $request->method = $method;
         $request->headers = $headers;
-        $request->body = $this->nullBody;
+        $request->body = $this->bodyNull;
         $request->serverPort = $client->serverPort;
         $request->serverAddr = $client->serverAddr;
         $request->clientPort = $client->clientPort;
@@ -606,15 +613,7 @@ class Rfc7230Server implements HttpServer {
 
             if ($result instanceof \Generator) {
                 $promise = resolve($result, $this->reactor);
-                $promise->when(function(\Exception $error = null) use ($requestCycle) {
-                    if (empty($error)) {
-                        $requestCycle->response->end();
-                    } elseif ($error instanceof ClientException) {
-                        // Do nothing -- responder actions aren't required to catch this
-                    } else {
-                        $this->onApplicationError($error, $requestCycle);
-                    }
-                });
+                $promise->when($this->onCoroutineAppResolve, $requestCycle);
             } elseif ($response->state() & Response::STARTED) {
                 $response->end();
             } else {
@@ -626,6 +625,15 @@ class Rfc7230Server implements HttpServer {
         } catch (ClientException $error) {
             // Do nothing -- responder actions aren't required to catch this
         } catch (\BaseException $error) {
+            $this->onApplicationError($error, $requestCycle);
+        }
+    }
+
+    private function onCoroutineAppResolve($error, $result, $requestCycle) {
+        if (empty($error)) {
+            $requestCycle->response->end();
+        } elseif (!$error instanceof ClientException) {
+            // Ignore uncaught ClientException -- applications aren't required to catch this
             $this->onApplicationError($error, $requestCycle);
         }
     }
@@ -1096,7 +1104,7 @@ class Rfc7230Server implements HttpServer {
                 foreach ($this->pendingTlsStreams as list(, $socket)) {
                     $this->failCryptoNegotiation($socket);
                 }
-                $this->stopPromisor = new PrivateFuture;
+                $this->stopPromisor = new Deferred;
                 $promise = $this->stopPromisor->promise();
                 $promise->when(function() {
                     $this->reactor->cancel($this->keepAliveWatcher);

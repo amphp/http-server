@@ -48,7 +48,7 @@ class Rfc7230RequestParser {
         $this->maxHeaderSize = $options["max_header_size"] ?? 32768;
         $this->maxBodySize = $options["max_body_size"] ?? 131072;
         $this->bodyEmitSize = $options["body_emit_size"] ?? 32768;
-        $this->callbackData = $options["callback_data"] ?? null;
+        $this->callbackData = $options["cb_data"] ?? null;
     }
 
     /**

@@ -130,7 +130,7 @@ class Server implements \SplSubject {
         foreach ($serverStreams as $server) {
             $this->acceptWatcherIds[] = $this->reactor->onReadable($server, $this->acceptor, [
                 "enable" => true,
-                "callback_data" => $onClient,
+                "cb_data" => $onClient,
             ]);
         }
     }

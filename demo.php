@@ -36,7 +36,7 @@ $router = (new Router)
         }
     })
     ->post("/body1", function(Request $req, Response $res) {
-        $body = yield $req->body->buffer();
+        $body = yield $req->body;
         $res->send("<html><body><h1>Buffer Body Echo:</h1><pre>{$body}</pre></body></html>");
     })
     ->post("/body2", function(Request $req, Response $res) {

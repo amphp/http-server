@@ -14,6 +14,10 @@ if (PHP_MAJOR_VERSION < 7) {
 error_reporting(E_ALL);
 ini_set("display_errors", "stderr");
 
+$opt = getopt("d", ["debug"]);
+$isProd = !(isset($opt["d"]) || isset($opt["debug"]));
+define("AMP_PRODUCTION_MODE", $isProd);
+
 require __DIR__ . "/../autoload.php";
 
 $help = <<<EOT
