@@ -161,7 +161,7 @@ class Rfc7230Server implements ServerObserver {
     private function export(Rfc7230Client $client): \Closure {
         $socket = $client->socket;
         $exportId = (int) $socket;
-        $this->exports[$exportId] = true;
+        $this->exports[$exportId] = $socket;
         $client->isDead = true;
         $client->isExported = true;
         $this->clear($client);
