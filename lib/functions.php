@@ -3,6 +3,20 @@
 namespace Aerys;
 
 /**
+ * Create a Websocket application action for attachment to a Host
+ *
+ * @param array $options Router options
+ * @return \Aerys\Router
+ */
+function router(array $options = []) {
+    $router = new Router;
+    foreach ($options as $key => $value) {
+        $router->setOption($options);
+    }
+    return $router;
+}
+
+/**
  * Does the specified header field exist in the multi-line header string?
  *
  * @param string $headers
