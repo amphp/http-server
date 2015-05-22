@@ -28,5 +28,4 @@ class Request {
     public $time;
     public $debug;
     public $locals;
-    public $exporter;
 }

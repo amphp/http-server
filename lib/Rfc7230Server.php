@@ -28,6 +28,7 @@ class Rfc7230Server implements ServerObserver {
     private $keepAliveTimeouts = [];
     private $keepAliveWatcher;
     private $serverInfo;
+    private $exporter;
 
     /* private callables that we pass to external code */
     private $negotiateCrypto;
@@ -47,6 +48,9 @@ class Rfc7230Server implements ServerObserver {
         $this->vhostGroup = $vhostGroup;
         $this->options = $options;
         $this->bodyNull = new BodyNull;
+        $this->exporter = function(Rfc7230Client $client) {
+            ($client->onUpgrade)($client->socket, $this->export($client));
+        };
 
         // We have some internal callables that have to be passed to outside
         // code. We don't want these to be part of the public API and it's
@@ -142,6 +146,7 @@ class Rfc7230Server implements ServerObserver {
     }
 
     private function clear(Rfc7230Client $client) {
+        $client->onUpgrade = null;
         $client->requestParser = null;
         $client->onWriteDrain = null;
         $this->reactor->cancel($client->readWatcher);
@@ -153,12 +158,7 @@ class Rfc7230Server implements ServerObserver {
         }
     }
 
-    private function export(Rfc7230Client $client) {
-        if ($client->isExported) {
-            throw new \LogicException(
-                "Client already exported"
-            );
-        }
+    private function export(Rfc7230Client $client): \Closure {
         $socket = $client->socket;
         $exportId = (int) $socket;
         $this->exports[$exportId] = true;
@@ -166,7 +166,7 @@ class Rfc7230Server implements ServerObserver {
         $client->isExported = true;
         $this->clear($client);
 
-        return new Export($client->socket, $exportId, $this->clearExport);
+        return function() use ($exportId) { $this->clearExport($exportId); };
     }
 
     private function clearExport(int $exportId) {
@@ -192,7 +192,6 @@ class Rfc7230Server implements ServerObserver {
         $portStartPos = strrpos($serverName, ":");
         $client->serverAddr = substr($serverName, 0, $portStartPos);
         $client->serverPort = substr($serverName, $portStartPos + 1);
-        $client->exporter = function() use ($client) { return $this->export($client); };
         $client->requestParser = new Rfc7230RequestParser([$this, "onParse"], $options = [
             "max_body_size" => $this->options->maxBodySize,
             "max_header_size" => $this->options->maxHeaderSize,
@@ -389,7 +388,6 @@ class Rfc7230Server implements ServerObserver {
         $requestCycle->request = $request;
 
         $request->debug = $this->options->debug;
-        $request->exporter = $client->exporter;
         $request->locals = new \StdClass;
         $request->time = $this->currentTime;
         $request->remaining = $client->requestsRemaining;
@@ -551,7 +549,7 @@ class Rfc7230Server implements ServerObserver {
         $hasThrownClientException = false;
 
         do {
-            if (($client->isDead || $client->isExported) && !$hasThrownClientException) {
+            if ($client->isDead && !$hasThrownClientException) {
                 $hasThrownClientException = true;
                 throw new ClientException;
             }
@@ -561,17 +559,24 @@ class Rfc7230Server implements ServerObserver {
         if (isset($headerEndPos)) {
             $startLineAndHeaders = \substr($messageBuffer, 0, $headerEndPos + 4);
             $headers = \explode("\r\n", $startLineAndHeaders, 2)[1];
+            $status = substr($messageBuffer, 9, 3);
             $client->shouldClose = headerMatches($headers, "Connection", "close");
         } else {
+            $status = null;
             $client->shouldClose = true;
             // We never received the full headers prior to the END $part indicator.
             // This is a clear error by a filter ... all we can do is write what we have.
         }
 
+        // We can't upgrade the connection if closing or not sending a 101
+        if ($client->shouldClose || $status !== "101") {
+            $client->onUpgrade = null;
+        }
+
         $toWrite = $messageBuffer;
 
         do {
-            if (($client->isDead || $client->isExported) && !$hasThrownClientException) {
+            if ($client->isDead && !$hasThrownClientException) {
                 $hasThrownClientException = true;
                 throw new ClientException;
             }
@@ -589,7 +594,9 @@ class Rfc7230Server implements ServerObserver {
     }
 
     private function onCompletedResponse(Rfc7230Client $client) {
-        if ($client->shouldClose) {
+        if ($client->onUpgrade) {
+            $this->reactor->immediately($this->exporter, $options["cb_data" => $client]);
+        } elseif ($client->shouldClose) {
             $this->close($client);
         } elseif (--$client->requestCycleQueueSize) {
             array_shift($client->requestCycleQueue);
@@ -606,7 +613,8 @@ class Rfc7230Server implements ServerObserver {
             $userRequest = clone $requestCycle->request;
             $response = $requestCycle->response = new StandardResponse(
                 $this->initializeResponseFilter($requestCycle, $userRequest),
-                $requestCycle->responseWriter
+                $requestCycle->responseWriter,
+                $requestCycle->client
             );
 
             $result = ($application)($userRequest, $response);
@@ -631,6 +639,9 @@ class Rfc7230Server implements ServerObserver {
 
     private function onCoroutineAppResolve($error, $result, $requestCycle) {
         if (empty($error)) {
+            if ($requestCycle->client->isExported || $requestCycle->client->isDead) {
+                return;
+            }
             $requestCycle->response->end();
         } elseif (!$error instanceof ClientException) {
             // Ignore uncaught ClientException -- applications aren't required to catch this
@@ -639,7 +650,8 @@ class Rfc7230Server implements ServerObserver {
     }
 
     private function onApplicationError(\BaseException $error, Rfc7230RequestCycle $requestCycle) {
-        if ($requestCycle->client->isDead || $requestCycle->client->isExported) {
+        $client = $requestCycle->client;
+        if ($client->isDead || $client->isExported) {
             // Responder actions may catch the initial ClientException and continue
             // doing further work. If an error arises at this point we can end up
             // here and our only option is to log the error.
@@ -659,7 +671,8 @@ class Rfc7230Server implements ServerObserver {
             try {
                 $requestCycle->response = new StandardResponse(
                     $this->initializeResponseFilter($requestCycle),
-                    $requestCycle->responseWriter
+                    $requestCycle->responseWriter,
+                    $client
                 );
             } catch (FilterException $e) {
                 $requestCycle->badFilterKeys[] = $e->getFilterKey();
@@ -669,7 +682,7 @@ class Rfc7230Server implements ServerObserver {
         // If response output has already started we can't proceed any further.
         if ($requestCycle->response->state() & Response::STARTED) {
             error_log($error->__toString());
-            $this->close($requestCycle->client);
+            $this->close($client);
             return;
         }
 

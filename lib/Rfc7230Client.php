@@ -26,5 +26,5 @@ class Rfc7230Client {
     public $shouldClose;
     public $isDead;
     public $isExported;
-    public $exporter;
+    public $onUpgrade;
 }

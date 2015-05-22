@@ -108,6 +108,29 @@ interface Response {
     public function end(string $finalBodyChunk = null): Response;
 
     /**
+     * Specify a callback to receive the raw socket after completing an HTTP upgrade response
+     *
+     * If an onUpgrade callback is specified it will be invoked with the raw client socket
+     * stream after a 101 Switching Protocols response. At this point the socket is no longer
+     * monitored by the server -- it is up to the exporting application to service future
+     * reads and writes. If a Connection: close header is sent the upgrade callback will not
+     * be invoked for obvious reasons.
+     *
+     * Callbacks should expose the following signature:
+     *
+     * function(resource $socketStream, \Closure $clearServerReference): void;
+     *
+     * When a socket is exported it continues to count against the server's "maxConnections"
+     * limit. Exporting applications must invoke the $clearServerReference callback when
+     * finished with the socket to prevent a scenario where all connections slots are eventually
+     * occupied and no new clients can connect.
+     *
+     * @param callable $onUpgrade
+     * @return self
+     */
+    public function onUpgrade(callable $onUpgrade): Response;
+
+    /**
      * Retrieve the current response state
      *
      * The response state is a bitmask of the following flags:

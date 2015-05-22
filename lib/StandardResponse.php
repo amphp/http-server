@@ -5,6 +5,7 @@ namespace Aerys;
 class StandardResponse implements Response {
     private $filter;
     private $writer;
+    private $client;
     private $status = 200;
     private $reason = "";
     private $headers = "";
@@ -12,11 +13,13 @@ class StandardResponse implements Response {
 
     /**
      * @param \Aerys\Filter $filter
-     * @param \Generator
+     * @param \Generator $writer
+     * @param \Aerys\Rfc7230Client $client
      */
-    public function __construct(Filter $filter, \Generator $writer) {
+    public function __construct(Filter $filter, \Generator $writer, Rfc7230Client $client) {
         $this->filter = $filter;
         $this->writer = $writer;
+        $this->client = $client;
     }
 
     /**
@@ -220,6 +223,20 @@ class StandardResponse implements Response {
         // Update the state *AFTER* the filter operation so that if it throws
         // we can handle things appropriately in the server.
         $this->state = self::ENDED|self::STARTED;
+
+        return $this;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function onUpgrade(callable $onUpgrade): Response {
+        if ($this->state & self::STARTED) {
+            throw new \LogicException(
+                "Cannot assign onUpgrade callback; output already started"
+            );
+        }
+        $this->client->onUpgrade = $onUpgrade;
 
         return $this;
     }
