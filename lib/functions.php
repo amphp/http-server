@@ -17,6 +17,21 @@ function router(array $options = []) {
 }
 
 /**
+ * Create a Websocket application action for attachment to a Host
+ *
+ * @param \Aerys\Websocket $app The websocket app to use
+ * @param array $options Endpoint options
+ * @return \Aerys\WebsocketEndpoint
+ */
+function websocket(Websocket $app, array $options = []) {
+    $endpoint = new Rfc6455Endpoint($app);
+    foreach ($options as $key => $value) {
+        $endpoint->setOption($key, $value);
+    }
+    return $endpoint;
+}
+
+/**
  * Does the specified header field exist in the multi-line header string?
  *
  * @param string $headers
