@@ -11,7 +11,7 @@ use Amp\{
     function resolve
 };
 
-class Rfc7230Server implements HttpServer {
+class Rfc7230Server implements ServerObserver {
     use Struct;
     private $reactor;
     private $vhostGroup;
