@@ -1,104 +1,9 @@
 <?php
 
+
 namespace Aerys;
 
-class WebsocketMessage extends PromiseStream implements Streamable {
-    public function buffer(): \Generator {
-        $buffer = "";
-        foreach ($this->stream() as $part) {
-            $buffer .= yield $part;
-        }
-        return $buffer;
-    }
-}
-
-class Rfc6455Client {
-    use Struct;
-
-    public $id;
-    public $socket;
-    public $serverRefClearer;
-    public $parser;
-    public $readWatcher;
-    public $writeWatcher;
-    public $closeRcvdPromisor;
-    public $closeSentPromisor;
-
-    /*
-    // these are all from the old implementation -- we may or may not need them
-    public $pendingPings = [];
-    public $writeBuffer = '';
-    public $writeBufferSize = 0;
-    public $writeDataQueue = [];
-    public $writeControlQueue = [];
-    public $writeOpcode;
-    public $writeIsFin;
-    */
-
-    // getInfo() properties
-    public $connectedAt;
-    public $lastReadAt;
-    public $lastSendAt;
-    public $lastDataReadAt;
-    public $lastDataSendAt;
-    public $bytesRead;
-    public $bytesSent;
-    public $framesRead;
-    public $framesSent;
-    public $messagesRead;
-    public $messagesSent;
-}
-
-class Rfc6455Parser {
-    const EMIT_CNTL = 1;
-    const EMIT_DATA = 2;
-    const EMIT_ERROR = 3;
-
-    // parse state constants (these 
-    const START = 0;
-    const LENGTH_126 = 1;
-    const LENGTH_127 = 2;
-    const MASKING_KEY = 3;
-    const CONTROL_PAYLOAD = 4;
-    const PAYLOAD = 5;
-
-    private $state = self::START;
-    private $emitCallback;
-    private $callbackData;
-    private $emitThreshold;
-    private $maxFrameSize;
-    private $maxMsgSize;
-    private $textOnly;
-
-    // any other parse state variables here
-
-    public function __construct(callable $emitCallback, $options = []) {
-        $this->emitCallback = $emitCallback;
-        $this->callbackData = $options["cb_data"] ?? null;
-        $this->emitThreshold = $options["emit_threshold"] ?? 32768;
-        $this->maxFrameSize = $options["max_frame_size"] ?? ;
-        $this->maxMsgSize = $options["max_msg_size"] ?? ;
-        $this->textOnly = $options["text_only"] ?? false;
-    }
-
-    public function sink(string $data) {
-        // Do all the parsing with goto statements here
-        // Invoke $this->emitCallback() with arrays like:
-
-        // always emit completed control frames
-        $emitArr = [self::EMIT_CNTL, $payload];
-        // emit data any time we buffer enough to reach $this->emitThreshold or complete
-        // a frame.
-        $emitArr = [self::EMIT_DATA, $payload, $isFrameComplete, $isMessageComplete];
-        $emitArr = [self::EMIT_ERROR, $isSyntaxError = true, $errorMessage];
-        // we have to differentiate between policy and syntax errors because it affects the
-        // close code we send the client. Policy errors are violations of things like our max
-        // size settings ...
-        $emitArr = [self::EMIT_ERROR, $isSyntaxError = false, $errorMessage];
-
-        call_user_func($this->emitCallback, $emitArr, $this->callbackData);
-    }
-}
+use Amp\Deferred;
 
 class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
     private $application;
@@ -196,9 +101,7 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
             return;
         }
 
-        // @TODO If the server is stopping we should reject the handshake --------------------------
-        // ... not really sure what the appropriate status code is in that case ...
-
+        // Note that we shouldn't have to care here about a stopped server, this should happen in HTTP server with a 503 error
         return $this->import($request, $request);
     }
 
@@ -221,9 +124,7 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
         if ($onHandshakeResult instanceof \Generator) {
             $onHandshakeResult = yield from $onHandshakeResult;
         }
-        if (!($handshaker->state() & Response::STARTED)) {
-            $handshaker->end();
-        }
+        $handshaker->end();
         if (!$wasUpgraded = yield $upgradePromisor->promise()) {
             return;
         }
@@ -232,7 +133,7 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
 
         $socket = $client->socket;
         $client->parser = new Rfc6455Parser([$this, "onParse"], $options = [
-            "cb_data" => $client
+            "cb_data" => &$client
         ]);
         $client->readWatcher = $this->reactor->onReadable($socket, [$this, "onReadable"], $options = [
             "enable" => true,
@@ -305,7 +206,7 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
 
     public function onParse(array $parseResult, Rfc6455Client $client) {
         switch ($parseResult[0]) {
-            case Rfc6455Parser::CNTL:
+            case Rfc6455Parser::CONTROL:
                 $this->onParsedControlFrame($client, $parseResult);
                 break;
             case Rfc6455Parser::DATA:
@@ -345,12 +246,15 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
     public function onWritable($reactor, $watcherId, $socket, $client) {
 
     }
+
     public function send(string $data, int $clientId): Promise {
 
     }
+
     public function broadcast(string $data, array $clientIds = null): Promise {
 
     }
+
     public function close(int $clientId, int $code, string $reason = ""): Promise {
 
     }

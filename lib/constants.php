@@ -118,8 +118,6 @@ const WEBSOCKET_CODES = [
 ];
 
 const WEBSOCKET_FRAME = [
-    "FIN"      => 0b1,
-    "RSV_NONE" => 0b000,
     "OP_CONT"  => 0x00,
     "OP_TEXT"  => 0x01,
     "OP_BIN"   => 0x02,

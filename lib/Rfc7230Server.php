@@ -595,7 +595,7 @@ class Rfc7230Server implements ServerObserver {
 
     private function onCompletedResponse(Rfc7230Client $client) {
         if ($client->onUpgrade) {
-            $this->reactor->immediately($this->exporter, $options["cb_data" => $client]);
+            $this->reactor->immediately($this->exporter, $options = ["cb_data" => $client]);
         } elseif ($client->shouldClose) {
             $this->close($client);
         } elseif (--$client->requestCycleQueueSize) {
