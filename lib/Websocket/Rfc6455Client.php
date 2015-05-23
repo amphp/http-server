@@ -19,7 +19,9 @@ class Rfc6455Client {
 
     public $writeBuffer = '';
     public $writeDataQueue = [];
+    public $writeDeferredDataQueue = [];
     public $writeControlQueue = [];
+    public $writeDeferredControlQueue = [];
 
     // getInfo() properties
     public $connectedAt;

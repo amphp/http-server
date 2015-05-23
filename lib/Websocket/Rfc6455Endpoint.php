@@ -5,10 +5,16 @@ namespace Aerys\Websocket;
 
 use Amp\{
     Deferred,
-    function resolve
+    Failure,
+    Promise,
+    Success,
+    function resolve,
+    function all,
+    function any
 };
 
-use Aerys\{
+use use Amp\Success;Aerys\{
+    ClientException,
     Request,
     Response,
     Server,
@@ -197,14 +203,15 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         }
 
         $this->closeTimeouts[$client->id] = $this->now + $this->closePeriod;
-        $this->sendCloseFrame($client, $code, $reason);
+        $promise = $this->sendCloseFrame($client, $code, $reason);
         yield from $this->tryAppOnClose($client->id, $code, $reason);
+        return $promise;
         // Don't unload the client here, it will be unloaded upon timeout
     }
 
     private function sendCloseFrame(Rfc6455Client $client, $code, $msg) {
         $client->closedAt = $this->now;
-        $this->compile($client, pack('S', $code) . $msg, FRAME["OP_CLOSE"]);
+        return $this->compile($client, pack('S', $code) . $msg, FRAME["OP_CLOSE"]);
     }
 
     private function tryAppOnClose(int $clientId, $code, $reason): \Generator {
@@ -232,6 +239,12 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         // fail not yet terminated message streams; they *must not* be failed before client is removed
         if ($client->msgPromisor) {
             $client->msgPromisor->fail(new ClientException);
+        }
+
+        foreach ([$client->writeDeferredDataQueue, $client->writeDeferredControlQueue] as $deferreds) {
+            foreach ($deferreds as $deferred) {
+                $deferred->fail(new ClientException);
+            }
         }
     }
 
@@ -375,18 +388,20 @@ retry:
             $client->writeBuffer = substr($client->writeBuffer, $bytes);
         } else {
             $client->framesSent++;
-            if ($client->closedAt) {
+            if ($client->writeControlQueue) {
+                $client->writeBuffer = array_shift($client->writeControlQueue);
+                $client->lastSentAt = $this->now;
+                array_shift($client->writeDeferredControlQueue)->succeed();
+                goto retry;
+            } elseif ($client->closedAt) {
                 @stream_socket_shutdown($socket, STREAM_SHUT_WR);
                 $reactor->cancel($watcherId);
                 $client->writeWatcher = null;
-            } elseif ($client->writeControlQueue) {
-                $client->writeBuffer = array_shift($client->writeControlQueue);
-                $client->lastSentAt = $this->now;
-                goto retry;
             } elseif ($client->writeDataQueue) {
                 $client->writeBuffer = array_shift($client->writeDataQueue);
                 $client->lastDataSentAt = $this->now;
                 $client->lastSentAt = $this->now;
+                array_shift($client->writeDeferredDataQueue)->succeed();
                 goto retry;
             } else {
                 $client->writeBuffer = "";
@@ -395,7 +410,7 @@ retry:
         }
     }
 
-    private function compile(Rfc6455Client $client, string $msg, int $opcode = FRAME["OP_BIN"], bool $fin = true) {
+    private function compile(Rfc6455Client $client, string $msg, int $opcode = FRAME["OP_BIN"], bool $fin = true): Promise {
         $frameInfo = ["msg" => $msg, "rsv" => 0b000, "fin" => $fin, "opcode" => $opcode];
 
         // @TODO filter mechanism …?! (e.g. gzip)
@@ -405,10 +420,14 @@ retry:
             $frameInfo = $gen->current();
         }
 
-        $this->write($frameInfo);
+        return $this->write($frameInfo);
     }
 
-    private function write(Rfc6455Client $client, $frameInfo) {
+    private function write(Rfc6455Client $client, $frameInfo): Promise {
+        if ($client->closedAt) {
+            return new Failure(new ClientException);
+        }
+
         $msg = $frameInfo["msg"];
         $len = strlen($msg);
 
@@ -427,11 +446,14 @@ retry:
         if ($client->writeBuffer != "") {
             if ($frameInfo["opcode"] >= 0x8) {
                 $client->writeControlQueue[] = $w;
+                return $client->writeDeferredDataQueue[] = new Deferred;
             } else {
                 $client->writeDataQueue[] = $w;
+                return $client->writeDeferredControlQueue[] = new Deferred;
             }
         } else {
             $client->writeBuffer = $w;
+            return new Success;
         }
     }
 
@@ -452,7 +474,7 @@ retry:
         }
     }
 
-    public function send(string $data, int $clientId) {
+    public function send(string $data, int $clientId): Promise {
         if ($client = $this->clients[$clientId] ?? null) {
             $opcode = FRAME["OP_BIN"];
 
@@ -465,24 +487,30 @@ retry:
                     $opcode = FRAME["OP_CONT"];
                 }
             }
-            $this->compile($client, $data, $opcode);
+            return $this->compile($client, $data, $opcode);
         }
+
+        return new Success;
     }
 
-    public function broadcast(string $data, array $clientIds = null) {
+    public function broadcast(string $data, array $clientIds = null): Promise {
         if ($clientIds === null) {
             $clientIds = array_keys($this->clients);
         }
 
+        $promises = [];
         foreach ($clientIds as $clientId) {
-            $this->send($data, $clientId);
+            $promises[] = $this->send($data, $clientId);
         }
+        return all($promises);
     }
 
-    public function close(int $clientId, int $code = CODES["NORMAL_CLOSE"], string $reason = "") {
+    public function close(int $clientId, int $code = CODES["NORMAL_CLOSE"], string $reason = ""): Promise {
         if (isset($this->clients[$clientId])) {
-            resolve($this->doClose($this->clients[$clientId], $code, $reason));
+            return resolve($this->doClose($this->clients[$clientId], $code, $reason));
         }
+
+        return new Success;
     }
 
     public function getInfo(int $clientId): array {
@@ -520,10 +548,12 @@ retry:
                     resolve($result);
                 }
                 break;
+
             case Server::STARTED:
                 $f = (new \ReflectionClass($this))->getMethod("timeout")->getClosure($this);
                 $this->timeoutWatcher = $this->reactor->repeat($f, 1000);
                 break;
+
             case Server::STOPPING:
                 $code = CODES["GOING_AWAY"];
                 $reason = "Server shutting down!";
@@ -542,10 +572,19 @@ retry:
                     resolve($result);
                 }
 
-                foreach ($this->closeTimeouts as $clientId => $expiryTime) {
-                    $this->unloadClient($this->clients[$clientId]);
+                // we are not going to wait for a proper OP_CLOSE answer (because else we'd need to timeout for 3 seconds, not worth it), but we will ensure to at least *have written* it
+                $promises = [];
+                foreach ($this->clients as $client) {
+                    $promise = end($client->writeDeferredControlQueue);
+                    if ($promise) {
+                        $promises[] = $promise;
+                    }
                 }
-                break;
+                return any($promises)->when(function () {
+                    foreach ($this->clients as $client) {
+                        $this->unloadClient($client);
+                    }
+                });
         }
 
         return new Success;
