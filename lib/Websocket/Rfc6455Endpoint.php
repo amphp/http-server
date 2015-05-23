@@ -151,15 +151,9 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
             "cb_data" => $client,
         ]);
 
-        // We initialize the closeRcvdPromisor now but wait to initialize the
-        // closeSentPromisor so we can use its existence as a flag to know if
-        // we've previously begun the close handshake.
-        $client->closeRcvdPromisor = new Deferred;
-        $client->closeSentPromisor = null;
-
         $this->clients[$client->id] = $client;
 
-        yield from $this->tryAppOnOpen($clientId, $onHandshakeResult);
+        yield from $this->tryAppOnOpen($client->id, $onHandshakeResult);
     }
 
     /**
@@ -193,7 +187,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
             return;
         }
 
-        $client->closeSentPromisor = new Deferred;
+        $client->closeRcvdPromisor = new Deferred;
         $this->sendCloseFrame($client, $code, $reason);
         yield from $this->tryAppOnClose($clientId, $code, $reason);
         $this->closeTimeouts[$session->clientId] = $this->now + $this->closePeriod;
@@ -490,12 +484,18 @@ retry:
     private function stop(): \Generator {
         $code = CODES["GOING_AWAY"];
         $reason = "Server shutting down!";
+
         $promises = [];
         foreach ($this->clients as $client) {
             $this->close($client->id, $code, $reason);
             $promises[] = $client->closeRcvdPromisor;
         }
         yield any($promises);
+
+        $this->reactor->cancel($this->timeoutWatcher);
+        foreach ($this->closeTimeouts as $clientId => $expiryTime) {
+            $this->unloadClient($this->clients[$clientId]);
+        }
 
         $result = $this->application->onStop();
         if ($result instanceof \Generator) {
