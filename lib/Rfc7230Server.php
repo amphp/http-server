@@ -48,7 +48,7 @@ class Rfc7230Server implements ServerObserver {
         $this->vhostGroup = $vhostGroup;
         $this->options = $options;
         $this->bodyNull = new BodyNull;
-        $this->exporter = function(Rfc7230Client $client) {
+        $this->exporter = function(Reactor $reactor, $watcherId, Rfc7230Client $client) {
             ($client->onUpgrade)($client->socket, $this->export($client));
         };
 

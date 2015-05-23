@@ -10,10 +10,11 @@ use Amp\{
     Success,
     function all,
     function any,
+    function reactor,
     function resolve
 };
 
-use use Aerys\ClientException;Aerys\{
+use Aerys\{
     ClientException,
     Request,
     Response,
@@ -89,7 +90,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
             return;
         }
 
-        if (empty($request->headers["SEC_WEBSOCKET_KEY"])) {
+        if (empty($request->headers["SEC-WEBSOCKET-KEY"])) {
             $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
             $response->setReason("Bad Request: \"Sec-Broker-Key\" header required");
             $response->setHeader("Aerys-Generic-Response", "enable");
@@ -98,7 +99,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
 
         }
 
-        if (empty($request->headers["SEC_WEBSOCKET_VERSION"])) {
+        if (empty($request->headers["SEC-WEBSOCKET-VERSION"])) {
             $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
             $response->setReason("Bad Request: \"Sec-WebSocket-Version\" header required");
             $response->setHeader("Aerys-Generic-Response", "enable");
@@ -107,7 +108,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         }
 
         $version = null;
-        $requestedVersions = explode(',', $request->headers["SEC_WEBSOCKET_VERSION"]);
+        $requestedVersions = explode(',', $request->headers["SEC-WEBSOCKET-VERSION"]);
         foreach ($requestedVersions as $requestedVersion) {
             if ($requestedVersion === "13") {
                 $version = 13;
@@ -124,7 +125,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         }
 
         // Note that we shouldn't have to care here about a stopped server, this should happen in HTTP server with a 503 error
-        return $this->import($request, $request);
+        return $this->import($request, $response);
     }
 
     private function import(Request $request, Response $response): \Generator {
@@ -132,7 +133,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         $client->connectedAt = $request->time;
 
         $upgradePromisor = new Deferred;
-        $acceptKey = $request->headers["SEC_WEBSOCKET_KEY"];
+        $acceptKey = $request->headers["SEC-WEBSOCKET-KEY"];
         $response->onUpgrade(function($socket, $refClearer) use ($client, $upgradePromisor) {
             $client->id = (int) $socket;
             $client->socket = $socket;
@@ -188,12 +189,10 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
     }
 
     private function onAppError($clientId, \BaseException $e): \Generator {
-        $msg = $e->getMessage();
-        error_log($msg);
+        error_log((string) $e);
         $code = CODES["UNEXPECTED_SERVER_ERROR"];
-        // RFC 6455 limits close reasons to 125 bytes
-        $reason = isset($msg[125]) ? substr($msg, 0, 125) : $reason;
-        yield from $this->doClose($clientId, $code, $reason);
+        $reason = "Internal server error, aborting";
+        yield from $this->doClose($this->clients[$clientId], $code, $reason);
     }
 
     private function doClose(Rfc6455Client $client, int $code, string $reason): \Generator {
@@ -211,7 +210,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
 
     private function sendCloseFrame(Rfc6455Client $client, $code, $msg) {
         $client->closedAt = $this->now;
-        return $this->compile($client, pack('S', $code) . $msg, FRAME["OP_CLOSE"]);
+        return $this->compile($client, pack('n', $code) . $msg, FRAME["OP_CLOSE"]);
     }
 
     private function tryAppOnClose(int $clientId, $code, $reason): \Generator {
@@ -241,7 +240,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
             $client->msgPromisor->fail(new ClientException);
         }
 
-        if ($client->writeDeferred) {
+        if ($client->writeBuffer != "") {
             $client->writeDeferred->fail(new ClientException);
         }
         foreach ([$client->writeDeferredDataQueue, $client->writeDeferredControlQueue] as $deferreds) {
@@ -318,8 +317,9 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         list($data, $terminated) = $parseResult;
 
         if (!$client->msgPromisor) {
+            var_dump($data);
             $client->msgPromisor = new Deferred;
-            $msg = new WebsocketMessage($client->msgPromisor);
+            $msg = new Message($client->msgPromisor->promise());
             $client->msgPromisor->update($data);
 
             if ($terminated) {
@@ -336,6 +336,8 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
                 $client->msgPromisor = null;
             }
         }
+
+        $client->messagesRead += $terminated;
     }
 
     private function tryAppOnData(Rfc6455Client $client, Message $msg): \Generator {
@@ -375,7 +377,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         if ($data != "") {
             $client->lastReadAt = $this->now;
             $client->bytesRead += \strlen($data);
-            $client->parser->sink($data);
+            $client->framesRead += $client->parser->sink($data);
         } elseif (!is_resource($socket) || @feof($socket)) {
             $client->closedAt = $this->now;
             resolve($this->tryAppOnClose($client->id, CODES["ABNORMAL_CLOSE"], "Client closed underlying TCP connection"));
@@ -427,7 +429,7 @@ retry:
             $frameInfo = $gen->current();
         }
 
-        return $this->write($frameInfo);
+        return $this->write($client, $frameInfo);
     }
 
     private function write(Rfc6455Client $client, $frameInfo): Promise {
@@ -438,7 +440,8 @@ retry:
         $msg = $frameInfo["msg"];
         $len = strlen($msg);
 
-        $w = chr(($frameInfo["fin"] << 7) | ($frameInfo["rsv"] << 4) | ($frameInfo["opcode"] << 1));
+        $w = chr(($frameInfo["fin"] << 7) | ($frameInfo["rsv"] << 4) | $frameInfo["opcode"]);
+
         if ($len > 0xFFFF) {
             $w .= "\x7F" . pack('J', $len);
         } elseif ($len > 0x7D) {
@@ -453,15 +456,17 @@ retry:
         if ($client->writeBuffer != "") {
             if ($frameInfo["opcode"] >= 0x8) {
                 $client->writeControlQueue[] = $w;
-                return $client->writeDeferredDataQueue[] = new Deferred;
+                $deferred = $client->writeDeferredDataQueue[] = new Deferred;
             } else {
                 $client->writeDataQueue[] = $w;
-                return $client->writeDeferredControlQueue[] = new Deferred;
+                $deferred =  $client->writeDeferredControlQueue[] = new Deferred;
             }
         } else {
             $client->writeBuffer = $w;
-            return $client->writeDeferred = new Deferred;
+            $deferred = $client->writeDeferred = new Deferred;
         }
+
+        return $deferred->promise();
     }
 
     // just a dummy builder ... no need to really use it
@@ -481,8 +486,10 @@ retry:
         }
     }
 
-    public function send(string $data, int $clientId): Promise {
+    public function send(int $clientId, string $data): Promise {
         if ($client = $this->clients[$clientId] ?? null) {
+            $client->messagesSent++;
+
             $opcode = FRAME["OP_BIN"];
 
             if (strlen($data) > 1.5 * $this->autoFrameSize) {
@@ -580,7 +587,7 @@ retry:
                 // we are not going to wait for a proper OP_CLOSE answer (because else we'd need to timeout for 3 seconds, not worth it), but we will ensure to at least *have written* it
                 $promises = [];
                 foreach ($this->clients as $client) {
-                    $promise = end($client->writeDeferredControlQueue);
+                    $promise = end($client->writeDeferredControlQueue)->promise();
                     if ($promise) {
                         $promises[] = $promise;
                     }

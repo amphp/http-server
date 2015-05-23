@@ -16,19 +16,21 @@ class Handshake implements Response {
 
     /**
      * @param \Amp\Promisor $upgradePromisor resolve as false if handshake negotiation fails
-     * @param \Aerys\Response $response The server self to wrap for the handshake
+     * @param \Aerys\Response $response The server Response to wrap for the handshake
      * @param string $acceptKey The client request's SEC-WEBSOCKET-KEY header value
      */
     public function __construct(Promisor $upgradePromisor, Response $response, string $acceptKey) {
         $this->upgradePromisor = $upgradePromisor;
         $this->response = $response;
         $this->acceptKey = $acceptKey;
+
+        $response->setStatus($this->status);
     }
 
     /**
      * {@inheritDoc}
      */
-    public function setStatus(int $code): self {
+    public function setStatus(int $code): Response {
         if (!($code === 101 || $code >= 300)) {
             throw new \DomainException(
                 "Invalid websocket handshake status ({$code}); 101 or 300-599 required"
@@ -42,7 +44,7 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function setReason(string $phrase): self {
+    public function setReason(string $phrase): Response {
         $this->response->setReason($phrase);
         return $this;
     }
@@ -50,7 +52,7 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function addHeader(string $field, string $value): self {
+    public function addHeader(string $field, string $value): Response {
         $this->response->addHeader($field, $value);
         return $this;
     }
@@ -58,7 +60,7 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function setHeader(string $field, string $value): self {
+    public function setHeader(string $field, string $value): Response {
         $this->response->setHeader($field, $value);
         return $this;
     }
@@ -66,10 +68,10 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function send(string $body): self {
+    public function send(string $body): Response {
         if ($this->status === 101) {
             throw new \DomainException(
-                "Cannot send(); entity body content disallowed for Switching Protocols self"
+                "Cannot send(); entity body content disallowed for Switching Protocols Response"
             );
         }
         if (!$this->isStarted) {
@@ -83,10 +85,10 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function stream(string $partialBodyChunk): self {
+    public function stream(string $partialBodyChunk): Response {
         if ($this->status === 101) {
             throw new \DomainException(
-                "Cannot stream(); entity body content disallowed for Switching Protocols self"
+                "Cannot stream(); entity body content disallowed for Switching Protocols Response"
             );
         }
         if (!$this->isStarted) {
@@ -100,15 +102,15 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function flush(): self {
+    public function flush(): Response {
         if ($this->status === 101) {
             throw new \DomainException(
-                "Cannot flush(); entity body content disallowed for Switching Protocols self"
+                "Cannot flush(); entity body content disallowed for Switching Protocols Response"
             );
         }
         // We don't assign websocket headers in flush() because calling
-        // this method before self output starts is an error and will
-        // throw when invoked on the wrapped self.
+        // this method before Response output starts is an error and will
+        // throw when invoked on the wrapped Response.
         $this->response->flush();
         return $this;
     }
@@ -116,24 +118,24 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function end(string $finalBodyChunk = null): self {
+    public function end(string $finalBodyChunk = null): Response {
         if ($this->status === 101 && isset($finalBodyChunk)) {
             throw new \DomainException(
-                "Cannot end() with body data; entity body content disallowed for Switching Protocols self"
+                "Cannot end() with body data; entity body content disallowed for Switching Protocols Response"
             );
         }
         if (!$this->isStarted) {
             $this->handshake();
         }
         $this->isStarted = true;
-        $this->response->stream($finalBodyChunk);
+        $this->response->send("");
         return $this;
     }
 
     /**
      * {@inheritDoc}
      */
-    public function onUpgrade(callable $onUpgrade): self {
+    public function onUpgrade(callable $onUpgrade): Response {
         throw new \DomainException(
             __METHOD__ . " disallowed; protocol upgrades handled by the websocket endpoint"
         );

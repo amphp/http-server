@@ -20,7 +20,7 @@ interface Websocket {
      * @param \Aerys\Endpoint $endpoint
      * @return mixed
      */
-    public function onStart(WebsocketEndpoint $endpoint);
+    public function onStart(Websocket\Endpoint $endpoint);
 
     /**
      * Respond to websocket handshake requests
@@ -54,7 +54,7 @@ interface Websocket {
      * @param \Aerys\WebsocketMessage $msg A stream of data received from the client
      * @return mixed
      */
-    public function onData(int $clientId, WebsocketMessage $msg);
+    public function onData(int $clientId, Websocket\Message $msg);
 
     /**
      * Invoked when the close handshake completes

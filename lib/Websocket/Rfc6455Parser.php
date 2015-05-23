@@ -61,6 +61,8 @@ class Rfc6455Parser {
 
 
     public function sink(string $buffer) {
+        $frames = 0;
+
         if ($this->buffer != "") {
             $buffer = $this->buffer . $buffer;
         }
@@ -265,7 +267,7 @@ class Rfc6455Parser {
                     $payloadReference = '';
                 }
 
-                return;
+                return $frames;
             }
         }
 
@@ -283,6 +285,8 @@ class Rfc6455Parser {
                 $errorMsg = 'Invalid TEXT data; UTF-8 required';
                 goto error;
             }
+
+            $frames++;
 
             if ($this->fin || $this->dataMsgBytesRecd >= $this->emitThreshold) {
                 if ($this->isControlFrame) {
@@ -319,12 +323,12 @@ class Rfc6455Parser {
 
         error: {
             call_user_func($this->emitCallback, [self::ERROR, $errorMsg, $code], $this->callbackData);
-            return;
+            return $frames;
         }
 
         more_data_needed: {
             $this->buffer = $buffer;
-            return;
+            return $frames;
         }
     }
 }
