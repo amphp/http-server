@@ -11,7 +11,8 @@ use FastRoute\{
 use Amp\{
     Promise,
     Success,
-    Failure
+    Failure,
+    function any
 };
 
 class Router implements ServerObserver {
@@ -21,6 +22,7 @@ class Router implements ServerObserver {
     private $cache = [];
     private $cacheEntryCount = 0;
     private $maxCacheEntries = 512;
+    private $serverObservers = [];
 
     public function __construct(array $options = []) {
         $this->setOptions($options);
@@ -189,6 +191,16 @@ class Router implements ServerObserver {
     }
 
     private function makeCallableTargetFromActionsArray(array $actions): callable {
+        // We need to store ServerObserver route targets so they can be notified
+        // upon server state changes.
+        foreach ($actions as $action) {
+            if ($action instanceof ServerObserver) {
+                $this->serverObservers[] = $action;
+            } elseif (is_array($action) && $action[0] instanceof ServerObserver) {
+                $this->serverObservers[] = $action[0];
+            }
+        }
+
         if (empty($actions[1])) {
             return $actions[0];
         }
@@ -218,24 +230,29 @@ class Router implements ServerObserver {
      * @return \Amp\Promise
      */
     public function update(\SplSubject $server): Promise {
+        $observerPromises = [];
+        foreach ($this->serverObservers as $serverObserver) {
+            $observerPromises[] = $serverObserver->update($server);
+        }
         switch ($server->state()) {
             case Server::STOPPED:
                 $this->routeDispatcher = null;
                 break;
             case Server::STARTING:
                 if (empty($this->routes)) {
-                    return new Failure(new \DomainException(
+                    $observerPromises[] = new Failure(new \DomainException(
                         "Router start failure: no routes registered"
                     ));
+                } else {
+                    $this->routeDispatcher = simpleDispatcher(function(RouteCollector $rc) {
+                        foreach ($this->routes as list($method, $uri, $action)) {
+                            $rc->addRoute($method, $uri, $action);
+                        }
+                    });
                 }
-                $this->routeDispatcher = simpleDispatcher(function(RouteCollector $rc) {
-                    foreach ($this->routes as list($method, $uri, $action)) {
-                        $rc->addRoute($method, $uri, $action);
-                    }
-                });
                 break;
         }
 
-        return new Success;
+        return any($observerPromises);
     }
 }
