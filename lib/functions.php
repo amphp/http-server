@@ -3,7 +3,7 @@
 namespace Aerys;
 
 /**
- * Create a Websocket application action for attachment to a Host
+ * Create a router for use with Host instances
  *
  * @param array $options Router options
  * @return \Aerys\Router
@@ -14,6 +14,32 @@ function router(array $options = []) {
         $router->setOption($options);
     }
     return $router;
+}
+
+/**
+ * Create a static file root for use with Host instances
+ *
+ * @param string $docroot The filesystem directory from which to serve documents
+ * @param array $options Root options
+ * @return \Aerys\Root\Root
+ */
+function root(string $docroot, array $options = []) {
+    $reactor = \Amp\reactor();
+    if ($reactor instanceof \Amp\NativeReactor) {
+        $root = new Root\BlockingRoot($docroot, $reactor);
+    } elseif ($reactor instanceof \Amp\UvReactor) {
+        $root = new Root\UvRoot($docroot, $reactor);
+    }
+
+    $defaultMimeFile = __DIR__ ."/../etc/mime";
+    if (!array_key_exists("mimeFile", $options) && file_exists($defaultMimeFile)) {
+        $options["mimeFile"] = $defaultMimeFile;
+    }
+    foreach ($options as $key => $value) {
+        $root->setOption($key, $value);
+    }
+
+    return $root;
 }
 
 /**
