@@ -18,6 +18,7 @@ class Rfc6455Client {
     public $pendingPings = [];
 
     public $writeBuffer = '';
+    public $writeDeferred;
     public $writeDataQueue = [];
     public $writeDeferredDataQueue = [];
     public $writeControlQueue = [];

@@ -8,12 +8,12 @@ use Amp\{
     Failure,
     Promise,
     Success,
-    function resolve,
     function all,
-    function any
+    function any,
+    function resolve
 };
 
-use use Amp\Success;Aerys\{
+use use Aerys\ClientException;Aerys\{
     ClientException,
     Request,
     Response,
@@ -241,6 +241,9 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
             $client->msgPromisor->fail(new ClientException);
         }
 
+        if ($client->writeDeferred) {
+            $client->writeDeferred->fail(new ClientException);
+        }
         foreach ([$client->writeDeferredDataQueue, $client->writeDeferredControlQueue] as $deferreds) {
             foreach ($deferreds as $deferred) {
                 $deferred->fail(new ClientException);
@@ -386,12 +389,16 @@ retry:
         $client->bytesSent += $bytes;
         if ($bytes != \strlen($client->writeBuffer)) {
             $client->writeBuffer = substr($client->writeBuffer, $bytes);
+        } elseif ($bytes == 0 && $client->closedAt && (!is_resource($socket) || @feof($socket))) {
+            // usually read watcher cares about aborted TCP connections, but when $client->closedAt is true, it might be the case that read watcher is already cancelled and we need to ensure that our writing promise is fulfilled in unloadClient() with a failure
+            $this->unloadClient($client);
         } else {
             $client->framesSent++;
+            $client->writeDeferred->succeed();
             if ($client->writeControlQueue) {
                 $client->writeBuffer = array_shift($client->writeControlQueue);
                 $client->lastSentAt = $this->now;
-                array_shift($client->writeDeferredControlQueue)->succeed();
+                $client->writeDeferred = array_shift($client->writeDeferredControlQueue);
                 goto retry;
             } elseif ($client->closedAt) {
                 @stream_socket_shutdown($socket, STREAM_SHUT_WR);
@@ -401,7 +408,7 @@ retry:
                 $client->writeBuffer = array_shift($client->writeDataQueue);
                 $client->lastDataSentAt = $this->now;
                 $client->lastSentAt = $this->now;
-                array_shift($client->writeDeferredDataQueue)->succeed();
+                $client->writeDeferred = array_shift($client->writeDeferredDataQueue)->succeed();
                 goto retry;
             } else {
                 $client->writeBuffer = "";
@@ -453,7 +460,7 @@ retry:
             }
         } else {
             $client->writeBuffer = $w;
-            return new Success;
+            return $client->writeDeferred = new Deferred;
         }
     }
 
@@ -505,12 +512,10 @@ retry:
         return all($promises);
     }
 
-    public function close(int $clientId, int $code = CODES["NORMAL_CLOSE"], string $reason = ""): Promise {
+    public function close(int $clientId, int $code = CODES["NORMAL_CLOSE"], string $reason = "") {
         if (isset($this->clients[$clientId])) {
-            return resolve($this->doClose($this->clients[$clientId], $code, $reason));
+            resolve($this->doClose($this->clients[$clientId], $code, $reason));
         }
-
-        return new Success;
     }
 
     public function getInfo(int $clientId): array {
