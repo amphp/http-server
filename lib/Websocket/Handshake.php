@@ -1,8 +1,8 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Websocket;
 
-class WebsocketHandshake implements Response {
+class Handshake implements Response {
     const ACCEPT_CONCAT = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
     private $upgradePromisor;

@@ -1,11 +1,14 @@
 <?php
 
 
-namespace Aerys;
+namespace Aerys\Websocket;
 
-use Amp\Deferred;
+use Amp\{
+    Deferred,
+    function resolve
+};
 
-class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
+class Rfc6455Endpoint implements Endpoint, ServerObserver {
     private $application;
     private $reactor;
     private $proxy;
@@ -16,15 +19,19 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
     private $timeoutWatcher;
     private $now;
 
-    private $autoFrameSize = 32768;
-    private $maxFrameSize = 2097152;
-    private $maxMsgSize = 10485760;
+    private $autoFrameSize = 32 << 10;
+    private $maxFrameSize = 2 << 20;
+    private $maxMsgSize = 10 << 20;
     private $heartbeatPeriod = 10;
     private $closePeriod = 3;
     private $validateUtf8 = false;
     private $textOnly = false;
     private $queuedPingLimit = 3;
     // @TODO add minimum average frame size rate threshold to prevent tiny-frame DoS
+
+    const FRAME_END = 1;
+    const MESSAGE_END = 2;
+    const CONTROL_END = 3;
 
     public function __construct(Websocket $application, Reactor $reactor = null) {
         $this->application = $application;
@@ -118,7 +125,7 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
             $upgradePromisor->succeed($wasUpgraded = true);
         });
 
-        $handshaker = new WebsocketHandshake($upgradePromisor, $response, $acceptKey);
+        $handshaker = new Handshake($upgradePromisor, $response, $acceptKey);
 
         $onHandshakeResult = $this->application->onHandshake($request, $handshaker);
         if ($onHandshakeResult instanceof \Generator) {
@@ -133,7 +140,7 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
 
         $socket = $client->socket;
         $client->parser = new Rfc6455Parser([$this, "onParse"], $options = [
-            "cb_data" => &$client
+            "cb_data" => $client
         ]);
         $client->readWatcher = $this->reactor->onReadable($socket, [$this, "onReadable"], $options = [
             "enable" => true,
@@ -166,15 +173,15 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
             if ($onOpenResult instanceof \Generator) {
                 $onOpenResult = yield from $onOpenResult;
             }
-        } catch (\Exception $e) {
+        } catch (\BaseException $e) {
             yield from $this->onAppError($clientId, $e);
         }
     }
 
-    private function onAppError($clientId, \Exception $e): \Generator {
+    private function onAppError($clientId, \BaseException $e): \Generator {
         $msg = $e->getMessage();
         error_log($msg);
-        $code = WEBSOCKET_CODES["UNEXPECTED_SERVER_ERROR"];
+        $code = CODES["UNEXPECTED_SERVER_ERROR"];
         // RFC 6455 limits close reasons to 125 bytes
         $reason = isset($msg[125]) ? substr($msg, 0, 125) : $reason;
         yield from $this->doClose($clientId, $code, $reason);
@@ -182,18 +189,33 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
 
     private function doClose(Rfc6455Client $client, int $code, string $reason): \Generator {
         // Only proceed if we haven't already begun the close handshake elsewhere
-        if ($client->closeSentPromisor) {
+        if ($client->closeRcvdPromisor) {
             return;
         }
 
         $client->closeSentPromisor = new Deferred;
         $this->sendCloseFrame($client, $code, $reason);
-        yield $client->closeSentPromisor->promise();
-        yield $client->closeRcvdPromisor->promise();
         yield from $this->tryAppOnClose($clientId, $code, $reason);
-        // Don't unload the client until after onClose() invocation because
-        // users may want to query the client's info
-        $this->unloadClient($client);
+        $this->closeTimeouts[$session->clientId] = $this->now + $this->closePeriod;
+        yield $client->closeRcvdPromisor->promise();
+        @stream_socket_shutdown($client->socket, STREAM_SHUT_WR);
+        // Don't unload the client here, it will be unloaded upon timeout
+    }
+
+    private function sendCloseFrame(Rfc6455Client $client, $code, $msg) {
+        $this->compile($client, pack('S', $code) . $msg, FRAME["OP_CLOSE"]);
+        $client->closeRcvdPromisor = new Deferred;
+    }
+
+    private function tryAppOnClose(int $clientId, $code, $reason): \Generator {
+        try {
+            $onOpenResult = $this->application->onClose($clientId, $code, $reason);
+            if ($onOpenResult instanceof \Generator) {
+                $onOpenResult = yield from $onOpenResult;
+            }
+        } catch (\BaseException $e) {
+            yield from $this->onAppError($clientId, $e);
+        }
     }
 
     private function unloadClient(Rfc6455Client $client) {
@@ -202,10 +224,15 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
         $this->reactor->cancel($client->writeWatcher);
         ($client->serverRefClearer)();
         unset($this->clients[$client->id]);
+
+        // fail not yet terminated message streams; they *must not* be failed before client is removed
+        if ($client->msgPromisor) {
+            $client->msgPromisor->fail(new ClientException);
+        }
     }
 
     public function onParse(array $parseResult, Rfc6455Client $client) {
-        switch ($parseResult[0]) {
+        switch (array_shift($parseResult)) {
             case Rfc6455Parser::CONTROL:
                 $this->onParsedControlFrame($client, $parseResult);
                 break;
@@ -221,15 +248,45 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
     }
     
     private function onParsedControlFrame(Rfc6455Client $client, array $parseResult) {
-        
+        list($data, $opcode) = $parseResult;
+        // @TODO ...
+
+        switch ($opcode) {
+            case FRAME["OP_CLOSE"]:
+                if ($client->closeRcvdPromisor) {
+                    $client->closeRcvdPromisor->succeed($data);
+                }
+                break;
+        }
     }
     
     private function onParsedData(Rfc6455Client $client, array $parseResult) {
-        
+        list($data, $terminated) = $parseResult;
+        if (!$client->msgPromisor) {
+            $client->msgPromisor = new Deferred;
+            $msg = new WebsocketMessage($client->msgPromisor);
+            $client->msgPromisor->update($data);
+
+            if ($terminated) {
+                $client->msgPromisor->succeed();
+            }
+
+            try {
+                $gen = $this->application->onData($client->id, $msg);
+                if ($gen instanceof \Generator) {
+                    resolve($gen);
+                }
+            } catch (\BaseException $e) {
+                resolve($this->onAppError($clientId, $e));
+            }
+        }
     }
     
     private function onParsedError(Rfc6455Client $client, array $parseResult) {
-        
+        list($msg, $code) = $parseResult;
+        if ($code) {
+            resolve($this->doClose($client, $code, $msg));
+        }
     }
 
     public function onReadable($reactor, $watcherId, $socket, $client) {
@@ -243,20 +300,115 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
         }
     }
 
-    public function onWritable($reactor, $watcherId, $socket, $client) {
-
+    public function onWritable($reactor, $watcherId, $socket, Rfc6455Client $client) {
+retry:
+        $bytes = @fwrite($socket, $client->writeBuffer);
+        $client->bytesSent += $bytes;
+        if ($bytes != \strlen($client->writeBuffer)) {
+            $client->writeBuffer = substr($client->writeBuffer, $bytes);
+        } else {
+            $client->framesSent++;
+            if ($client->writeControlQueue) {
+                $client->writeBuffer = array_shift($client->writeControlQueue);
+                goto retry;
+            } elseif ($client->writeDataQueue) {
+                $client->writeBuffer = array_shift($client->writeDataQueue);
+                goto retry;
+            } else {
+                $client->writeBuffer = "";
+                $reactor->disable($watcherId);
+            }
+        }
     }
 
-    public function send(string $data, int $clientId): Promise {
+    private function compile(Rfc6455Client $client, string $msg, int $opcode = FRAME["OP_BIN"], bool $fin = true) {
+        $frameInfo = ["msg" => $msg, "rsv" => 0b000, "fin" => $fin, "opcode" => $opcode];
 
+        // @TODO filter mechanism …?! (e.g. gzip)
+        foreach ($client->builder as $gen) {
+            $gen->send($frameInfo);
+            $gen->send(null);
+            $frameInfo = $gen->current();
+        }
+
+        $this->write($frameInfo);
     }
 
-    public function broadcast(string $data, array $clientIds = null): Promise {
+    private function write(Rfc6455Client $client, $frameInfo) {
+        $msg = $frameInfo["msg"];
+        $len = strlen($msg);
 
+        $w = chr(($frameInfo["fin"] << 7) | ($frameInfo["rsv"] << 4) | ($frameInfo["opcode"] << 1));
+        if ($len > 0xFFFF) {
+            $w .= "\x7F" . pack('J', $len);
+        } elseif ($len > 0x7D) {
+            $w .= "\x7E" . pack('n', $len);
+        } else {
+            $w .= chr($len);
+        }
+
+        $w .= $msg;
+
+        $this->reactor->enable($client->writeWatcher);
+        if ($client->writeBuffer != "") {
+            if ($frameInfo["opcode"] >= 0x8) {
+                $client->writeControlQueue[] = $w;
+            } else {
+                $client->writeDataQueue[] = $w;
+            }
+        } else {
+            $client->writeBuffer = $w;
+        }
     }
 
-    public function close(int $clientId, int $code, string $reason = ""): Promise {
+    // just a dummy builder ... no need to really use it
+    private function defaultBuilder(Rfc6455Client $client) {
+        $yield = yield;
+        while (1) {
+            $data = [];
+            $frameInfo = $yield;
+            $data[] = $yield["msg"];
 
+            while (($yield = yield) !== null); {
+                $data[] = $yield;
+            }
+
+            $msg = count($data) == 1 ? $data[0] : implode($data);
+            $yield = yield $msg + $frameInfo;
+        }
+    }
+
+    public function send(string $data, int $clientId) {
+        if ($client = $this->clients[$clientId] ?? null) {
+            $opcode = FRAME["OP_BIN"];
+
+            if (strlen($data) > 1.5 * $this->autoFrameSize) {
+                $len = strlen($data);
+                $slices = ceil($len / $this->autoFrameSize);
+                $frames = str_split($data, ceil($len / $slices));
+                foreach ($frames as $frame) {
+                    $this->compile($client, $frame, $opcode, false);
+                    $opcode = FRAME["OP_CONT"];
+                }
+            }
+            $this->compile($client, $data, $opcode);
+        }
+    }
+
+    public function broadcast(string $data, array $clientIds = null) {
+        if ($clientIds === null) {
+            $clientIds = array_keys($this->clients);
+        }
+
+        foreach ($clientIds as $clientId) {
+            $this->send($data, $clientId);
+        }
+    }
+
+    public function close(int $clientId, int $code = CODES["NORMAL_CLOSE"], string $reason = "") {
+        if (isset($this->clients[$clientId])) {
+            resolve($this->doClose($this->clients[$clientId], $code, $reason));
+        }
     }
 
     public function getInfo(int $clientId): array {
@@ -274,9 +426,9 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
             'messages_sent' => $client->messagesSent,
             'connected_at'  => $client->connectedAt,
             'last_read_at'  => $client->lastReadAt,
-            'last_send_at'  => $client->lastSendAt,
+            'last_sent_at'  => $client->lastSentAt,
             'last_data_read_at'  => $client->lastDataReadAt,
-            'last_data_send_at'  => $client->lastDataSendAt,
+            'last_data_sent_at'  => $client->lastDataSentAt,
         ];
     }
 
@@ -319,10 +471,7 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
         }
         foreach ($this->closeTimeouts as $clientId => $expiryTime) {
             if ($expiryTime < $now) {
-                $client = $this->clients[$clientId];
-                $client->closeCode = Codes::ABNORMAL_CLOSE;
-                $client->closeReason = 'CLOSE handshake timeout';
-                $this->unloadSession($client);
+                $this->unloadClient($this->clients[$clientId]);
             } else {
                 break;
             }
@@ -334,16 +483,20 @@ class Rfc6455Endpoint implements WebsocketEndpoint, ServerObserver {
         if ($result instanceof \Generator) {
             yield from $result;
         }
+
+        $this->timeoutWatcher = $this->reactor->repeat((new \ReflectionMethod($this, "timeout"))->getClosure($this), $msInterval = 1000);
     }
 
     private function stop(): \Generator {
-        $code = WEBSOCKET_CODES["GOING_AWAY"];
+        $code = CODES["GOING_AWAY"];
         $reason = "Server shutting down!";
         $promises = [];
         foreach ($this->clients as $client) {
-            $promises[] = $this->close($client->id, $code, $reason);
+            $this->close($client->id, $code, $reason);
+            $promises[] = $client->closeRcvdPromisor;
         }
         yield any($promises);
+
         $result = $this->application->onStop();
         if ($result instanceof \Generator) {
             yield from $result;

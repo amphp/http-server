@@ -1,10 +1,10 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Websocket;
 
 use Amp\Promise;
 
-interface WebsocketEndpoint {
+interface Endpoint {
     public function send(string $data, int $clientId): Promise;
     public function broadcast(string $data, array $clientIds = null): Promise;
     public function close(int $clientId, int $code, string $reason = ""): Promise;

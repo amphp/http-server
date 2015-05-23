@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Amp\ {
+use Amp\{
     function any,
     function resolve,
     Reactor,
@@ -82,7 +82,7 @@ class Server implements \SplSubject {
 
             return resolve($this->doStart($serverStreams, $onClient), $this->reactor);
 
-        } catch (\Exception $e) {
+        } catch (\BaseException $e) {
             return new Failure($e);
         }
     }

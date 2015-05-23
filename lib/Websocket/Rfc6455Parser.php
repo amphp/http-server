@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Websocket;
 
 class Rfc6455Parser {
     /* Frame control bits */
@@ -144,7 +144,7 @@ class Rfc6455Parser {
 
         validate_length_127_32bit: {
             if ($lengthLong32Pair[0] !== 0 || $lengthLong32Pair[1] < 0) {
-                $syntaxError = false;
+                $code = CODES["MESSAGE_TOO_LARGE"];
                 $errorMsg = 'Payload exceeds maximum allowable size';
                 goto error;
             }
@@ -156,7 +156,7 @@ class Rfc6455Parser {
         validate_length_127_64bit: {
             $length = ($lengthLong32Pair[0] << 32) | $lengthLong32Pair[1];
             if ($length < 0) {
-                $syntaxError = true;
+                $code = CODES["PROTOCOL_ERROR"];
                 $errorMsg = 'Most significant bit of 64-bit length field set';
                 goto error;
             }
@@ -167,31 +167,31 @@ class Rfc6455Parser {
 
         validate_header: {
             if ($this->isControlFrame && !$this->fin) {
-                $syntaxError = true;
+                $code = CODES["PROTOCOL_ERROR"];
                 $errorMsg = 'Illegal control frame fragmentation';
                 goto error;
             } elseif ($this->isControlFrame && $this->frameLength > 125) {
-                $syntaxError = true;
+                $code = CODES["PROTOCOL_ERROR"];
                 $errorMsg = 'Control frame payload must be of maximum 125 bytes or less';
                 goto error;
             } elseif ($this->maxFrameSize && $this->frameLength > $this->maxFrameSize) {
-                $syntaxError = false;
+                $code = CODES["MESSAGE_TOO_LARGE"];
                 $errorMsg = 'Payload exceeds maximum allowable frame size';
                 goto error;
             } elseif ($this->maxMsgSize && ($this->frameLength + $this->dataMsgBytesRecd) > $this->maxMsgSize) {
-                $syntaxError = false;
+                $code = CODES["MESSAGE_TOO_LARGE"];
                 $errorMsg = 'Payload exceeds maximum allowable message size';
                 goto error;
             } elseif ($this->textOnly && $this->opcode === 0x02) {
-                $syntaxError = false;
+                $code = CODES["UNACCEPTABLE_TYPE"];
                 $errorMsg = 'BINARY opcodes (0x02) not accepted';
                 goto error;
             } elseif ($this->frameLength > 0 && !$this->isMasked) {
-                $syntaxError = true;
+                $code = CODES["PROTOCOL_ERROR"];
                 $errorMsg = 'Payload mask required';
                 goto error;
             } elseif (!($this->opcode || $this->isControlFrame)) {
-                $syntaxError = true;
+                $code = CODES["PROTOCOL_ERROR"];
                 $errorMsg = 'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY';
                 goto error;
             }
@@ -258,7 +258,7 @@ class Rfc6455Parser {
                         $this->maskingKey = substr($this->maskingKey . $this->maskingKey, $this->frameBytesRecd % 4, 4);
                     }
 
-                    call_user_func($this->emitCallback, [self::DATA, $payloadReference, $this->opcode, false], $this->callbackData);
+                    call_user_func($this->emitCallback, [self::DATA, $payloadReference, false], $this->callbackData);
 
                     $this->frameLength -= $this->frameBytesRecd;
                     $this->frameBytesRecd = 0;
@@ -279,14 +279,14 @@ class Rfc6455Parser {
             }
 
             if ($this->opcode === self::OP_TEXT && $this->validateUtf8 && !preg_match('//u', $payloadReference)) {
-                $syntaxError = true;
+                $code = CODES["INCONSISTENT_FRAME_DATA_TYPE"];
                 $errorMsg = 'Invalid TEXT data; UTF-8 required';
                 goto error;
             }
 
             if ($this->fin || $this->dataMsgBytesRecd >= $this->emitThreshold) {
                 if ($this->isControlFrame) {
-                    $emit = [self::CONTROL, $payloadReference, $this->opcode, true];
+                    $emit = [self::CONTROL, $payloadReference, $this->opcode];
                 } else {
                     if ($this->dataArr) {
                         $this->dataArr[] = $payloadReference;
@@ -294,7 +294,7 @@ class Rfc6455Parser {
                         $this->dataArr = [];
                     }
 
-                    $emit = [self::DATA, $payloadReference, $this->opcode, $this->fin];
+                    $emit = [self::DATA, $payloadReference, $this->fin];
                     $this->dataMsgBytesRecd = 0;
                 }
 
@@ -318,7 +318,7 @@ class Rfc6455Parser {
         }
 
         error: {
-            call_user_func($this->emitCallback, [self::ERROR, $syntaxError, $errorMsg], $this->callbackData);
+            call_user_func($this->emitCallback, [self::ERROR, $errorMsg, $code], $this->callbackData);
             return;
         }
 

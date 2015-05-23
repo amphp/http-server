@@ -1,10 +1,10 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Websocket;
 
 use Amp\Promise;
 
-class Rfc6455EndpointProxy implements WebsocketEndpoint {
+class Rfc6455EndpointProxy implements Endpoint {
     private $endpoint;
 
     public function __construct(Rfc6455Endpoint $endpoint) {

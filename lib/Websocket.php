@@ -7,7 +7,7 @@ interface Websocket {
      * Invoked when starting the server
      *
      * All messages are sent to connected clients by calling methods on the
-     * WebsocketEndpoint instance passed in onStart(). Applications must store
+     * Endpoint instance passed in onStart(). Applications must store
      * the endpoint instance for use once the server starts.
      *
      * If the websocket application has external resources it needs to initialize
@@ -17,7 +17,7 @@ interface Websocket {
      * the server is allowed to start. Additionally, this method returns a
      * Promise the server will not start until that promise resolves.
      *
-     * @param \Aerys\WebsocketEndpoint $endpoint
+     * @param \Aerys\Endpoint $endpoint
      * @return mixed
      */
     public function onStart(WebsocketEndpoint $endpoint);
@@ -72,7 +72,7 @@ interface Websocket {
      * If the application initialized resources in Websocket::onStart() this is the
      * place to free them.
      *
-     * There is no need to call WebsocketEndpoint::close() in this method because the
+     * There is no need to call Endpoint::close() in this method because the
      * websocket endpoint automatically closes all connected clients before this application
      * method is ever invoked.
      *

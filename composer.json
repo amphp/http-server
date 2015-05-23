@@ -33,7 +33,7 @@
         "psr-4": {
             "Aerys\\": "lib/"
         },
-        "files": ["lib/functions.php", "lib/constants.php"]
+        "files": ["lib/functions.php", "lib/constants.php", "lib/Websocket/constants.php"]
     },
     "autoload-dev": {
         "psr-4": {
