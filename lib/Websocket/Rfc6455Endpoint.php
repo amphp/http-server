@@ -317,24 +317,15 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         list($data, $terminated) = $parseResult;
 
         if (!$client->msgPromisor) {
-            var_dump($data);
             $client->msgPromisor = new Deferred;
             $msg = new Message($client->msgPromisor->promise());
-            $client->msgPromisor->update($data);
-
-            if ($terminated) {
-                $client->msgPromisor->succeed();
-                $client->msgPromisor = null;
-            }
-
             resolve($this->tryAppOnData($client, $msg));
-        } else {
-            $client->msgPromisor->update($data);
+        }
 
-            if ($terminated) {
-                $client->msgPromisor->succeed();
-                $client->msgPromisor = null;
-            }
+        $client->msgPromisor->update($data);
+        if ($terminated) {
+            $client->msgPromisor->succeed();
+            $client->msgPromisor = null;
         }
 
         $client->messagesRead += $terminated;
