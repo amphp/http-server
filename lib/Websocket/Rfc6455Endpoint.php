@@ -714,49 +714,49 @@ retry:
                 if (PHP_INT_MAX === 0x7fffffff) {
                     if ($lengthLong32Pair[0] !== 0 || $lengthLong32Pair[1] < 0) {
                         $code = CODES["MESSAGE_TOO_LARGE"];
-                            $errorMsg = 'Payload exceeds maximum allowable size';
-                            break;
-                        }
+                        $errorMsg = 'Payload exceeds maximum allowable size';
+                        break;
+                    }
                     $frameLength = $lengthLong32Pair[1];
                 } else {
                     $frameLength = ($lengthLong32Pair[0] << 32) | $lengthLong32Pair[1];
                     if ($frameLength < 0) {
                         $code = CODES["PROTOCOL_ERROR"];
-                            $errorMsg = 'Most significant bit of 64-bit length field set';
-                            break;
-                        }
+                        $errorMsg = 'Most significant bit of 64-bit length field set';
+                        break;
+                    }
                 }
             }
 
             if ($isControlFrame && !$fin) {
                 $code = CODES["PROTOCOL_ERROR"];
-                    $errorMsg = 'Illegal control frame fragmentation';
-                    break;
-                } elseif ($isControlFrame && $frameLength > 125) {
+                $errorMsg = 'Illegal control frame fragmentation';
+                break;
+            } elseif ($isControlFrame && $frameLength > 125) {
                 $code = CODES["PROTOCOL_ERROR"];
-                    $errorMsg = 'Control frame payload must be of maximum 125 bytes or less';
-                    break;
-                } elseif ($maxFrameSize && $frameLength > $maxFrameSize) {
+                $errorMsg = 'Control frame payload must be of maximum 125 bytes or less';
+                break;
+            } elseif ($maxFrameSize && $frameLength > $maxFrameSize) {
                 $code = CODES["MESSAGE_TOO_LARGE"];
-                    $errorMsg = 'Payload exceeds maximum allowable frame size';
-                    break;
-                } elseif ($maxMsgSize && ($frameLength + $dataMsgBytesRecd) > $maxMsgSize) {
+                $errorMsg = 'Payload exceeds maximum allowable frame size';
+                break;
+            } elseif ($maxMsgSize && ($frameLength + $dataMsgBytesRecd) > $maxMsgSize) {
                 $code = CODES["MESSAGE_TOO_LARGE"];
-                    $errorMsg = 'Payload exceeds maximum allowable message size';
-                    break;
-                } elseif ($textOnly && $opcode === 0x02) {
+                $errorMsg = 'Payload exceeds maximum allowable message size';
+                break;
+            } elseif ($textOnly && $opcode === 0x02) {
                 $code = CODES["UNACCEPTABLE_TYPE"];
-                    $errorMsg = 'BINARY opcodes (0x02) not accepted';
-                    break;
-                } elseif ($frameLength > 0 && !$isMasked) {
+                $errorMsg = 'BINARY opcodes (0x02) not accepted';
+                break;
+            } elseif ($frameLength > 0 && !$isMasked) {
                 $code = CODES["PROTOCOL_ERROR"];
-                    $errorMsg = 'Payload mask required';
-                    break;
-                } elseif (!($opcode || $isControlFrame)) {
+                $errorMsg = 'Payload mask required';
+                break;
+            } elseif (!($opcode || $isControlFrame)) {
                 $code = CODES["PROTOCOL_ERROR"];
-                    $errorMsg = 'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY';
-                    break;
-                }
+                $errorMsg = 'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY';
+                break;
+            }
 
             if ($isMasked) {
                 while ($bufferSize < 4) {
@@ -823,9 +823,9 @@ retry:
 
             if ($opcode === self::OP_TEXT && $validateUtf8 && !preg_match('//u', $payloadReference)) {
                 $code = CODES["INCONSISTENT_FRAME_DATA_TYPE"];
-                    $errorMsg = 'Invalid TEXT data; UTF-8 required';
-                    break;
-                }
+                $errorMsg = 'Invalid TEXT data; UTF-8 required';
+                break;
+            }
 
             $frames++;
 
