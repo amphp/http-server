@@ -17,10 +17,10 @@ interface Websocket {
      * the server is allowed to start. Additionally, this method returns a
      * Promise the server will not start until that promise resolves.
      *
-     * @param \Aerys\Endpoint $endpoint
+     * @param \Aerys\Websocket\Endpoint $endpoint
      * @return mixed
      */
-    public function onStart(WebsocketEndpoint $endpoint);
+    public function onStart(Websocket\Endpoint $endpoint);
 
     /**
      * Respond to websocket handshake requests
@@ -51,10 +51,10 @@ interface Websocket {
      * Invoked when data messages arrive from the client
      *
      * @param int $clientId A unique (to the current process) identifier for this client
-     * @param \Aerys\WebsocketMessage $msg A stream of data received from the client
+     * @param \Aerys\Websocket\Message $msg A stream of data received from the client
      * @return mixed
      */
-    public function onData(int $clientId, WebsocketMessage $msg);
+    public function onData(int $clientId, Websocket\Message $msg);
 
     /**
      * Invoked when the close handshake completes
