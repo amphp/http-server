@@ -14,13 +14,8 @@ class Rfc6455Client {
     public $builder = [];
     public $readWatcher;
     public $writeWatcher;
-    public $closeRcvdPromisor;
     public $msgPromisor;
-
-    /*
-    //  from the old implementation -- we may or may not need it
     public $pendingPings = [];
-    */
 
     public $writeBuffer = '';
     public $writeDataQueue = [];
@@ -28,14 +23,15 @@ class Rfc6455Client {
 
     // getInfo() properties
     public $connectedAt;
-    public $lastReadAt;
-    public $lastSendAt;
-    public $lastDataReadAt;
-    public $lastDataSendAt;
-    public $bytesRead;
-    public $bytesSent;
-    public $framesRead;
-    public $framesSent;
-    public $messagesRead;
-    public $messagesSent;
+    public $closedAt = 0;
+    public $lastReadAt = 0;
+    public $lastSentAt = 0;
+    public $lastDataReadAt = 0;
+    public $lastDataSentAt = 0;
+    public $bytesRead = 0;
+    public $bytesSent = 0;
+    public $framesRead = 0;
+    public $framesSent = 0;
+    public $messagesRead = 0;
+    public $messagesSent = 0;
 }

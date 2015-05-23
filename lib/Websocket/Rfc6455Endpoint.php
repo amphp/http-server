@@ -8,6 +8,15 @@ use Amp\{
     function resolve
 };
 
+use Aerys\{
+    Request,
+    Response,
+    Server,
+    ServerObserver,
+    Websocket,
+    const HTTP_STATUS
+};
+
 class Rfc6455Endpoint implements Endpoint, ServerObserver {
     private $application;
     private $reactor;
@@ -112,7 +121,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         return $this->import($request, $request);
     }
 
-    private function import(Request $request, Response $response) {
+    private function import(Request $request, Response $response): \Generator {
         $client = new Rfc6455Client;
         $client->connectedAt = $request->time;
 
@@ -183,22 +192,19 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
 
     private function doClose(Rfc6455Client $client, int $code, string $reason): \Generator {
         // Only proceed if we haven't already begun the close handshake elsewhere
-        if ($client->closeRcvdPromisor) {
+        if ($client->closedAt) {
             return;
         }
 
-        $client->closeRcvdPromisor = new Deferred;
+        $this->closeTimeouts[$client->id] = $this->now + $this->closePeriod;
         $this->sendCloseFrame($client, $code, $reason);
-        yield from $this->tryAppOnClose($clientId, $code, $reason);
-        $this->closeTimeouts[$session->clientId] = $this->now + $this->closePeriod;
-        yield $client->closeRcvdPromisor->promise();
-        @stream_socket_shutdown($client->socket, STREAM_SHUT_WR);
+        yield from $this->tryAppOnClose($client->id, $code, $reason);
         // Don't unload the client here, it will be unloaded upon timeout
     }
 
     private function sendCloseFrame(Rfc6455Client $client, $code, $msg) {
+        $client->closedAt = $this->now;
         $this->compile($client, pack('S', $code) . $msg, FRAME["OP_CLOSE"]);
-        $client->closeRcvdPromisor = new Deferred;
     }
 
     private function tryAppOnClose(int $clientId, $code, $reason): \Generator {
@@ -214,8 +220,12 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
 
     private function unloadClient(Rfc6455Client $client) {
         $client->parser = null;
-        $this->reactor->cancel($client->readWatcher);
-        $this->reactor->cancel($client->writeWatcher);
+        if ($client->readWatcher) {
+            $this->reactor->cancel($client->readWatcher);
+        }
+        if ($client->writeWatcher) {
+            $this->reactor->cancel($client->writeWatcher);
+        }
         ($client->serverRefClearer)();
         unset($this->clients[$client->id]);
 
@@ -243,19 +253,45 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
     
     private function onParsedControlFrame(Rfc6455Client $client, array $parseResult) {
         list($data, $opcode) = $parseResult;
-        // @TODO ...
 
         switch ($opcode) {
             case FRAME["OP_CLOSE"]:
-                if ($client->closeRcvdPromisor) {
-                    $client->closeRcvdPromisor->succeed($data);
+                if (!$client->closedAt) {
+                    if (\strlen($data) < 2) {
+                        return; // invalid close reason
+                    }
+                    $code = current(unpack('S', substr($data, 0, 2)));
+                    $reason = substr($data, 2);
+
+                    @stream_socket_shutdown($client->socket, STREAM_SHUT_WR);
+                    $this->reactor->cancel($client->readWatcher);
+                    $client->readWatcher = null;
+                    resolve($this->doClose($client, $code, $reason));
+                }
+                break;
+
+            case FRAME["OP_PING"]:
+                $this->compile($client, $data, FRAME["OP_PONG"]);
+                break;
+
+            case FRAME["OP_PONG"]:
+                $pendingPingCount = count($client->pendingPings);
+
+                for ($i=$pendingPingCount - 1; $i >= 0; $i--) {
+                    if ($client->pendingPings[$i] == $data) {
+                        $client->pendingPings = array_slice($client->pendingPings, $i + 1);
+                        break;
+                    }
                 }
                 break;
         }
     }
     
     private function onParsedData(Rfc6455Client $client, array $parseResult) {
+        $client->lastDataReadAt = $this->now;
+
         list($data, $terminated) = $parseResult;
+
         if (!$client->msgPromisor) {
             $client->msgPromisor = new Deferred;
             $msg = new WebsocketMessage($client->msgPromisor);
@@ -263,19 +299,24 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
 
             if ($terminated) {
                 $client->msgPromisor->succeed();
+                $client->msgPromisor = null;
             }
 
-            try {
-                $gen = $this->application->onData($client->id, $msg);
-                if ($gen instanceof \Generator) {
-                    resolve($gen);
-                }
-            } catch (\BaseException $e) {
-                resolve($this->onAppError($clientId, $e));
-            }
+            resolve($this->tryAppOnData($client, $msg));
         }
     }
-    
+
+    private function tryAppOnData(Rfc6455Client $client, Message $msg): \Generator {
+        try {
+            $gen = $this->application->onData($client->id, $msg);
+            if ($gen instanceof \Generator) {
+                yield from $gen;
+            }
+        } catch (\BaseException $e) {
+            yield from $this->onAppError($client->id, $e);
+        }
+    }
+
     private function onParsedError(Rfc6455Client $client, array $parseResult) {
         list($msg, $code) = $parseResult;
         if ($code) {
@@ -286,11 +327,13 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
     public function onReadable($reactor, $watcherId, $socket, $client) {
         $data = @fread($socket, 8192);
         if ($data != "") {
+            $client->lastReadAt = $this->now;
+            $client->bytesRead += \strlen($data);
             $client->parser->sink($data);
         } elseif (!is_resource($socket) || @feof($socket)) {
-            // @TODO update this ... (currently uses http client code)
-            $client->isDead = true;
-            $this->close($client);
+            $client->closedAt = $this->now;
+            resolve($this->tryAppOnClose($client->id, CODES["ABNORMAL_CLOSE"], "Client closed underlying TCP connection"));
+            $this->unloadClient($client);
         }
     }
 
@@ -304,10 +347,17 @@ retry:
             $client->framesSent++;
             if ($client->writeControlQueue) {
                 $client->writeBuffer = array_shift($client->writeControlQueue);
+                $client->lastSentAt = $this->now;
                 goto retry;
             } elseif ($client->writeDataQueue) {
                 $client->writeBuffer = array_shift($client->writeDataQueue);
+                $client->lastDataSentAt = $this->now;
+                $client->lastSentAt = $this->now;
                 goto retry;
+            } elseif ($client->closedAt) {
+                @stream_socket_shutdown($socket, STREAM_SHUT_WR);
+                $reactor->cancel($watcherId);
+                $client->writeWatcher = null;
             } else {
                 $client->writeBuffer = "";
                 $reactor->disable($watcherId);
@@ -419,6 +469,7 @@ retry:
             'messages_read' => $client->messagesRead,
             'messages_sent' => $client->messagesSent,
             'connected_at'  => $client->connectedAt,
+            'closed_at'     => $client->closedAt,
             'last_read_at'  => $client->lastReadAt,
             'last_sent_at'  => $client->lastSentAt,
             'last_data_read_at'  => $client->lastDataReadAt,
@@ -434,20 +485,51 @@ retry:
         $this->state = $state = $server->state();
         switch ($state) {
             case Server::STARTING:
-                return resolve($this->start());
+                $result = $this->application->onStart($this->proxy);
+                if ($result instanceof \Generator) {
+                    resolve($result);
+                }
+                break;
             case Server::STARTED:
                 $f = (new \ReflectionClass($this))->getMethod("timeout")->getClosure($this);
                 $this->timeoutWatcher = $this->reactor->repeat($f, 1000);
                 break;
             case Server::STOPPING:
-                return resolve($this->stop());
+                $code = CODES["GOING_AWAY"];
+                $reason = "Server shutting down!";
+
+                foreach ($this->clients as $client) {
+                    $this->close($client->id, $code, $reason);
+                }
+
+                $result = $this->application->onStop();
+                if ($result instanceof \Generator) {
+                    resolve($result);
+                }
             case Server::STOPPED:
                 $this->reactor->cancel($this->timeoutWatcher);
                 $this->timeoutWatcher = null;
+
+                foreach ($this->closeTimeouts as $clientId => $expiryTime) {
+                    $this->unloadClient($this->clients[$clientId]);
+                }
                 break;
         }
 
         return new Success;
+    }
+
+    private function sendHeartbeatPing(Rfc6455Client $client) {
+        $ord = rand(48, 90);
+        $data = chr($ord);
+
+        if (array_push($client->pendingPings, $data) > $this->queuedPingLimit) {
+            $code = CODES["POLICY_VIOLATION"];
+            $reason = 'Exceeded unanswered PING limit';
+            $this->doClose($client, $code, $reason);
+        } else {
+            $this->compile($client, $data, FRAME["OP_PING"]);
+        }
     }
 
     private function timeout() {
@@ -469,37 +551,6 @@ retry:
             } else {
                 break;
             }
-        }
-    }
-
-    private function start(): \Generator {
-        $result = $this->application->onStart($this->proxy);
-        if ($result instanceof \Generator) {
-            yield from $result;
-        }
-
-        $this->timeoutWatcher = $this->reactor->repeat((new \ReflectionMethod($this, "timeout"))->getClosure($this), $msInterval = 1000);
-    }
-
-    private function stop(): \Generator {
-        $code = CODES["GOING_AWAY"];
-        $reason = "Server shutting down!";
-
-        $promises = [];
-        foreach ($this->clients as $client) {
-            $this->close($client->id, $code, $reason);
-            $promises[] = $client->closeRcvdPromisor;
-        }
-        yield any($promises);
-
-        $this->reactor->cancel($this->timeoutWatcher);
-        foreach ($this->closeTimeouts as $clientId => $expiryTime) {
-            $this->unloadClient($this->clients[$clientId]);
-        }
-
-        $result = $this->application->onStop();
-        if ($result instanceof \Generator) {
-            yield from $result;
         }
     }
 }
