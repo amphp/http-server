@@ -252,6 +252,11 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
     }
     
     private function onParsedControlFrame(Rfc6455Client $client, array $parseResult) {
+        // something went that wrong that we had to shutdown our readWatcher... if parser has anything left, we don't care!
+        if (!$client->readWatcher) {
+            return;
+        }
+
         list($data, $opcode) = $parseResult;
 
         switch ($opcode) {
@@ -263,7 +268,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
                     $code = current(unpack('S', substr($data, 0, 2)));
                     $reason = substr($data, 2);
 
-                    @stream_socket_shutdown($client->socket, STREAM_SHUT_WR);
+                    @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
                     $this->reactor->cancel($client->readWatcher);
                     $client->readWatcher = null;
                     resolve($this->doClose($client, $code, $reason));
@@ -277,7 +282,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
             case FRAME["OP_PONG"]:
                 $pendingPingCount = count($client->pendingPings);
 
-                for ($i=$pendingPingCount - 1; $i >= 0; $i--) {
+                for ($i = $pendingPingCount - 1; $i >= 0; $i--) {
                     if ($client->pendingPings[$i] == $data) {
                         $client->pendingPings = array_slice($client->pendingPings, $i + 1);
                         break;
@@ -288,6 +293,10 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
     }
     
     private function onParsedData(Rfc6455Client $client, array $parseResult) {
+        if ($client->closedAt) {
+            return;
+        }
+
         $client->lastDataReadAt = $this->now;
 
         list($data, $terminated) = $parseResult;
@@ -303,6 +312,13 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
             }
 
             resolve($this->tryAppOnData($client, $msg));
+        } else {
+            $client->msgPromisor->update($data);
+
+            if ($terminated) {
+                $client->msgPromisor->succeed();
+                $client->msgPromisor = null;
+            }
         }
     }
 
@@ -318,9 +334,23 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
     }
 
     private function onParsedError(Rfc6455Client $client, array $parseResult) {
+        // something went that wrong that we had to shutdown our readWatcher... if parser has anything left, we don't care!
+        if (!$client->readWatcher) {
+            return;
+        }
+
         list($msg, $code) = $parseResult;
+
         if ($code) {
-            resolve($this->doClose($client, $code, $msg));
+            if ($client->closedAt || $code == CODES["PROTOCOL_ERROR"]) {
+                @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
+                $this->reactor->cancel($client->readWatcher);
+                $client->readWatcher = null;
+            }
+
+            if (!$client->closedAt) {
+                resolve($this->doClose($client, $code, $msg));
+            }
         }
     }
 
@@ -345,7 +375,11 @@ retry:
             $client->writeBuffer = substr($client->writeBuffer, $bytes);
         } else {
             $client->framesSent++;
-            if ($client->writeControlQueue) {
+            if ($client->closedAt) {
+                @stream_socket_shutdown($socket, STREAM_SHUT_WR);
+                $reactor->cancel($watcherId);
+                $client->writeWatcher = null;
+            } elseif ($client->writeControlQueue) {
                 $client->writeBuffer = array_shift($client->writeControlQueue);
                 $client->lastSentAt = $this->now;
                 goto retry;
@@ -354,10 +388,6 @@ retry:
                 $client->lastDataSentAt = $this->now;
                 $client->lastSentAt = $this->now;
                 goto retry;
-            } elseif ($client->closedAt) {
-                @stream_socket_shutdown($socket, STREAM_SHUT_WR);
-                $reactor->cancel($watcherId);
-                $client->writeWatcher = null;
             } else {
                 $client->writeBuffer = "";
                 $reactor->disable($watcherId);
@@ -502,13 +532,15 @@ retry:
                     $this->close($client->id, $code, $reason);
                 }
 
+                $this->reactor->cancel($this->timeoutWatcher);
+                $this->timeoutWatcher = null;
+                break;
+
+            case Server::STOPPED:
                 $result = $this->application->onStop();
                 if ($result instanceof \Generator) {
                     resolve($result);
                 }
-            case Server::STOPPED:
-                $this->reactor->cancel($this->timeoutWatcher);
-                $this->timeoutWatcher = null;
 
                 foreach ($this->closeTimeouts as $clientId => $expiryTime) {
                     $this->unloadClient($this->clients[$clientId]);
