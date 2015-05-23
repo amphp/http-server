@@ -49,6 +49,20 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
     const MESSAGE_END = 2;
     const CONTROL_END = 3;
 
+    /* Frame control bits */
+    const FIN      = 0b1;
+    const RSV_NONE = 0b000;
+    const OP_CONT  = 0x00;
+    const OP_TEXT  = 0x01;
+    const OP_BIN   = 0x02;
+    const OP_CLOSE = 0x08;
+    const OP_PING  = 0x09;
+    const OP_PONG  = 0x0A;
+
+    const CONTROL = 1;
+    const DATA = 2;
+    const ERROR = 3;
+
     public function __construct(Websocket $application, Reactor $reactor = null) {
         $this->application = $application;
         $this->reactor = $reactor ?: reactor();
@@ -155,7 +169,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         // ------ websocket upgrade complete -------
 
         $socket = $client->socket;
-        $client->parser = new Rfc6455Parser([$this, "onParse"], $options = [
+        $client->parser = $this->parser([$this, "onParse"], $options = [
             "cb_data" => $client
         ]);
         $client->readWatcher = $this->reactor->onReadable($socket, [$this, "onReadable"], $options = [
@@ -252,13 +266,13 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
 
     public function onParse(array $parseResult, Rfc6455Client $client) {
         switch (array_shift($parseResult)) {
-            case Rfc6455Parser::CONTROL:
+            case self::CONTROL:
                 $this->onParsedControlFrame($client, $parseResult);
                 break;
-            case Rfc6455Parser::DATA:
+            case self::DATA:
                 $this->onParsedData($client, $parseResult);
                 break;
-            case Rfc6455Parser::ERROR:
+            case self::ERROR:
                 $this->onParsedError($client, $parseResult);
                 break;
             default:
@@ -368,10 +382,15 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         if ($data != "") {
             $client->lastReadAt = $this->now;
             $client->bytesRead += \strlen($data);
-            $client->framesRead += $client->parser->sink($data);
+            $client->framesRead += $client->parser->send($data);
         } elseif (!is_resource($socket) || @feof($socket)) {
-            $client->closedAt = $this->now;
-            resolve($this->tryAppOnClose($client->id, CODES["ABNORMAL_CLOSE"], "Client closed underlying TCP connection"));
+            if (!$client->closedAt) {
+                $client->closedAt = $this->now;
+                resolve($this->tryAppOnClose($client->id, CODES["ABNORMAL_CLOSE"], "Client closed underlying TCP connection"));
+            } else {
+                unset($this->closeTimeouts[$client->id]);
+            }
+
             $this->unloadClient($client);
         }
     }
@@ -384,6 +403,7 @@ retry:
             $client->writeBuffer = substr($client->writeBuffer, $bytes);
         } elseif ($bytes == 0 && $client->closedAt && (!is_resource($socket) || @feof($socket))) {
             // usually read watcher cares about aborted TCP connections, but when $client->closedAt is true, it might be the case that read watcher is already cancelled and we need to ensure that our writing promise is fulfilled in unloadClient() with a failure
+            unset($this->closeTimeouts[$client->id]);
             $this->unloadClient($client);
         } else {
             $client->framesSent++;
@@ -622,9 +642,219 @@ retry:
         foreach ($this->closeTimeouts as $clientId => $expiryTime) {
             if ($expiryTime < $now) {
                 $this->unloadClient($this->clients[$clientId]);
+                unset($this->closeTimeouts[$clientId]);
             } else {
                 break;
             }
+        }
+    }
+
+    public function parser(callable $emitCallback, $options = []): \Generator {
+        $callbackData = $options["cb_data"] ?? null;
+        $emitThreshold = $options["threshold"] ?? 32768;
+        $maxFrameSize = $options["max_frame_size"] ?? PHP_INT_MAX;
+        $maxMsgSize = $options["max_msg_size"] ?? PHP_INT_MAX;
+        $textOnly = $options["text_only"] ?? false;
+        $validateUtf8 = $options["validate_utf8"] ?? false;
+
+        $dataMsgBytesRecd = 0;
+        $dataArr = [];
+
+        $buffer = yield;
+        $bufferSize = \strlen($buffer);
+        $frames = 0;
+
+        while (1) {
+            $frameBytesRecd = 0;
+            $isControlFrame = null;
+            $payloadReference = '';
+
+            while ($bufferSize < 2) {
+                $buffer .= yield $frames;
+                $bufferSize = \strlen($buffer);
+                $frames = 0;
+            }
+
+            $firstByte = ord($buffer[0]);
+            $secondByte = ord($buffer[1]);
+
+            $buffer = substr($buffer, 2);
+            $bufferSize -= 2;
+
+            $fin = (bool)($firstByte & 0b10000000);
+            // $rsv = ($firstByte & 0b01110000) >> 4; // unused (let's assume the bits are all zero)
+            $opcode = $firstByte & 0b00001111;
+            $isMasked = (bool)($secondByte & 0b10000000);
+            $maskingKey = null;
+            $frameLength = $secondByte & 0b01111111;
+
+            $isControlFrame = ($opcode >= 0x08);
+
+            if ($frameLength === 0x7E) {
+                while ($bufferSize < 2) {
+                    $buffer .= yield $frames;
+                    $bufferSize = \strlen($buffer);
+                    $frames = 0;
+                }
+
+                $frameLength = current(unpack('n', $buffer[0] . $buffer[1]));
+                $buffer = substr($buffer, 2);
+                $bufferSize -= 2;
+            } elseif ($frameLength === 0x7F) {
+                while ($bufferSize < 8) {
+                    $buffer .= yield $frames;
+                    $bufferSize = \strlen($buffer);
+                    $frames = 0;
+                }
+
+                $lengthLong32Pair = array_values(unpack('N2', substr($buffer, 0, 8)));
+                $buffer = substr($buffer, 8);
+                $bufferSize -= 8;
+
+                if (PHP_INT_MAX === 0x7fffffff) {
+                    if ($lengthLong32Pair[0] !== 0 || $lengthLong32Pair[1] < 0) {
+                        $code = CODES["MESSAGE_TOO_LARGE"];
+                            $errorMsg = 'Payload exceeds maximum allowable size';
+                            break;
+                        }
+                    $frameLength = $lengthLong32Pair[1];
+                } else {
+                    $frameLength = ($lengthLong32Pair[0] << 32) | $lengthLong32Pair[1];
+                    if ($frameLength < 0) {
+                        $code = CODES["PROTOCOL_ERROR"];
+                            $errorMsg = 'Most significant bit of 64-bit length field set';
+                            break;
+                        }
+                }
+            }
+
+            if ($isControlFrame && !$fin) {
+                $code = CODES["PROTOCOL_ERROR"];
+                    $errorMsg = 'Illegal control frame fragmentation';
+                    break;
+                } elseif ($isControlFrame && $frameLength > 125) {
+                $code = CODES["PROTOCOL_ERROR"];
+                    $errorMsg = 'Control frame payload must be of maximum 125 bytes or less';
+                    break;
+                } elseif ($maxFrameSize && $frameLength > $maxFrameSize) {
+                $code = CODES["MESSAGE_TOO_LARGE"];
+                    $errorMsg = 'Payload exceeds maximum allowable frame size';
+                    break;
+                } elseif ($maxMsgSize && ($frameLength + $dataMsgBytesRecd) > $maxMsgSize) {
+                $code = CODES["MESSAGE_TOO_LARGE"];
+                    $errorMsg = 'Payload exceeds maximum allowable message size';
+                    break;
+                } elseif ($textOnly && $opcode === 0x02) {
+                $code = CODES["UNACCEPTABLE_TYPE"];
+                    $errorMsg = 'BINARY opcodes (0x02) not accepted';
+                    break;
+                } elseif ($frameLength > 0 && !$isMasked) {
+                $code = CODES["PROTOCOL_ERROR"];
+                    $errorMsg = 'Payload mask required';
+                    break;
+                } elseif (!($opcode || $isControlFrame)) {
+                $code = CODES["PROTOCOL_ERROR"];
+                    $errorMsg = 'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY';
+                    break;
+                }
+
+            if ($isMasked) {
+                while ($bufferSize < 4) {
+                    $buffer .= yield $frames;
+                    $bufferSize = \strlen($buffer);
+                    $frames = 0;
+                }
+
+                $maskingKey = substr($buffer, 0, 4);
+                $buffer = substr($buffer, 4);
+                $bufferSize -= 4;
+            }
+
+            while (1) {
+                if (($bufferSize + $frameBytesRecd) >= $frameLength) {
+                    $dataLen = $frameLength - $frameBytesRecd;
+                } else {
+                    $dataLen = $bufferSize;
+                }
+
+                if ($isControlFrame) {
+                    $payloadReference =& $controlPayload;
+                } else {
+                    $payloadReference =& $dataPayload;
+                    $dataMsgBytesRecd += $dataLen;
+                }
+
+                $payloadReference .= substr($buffer, 0, $dataLen);
+                $frameBytesRecd += $dataLen;
+
+                $buffer = substr($buffer, $dataLen);
+                $bufferSize -= $dataLen;
+
+                if ($frameBytesRecd == $frameLength) {
+                    break;
+                }
+
+                // if we want to validate UTF8, we must *not* send incremental mid-frame updates because the message might be broken in the middle of an utf-8 sequence
+                // also, control frames always are <= 125 bytes, so we never will need this as per https://tools.ietf.org/html/rfc6455#section-5.5
+                if (!$isControlFrame && !($opcode === self::OP_TEXT && $validateUtf8) && $dataMsgBytesRecd >= $emitThreshold) {
+                    if ($isMasked) {
+                        $payloadReference ^= str_repeat($maskingKey, ($frameBytesRecd + 3) >> 2);
+                        // Shift the mask so that the next data where the mask is used on has correct offset.
+                        $maskingKey = substr($maskingKey . $maskingKey, $frameBytesRecd % 4, 4);
+                    }
+
+                    \call_user_func($emitCallback, [self::DATA, $payloadReference, false], $callbackData);
+
+                    $frameLength -= $frameBytesRecd;
+                    $frameBytesRecd = 0;
+                    $payloadReference = '';
+                }
+
+                $buffer .= yield $frames;
+                $bufferSize = \strlen($buffer);
+                $frames = 0;
+            }
+
+            if ($isMasked) {
+                // This is memory hungry but it's ~70x faster than iterating byte-by-byte
+                // over the masked string. Deal with it; manual iteration is untenable.
+                $payloadReference ^= str_repeat($maskingKey, ($frameLength + 3) >> 2);
+            }
+
+            if ($opcode === self::OP_TEXT && $validateUtf8 && !preg_match('//u', $payloadReference)) {
+                $code = CODES["INCONSISTENT_FRAME_DATA_TYPE"];
+                    $errorMsg = 'Invalid TEXT data; UTF-8 required';
+                    break;
+                }
+
+            $frames++;
+
+            if ($fin || $dataMsgBytesRecd >= $emitThreshold) {
+                if ($isControlFrame) {
+                    $emit = [self::CONTROL, $payloadReference, $opcode];
+                } else {
+                    if ($dataArr) {
+                        $dataArr[] = $payloadReference;
+                        $payloadReference = implode($dataArr);
+                        $dataArr = [];
+                    }
+
+                    $emit = [self::DATA, $payloadReference, $fin];
+                    $dataMsgBytesRecd = 0;
+                }
+
+                \call_user_func($emitCallback, $emit, $callbackData);
+            } else {
+                $dataArr[] = $payloadReference;
+            }
+        }
+
+        // An error occurred...
+        // stop parsing here ...
+        \call_user_func($emitCallback, [self::ERROR, $errorMsg, $code], $callbackData);
+        yield $frames;
+        while (1) {
+            yield 0;
         }
     }
 }
