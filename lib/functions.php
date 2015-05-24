@@ -1,6 +1,7 @@
 <?php
 
 namespace Aerys;
+use Colors\Color;
 
 /**
  * Parse server command line options
@@ -38,8 +39,15 @@ function parseCommandLineOptions() {
         }
     }
 
+    $emptyConfig = empty($options['config']) || !is_readable($options['config']);
+
+    if ($emptyConfig) {
+        $c = new Color;
+        echo $c("\n\n  You didn't specify any config file or it's not readable!\n")->bg_red->black, "\n\n";
+    }
+
     $options['debug'] = isset($parsedOpts['d']) || isset($parsedOpts['debug']);
-    $options['help'] = isset($parsedOpts['h']) || isset($parsedOpts['help']);
+    $options['help'] = isset($parsedOpts['h']) || isset($parsedOpts['help']) || $emptyConfig;
 
     return $options;
 }

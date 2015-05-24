@@ -26,7 +26,8 @@
         "php": ">=5.5.0",
         "amphp/amp": "~0.16.0",
         "rdlowrey/auryn": "~0.14",
-        "nikic/fast-route": "~0.1"
+        "nikic/fast-route": "~0.1",
+        "kevinlebrun/colors.php": "~0.4"
 
     },
     "autoload": {
