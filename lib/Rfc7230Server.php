@@ -595,7 +595,7 @@ class Rfc7230Server implements ServerObserver {
 
     private function onCompletedResponse(Rfc7230Client $client) {
         if ($client->onUpgrade) {
-            $this->reactor->immediately($this->exporter, $options["cb_data" => $client]);
+            $this->reactor->immediately($this->exporter, $options = ["cb_data" => $client]);
         } elseif ($client->shouldClose) {
             $this->close($client);
         } elseif (--$client->requestCycleQueueSize) {
@@ -641,8 +641,14 @@ class Rfc7230Server implements ServerObserver {
         if (empty($error)) {
             if ($requestCycle->client->isExported || $requestCycle->client->isDead) {
                 return;
+            } elseif ($requestCycle->response->state() & Response::STARTED) {
+                $requestCycle->response->end();
+            } else {
+                $status = HTTP_STATUS["NOT_FOUND"];
+                $subHeading = "Requested: {$requestCycle->request->uri}";
+                $requestCycle->response->setStatus($status);
+                $requestCycle->response->end($this->makeGenericBody($status, $subHeading));
             }
-            $requestCycle->response->end();
         } elseif (!$error instanceof ClientException) {
             // Ignore uncaught ClientException -- applications aren't required to catch this
             $this->onApplicationError($error, $requestCycle);
