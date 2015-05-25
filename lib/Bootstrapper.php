@@ -57,12 +57,10 @@ class Bootstrapper {
      * @return \Generator
      */
     public static function boot(Reactor $reactor, array $cliArgs, array $observers = []): \Generator {
-        $configFile = $cliArgs["config"];
+        $configFile = self::selectConfigFile($cliArgs);
         $forceDebug = $cliArgs["debug"];
 
-        if (empty($configFile)) {
-            $hosts = [new Host];
-        } elseif (include($configFile)) {
+        if (include($configFile)) {
             $hosts = Host::getDefinitions() ?: [new Host];
         } else {
             throw new \DomainException(
@@ -87,7 +85,7 @@ class Bootstrapper {
 
         $options = self::generateOptionsObjFromArray($options);
 
-        $server = new Server($reactor, $options["debug"]);
+        $server = new Server($reactor, $options->debug);
         $vhostGroup = new VhostGroup;
         foreach ($hosts as $host) {
             $vhost = self::buildVhost($server, $host);
@@ -123,6 +121,27 @@ class Bootstrapper {
         yield $server->start($addressContextMap, [$rfc7230Server, "import"]);
 
         return $server;
+    }
+
+    private static function selectConfigFile(array $cliArgs): string {
+        if (!empty($cliArgs["config"])) {
+            return $cliArgs["config"];
+        }
+        $paths = [
+            __DIR__ . "/../config.php",
+            __DIR__ . "/../etc/config.php",
+            __DIR__ . "/../bin/config.php",
+            "/etc/aerys/config.php",
+        ];
+        foreach ($paths as $path) {
+            if (file_exists($path)) {
+                return $path;
+            }
+        }
+
+        throw new \DomainException(
+            "No config file found"
+        );
     }
 
     private static function generateOptionsObjFromArray(array $optionsArray): Options {
