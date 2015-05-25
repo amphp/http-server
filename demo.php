@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\{ Host, Router, Request, Response };
+use Aerys\{ Host, Request, Response, Router, function root };
 
 /* --- Global server options -------------------------------------------------------------------- */
 
@@ -48,8 +48,12 @@ $router = (new Router)
     })
 ;
 
+// If none of our routes match try to serve a static file
+$root = root($docrootPath = __DIR__);
+
+// If no static files match fallback to this
 $fallback = function(Request $req, Response $res) {
     $res->send("<html><body><h1>Fallback \o/</h1></body></html>");
 };
 
-(new Host)->add($router)->add($fallback);
+(new Host)->add($router)->add($root)->add($fallback);
