@@ -20,7 +20,7 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
             list($resultCode, $parseResult, $errorStruct) = $emitStruct;
         };
 
-        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback, $opts);
+        $parser = Rfc7230Server::parser($emitCallback, $opts);
         $parser->send($unparsable);
 
         $this->assertTrue($invoked > 0);
@@ -44,7 +44,7 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
             list($resultCode, $parseResult, $errorStruct) = $emitStruct;
         };
 
-        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback, $opts);
+        $parser = Rfc7230Server::parser($emitCallback, $opts);
 
         for ($i=0, $c=strlen($unparsable); $i<$c; $i++) {
             $parser->send($unparsable[$i]);
@@ -75,7 +75,7 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
             $body .= $parseResult["body"];
         };
 
-        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback);
+        $parser = Rfc7230Server::parser($emitCallback);
         $parser->send($msg);
 
         $this->assertSame($expectations["invocations"], $invoked, "invocations mismatch");
@@ -102,7 +102,7 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
             $body .= $parseResult["body"];
         };
 
-        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback);
+        $parser = Rfc7230Server::parser($emitCallback);
         for($i=0,$c=strlen($msg);$i<$c;$i++) {
             $parser->send($msg[$i]);
         }
@@ -136,7 +136,7 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
             $body .= $emitStruct[1]["body"];
         };
 
-        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback, ["body_emit_size" => 1]);
+        $parser = Rfc7230Server::parser($emitCallback, ["body_emit_size" => 1]);
 
         for($i=0,$c=strlen($msg);$i<$c;$i++) {
             $parser->send($msg[$i]);
@@ -173,7 +173,7 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
             $body .= $emitStruct[1]["body"];
         };
 
-        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback, ["body_emit_size" => 1]);
+        $parser = Rfc7230Server::parser($emitCallback, ["body_emit_size" => 1]);
         $headers =
             "POST /post-endpoint HTTP/1.1\r\n" .
             "Host: localhost\r\n" .
@@ -213,7 +213,7 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
             $body .= $emitStruct[1]["body"];
         };
 
-        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback, ["body_emit_size" => 1]);
+        $parser = Rfc7230Server::parser($emitCallback, ["body_emit_size" => 1]);
 
         for($i=0,$c=strlen($msg);$i<$c;$i++) {
             $parser->send($msg[$i]);

@@ -1158,7 +1158,7 @@ class Rfc7230Server implements ServerObserver {
         return $promise;
     }
 
-    public function parser(callable $emitCallback, array $options = []): \Generator {
+    static public function parser(callable $emitCallback, array $options = []): \Generator {
         $maxHeaderSize = $options["max_header_size"] ?? 32768;
         $maxBodySize = $options["max_body_size"] ?? 131072;
         $bodyEmitSize = $options["body_emit_size"] ?? 32768;
