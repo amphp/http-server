@@ -71,26 +71,29 @@ class Host {
     }
 
     /**
-     * Add a callable request action
+     * Use a callable request action or Middleware
      *
-     * User actions are invoked in response requests in the order in which they are added.
+     * Host actions are invoked to service requests in the order in which they are added.
      *
-     * @param callable $action
+     * @param callable|\Aerys\Middleware $action
+     * @throws \InvalidArgumentException on invalid $action parameter
      * @return self
      */
-    public function add(callable $action): Host {
-        $this->actions[] = $action;
-
-        return $this;
-    }
-
-    /**
-     * Add a callable request filter
-     *
-     * @param callable $filter
-     */
-    public function filter(callable $filter): Host {
-        $this->filters[] = $filter;
+    public function use($action): Host {
+        $i = 0;
+        if (is_callable($action)) {
+            $i++;
+            $this->actions[] = $action;
+        }
+        if ($action instanceof Middleware) {
+            $i++;
+            $this->filters[] = $action->getFilter();
+        }
+        if (empty($i)) {
+            throw new \InvalidArgumentException(
+                __METHOD__ . " requires a callable action or Middleware instance"
+            );
+        }
 
         return $this;
     }

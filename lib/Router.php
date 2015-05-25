@@ -224,7 +224,7 @@ class Router implements ServerObserver {
      * Here we generate our dispatcher when the server notifies us that it is
      * ready to start (Server::STARTING). Because the Router is an instance of
      * Aerys\ServerObserver it will automatically be attached to the server as
-     * an observer when passed to Aerys\Host::add().
+     * an observer when passed to Aerys\Host::use().
      *
      * @param \SplSubject $subject The notifying Aerys\Server instance
      * @return \Amp\Promise

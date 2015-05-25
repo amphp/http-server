@@ -56,4 +56,4 @@ $fallback = function(Request $req, Response $res) {
     $res->send("<html><body><h1>Fallback \o/</h1></body></html>");
 };
 
-(new Host)->add($router)->add($root)->add($fallback);
+(new Host)->use($router)->use($root)->use($fallback);
