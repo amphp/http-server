@@ -23,6 +23,7 @@ class Server implements \SplSubject {
 
     private $state = self::STOPPED;
     private $reactor;
+    private $debug;
     private $observers;
     private $acceptor;
     private $acceptWatcherIds = [];
@@ -31,8 +32,9 @@ class Server implements \SplSubject {
     /**
      * @param \Amp\Reactor $reactor
      */
-    public function __construct(Reactor $reactor) {
+    public function __construct(Reactor $reactor, bool $debug = false) {
         $this->reactor = $reactor;
+        $this->debug = $debug;
         $this->observers = new \SplObjectStorage;
         $this->acceptor = function($reactor, $watcherId, $server, $onClient) {
             if ($client = @stream_socket_accept($server, 0)) {
@@ -227,6 +229,15 @@ class Server implements \SplSubject {
      */
     public function state(): int {
         return $this->state;
+    }
+
+    /**
+     * Retrieve the server debug flag
+     *
+     * @return bool
+     */
+    public function debug(): bool {
+        return $this->debug;
     }
 
     /**
