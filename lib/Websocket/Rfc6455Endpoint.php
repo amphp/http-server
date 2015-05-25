@@ -182,6 +182,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         ]);
 
         $this->clients[$client->id] = $client;
+        $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
 
         yield from $this->tryAppOnOpen($client->id, $onHandshakeResult);
     }
@@ -246,6 +247,8 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
         if ($client->writeWatcher) {
             $this->reactor->cancel($client->writeWatcher);
         }
+
+        unset($this->heartbeatTimeouts[$client->id]);
         ($client->serverRefClearer)();
         unset($this->clients[$client->id]);
 
@@ -309,14 +312,8 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
                 break;
 
             case FRAME["OP_PONG"]:
-                $pendingPingCount = count($client->pendingPings);
-
-                for ($i = $pendingPingCount - 1; $i >= 0; $i--) {
-                    if ($client->pendingPings[$i] == $data) {
-                        $client->pendingPings = array_slice($client->pendingPings, $i + 1);
-                        break;
-                    }
-                }
+                // We need a min() here, else someone might just send a pong frame with a very high pong count and leave TCP connection in open state... Then we'd accumulate connections which never are cleaned up...
+                $client->pongCount = min($client->pingCount, $data);
                 break;
         }
     }
@@ -614,15 +611,12 @@ retry:
     }
 
     private function sendHeartbeatPing(Rfc6455Client $client) {
-        $ord = rand(48, 90);
-        $data = chr($ord);
-
-        if (array_push($client->pendingPings, $data) > $this->queuedPingLimit) {
+        if ($client->pingCount - $client->pongCount > $this->queuedPingLimit) {
             $code = CODES["POLICY_VIOLATION"];
             $reason = 'Exceeded unanswered PING limit';
             $this->doClose($client, $code, $reason);
         } else {
-            $this->compile($client, $data, FRAME["OP_PING"]);
+            $this->compile($client, $client->pingCount++, FRAME["OP_PING"]);
         }
     }
 
@@ -633,7 +627,7 @@ retry:
             if ($expiryTime < $now) {
                 $client = $this->clients[$clientId];
                 unset($this->heartbeatTimeouts[$clientId]);
-                $this->heartbeatTimeouts[$clientId] = $now;
+                $this->heartbeatTimeouts[$clientId] = $now + $this->heartbeatPeriod;
                 $this->sendHeartbeatPing($client);
             } else {
                 break;
@@ -803,7 +797,7 @@ retry:
                         $maskingKey = substr($maskingKey . $maskingKey, $frameBytesRecd % 4, 4);
                     }
 
-                    \call_user_func($emitCallback, [self::DATA, $payloadReference, false], $callbackData);
+                    $emitCallback([self::DATA, $payloadReference, false], $callbackData);
 
                     $frameLength -= $frameBytesRecd;
                     $frameBytesRecd = 0;
@@ -843,7 +837,7 @@ retry:
                     $dataMsgBytesRecd = 0;
                 }
 
-                \call_user_func($emitCallback, $emit, $callbackData);
+                $emitCallback($emit, $callbackData);
             } else {
                 $dataArr[] = $payloadReference;
             }
@@ -851,7 +845,7 @@ retry:
 
         // An error occurred...
         // stop parsing here ...
-        \call_user_func($emitCallback, [self::ERROR, $errorMsg, $code], $callbackData);
+        $emitCallback([self::ERROR, $errorMsg, $code], $callbackData);
         yield $frames;
         while (1) {
             yield 0;
