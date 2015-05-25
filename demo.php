@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\{ Host, Request, Response, function router, function root };
+use Aerys\{ Host, Request, Response, Router, function root };
 
 /* --- Global server options -------------------------------------------------------------------- */
 
