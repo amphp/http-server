@@ -43,6 +43,18 @@ class Rfc7230Server implements ServerObserver {
     private $chunkResponseFilter;
     private $bufferResponseFilter;
 
+    /* Parse constants */
+    const ERROR = 1;
+    const RESULT = 2;
+    const ENTITY_HEADERS = 4;
+    const ENTITY_PART = 8;
+    const ENTITY_RESULT = 16;
+
+    const ENTITY_HEADERS_PATTERN = "(
+        ([^()<>@,;:\\\"/[\]?={}\x01-\x20\x7F]+):[\x20\x09]*
+        ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
+    )x";
+
     public function __construct(Reactor $reactor, VhostGroup $vhostGroup, Options $options) {
         $this->reactor = $reactor;
         $this->vhostGroup = $vhostGroup;
@@ -192,7 +204,7 @@ class Rfc7230Server implements ServerObserver {
         $portStartPos = strrpos($serverName, ":");
         $client->serverAddr = substr($serverName, 0, $portStartPos);
         $client->serverPort = substr($serverName, $portStartPos + 1);
-        $client->requestParser = new Rfc7230RequestParser([$this, "onParse"], $options = [
+        $client->requestParser = $this->parser([$this, "onParse"], $options = [
             "max_body_size" => $this->options->maxBodySize,
             "max_header_size" => $this->options->maxHeaderSize,
             "body_emit_size" => $this->options->ioGranularity,
@@ -279,7 +291,7 @@ class Rfc7230Server implements ServerObserver {
             $this->renewKeepAliveTimeout($client);
         }
 
-        $client->requestParser->sink($data);
+        $client->requestParser->send($data);
     }
 
     /**
@@ -292,23 +304,23 @@ class Rfc7230Server implements ServerObserver {
     public function onParse(array $parseStruct, $client) {
         list($eventType, $parseResult, $errorStruct) = $parseStruct;
         switch ($eventType) {
-            case Rfc7230RequestParser::RESULT:
+            case self::RESULT:
                 $this->onParsedMessageWithoutEntity($client, $parseResult);
                 break;
-            case Rfc7230RequestParser::ENTITY_HEADERS:
+            case self::ENTITY_HEADERS:
                 $this->onParsedEntityHeaders($client, $parseResult);
                 break;
-            case Rfc7230RequestParser::ENTITY_PART:
+            case self::ENTITY_PART:
                 $this->onParsedEntityPart($client, $parseResult);
                 break;
-            case Rfc7230RequestParser::ENTITY_RESULT:
+            case self::ENTITY_RESULT:
                 $this->onParsedMessageWithEntity($client, $parseResult);
                 break;
-            case Rfc7230RequestParser::ERROR:
+            case self::ERROR:
                 $this->onParseError($client, $parseResult, $errorStruct);
                 break;
             default:
-                assert(false, "Unexpected Rfc7230RequestParser result code encountered");
+                assert(false, "Unexpected parser result code encountered");
         }
     }
 
@@ -1138,5 +1150,289 @@ class Rfc7230Server implements ServerObserver {
         $this->serverInfo = $subject->inspect();
 
         return $promise;
+    }
+
+    public function parser(callable $emitCallback, array $options = []): \Generator {
+        $maxHeaderSize = $options["max_header_size"] ?? 32768;
+        $maxBodySize = $options["max_body_size"] ?? 131072;
+        $bodyEmitSize = $options["body_emit_size"] ?? 32768;
+        $callbackData = $options["cb_data"] ?? null;
+
+        $buffer = yield;
+
+        while (1) {
+            unset($traceBuffer, $protocol, $method, $uri, $headers); // break potential references
+
+            $traceBuffer = null;
+            $headers = [];
+            $contentLength = null;
+            $isChunked = false;
+            $protocol = null;
+            $uri = null;
+            $method = null;
+
+            $parseResult = [
+                "trace" => &$traceBuffer,
+                "protocol" => &$protocol,
+                "method" => &$method,
+                "uri" => &$uri,
+                "headers" => &$headers,
+                "body" => "",
+            ];
+
+            while (1) {
+                $buffer = ltrim($buffer, "\r\n");
+
+                if ($headerPos = strpos($buffer, "\r\n\r\n")) {
+                    $startLineAndHeaders = substr($buffer, 0, $headerPos + 2);
+                    $buffer = $buffer = (string)substr($buffer, $headerPos + 4);
+                    break;
+                } elseif ($headerPos = strpos($buffer, "\n\n")) {
+                    $startLineAndHeaders = substr($buffer, 0, $headerPos + 1);
+                    $buffer = $buffer = (string)substr($buffer, $headerPos + 2);
+                    break;
+                } elseif ($maxHeaderSize > 0 && strlen($buffer) > $maxHeaderSize) {
+                    $error = [431, "Bad Request: header size violation"];
+                    break 2;
+                }
+
+                $buffer .= yield;
+            }
+
+            $startLineEndPos = strpos($startLineAndHeaders, "\n");
+            $startLine = rtrim(substr($startLineAndHeaders, 0, $startLineEndPos), "\r\n");
+            $rawHeaders = substr($startLineAndHeaders, $startLineEndPos + 1);
+            $traceBuffer = $startLineAndHeaders;
+
+            if (!$method = strtok($startLine, " ")) {
+                $error = [400, "Bad Request: invalid request line"];
+                break;
+            }
+
+            if (!$uri = strtok(" ")) {
+                $error = [400, "Bad Request: invalid request line"];
+                break;
+            }
+
+            $protocol = strtok(" ");
+            if (stripos($protocol, "HTTP/") !== 0) {
+                $error = [400, "Bad Request: invalid request line"];
+                break;
+            }
+
+            $protocol = substr($protocol, 5);
+            if ($protocol !== "1.1" && $protocol !== "1.0") {
+                if ($protocol === "0.9") {
+                    $error = [505, "Protocol not supported"];
+                } else {
+                    $error = [400, "Bad Request: invalid protocol"];
+                }
+                break;
+            }
+
+            if ($rawHeaders) {
+                if (strpos($rawHeaders, "\n\x20") || strpos($rawHeaders, "\n\t")) {
+                    $error = [400, "Bad Request: multi-line headers deprecated by RFC 7230"];
+                    break;
+                }
+
+                if (!preg_match_all(self::ENTITY_HEADERS_PATTERN, $rawHeaders, $matches)) {
+                    $error = [400, "Bad Request: header syntax violation"];
+                    break;
+                }
+
+                list(, $fields, $values) = $matches;
+
+                $headers = [];
+                foreach ($fields as $index => $field) {
+                    $headers[$field][] = $values[$index];
+                }
+
+                if ($headers) {
+                    $headers = array_change_key_case($headers, CASE_UPPER);
+                }
+
+                if (isset($headers["CONTENT-LENGTH"])) {
+                    $contentLength = (int) $headers["CONTENT-LENGTH"][0];
+                }
+
+                if (isset($headers["TRANSFER-ENCODING"])) {
+                    $value = $headers["TRANSFER-ENCODING"][0];
+                    $isChunked = (bool) strcasecmp($value, "identity");
+                }
+
+                // @TODO validate that the bytes in matched headers match the raw input. If not there is a syntax error.
+            }
+
+            if ($contentLength > $maxBodySize) {
+                $error = [400, "Bad request: entity too large"];
+                break;
+            } elseif (($method == "HEAD" || $method == "TRACE" || $method == "OPTIONS") || $contentLength === 0) {
+                // No body allowed for these messages
+                $hasBody = false;
+            } else {
+                $hasBody = $isChunked || $contentLength;
+            }
+
+            if (!$hasBody) {
+                $emitCallback([self::RESULT, $parseResult, null], $callbackData);
+                continue;
+            }
+
+            $emitCallback([self::ENTITY_HEADERS, $parseResult, null], $callbackData);
+            $body = "";
+
+            if ($isChunked) {
+                while (1) {
+                    while (false === ($lineEndPos = strpos($buffer, "\r\n"))) {
+                        $buffer .= yield;
+                    }
+
+                    $line = substr($buffer, 0, $lineEndPos);
+                    $buffer = substr($buffer, $lineEndPos + 2);
+                    $hex = trim(ltrim($line, "0")) ?: 0;
+                    $chunkLenRemaining = hexdec($hex);
+
+                    if ($lineEndPos === 0 || $hex != dechex($chunkLenRemaining)) {
+                        $error = [400, "Bad Request: hex chunk size expected"];
+                        break 2;
+                    }
+
+                    if ($chunkLenRemaining === 0) {
+                        while (1) {
+                            $firstTwoBytes = substr($buffer, 0, 2);
+                            if ($firstTwoBytes === "\r\n") {
+                                $buffer = substr($buffer, 2);
+                                break 2; // finished ($is_chunked loop)
+                            }
+                            if ($firstTwoBytes !== false && $firstTwoBytes !== "\r") {
+                                break;
+                            }
+                            $buffer .= yield;
+                        }
+
+                        do {
+                            if ($trailerSize = strpos($buffer, "\r\n\r\n")) {
+                                $trailers = substr($buffer, 0, $trailerSize + 2);
+                                $buffer = substr($buffer, $trailerSize + 4);
+                            } elseif ($trailerSize = strpos($buffer, "\n\n")) {
+                                $trailers = substr($buffer, 0, $trailerSize + 1);
+                                $buffer = substr($buffer, $trailerSize + 2);
+                            } else {
+                                $buffer .= yield;
+                                $trailerSize = \strlen($buffer);
+                                $trailers = null;
+                            }
+
+                            if ($maxHeaderSize > 0 && $trailerSize > $maxHeaderSize) {
+                                $error = [431, "Too much junk in the trunk (trailer size violation)"];
+                                break 3;
+                            }
+
+                            // We perform this check AFTER validating trailer size so we can't be DoS'd by
+                            // maliciously-sized trailer headers.
+                        } while (!isset($trailers));
+
+                        if (strpos($trailers, "\n\x20") || strpos($trailers, "\n\t")) {
+                            $error = [400, "Bad Request: multi-line trailers deprecated by RFC 7230"];
+                            break 2;
+                        }
+
+                        if (!preg_match_all(self::ENTITY_HEADERS_PATTERN, $trailers, $matches)) {
+                            $error = [400, "Bad Request: trailer syntax violation"];
+                            break 2;
+                        }
+
+                        list(, $fields, $values) = $matches;
+                        $trailers = [];
+                        foreach ($fields as $index => $field) {
+                            $trailers[$field][] = $values[$index];
+                        }
+
+                        if ($trailers) {
+                            $trailers = array_change_key_case($trailers, CASE_UPPER);
+
+                            foreach (["TRANSFER-ENCODING", "CONTENT-LENGTH", "TRAILER"] as $remove) {
+                                unset($trailers[$remove]);
+                            }
+
+                            if ($trailers) {
+                                $headers = array_merge($headers, $trailers);
+                            }
+                        }
+
+                        break; // finished ($is_chunked loop)
+                    } elseif ($chunkLenRemaining > $maxBodySize) {
+                        $error = [400, "Bad Request: excessive chunk size"];
+                        break 2;
+                    } else {
+                        $bodyBufferSize = 0;
+
+                        while (1) {
+                            $bufferLen = \strlen($buffer);
+                            // These first two (extreme) edge cases prevent errors where the packet boundary ends after
+                            // the \r and before the \n at the end of a chunk.
+                            if ($bufferLen === $chunkLenRemaining || $bufferLen === $chunkLenRemaining + 1) {
+                                $buffer .= yield;
+                                continue;
+                            } elseif ($bufferLen >= $chunkLenRemaining + 2) {
+                                $body .= substr($buffer, 0, $chunkLenRemaining);
+                                $buffer = substr($buffer, $chunkLenRemaining + 2);
+                                $bodyBufferSize += $chunkLenRemaining;
+                            } else {
+                                $body .= $buffer;
+                                $bodyBufferSize += $bufferLen;
+                                $chunkLenRemaining -= $bufferLen;
+                            }
+
+                            if ($bodyBufferSize >= $bodyEmitSize) {
+                                $emitCallback([self::ENTITY_PART, ["body" => $body], null], $callbackData);
+                                $body = '';
+                                $bodyBufferSize = 0;
+                            }
+
+                            if ($bufferLen >= $chunkLenRemaining + 2) {
+                                $chunkLenRemaining = null;
+                                continue 2; // next chunk ($is_chunked loop)
+                            } else {
+                                $buffer = yield;
+                            }
+                        }
+                    }
+                }
+            } else {
+                $bufferDataSize = \strlen($buffer);
+
+                while ($bufferDataSize < $contentLength) {
+                    if ($bufferDataSize >= $bodyEmitSize) {
+                        $emitCallback([self::ENTITY_PART, ["body" => $buffer], null], $callbackData);
+                        $buffer = "";
+                        $contentLength -= $bufferDataSize;
+                    }
+                    $buffer .= yield;
+                    $bufferDataSize = \strlen($buffer);
+                }
+
+                if ($bufferDataSize === $contentLength) {
+                    $body = $buffer;
+                    $buffer = "";
+                } else {
+                    $body = substr($buffer, 0, $contentLength);
+                    $buffer = (string)substr($buffer, $contentLength);
+                }
+            }
+
+            if ($body != "") {
+                $emitCallback([self::ENTITY_PART, ["body" => $body], null], $callbackData);
+            }
+            $emitCallback([self::ENTITY_RESULT, $parseResult, null], $callbackData);
+        }
+
+        // An error occurred...
+        // stop parsing here ...
+        $emitCallback([self::ERROR, $parseResult, $error], $callbackData);
+        while (1) {
+            yield;
+        }
     }
 }

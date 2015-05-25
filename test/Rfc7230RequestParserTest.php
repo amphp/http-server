@@ -2,9 +2,9 @@
 
 namespace Aerys\Test;
 
-use Aerys\Rfc7230RequestParser;
+use Aerys\Rfc7230Server;
 
-class Rfc7230RequestParserTest extends \PHPUnit_Framework_TestCase {
+class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
 
     /**
      * @dataProvider provideUnparsableRequests
@@ -20,11 +20,11 @@ class Rfc7230RequestParserTest extends \PHPUnit_Framework_TestCase {
             list($resultCode, $parseResult, $errorStruct) = $emitStruct;
         };
 
-        $parser = new Rfc7230RequestParser($emitCallback, $opts);
-        $parser->sink($unparsable);
+        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback, $opts);
+        $parser->send($unparsable);
 
         $this->assertTrue($invoked > 0);
-        $this->assertSame(Rfc7230RequestParser::ERROR, $resultCode);
+        $this->assertSame(Rfc7230Server::ERROR, $resultCode);
         list($actualErrCode, $actualErrMsg) = $errorStruct;
         $this->assertSame($errMsg, $actualErrMsg);
         $this->assertSame($errCode, $actualErrCode);
@@ -44,17 +44,17 @@ class Rfc7230RequestParserTest extends \PHPUnit_Framework_TestCase {
             list($resultCode, $parseResult, $errorStruct) = $emitStruct;
         };
 
-        $parser = new Rfc7230RequestParser($emitCallback, $opts);
+        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback, $opts);
 
         for ($i=0, $c=strlen($unparsable); $i<$c; $i++) {
-            $parser->sink($unparsable[$i]);
+            $parser->send($unparsable[$i]);
             if ($errorStruct) {
                 break;
             }
         }
 
         $this->assertTrue($invoked > 0);
-        $this->assertSame(Rfc7230RequestParser::ERROR, $resultCode);
+        $this->assertSame(Rfc7230Server::ERROR, $resultCode);
         list($actualErrCode, $actualErrMsg) = $errorStruct;
         $this->assertSame($errMsg, $actualErrMsg);
         $this->assertSame($errCode, $actualErrCode);
@@ -75,8 +75,8 @@ class Rfc7230RequestParserTest extends \PHPUnit_Framework_TestCase {
             $body .= $parseResult["body"];
         };
 
-        $parser = new Rfc7230RequestParser($emitCallback);
-        $parser->sink($msg);
+        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback);
+        $parser->send($msg);
 
         $this->assertSame($expectations["invocations"], $invoked, "invocations mismatch");
         $this->assertSame($expectations["trace"], $parseResult["trace"], "trace mismatch");
@@ -102,9 +102,9 @@ class Rfc7230RequestParserTest extends \PHPUnit_Framework_TestCase {
             $body .= $parseResult["body"];
         };
 
-        $parser = new Rfc7230RequestParser($emitCallback);
+        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback);
         for($i=0,$c=strlen($msg);$i<$c;$i++) {
-            $parser->sink($msg[$i]);
+            $parser->send($msg[$i]);
         }
 
         $this->assertSame($expectations["invocations"], $invoked, "invocations mismatch");
@@ -136,10 +136,10 @@ class Rfc7230RequestParserTest extends \PHPUnit_Framework_TestCase {
             $body .= $emitStruct[1]["body"];
         };
 
-        $parser = new Rfc7230RequestParser($emitCallback, ["body_emit_size" => 1]);
+        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback, ["body_emit_size" => 1]);
 
         for($i=0,$c=strlen($msg);$i<$c;$i++) {
-            $parser->sink($msg[$i]);
+            $parser->send($msg[$i]);
         }
 
         // once for headers and once for each body byte
@@ -155,25 +155,25 @@ class Rfc7230RequestParserTest extends \PHPUnit_Framework_TestCase {
             list($parseCode, $parseResultArr) = $emitStruct;
             switch($invoked) {
                 case 1:
-                    $this->assertSame(Rfc7230RequestParser::ENTITY_HEADERS, $parseCode);
+                    $this->assertSame(Rfc7230Server::ENTITY_HEADERS, $parseCode);
                     $this->assertSame("", $parseResultArr["body"]);
                     break;
                 case 2:
-                    $this->assertSame(Rfc7230RequestParser::ENTITY_PART, $parseCode);
+                    $this->assertSame(Rfc7230Server::ENTITY_PART, $parseCode);
                     $this->assertSame("1\r\n", $parseResultArr["body"]);
                     break;
                 case 3:
-                    $this->assertSame(Rfc7230RequestParser::ENTITY_PART, $parseCode);
+                    $this->assertSame(Rfc7230Server::ENTITY_PART, $parseCode);
                     $this->assertSame("2", $parseResultArr["body"]);
                     break;
                 case 4:
-                    $this->assertSame(Rfc7230RequestParser::ENTITY_RESULT, $parseCode);
+                    $this->assertSame(Rfc7230Server::ENTITY_RESULT, $parseCode);
                     break;
             }
             $body .= $emitStruct[1]["body"];
         };
 
-        $parser = new Rfc7230RequestParser($emitCallback, ["body_emit_size" => 1]);
+        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback, ["body_emit_size" => 1]);
         $headers =
             "POST /post-endpoint HTTP/1.1\r\n" .
             "Host: localhost\r\n" .
@@ -181,9 +181,9 @@ class Rfc7230RequestParserTest extends \PHPUnit_Framework_TestCase {
         ;
         $part1 = "1\r\n";
         $part2 = "2\r\n";
-        $parser->sink($headers);
-        $parser->sink($part1);
-        $parser->sink($part2);
+        $parser->send($headers);
+        $parser->send($part1);
+        $parser->send($part2);
 
         $this->assertSame(4, $invoked);
         $this->assertSame("1\r\n2", $body);
@@ -213,13 +213,13 @@ class Rfc7230RequestParserTest extends \PHPUnit_Framework_TestCase {
             $body .= $emitStruct[1]["body"];
         };
 
-        $parser = new Rfc7230RequestParser($emitCallback, ["body_emit_size" => 1]);
+        $parser = (new \ReflectionClass(Rfc7230Server::class))->newInstanceWithoutConstructor()->parser($emitCallback, ["body_emit_size" => 1]);
 
         for($i=0,$c=strlen($msg);$i<$c;$i++) {
-            $parser->sink($msg[$i]);
+            $parser->send($msg[$i]);
         }
 
-        $this->assertSame(strlen($expectedBody) + 1, $invoked);
+        $this->assertSame(strlen($expectedBody) + 2, $invoked);
         $this->assertSame($expectedBody, $body);
     }
 
