@@ -40,13 +40,12 @@ abstract class Root implements ServerObserver {
     protected $defaultCharset = "utf-8";
     protected $useAggressiveCacheHeaders = false;
     protected $aggressiveCacheMultiplier = 0.9;
-    protected $cacheEntryTtl = 5;
+    protected $cacheEntryTtl = 10;
     protected $cacheEntryCount = 0;
     protected $cacheEntryMaxCount = 2048;
     protected $bufferedFileCount = 0;
     protected $bufferedFileMaxCount = 50;
     protected $bufferedFileMaxSize = 524288;
-
     protected $debug;
 
     /**
@@ -135,7 +134,7 @@ abstract class Root implements ServerObserver {
         // We specifically break the lookup generator out into its own method
         // so that we can potentially avoid forcing the server to resolve a
         // coroutine when the file is already cached.
-        return ($stat = $this->fetchCachedStat($path, $request))
+        return ($stat = $this->fetchCachedStat($request))
             ? $this->doResponse($stat, $request, $response)
             : $this->doResponseWithStatLookup($path, $request, $response);
     }
@@ -223,13 +222,13 @@ abstract class Root implements ServerObserver {
         return implode($outputStack);
     }
 
-    protected function fetchCachedStat(string $path, Request $request) {
+    protected function fetchCachedStat(Request $request) {
         // We specifically allow users to bypass cached representations in debug mode by
         // using their browser's "force refresh" functionality. This lets us avoid the
         // annoyance of stale file representations being served for a few seconds after
         // changes have been written to disk.
         if (empty($this->debug)) {
-            return $this->cache[$path] ?? null;
+            return $this->cache[$request->uriPath] ?? null;
         } elseif (isset($request->headers["CACHE-CONTROL"]) &&
             stripos($request->headers["CACHE-CONTROL"], "no-cache") !== false
         ) {
@@ -239,7 +238,7 @@ abstract class Root implements ServerObserver {
         ) {
             return null;
         } else {
-            return $this->cache[$path] ?? null;
+            return $this->cache[$request->uriPath] ?? null;
         }
     }
 
@@ -250,7 +249,7 @@ abstract class Root implements ServerObserver {
         if ($this->bufferedFileCount >= $this->bufferedFileMaxCount) {
             return false;
         }
-        if ($this->cacheEntryCount < $this->cacheEntryMaxCount) {
+        if ($this->cacheEntryCount >= $this->cacheEntryMaxCount) {
             return false;
         }
 
@@ -692,8 +691,12 @@ abstract class Root implements ServerObserver {
      */
     public function update(\SplSubject $subject): Promise {
         switch ($subject->state()) {
+            case Server::STARTING:
+                $this->debug = $subject->debug();
+                break;
             case Server::STARTED:
                 $this->reactor->enable($this->cacheWatcher);
+                break;
             case Server::STOPPED:
                 $this->reactor->disable($this->cacheWatcher);
                 $this->cache = [];

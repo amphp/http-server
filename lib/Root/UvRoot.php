@@ -16,7 +16,7 @@ final class UvRoot extends Root {
     private function noop() {}
 
     final protected function stat(string $path): \Generator {
-        $stat = new Stat;
+        $stat = new UvStat;
         $stat->exists = false;
 
         if (!$info = yield $this->getFileInfo($path)) {
@@ -39,12 +39,14 @@ final class UvRoot extends Root {
         $inode = $this->useEtagInode ? $stat->inode : "";
         $stat->etag = md5("{$stat->path}{$stat->mtime}{$stat->size}{$inode}");
 
+        // We need these specifically for our UvStat instance
+        $stat->handle = $info["handle"];
+        $stat->loop = $this->loop;
+
         if ($this->shouldBufferContent($stat)) {
-            $stat->buffer = yield $this->buffer($info["handle"], $info["size"]);
+            $stat->buffer = yield $this->buffer($stat->handle, $info["size"]);
             $this->bufferedFileCount += isset($stat->buffer);
         }
-
-        uv_fs_close($this->loop, $info["handle"], [$this, "noop"]);
 
         return $stat;
     }
@@ -107,56 +109,43 @@ final class UvRoot extends Root {
      * error is logged appropriately and output is discontinued.
      */
     final protected function respond(Response $response, Stat $stat, Range $range = null): \Generator {
-        if (!$handle = @fopen($stat->path, "r")) {
-            throw new \RuntimeException(
-                "Failed opening file handle"
-            );
-        }
-
-        // yield after blocking IO to give other code a chance to execute
-        yield;
-
         if (empty($range)) {
-            yield from $this->doNonRange($handle, $response);
+            yield from $this->stream($response, $stat->handle, 0, $stat->size);
         } elseif (empty($range->ranges[1])) {
             list($startPos, $endPos) = $range->ranges[0];
-            yield from $this->doSingleRange($handle, $response, $startPos, $endPos);
+            yield from $this->stream($response, $stat->handle, $startPos, ($endPos - $startPos));
         } else {
-            yield from $this->doMultiRange($handle, $response, $stat, $range);
+            yield from $this->streamMulti($stat, $response, $range);
         }
     }
 
-    private function doNonRange($handle, Response $response): \Generator {
-        while (!@feof($handle)) {
-            if (($chunk = @fread($handle, 8192)) === false) {
-                throw new \RuntimeException(
-                    "Failed reading from open file handle"
-                );
-            }
+    private function stream(Response $response, $fh, int $pos, int $len): \Generator {
+        do {
+            $len = ($len > 32768) ? 32768 : $len;
+            $chunk = yield $this->readChunk($fh, $pos, $len);
+            $pos += $len;
             $response->stream($chunk);
+        } while ($pos < $len);
 
-            // yield after blocking IO to give other code a chance to execute
-            yield;
-        }
+        $response->end();
     }
 
-    private function doSingleRange($handle, Response $response, int $startPos, int $endPos): \Generator {
-        $bytesRemaining = $endPos - $startPos;
-        while ($bytesRemaining) {
-            $toBuffer = ($bytesRemaining > 8192) ? 8192 : $bytesRemaining;
-            if (($chunk = @fread($handle, $toBuffer)) === false) {
-                throw new \RuntimeException(
+    private function readChunk($fh, int $pos, int $len): Promise {
+        $promisor = new Deferred;
+        uv_fs_read($this->loop, $fh, $pos, $len, function($fh, $nread, $buffer) use ($promisor) {
+            if ($nread < 0) {
+                $promisor->fail(new \RuntimeException(
                     "Failed reading from open file handle"
-                );
+                ));
+            } else {
+                $promisor->succeed($buffer);
             }
-            $response->stream($chunk);
+        });
 
-            // yield after blocking IO to give other code a chance to execute
-            yield;
-        }
+        return $promisor->promise();
     }
 
-    private function doMultiRange($handle, Response $response, Stat $stat, Range $range): \Generator {
+    private function streamMulti(UvStat $stat, Response $response, Range $range): \Generator {
         foreach ($range->ranges as list($startPos, $endPos)) {
             $header = sprintf(
                 "--%s\r\nContent-Type: %s\r\nContent-Range: bytes %d-%d/%d\r\n\r\n",
@@ -167,7 +156,7 @@ final class UvRoot extends Root {
                 $stat->size
             );
             $response->stream($header);
-            yield from $this->doSingleRange($handle, $response, $startPos, $endPos);
+            yield from $this->stream($response, $stat->handle, $startPos, $endPos);
             $response->stream("\r\n");
         }
         $response->stream("--{$range->boundary}--");
