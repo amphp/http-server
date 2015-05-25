@@ -282,7 +282,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
                 assert(false, "Unknown Rfc6455Parser result code");
         }
     }
-    
+
     private function onParsedControlFrame(Rfc6455Client $client, array $parseResult) {
         // something went that wrong that we had to shutdown our readWatcher... if parser has anything left, we don't care!
         if (!$client->readWatcher) {
@@ -317,7 +317,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
                 break;
         }
     }
-    
+
     private function onParsedData(Rfc6455Client $client, array $parseResult) {
         if ($client->closedAt) {
             return;
@@ -643,7 +643,14 @@ retry:
         }
     }
 
-    public function parser(callable $emitCallback, $options = []): \Generator {
+    /**
+     * A stateful generator websocket frame parser
+     *
+     * @param callable $emitCallback A callback to receive parser event emissions
+     * @param array $options Optional parser settings
+     * @return \Generator
+     */
+    static public function parser(callable $emitCallback, array $options = []): \Generator {
         $callbackData = $options["cb_data"] ?? null;
         $emitThreshold = $options["threshold"] ?? 32768;
         $maxFrameSize = $options["max_frame_size"] ?? PHP_INT_MAX;
