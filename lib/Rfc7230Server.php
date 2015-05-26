@@ -1142,6 +1142,9 @@ class Rfc7230Server implements ServerObserver {
                     $this->keepAliveWatcher = null;
                     $this->stopPromisor = null;
                 });
+                if (empty($this->clientCount)) {
+                    $this->stopPromisor->succeed();
+                }
                 break;
             case Server::STOPPED:
                 $this->reactor->cancel($this->timeUpdateWatcher);

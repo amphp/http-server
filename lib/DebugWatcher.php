@@ -31,7 +31,7 @@ class DebugWatcher implements Watcher {
             private $reactor;
 
             public function __construct($reactor) {
-                $this->reactor;
+                $this->reactor = $reactor;
             }
 
             public function update(\SplSubject $server): Promise {
@@ -52,8 +52,14 @@ class DebugWatcher implements Watcher {
 
                 $onSignal = function() use ($server) {
                     try {
-                        wait($server->stop(), $this->reactor);
-                        exit(0);
+                        $server->stop()->when(function($error) {
+                            if ($error) {
+                                error_log($e->__toString());
+                                exit(1);
+                            } else {
+                                exit(0);
+                            }
+                        });
                     } catch (\BaseException $e) {
                         error_log($e->__toString());
                         exit(1);
@@ -61,12 +67,8 @@ class DebugWatcher implements Watcher {
                 };
 
                 if ($this->reactor instanceof UvReactor) {
-                    $this->reactor->onSignal(\UV::SIGINT, $signalHandler);
-                    $this->reactor->onSignal(\UV::SIGTERM, $signalHandler);
-                } elseif (extension_loaded("pcntl")) {
-                    // @TODO This is buggy right now ... figure out what's wrong
-                    //pcntl_signal(SIGINT, $signalHandler);
-                    //pcntl_signal(SIGTERM, $signalHandler);
+                    $this->reactor->onSignal(\UV::SIGINT, $onSignal);
+                    $this->reactor->onSignal(\UV::SIGTERM, $onSignal);
                 }
             }
 
