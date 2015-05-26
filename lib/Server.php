@@ -16,10 +16,10 @@ use Amp\{
 class Server implements \SplSubject {
     use Struct;
 
-    const STOPPED   = 0b000;
-    const STARTING  = 0b001;
-    const STARTED   = 0b010;
-    const STOPPING  = 0b100;
+    const STOPPED   = 0;
+    const STARTING  = 1;
+    const STARTED   = 2;
+    const STOPPING  = 3;
 
     private $state = self::STOPPED;
     private $reactor;
@@ -125,7 +125,7 @@ class Server implements \SplSubject {
         if ($hadErrors = $notifyResult[0]) {
             yield from $this->doStop();
             throw new \RuntimeException(
-                "Server STARTING observer initialization failure"
+                "Server STARTED observer initialization failure"
             );
         }
 
