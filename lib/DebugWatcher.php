@@ -26,7 +26,7 @@ class DebugWatcher {
         $this->climate = $climate;
         $this->logger = $logger ?: new DebugLogger($climate);
         $reactor->onError(function(\BaseException $uncaught) {
-            $this->climate->error($uncaught->__toString());
+            $this->logger->critical($uncaught->__toString());
         });
     }
 
@@ -46,7 +46,7 @@ class DebugWatcher {
         yield $server->start($addrCtxMap, [$rfc7230Server, "import"]);
 
         foreach ($server->inspect()["boundAddresses"] as $address) {
-            $this->logger->log(LogLevel::INFO, "Listening for HTTP traffic on {$address}");
+            $this->logger->info("Listening for HTTP traffic on {$address}");
         }
     }
 
@@ -65,7 +65,7 @@ class DebugWatcher {
                 yield $server->stop();
                 exit(0);
             } catch (\BaseException $uncaught) {
-                $this->climate->error($uncaught->__toString());
+                $this->logger->critical($uncaught->__toString());
                 exit(1);
             }
         }, $this->reactor);
@@ -78,7 +78,7 @@ class DebugWatcher {
             pcntl_signal(\SIGINT, $onSignal);
             pcntl_signal(\SIGTERM, $onSignal);
         } else {
-            $this->climate->comment("Cannot catch process signals; php-uv or pcntl required");
+            $this->logger->debug("Process control signals unavailable; php-uv or pcntl required");
         }
     }
 
@@ -103,17 +103,17 @@ class DebugWatcher {
             }
 
             extract($err);
-            $this->climate->comment("Stopping server (fatal error) ...");
-            $this->climate->error("{$message} in {$file} on line {$line}");
+            $this->logger->critical("{$message} in {$file} on line {$line}");
 
             if ($this->isStopping) {
                 return;
+                exit(1);
             }
             $this->isStopping = true;
             try {
                 yield $server->stop();
             } catch (\BaseException $uncaught) {
-                $this->climate->error($uncaught->__toString());
+                $this->logger->critical($uncaught->__toString());
             } finally {
                 exit(1);
             };
@@ -123,9 +123,7 @@ class DebugWatcher {
     private function registerErrorHandler() {
         set_error_handler(function($errno, $msg, $file, $line) {
             if (error_reporting() & $errno) {
-                throw new \ErrorException(
-                    "[{$errno}] {$msg} in {$file} on line {$line}"
-                );
+                $this->logger->warning("{$msg} in {$file} on line {$line}");
             }
         });
     }

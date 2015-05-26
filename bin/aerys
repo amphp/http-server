@@ -29,7 +29,7 @@ if (PHP_MAJOR_VERSION < 7) {
 }
 
 error_reporting(E_ALL);
-ini_set("display_errors", "off");
+ini_set("display_errors", "stderr");
 
 /* IMPORTANT: must set AMP_PRODUCTION_MODE *before* using autoloader */
 $opt = getopt("d", ["debug"]);

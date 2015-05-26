@@ -112,11 +112,11 @@ class Rfc7230Server implements ServerObserver {
      * logging in production mode.
      *
      * @param string $level
-     * @param string $message
+     * @param mixed $message A string or an object exposing __toString()
      * @return bool
      */
-    public function log(string $level, string $message) {
-        $this->logger->log($level, $message, ["time" => $this->currentTime]);
+    public function log($level, $message) {
+        $this->logger->log($level, (string) $message, ["time" => $this->currentTime]);
         return true;
     }
 
@@ -160,13 +160,13 @@ class Rfc7230Server implements ServerObserver {
                 // standard HTTP/1.1 readiness handler for now.
             }
             assert($this->log(LogLevel::DEBUG, sprintf(
-                "crypto handshake success: %s",
+                "crypto success: %s",
                 stream_socket_get_name($socket, true)
             )));
             $this->finalizeImport($socket);
         } elseif ($handshake === false) {
             assert($this->log(LogLevel::DEBUG, sprintf(
-                "crypto handshake failure: %s",
+                "crypto failure: %s",
                 stream_socket_get_name($socket, true)
             )));
             $this->failCryptoNegotiation($socket);
@@ -216,6 +216,12 @@ class Rfc7230Server implements ServerObserver {
         $client->isDead = true;
         $client->isExported = true;
         $this->clear($client);
+
+        assert($this->log(LogLevel::DEBUG, sprintf(
+            "export %s:%s",
+            $client->clientAddr,
+            $client->clientPort
+        )));
 
         return function() use ($exportId) { $this->clearExport($exportId); };
     }
@@ -434,7 +440,7 @@ class Rfc7230Server implements ServerObserver {
         foreach ($headers as $field => $value) {
             $headers[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
         }
-        
+
         assert($this->log(LogLevel::INFO, sprintf(
             "%s %s HTTP/%s @ %s:%s",
             $method,
@@ -717,18 +723,7 @@ class Rfc7230Server implements ServerObserver {
 
     private function onApplicationError(\BaseException $error, Rfc7230RequestCycle $requestCycle) {
         $client = $requestCycle->client;
-        if ($client->isDead || $client->isExported) {
-            // Responder actions may catch the initial ClientException and continue
-            // doing further work. If an error arises at this point we can end up
-            // here and our only option is to log the error.
-            error_log($error->__toString());
-            return;
-        }
-
-        if (!$this->options->debug) {
-            // Only log if we aren't in debug mode
-            error_log($error->__toString());
-        }
+        $this->log(LogLevel::ERROR, $error->__toString());
 
         // This occurs if filter generators error upon initial invocation.
         // In this case we need to keep trying to create the filter until
@@ -740,14 +735,21 @@ class Rfc7230Server implements ServerObserver {
                     $requestCycle->responseWriter,
                     $client
                 );
-            } catch (FilterException $e) {
-                $requestCycle->badFilterKeys[] = $e->getFilterKey();
+            } catch (FilterException $filterError) {
+                $requestCycle->badFilterKeys[] = $filterError->getFilterKey();
+                $this->log(LogLevel::ERROR, $filterError->__toString());
             }
+        }
+
+        if ($client->isDead || $client->isExported) {
+            // Responder actions may catch the initial ClientException and continue
+            // doing further work. If an error arises at this point we can end up
+            // here and our only option is to log the error.
+            return;
         }
 
         // If response output has already started we can't proceed any further.
         if ($requestCycle->response->state() & Response::STARTED) {
-            error_log($error->__toString());
             $this->close($client);
             return;
         }
@@ -767,9 +769,7 @@ class Rfc7230Server implements ServerObserver {
                     $this->sendErrorResponse($error, $requestCycle);
                 } catch (FilterException $error) {
                     // Seriously, bro? Keep trying until no offending filters remain ...
-                    if (!$this->options->debug) {
-                        error_log($error->__toString());
-                    }
+                    $this->log(LogLevel::ERROR, $error->__toString());
                 }
             }
         } else {
