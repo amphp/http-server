@@ -35,7 +35,7 @@ abstract class Root implements ServerObserver {
     protected $mimeFileTypes = [];
     protected $indexes = ["index.html", "index.htm"];
     protected $useEtagInode = true;
-    protected $expiresPeriod = 3600;
+    protected $expiresPeriod = 86400 * 7;
     protected $defaultMimeType = "text/plain";
     protected $defaultCharset = "utf-8";
     protected $useAggressiveCacheHeaders = false;
