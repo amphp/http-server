@@ -2,6 +2,29 @@
 
 <?php
 
+$help = <<<EOT
+      ____ _ ___   _____ __  __ _____
+     / __ `// _ \ / ___// / / // ___/
+    / /_/ //  __// /   / /_/ //__  /
+    \__,_/ \___//_/    \__, //____/
+                      /____/
+
+    -h, --help        Display help screen
+    -d, --debug       Start the server in debug mode
+    -c, --config      Use the specified config file to bootstrap the server
+    -w, --workers     Manually specify worker count (default: CPU core count)
+    -r, --remote      @TODO A local port number on which to listen for commands
+
+    Example Usage:
+
+    aerys --help
+    aerys -c /path/to/app/config.php
+    aerys --config /path/to/app/config.php --w 4
+    aerys -c /my/config.php -r 23456
+
+
+EOT;
+
 if (PHP_MAJOR_VERSION < 7) {
     echo "Aerys requires PHP >= 7.0.0\n\n";
     exit(1);
@@ -14,30 +37,8 @@ $opt = getopt("d", ["debug"]);
 $isProd = !(isset($opt["d"]) || isset($opt["debug"]));
 define("AMP_PRODUCTION_MODE", $isProd);
 
-require __DIR__ . "/../autoload.php";
-
-$help = <<<EOT
-      ____ _ ___   _____ __  __ _____
-     / __ `// _ \ / ___// / / // ___/
-    / /_/ //  __// /   / /_/ //__  /
-    \__,_/ \___//_/    \__, //____/
-                      /____/
-
-    -h, --help        Display help screen
-    -d, --debug       Start the server in debug mode
-    -c, --config      Use the specified config file to bootstrap the server
-    -w, --workers     Manually specify worker count (default: CPU core count)
-    -r, --remote      @TODO A port number on which to listen for stop/reload commands
-
-    Example Usage:
-
-    aerys --help
-    aerys -c /path/to/app/config.php
-    aerys --config /path/to/app/config.php --workers 4
-    aerys -c /my/config.php -r 23456
-
-
-EOT;
+$autoloadPath = dirname(__DIR__) . "/autoload.php";
+require $autoloadPath;
 
 $cliArgs = Aerys\Bootstrapper::parseCommandLineArgs();
 if ($cliArgs["help"]) {
@@ -47,14 +48,12 @@ if ($cliArgs["help"]) {
 
 try {
     Amp\run(function($reactor) use ($cliArgs) {
-        if ($cliArgs["debug"]) {
+        if ($cliArgs["debug"] || php_sapi_name() === "phpdbg") {
             $watcher = new Aerys\DebugWatcher($reactor);
-        } elseif (stripos(PHP_OS, "WIN") === 0) {
-            die("Debug mode flag -d required (worker watchers not yet implemented)\n\n");
-            // @TODO: $watcher = new Aerys\WorkerSocketWatcher($reactor);
         } else {
             die("Debug mode flag -d required (worker watchers not yet implemented)\n\n");
-            // @TODO: $watcher = new Aerys\WorkerProcessWatcher($reactor);
+            // @TODO: $watcher = new Aerys\WorkerWatcher($reactor, $autoloadPath);
+            // $str = 'php -r\'require "' . $autoloadPath . '"; Amp\run(["Aerys\Worker", "run"]);\'';
         }
         Amp\resolve($watcher->watch($cliArgs));
     });
