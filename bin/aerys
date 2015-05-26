@@ -1,5 +1,4 @@
 #!/usr/bin/env php
-
 <?php
 
 $help = <<<EOT
@@ -13,10 +12,9 @@ $help = <<<EOT
     -d, --debug       Start the server in debug mode
     -c, --config      Use the specified config file to bootstrap the server
     -w, --workers     Manually specify worker count (default: CPU core count)
-    -r, --remote      @TODO A local port number on which to listen for commands
+    -r, --remote      @TODO A local port on which to listen for commands
 
     Example Usage:
-
     aerys --help
     aerys -c /path/to/app/config.php
     aerys --config /path/to/app/config.php --w 4
@@ -31,33 +29,30 @@ if (PHP_MAJOR_VERSION < 7) {
 }
 
 error_reporting(E_ALL);
-ini_set("display_errors", "stderr");
+ini_set("display_errors", "off");
 
+/* IMPORTANT: must set AMP_PRODUCTION_MODE *before* using autoloader */
 $opt = getopt("d", ["debug"]);
-$isProd = !(isset($opt["d"]) || isset($opt["debug"]));
-define("AMP_PRODUCTION_MODE", $isProd);
-
-$autoloadPath = dirname(__DIR__) . "/autoload.php";
-require $autoloadPath;
-
-$cliArgs = Aerys\Bootstrapper::parseCommandLineArgs();
-if ($cliArgs["help"]) {
+define("AMP_PRODUCTION_MODE", !(isset($opt["d"]) || isset($opt["debug"])));
+require ($autoloader = dirname(__DIR__) . "/autoload.php");
+$climate = Aerys\Bootstrapper::loadCommandArgs();
+if ($climate->arguments->defined("help")) {
     echo $help;
     exit(0);
 }
 
 try {
-    Amp\run(function($reactor) use ($cliArgs) {
-        if ($cliArgs["debug"] || php_sapi_name() === "phpdbg") {
-            $watcher = new Aerys\DebugWatcher($reactor);
+    Amp\run(function(Amp\Reactor $reactor) use ($climate) {
+        if (php_sapi_name() === "phpdbg" || $climate->arguments->defined("debug")) {
+            $watcher = new Aerys\DebugWatcher($reactor, $climate);
         } else {
-            die("Debug mode flag -d required (worker watchers not yet implemented)\n\n");
-            // @TODO: $watcher = new Aerys\WorkerWatcher($reactor, $autoloadPath);
+            die("Debug mode (-d) required; WorkerWatcher not yet implemented\n\n");
+            // @TODO: $watcher = new Aerys\WorkerWatcher($reactor, $autoloader);
             // $str = 'php -r\'require "' . $autoloadPath . '"; Amp\run(["Aerys\Worker", "run"]);\'';
         }
-        Amp\resolve($watcher->watch($cliArgs));
+        Amp\resolve($watcher->watch());
     });
 } catch (BaseException $e) {
-    echo "\n", (empty($cliArgs["debug"]) ? $e->getMessage() : $e), "\n\n";
+    echo "\n", ($climate->arguments->defined("debug") ? $e->__toString() : $e->getMessage()), "\n\n";
     exit(1);
 }

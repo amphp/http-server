@@ -3,49 +3,54 @@
 namespace Aerys;
 
 use Amp\Reactor;
+use League\CLImate\CLImate;
+use Psr\Log\LoggerInterface as Logger;
 
 class Bootstrapper {
 
     /**
-     * Parse server command line options
+     * Parse command line args
      *
-     * Returns an array with the following keys:
-     *
-     *  - help
-     *  - debug
-     *  - config
-     *  - workers
-     *  - remote
-     *
-     * @return array
+     * @return \League\CLImate\CLImate
      */
-    public static function parseCommandLineArgs() {
-        $shortOpts = "hdc:w:r:";
-        $longOpts = ["help", "debug", "config:", "workers:", "remote:"];
-        $parsedOpts = getopt($shortOpts, $longOpts);
-        $shortOptMap = [
-            "c" => "config",
-            "w" => "workers",
-            "r" => "remote",
-        ];
+    public static function loadCommandArgs(): CLImate {
+        $climate = new CLImate;
+        $climate->arguments->add([
+            "help" => [
+                "prefix"      => "h",
+                "longPrefix"  => "help",
+                "description" => "Display the help screen",
+                "noValue"     => true,
+            ],
+            "debug" => [
+                "prefix"       => "d",
+                "longPrefix"   => "user",
+                "description"  => "Enable server debug mode",
+                "noValue"     => true,
+            ],
+            "config" => [
+                "prefix"      => "c",
+                "longPrefix"  => "config",
+                "description" => "Specify a custom server config path",
+                "noValue"     => true,
+            ],
+            "workers" => [
+                "prefix"      => "w",
+                "longPrefix"  => "workers",
+                "description" => "Specify the number of worker processes to spawn",
+                "castTo"      => "int",
+            ],
+            "remote" => [
+                "prefix"      => "r",
+                "longPrefix"  => "remote",
+                "description" => "Specify a command port on which to listen",
+                "castTo"      => "int",
+            ],
+        ]);
 
-        $options = [
-            "config" => "",
-            "workers" => 0,
-            "remote" => "",
-        ];
+        $climate->arguments->parse();
 
-        foreach ($parsedOpts as $key => $value) {
-            $key = empty($shortOptMap[$key]) ? $key : $shortOptMap[$key];
-            if (isset($options[$key])) {
-                $options[$key] = $value;
-            }
-        }
-
-        $options["debug"] = isset($parsedOpts["d"]) || isset($parsedOpts["debug"]);
-        $options["help"] = isset($parsedOpts["h"]) || isset($parsedOpts["help"]);
-
-        return $options;
+        return $climate;
     }
 
     /**
@@ -55,7 +60,7 @@ class Bootstrapper {
      * @param array $cliArgs An array of command line arguments
      * @return array
      */
-    public static function boot(Reactor $reactor, array $cliArgs): array {
+    public static function boot(Reactor $reactor, Logger $logger, array $cliArgs): array {
         $configFile = self::selectConfigFile($cliArgs);
         $forceDebug = $cliArgs["debug"];
 
@@ -108,7 +113,7 @@ class Bootstrapper {
             $addrCtxMap[$address] = $context;
         }
 
-        $rfc7230Server = new Rfc7230Server($reactor, $vhostGroup, $options);
+        $rfc7230Server = new Rfc7230Server($reactor, $vhostGroup, $options, $logger);
         $server->attach($rfc7230Server);
 
         return [$server, $options, $addrCtxMap, $rfc7230Server];
@@ -116,7 +121,9 @@ class Bootstrapper {
 
     private static function selectConfigFile(array $cliArgs): string {
         if (!empty($cliArgs["config"])) {
-            return $cliArgs["config"];
+            return is_dir($cliArgs["config"])
+                ? rtrim($cliArgs["config"], "/") . "/config.php"
+                : $cliArgs["config"];
         }
         $paths = [
             __DIR__ . "/../config.php",

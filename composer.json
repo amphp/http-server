@@ -27,7 +27,9 @@
     "require": {
         "php": ">=7.0.0-dev",
         "amphp/amp": "dev-master",
-        "nikic/fast-route": "~0.4.0"
+        "nikic/fast-route": "~0.4.0",
+        "league/climate": "^3",
+        "psr/log": "~1.0"
     },
     "autoload": {
         "psr-4": {

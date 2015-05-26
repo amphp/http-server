@@ -2,45 +2,61 @@
 
 namespace Aerys;
 
-use Amp\{ Reactor, UvReactor, function coroutine };
+use Amp\{
+    Reactor,
+    UvReactor,
+    function coroutine
+};
+
+use League\CLImate\CLImate;
+use Psr\Log\LoggerInterface as Logger;
+use Psr\Log\LogLevel;
 
 class DebugWatcher {
     private $reactor;
+    private $climate;
+    private $logger;
     private $isStopping;
 
     /**
      * @param \Amp\Reactor $reactor
      */
-    public function __construct(Reactor $reactor) {
+    public function __construct(Reactor $reactor, CLImate $climate, Logger $logger = null) {
         $this->reactor = $reactor;
+        $this->climate = $climate;
+        $this->logger = $logger ?: new DebugLogger($climate);
+        $reactor->onError(function(\BaseException $uncaught) {
+            $this->climate->error($uncaught->__toString());
+        });
     }
 
     /**
-     * Watch/manage a server instance
+     * Watch/manage a debug server instance in the current process
      *
-     * @param \Amp\Reactor $reactor
-     * @param array $cliArgs
      * @return \Generator
      */
-    public function watch(array $cliArgs): \Generator {
-        $bootArr = Bootstrapper::boot($this->reactor, $cliArgs);
+    public function watch(): \Generator {
+        $args = $this->climate->arguments->toArray();
+        $bootArr = Bootstrapper::boot($this->reactor, $this->logger, $args);
         list($server, $options, $addrCtxMap, $rfc7230Server) = $bootArr;
         $this->registerSignalHandler($server);
         $this->registerShutdownHandler($server);
+        $this->registerErrorHandler();
+
         yield $server->start($addrCtxMap, [$rfc7230Server, "import"]);
+
         foreach ($server->inspect()["boundAddresses"] as $address) {
-            printf("Listening for HTTP traffic on %s ...\n", $address);
+            $this->logger->log(LogLevel::INFO, "Listening for HTTP traffic on {$address}");
         }
     }
 
     private function registerSignalHandler($server) {
-        if (\php_sapi_name() === "phpdbg") {
-            // phpdbg captures SIGINT so don't intercept these signals
-            // if we're running inside the debugger SAPI
+        if (php_sapi_name() === "phpdbg") {
+            // phpdbg captures SIGINT so don't bother inside the debugger
             return;
         }
 
-        $stopper = coroutine(function() use ($server) {
+        $onSignal = coroutine(function() use ($server) {
             if ($this->isStopping) {
                 return;
             }
@@ -48,21 +64,21 @@ class DebugWatcher {
             try {
                 yield $server->stop();
                 exit(0);
-            } catch (\BaseException $e) {
-                error_log($e->__toString());
+            } catch (\BaseException $uncaught) {
+                $this->climate->error($uncaught->__toString());
                 exit(1);
             }
         }, $this->reactor);
 
         if ($this->reactor instanceof UvReactor) {
-            $this->reactor->onSignal(\UV::SIGINT, $stopper);
-            $this->reactor->onSignal(\UV::SIGTERM, $stopper);
+            $this->reactor->onSignal(\UV::SIGINT, $onSignal);
+            $this->reactor->onSignal(\UV::SIGTERM, $onSignal);
         } elseif (extension_loaded("pcntl")) {
             $this->reactor->repeat("pcntl_signal_dispatch", 1000);
-            \pcntl_signal(\SIGINT, $stopper);
-            \pcntl_signal(\SIGTERM, $stopper);
+            pcntl_signal(\SIGINT, $onSignal);
+            pcntl_signal(\SIGTERM, $onSignal);
         } else {
-            echo "Cannot catch process control signals; php-uv or pcntl required ...\n";
+            $this->climate->comment("Cannot catch process signals; php-uv or pcntl required");
         }
     }
 
@@ -86,8 +102,9 @@ class DebugWatcher {
                     return;
             }
 
-            \extract($err);
-            \error_log(sprintf("%s in %s on line %d\n", $message, $file, $line));
+            extract($err);
+            $this->climate->comment("Stopping server (fatal error) ...");
+            $this->climate->error("{$message} in {$file} on line {$line}");
 
             if ($this->isStopping) {
                 return;
@@ -96,10 +113,20 @@ class DebugWatcher {
             try {
                 yield $server->stop();
             } catch (\BaseException $uncaught) {
-                \error_log($uncaught->__toString());
+                $this->climate->error($uncaught->__toString());
             } finally {
                 exit(1);
             };
         }, $this->reactor));
+    }
+
+    private function registerErrorHandler() {
+        set_error_handler(function($errno, $msg, $file, $line) {
+            if (error_reporting() & $errno) {
+                throw new \ErrorException(
+                    "[{$errno}] {$msg} in {$file} on line {$line}"
+                );
+            }
+        });
     }
 }
