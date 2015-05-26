@@ -40,7 +40,7 @@ class DebugLogger implements Logger {
     public function log($level, $message, array $context = []) {
         $time = @date("H:i:s", $context["time"] ?? time());
         $level = $this->generateColoredLevel($level);
-        $message = "[<light_gray>{$time}</light_gray>] {$level} {$message}";
+        $message = "[{$time}] <bold>{$level}</bold> {$message}";
         $this->climate->out($message);
     }
     private function generateColoredLevel($level) {
@@ -48,20 +48,19 @@ class DebugLogger implements Logger {
             case LogLevel::EMERGENCY:
             case LogLevel::ALERT:
             case LogLevel::CRITICAL:
-                return "<red><bold>{$level}:</bold></red>";
             case LogLevel::ERROR:
-                return "<red>{$level}:</red>";
+                return "<red>{$level}</red>";
             case LogLevel::WARNING:
-                return "<yellow><bold>{$level}:</bold></yellow>";
+                return "<yellow>{$level}</yellow>";
             case LogLevel::NOTICE:
-                return "<dark_gray>{$level}:</dark_gray>";
+                return "<green>{$level}</green>";
             case LogLevel::INFO:
-                return "<green>{$level}:</green>";
+                return "<magenta>{$level}</magenta>";
             case LogLevel::DEBUG:
-                return "<bold>{$level}:</bold>";
+                return "<cyan>{$level}</cyan>";
             default:
                 $this->climate->error("Unexpected log level ({$level})");
-                return "{$level}:";
+                return "unknown";
         }
     }
 }

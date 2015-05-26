@@ -441,7 +441,7 @@ class Rfc7230Server implements ServerObserver {
             $headers[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
         }
 
-        assert($this->log(LogLevel::INFO, sprintf(
+        assert($this->log(LogLevel::DEBUG, sprintf(
             "%s %s HTTP/%s @ %s:%s",
             $method,
             $uri,
