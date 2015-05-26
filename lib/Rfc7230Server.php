@@ -1137,17 +1137,21 @@ class Rfc7230Server implements ServerObserver {
                 }
                 $this->stopPromisor = new Deferred;
                 $promise = $this->stopPromisor->promise();
-                $promise->when(function() {
-                    $this->reactor->cancel($this->keepAliveWatcher);
-                    $this->keepAliveWatcher = null;
-                    $this->stopPromisor = null;
-                });
                 if (empty($this->clientCount)) {
                     $this->stopPromisor->succeed();
+                } else {
+                    foreach ($this->clients as $client) {
+                        if (empty($client->requestCycleQueueSize)) {
+                            $this->close($client);
+                        }
+                    }
                 }
                 break;
             case Server::STOPPED:
                 $this->reactor->cancel($this->timeUpdateWatcher);
+                $this->reactor->cancel($this->keepAliveWatcher);
+                $this->keepAliveWatcher = null;
+                $this->stopPromisor = null;
                 $this->timeUpdateWatcher = null;
                 $promise = new Success;
                 break;
