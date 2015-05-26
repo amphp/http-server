@@ -49,14 +49,13 @@ class Bootstrapper {
     }
 
     /**
-     * Bootstrap a server watcher from command line options
+     * Bootstrap a server from command line options
      *
      * @param \Amp\Reactor $reactor
      * @param array $cliArgs An array of command line arguments
-     * @param array $observers An array of observers to attach to the bootstrapped Server
-     * @return \Generator
+     * @return array
      */
-    public static function boot(Reactor $reactor, array $cliArgs, array $observers = []): \Generator {
+    public static function boot(Reactor $reactor, array $cliArgs): array {
         $configFile = self::selectConfigFile($cliArgs);
         $forceDebug = $cliArgs["debug"];
 
@@ -92,7 +91,7 @@ class Bootstrapper {
             $vhostGroup->addHost($vhost);
         }
 
-        $addressContextMap = [];
+        $addrCtxMap = [];
         $addresses = $vhostGroup->getBindableAddresses();
         $tlsBindings = $vhostGroup->getTlsBindingsByAddress();
         $backlogSize = $options->socketBacklogSize;
@@ -106,21 +105,13 @@ class Bootstrapper {
             if (isset($tlsBindings[$address])) {
                 stream_context_set_option($context, ["ssl" => $tlsBindings[$address]]);
             }
-            $addressContextMap[$address] = $context;
+            $addrCtxMap[$address] = $context;
         }
 
-        $observers[] = $rfc7230Server = new Rfc7230Server($reactor, $vhostGroup, $options);
-        // @TODO Instantiate the HTTP/2.0 server here.
-        // This will be attached to the Rfc7230Server instance in some way because
-        // h2 requests are initially negotiated via an HTTP/1.1 Upgrade request or
-        // through the TLS handshake executed by the Rfc7230Server.
-        foreach ($observers as $observer) {
-            $server->attach($observer);
-        }
+        $rfc7230Server = new Rfc7230Server($reactor, $vhostGroup, $options);
+        $server->attach($rfc7230Server);
 
-        yield $server->start($addressContextMap, [$rfc7230Server, "import"]);
-
-        return $server;
+        return [$server, $options, $addrCtxMap, $rfc7230Server];
     }
 
     private static function selectConfigFile(array $cliArgs): string {

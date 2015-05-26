@@ -2,11 +2,15 @@
 
 namespace Aerys;
 
-use Amp\{ Reactor, UvReactor, Promise, Success, function coroutine };
+use Amp\{ Reactor, UvReactor, function coroutine };
 
-class DebugWatcher implements Watcher, ServerObserver {
+class DebugWatcher {
     private $reactor;
+    private $isStopping;
 
+    /**
+     * @param \Amp\Reactor $reactor
+     */
     public function __construct(Reactor $reactor) {
         $this->reactor = $reactor;
     }
@@ -19,62 +23,51 @@ class DebugWatcher implements Watcher, ServerObserver {
      * @return \Generator
      */
     public function watch(array $cliArgs): \Generator {
-        $server = yield from Bootstrapper::boot($this->reactor, $cliArgs, [$this]);
+        $bootArr = Bootstrapper::boot($this->reactor, $cliArgs);
+        list($server, $options, $addrCtxMap, $rfc7230Server) = $bootArr;
+        $this->registerSignalHandler($server);
+        $this->registerShutdownHandler($server);
+        yield $server->start($addrCtxMap, [$rfc7230Server, "import"]);
         foreach ($server->inspect()["boundAddresses"] as $address) {
             printf("Listening for HTTP traffic on %s ...\n", $address);
         }
     }
 
-    /**
-     * Observe server notifications
-     *
-     * @param \SplSubject $server
-     * @return \Amp\Promise
-     */
-    public function update(\SplSubject $server): Promise {
-        if ($server->state() === Server::STARTING) {
-            $this->registerSignalHandler($server);
-            register_shutdown_function($this->makeShutdownHandler($server));
-        }
-
-        return new Success;
-    }
-
-    private function registerSignalHandler(Server $server) {
+    private function registerSignalHandler($server) {
         if (\php_sapi_name() === "phpdbg") {
             // phpdbg captures SIGINT so don't intercept these signals
-            // if we're running inside the phpdbg debugger SAPI
+            // if we're running inside the debugger SAPI
             return;
         }
 
-        $onSignal = $this->makeSignalHandler($server);
-
-        if ($this->reactor instanceof UvReactor) {
-            $this->reactor->onSignal(\UV::SIGINT, $onSignal);
-            $this->reactor->onSignal(\UV::SIGTERM, $onSignal);
-        } elseif (extension_loaded("pcntl")) {
-            $this->reactor->repeat("pcntl_signal_dispatch", 1000);
-            \pcntl_signal(\SIGINT, $onSignal);
-            \pcntl_signal(\SIGTERM, $onSignal);
-        } else {
-            echo "Neither php-uv nor pcntl loaded; cannot catch process signals ...\n";
-        }
-    }
-
-    private function makeSignalHandler(Server $server) {
-        return coroutine(function() use ($server) {
+        $stopper = coroutine(function() use ($server) {
+            if ($this->isStopping) {
+                return;
+            }
+            $this->isStopping = true;
             try {
                 yield $server->stop();
                 exit(0);
             } catch (\BaseException $e) {
-                \error_log($e->__toString());
+                error_log($e->__toString());
                 exit(1);
             }
         }, $this->reactor);
+
+        if ($this->reactor instanceof UvReactor) {
+            $this->reactor->onSignal(\UV::SIGINT, $stopper);
+            $this->reactor->onSignal(\UV::SIGTERM, $stopper);
+        } elseif (extension_loaded("pcntl")) {
+            $this->reactor->repeat("pcntl_signal_dispatch", 1000);
+            \pcntl_signal(\SIGINT, $stopper);
+            \pcntl_signal(\SIGTERM, $stopper);
+        } else {
+            echo "Cannot catch process control signals; php-uv or pcntl required ...\n";
+        }
     }
 
-    private function makeShutdownHandler(Server $server) {
-        return coroutine(function() use ($server) {
+    private function registerShutdownHandler($server) {
+        register_shutdown_function(coroutine(function() use ($server) {
             if (!$err = \error_get_last()) {
                 return;
             }
@@ -96,6 +89,10 @@ class DebugWatcher implements Watcher, ServerObserver {
             \extract($err);
             \error_log(sprintf("%s in %s on line %d\n", $message, $file, $line));
 
+            if ($this->isStopping) {
+                return;
+            }
+            $this->isStopping = true;
             try {
                 yield $server->stop();
             } catch (\BaseException $uncaught) {
@@ -103,6 +100,6 @@ class DebugWatcher implements Watcher, ServerObserver {
             } finally {
                 exit(1);
             };
-        }, $this->reactor);
+        }, $this->reactor));
     }
 }
