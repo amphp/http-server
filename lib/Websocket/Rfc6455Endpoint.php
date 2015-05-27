@@ -447,7 +447,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
         }
     }
 
-    private function compile(Rfc6455Client $client, string $msg, int $opcode = self::OP_BIN, bool $fin = true): Promise {
+    private function compile(Rfc6455Client $client, string $msg, int $opcode, bool $fin = true): Promise {
         $frameInfo = ["msg" => $msg, "rsv" => 0b000, "fin" => $fin, "opcode" => $opcode];
 
         // @TODO filter mechanism …?! (e.g. gzip)
