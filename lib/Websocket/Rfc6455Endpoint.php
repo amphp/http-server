@@ -293,7 +293,10 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
 
         switch ($opcode) {
             case FRAME["OP_CLOSE"]:
-                if (!$client->closedAt) {
+                if ($client->closedAt) {
+                    unset($this->closeTimeouts[$client->id]);
+                    $this->unloadClient($client);
+                } else {
                     if (\strlen($data) < 2) {
                         return; // invalid close reason
                     }
