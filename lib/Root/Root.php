@@ -231,17 +231,19 @@ abstract class Root implements ServerObserver {
         // changes have been written to disk.
         if (empty($this->debug)) {
             return $this->cache[$reqPath] ?? null;
-        } elseif (isset($request->headers["CACHE-CONTROL"]) &&
-            stripos($request->headerLines["CACHE-CONTROL"], "no-cache") !== false
-        ) {
-            return null;
-        } elseif (isset($request->headers["PRAGMA"]) &&
-            stripos($request->headerLines["PRAGMA"], "no-cache") !== false
-        ) {
-            return null;
-        } else {
-            return $this->cache[$reqPath] ?? null;
         }
+
+        $cacheControl = $request->getHeaderLine("Cache-Control");
+        if ($cacheControl && stripos($cacheControl, "no-cache") !== false) {
+            return null;
+        }
+
+        $pragma = $request->getHeaderLine("Pragma");
+        if ($pragma && stripos($pragma, "no-cache") !== false) {
+            return null;
+        }
+
+        return $this->cache[$reqPath] ?? null;
     }
 
     protected function shouldBufferContent(Stat $stat) {
@@ -287,7 +289,7 @@ abstract class Root implements ServerObserver {
             return;
         }
 
-        switch ($request->method) {
+        switch ($request->getMethod()) {
             case "GET":
             case "HEAD":
                 break;
@@ -325,12 +327,12 @@ abstract class Root implements ServerObserver {
                 return $this->doNonRangeResponse($stat, $response);
         }
 
-        if (empty($request->headers["RANGE"])) {
+        if (!$rangeHeader = $request->getHeaderLine("Range")) {
             // Return this so the resulting generator will be auto-resolved
             return $this->doNonRangeResponse($stat, $response);
         }
 
-        if ($range = $this->normalizeByteRanges($stat->size, $request['HTTP_RANGE'])) {
+        if ($range = $this->normalizeByteRanges($stat->size, $rangeHeader)) {
             // Return this so the resulting generator will be auto-resolved
             return $this->doRangeResponse($range, $stat, $response);
         }
@@ -342,33 +344,30 @@ abstract class Root implements ServerObserver {
     }
 
     protected function checkPreconditions(Request $request, int $mtime, string $etag) {
-        $ifMatch = $request->headers["IF-MATCH"] ?? "";
+        $ifMatch = $request->getHeaderLine("If-Match");
         if ($ifMatch && stripos($ifMatch, $etag) === false) {
             return self::PRECOND_FAILED;
         }
 
-        $ifNoneMatch = $request->headers["IF-NONE-MATCH"] ?? "";
-        if (stripos($ifNoneMatch, $etag) !== false) {
+        $ifNoneMatch = $request->getHeaderLine("If-None-Match");
+        if ($ifNoneMatch && stripos($ifNoneMatch, $etag) !== false) {
             return self::PRECOND_NOT_MODIFIED;
         }
 
-        $ifModifiedSince = isset($request->headers["IF-MODIFIED-SINCE"])
-            ? @strtotime($request->headers["IF-MODIFIED-SINCE"])
-            : 0;
-
+        $ifModifiedSince = $request->getHeaderLine("If-Modified-Since");
+        $ifModifiedSince = $ifModifiedSince ? @strtotime($ifModifiedSince) : 0;
         if ($ifModifiedSince && $mtime > $ifModifiedSince) {
             return self::PRECOND_NOT_MODIFIED;
         }
 
-        $ifUnmodifiedSince = isset($request->headers["IF-UNMODIFIED-SINCE"])
-            ? @strtotime($request->headers["IF-UNMODIFIED-SINCE"])
-            : 0;
-
+        $ifUnmodifiedSince = $request->getHeaderLine("If-Unmodified-Since");
+        $ifUnmodifiedSince = $ifUnmodifiedSince ? @strtotime($ifUnmodifiedSince) : 0;
         if ($ifUnmodifiedSince && $mtime > $ifUnmodifiedSince) {
             return self::PRECOND_FAILED;
         }
 
-        if (!isset($request->headers["IF-RANGE"], $request->headers["RANGE"])) {
+        $ifRange = $request->getHeaderLine("If-Range");
+        if (!($ifRange || $request->getHeaderLine("Range"))) {
             return self::PRECOND_OK;
         }
 
@@ -380,7 +379,6 @@ abstract class Root implements ServerObserver {
          *
          * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.27
          */
-        $ifRange = $request->headers["IF-RANGE"];
         if ($httpDate = @strtotime($ifRange)) {
             return ($httpDate > $mtime) ? self::PRECOND_IF_RANGE_OK : self::PRECOND_IF_RANGE_FAILED;
         }
