@@ -48,16 +48,16 @@ class VhostGroup implements \Countable {
     /**
      * Select a virtual host match for the specified request according to RFC 2616 criteria
      *
-     * @param \Aerys\Request $request
+     * @param \Aerys\InternalRequest $ireq
      * @return Vhost|null Returns a Vhost object and boolean TRUE if a valid host selected, FALSE otherwise
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.6.1.1
      */
-    public function selectHost(Request $request) {
-        if (stripos($request->uriRaw, "http://") === 0 || stripos($request->uriRaw, "https://") === 0) {
-            return $this->selectHostByAbsoluteUri($request);
-        } elseif (isset($request->headers["HOST"])) {
-            return $this->selectHostByHeader($request);
+    public function selectHost(InternalRequest $ireq) {
+        if (stripos($ireq->uriRaw, "http://") === 0 || stripos($ireq->uriRaw, "https://") === 0) {
+            return $this->selectHostByAbsoluteUri($ireq);
+        } elseif (isset($ireq->headers["HOST"])) {
+            return $this->selectHostByHeader($ireq);
         } else {
             return null;
         }
@@ -88,25 +88,25 @@ class VhostGroup implements \Countable {
      *       probably to set a "proxy mode" flag on the collection and disallow more than a single
      *       virtual host when in this mode.
      */
-    private function selectHostByAbsoluteUri(Request $request) {
-        $port = $request->uriPort ?? ($request->isEncrypted ? 443 : 80);
-        $vhostId = "{$request->uriHost}:{$port}";
+    private function selectHostByAbsoluteUri(InternalRequest $ireq) {
+        $port = $ireq->uriPort ?? ($ireq->isEncrypted ? 443 : 80);
+        $vhostId = "{$ireq->uriHost}:{$port}";
 
         return @$this->vhosts[$vhostId];
     }
 
-    private function selectHostByHeader(Request $request) {
-        $explicitHostId = $request->headers["HOST"];
+    private function selectHostByHeader(InternalRequest $ireq) {
+        $explicitHostId = $ireq->headerLines["HOST"];
 
         if ($portStartPos = strrpos($explicitHostId, "]")) {
             $ipComparison = substr($explicitHostId, 0, $portStartPos + 1);
             $port = substr($explicitHostId, $portStartPos + 2);
-            $port = ($port === FALSE) ? ($request->isEncrypted ? "443" : "80") : $port;
+            $port = ($port === FALSE) ? ($ireq->isEncrypted ? "443" : "80") : $port;
         } elseif ($portStartPos = strrpos($explicitHostId, ":")) {
             $ipComparison = substr($explicitHostId, 0, $portStartPos);
             $port = substr($explicitHostId, $portStartPos + 1);
         } else {
-            $port = $request->isEncrypted ? "443" : "80";
+            $port = $ireq->isEncrypted ? "443" : "80";
             $ipComparison = $explicitHostId;
             $explicitHostId .= ":{$port}";
         }
@@ -135,7 +135,7 @@ class VhostGroup implements \Countable {
         // displaying unencrypted data as a result of carefully crafted Host headers. This is an
         // extreme edge case but it's potentially exploitable without this check.
         // DO NOT REMOVE THIS UNLESS YOU'RE SURE YOU KNOW WHAT YOU'RE DOING.
-        if ($vhost && $vhost->isEncrypted() && !$request->isEncrypted) {
+        if ($vhost && $vhost->isEncrypted() && !$ireq->isEncrypted) {
             $vhost = null;
         }
 

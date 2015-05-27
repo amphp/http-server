@@ -9,7 +9,7 @@ class Rfc7230RequestCycle {
     public $client;
     public $vhost;
     public $isVhostValid;
-    public $request;
+    public $internalRequest;
     public $bodyPromisor;
     public $response;
     public $responseFilter;

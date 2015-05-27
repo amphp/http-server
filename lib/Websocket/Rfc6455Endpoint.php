@@ -86,7 +86,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
     }
 
     public function __invoke(Request $request, Response $response) {
-        if ($request->method !== "GET") {
+        if ($request->getMethod() !== "GET") {
             $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
             $response->setHeader("Allow", "GET");
             $response->setHeader("Aerys-Generic-Response", "enable");
@@ -94,25 +94,35 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
             return;
         }
 
-        if ($request->protocol !== "1.1") {
+        if ($request->getProtocolVersion() !== "1.1") {
             $response->setStatus(HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]);
             $response->setHeader("Aerys-Generic-Response", "enable");
             $response->end();
             return;
         }
 
-        if (empty($request->headers["UPGRADE"]) ||
-            strcasecmp($request->headers["UPGRADE"], "websocket") !== 0
-        ) {
+        $hasUpgradeWebsocket = false;
+        foreach ($request->getHeader("Upgrade") as $value) {
+            if (strcasecmp($value, "websocket") === 0) {
+                $hasUpgradeWebsocket = true;
+                break;
+            }
+        }
+        if (empty($hasUpgradeWebsocket)) {
             $response->setStatus(HTTP_STATUS["UPGRADE_REQUIRED"]);
             $response->setHeader("Aerys-Generic-Response", "enable");
             $response->end();
             return;
         }
 
-        if (empty($request->headers["CONNECTION"]) ||
-            stripos($request->headers["CONNECTION"], "Upgrade") === FALSE
-        ) {
+        $hasConnectionUpgrade = false;
+        foreach ($request->getHeader("Connection") as $value) {
+            if (strcasecmp($value, "Upgrade") === 0) {
+                $hasConnectionUpgrade = true;
+                break;
+            }
+        }
+        if (empty($hasConnectionUpgrade)) {
             $response->setStatus(HTTP_STATUS["UPGRADE_REQUIRED"]);
             $response->setReason("Bad Request: \"Connection: Upgrade\" header required");
             $response->setHeader("Aerys-Generic-Response", "enable");
@@ -120,7 +130,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
             return;
         }
 
-        if (empty($request->headers["SEC-WEBSOCKET-KEY"])) {
+        if (!$acceptKey = $request->getHeaderLine("Sec-Websocket-Key")) {
             $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
             $response->setReason("Bad Request: \"Sec-Broker-Key\" header required");
             $response->setHeader("Aerys-Generic-Response", "enable");
@@ -129,7 +139,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
 
         }
 
-        if (empty($request->headers["SEC-WEBSOCKET-VERSION"])) {
+        if (!$secWebsocketVersions = $request->getHeader("Sec-Websocket-Version")) {
             $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
             $response->setReason("Bad Request: \"Sec-WebSocket-Version\" header required");
             $response->setHeader("Aerys-Generic-Response", "enable");
@@ -137,9 +147,8 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
             return;
         }
 
-        $version = null;
-        $requestedVersions = explode(',', $request->headers["SEC-WEBSOCKET-VERSION"]);
-        foreach ($requestedVersions as $requestedVersion) {
+        $version = 0;
+        foreach ($secWebsocketVersions as $requestedVersion) {
             if ($requestedVersion === "13") {
                 $version = 13;
                 break;
@@ -154,16 +163,14 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
             return;
         }
 
-        // Note that we shouldn't have to care here about a stopped server, this should happen in HTTP server with a 503 error
-        return $this->import($request, $response);
+        return $this->import($acceptKey, $request, $response);
     }
 
-    private function import(Request $request, Response $response): \Generator {
+    private function import(string $acceptKey, Request $request, Response $response): \Generator {
         $client = new Rfc6455Client;
-        $client->connectedAt = $request->time;
+        $client->connectedAt = $this->now;
 
         $upgradePromisor = new Deferred;
-        $acceptKey = $request->headers["SEC-WEBSOCKET-KEY"];
         $response->onUpgrade(function($socket, $refClearer) use ($client, $upgradePromisor) {
             $client->id = (int) $socket;
             $client->socket = $socket;

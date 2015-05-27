@@ -13,6 +13,7 @@ class Rfc7230Client {
     public $serverAddr;
     public $serverPort;
     public $isEncrypted;
+    public $cryptoInfo;
     public $requestCycleQueue;
     public $requestCycleQueueSize;
     public $currentRequestCycle;

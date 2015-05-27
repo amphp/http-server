@@ -153,20 +153,10 @@ class Rfc7230Server implements ServerObserver {
             $socketId = (int) $socket;
             $reactor->cancel($watcherId);
             unset($this->pendingTlsStreams[$socketId]);
-            $meta = stream_get_meta_data($socket);
-            if (isset($meta['alpn_protocol']) && $meta['alpn_protocol'] === "h2") {
-                // @TODO: Export socket to HTTP/2.0 handler
-                // Since we haven't implemented h2 yet we'll send all clients to the
-                // standard HTTP/1.1 readiness handler for now.
-            }
-            assert($this->log(LogLevel::DEBUG, sprintf(
-                "crypto success: %s",
-                stream_socket_get_name($socket, true)
-            )));
             $this->finalizeImport($socket);
         } elseif ($handshake === false) {
             assert($this->log(LogLevel::DEBUG, sprintf(
-                "crypto failure: %s",
+                "crypto handshake err %s",
                 stream_socket_get_name($socket, true)
             )));
             $this->failCryptoNegotiation($socket);
@@ -237,7 +227,6 @@ class Rfc7230Server implements ServerObserver {
         $client = new Rfc7230Client;
         $client->id = (int) $socket;
         $client->socket = $socket;
-        $client->isEncrypted = (bool) @stream_context_get_options($socket)["ssl"];
         $client->requestsRemaining = $this->options->maxRequests;
 
         $clientName = stream_socket_get_name($socket, true);
@@ -249,6 +238,26 @@ class Rfc7230Server implements ServerObserver {
         $portStartPos = strrpos($serverName, ":");
         $client->serverAddr = substr($serverName, 0, $portStartPos);
         $client->serverPort = substr($serverName, $portStartPos + 1);
+
+        $meta = stream_get_meta_data($socket);
+        if (empty($meta["crypto"])) {
+            $client->isEncrypted = false;
+        } else {
+            $client->isEncrypted = true;
+            $client->cryptoInfo = $meta["crypto"];
+            assert($this->log(LogLevel::DEBUG, sprintf(
+                "crypto %s @ %s",
+                $client->cryptoInfo["protocol"],
+                $clientName
+            )));
+            /*
+            // @TODO: Support HTTP/2.0!
+            $isHttp2 = isset($client->cryptoInfo["alpn_protocol"])
+                ? $client->cryptoInfo["alpn_protocol"] === "h2"
+                : false;
+            */
+        }
+
         $client->requestParser = $this->parser([$this, "onParse"], $options = [
             "max_body_size" => $this->options->maxBodySize,
             "max_header_size" => $this->options->maxHeaderSize,
@@ -386,7 +395,7 @@ class Rfc7230Server implements ServerObserver {
     private function onParsedEntityHeaders(Rfc7230Client $client, array $parseResult) {
         $requestCycle = $this->initializeRequestCycle($client, $parseResult);
         $requestCycle->bodyPromisor = new Deferred;
-        $requestCycle->request->body = new BodyStream($requestCycle->bodyPromisor->promise());
+        $requestCycle->internalRequest->body = new BodyStream($requestCycle->bodyPromisor->promise());
 
         // Only respond if this request is at the front of the queue
         if ($client->requestCycleQueueSize === 1) {
@@ -437,8 +446,9 @@ class Rfc7230Server implements ServerObserver {
         }
         $uri = empty($parseResult["uri"]) ? "/" : $parseResult["uri"];
         $headers = empty($parseResult["headers"]) ? [] : $parseResult["headers"];
+        $headerLines = [];
         foreach ($headers as $field => $value) {
-            $headers[$field] = isset($value[1]) ? implode(',', $value) : $value[0];
+            $headerLines[$field] = isset($value[1]) ? implode(",", $value) : $value[0];
         }
 
         assert($this->log(LogLevel::DEBUG, sprintf(
@@ -450,57 +460,50 @@ class Rfc7230Server implements ServerObserver {
             $client->clientPort
         )));
 
-        $request = new Request;
-        $requestCycle->request = $request;
-
-        $request->debug = $this->options->debug;
-        $request->locals = new \StdClass;
-        $request->time = $this->currentTime;
-        $request->remaining = $client->requestsRemaining;
-        $request->isEncrypted = $client->isEncrypted;
-        $request->trace = $trace;
-        $request->protocol = $protocol;
-        $request->method = $method;
-        $request->headers = $headers;
-        $request->body = $this->bodyNull;
-        $request->serverPort = $client->serverPort;
-        $request->serverAddr = $client->serverAddr;
-        $request->clientPort = $client->clientPort;
-        $request->clientAddr = $client->clientAddr;
-        $request->uriRaw = $uri;
+        $ireq = $requestCycle->internalRequest = new InternalRequest;
+        $ireq->debug = $this->options->debug;
+        $ireq->locals = [];
+        $ireq->remaining = $client->requestsRemaining;
+        $ireq->isEncrypted = $client->isEncrypted;
+        $ireq->cryptoInfo = $client->cryptoInfo;
+        $ireq->trace = $trace;
+        $ireq->protocol = $protocol;
+        $ireq->method = $method;
+        $ireq->headers = $headers;
+        $ireq->headerLines = $headerLines;
+        $ireq->body = $this->bodyNull;
+        $ireq->serverPort = $client->serverPort;
+        $ireq->serverAddr = $client->serverAddr;
+        $ireq->clientPort = $client->clientPort;
+        $ireq->clientAddr = $client->clientAddr;
+        $ireq->uriRaw = $uri;
         if (stripos($uri, "http://") === 0 || stripos($uri, "https://") === 0) {
             extract(parse_url($uri, EXTR_PREFIX_ALL, "uri"));
-            $request->uriHost = $uri_host;
-            $request->uriPort = $uri_port;
-            $request->uriPath = $uri_path;
-            $request->uriQuery = $uri_query;
-            $request->uri = isset($uri_query) ? "{$uri_path}?{$uri_query}" : $uri_path;
+            $ireq->uriHost = $uri_host;
+            $ireq->uriPort = $uri_port;
+            $ireq->uriPath = $uri_path;
+            $ireq->uriQuery = $uri_query;
+            $ireq->uri = isset($uri_query) ? "{$uri_path}?{$uri_query}" : $uri_path;
         } elseif ($qPos = strpos($uri, '?')) {
-            $request->uriQuery = substr($uri, $qPos + 1);
-            $request->uriPath = substr($uri, 0, $qPos);
-            $request->uri = "{$request->uriPath}?{$request->uriQuery}";
+            $ireq->uriQuery = substr($uri, $qPos + 1);
+            $ireq->uriPath = substr($uri, 0, $qPos);
+            $ireq->uri = "{$ireq->uriPath}?{$ireq->uriQuery}";
         } else {
-            $request->uri = $request->uriPath = $uri;
-        }
-
-        if ($request->uriQuery == "") {
-            $request->query = [];
-        } else {
-            parse_str($request->uriQuery, $request->query);
+            $ireq->uri = $ireq->uriPath = $uri;
         }
 
         $requestCycle->responseWriter = $this->generateResponseWriter($requestCycle->client);
         $requestCycle->responseFilter = null; // Created at app call-time
         $requestCycle->badFilterKeys = [];
 
-        if ($vhost = $this->vhostGroup->selectHost($request)) {
+        if ($vhost = $this->vhostGroup->selectHost($ireq)) {
             $requestCycle->isVhostValid = true;
         } else {
             $requestCycle->isVhostValid = false;
             $vhost = $this->vhostGroup->getDefaultHost();
         }
         $requestCycle->vhost = $vhost;
-        $request->serverName = ($vhost->hasName())
+        $ireq->serverName = ($vhost->hasName())
             ? $vhost->getName()
             : $requestCycle->client->serverAddr
         ;
@@ -516,11 +519,11 @@ class Rfc7230Server implements ServerObserver {
             $application = $requestCycle->parseErrorResponder;
         } elseif (!$requestCycle->isVhostValid) {
             $application = [$this, "sendPreAppInvalidHostResponse"];
-        } elseif (!in_array($requestCycle->request->method, $this->options->allowedMethods)) {
+        } elseif (!in_array($requestCycle->internalRequest->method, $this->options->allowedMethods)) {
             $application = [$this, "sendPreAppMethodNotAllowedResponse"];
-        } elseif ($requestCycle->request->method === "TRACE") {
+        } elseif ($requestCycle->internalRequest->method === "TRACE") {
             $application = [$this, "sendPreAppTraceResponse"];
-        } elseif ($requestCycle->request->method === "OPTIONS" && $uri->raw === "*") {
+        } elseif ($requestCycle->internalRequest->method === "OPTIONS" && $uri->raw === "*") {
             $application = [$this, "sendPreAppOptionsResponse"];
         } else {
             $application = $requestCycle->vhost->getApplication();
@@ -528,7 +531,7 @@ class Rfc7230Server implements ServerObserver {
 
         /*
         // @TODO This check needs to be moved to the parser
-        if ($this->options->requireBodyLength && empty($requestCycle->request->headers["CONTENT-LENGTH"])) {
+        if ($this->options->requireBodyLength && empty($requestCycle->internalRequest->headers["CONTENT-LENGTH"])) {
             $application = function() {
                 $response->setStatus(HTTP_STATUS["LENGTH_REQUIRED"])
                 $response->setReason(HTTP_REASON[HTTP_STATUS["LENGTH_REQUIRED"]])
@@ -560,7 +563,7 @@ class Rfc7230Server implements ServerObserver {
     private function sendPreAppTraceResponse(Request $request, Response $response) {
         $response->setStatus(HTTP_STATUS["OK"]);
         $response->setHeader("Content-Type", "message/http");
-        $response->end($body = $request->trace);
+        $response->end($body = $ireq->trace);
     }
 
     private function sendPreAppOptionsResponse(Request $request, Response $response) {
@@ -569,19 +572,19 @@ class Rfc7230Server implements ServerObserver {
         $response->end($body = null);
     }
 
-    private function initializeResponseFilter(Rfc7230RequestCycle $requestCycle, Request $userRequest): Filter {
+    private function initializeResponseFilter(Rfc7230RequestCycle $requestCycle): Filter {
         $try = [$this->startResponseFilter, $this->genericResponseFilter];
 
         if ($userFilters = $requestCycle->vhost->getFilters()) {
             $try = array_merge($try, array_values($userFilters));
         }
-        if ($requestCycle->request->method === "HEAD") {
+        if ($requestCycle->internalRequest->method === "HEAD") {
             $try[] = $this->headResponseFilter;
         }
         if ($this->options->deflateEnable) {
             $try[] = $this->deflateResponseFilter;
         }
-        if ($requestCycle->request->protocol === "1.1") {
+        if ($requestCycle->internalRequest->protocol === "1.1") {
             $try[] = $this->chunkResponseFilter;
         }
         if ($this->options->outputBufferSize > 0) {
@@ -591,7 +594,7 @@ class Rfc7230Server implements ServerObserver {
         $filters = [];
         foreach ($try as $key => $filter) {
             try {
-                $result = ($filter)($userRequest);
+                $result = ($filter)($requestCycle->internalRequest);
                 if ($result instanceof \Generator && $result->valid()) {
                     $filters[] = $result;
                 }
@@ -676,23 +679,23 @@ class Rfc7230Server implements ServerObserver {
 
     private function tryApplication(Rfc7230RequestCycle $requestCycle, callable $application) {
         try {
-            $userRequest = clone $requestCycle->request;
+            $request = new StandardRequest($requestCycle->internalRequest);
             $response = $requestCycle->response = new StandardResponse(
-                $this->initializeResponseFilter($requestCycle, $userRequest),
+                $this->initializeResponseFilter($requestCycle),
                 $requestCycle->responseWriter,
                 $requestCycle->client
             );
 
-            $result = ($application)($userRequest, $response);
+            $out = ($application)($request, $response);
 
-            if ($result instanceof \Generator) {
-                $promise = resolve($result, $this->reactor);
+            if ($out instanceof \Generator) {
+                $promise = resolve($out, $this->reactor);
                 $promise->when($this->onCoroutineAppResolve, $requestCycle);
             } elseif ($response->state() & Response::STARTED) {
                 $response->end();
             } else {
                 $status = HTTP_STATUS["NOT_FOUND"];
-                $subHeading = "Requested: {$requestCycle->request->uri}";
+                $subHeading = "Requested: {$requestCycle->internalRequest->uri}";
                 $response->setStatus($status);
                 $response->end($this->makeGenericBody($status, $subHeading));
             }
@@ -711,7 +714,7 @@ class Rfc7230Server implements ServerObserver {
                 $requestCycle->response->end();
             } else {
                 $status = HTTP_STATUS["NOT_FOUND"];
-                $subHeading = "Requested: {$requestCycle->request->uri}";
+                $subHeading = "Requested: {$requestCycle->internalRequest->uri}";
                 $requestCycle->response->setStatus($status);
                 $requestCycle->response->end($this->makeGenericBody($status, $subHeading));
             }
@@ -779,9 +782,9 @@ class Rfc7230Server implements ServerObserver {
 
     private function sendErrorResponse(\BaseException $error, Rfc7230RequestCycle $requestCycle) {
         $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
-        $subHeading = "Requested: {$requestCycle->request->uri}";
+        $subHeading = "Requested: {$requestCycle->internalRequest->uri}";
         $msg = ($this->options->debug)
-            ? $this->makeDebugMessage($error, $requestCycle->request)
+            ? $this->makeDebugMessage($error, $requestCycle->internalRequest)
             : "<p>Something went wrong ...</p>"
         ;
         $body = $this->makeGenericBody($status, $subHeading, $msg);
@@ -790,20 +793,19 @@ class Rfc7230Server implements ServerObserver {
         $requestCycle->response->end($body);
     }
 
-    private function makeDebugMessage(\BaseException $error, Request $request): string {
+    private function makeDebugMessage(\BaseException $error, InternalRequest $ireq): string {
         $vars = [
-            "time"          => $request->time,
-            "debug"         => ($request->debug ? "true" : "false"),
-            "isEncrypted"   => ($request->isEncrypted ? "true" : "false"),
-            "serverAddr"    => $request->serverAddr,
-            "serverPort"    => $request->serverPort,
-            "serverName"    => $request->serverName,
-            "clientAddr"    => $request->clientAddr,
-            "clientPort"    => $request->clientPort,
-            "method"        => $request->method,
-            "protocol"      => $request->protocol,
-            "uri"           => $request->uriRaw,
-            "headers"       => $request->headers,
+            "debug"         => ($ireq->debug ? "true" : "false"),
+            "isEncrypted"   => ($ireq->isEncrypted ? "true" : "false"),
+            "serverAddr"    => $ireq->serverAddr,
+            "serverPort"    => $ireq->serverPort,
+            "serverName"    => $ireq->serverName,
+            "clientAddr"    => $ireq->clientAddr,
+            "clientPort"    => $ireq->clientPort,
+            "method"        => $ireq->method,
+            "protocol"      => $ireq->protocol,
+            "uri"           => $ireq->uriRaw,
+            "headers"       => $ireq->headers,
         ];
 
         $map = function($s) { return substr($s, 4); };
@@ -811,7 +813,7 @@ class Rfc7230Server implements ServerObserver {
 
         $msg[] = "<pre>{$error}</pre>";
         $msg[] = "\n<hr/>\n";
-        $msg[] = "<pre>{$request->trace}</pre>";
+        $msg[] = "<pre>{$ireq->trace}</pre>";
         $msg[] = "\n<hr/>\n";
         $msg[] = "<pre>{$vars}</pre>";
         $msg[] = "\n";
@@ -836,9 +838,9 @@ class Rfc7230Server implements ServerObserver {
         );
     }
 
-    private function startResponseFilter(Request $request): \Generator {
-        $protocol = $request->protocol;
-        $requestsRemaining = $request->remaining;
+    private function startResponseFilter(InternalRequest $ireq): \Generator {
+        $protocol = $ireq->protocol;
+        $requestsRemaining = $ireq->remaining;
         $message = "";
         $headerEndOffset = null;
 
@@ -891,7 +893,7 @@ class Rfc7230Server implements ServerObserver {
             $headers = setHeader($headers, "Content-Type", $type);
         }
 
-        if ($shouldClose || $this->stopPromisor || $request->remaining === 0) {
+        if ($shouldClose || $this->stopPromisor || $ireq->remaining === 0) {
             $headers = setHeader($headers, "Connection", "close");
         } else {
             $keepAlive = "timeout={$options->keepAliveTimeout}, max={$requestsRemaining}";
@@ -904,7 +906,7 @@ class Rfc7230Server implements ServerObserver {
         return "HTTP/{$protocol} {$status} {$reason}\r\n{$headers}\r\n\r\n{$entity}";
     }
 
-    private function genericResponseFilter(Request $request): \Generator {
+    private function genericResponseFilter(InternalRequest $ireq): \Generator {
         $message = "";
         $headerEndOffset = null;
 
@@ -926,7 +928,7 @@ class Rfc7230Server implements ServerObserver {
 
         $startLineParts = explode("\x20", $startLine, 2);
         $status = (int) $startLineParts[1];
-        $subHeading = "Requested: {$request->uri}";
+        $subHeading = "Requested: {$ireq->uri}";
         $body = $this->makeGenericBody($status, $subHeading);
         $headers = removeHeader($headers, "Aerys-Generic-Response");
         $headers = removeHeader($headers, "Transfer-Encoding");
@@ -936,7 +938,7 @@ class Rfc7230Server implements ServerObserver {
         return "{$startLine}\r\n{$headers}\r\n\r\n{$body}";
     }
 
-    private function headResponseFilter(Request $request): \Generator {
+    private function headResponseFilter(InternalRequest $ireq): \Generator {
         $message = "";
         $headerEndOffset = null;
 
@@ -957,15 +959,15 @@ class Rfc7230Server implements ServerObserver {
         while (yield !== Filter::END);
     }
 
-    private function deflateResponseFilter(Request $request): \Generator {
-        if (empty($request->headers["ACCEPT-ENCODING"])) {
+    private function deflateResponseFilter(InternalRequest $ireq): \Generator {
+        if (empty($ireq->headers["ACCEPT-ENCODING"])) {
             return;
         }
 
         // @TODO Perform a more sophisticated check for gzip acceptance.
         // This check isn't technically correct as the gzip parameter
         // could have a q-value of zero indicating "never accept gzip."
-        if (stripos($request->headers["ACCEPT-ENCODING"], "gzip") === false) {
+        if (stripos($ireq->headerLines["ACCEPT-ENCODING"], "gzip") === false) {
             return;
         }
 
@@ -1083,7 +1085,7 @@ class Rfc7230Server implements ServerObserver {
         return $deflated;
     }
 
-    private function chunkResponseFilter(Request $request): \Generator {
+    private function chunkResponseFilter(InternalRequest $ireq): \Generator {
         $message = "";
         $headerEndOffset = null;
 
@@ -1129,7 +1131,7 @@ class Rfc7230Server implements ServerObserver {
         return $chunk;
     }
 
-    private function bufferResponseFilter(Request $request): \Generator {
+    private function bufferResponseFilter(InternalRequest $ireq): \Generator {
         $bufferSize = $this->options->outputBufferSize;
         $out = Filter::NEEDS_MORE_DATA;
         $buffer = "";

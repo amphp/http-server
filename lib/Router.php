@@ -34,12 +34,19 @@ class Router implements ServerObserver, LoggerAware {
 
     public function __construct(array $options = []) {
         $this->setOptions($options);
-        $this->canonicalRedirector = function(Request $req, Response $res) {
-            $redirectTo = $req->uriQuery ? "{$req->uriPath}/?{$req->uriQuery}" : "{$req->uriPath}/";
-            $res->setStatus(HTTP_STATUS["FOUND"]);
-            $res->setHeader("Location", $redirectTo);
-            $res->setHeader("Content-Type", "text/plain; charset=utf-8");
-            $res->end("Canonical resource URI: {$req->uri}/");
+        $this->canonicalRedirector = function(Request $request, Response $response) {
+            $uri = $request->getUri();
+            if (stripos($uri, "?")) {
+                list($path, $query) = explode("?", $uri, 2);
+                $redirectTo = "{$path}/?{$query}";
+            } else {
+                $path = $uri;
+                $redirectTo = "{$uri}/";
+            }
+            $response->setStatus(HTTP_STATUS["FOUND"]);
+            $response->setHeader("Location", $redirectTo);
+            $response->setHeader("Content-Type", "text/plain; charset=utf-8");
+            $response->end("Canonical resource URI: {$path}/");
         };
     }
 
@@ -72,10 +79,12 @@ class Router implements ServerObserver, LoggerAware {
      * @return mixed
      */
     public function __invoke(Request $request, Response $response) {
-        $toMatch = $request->uriPath;
+        $uri = $request->getUri();
+        $toMatch = ($qPos = stripos($uri, "?")) ? substr($uri, 0, $qPos) : $uri;
 
         if (isset($this->cache[$toMatch])) {
-            list($action, $request->locals->routeArgs) = $cache = $this->cache[$toMatch];
+            list($action, $routeArgs) = $cache = $this->cache[$toMatch];
+            $request->setLocalVar("aerys.routeArgs", $routeArgs);
             // Keep the most recently used entry at the back of the LRU cache
             unset($this->cache[$toMatch]);
             $this->cache[$toMatch] = $cache;
@@ -83,13 +92,14 @@ class Router implements ServerObserver, LoggerAware {
             return $action($request, $response);
         }
 
-        $match = $this->routeDispatcher->dispatch($request->method, $toMatch);
+        $match = $this->routeDispatcher->dispatch($request->getMethod(), $toMatch);
 
         switch ($match[0]) {
             case Dispatcher::FOUND:
-                list(, $action, $request->locals->routeArgs) = $match;
+                list(, $action, $routeArgs) = $match;
+                $request->setLocalVar("aerys.routeArgs", $routeArgs);
                 if ($this->maxCacheEntries > 0) {
-                    $this->cacheDispatchResult($action, $request);
+                    $this->cacheDispatchResult($toMatch, $routeArgs, $action);
                 }
 
                 return $action($request, $response);
@@ -112,7 +122,7 @@ class Router implements ServerObserver, LoggerAware {
         }
     }
 
-    private function cacheDispatchResult(callable $action, Request $request) {
+    private function cacheDispatchResult(string $toMatch, array $routeArgs, callable $action) {
         if ($this->cacheEntryCount < $this->maxCacheEntries) {
             $this->cacheEntryCount++;
         } else {
@@ -121,8 +131,8 @@ class Router implements ServerObserver, LoggerAware {
             unset($this->cache[$unsetMe]);
         }
 
-        $cacheKey = $request->uriPath;
-        $this->cache[$cacheKey] = [$action, $request->locals->routeArgs];
+        $cacheKey = $toMatch;
+        $this->cache[$cacheKey] = [$action, $routeArgs];
     }
 
     /**

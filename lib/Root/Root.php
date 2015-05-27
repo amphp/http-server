@@ -118,7 +118,9 @@ abstract class Root implements ServerObserver {
      * @return mixed
      */
     public function __invoke(Request $request, Response $response) {
-        $path = str_replace("\\", "/", $request->uriPath);
+        $uri = $request->getUri();
+        $path = ($qPos = stripos($uri, "?")) ? substr($uri, 0, $qPos) : $uri;
+        $path = $reqPath = str_replace("\\", "/", $path);
         $path = $this->root . $path;
         $path = self::removeDotPathSegments($path);
 
@@ -134,9 +136,9 @@ abstract class Root implements ServerObserver {
         // We specifically break the lookup generator out into its own method
         // so that we can potentially avoid forcing the server to resolve a
         // coroutine when the file is already cached.
-        return ($stat = $this->fetchCachedStat($request))
+        return ($stat = $this->fetchCachedStat($reqPath, $request))
             ? $this->doResponse($stat, $request, $response)
-            : $this->doResponseWithStatLookup($path, $request, $response);
+            : $this->doResponseWithStat($path, $reqPath, $request, $response);
     }
 
     public static function removeDotPathSegments(string $path): string {
@@ -222,23 +224,23 @@ abstract class Root implements ServerObserver {
         return implode($outputStack);
     }
 
-    protected function fetchCachedStat(Request $request) {
+    protected function fetchCachedStat(string $reqPath, Request $request) {
         // We specifically allow users to bypass cached representations in debug mode by
         // using their browser's "force refresh" functionality. This lets us avoid the
         // annoyance of stale file representations being served for a few seconds after
         // changes have been written to disk.
         if (empty($this->debug)) {
-            return $this->cache[$request->uriPath] ?? null;
+            return $this->cache[$reqPath] ?? null;
         } elseif (isset($request->headers["CACHE-CONTROL"]) &&
-            stripos($request->headers["CACHE-CONTROL"], "no-cache") !== false
+            stripos($request->headerLines["CACHE-CONTROL"], "no-cache") !== false
         ) {
             return null;
         } elseif (isset($request->headers["PRAGMA"]) &&
-            stripos($request->headers["PRAGMA"], "no-cache") !== false
+            stripos($request->headerLines["PRAGMA"], "no-cache") !== false
         ) {
             return null;
         } else {
-            return $this->cache[$request->uriPath] ?? null;
+            return $this->cache[$reqPath] ?? null;
         }
     }
 
@@ -256,19 +258,19 @@ abstract class Root implements ServerObserver {
         return true;
     }
 
-    protected function doResponseWithStatLookup(string $path, Request $request, Response $response): \Generator {
+    protected function doResponseWithStat(string $realPath, string $reqPath, Request $request, Response $response): \Generator {
         // We don't catch any potential exceptions from this yield because they represent
         // a legitimate error from some sort of disk failure. Just let them bubble up to
         // the server where they'll turn into a 500 response.
-        $stat = yield from $this->stat($path);
+        $stat = yield from $this->stat($realPath);
 
         // Specifically use the request path to reference this file in the
         // cache because the file entry path may differ if it's reflecting
         // a directory index file.
         if ($this->cacheEntryCount < $this->cacheEntryMaxCount) {
             $this->cacheEntryCount++;
-            $this->cache[$request->uriPath] = $stat;
-            $this->cacheTimeouts[$request->uriPath] = $this->now + $this->cacheEntryTtl;
+            $this->cache[$reqPath] = $stat;
+            $this->cacheTimeouts[$reqPath] = $this->now + $this->cacheEntryTtl;
         }
 
         $result = $this->doResponse($stat, $request, $response);
