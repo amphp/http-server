@@ -88,7 +88,7 @@ interface Request {
     public function getTrace(): string;
 
     /**
-     * Retrieve a variable the from request's mutable local storage
+     * Retrieve a variable from the request's mutable local storage
      *
      * Each request has its own mutable local storage to which application
      * callables and middleware may read and write data. Other callables
