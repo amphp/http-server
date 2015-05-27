@@ -412,13 +412,16 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
     }
 
     public function onWritable($reactor, $watcherId, $socket, Rfc6455Client $client) {
-retry:
         $bytes = @fwrite($socket, $client->writeBuffer);
         $client->bytesSent += $bytes;
+
         if ($bytes != \strlen($client->writeBuffer)) {
             $client->writeBuffer = substr($client->writeBuffer, $bytes);
         } elseif ($bytes == 0 && $client->closedAt && (!is_resource($socket) || @feof($socket))) {
-            // usually read watcher cares about aborted TCP connections, but when $client->closedAt is true, it might be the case that read watcher is already cancelled and we need to ensure that our writing promise is fulfilled in unloadClient() with a failure
+            // usually read watcher cares about aborted TCP connections, but when
+            // $client->closedAt is true, it might be the case that read watcher
+            // is already cancelled and we need to ensure that our writing promise
+            // is fulfilled in unloadClient() with a failure
             unset($this->closeTimeouts[$client->id]);
             $this->unloadClient($client);
         } else {
@@ -428,7 +431,6 @@ retry:
                 $client->writeBuffer = array_shift($client->writeControlQueue);
                 $client->lastSentAt = $this->now;
                 $client->writeDeferred = array_shift($client->writeDeferredControlQueue);
-                goto retry;
             } elseif ($client->closedAt) {
                 @stream_socket_shutdown($socket, STREAM_SHUT_WR);
                 $reactor->cancel($watcherId);
@@ -438,7 +440,6 @@ retry:
                 $client->lastDataSentAt = $this->now;
                 $client->lastSentAt = $this->now;
                 $client->writeDeferred = array_shift($client->writeDeferredDataQueue)->succeed();
-                goto retry;
             } else {
                 $client->writeBuffer = "";
                 $reactor->disable($watcherId);
