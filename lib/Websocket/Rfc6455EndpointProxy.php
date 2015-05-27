@@ -19,7 +19,7 @@ class Rfc6455EndpointProxy implements Endpoint {
         return $this->endpoint->broadcast($data, $clientIds);
     }
 
-    public function close(int $clientId, int $code = CODES["NORMAL_CLOSE"], string $reason = "") {
+    public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
         $this->endpoint->close($clientId, $code, $reason);
     }
 

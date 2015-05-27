@@ -221,7 +221,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
 
     private function onAppError($clientId, \BaseException $e): \Generator {
         $this->logger->error($e->__toString());
-        $code = CODES["UNEXPECTED_SERVER_ERROR"];
+        $code = Code::UNEXPECTED_SERVER_ERROR;
         $reason = "Internal server error, aborting";
         yield from $this->doClose($this->clients[$clientId], $code, $reason);
     }
@@ -381,7 +381,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
         list($msg, $code) = $parseResult;
 
         if ($code) {
-            if ($client->closedAt || $code == CODES["PROTOCOL_ERROR"]) {
+            if ($client->closedAt || $code == Code::PROTOCOL_ERROR) {
                 @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
                 $this->reactor->cancel($client->readWatcher);
                 $client->readWatcher = null;
@@ -402,7 +402,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
         } elseif (!is_resource($socket) || @feof($socket)) {
             if (!$client->closedAt) {
                 $client->closedAt = $this->now;
-                resolve($this->tryAppOnClose($client->id, CODES["ABNORMAL_CLOSE"], "Client closed underlying TCP connection"));
+                resolve($this->tryAppOnClose($client->id, Code::ABNORMAL_CLOSE, "Client closed underlying TCP connection"));
             } else {
                 unset($this->closeTimeouts[$client->id]);
             }
@@ -546,7 +546,7 @@ retry:
         return all($promises);
     }
 
-    public function close(int $clientId, int $code = CODES["NORMAL_CLOSE"], string $reason = "") {
+    public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
         if (isset($this->clients[$clientId])) {
             resolve($this->doClose($this->clients[$clientId], $code, $reason));
         }
@@ -594,7 +594,7 @@ retry:
                 break;
 
             case Server::STOPPING:
-                $code = CODES["GOING_AWAY"];
+                $code = Code::GOING_AWAY;
                 $reason = "Server shutting down!";
 
                 foreach ($this->clients as $client) {
@@ -611,7 +611,7 @@ retry:
                     resolve($result);
                 }
 
-                // we are not going to wait for a proper OP_CLOSE answer (because else we'd need to timeout for 3 seconds, not worth it), but we will ensure to at least *have written* it
+                // we are not going to wait for a proper self::OP_CLOSE answer (because else we'd need to timeout for 3 seconds, not worth it), but we will ensure to at least *have written* it
                 $promises = [];
                 foreach ($this->clients as $client) {
                     $promise = end($client->writeDeferredControlQueue)->promise();
@@ -631,11 +631,11 @@ retry:
 
     private function sendHeartbeatPing(Rfc6455Client $client) {
         if ($client->pingCount - $client->pongCount > $this->queuedPingLimit) {
-            $code = CODES["POLICY_VIOLATION"];
+            $code = Code::POLICY_VIOLATION;
             $reason = 'Exceeded unanswered PING limit';
             $this->doClose($client, $code, $reason);
         } else {
-            $this->compile($client, $client->pingCount++, OP_PING);
+            $this->compile($client, $client->pingCount++, self::OP_PING);
         }
     }
 
@@ -747,7 +747,7 @@ retry:
 
                 if (PHP_INT_MAX === 0x7fffffff) {
                     if ($lengthLong32Pair[0] !== 0 || $lengthLong32Pair[1] < 0) {
-                        $code = CODES["MESSAGE_TOO_LARGE"];
+                        $code = Code::MESSAGE_TOO_LARGE;
                         $errorMsg = 'Payload exceeds maximum allowable size';
                         break;
                     }
@@ -755,7 +755,7 @@ retry:
                 } else {
                     $frameLength = ($lengthLong32Pair[0] << 32) | $lengthLong32Pair[1];
                     if ($frameLength < 0) {
-                        $code = CODES["PROTOCOL_ERROR"];
+                        $code = Code::PROTOCOL_ERROR;
                         $errorMsg = 'Most significant bit of 64-bit length field set';
                         break;
                     }
@@ -763,31 +763,31 @@ retry:
             }
 
             if ($isControlFrame && !$fin) {
-                $code = CODES["PROTOCOL_ERROR"];
+                $code = Code::PROTOCOL_ERROR;
                 $errorMsg = 'Illegal control frame fragmentation';
                 break;
             } elseif ($isControlFrame && $frameLength > 125) {
-                $code = CODES["PROTOCOL_ERROR"];
+                $code = Code::PROTOCOL_ERROR;
                 $errorMsg = 'Control frame payload must be of maximum 125 bytes or less';
                 break;
             } elseif ($maxFrameSize && $frameLength > $maxFrameSize) {
-                $code = CODES["MESSAGE_TOO_LARGE"];
+                $code = Code::MESSAGE_TOO_LARGE;
                 $errorMsg = 'Payload exceeds maximum allowable frame size';
                 break;
             } elseif ($maxMsgSize && ($frameLength + $dataMsgBytesRecd) > $maxMsgSize) {
-                $code = CODES["MESSAGE_TOO_LARGE"];
+                $code = Code::MESSAGE_TOO_LARGE;
                 $errorMsg = 'Payload exceeds maximum allowable message size';
                 break;
             } elseif ($textOnly && $opcode === 0x02) {
-                $code = CODES["UNACCEPTABLE_TYPE"];
+                $code = Code::UNACCEPTABLE_TYPE;
                 $errorMsg = 'BINARY opcodes (0x02) not accepted';
                 break;
             } elseif ($frameLength > 0 && !$isMasked) {
-                $code = CODES["PROTOCOL_ERROR"];
+                $code = Code::PROTOCOL_ERROR;
                 $errorMsg = 'Payload mask required';
                 break;
             } elseif (!($opcode || $isControlFrame)) {
-                $code = CODES["PROTOCOL_ERROR"];
+                $code = Code::PROTOCOL_ERROR;
                 $errorMsg = 'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY';
                 break;
             }
@@ -856,7 +856,7 @@ retry:
             }
 
             if ($opcode === self::OP_TEXT && $validateUtf8 && !preg_match('//u', $payloadReference)) {
-                $code = CODES["INCONSISTENT_FRAME_DATA_TYPE"];
+                $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
                 $errorMsg = 'Invalid TEXT data; UTF-8 required';
                 break;
             }
