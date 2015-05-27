@@ -5,6 +5,7 @@ namespace Aerys;
 use Amp\Reactor;
 use League\CLImate\CLImate;
 use Psr\Log\LoggerInterface as Logger;
+use Psr\Log\LoggerAwareInterface as LoggerAware;
 
 class Bootstrapper {
 
@@ -92,7 +93,7 @@ class Bootstrapper {
         $server = new Server($reactor, $options->debug);
         $vhostGroup = new VhostGroup;
         foreach ($hosts as $host) {
-            $vhost = self::buildVhost($server, $host);
+            $vhost = self::buildVhost($server, $logger, $host);
             $vhostGroup->addHost($vhost);
         }
 
@@ -168,7 +169,7 @@ class Bootstrapper {
         return eval($code);
     }
 
-    private static function buildVhost(Server $server, Host $host) {
+    private static function buildVhost(Server $server, Logger $logger, Host $host) {
         try {
             $hostExport = $host->export();
             $address = $hostExport["address"];
@@ -176,7 +177,7 @@ class Bootstrapper {
             $name = $hostExport["name"];
             $actions = $hostExport["actions"];
             $filters = $hostExport["filters"];
-            $application = self::buildApplication($server, $actions);
+            $application = self::buildApplication($server, $logger, $actions);
             $vhost = new Vhost($name, $address, $port, $application, $filters);
             if ($crypto = $hostExport["crypto"]) {
                 $vhost->setCrypto($crypto);
@@ -192,7 +193,7 @@ class Bootstrapper {
         }
     }
 
-    private static function buildApplication(Server $server, array $actions) {
+    private static function buildApplication(Server $server, Logger $logger, array $actions) {
         foreach ($actions as $key => $action) {
             if (!is_callable($action)) {
                 throw new \DomainException(
@@ -201,6 +202,13 @@ class Bootstrapper {
             }
             if ($action instanceof ServerObserver) {
                 $server->attach($action);
+            } elseif (is_array($action) && is_object($action[0]) && $action[0] instanceof ServerObserver) {
+                $server->attach($action[0]);
+            }
+            if ($action instanceof LoggerAware) {
+                $action->setLogger($logger);
+            } elseif (is_array($action) && is_object($action[0]) && $action[0] instanceof LoggerAware) {
+                $action[0]->setLogger($logger);
             }
         }
 

@@ -15,7 +15,12 @@ use Amp\{
     function any
 };
 
-class Router implements ServerObserver {
+use Psr\Log\{
+    LoggerInterface as Logger,
+    LoggerAwareInterface as LoggerAware
+};
+
+class Router implements ServerObserver, LoggerAware {
     private $canonicalRedirector;
     private $routeDispatcher;
     private $routes = [];
@@ -23,6 +28,9 @@ class Router implements ServerObserver {
     private $cacheEntryCount = 0;
     private $maxCacheEntries = 512;
     private $serverObservers = [];
+    private $loggerAwares = [];
+    private $logger;
+    private $state = Server::STOPPED;
 
     public function __construct(array $options = []) {
         $this->setOptions($options);
@@ -160,6 +168,11 @@ class Router implements ServerObserver {
      * @return self
      */
     public function route(string $method, string $uri, callable ...$actions): Router {
+        if ($this->state !== Server::STOPPED) {
+            throw new \LogicException(
+                "Cannot add routes once the server has started"
+            );
+        }
         if ($method === "") {
             throw new \DomainException(
                 __METHOD__ . " requires a non-empty string HTTP method at Argument 1"
@@ -199,6 +212,11 @@ class Router implements ServerObserver {
             } elseif (is_array($action) && $action[0] instanceof ServerObserver) {
                 $this->serverObservers[] = $action[0];
             }
+            if ($action instanceof LoggerAware) {
+                $this->loggerAwares[] = $action;
+            } elseif (is_array($action) && is_object($action[0]) && $action[0] instanceof LoggerAware) {
+                $this->loggerAwares[] = $action[0];
+            }
         }
 
         if (empty($actions[1])) {
@@ -219,6 +237,16 @@ class Router implements ServerObserver {
     }
 
     /**
+     * Assign the process-wide logger instance to route handlers requiring it
+     *
+     * @param Logger $logger
+     * @return void
+     */
+    public function setLogger(Logger $logger) {
+        $this->logger = $logger;
+    }
+
+    /**
      * React to server state changes
      *
      * Here we generate our dispatcher when the server notifies us that it is
@@ -234,7 +262,7 @@ class Router implements ServerObserver {
         foreach ($this->serverObservers as $serverObserver) {
             $observerPromises[] = $serverObserver->update($server);
         }
-        switch ($server->state()) {
+        switch ($this->state = $server->state()) {
             case Server::STOPPED:
                 $this->routeDispatcher = null;
                 break;
@@ -243,12 +271,15 @@ class Router implements ServerObserver {
                     $observerPromises[] = new Failure(new \DomainException(
                         "Router start failure: no routes registered"
                     ));
-                } else {
-                    $this->routeDispatcher = simpleDispatcher(function(RouteCollector $rc) {
-                        foreach ($this->routes as list($method, $uri, $action)) {
-                            $rc->addRoute($method, $uri, $action);
-                        }
-                    });
+                    break;
+                }
+                $this->routeDispatcher = simpleDispatcher(function(RouteCollector $rc) {
+                    foreach ($this->routes as list($method, $uri, $action)) {
+                        $rc->addRoute($method, $uri, $action);
+                    }
+                });
+                foreach ($this->loggerAwares as $loggerAware) {
+                    $loggerAware->setLogger($this->logger);
                 }
                 break;
         }
