@@ -241,7 +241,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
 
     private function sendCloseFrame(Rfc6455Client $client, $code, $msg) {
         $client->closedAt = $this->now;
-        return $this->compile($client, pack('n', $code) . $msg, FRAME["OP_CLOSE"]);
+        return $this->compile($client, pack('n', $code) . $msg, self::OP_CLOSE);
     }
 
     private function tryAppOnClose(int $clientId, $code, $reason): \Generator {
@@ -308,7 +308,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
         list($data, $opcode) = $parseResult;
 
         switch ($opcode) {
-            case FRAME["OP_CLOSE"]:
+            case self::OP_CLOSE:
                 if ($client->closedAt) {
                     unset($this->closeTimeouts[$client->id]);
                     $this->unloadClient($client);
@@ -326,11 +326,11 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
                 }
                 break;
 
-            case FRAME["OP_PING"]:
-                $this->compile($client, $data, FRAME["OP_PONG"]);
+            case self::OP_PING:
+                $this->compile($client, $data, self::OP_PONG);
                 break;
 
-            case FRAME["OP_PONG"]:
+            case self::OP_PONG:
                 // We need a min() here, else someone might just send a pong frame with a very high pong count and leave TCP connection in open state... Then we'd accumulate connections which never are cleaned up...
                 $client->pongCount = min($client->pingCount, $data);
                 break;
@@ -446,7 +446,7 @@ retry:
         }
     }
 
-    private function compile(Rfc6455Client $client, string $msg, int $opcode = FRAME["OP_BIN"], bool $fin = true): Promise {
+    private function compile(Rfc6455Client $client, string $msg, int $opcode = self::OP_BIN, bool $fin = true): Promise {
         $frameInfo = ["msg" => $msg, "rsv" => 0b000, "fin" => $fin, "opcode" => $opcode];
 
         // @TODO filter mechanism …?! (e.g. gzip)
@@ -517,7 +517,7 @@ retry:
         if ($client = $this->clients[$clientId] ?? null) {
             $client->messagesSent++;
 
-            $opcode = FRAME["OP_BIN"];
+            $opcode = self::OP_BIN;
 
             if (strlen($data) > 1.5 * $this->autoFrameSize) {
                 $len = strlen($data);
@@ -525,7 +525,7 @@ retry:
                 $frames = str_split($data, ceil($len / $slices));
                 foreach ($frames as $frame) {
                     $this->compile($client, $frame, $opcode, false);
-                    $opcode = FRAME["OP_CONT"];
+                    $opcode = self::OP_CONT;
                 }
             }
             return $this->compile($client, $data, $opcode);
@@ -635,7 +635,7 @@ retry:
             $reason = 'Exceeded unanswered PING limit';
             $this->doClose($client, $code, $reason);
         } else {
-            $this->compile($client, $client->pingCount++, FRAME["OP_PING"]);
+            $this->compile($client, $client->pingCount++, OP_PING);
         }
     }
 

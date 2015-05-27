@@ -16,12 +16,3 @@ const CODES = [
     "UNEXPECTED_SERVER_ERROR" => 1011,
     "TLS_HANDSHAKE_FAILURE" => 1015,
 ];
-
-const FRAME = [
-    "OP_CONT"  => 0x00,
-    "OP_TEXT"  => 0x01,
-    "OP_BIN"   => 0x02,
-    "OP_CLOSE" => 0x08,
-    "OP_PING"  => 0x09,
-    "OP_PONG"  => 0x0A,
-];
