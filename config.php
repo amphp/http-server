@@ -46,6 +46,11 @@ $router = (new Router)
         }
         $res->send("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
     })
+    ->get("/favicon.ico", function(Request $req, Response $res) {
+        $res->setStatus(404);
+        $res->setHeader("Aerys-Generic-Response", "enable");
+        $res->end();
+    })
 ;
 
 // If none of our routes match try to serve a static file
