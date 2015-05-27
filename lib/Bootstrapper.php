@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Amp\Reactor;
+use Amp\{ Reactor, Promise, Success };
 use League\CLImate\CLImate;
 use Psr\Log\LoggerInterface as Logger;
 use Psr\Log\LoggerAwareInterface as LoggerAware;
@@ -212,26 +212,54 @@ class Bootstrapper {
             }
         }
 
-        switch (count($actions)) {
-            case 0:
-                return function(Request $request, Response $response) {
-                    $response->end("<html><body><h1>It works!</h1></body></html>");
-                };
-            case 1:
-                return current($actions);
-            default:
-                return function(Request $request, Response $response) use ($actions): \Generator {
-                    foreach ($actions as $action) {
-                        $result = ($action)($request, $response);
-                        if ($result instanceof \Generator) {
-                            yield from $result;
-                        }
-                        if ($response->state() & Response::STARTED) {
-                            return;
-                        }
-                    }
-                };
+        if (empty($actions)) {
+            return function(Request $request, Response $response) {
+                $response->end("<html><body><h1>It works!</h1></body></html>");
+            };
         }
+
+        if (count($actions) === 1) {
+            return current($actions);
+        }
+
+        // We create a ServerObserver around our stateful multi-responder
+        // so that if the server stops while we're iterating over our coroutines
+        // we can send a 503 response. This prevents application responders from
+        // ever needing to pay attention to the server's state themselves.
+        $application = new class($actions) implements ServerObserver {
+            private $actions;
+            private $isStopping = false;
+            public function __construct(array $actions) {
+                $this->actions = $actions;
+            }
+            public function update(\SplSubject $subject): Promise {
+                if ($subject->state() === Server::STOPPING) {
+                    $this->isStopping = true;
+                }
+                return new Success;
+            }
+            public function respond(Request $request, Response $response) {
+                foreach ($this->actions as $action) {
+                    $out = ($action)($request, $response);
+                    if ($out instanceof \Generator) {
+                        yield from $out;
+                    }
+                    if ($response->state() & Response::STARTED) {
+                        return;
+                    }
+                    if ($this->isStopping) {
+                        $response->setStatus(HTTP_STATUS["SERVICE_UNAVAILABLE"]);
+                        $response->setHeader("Aerys-Generic-Response", "enable");
+                        $response->end();
+                        return;
+                    }
+                }
+            }
+        };
+
+        $server->attach($application);
+
+        return [$application, "respond"];
     }
 
 }

@@ -515,7 +515,9 @@ class Rfc7230Server implements ServerObserver {
     }
 
     private function respond(Rfc7230RequestCycle $requestCycle) {
-        if ($requestCycle->parseErrorResponder) {
+        if ($this->stopPromisor) {
+            $application = [$this, "sendPreAppServiceUnavailableResponse"];
+        } elseif ($requestCycle->parseErrorResponder) {
             $application = $requestCycle->parseErrorResponder;
         } elseif (!$requestCycle->isVhostValid) {
             $application = [$this, "sendPreAppInvalidHostResponse"];
@@ -542,6 +544,13 @@ class Rfc7230Server implements ServerObserver {
         */
 
         $this->tryApplication($requestCycle, $application);
+    }
+
+    private function sendPreAppServiceUnavailableResponse(Request $request, Response $response) {
+        $status = HTTP_STATUS["SERVICE_UNAVAILABLE"];
+        $response->setStatus($status);
+        $response->setHeader("Connection", "close");
+        $response->end($body = $this->makeGenericBody($status));
     }
 
     private function sendPreAppInvalidHostResponse(Request $request, Response $response) {
@@ -1158,70 +1167,6 @@ class Rfc7230Server implements ServerObserver {
         $this->currentHttpDate = gmdate("D, d M Y H:i:s", $now) . " GMT";
     }
 
-    /**
-     * React to server state changes
-     *
-     * @param SplSubject $subject The notifying Aerys\Server instance
-     * @return Amp\Promise
-     */
-    public function update(\SplSubject $subject): Promise {
-        switch ($subject->state()) {
-            case Server::STARTING:
-                assert($this->log(LogLevel::DEBUG, "starting"));
-                $promise = new Success;
-                break;
-            case Server::STARTED:
-                $this->keepAliveWatcher = $this->reactor->repeat(function() {
-                    $now = $this->currentTime;
-                    foreach ($this->keepAliveTimeouts as $id => $expiresAt) {
-                        if ($now > $expiresAt) {
-                            $this->close($this->clients[$id]);
-                        } else {
-                            break;
-                        }
-                    }
-                }, 1000);
-                $this->timeUpdateWatcher = $this->reactor->repeat($this->updateTime, 1000);
-                $this->updateTime();
-                $promise = new Success;
-                assert($this->log(LogLevel::DEBUG, "started"));
-                break;
-            case Server::STOPPING:
-                foreach ($this->pendingTlsStreams as list(, $socket)) {
-                    $this->failCryptoNegotiation($socket);
-                }
-                $this->stopPromisor = new Deferred;
-                $promise = $this->stopPromisor->promise();
-                if (empty($this->clientCount)) {
-                    $this->stopPromisor->succeed();
-                } else {
-                    foreach ($this->clients as $client) {
-                        if (empty($client->requestCycleQueueSize)) {
-                            $this->close($client);
-                        }
-                    }
-                }
-                assert($this->log(LogLevel::DEBUG, "stopping"));
-                break;
-            case Server::STOPPED:
-                $this->reactor->cancel($this->timeUpdateWatcher);
-                $this->reactor->cancel($this->keepAliveWatcher);
-                $this->keepAliveWatcher = null;
-                $this->stopPromisor = null;
-                $this->timeUpdateWatcher = null;
-                $promise = new Success;
-                assert($this->log(LogLevel::DEBUG, "stopped"));
-                break;
-            default:
-                $promise = new Success;
-                break;
-        }
-
-        $this->serverInfo = $subject->inspect();
-
-        return $promise;
-    }
-
     static public function parser(callable $emitCallback, array $options = []): \Generator {
         $maxHeaderSize = $options["max_header_size"] ?? 32768;
         $maxBodySize = $options["max_body_size"] ?? 131072;
@@ -1504,5 +1449,69 @@ class Rfc7230Server implements ServerObserver {
         while (1) {
             yield;
         }
+    }
+
+    /**
+     * React to server state changes
+     *
+     * @param SplSubject $subject The notifying Aerys\Server instance
+     * @return Amp\Promise
+     */
+    public function update(\SplSubject $subject): Promise {
+        switch ($subject->state()) {
+            case Server::STARTING:
+                assert($this->log(LogLevel::DEBUG, "starting"));
+                $promise = new Success;
+                break;
+            case Server::STARTED:
+                $this->keepAliveWatcher = $this->reactor->repeat(function() {
+                    $now = $this->currentTime;
+                    foreach ($this->keepAliveTimeouts as $id => $expiresAt) {
+                        if ($now > $expiresAt) {
+                            $this->close($this->clients[$id]);
+                        } else {
+                            break;
+                        }
+                    }
+                }, 1000);
+                $this->timeUpdateWatcher = $this->reactor->repeat($this->updateTime, 1000);
+                $this->updateTime();
+                $promise = new Success;
+                assert($this->log(LogLevel::DEBUG, "started"));
+                break;
+            case Server::STOPPING:
+                foreach ($this->pendingTlsStreams as list(, $socket)) {
+                    $this->failCryptoNegotiation($socket);
+                }
+                $this->stopPromisor = new Deferred;
+                $promise = $this->stopPromisor->promise();
+                if (empty($this->clientCount)) {
+                    $this->stopPromisor->succeed();
+                } else {
+                    foreach ($this->clients as $client) {
+                        if (empty($client->requestCycleQueueSize)) {
+                            $this->close($client);
+                        }
+                    }
+                }
+                assert($this->log(LogLevel::DEBUG, "stopping"));
+                break;
+            case Server::STOPPED:
+                $this->reactor->cancel($this->timeUpdateWatcher);
+                $this->reactor->cancel($this->keepAliveWatcher);
+                $this->keepAliveWatcher = null;
+                $this->stopPromisor = null;
+                $this->timeUpdateWatcher = null;
+                $promise = new Success;
+                assert($this->log(LogLevel::DEBUG, "stopped"));
+                break;
+            default:
+                $promise = new Success;
+                break;
+        }
+
+        $this->serverInfo = $subject->inspect();
+
+        return $promise;
     }
 }
