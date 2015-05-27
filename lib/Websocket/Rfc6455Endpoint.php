@@ -1,6 +1,5 @@
 <?php
 
-
 namespace Aerys\Websocket;
 
 use Amp\{
@@ -24,8 +23,14 @@ use Aerys\{
     const HTTP_STATUS
 };
 
-class Rfc6455Endpoint implements Endpoint, ServerObserver {
+use Psr\Log\{
+    LoggerInterface as Logger,
+    LoggerAwareInterface as LoggerAware
+};
+
+class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
     private $application;
+    private $logger;
     private $reactor;
     private $proxy;
     private $state;
@@ -204,7 +209,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver {
     }
 
     private function onAppError($clientId, \BaseException $e): \Generator {
-        error_log((string) $e);
+        $this->logger->error($e->__toString());
         $code = CODES["UNEXPECTED_SERVER_ERROR"];
         $reason = "Internal server error, aborting";
         yield from $this->doClose($this->clients[$clientId], $code, $reason);
@@ -644,6 +649,20 @@ retry:
                 break;
             }
         }
+    }
+
+    /**
+     * Assign the process-wide logger instance
+     *
+     * When added to a Host or Router the endpoint will have its
+     * Logger instance automatically assigned because this class
+     * implements LoggerAware.
+     *
+     * @param Logger $logger
+     * @return void
+     */
+    public function setLogger(Logger $logger) {
+        $this->logger = $logger;
     }
 
     /**

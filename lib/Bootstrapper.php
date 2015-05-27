@@ -90,7 +90,7 @@ class Bootstrapper {
 
         $options = self::generateOptionsObjFromArray($options);
 
-        $server = new Server($reactor, $options->debug);
+        $server = new Server($reactor, $logger, $options->debug);
         $vhostGroup = new VhostGroup;
         foreach ($hosts as $host) {
             $vhost = self::buildVhost($server, $logger, $host);

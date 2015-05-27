@@ -12,6 +12,7 @@ use Amp\{
     PrivateFuture,
     Struct
 };
+use Psr\Log\LoggerInterface as Logger;
 
 class Server implements \SplSubject {
     use Struct;
@@ -22,6 +23,7 @@ class Server implements \SplSubject {
     const STOPPING  = 3;
 
     private $state = self::STOPPED;
+    private $logger;
     private $reactor;
     private $debug;
     private $observers;
@@ -32,8 +34,9 @@ class Server implements \SplSubject {
     /**
      * @param \Amp\Reactor $reactor
      */
-    public function __construct(Reactor $reactor, bool $debug = false) {
+    public function __construct(Reactor $reactor, Logger $logger, bool $debug = false) {
         $this->reactor = $reactor;
+        $this->logger = $logger;
         $this->debug = $debug;
         $this->observers = new \SplObjectStorage;
         $this->acceptor = function($reactor, $watcherId, $server, $onClient) {
@@ -212,10 +215,8 @@ class Server implements \SplSubject {
             // Instead we check the error array at index zero in the two-item amy() $result
             // and log as needed.
             list($observerErrors) = $result;
-            if ($observerErrors) {
-                foreach ($observerErrors as $error) {
-                    error_log($error->__toString());
-                }
+            foreach ($observerErrors as $error) {
+                $this->logger->error($error->__toString());
             }
         });
 
