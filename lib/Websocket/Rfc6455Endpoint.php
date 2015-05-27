@@ -68,10 +68,21 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
     const DATA = 2;
     const ERROR = 3;
 
-    public function __construct(Websocket $application, Reactor $reactor = null) {
+    public function __construct(Websocket $application, Logger = null, Reactor $reactor = null) {
         $this->application = $application;
         $this->reactor = $reactor ?: reactor();
         $this->proxy = new Rfc6455EndpointProxy($this);
+        $this->logger = $logger ?: new class implements Logger {
+            public function emergency($message, array $context = []) {}
+            public function alert($message, array $context = []) {}
+            public function critical($message, array $context = []) {}
+            public function error($message, array $context = []) {}
+            public function warning($message, array $context = []) {}
+            public function notice($message, array $context = []) {}
+            public function info($message, array $context = []) {}
+            public function debug($message, array $context = []) {}
+            public function log($level, $message, array $context = []) {}
+        };
     }
 
     public function __invoke(Request $request, Response $response) {
