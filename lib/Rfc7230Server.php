@@ -461,6 +461,7 @@ class Rfc7230Server implements ServerObserver {
         )));
 
         $ireq = $requestCycle->internalRequest = new InternalRequest;
+        $ireq->time = $this->currentTime;
         $ireq->debug = $this->options->debug;
         $ireq->locals = [];
         $ireq->remaining = $client->requestsRemaining;

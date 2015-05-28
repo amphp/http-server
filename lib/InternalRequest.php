@@ -26,6 +26,7 @@ class InternalRequest {
     public $uriPath;
     public $uriQuery;
     public $remaining;
+    public $time;
     public $locals;
     public $debug;
 }
