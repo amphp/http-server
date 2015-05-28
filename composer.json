@@ -26,7 +26,7 @@
     ],
     "require": {
         "php": ">=7.0.0-dev",
-        "amphp/amp": "dev-master",
+        "amphp/amp": "1.0.x-dev",
         "nikic/fast-route": "~0.4.0",
         "league/climate": "^3",
         "psr/log": "~1.0"
