@@ -15,4 +15,4 @@ class Code {
     const EXPECTED_EXTENSION_MISSING = 1010;
     const UNEXPECTED_SERVER_ERROR = 1011;
     const TLS_HANDSHAKE_FAILURE = 1015;
-];
+};
