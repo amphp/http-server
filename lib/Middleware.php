@@ -3,5 +3,5 @@
 namespace Aerys;
 
 interface Middleware {
-    public function filter(): callable;
+    public function filter(InternalRequest $ireq);
 }
