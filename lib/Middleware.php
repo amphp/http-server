@@ -3,5 +3,5 @@
 namespace Aerys;
 
 interface Middleware {
-    public function getMiddleware(): callable;
+    public function filter(): callable;
 }
