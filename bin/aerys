@@ -29,10 +29,6 @@ if (PHP_MAJOR_VERSION < 7) {
 }
 
 error_reporting(E_ALL);
-
-/* IMPORTANT: must set AMP_PRODUCTION_MODE *before* using autoloader */
-$opt = getopt("d", ["debug"]);
-define("AMP_PRODUCTION_MODE", !(isset($opt["d"]) || isset($opt["debug"])));
 require ($autoloader = dirname(__DIR__) . "/autoload.php");
 $climate = Aerys\Bootstrapper::loadCommandArgs();
 if ($climate->arguments->defined("help")) {
