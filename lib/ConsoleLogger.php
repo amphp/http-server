@@ -8,7 +8,7 @@ use Psr\Log\{
     LoggerInterface as Logger
 };
 
-class DebugLogger implements Logger {
+class ConsoleLogger implements Logger {
     private $climate;
     public function __construct(CLImate $climate) {
         $this->climate = $climate;

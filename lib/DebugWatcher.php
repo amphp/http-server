@@ -24,7 +24,7 @@ class DebugWatcher {
     public function __construct(Reactor $reactor, CLImate $climate, Logger $logger = null) {
         $this->reactor = $reactor;
         $this->climate = $climate;
-        $this->logger = $logger ?: new DebugLogger($climate);
+        $this->logger = $logger ?: new ConsoleLogger($climate);
         $reactor->onError(function(\BaseException $uncaught) {
             $this->logger->critical($uncaught->__toString());
         });
