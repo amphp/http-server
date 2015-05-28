@@ -16,7 +16,7 @@ use Amp\{
 };
 
 use Psr\Log\{
-    LoggerInterface as Logger,
+    LoggerInterface as PsrLogger,
     LoggerAwareInterface as LoggerAware
 };
 
@@ -249,10 +249,10 @@ class Router implements ServerObserver, LoggerAware {
     /**
      * Assign the process-wide logger instance to route handlers requiring it
      *
-     * @param Logger $logger
+     * @param PsrLogger $logger
      * @return void
      */
-    public function setLogger(Logger $logger) {
+    public function setLogger(PsrLogger $logger) {
         $this->logger = $logger;
     }
 

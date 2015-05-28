@@ -10,10 +10,6 @@ use Amp\{
     Deferred,
     function resolve
 };
-use Psr\Log\{
-    LogLevel,
-    LoggerInterface as Logger
-};
 
 class Rfc7230Server implements ServerObserver {
     use Struct;
@@ -133,7 +129,7 @@ class Rfc7230Server implements ServerObserver {
             return;
         }
 
-        assert($this->log(LogLevel::DEBUG, sprintf(
+        assert($this->log(Logger::DEBUG, sprintf(
             "accept %s",
             stream_socket_get_name($socket, true)
         )));
@@ -155,7 +151,7 @@ class Rfc7230Server implements ServerObserver {
             unset($this->pendingTlsStreams[$socketId]);
             $this->finalizeImport($socket);
         } elseif ($handshake === false) {
-            assert($this->log(LogLevel::DEBUG, sprintf(
+            assert($this->log(Logger::DEBUG, sprintf(
                 "crypto handshake err %s",
                 stream_socket_get_name($socket, true)
             )));
@@ -179,7 +175,7 @@ class Rfc7230Server implements ServerObserver {
             @fclose($client->socket);
             $client->isDead = true;
         }
-        assert($this->log(LogLevel::DEBUG, sprintf(
+        assert($this->log(Logger::DEBUG, sprintf(
             "close %s:%s",
             $client->clientAddr,
             $client->clientPort
@@ -207,7 +203,7 @@ class Rfc7230Server implements ServerObserver {
         $client->isExported = true;
         $this->clear($client);
 
-        assert($this->log(LogLevel::DEBUG, sprintf(
+        assert($this->log(Logger::DEBUG, sprintf(
             "export %s:%s",
             $client->clientAddr,
             $client->clientPort
@@ -245,7 +241,7 @@ class Rfc7230Server implements ServerObserver {
         } else {
             $client->isEncrypted = true;
             $client->cryptoInfo = $meta["crypto"];
-            assert($this->log(LogLevel::DEBUG, sprintf(
+            assert($this->log(Logger::DEBUG, sprintf(
                 "crypto %s @ %s",
                 $client->cryptoInfo["protocol"],
                 $clientName
@@ -451,7 +447,7 @@ class Rfc7230Server implements ServerObserver {
             $headerLines[$field] = isset($value[1]) ? implode(",", $value) : $value[0];
         }
 
-        assert($this->log(LogLevel::DEBUG, sprintf(
+        assert($this->log(Logger::DEBUG, sprintf(
             "%s %s HTTP/%s @ %s:%s",
             $method,
             $uri,
@@ -736,7 +732,7 @@ class Rfc7230Server implements ServerObserver {
 
     private function onApplicationError(\BaseException $error, Rfc7230RequestCycle $requestCycle) {
         $client = $requestCycle->client;
-        $this->log(LogLevel::ERROR, $error->__toString());
+        $this->log(Logger::ERROR, $error->__toString());
 
         // This occurs if filter generators error upon initial invocation.
         // In this case we need to keep trying to create the filter until
@@ -750,7 +746,7 @@ class Rfc7230Server implements ServerObserver {
                 );
             } catch (FilterException $filterError) {
                 $requestCycle->badFilterKeys[] = $filterError->getFilterKey();
-                $this->log(LogLevel::ERROR, $filterError->__toString());
+                $this->log(Logger::ERROR, $filterError->__toString());
             }
         }
 
@@ -782,7 +778,7 @@ class Rfc7230Server implements ServerObserver {
                     $this->sendErrorResponse($error, $requestCycle);
                 } catch (FilterException $error) {
                     // Seriously, bro? Keep trying until no offending filters remain ...
-                    $this->log(LogLevel::ERROR, $error->__toString());
+                    $this->log(Logger::ERROR, $error->__toString());
                 }
             }
         } else {
@@ -1461,7 +1457,7 @@ class Rfc7230Server implements ServerObserver {
     public function update(\SplSubject $subject): Promise {
         switch ($subject->state()) {
             case Server::STARTING:
-                assert($this->log(LogLevel::DEBUG, "starting"));
+                assert($this->log(Logger::DEBUG, "starting"));
                 $promise = new Success;
                 break;
             case Server::STARTED:
@@ -1478,7 +1474,7 @@ class Rfc7230Server implements ServerObserver {
                 $this->timeUpdateWatcher = $this->reactor->repeat($this->updateTime, 1000);
                 $this->updateTime();
                 $promise = new Success;
-                assert($this->log(LogLevel::DEBUG, "started"));
+                assert($this->log(Logger::DEBUG, "started"));
                 break;
             case Server::STOPPING:
                 foreach ($this->pendingTlsStreams as list(, $socket)) {
@@ -1495,7 +1491,7 @@ class Rfc7230Server implements ServerObserver {
                         }
                     }
                 }
-                assert($this->log(LogLevel::DEBUG, "stopping"));
+                assert($this->log(Logger::DEBUG, "stopping"));
                 break;
             case Server::STOPPED:
                 $this->reactor->cancel($this->timeUpdateWatcher);
@@ -1504,7 +1500,7 @@ class Rfc7230Server implements ServerObserver {
                 $this->stopPromisor = null;
                 $this->timeUpdateWatcher = null;
                 $promise = new Success;
-                assert($this->log(LogLevel::DEBUG, "stopped"));
+                assert($this->log(Logger::DEBUG, "stopped"));
                 break;
             default:
                 $promise = new Success;

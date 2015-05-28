@@ -24,11 +24,11 @@ use Aerys\{
 };
 
 use Psr\Log\{
-    LoggerInterface as Logger,
-    LoggerAwareInterface as LoggerAware
+    LoggerInterface as PsrLogger,
+    LoggerAwareInterface as PsrLoggerAware
 };
 
-class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
+class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
     private $application;
     private $logger;
     private $reactor;
@@ -68,11 +68,11 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
     const DATA = 2;
     const ERROR = 3;
 
-    public function __construct(Websocket $application, Logger $logger = null, Reactor $reactor = null) {
+    public function __construct(Websocket $application, PsrLogger $logger = null, Reactor $reactor = null) {
         $this->application = $application;
         $this->reactor = $reactor ?: reactor();
         $this->proxy = new Rfc6455EndpointProxy($this);
-        $this->logger = $logger ?: new class implements Logger {
+        $this->logger = $logger ?: new class implements PsrLogger {
             public function emergency($message, array $context = []) {}
             public function alert($message, array $context = []) {}
             public function critical($message, array $context = []) {}
@@ -675,12 +675,12 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, LoggerAware {
      *
      * When added to a Host or Router the endpoint will have its
      * Logger instance automatically assigned because this class
-     * implements LoggerAware.
+     * implements PsrLoggerAware.
      *
-     * @param Logger $logger
+     * @param PsrLogger $logger
      * @return void
      */
-    public function setLogger(Logger $logger) {
+    public function setLogger(PsrLogger $logger) {
         $this->logger = $logger;
     }
 

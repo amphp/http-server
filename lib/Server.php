@@ -12,7 +12,7 @@ use Amp\{
     PrivateFuture,
     Struct
 };
-use Psr\Log\LoggerInterface as Logger;
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class Server implements \SplSubject {
     use Struct;
@@ -34,7 +34,7 @@ class Server implements \SplSubject {
     /**
      * @param \Amp\Reactor $reactor
      */
-    public function __construct(Reactor $reactor, Logger $logger, bool $debug = false) {
+    public function __construct(Reactor $reactor, PsrLogger $logger, bool $debug = false) {
         $this->reactor = $reactor;
         $this->logger = $logger;
         $this->debug = $debug;

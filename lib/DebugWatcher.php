@@ -9,8 +9,6 @@ use Amp\{
 };
 
 use League\CLImate\CLImate;
-use Psr\Log\LoggerInterface as Logger;
-use Psr\Log\LogLevel;
 
 class DebugWatcher {
     private $reactor;
@@ -21,11 +19,11 @@ class DebugWatcher {
     /**
      * @param \Amp\Reactor $reactor
      */
-    public function __construct(Reactor $reactor, CLImate $climate, Logger $logger = null) {
+    public function __construct(Reactor $reactor, CLImate $climate, ConsoleLogger $logger = null) {
         $this->reactor = $reactor;
         $this->climate = $climate;
         $this->logger = $logger ?: new ConsoleLogger($climate);
-        $reactor->onError(function(\BaseException $uncaught) {
+        $this->reactor->onError(function(\BaseException $uncaught) {
             $this->logger->critical($uncaught->__toString());
         });
     }
@@ -37,6 +35,13 @@ class DebugWatcher {
      */
     public function watch(): \Generator {
         $args = $this->climate->arguments->toArray();
+        if ($this->climate->arguments->defined("color")) {
+            $this->logger->setAnsi($this->climate->arguments->get("color"));
+        }
+        $log = $this->climate->arguments->defined("log")
+            ? $this->climate->arguments->get("log")
+            : Logger::LEVELS[Logger::DEBUG];
+        $this->logger->setLevel($log);
         $bootArr = Bootstrapper::boot($this->reactor, $this->logger, $args);
         list($server, $options, $addrCtxMap, $rfc7230Server) = $bootArr;
         $this->registerSignalHandler($server);
@@ -122,8 +127,39 @@ class DebugWatcher {
 
     private function registerErrorHandler() {
         set_error_handler(function($errno, $msg, $file, $line) {
-            if (error_reporting() & $errno) {
-                $this->logger->warning("{$msg} in {$file} on line {$line}");
+            if (!(error_reporting() & $errno)) {
+                return;
+            }
+
+            $msg = "{$msg} in {$file} on line {$line}";
+
+            switch ($errno) {
+                case E_ERROR:
+                case E_PARSE:
+                    $this->logger->critical($msg);
+                    break;
+                case E_USER_ERROR:
+                case E_CORE_ERROR:
+                case E_COMPILE_ERROR:
+                case E_RECOVERABLE_ERROR:
+                    $this->logger->error($msg);
+                    break;
+                case E_CORE_WARNING:
+                case E_COMPILE_WARNING:
+                case E_WARNING:
+                case E_USER_WARNING:
+                    $this->logger->warning($msg);
+                    break;
+                case E_NOTICE:
+                case E_USER_NOTICE:
+                case E_DEPRECATED:
+                case E_USER_DEPRECATED:
+                case E_STRICT:
+                    $this->logger->notice($msg);
+                    break;
+                default:
+                    $this->logger->warning($msg);
+                    break;
             }
         });
     }

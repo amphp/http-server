@@ -4,8 +4,7 @@ namespace Aerys;
 
 use Amp\{ Reactor, Promise, Success };
 use League\CLImate\CLImate;
-use Psr\Log\LoggerInterface as Logger;
-use Psr\Log\LoggerAwareInterface as LoggerAware;
+use Psr\Log\LoggerAwareInterface as PsrLoggerAware;
 
 class Bootstrapper {
 
@@ -14,7 +13,7 @@ class Bootstrapper {
      *
      * @return \League\CLImate\CLImate
      */
-    public static function loadCommandArgs(): CLImate {
+    public static function loadCliArgs(): CLImate {
         $climate = new CLImate;
         $climate->arguments->add([
             "help" => [
@@ -24,16 +23,29 @@ class Bootstrapper {
                 "noValue"     => true,
             ],
             "debug" => [
-                "prefix"       => "d",
-                "longPrefix"   => "user",
-                "description"  => "Enable server debug mode",
+                "prefix"      => "d",
+                "longPrefix"  => "user",
+                "description" => "Enable server debug mode",
                 "noValue"     => true,
             ],
             "config" => [
-                "prefix"      => "c",
                 "longPrefix"  => "config",
                 "description" => "Specify a custom server config path",
                 "noValue"     => true,
+            ],
+            "color" => [
+                "longPrefix"  => "color",
+                "description" => "Enable ansi color codes in console output",
+                "castTo"      => "string",
+                "defaultValue"=> "auto",
+                "noValue"     => true,
+            ],
+            "log" => [
+                "prefix"      => "l",
+                "longPrefix"  => "log",
+                "description" => "Specify the log output level 1-9 (DEBUG 1 -> 9 EMERGENCY)",
+                "defaultValue"=> Logger::LEVELS[Logger::INFO],
+                "castTo"      => "int",
             ],
             "workers" => [
                 "prefix"      => "w",
@@ -62,8 +74,9 @@ class Bootstrapper {
      * @return array
      */
     public static function boot(Reactor $reactor, Logger $logger, array $cliArgs): array {
-        $configFile = self::selectConfigFile($cliArgs);
-        $forceDebug = $cliArgs["debug"];
+        $configFile = $cliArgs["config"] ?? "";
+        $configFile = self::selectConfigFile($configFile);
+        $forceDebug = $cliArgs["debug"] ?? false;
 
         if (include($configFile)) {
             $hosts = Host::getDefinitions() ?: [new Host];
@@ -120,12 +133,11 @@ class Bootstrapper {
         return [$server, $options, $addrCtxMap, $rfc7230Server];
     }
 
-    private static function selectConfigFile(array $cliArgs): string {
-        if (!empty($cliArgs["config"])) {
-            return is_dir($cliArgs["config"])
-                ? rtrim($cliArgs["config"], "/") . "/config.php"
-                : $cliArgs["config"];
+    private static function selectConfigFile(string $configFile): string {
+        if ($configFile !== "") {
+            return is_dir($configFile) ? rtrim($configFile, "/") . "/config.php" : $configFile;
         }
+
         $paths = [
             __DIR__ . "/../config.php",
             __DIR__ . "/../etc/config.php",
@@ -205,9 +217,9 @@ class Bootstrapper {
             } elseif (is_array($action) && is_object($action[0]) && $action[0] instanceof ServerObserver) {
                 $server->attach($action[0]);
             }
-            if ($action instanceof LoggerAware) {
+            if ($action instanceof PsrLoggerAware) {
                 $action->setLogger($logger);
-            } elseif (is_array($action) && is_object($action[0]) && $action[0] instanceof LoggerAware) {
+            } elseif (is_array($action) && is_object($action[0]) && $action[0] instanceof PsrLoggerAware) {
                 $action[0]->setLogger($logger);
             }
         }

@@ -8,11 +8,13 @@ $help = <<<EOT
     \__,_/ \___//_/    \__, //____/
                       /____/
 
-    -h, --help        Display help screen
+    -h, --help        Display a help screen
     -d, --debug       Start the server in debug mode
-    -c, --config      Use the specified config file to bootstrap the server
     -w, --workers     Manually specify worker count (default: CPU core count)
     -r, --remote      @TODO A local port on which to listen for commands
+    -l, --log         The log output level 1-8 (DEBUG: 1, EMERGENCY: 9)
+        --config      Use a custom config path to bootstrap the server
+        --color       Control ansi color codes in output (auto|on|off -- default: auto)
 
     Example Usage:
     aerys --help
@@ -30,7 +32,7 @@ if (PHP_MAJOR_VERSION < 7) {
 
 error_reporting(E_ALL);
 require ($autoloader = dirname(__DIR__) . "/autoload.php");
-$climate = Aerys\Bootstrapper::loadCommandArgs();
+$climate = Aerys\Bootstrapper::loadCliArgs();
 if ($climate->arguments->defined("help")) {
     echo $help;
     exit(0);

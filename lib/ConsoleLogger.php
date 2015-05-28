@@ -3,64 +3,57 @@
 namespace Aerys;
 
 use League\CLImate\CLImate;
-use Psr\Log\{
-    LogLevel,
-    LoggerInterface as Logger
-};
 
-class ConsoleLogger implements Logger {
+final class ConsoleLogger extends Logger {
     private $climate;
+    private $ansi = true;
+
     public function __construct(CLImate $climate) {
         $this->climate = $climate;
     }
-    public function emergency($message, array $context = []) {
-        $this->log(LogLevel::EMERGENCY, $message);
+
+    public function setLevel(int $level) {
+        $this->setOutputLevel($level);
     }
-    public function alert($message, array $context = []) {
-        $this->log(LogLevel::ALERT, $message);
+
+    public function setAnsi(string $mode) {
+        switch ($mode) {
+            case "auto":
+            case "on":
+                $this->ansi = true;
+                break;
+            case "off":
+                $this->ansi = false;
+                break;
+            default:
+                $this->ansi = true;
+                break;
+        }
     }
-    public function critical($message, array $context = []) {
-        $this->log(LogLevel::CRITICAL, $message);
-    }
-    public function error($message, array $context = []) {
-        $this->log(LogLevel::ERROR, $message);
-    }
-    public function warning($message, array $context = []) {
-        $this->log(LogLevel::WARNING, $message);
-    }
-    public function notice($message, array $context = []) {
-        $this->log(LogLevel::NOTICE, $message);
-    }
-    public function info($message, array $context = []) {
-        $this->log(LogLevel::INFO, $message);
-    }
-    public function debug($message, array $context = []) {
-        $this->climate->out(LogLevel::DEBUG, $message);
-    }
-    public function log($level, $message, array $context = []) {
+
+    final protected function doLog($level, $message, array $context = []) {
         $time = @date("H:i:s", $context["time"] ?? time());
-        $level = $this->generateColoredLevel($level);
-        $message = "[{$time}] <bold>{$level}</bold> {$message}";
+        $level = isset(self::LEVELS[$level]) ? $level : "unknown";
+        $level = $this->ansi ? $this->generateAnsiLevel($level) : $level;
+        $message = "[{$time}] {$level} {$message}";
         $this->climate->out($message);
     }
-    private function generateColoredLevel($level) {
+
+    private function generateAnsiLevel($level) {
         switch ($level) {
-            case LogLevel::EMERGENCY:
-            case LogLevel::ALERT:
-            case LogLevel::CRITICAL:
-            case LogLevel::ERROR:
-                return "<red>{$level}</red>";
-            case LogLevel::WARNING:
-                return "<yellow>{$level}</yellow>";
-            case LogLevel::NOTICE:
-                return "<green>{$level}</green>";
-            case LogLevel::INFO:
-                return "<magenta>{$level}</magenta>";
-            case LogLevel::DEBUG:
-                return "<cyan>{$level}</cyan>";
-            default:
-                $this->climate->error("Unexpected log level ({$level})");
-                return "unknown";
+            case self::EMERGENCY:
+            case self::ALERT:
+            case self::CRITICAL:
+            case self::ERROR:
+                return "<bold><red>{$level}</red></bold>";
+            case self::WARNING:
+                return "<bold><yellow>{$level}</yellow></bold>";
+            case self::NOTICE:
+                return "<bold><green>{$level}</green></bold>";
+            case self::INFO:
+                return "<bold><magenta>{$level}</magenta></bold>";
+            case self::DEBUG:
+                return "<bold><cyan>{$level}</cyan></bold>";
         }
     }
 }
