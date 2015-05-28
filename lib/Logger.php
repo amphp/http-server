@@ -17,17 +17,17 @@ abstract class Logger implements PsrLogger {
     const ALERT = LogLevel::ALERT;
     const EMERGENCY = LogLevel::EMERGENCY;
     const LEVELS = [
-        self::DEBUG => 1,
-        self::INFO => 2,
-        self::NOTICE => 3,
-        self::WARNING => 4,
-        self::ERROR => 5,
-        self::CRITICAL => 6,
-        self::ALERT => 7,
-        self::EMERGENCY => 8,
+        self::DEBUG => 8,
+        self::INFO => 7,
+        self::NOTICE => 6,
+        self::WARNING => 5,
+        self::ERROR => 4,
+        self::CRITICAL => 3,
+        self::ALERT => 2,
+        self::EMERGENCY => 1,
     ];
 
-    private $outputLevel = 0;
+    private $outputLevel = self::DEBUG;
 
     abstract protected function dolog($level, $message, array $context = []);
 
@@ -71,7 +71,7 @@ abstract class Logger implements PsrLogger {
 
     private function canEmit(string $logLevel) {
         return isset(self::LEVELS[$logLevel])
-            ? ($this->outputLevel <= self::LEVELS[$logLevel])
+            ? ($this->outputLevel >= self::LEVELS[$logLevel])
             : false;
     }
 

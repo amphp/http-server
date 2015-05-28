@@ -8,19 +8,19 @@ $help = <<<EOT
     \__,_/ \___//_/    \__, //____/
                       /____/
 
-    -h, --help        Display a help screen
     -d, --debug       Start the server in debug mode
-    -w, --workers     Manually specify worker count (default: CPU core count)
+    -h, --help        Display a help screen
+    -l, --log         Set a minimum log output level (default: info)
     -r, --remote      @TODO A local port on which to listen for commands
-    -l, --log         The log output level 1-8 (DEBUG: 1, EMERGENCY: 9)
+    -w, --workers     Manually specify worker count (default: CPU core count)
+        --color       Use ANSI codes in output (auto|on|off default: auto)
         --config      Use a custom config path to bootstrap the server
-        --color       Control ansi color codes in output (auto|on|off -- default: auto)
 
     Example Usage:
     aerys --help
-    aerys -c /path/to/app/config.php
-    aerys --config /path/to/app/config.php --w 4
-    aerys -c /my/config.php -r 23456
+    aerys --color off
+    aerys --config /path/to/app/config.php --w 4 -d
+    aerys --remote 23456
 
 
 EOT;

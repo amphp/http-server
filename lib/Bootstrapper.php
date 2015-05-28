@@ -45,7 +45,6 @@ class Bootstrapper {
                 "longPrefix"  => "log",
                 "description" => "Specify the log output level 1-9 (DEBUG 1 -> 9 EMERGENCY)",
                 "defaultValue"=> Logger::LEVELS[Logger::INFO],
-                "castTo"      => "int",
             ],
             "workers" => [
                 "prefix"      => "w",

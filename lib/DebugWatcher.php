@@ -35,13 +35,21 @@ class DebugWatcher {
      */
     public function watch(): \Generator {
         $args = $this->climate->arguments->toArray();
+
         if ($this->climate->arguments->defined("color")) {
             $this->logger->setAnsi($this->climate->arguments->get("color"));
         }
-        $log = $this->climate->arguments->defined("log")
-            ? $this->climate->arguments->get("log")
-            : Logger::LEVELS[Logger::DEBUG];
-        $this->logger->setLevel($log);
+
+        if ($this->climate->arguments->defined("log")) {
+            $logLevel = $this->climate->arguments->get("log");
+            $logLevel = isset(Logger::LEVELS[$logLevel])
+                ? Logger::LEVELS[$logLevel]
+                : $logLevel;
+        } else {
+            $logLevel = Logger::LEVELS[Logger::DEBUG];
+        }
+        $this->logger->setLevel($logLevel);
+
         $bootArr = Bootstrapper::boot($this->reactor, $this->logger, $args);
         list($server, $options, $addrCtxMap, $rfc7230Server) = $bootArr;
         $this->registerSignalHandler($server);
