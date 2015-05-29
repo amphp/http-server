@@ -9,8 +9,8 @@ $help = <<<EOT
                       /____/
 
     -d, --debug       Start the server in debug mode
-    -h, --help        Display a help screen
-    -l, --log         Set a minimum log output level (default: info)
+    -h, --help        Display the help screen
+    -l, --log         Set the minimum log output level (default: info)
     -r, --remote      @TODO A local port on which to listen for commands
     -w, --workers     Manually specify worker count (default: CPU core count)
         --color       Use ANSI codes in output (auto|on|off default: auto)
@@ -18,38 +18,75 @@ $help = <<<EOT
 
     Example Usage:
     aerys --help
-    aerys --color off
-    aerys --config /path/to/app/config.php --w 4 -d
-    aerys --remote 23456
+    aerys --color off --log info
+    aerys --config /path/to/app/config.php --w 4
+    aerys --remote 23456 --log warning
 
 
 EOT;
 
-if (PHP_MAJOR_VERSION < 7) {
-    echo "Aerys requires PHP >= 7.0.0\n\n";
-    exit(1);
-}
-
 error_reporting(E_ALL);
 require ($autoloader = dirname(__DIR__) . "/autoload.php");
-$climate = Aerys\Bootstrapper::loadCliArgs();
+$climate = new League\CLImate\CLImate;
+$climate->arguments->add([
+    "debug" => [
+        "prefix"       => "d",
+        "longPrefix"   => "debug",
+        "description"  => "Start the server in debug mode",
+        "noValue"      => true,
+    ],
+    "help" => [
+        "prefix"       => "h",
+        "longPrefix"   => "help",
+        "description"  => "Display the help screen",
+        "noValue"      => true,
+    ],
+    "log" => [
+        "prefix"       => "l",
+        "longPrefix"   => "log",
+        "description"  => "Set the minimum log output level",
+        "defaultValue" => "info",
+    ],
+    "remote" => [
+        "prefix"       => "r",
+        "longPrefix"   => "remote",
+        "description"  => "A local port on which to listen for commands",
+        "castTo"       => "int",
+    ],
+    "workers" => [
+        "prefix"       => "w",
+        "longPrefix"   => "workers",
+        "description"  => "Manually specify worker count",
+        "castTo"       => "int",
+    ],
+    "color" => [
+        "longPrefix"   => "color",
+        "description"  => "Use ANSI codes in output",
+        "castTo"       => "string",
+        "defaultValue" => "auto",
+    ],
+    "config" => [
+        "longPrefix"   => "config",
+        "description"  => "Use a custom config path to bootstrap the server",
+    ],
+]);
+$climate->arguments->parse();
 if ($climate->arguments->defined("help")) {
     echo $help;
     exit(0);
 }
 
-try {
-    Amp\run(function(Amp\Reactor $reactor) use ($climate) {
-        if (php_sapi_name() === "phpdbg" || $climate->arguments->defined("debug")) {
-            $watcher = new Aerys\DebugWatcher($reactor, $climate);
-        } else {
-            die("Debug mode (-d) required; WorkerWatcher not yet implemented\n\n");
-            // @TODO: $watcher = new Aerys\WorkerWatcher($reactor, $autoloader);
-            // $str = 'php -r\'require "' . $autoloadPath . '"; Amp\run(["Aerys\Worker", "run"]);\'';
-        }
-        Amp\resolve($watcher->watch());
-    });
-} catch (BaseException $e) {
-    echo "\n", ($climate->arguments->defined("debug") ? $e->__toString() : $e->getMessage()), "\n\n";
-    exit(1);
-}
+Amp\run(function(Amp\Reactor $reactor) use ($climate) {
+    try {
+        $logger = new Aerys\ConsoleLogger($climate);
+        $watcher = (php_sapi_name() === "phpdbg" || $climate->arguments->defined("debug"))
+            ? new Aerys\DebugWatcher($reactor, $logger)
+            : new Aerys\WorkerWatcher($reactor, $logger, $autoloader)
+        ;
+        yield from $watcher->watch($climate);
+        $reactor->onError([$logger, "critical"]);
+    } catch (\BaseException $uncaught) {
+        $logger->critical($uncaught);
+        exit(1);
+    }
+});

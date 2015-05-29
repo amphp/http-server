@@ -12,52 +12,37 @@ use League\CLImate\CLImate;
 
 class DebugWatcher {
     private $reactor;
-    private $climate;
     private $logger;
+    private $bootstrapper;
     private $isStopping;
-
-    /**
-     * @param \Amp\Reactor $reactor
-     */
-    public function __construct(Reactor $reactor, CLImate $climate, ConsoleLogger $logger = null) {
-        $this->reactor = $reactor;
-        $this->climate = $climate;
-        $this->logger = $logger ?: new ConsoleLogger($climate);
-        $this->reactor->onError(function(\BaseException $uncaught) {
-            $this->logger->critical($uncaught->__toString());
-        });
-    }
 
     /**
      * Watch/manage a debug server instance in the current process
      *
+     * @param \Amp\Reactor $reactor
+     * @param \Aerys\Logger $logger
+     * @param \Aerys\Bootstrapper $bootstrapper
      * @return \Generator
      */
-    public function watch(): \Generator {
-        $args = $this->climate->arguments->toArray();
+    public function __construct(Reactor $reactor, Logger $logger, Bootstrapper $bootstrapper = null) {
+        $this->reactor = $reactor;
+        $this->logger = $logger;
+        $this->bootstrapper = $bootstrapper ?: new Bootstrapper;
+    }
 
-        if ($this->climate->arguments->defined("color")) {
-            $this->logger->setAnsi($this->climate->arguments->get("color"));
-        }
-
-        if ($this->climate->arguments->defined("log")) {
-            $logLevel = $this->climate->arguments->get("log");
-            $logLevel = isset(Logger::LEVELS[$logLevel])
-                ? Logger::LEVELS[$logLevel]
-                : $logLevel;
-        } else {
-            $logLevel = Logger::LEVELS[Logger::DEBUG];
-        }
-        $this->logger->setLevel($logLevel);
-
-        $bootArr = Bootstrapper::boot($this->reactor, $this->logger, $args);
+    /**
+     * Run a debug server instance in the current process
+     *
+     * @param \CLImate $climate
+     * @return \Generator
+     */
+    public function watch(CLImate $climate): \Generator {
+        $bootArr = $this->bootstrapper->boot($this->reactor, $this->logger, $climate);
         list($server, $options, $addrCtxMap, $rfc7230Server) = $bootArr;
         $this->registerSignalHandler($server);
         $this->registerShutdownHandler($server);
         $this->registerErrorHandler();
-
         yield $server->start($addrCtxMap, [$rfc7230Server, "import"]);
-
         foreach ($server->inspect()["boundAddresses"] as $address) {
             $this->logger->info("Listening for HTTP traffic on {$address}");
         }

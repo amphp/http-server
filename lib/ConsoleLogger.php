@@ -10,13 +10,22 @@ final class ConsoleLogger extends Logger {
 
     public function __construct(CLImate $climate) {
         $this->climate = $climate;
-    }
 
-    public function setLevel(int $level) {
+        if ($climate->arguments->defined("color")) {
+            $logger->setAnsi($climate->arguments->get("color"));
+        }
+        if ($climate->arguments->defined("log")) {
+            $level = $climate->arguments->get("log");
+            $level = isset(self::LEVELS[$level])
+                ? self::LEVELS[$level]
+                : $level;
+        } else {
+            $level = self::LEVELS[self::DEBUG];
+        }
         $this->setOutputLevel($level);
     }
 
-    public function setAnsi(string $mode) {
+    private function setAnsi(string $mode) {
         switch ($mode) {
             case "auto":
             case "on":

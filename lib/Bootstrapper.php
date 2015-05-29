@@ -7,75 +7,17 @@ use League\CLImate\CLImate;
 use Psr\Log\LoggerAwareInterface as PsrLoggerAware;
 
 class Bootstrapper {
-
-    /**
-     * Parse command line args
-     *
-     * @return \League\CLImate\CLImate
-     */
-    public static function loadCliArgs(): CLImate {
-        $climate = new CLImate;
-        $climate->arguments->add([
-            "help" => [
-                "prefix"      => "h",
-                "longPrefix"  => "help",
-                "description" => "Display the help screen",
-                "noValue"     => true,
-            ],
-            "debug" => [
-                "prefix"      => "d",
-                "longPrefix"  => "user",
-                "description" => "Enable server debug mode",
-                "noValue"     => true,
-            ],
-            "config" => [
-                "longPrefix"  => "config",
-                "description" => "Specify a custom server config path",
-                "noValue"     => true,
-            ],
-            "color" => [
-                "longPrefix"  => "color",
-                "description" => "Enable ansi color codes in console output",
-                "castTo"      => "string",
-                "defaultValue"=> "auto",
-                "noValue"     => true,
-            ],
-            "log" => [
-                "prefix"      => "l",
-                "longPrefix"  => "log",
-                "description" => "Specify the log output level 1-9 (DEBUG 1 -> 9 EMERGENCY)",
-                "defaultValue"=> Logger::LEVELS[Logger::INFO],
-            ],
-            "workers" => [
-                "prefix"      => "w",
-                "longPrefix"  => "workers",
-                "description" => "Specify the number of worker processes to spawn",
-                "castTo"      => "int",
-            ],
-            "remote" => [
-                "prefix"      => "r",
-                "longPrefix"  => "remote",
-                "description" => "Specify a command port on which to listen",
-                "castTo"      => "int",
-            ],
-        ]);
-
-        $climate->arguments->parse();
-
-        return $climate;
-    }
-
     /**
      * Bootstrap a server from command line options
      *
      * @param \Amp\Reactor $reactor
+     * @param \Aerys\Logger $logger
      * @param array $cliArgs An array of command line arguments
      * @return array
      */
-    public static function boot(Reactor $reactor, Logger $logger, array $cliArgs): array {
-        $configFile = $cliArgs["config"] ?? "";
-        $configFile = self::selectConfigFile($configFile);
-        $forceDebug = $cliArgs["debug"] ?? false;
+    public function boot(Reactor $reactor, Logger $logger, CLImate $climate): array {
+        $configFile = $this->selectConfigFile((string)$climate->arguments->get("config"));
+        $forceDebug = $climate->arguments->defined("debug");
 
         if (include($configFile)) {
             $hosts = Host::getDefinitions() ?: [new Host];
@@ -100,12 +42,12 @@ class Bootstrapper {
             $options["debug"] = true;
         }
 
-        $options = self::generateOptionsObjFromArray($options);
+        $options = $this->generateOptionsObjFromArray($options);
 
         $server = new Server($reactor, $logger, $options->debug);
         $vhostGroup = new VhostGroup;
         foreach ($hosts as $host) {
-            $vhost = self::buildVhost($server, $logger, $host);
+            $vhost = $this->buildVhost($server, $logger, $host);
             $vhostGroup->addHost($vhost);
         }
 
@@ -132,7 +74,7 @@ class Bootstrapper {
         return [$server, $options, $addrCtxMap, $rfc7230Server];
     }
 
-    private static function selectConfigFile(string $configFile): string {
+    private function selectConfigFile(string $configFile): string {
         if ($configFile !== "") {
             return is_dir($configFile) ? rtrim($configFile, "/") . "/config.php" : $configFile;
         }
@@ -154,13 +96,13 @@ class Bootstrapper {
         );
     }
 
-    private static function generateOptionsObjFromArray(array $optionsArray): Options {
+    private function generateOptionsObjFromArray(array $optionsArray): Options {
         try {
             $optionsObj = new Options;
             foreach ($optionsArray as $key => $value) {
                 $optionsObj->{$key} = $value;
             }
-            return $optionsObj->debug ? $optionsObj : self::generatePublicOptionsStruct($optionsObj);
+            return $optionsObj->debug ? $optionsObj : $this->generatePublicOptionsStruct($optionsObj);
         } catch (\BaseException $e) {
             throw new \DomainException(
                 "Failed assigning options from config file", 0, $e
@@ -168,7 +110,7 @@ class Bootstrapper {
         }
     }
 
-    private static function generatePublicOptionsStruct(Options $options): Options {
+    private function generatePublicOptionsStruct(Options $options): Options {
         $code = "return new class extends \Aerys\Options {\n\tuse \Amp\Struct;\n";
         foreach ((new \ReflectionClass($options))->getProperties() as $property) {
             $name = $property->getName();
@@ -180,7 +122,7 @@ class Bootstrapper {
         return eval($code);
     }
 
-    private static function buildVhost(Server $server, Logger $logger, Host $host) {
+    private function buildVhost(Server $server, Logger $logger, Host $host) {
         try {
             $hostExport = $host->export();
             $address = $hostExport["address"];
@@ -188,7 +130,7 @@ class Bootstrapper {
             $name = $hostExport["name"];
             $actions = $hostExport["actions"];
             $filters = $hostExport["filters"];
-            $application = self::buildApplication($server, $logger, $actions);
+            $application = $this->buildApplication($server, $logger, $actions);
             $vhost = new Vhost($name, $address, $port, $application, $filters);
             if ($crypto = $hostExport["crypto"]) {
                 $vhost->setCrypto($crypto);
@@ -204,7 +146,7 @@ class Bootstrapper {
         }
     }
 
-    private static function buildApplication(Server $server, Logger $logger, array $actions) {
+    private function buildApplication(Server $server, Logger $logger, array $actions) {
         foreach ($actions as $key => $action) {
             if (!is_callable($action)) {
                 throw new \DomainException(
