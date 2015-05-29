@@ -32,35 +32,35 @@ abstract class Logger implements PsrLogger {
     abstract protected function dolog($level, $message, array $context = []);
 
     final public function emergency($message, array $context = []) {
-        return $this->log(self::EMERGENCY, $message);
+        return $this->log(self::EMERGENCY, $message, $context);
     }
 
     final public function alert($message, array $context = []) {
-        return $this->log(self::ALERT, $message);
+        return $this->log(self::ALERT, $message, $context);
     }
 
     final public function critical($message, array $context = []) {
-        return $this->log(self::CRITICAL, $message);
+        return $this->log(self::CRITICAL, $message, $context);
     }
 
     final public function error($message, array $context = []) {
-        return $this->log(self::ERROR, $message);
+        return $this->log(self::ERROR, $message, $context);
     }
 
     final public function warning($message, array $context = []) {
-        return $this->log(self::WARNING, $message);
+        return $this->log(self::WARNING, $message, $context);
     }
 
     final public function notice($message, array $context = []) {
-        return $this->log(self::NOTICE, $message);
+        return $this->log(self::NOTICE, $message, $context);
     }
 
     final public function info($message, array $context = []) {
-        return $this->log(self::INFO, $message);
+        return $this->log(self::INFO, $message, $context);
     }
 
     final public function debug($message, array $context = []) {
-        return $this->climate->out(self::DEBUG, $message);
+        return $this->climate->out(self::DEBUG, $message, $context);
     }
 
     final public function log($level, $message, array $context = []) {
