@@ -8,13 +8,13 @@ $help = <<<EOT
     \__,_/ \___//_/    \__, //____/
                       /____/
 
+    -c, --config      Define a custom server config path
     -d, --debug       Start the server in debug mode
     -h, --help        Display the help screen
     -l, --log         Set the minimum log output level (default: info)
     -r, --remote      @TODO A local port on which to listen for commands
     -w, --workers     Manually specify worker count (default: CPU core count)
         --color       Use ANSI codes in output (auto|on|off default: auto)
-        --config      Use a custom config path to bootstrap the server
 
     Example Usage:
     aerys --help
@@ -25,8 +25,14 @@ $help = <<<EOT
 
 EOT;
 
+if (PHP_MAJOR_VERSION < 7) {
+    echo "Aerys requires PHP >= 7.0.0\n\n";
+    exit(1);
+}
+
+@cli_set_process_title("aerys");
 error_reporting(E_ALL);
-require ($autoloader = dirname(__DIR__) . "/autoload.php");
+require __DIR__ . "/../autoload.php";
 $climate = new League\CLImate\CLImate;
 $climate->arguments->add([
     "debug" => [
@@ -66,8 +72,9 @@ $climate->arguments->add([
         "defaultValue" => "auto",
     ],
     "config" => [
+        "prefix"       => "c",
         "longPrefix"   => "config",
-        "description"  => "Use a custom config path to bootstrap the server",
+        "description"  => "Define a custom server config path",
     ],
 ]);
 $climate->arguments->parse();
@@ -79,12 +86,9 @@ if ($climate->arguments->defined("help")) {
 Amp\run(function(Amp\Reactor $reactor) use ($climate) {
     try {
         $logger = new Aerys\ConsoleLogger($climate);
-        $watcher = (php_sapi_name() === "phpdbg" || $climate->arguments->defined("debug"))
-            ? new Aerys\DebugWatcher($reactor, $logger)
-            : new Aerys\WorkerWatcher($reactor, $logger, $autoloader)
-        ;
-        yield from $watcher->watch($climate);
-        $reactor->onError([$logger, "critical"]);
+        $debug = ($climate->arguments->defined("debug") || php_sapi_name() === "phpdbg");
+        $watcher = $debug ? new Aerys\DebugWatcher : new Aerys\WorkerWatcher;
+        yield Amp\resolve($watcher->watch($reactor, $logger, $climate));
     } catch (\BaseException $uncaught) {
         $logger->critical($uncaught);
         exit(1);
