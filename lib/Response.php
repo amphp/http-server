@@ -47,6 +47,16 @@ interface Response {
     public function setHeader(string $field, string $value): Response;
 
     /**
+     *
+     *
+     * @param string $name
+     * @param string $value
+     * @param array $flags
+     * @return self
+     */
+    public function setCookie(string $name, string $value, array $flags = []): Response;
+
+    /**
      * Send the specified response entity body
      *
      * This method effectively ends the response and will always outperform

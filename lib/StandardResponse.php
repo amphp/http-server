@@ -9,6 +9,7 @@ class StandardResponse implements Response {
     private $status = 200;
     private $reason = "";
     private $headers = "";
+    private $cookies = [];
     private $state = self::NONE;
 
     /**
@@ -93,6 +94,24 @@ class StandardResponse implements Response {
     }
 
     /**
+     * {@inheritDoc}
+     * @throws \LogicException If output already started
+     * @return self
+     */
+    public function setCookie(string $name, string $value, array $flags = []): Response {
+        if ($this->state & self::STARTED) {
+            throw new \LogicException(
+                "Cannot set header; output already started"
+            );
+        }
+
+        // @TODO assert() valid $name / $value / $flags
+        $this->cookies[$name] = [$value, $flags];
+
+        return $this;
+    }
+
+    /**
      * Send the specified response entity body
      *
      * @param string $body The full response entity body
@@ -134,6 +153,8 @@ class StandardResponse implements Response {
         if ($this->state & self::STARTED) {
             $toFilter = $partialBody;
         } else {
+            $this->setCookies();
+
             // A * (as opposed to a numeric length) indicates "streaming entity content"
             $headers = setHeader($this->headers, "__Aerys-Entity-Length", "*");
             $headers = trim($headers);
@@ -207,6 +228,8 @@ class StandardResponse implements Response {
         if ($this->state & self::STARTED) {
             $toFilter = $finalBody;
         } else {
+            $this->setCookies();
+
             // An @ (as opposed to a numeric length) indicates "no entity content"
             $entityValue = isset($finalBody) ? strlen($finalBody) : "@";
             $headers = setHeader($this->headers, "__Aerys-Entity-Length", $entityValue);
@@ -225,6 +248,22 @@ class StandardResponse implements Response {
         $this->state = self::ENDED|self::STARTED;
 
         return $this;
+    }
+
+    private function setCookies() {
+        foreach ($this->cookies as $name => list($value, $flags)) {
+            $cookie = "$name=$value";
+
+            foreach ($flags as $name => $value) {
+                if (\is_int($name)) {
+                    $cookie .= "; $value";
+                } else {
+                    $cookie .= "; $name=$value";
+                }
+            }
+
+            $this->headers = addHeader($this->headers, "Set-Cookie", $cookie);
+        }
     }
 
     /**

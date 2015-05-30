@@ -85,6 +85,16 @@ class StandardRequest implements Request {
     /**
      * {@inheritdoc}
      */
+    public function getCookie(string $name) {
+        return $this->internalRequest->cookies[$name] ?? (
+            isset($this->internalRequest->cookies) ? null : (
+                ($this->internalRequest->cookies = array_merge(...array_map('\Aerys\parseCookie', $this->internalRequest->headers["COOKIE"] ?? [""])))[$name] ?? null
+        ));
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function getTrace(): string {
         return $this->internalRequest->trace;
     }

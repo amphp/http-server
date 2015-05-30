@@ -253,3 +253,22 @@ function isValidHeaderValue(string $value): bool {
     //                ; see Section 3.2.4
     return true;
 }
+
+/**
+ * Parses cookies into an array
+ *
+ * @param string $cookies
+ * @return array with name => value pairs
+ */
+function parseCookie(string $cookies): array {
+    $arr = [];
+
+    foreach (explode("; ", $cookies) as $cookie) {
+        if (strpos($cookie, "=") !== false) { // do not trigger notices for malformed cookies...
+            list($name, $val) = explode("=", $cookie, 2);
+            $arr[$name] = $val;
+        }
+    }
+
+    return $arr;
+}

@@ -86,6 +86,14 @@ interface Request {
     public function getQueryVars(): array;
 
     /**
+     * Retrieve a cookie
+     *
+     * @param string $name
+     * @return string|null
+     */
+    public function getCookie(string $name);
+
+    /**
      * Retrieve the raw HTTP start-line and headers used to initiate this request
      *
      * @return string
