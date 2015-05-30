@@ -17,6 +17,8 @@ class Bootstrapper {
      */
     public function boot(Reactor $reactor, Logger $logger, CLImate $climate): array {
         $configFile = $this->selectConfigFile((string)$climate->arguments->get("config"));
+        $logger->info("Using config file found on $configFile");
+
         $forceDebug = $climate->arguments->defined("debug");
 
         if (include($configFile)) {
@@ -76,7 +78,7 @@ class Bootstrapper {
 
     private function selectConfigFile(string $configFile): string {
         if ($configFile !== "") {
-            return is_dir($configFile) ? rtrim($configFile, "/") . "/config.php" : $configFile;
+            return realpath(is_dir($configFile) ? rtrim($configFile, "/") . "/config.php" : $configFile);
         }
 
         $paths = [
@@ -87,7 +89,7 @@ class Bootstrapper {
         ];
         foreach ($paths as $path) {
             if (file_exists($path)) {
-                return $path;
+                return realpath($path);
             }
         }
 
