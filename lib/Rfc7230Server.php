@@ -878,7 +878,9 @@ class Rfc7230Server implements ServerObserver {
         if ($contentLength === "@") {
             $hasContent = false;
             $shouldClose = ($protocol === "1.0");
-            $headers = setHeader($headers, "Content-Length", 0);
+            if ($status > 200 && $status != 204 && $status != 304) {
+                $headers = setHeader($headers, "Content-Length", 0);
+            }
         } elseif ($contentLength !== "*") {
             $hasContent = true;
             $shouldClose = false;
