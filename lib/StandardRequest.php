@@ -37,21 +37,24 @@ class StandardRequest implements Request {
     /**
      * {@inheritdoc}
      */
-    public function getHeader(string $field): array {
+    public function getHeader(string $field) {
+        $field = strtoupper($field);
+        return isset($this->internalRequest->headers[$field])
+            ? $this->internalRequest->headers[$field][0]
+            : null;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getHeaderArray(string $field): array {
         return $this->internalRequest->headers[strtoupper($field)] ?? [];
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getHeaderLine(string $field): string {
-        return $this->internalRequest->headerLines[strtoupper($field)] ?? "";
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getHeaders(): array {
+    public function getAllHeaders(): array {
         return $this->internalRequest->headers;
     }
 

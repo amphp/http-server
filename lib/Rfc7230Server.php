@@ -442,10 +442,6 @@ class Rfc7230Server implements ServerObserver {
         }
         $uri = empty($parseResult["uri"]) ? "/" : $parseResult["uri"];
         $headers = empty($parseResult["headers"]) ? [] : $parseResult["headers"];
-        $headerLines = [];
-        foreach ($headers as $field => $value) {
-            $headerLines[$field] = isset($value[1]) ? implode(",", $value) : $value[0];
-        }
 
         assert($this->log(Logger::DEBUG, sprintf(
             "%s %s HTTP/%s @ %s:%s",
@@ -467,7 +463,6 @@ class Rfc7230Server implements ServerObserver {
         $ireq->protocol = $protocol;
         $ireq->method = $method;
         $ireq->headers = $headers;
-        $ireq->headerLines = $headerLines;
         $ireq->body = $this->bodyNull;
         $ireq->serverPort = $client->serverPort;
         $ireq->serverAddr = $client->serverAddr;
@@ -973,12 +968,16 @@ class Rfc7230Server implements ServerObserver {
             return;
         }
 
-        // @TODO Perform a more sophisticated check for gzip acceptance.
-        // This check isn't technically correct as the gzip parameter
-        // could have a q-value of zero indicating "never accept gzip."
-        if (stripos($ireq->headerLines["ACCEPT-ENCODING"], "gzip") === false) {
+        foreach ($ireq->headers["ACCEPT-ENCODING"] as $value) {
+            // @TODO Perform a more sophisticated check for gzip acceptance.
+            // This check isn't technically correct as the gzip parameter
+            // could have a q-value of zero indicating "never accept gzip."
+            if (stripos($value, "gzip") !== false) {
+                break;
+            }
             return;
         }
+        
 
         // @TODO We have the ability to support DEFLATE and RAW encoding as well. Should we?
         $mode = \ZLIB_ENCODING_GZIP;

@@ -17,7 +17,6 @@ class InternalRequest {
     public $protocol;
     public $method;
     public $headers;
-    public $headerLines;
     public $body;
     public $uri;
     public $uriRaw;

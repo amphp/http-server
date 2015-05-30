@@ -102,7 +102,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
         }
 
         $hasUpgradeWebsocket = false;
-        foreach ($request->getHeader("Upgrade") as $value) {
+        foreach ($request->getHeaderArray("Upgrade") as $value) {
             if (strcasecmp($value, "websocket") === 0) {
                 $hasUpgradeWebsocket = true;
                 break;
@@ -116,7 +116,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
         }
 
         $hasConnectionUpgrade = false;
-        foreach ($request->getHeader("Connection") as $value) {
+        foreach ($request->getHeaderArray("Connection") as $value) {
             if (strcasecmp($value, "Upgrade") === 0) {
                 $hasConnectionUpgrade = true;
                 break;
@@ -130,7 +130,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
             return;
         }
 
-        if (!$acceptKey = $request->getHeaderLine("Sec-Websocket-Key")) {
+        if (!$acceptKey = $request->getHeader("Sec-Websocket-Key")) {
             $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
             $response->setReason("Bad Request: \"Sec-Broker-Key\" header required");
             $response->setHeader("Aerys-Generic-Response", "enable");
@@ -139,24 +139,9 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
 
         }
 
-        if (!$secWebsocketVersions = $request->getHeader("Sec-Websocket-Version")) {
+        if (!in_array("13", $request->getHeaderArray("Sec-Websocket-Version"))) {
             $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
-            $response->setReason("Bad Request: \"Sec-WebSocket-Version\" header required");
-            $response->setHeader("Aerys-Generic-Response", "enable");
-            $response->end();
-            return;
-        }
-
-        $version = 0;
-        foreach ($secWebsocketVersions as $requestedVersion) {
-            if ($requestedVersion === "13") {
-                $version = 13;
-                break;
-            }
-        }
-        if (empty($version)) {
-            $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
-            $response->setReason("Bad Request: Requested WebSocket version(s) unavailable");
+            $response->setReason("Bad Request: Requested Websocket version unavailable");
             $response->setHeader("Sec-WebSocket-Version", "13");
             $response->setHeader("Aerys-Generic-Response", "enable");
             $response->end();

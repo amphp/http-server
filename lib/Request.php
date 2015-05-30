@@ -28,6 +28,23 @@ interface Request {
     public function getProtocolVersion(): string;
 
     /**
+     * Retrieve the first occurrence of specified header in the message
+     *
+     * If multiple headers were received for the specified field only the
+     * value of the first header is returned. Applications may use
+     * Request::getHeaderArray() to retrieve a list of all header values
+     * received for a given field.
+     * 
+     * All header $field names are treated case-insensitively.
+     *
+     * A null return indicates the requested header field was not present.
+     *
+     * @param string $field
+     * @return string|null
+     */
+    public function getHeader(string $field);
+
+    /**
      * Retrieve the specified header as an array of each of its occurrences in the request
      *
      * All header $field names are treated case-insensitively.
@@ -37,29 +54,17 @@ interface Request {
      * @param string $field
      * @return array
      */
-    public function getHeader(string $field): array;
+    public function getHeaderArray(string $field): array;
 
     /**
-     * Retrieve the specified header value as a single comma-separated string
-     *
-     * All header $field names are treated case-insensitively.
-     *
-     * An empty return array indicates that the header was not present in the request.
-     *
-     * @param string $field
-     * @return array
-     */
-    public function getHeaderLine(string $field): string;
-
-    /**
-     * Retrieve an array of all received headers
+     * Retrieve an array of all headers in the message
      *
      * The returned array uses header names normalized to all-uppercase for
      * simplified querying via isset().
      *
      * @return array
      */
-    public function getHeaders(): array;
+    public function getAllHeaders(): array;
 
     /**
      * Retrieve the streaming request entity body

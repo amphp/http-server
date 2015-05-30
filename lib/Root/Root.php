@@ -233,14 +233,16 @@ abstract class Root implements ServerObserver {
             return $this->cache[$reqPath] ?? null;
         }
 
-        $cacheControl = $request->getHeaderLine("Cache-Control");
-        if ($cacheControl && stripos($cacheControl, "no-cache") !== false) {
-            return null;
+        foreach ($request->getHeaderArray("Cache-Control") as $value) {
+            if (strcasecmp($value, "no-cache") === 0) {
+                return null;
+            }
         }
-
-        $pragma = $request->getHeaderLine("Pragma");
-        if ($pragma && stripos($pragma, "no-cache") !== false) {
-            return null;
+        
+        foreach ($request->getHeaderArray("Pragma") as $value) {
+            if (strcasecmp($value, "no-cache") === 0) {
+                return null;
+            }
         }
 
         return $this->cache[$reqPath] ?? null;
@@ -327,7 +329,7 @@ abstract class Root implements ServerObserver {
                 return $this->doNonRangeResponse($stat, $response);
         }
 
-        if (!$rangeHeader = $request->getHeaderLine("Range")) {
+        if (!$rangeHeader = $request->getHeader("Range")) {
             // Return this so the resulting generator will be auto-resolved
             return $this->doNonRangeResponse($stat, $response);
         }
@@ -344,30 +346,30 @@ abstract class Root implements ServerObserver {
     }
 
     protected function checkPreconditions(Request $request, int $mtime, string $etag) {
-        $ifMatch = $request->getHeaderLine("If-Match");
+        $ifMatch = $request->getHeader("If-Match");
         if ($ifMatch && stripos($ifMatch, $etag) === false) {
             return self::PRECOND_FAILED;
         }
 
-        $ifNoneMatch = $request->getHeaderLine("If-None-Match");
+        $ifNoneMatch = $request->getHeader("If-None-Match");
         if ($ifNoneMatch && stripos($ifNoneMatch, $etag) !== false) {
             return self::PRECOND_NOT_MODIFIED;
         }
 
-        $ifModifiedSince = $request->getHeaderLine("If-Modified-Since");
+        $ifModifiedSince = $request->getHeader("If-Modified-Since");
         $ifModifiedSince = $ifModifiedSince ? @strtotime($ifModifiedSince) : 0;
         if ($ifModifiedSince && $mtime > $ifModifiedSince) {
             return self::PRECOND_NOT_MODIFIED;
         }
 
-        $ifUnmodifiedSince = $request->getHeaderLine("If-Unmodified-Since");
+        $ifUnmodifiedSince = $request->getHeader("If-Unmodified-Since");
         $ifUnmodifiedSince = $ifUnmodifiedSince ? @strtotime($ifUnmodifiedSince) : 0;
         if ($ifUnmodifiedSince && $mtime > $ifUnmodifiedSince) {
             return self::PRECOND_FAILED;
         }
 
-        $ifRange = $request->getHeaderLine("If-Range");
-        if (!($ifRange || $request->getHeaderLine("Range"))) {
+        $ifRange = $request->getHeader("If-Range");
+        if (!($ifRange || $request->getHeader("Range"))) {
             return self::PRECOND_OK;
         }
 

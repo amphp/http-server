@@ -96,7 +96,7 @@ class VhostGroup implements \Countable {
     }
 
     private function selectHostByHeader(InternalRequest $ireq) {
-        $explicitHostId = $ireq->headerLines["HOST"];
+        $explicitHostId = $ireq->headers["HOST"][0];
 
         if ($portStartPos = strrpos($explicitHostId, "]")) {
             $ipComparison = substr($explicitHostId, 0, $portStartPos + 1);
