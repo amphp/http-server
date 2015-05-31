@@ -1,6 +1,0 @@
-<?php
-
-@cli_set_process_title("aerys-worker");
-require __DIR__ . "/../autoload.php";
-$options = getopt('', ['challenge:', 'ipc:', 'log:', 'config:']);
-Amp\run([new Aerys\Worker(getmypid(), $options), "run"]);

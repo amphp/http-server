@@ -86,9 +86,12 @@ if ($climate->arguments->defined("help")) {
 Amp\run(function(Amp\Reactor $reactor) use ($climate) {
     try {
         $logger = new Aerys\ConsoleLogger($climate);
-        $debug = ($climate->arguments->defined("debug") || php_sapi_name() === "phpdbg");
-        $watcher = $debug ? new Aerys\DebugWatcher : new Aerys\WorkerWatcher;
-        yield Amp\resolve($watcher->watch($reactor, $logger, $climate));
+        if ($climate->arguments->defined("debug") || php_sapi_name() === "phpdbg") {
+            $watcher = new Aerys\DebugWatcher($reactor, $logger);
+        } else {
+            die("\nDebug mode flag required (-d)\n\n");
+        }
+        yield Amp\resolve($watcher->watch($climate));
     } catch (\BaseException $uncaught) {
         $logger->critical($uncaught);
         exit(1);
