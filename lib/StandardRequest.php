@@ -38,10 +38,7 @@ class StandardRequest implements Request {
      * {@inheritdoc}
      */
     public function getHeader(string $field) {
-        $field = strtoupper($field);
-        return isset($this->internalRequest->headers[$field])
-            ? $this->internalRequest->headers[$field][0]
-            : null;
+        return $this->internalRequest->headers[strtoupper($field)][0] ?? null;
     }
 
     /**
@@ -85,15 +82,14 @@ class StandardRequest implements Request {
     /**
      * {@inheritdoc}
      */
-    public function getCookie(string $name): string {
+    public function getCookie(string $name) {
         $ireq = $this->internalRequest;
 
         if (!isset($ireq->cookies)) {
-            $cookies = $ireq->headers["COOKIE"] ?? [""];
-            $ireq->cookies = array_merge(...array_map('\Aerys\parseCookie', $cookies));
+            $ireq->generateCookies();
         }
 
-        return $ireq->cookies[$name] ?? "\0";
+        return $ireq->cookies[$name] ?? null;
     }
 
     /**
