@@ -53,10 +53,19 @@ class StandardResponse implements Response {
                 "Cannot set reason phrase; output already started"
             );
         }
-        assert(isValidReasonPhrase($phrase), "Invalid reason phrase: {$phrase}");
+        assert($this->isValidReasonPhrase($phrase), "Invalid reason phrase: {$phrase}");
         $this->headers[":reason"] = $phrase;
 
         return $this;
+    }
+
+    /**
+     * @TODO Validate reason phrase against RFC7230 ABNF
+     * @link https://tools.ietf.org/html/rfc7230#section-3.1.2
+     */
+    private function isValidReasonPhrase(string $phrase): bool {
+        // reason-phrase  = *( HTAB / SP / VCHAR / obs-text )
+        return true;
     }
 
     /**
@@ -70,11 +79,35 @@ class StandardResponse implements Response {
                 "Cannot add header; output already started"
             );
         }
-        assert(isValidHeaderField($field), "Invalid header field: {$field}");
-        assert(isValidHeaderValue($value), "Invalid header value: {$value}");
+        assert($this->isValidHeaderField($field), "Invalid header field: {$field}");
+        assert($this->isValidHeaderValue($value), "Invalid header value: {$value}");
         $this->headers[strtolower($field)][] = $value;
 
         return $this;
+    }
+
+    /**
+     * @TODO Validate field name against RFC7230 ABNF
+     * @link https://tools.ietf.org/html/rfc7230#section-3.2
+     */
+    private function isValidHeaderField(string $field): bool {
+        // field-name     = token
+        return true;
+    }
+
+    /**
+     * @TODO Validate field name against RFC7230 ABNF
+     * @link https://tools.ietf.org/html/rfc7230#section-3.2
+     */
+    private function isValidHeaderValue(string $value): bool {
+        // field-value    = *( field-content / obs-fold )
+        // field-content  = field-vchar [ 1*( SP / HTAB ) field-vchar ]
+        // field-vchar    = VCHAR / obs-text
+        //
+        // obs-fold       = CRLF 1*( SP / HTAB )
+        //                ; obsolete line folding
+        //                ; see Section 3.2.4
+        return true;
     }
 
     /**
@@ -88,8 +121,8 @@ class StandardResponse implements Response {
                 "Cannot set header; output already started"
             );
         }
-        assert(isValidHeaderField($field), "Invalid header field: {$field}");
-        assert(isValidHeaderValue($value), "Invalid header value: {$value}");
+        assert($this->isValidHeaderField($field), "Invalid header field: {$field}");
+        assert($this->isValidHeaderValue($value), "Invalid header value: {$value}");
         $this->headers[strtolower($field)] = [$value];
 
         return $this;

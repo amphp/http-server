@@ -58,51 +58,6 @@ function root(string $docroot, array $options = []) {
 }
 
 /**
- * Is the specified reason phrase valid according to RFC7230?
- *
- * @TODO Validate reason phrase against RFC7230 ABNF
- * @param string $phrase An HTTP reason phrase
- * @return bool
- * @link https://tools.ietf.org/html/rfc7230#section-3.1.2
- */
-function isValidReasonPhrase(string $phrase): bool {
-    // reason-phrase  = *( HTAB / SP / VCHAR / obs-text )
-    return true;
-}
-
-/**
- * Is the specified header field valid according to RFC7230?
- *
- * @TODO Validate field name against RFC7230 ABNF
- * @param string $field An HTTP header field name
- * @return bool
- * @link https://tools.ietf.org/html/rfc7230#section-3.2
- */
-function isValidHeaderField(string $field): bool {
-    // field-name     = token
-    return true;
-}
-
-/**
- * Is the specified header value valid according to RFC7230?
- *
- * @TODO Validate field name against RFC7230 ABNF
- * @param string $value An HTTP header field value
- * @return bool
- * @link https://tools.ietf.org/html/rfc7230#section-3.2
- */
-function isValidHeaderValue(string $value): bool {
-    // field-value    = *( field-content / obs-fold )
-    // field-content  = field-vchar [ 1*( SP / HTAB ) field-vchar ]
-    // field-vchar    = VCHAR / obs-text
-    //
-    // obs-fold       = CRLF 1*( SP / HTAB )
-    //                ; obsolete line folding
-    //                ; see Section 3.2.4
-    return true;
-}
-
-/**
  * Parses cookies into an array
  *
  * @param string $cookies
