@@ -564,7 +564,7 @@ class Server {
     private function onParsedEntityHeaders(Client $client, array $parseResult) {
         $requestCycle = $this->initializeRequestCycle($client, $parseResult);
         $requestCycle->bodyPromisor = new Deferred;
-        $requestCycle->internalRequest->body = new BodyStream($requestCycle->bodyPromisor->promise());
+        $requestCycle->internalRequest->body = new StreamBody($requestCycle->bodyPromisor->promise());
         $this->clearKeepAliveTimeout($client);
 
         // @TODO Update $canRespondNow for HTTP/2.0 where we don't have to respond in order

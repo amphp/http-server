@@ -29,7 +29,7 @@ use Amp\{ Streamable, PromiseStream };
  *          $response->send("Echoing back the request body: {$body}");
  *     };
  */
-final class BodyStream extends PromiseStream implements Body {
+final class StreamBody extends PromiseStream implements Body {
     public function buffer(): \Generator {
         $buffer = "";
         foreach ($this->stream() as $part) {
