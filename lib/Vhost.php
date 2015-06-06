@@ -2,12 +2,17 @@
 
 namespace Aerys;
 
-class Vhost {
+use Amp\{
+    Promise,
+    Success
+};
+
+class Vhost implements ServerObserver {
     private $application;
     private $address;
     private $port;
     private $name;
-    private $filters = [];
+    private $codecs = [];
     private $tlsContextArr = [];
     private $tlsDefaults = [
         "local_cert"            => null,
@@ -24,6 +29,7 @@ class Vhost {
         "reneg_limit"           => 0,
         "reneg_limit_callback"  => null,
         "crypto_method"         => STREAM_CRYPTO_METHOD_TLS_SERVER,
+        //"alpn_protocols"        => "h2", // @TODO
     ];
 
     private static $cryptoMethodMap = [
@@ -43,13 +49,21 @@ class Vhost {
         "any"       => STREAM_CRYPTO_METHOD_ANY_SERVER,
     ];
 
-    public function __construct(string $name, string $address, int $port, callable $application, array $filters) {
+    public function __construct(string $name, string $address, int $port, callable $application, array $codecs) {
         $this->name = isset($name) ? strtolower($name) : "";
         $this->setAddress($address);
         $this->setPort($port);
         $this->application = $application;
-        $this->filters = $filters;
+        $this->codecs = $codecs;
         $this->id = ($this->name ?? $this->address) . ":" . $this->port;
+    }
+
+    public function update(Server $server): Promise {
+        $app = is_array($this->application) ? $this->application[0] : $this->application;
+
+        return ($app instanceof ServerObserver)
+            ? $app->update($server)
+            : new Success;
     }
 
     private function setAddress(string $address) {
@@ -308,22 +322,22 @@ class Vhost {
     }
 
     /**
-     * Add a write filter to this host
+     * Add a codec to this host
      *
      * @param callable $callable
      * @return void
      */
-    public function addFilter(callable $callable) {
-        $this->filters[] = $callable;
+    public function addCodec(callable $callable) {
+        $this->codecs[] = $callable;
     }
 
     /**
-     * Retrieve filters registered for this host
+     * Retrieve codecs registered for this host
      *
      * @return array
      */
-    public function getFilters(): array {
-        return $this->filters;
+    public function getCodecs(): array {
+        return $this->codecs;
     }
 
     /**

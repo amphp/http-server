@@ -3,24 +3,26 @@
 namespace Aerys;
 
 class StandardResponse implements Response {
-    private $filter;
-    private $writer;
-    private $client;
-    private $status = 200;
-    private $reason = "";
-    private $headers = "";
-    private $cookies = [];
+    private $sink;
     private $state = self::NONE;
+    private $headers = [
+        ":status" => 200,
+        ":reason" => null
+    ];
+    private $cookies = [];
 
     /**
-     * @param \Aerys\Filter $filter
-     * @param \Generator $writer
-     * @param \Aerys\Rfc7230Client $client
+     * @param \Generator $sink
      */
-    public function __construct(Filter $filter, \Generator $writer, Rfc7230Client $client) {
-        $this->filter = $filter;
-        $this->writer = $writer;
-        $this->client = $client;
+    public function __construct(\Generator $sink) {
+        $this->sink = $sink;
+    }
+
+    /**
+     * @return array
+     */
+    public function __debugInfo(): array {
+        return $this->headers;
     }
 
     /**
@@ -35,7 +37,7 @@ class StandardResponse implements Response {
             );
         }
         assert(($code >= 100 && $code <= 599), "Invalid HTTP status code [100-599] expected");
-        $this->status = $code;
+        $this->headers[":status"] = $code;
 
         return $this;
     }
@@ -52,7 +54,7 @@ class StandardResponse implements Response {
             );
         }
         assert(isValidReasonPhrase($phrase), "Invalid reason phrase: {$phrase}");
-        $this->reason = $phrase;
+        $this->headers[":reason"] = $phrase;
 
         return $this;
     }
@@ -70,7 +72,7 @@ class StandardResponse implements Response {
         }
         assert(isValidHeaderField($field), "Invalid header field: {$field}");
         assert(isValidHeaderValue($value), "Invalid header value: {$value}");
-        $this->headers = addHeader($this->headers, $field, $value);
+        $this->headers[strtolower($field)][] = $value;
 
         return $this;
     }
@@ -88,7 +90,7 @@ class StandardResponse implements Response {
         }
         assert(isValidHeaderField($field), "Invalid header field: {$field}");
         assert(isValidHeaderValue($value), "Invalid header value: {$value}");
-        $this->headers = setHeader($this->headers, $field, $value);
+        $this->headers[strtolower($field)] = [$value];
 
         return $this;
     }
@@ -150,24 +152,18 @@ class StandardResponse implements Response {
             );
         }
 
-        if ($this->state & self::STARTED) {
-            $toFilter = $partialBody;
-        } else {
+        if (!($this->state & self::STARTED)) {
             $this->setCookies();
-
             // A * (as opposed to a numeric length) indicates "streaming entity content"
-            $headers = setHeader($this->headers, "__Aerys-Entity-Length", "*");
-            $headers = trim($headers);
-            $toFilter = "{proto} {$this->status} {$this->reason}\r\n{$headers}\r\n\r\n{$partialBody}";
+            $headers = $this->headers;
+            $headers[":aerys-entity-length"] = "*";
+            $this->sink->send($headers);
         }
 
-        $filtered = $this->filter->sink($toFilter);
-        if ($filtered !== "") {
-            $this->writer->send($filtered);
-        }
+        $this->sink->send($partialBody);
 
-        // Don't update the state until *AFTER* the filter operation so that if
-        // it throws we can handle FilterException appropriately in the server.
+        // Don't update the state until *AFTER* the sink operation so that if
+        // it throws we can handle InternalFilterException appropriately in the server.
         $this->state = self::STREAMING|self::STARTED;
 
         return $this;
@@ -188,10 +184,7 @@ class StandardResponse implements Response {
                 "Cannot flush: response already sent"
             );
         } elseif ($this->state & self::STARTED) {
-            $filtered = $this->filter->flush();
-            if ($filtered !== "") {
-                $this->writer->send($filtered);
-            }
+            $this->sink->send(false);
         } else {
             throw new \LogicException(
                 "Cannot flush: response output not started"
@@ -225,25 +218,21 @@ class StandardResponse implements Response {
             return $this;
         }
 
-        if ($this->state & self::STARTED) {
-            $toFilter = $finalBody;
-        } else {
+        if (!($this->state & self::STARTED)) {
             $this->setCookies();
-
             // An @ (as opposed to a numeric length) indicates "no entity content"
             $entityValue = isset($finalBody) ? strlen($finalBody) : "@";
-            $headers = setHeader($this->headers, "__Aerys-Entity-Length", $entityValue);
-            $headers = trim($headers);
-            $toFilter = "{proto} {$this->status} {$this->reason}\r\n{$headers}\r\n\r\n{$finalBody}";
+            $headers = $this->headers;
+            $headers[":aerys-entity-length"] = $entityValue;
+            $this->sink->send($headers);
         }
 
-        $filtered = $this->filter->end($toFilter);
-        if ($filtered !== "") {
-            $this->writer->send($filtered);
+        $this->sink->send($finalBody);
+        if (isset($finalBody)) {
+            $this->sink->send(null);
         }
-        $this->writer->send(null);
 
-        // Update the state *AFTER* the filter operation so that if it throws
+        // Update the state *AFTER* the sink operation so that if it throws
         // we can handle things appropriately in the server.
         $this->state = self::ENDED|self::STARTED;
 
@@ -262,7 +251,7 @@ class StandardResponse implements Response {
                 }
             }
 
-            $this->headers = addHeader($this->headers, "Set-Cookie", $cookie);
+            $this->headers["set-cookie"][] = $cookie;
         }
     }
 
@@ -275,7 +264,7 @@ class StandardResponse implements Response {
                 "Cannot assign onUpgrade callback; output already started"
             );
         }
-        $this->client->onUpgrade = $onUpgrade;
+        $this->headers[":on-upgrade"] = $onUpgrade;
 
         return $this;
     }

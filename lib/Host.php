@@ -9,7 +9,7 @@ class Host {
     private $address = "*";
     private $crypto = [];
     private $actions = [];
-    private $filters = [];
+    private $codecs = [];
     private $redirect;
 
     public function __construct() {
@@ -87,7 +87,7 @@ class Host {
         }
         if ($action instanceof Middleware) {
             $i++;
-            $this->filters[] = [$action, "filter"];
+            $this->codecs[] = [$action, "use"];
         }
         if (empty($i)) {
             throw new \InvalidArgumentException(
@@ -183,7 +183,7 @@ class Host {
             "name"      => $this->name,
             "crypto"    => $this->crypto,
             "actions"   => $actions,
-            "filters"   => $this->filters,
+            "codecs"    => $this->codecs,
         ];
     }
 

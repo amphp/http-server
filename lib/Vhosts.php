@@ -2,15 +2,29 @@
 
 namespace Aerys;
 
+use Amp\{
+    Promise,
+    function any
+};
+
 /**
- * The VhostGroup class aggregates the individual virtual hosts exposed by Server instances in
+ * The Vhosts class aggregates the individual virtual hosts exposed by Server instances in
  * one place. The collection encapsulates RFC2616-compliant logic for selecting which Vhost should
  * service individual requests in multi-host environments.
  */
-class VhostGroup implements \Countable {
+class Vhosts implements \Countable, ServerObserver {
     private $vhosts = [];
     private $cachedVhostCount = 0;
     private $defaultHost;
+
+    public function update(Server $server): Promise {
+        $observerPromises = [];
+        foreach ($this->vhosts as $serverObserver) {
+            $observerPromises[] = $serverObserver->update($server);
+        }
+
+        return any($observerPromises);
+    }
 
     /**
      * Add a virtual host to the collection
@@ -19,7 +33,7 @@ class VhostGroup implements \Countable {
      * @return void
      * @TODO Validate to prevent conflicts between wildcard and specific IPs
      */
-    public function addHost(Vhost $vhost) {
+    public function use(Vhost $vhost) {
         $this->preventCryptoSocketConflict($vhost);
         $this->vhosts[$vhost->getId()] = $vhost;
         $this->cachedVhostCount++;
@@ -56,10 +70,10 @@ class VhostGroup implements \Countable {
     public function selectHost(InternalRequest $ireq) {
         if (stripos($ireq->uriRaw, "http://") === 0 || stripos($ireq->uriRaw, "https://") === 0) {
             return $this->selectHostByAbsoluteUri($ireq);
-        } elseif (isset($ireq->headers["HOST"])) {
-            return $this->selectHostByHeader($ireq);
-        } else {
+        } elseif (empty($ireq->headers["host"])) {
             return null;
+        } else {
+            return $this->selectHostByHeader($ireq);
         }
 
         // If null is returned a stream must return 400 for HTTP/1.1 requests and use the default
@@ -96,7 +110,7 @@ class VhostGroup implements \Countable {
     }
 
     private function selectHostByHeader(InternalRequest $ireq) {
-        $explicitHostId = $ireq->headers["HOST"][0];
+        $explicitHostId = $ireq->headers["host"][0];
 
         if ($portStartPos = strrpos($explicitHostId, "]")) {
             $ipComparison = substr($explicitHostId, 0, $portStartPos + 1);
@@ -190,20 +204,3 @@ class VhostGroup implements \Countable {
         return $this->cachedVhostCount;
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

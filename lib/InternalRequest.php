@@ -6,13 +6,12 @@ use Amp\Struct;
 
 class InternalRequest {
     use Struct;
-    public $cryptoInfo;
     public $isEncrypted;
+    public $cryptoInfo;
     public $clientPort;
     public $clientAddr;
     public $serverPort;
     public $serverAddr;
-    public $serverName;
     public $trace;
     public $protocol;
     public $method;

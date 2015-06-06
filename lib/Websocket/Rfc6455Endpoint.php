@@ -15,6 +15,7 @@ use Amp\{
 
 use Aerys\{
     ClientException,
+    NullBody,
     Request,
     Response,
     Server,
@@ -101,6 +102,16 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
             return;
         }
 
+        $body = $request->getBody();
+        if (!$body instanceof NullBody) {
+            $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
+            $response->setReason("Bad Request: Entity body disallowed for websocket endpoint");
+            $response->setHeader("Connection", "close");
+            $response->setHeader("Aerys-Generic-Response", "enable");
+            $response->end();
+            return;
+        }
+
         $hasUpgradeWebsocket = false;
         foreach ($request->getHeaderArray("Upgrade") as $value) {
             if (strcasecmp($value, "websocket") === 0) {
@@ -125,6 +136,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
         if (empty($hasConnectionUpgrade)) {
             $response->setStatus(HTTP_STATUS["UPGRADE_REQUIRED"]);
             $response->setReason("Bad Request: \"Connection: Upgrade\" header required");
+            $response->setHeader("Upgrade", "websocket");
             $response->setHeader("Aerys-Generic-Response", "enable");
             $response->end();
             return;
@@ -571,7 +583,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
         return array_keys($this->clients);
     }
 
-    public function update(\SplSubject $server): Promise {
+    public function update(Server $server): Promise {
         $this->state = $state = $server->state();
         switch ($state) {
             case Server::STARTING:

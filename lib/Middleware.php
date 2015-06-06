@@ -3,5 +3,5 @@
 namespace Aerys;
 
 interface Middleware {
-    public function filter(InternalRequest $ireq);
+    public function use(InternalRequest $ireq);
 }
