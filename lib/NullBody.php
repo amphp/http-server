@@ -4,7 +4,7 @@ namespace Aerys;
 
 use Amp\{ Streamable, PromiseStream, Success };
 
-final class BodyNull extends PromiseStream implements Body {
+final class NullBody extends PromiseStream implements Body {
     public function __construct() {}
     public function stream(): \Generator {
         yield new Success;
