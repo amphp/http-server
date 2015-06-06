@@ -1201,310 +1201,33 @@ class Server {
     }
 
     private function initResponse(RequestCycle $requestCycle): Response {
-        $codecs = [
+        $filters = [
             $this->startResponseCodec,
             $this->genericResponseCodec,
         ];
 
         if ($userCodecs = $requestCycle->vhost->getCodecs()) {
-            $codecs = array_merge($codecs, array_values($userCodecs));
+            $filters = array_merge($filters, array_values($userCodecs));
         }
         if ($requestCycle->internalRequest->method === "HEAD") {
-            $codecs[] = $this->headResponseCodec;
+            $filters[] = $this->headResponseCodec;
         }
         if ($this->options->deflateEnable) {
-            $codecs[] = $this->deflateResponseCodec;
+            $filters[] = $this->deflateResponseCodec;
         }
         if ($requestCycle->internalRequest->protocol === "1.1") {
-            $codecs[] = $this->chunkResponseCodec;
+            $filters[] = $this->chunkResponseCodec;
         }
         if ($requestCycle->badCodecKeys) {
-            $codecs = array_diff_key($codecs, array_flip($requestCycle->badCodecKeys));
+            $filters = array_diff_key($filters, array_flip($requestCycle->badCodecKeys));
         }
 
-        // @TODO Use a different sink for HTTP/2.0 when $protocol === "2.0"
-        $sink = $this->h1ResponseWriter($requestCycle);
-        $init = $requestCycle->internalRequest;
-        $codec = self::responseCodec($sink, $codecs, $init);
+        // @TODO Use a different writer for HTTP/2.0 when $protocol === "2.0"
+        $ireq   = $requestCycle->internalRequest;
+        $writer = $this->h1ResponseWriter($requestCycle);
+        $codec  = responseCodec($ireq, $writer, $filters);
 
         return $requestCycle->response = new StandardResponse($codec);
-    }
-
-    public static function responseCodec(Generator $sink, array $codecs, $init = null): Generator {
-        try {
-            $generators = [];
-            foreach ($codecs as $key => $codec) {
-                $out = $codec($init);
-                if ($out instanceof Generator) {
-                    $generators[$key] = $out;
-                }
-            }
-            $codecs = $generators;
-
-            $headers = yield;
-            $isEnding = false;
-            $isFlushing = false;
-
-            foreach ($codecs as $key => $codec) {
-                $yielded = $codec->send($headers);
-                if (!isset($yielded)) {
-                    if (!$codec->valid()) {
-                        $yielded = $codec->getReturn();
-                        if (!isset($yielded)) {
-                            // no header modification -- continue
-                        } elseif (is_array($yielded)) {
-                            assert(self::validateCodecHeaders($codec, $yielded));
-                            $headers = $yielded;
-                        } else {
-                            $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                            throw new \DomainException(self::makeCodecErrorMessage(
-                                "Codec error; header array required but {$type} returned",
-                                $codec
-                            ));
-                        }
-                        unset($codecs[$key]);
-                        continue;
-                    }
-
-                    while (1) {
-                        if ($isEnding) {
-                            $toSend = null;
-                        } elseif ($isFlushing) {
-                            $toSend = false;
-                        } else {
-                            $toSend = yield;
-                            if (!isset($toSend)) {
-                                $isEnding = true;
-                            } elseif ($toSend === false) {
-                                $isFlushing = true;
-                            }
-                        }
-
-                        $yielded = $codec->send($toSend);
-                        if (!isset($yielded)) {
-                            if ($isEnding || $isFlushing) {
-                                if ($codec->valid()) {
-                                    $signal = isset($toSend) ? "FLUSH" : "END";
-                                    throw new \DomainException(self::makeCodecErrorMessage(
-                                        "Codec error; header array required from {$signal} signal but null yielded",
-                                        $codec
-                                    ));
-                                } else {
-                                    // this is always an error because the two-stage codec
-                                    // process means any codec receiving non-header data
-                                    // must participate in both stages
-                                    throw new \DomainException(self::makeCodecErrorMessage(
-                                        "Codec error; cannot detach without yielding/returning header array once body data received",
-                                        $codec
-                                    ));
-                                }
-                            }
-                        } elseif (is_array($yielded)) {
-                            assert(self::validateCodecHeaders($codec, $yielded));
-                            $headers = $yielded;
-                            break;
-                        } else {
-                            $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                            throw new \DomainException(self::makeCodecErrorMessage(
-                                "Codec error; header array required but {$type} yielded",
-                                $codec
-                            ));
-                        }
-                    }
-                } elseif (is_array($yielded)) {
-                    assert(self::validateCodecHeaders($codec, $yielded));
-                    $headers = $yielded;
-                } else {
-                    $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                    throw new \DomainException(self::makeCodecErrorMessage(
-                        "Codec error; header array required but {$type} yielded",
-                        $codec
-                    ));
-                }
-            }
-
-            $sink->send($headers);
-
-            $appendBuffer = null;
-
-            do {
-                if ($isEnding) {
-                    $toSend = null;
-                } elseif ($isFlushing) {
-                    $toSend = false;
-                } else {
-                    $toSend = yield;
-                    if (!isset($toSend)) {
-                        $isEnding = true;
-                    } elseif ($toSend === false) {
-                        $isFlushing = true;
-                    }
-                }
-
-                foreach ($codecs as $key => $codec) {
-                    while (1) {
-                        $yielded = $codec->send($toSend);
-                        if (!isset($yielded)) {
-                            if (!$codec->valid()) {
-                                unset($codecs[$key]);
-                                $yielded = $codec->getReturn();
-                                if (!isset($yielded)) {
-                                    if (isset($appendBuffer)) {
-                                        $toSend = $appendBuffer;
-                                        $appendBuffer = null;
-                                    }
-                                    break;
-                                } elseif (is_string($yielded)) {
-                                    if (isset($appendBuffer)) {
-                                        $toSend = $appendBuffer . $yielded;
-                                        $appendBuffer = null;
-                                    } else {
-                                        $toSend = $yielded;
-                                    }
-                                    break;
-                                } else {
-                                    $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                                    throw new \DomainException(self::makeCodecErrorMessage(
-                                        "Codec error; string entity data required but {$type} returned",
-                                        $codec
-                                    ));
-                                }
-                            } else {
-                                if ($isEnding) {
-                                    if (isset($toSend)) {
-                                        $toSend = null;
-                                    } else {
-                                        break;
-                                    }
-                                } elseif ($isFlushing) {
-                                    if ($toSend !== false) {
-                                        $toSend = false;
-                                    } else {
-                                        break;
-                                    }
-                                } else {
-                                    $toSend = yield;
-                                    if (!isset($toSend)) {
-                                        $isEnding = true;
-                                    } elseif ($toSend === false) {
-                                        $isFlushing = true;
-                                    }
-                                }
-                            }
-                        } elseif (is_string($yielded)) {
-                            if (isset($appendBuffer)) {
-                                $toSend = $appendBuffer . $yielded;
-                                $appendBuffer = null;
-                                break;
-                            } elseif ($isEnding) {
-                                $appendBuffer = $yielded;
-                                $toSend = null;
-                            } else {
-                                $toSend = $yielded;
-                                break;
-                            }
-                        } else {
-                            $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                            throw new \DomainException(self::makeCodecErrorMessage(
-                                "Codec error; string entity data required but {$type} yielded",
-                                $codec
-                            ));
-                        }
-                    }
-                }
-
-                $sink->send($toSend);
-                if ($isFlushing && $toSend !== false) {
-                    $sink->send($toSend = false);
-                }
-                $isFlushing = false;
-
-            } while (!$isEnding);
-
-            if (isset($toSend)) {
-                $sink->send(null);
-            }
-        } catch (ClientException $uncaught) {
-            throw $uncaught;
-        } catch (CodecException $uncaught) {
-            // Userspace code isn't supposed to throw these; rethrow as
-            // a different type to avoid breaking our error handling.
-            throw new \Exception("", 0, $uncaught);
-        } catch (\BaseException $uncaught) {
-            throw new CodecException("Uncaught codec exception", $key, $uncaught);
-        }
-    }
-
-    private static function makeCodecErrorMessage(string $prefix, Generator $gen): string {
-        if (!$gen->valid()) {
-            return $prefix;
-        }
-        $reflGen = new \ReflectionGenerator($gen);
-        $exeGen = $reflGen->getExecutingGenerator();
-        if ($isSubgenerator = ($exeGen !== $gen)) {
-            $reflGen = new \ReflectionGenerator($exeGen);
-        }
-        return sprintf(
-            $prefix . " on line %s in %s",
-            $reflGen->getExecutingLine(),
-            $reflGen->getExecutingFile()
-        );
-    }
-
-    private static function validateCodecHeaders(Generator $gen, array $yield) {
-        if (!isset($yield[":status"])) {
-            throw new \DomainException(self::makeCodecErrorMessage(
-                "Missing :status key in yielded codec array",
-                $gen
-            ));
-        }
-        if (!is_int($yield[":status"])) {
-            throw new \DomainException(self::makeCodecErrorMessage(
-                "Non-integer :status key in yielded codec array",
-                $gen
-            ));
-        }
-        if ($yield[":status"] < 100 || $yield[":status"] > 599) {
-            throw new \DomainException(self::makeCodecErrorMessage(
-                ":status value must be in the range 100..599 in yielded codec array",
-                $gen
-            ));
-        }
-        if (isset($yield[":reason"]) && !is_string($yield[":reason"])) {
-            throw new \DomainException(self::makeCodecErrorMessage(
-                "Non-string :reason value in yielded codec array",
-                $gen
-            ));
-        }
-
-        foreach ($yield as $headerField => $headerArray) {
-            if (!is_string($headerField)) {
-                throw new \DomainException(self::makeCodecErrorMessage(
-                    "Invalid numeric header field index in yielded codec array",
-                    $gen
-                ));
-            }
-            if ($headerField[0] === ":") {
-                continue;
-            }
-            if (!is_array($headerArray)) {
-                throw new \DomainException(self::makeCodecErrorMessage(
-                    "Invalid non-array header entry at key {$headerField} in yielded codec array",
-                    $gen
-                ));
-            }
-            foreach ($headerArray as $key => $headerValue) {
-                if (!is_scalar($headerValue)) {
-                    throw new \DomainException(self::makeCodecErrorMessage(
-                        "Invalid non-scalar header value at index {$key} of " .
-                        "{$headerField} array in yielded codec array",
-                        $gen
-                    ));
-                }
-            }
-        }
-
-        return true;
     }
 
     public static function h1Parser(callable $emitCallback, array $options = []): Generator {
