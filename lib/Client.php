@@ -4,7 +4,7 @@ namespace Aerys;
 
 use Amp\Struct;
 
-class Rfc7230Client {
+class Client {
     use Struct;
     public $id;
     public $socket;
@@ -14,18 +14,24 @@ class Rfc7230Client {
     public $serverPort;
     public $isEncrypted;
     public $cryptoInfo;
-    public $requestCycleQueue;
-    public $requestCycleQueueSize;
-    public $currentRequestCycle;
-    public $requestsRemaining;
     public $requestParser;
     public $readWatcher;
     public $writeWatcher;
-    public $writeFilter;
+
+    // not sure yet //
     public $writeBuffer;
     public $onWriteDrain;
     public $shouldClose;
     public $isDead;
     public $isExported;
     public $onUpgrade;
+    public $requestsRemaining;
+
+    // only for http/1.1 //
+    public $requestCycles;
+    public $currentRequestCycle;
+    
+    // new //
+    public $isHttp2;
+    public $h2Streams = [];
 }

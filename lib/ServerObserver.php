@@ -20,6 +20,6 @@ use Amp\Promise;
  * their ServerObserver::update() methods are invoked. The Server will not
  * complete its current state until any returned observer promises resolve.
  */
-interface ServerObserver extends \SplObserver {
-    public function update(\SplSubject $subject): Promise;
+interface ServerObserver  {
+    public function update(Server $subject): Promise;
 }

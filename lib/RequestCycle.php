@@ -4,16 +4,13 @@ namespace Aerys;
 
 use Amp\Struct;
 
-class Rfc7230RequestCycle {
+class RequestCycle {
     use Struct;
     public $client;
     public $vhost;
-    public $isVhostValid;
+    public $preAppResponder;
     public $internalRequest;
     public $bodyPromisor;
     public $response;
-    public $responseFilter;
-    public $responseWriter;
-    public $badFilterKeys;
-    public $parseErrorResponder;
+    public $badCodecKeys = [];
 }

@@ -264,10 +264,10 @@ class Router implements ServerObserver, LoggerAware {
      * Aerys\ServerObserver it will automatically be attached to the server as
      * an observer when passed to Aerys\Host::use().
      *
-     * @param \SplSubject $subject The notifying Aerys\Server instance
+     * @param \Aerys\Server $server The notifying Aerys\Server instance
      * @return \Amp\Promise
      */
-    public function update(\SplSubject $server): Promise {
+    public function update(Server $server): Promise {
         $observerPromises = [];
         foreach ($this->serverObservers as $serverObserver) {
             $observerPromises[] = $serverObserver->update($server);

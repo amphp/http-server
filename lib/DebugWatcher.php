@@ -37,15 +37,12 @@ class DebugWatcher {
      * @return \Generator
      */
     public function watch(CLImate $climate): \Generator {
-        $bootArr = $this->bootstrapper->boot($this->reactor, $this->logger, $climate);
-        list($server, $options, $addrCtxMap, $rfc7230Server) = $bootArr;
+        $server = $this->bootstrapper->boot($this->reactor, $this->logger, $climate);
         $this->registerSignalHandler($server);
         $this->registerShutdownHandler($server);
         $this->registerErrorHandler();
-        yield $server->start($addrCtxMap, [$rfc7230Server, "import"]);
-        foreach ($server->inspect()["boundAddresses"] as $address) {
-            $this->logger->info("Listening for HTTP traffic on {$address}");
-        }
+        yield $server->start();
+        $this->reactor->onError([$this->logger, "critical"]);
     }
 
     private function registerSignalHandler($server) {
@@ -129,8 +126,6 @@ class DebugWatcher {
             switch ($errno) {
                 case E_ERROR:
                 case E_PARSE:
-                    $this->logger->critical($msg);
-                    break;
                 case E_USER_ERROR:
                 case E_CORE_ERROR:
                 case E_COMPILE_ERROR:

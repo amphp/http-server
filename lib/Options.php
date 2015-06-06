@@ -14,11 +14,9 @@ class Options {
     private $defaultContentType = "text/html"; // can be vhost
     private $defaultTextCharset = "utf-8"; // can be vhost
     private $sendServerToken = true;
-    private $autoReasonPhrase = true; // can be vhost
     private $disableKeepAlive = false;
     private $socketBacklogSize = 128;
     private $normalizeMethodCase = true;
-    private $requireBodyLength = true;
     private $maxBodySize = 131072;
     private $maxHeaderSize = 32768;
     private $ioGranularity = 32768;
@@ -30,6 +28,8 @@ class Options {
     private $deflateBufferSize = 8192; // can be vhost
     private $chunkBufferSize = 8192; // can be vhost
     private $outputBufferSize = 8192; // can be vhost
+
+    private $shutdownTimeout = 3000;
 
     public function __construct() {
         $this->deflateEnable = \extension_loaded("zlib");
@@ -124,10 +124,6 @@ class Options {
         $this->sendServerToken = $flag;
     }
 
-    private function setAutoReasonPhrase(bool $flag) {
-        $this->autoReasonPhrase = $flag;
-    }
-
     private function setDisableKeepAlive(bool $flag) {
         $this->disableKeepAlive = $flag;
     }
@@ -144,10 +140,6 @@ class Options {
 
     private function setNormalizeMethodCase(bool $flag) {
         $this->normalizeMethodCase = $flag;
-    }
-
-    private function setRequireBodyLength(bool $flag) {
-        $this->requireBodyLength = $flag;
     }
 
     private function setMaxBodySize(int $bytes) {
@@ -259,5 +251,13 @@ class Options {
         }
 
         $this->outputBufferSize = $bytes;
+    }
+
+    private function setShutdownTimeout(int $milliseconds) {
+        if ($milliseconds < 0) {
+            $milliseconds = 0;
+        }
+
+        $this->shutdownTimeout = $milliseconds;
     }
 }

@@ -238,7 +238,7 @@ abstract class Root implements ServerObserver {
                 return null;
             }
         }
-        
+
         foreach ($request->getHeaderArray("Pragma") as $value) {
             if (strcasecmp($value, "no-cache") === 0) {
                 return null;
@@ -688,13 +688,13 @@ abstract class Root implements ServerObserver {
     /**
      * Receive notifications from the server when it starts/stops
      *
-     * @param \SplSubject $subject
+     * @param \Aerys\Server $server
      * @return \Amp\Promise
      */
-    public function update(\SplSubject $subject): Promise {
-        switch ($subject->state()) {
+    public function update(Server $server): Promise {
+        switch ($server->state()) {
             case Server::STARTING:
-                $this->debug = $subject->debug();
+                $this->debug = $server->getOption("debug");
                 break;
             case Server::STARTED:
                 $this->reactor->enable($this->cacheWatcher);

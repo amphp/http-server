@@ -27,9 +27,10 @@ abstract class Logger implements PsrLogger {
         self::EMERGENCY => 1,
     ];
 
+    private static $nullLogger;
     private $outputLevel = self::DEBUG;
 
-    abstract protected function dolog($level, $message, array $context = []);
+    abstract protected function doLog($level, $message, array $context = []);
 
     final public function emergency($message, array $context = []) {
         return $this->log(self::EMERGENCY, $message, $context);
