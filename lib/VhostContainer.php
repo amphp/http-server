@@ -7,12 +7,7 @@ use Amp\{
     function any
 };
 
-/**
- * The Vhosts class aggregates the individual virtual hosts exposed by Server instances in
- * one place. The collection encapsulates RFC2616-compliant logic for selecting which Vhost should
- * service individual requests in multi-host environments.
- */
-class Vhosts implements \Countable, ServerObserver {
+class VhostContainer implements \Countable, ServerObserver {
     private $vhosts = [];
     private $cachedVhostCount = 0;
     private $defaultHost;

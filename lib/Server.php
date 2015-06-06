@@ -43,7 +43,7 @@ class Server {
     private $state = self::STOPPED;
     private $reactor;
     private $options;
-    private $vhosts;
+    private $vhostContainer;
     private $logger;
     private $timeContext;
     private $observers;
@@ -75,24 +75,24 @@ class Server {
     /**
      * @param \Amp\Reactor $reactor
      * @param \Aerys\Options $options
-     * @param \Aerys\Vhosts $vhosts
+     * @param \Aerys\VhostContainer $vhostContainer
      * @param \Aerys\Logger $logger
      * @param \Aerys\TimeContext $timeContext
      */
     public function __construct(
         Reactor $reactor,
         Options $options,
-        Vhosts $vhosts,
+        VhostContainer $vhostContainer,
         Logger $logger,
         TimeContext $timeContext
     ) {
         $this->reactor = $reactor;
         $this->options = $options;
-        $this->vhosts = $vhosts;
+        $this->vhostContainer = $vhostContainer;
         $this->logger = $logger;
         $this->timeContext = $timeContext;
         $this->observers = new \SplObjectStorage;
-        $this->observers->attach($vhosts);
+        $this->observers->attach($vhostContainer);
         $this->observers->attach($timeContext);
         $this->decrementer = function() {
             if ($this->clientCount) {
@@ -196,9 +196,9 @@ class Server {
         try {
             switch ($this->state) {
                 case self::STOPPED:
-                    if ($this->vhosts->count() === 0) {
+                    if ($this->vhostContainer->count() === 0) {
                         return new Failure(new \LogicException(
-                            "Cannot start: no virtual hosts registered in composed Vhosts collection"
+                            "Cannot start: no virtual hosts registered in composed VhostContainer"
                         ));
                     }
                     return resolve($this->doStart(), $this->reactor);
@@ -262,8 +262,8 @@ class Server {
 
     private function generateBindableAddressContextMap() {
         $addrCtxMap = [];
-        $addresses = $this->vhosts->getBindableAddresses();
-        $tlsBindings = $this->vhosts->getTlsBindingsByAddress();
+        $addresses = $this->vhostContainer->getBindableAddresses();
+        $tlsBindings = $this->vhostContainer->getTlsBindingsByAddress();
         $backlogSize = $this->options->socketBacklogSize;
         $shouldReusePort = empty($this->options->debug);
 
@@ -672,8 +672,8 @@ class Server {
             $requestCycle->preAppResponder = [$this, "sendPreAppVersionNotSupportedResponse"];
         }
 
-        if (!$vhost = $this->vhosts->selectHost($ireq)) {
-            $vhost = $this->vhosts->getDefaultHost();
+        if (!$vhost = $this->vhostContainer->selectHost($ireq)) {
+            $vhost = $this->vhostContainer->getDefaultHost();
             $requestCycle->preAppResponder = [$this, "sendPreAppInvalidHostResponse"];
         }
 
@@ -1173,7 +1173,6 @@ class Server {
         do {
             if ($client->isDead) {
                 throw new ClientException;
-                while (1) { yield; }
             }
 
             $buffer[] = $msgPart;

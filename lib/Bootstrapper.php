@@ -36,7 +36,7 @@ class Bootstrapper {
         }
         $options = $this->generateOptionsObjFromArray($options);
         $hosts = Host::getDefinitions() ?: [new Host];
-        $vhosts = new Vhosts;
+        $vhosts = new VhostContainer;
         foreach ($hosts as $host) {
             $vhost = $this->buildVhost($logger, $host);
             $vhosts->use($vhost);
