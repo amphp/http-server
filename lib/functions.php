@@ -278,14 +278,10 @@ function responseCodec(\Generator $writer, array $filters, ...$filterArgs): \Gen
                         if (isset($appendBuffer)) {
                             $toSend = $appendBuffer . $yielded;
                             $appendBuffer = null;
-                            break;
-                        } elseif ($isEnding) {
-                            $appendBuffer = $yielded;
-                            $toSend = null;
                         } else {
                             $toSend = $yielded;
-                            break;
                         }
+                        break;
                     } else {
                         $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                         throw new \DomainException(makeGeneratorError(
