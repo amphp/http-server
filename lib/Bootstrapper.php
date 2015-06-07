@@ -3,20 +3,25 @@
 namespace Aerys;
 
 use Amp\{ Reactor, Promise, Success, function any };
-use League\CLImate\CLImate;
 use Psr\Log\LoggerAwareInterface as PsrLoggerAware;
 
 class Bootstrapper {
+    private $hostAggregator;
+
+    public function __construct(callable $hostAggregator = null) {
+        $this->hostAggregator = $hostAggregator ?: ["\\Aerys\\Host", "getDefinitions"];
+    }
+
     /**
      * Bootstrap a server from command line options
      *
      * @param \Amp\Reactor $reactor
      * @param \Aerys\Logger $logger
-     * @param array $cliArgs An array of command line arguments
+     * @param \Aerys\Console $console
      * @return \Aerys\Server
      */
-    public function boot(Reactor $reactor, Logger $logger, CLImate $climate): Server {
-        $configFile = $this->selectConfigFile((string)$climate->arguments->get("config"));
+    public function boot(Reactor $reactor, Logger $logger, Console $console): Server {
+        $configFile = $this->selectConfigFile((string)$console->getArg("config"));
         $logger->info("Using config file found at $configFile");
         if (!include($configFile)) {
             throw new \DomainException(
@@ -31,11 +36,12 @@ class Bootstrapper {
                 "Invalid AERYS_OPTIONS constant: array expected, got " . gettype(AERYS_OPTIONS)
             );
         }
-        if ($climate->arguments->defined("debug")) {
+        if ($console->isArgDefined("debug")) {
             $options["debug"] = true;
         }
+
         $options = $this->generateOptionsObjFromArray($options);
-        $hosts = Host::getDefinitions() ?: [new Host];
+        $hosts = \call_user_func($this->hostAggregator) ?: [new Host];
         $vhosts = new VhostContainer;
         foreach ($hosts as $host) {
             $vhost = $this->buildVhost($logger, $host);
@@ -48,6 +54,7 @@ class Bootstrapper {
                 public $currentHttpDate;
             }
         ;
+
         $server = new Server($reactor, $options, $vhosts, $logger, $timeContext);
 
         return $server;
@@ -108,9 +115,9 @@ class Bootstrapper {
             $port = $hostExport["port"];
             $name = $hostExport["name"];
             $actions = $hostExport["actions"];
-            $codecs = $hostExport["codecs"];
+            $filters = $hostExport["filters"];
             $application = $this->buildApplication($logger, $actions);
-            $vhost = new Vhost($name, $address, $port, $application, $codecs);
+            $vhost = new Vhost($name, $address, $port, $application, $filters);
             if ($crypto = $hostExport["crypto"]) {
                 $vhost->setCrypto($crypto);
             }
