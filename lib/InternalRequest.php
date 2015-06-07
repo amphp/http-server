@@ -27,7 +27,6 @@ class InternalRequest {
     public $remaining;
     public $time;
     public $locals;
-    public $debug;
 
     public function generateCookies() {
         $cookies = $this->headers["COOKIE"] ?? [""];
