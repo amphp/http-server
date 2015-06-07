@@ -12,7 +12,7 @@ class Vhost implements ServerObserver {
     private $address;
     private $port;
     private $name;
-    private $codecs = [];
+    private $filters = [];
     private $tlsContextArr = [];
     private $tlsDefaults = [
         "local_cert"            => null,
@@ -49,12 +49,12 @@ class Vhost implements ServerObserver {
         "any"       => STREAM_CRYPTO_METHOD_ANY_SERVER,
     ];
 
-    public function __construct(string $name, string $address, int $port, callable $application, array $codecs) {
+    public function __construct(string $name, string $address, int $port, callable $application, array $filters) {
         $this->name = isset($name) ? strtolower($name) : "";
         $this->setAddress($address);
         $this->setPort($port);
         $this->application = $application;
-        $this->codecs = $codecs;
+        $this->filters = $filters;
         $this->id = ($this->name ?? $this->address) . ":" . $this->port;
     }
 
@@ -322,22 +322,22 @@ class Vhost implements ServerObserver {
     }
 
     /**
-     * Add a codec to this host
+     * Add a filter to this host
      *
      * @param callable $callable
      * @return void
      */
-    public function addCodec(callable $callable) {
-        $this->codecs[] = $callable;
+    public function addFilter(callable $callable) {
+        $this->filters[] = $callable;
     }
 
     /**
-     * Retrieve codecs registered for this host
+     * Retrieve filters registered for this host
      *
      * @return array
      */
-    public function getCodecs(): array {
-        return $this->codecs;
+    public function getFilters(): array {
+        return $this->filters;
     }
 
     /**

@@ -843,7 +843,7 @@ class Server {
         }
 
         do {
-            $requestCycle->badCodecKeys[] = $error->getCode();
+            $requestCycle->badFilterKeys[] = $error->getCode();
             $this->initResponse($requestCycle);
             try {
                 $this->sendErrorResponse($error, $requestCycle);
@@ -999,8 +999,8 @@ class Server {
             "\\Aerys\\genericResponseFilter",
         ];
 
-        if ($userCodecs = $requestCycle->vhost->getCodecs()) {
-            $filters = array_merge($filters, array_values($userCodecs));
+        if ($userFilters = $requestCycle->vhost->getFilters()) {
+            $filters = array_merge($filters, array_values($userFilters));
         }
         if ($this->options->deflateEnable) {
             $filters[] = "\\Aerys\\deflateResponseFilter";
@@ -1011,8 +1011,8 @@ class Server {
         if ($ireq->method === "HEAD") {
             $filters[] = "\\Aerys\\nullBodyResponseFilter";
         }
-        if ($requestCycle->badCodecKeys) {
-            $filters = array_diff_key($filters, array_flip($requestCycle->badCodecKeys));
+        if ($requestCycle->badFilterKeys) {
+            $filters = array_diff_key($filters, array_flip($requestCycle->badFilterKeys));
         }
 
         // @TODO Use a different writer for HTTP/2.0 when $protocol === "2.0"

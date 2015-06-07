@@ -12,5 +12,5 @@ class RequestCycle {
     public $internalRequest;
     public $bodyPromisor;
     public $response;
-    public $badCodecKeys = [];
+    public $badFilterKeys = [];
 }
