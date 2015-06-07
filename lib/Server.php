@@ -652,6 +652,13 @@ class Server {
         $ireq->serverAddr = $client->serverAddr;
         $ireq->clientPort = $client->clientPort;
         $ireq->clientAddr = $client->clientAddr;
+
+        if ($ireq->headers["cookie"]) {
+            $ireq->cookies = array_merge(...array_map("\\Aerys\\parseCookie", $ireq->headers["cookie"]));
+        } else {
+            $ireq->cookies = [];
+        }
+
         $ireq->uriRaw = $uri;
         if (stripos($uri, "http://") === 0 || stripos($uri, "https://") === 0) {
             extract(parse_url($uri, EXTR_PREFIX_ALL, "uri"));

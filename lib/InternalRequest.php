@@ -27,9 +27,4 @@ class InternalRequest {
     public $remaining;
     public $time;
     public $locals;
-
-    public function generateCookies() {
-        $cookies = $this->headers["COOKIE"] ?? [""];
-        $this->cookies = array_merge(...array_map('\Aerys\parseCookie', $cookies));
-    }
 }
