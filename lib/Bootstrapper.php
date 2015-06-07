@@ -108,9 +108,9 @@ class Bootstrapper {
             $port = $hostExport["port"];
             $name = $hostExport["name"];
             $actions = $hostExport["actions"];
-            $codecs = $hostExport["codecs"];
+            $filters = $hostExport["filters"];
             $application = $this->buildApplication($logger, $actions);
-            $vhost = new Vhost($name, $address, $port, $application, $codecs);
+            $vhost = new Vhost($name, $address, $port, $application, $filters);
             if ($crypto = $hostExport["crypto"]) {
                 $vhost->setCrypto($crypto);
             }
