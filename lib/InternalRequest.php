@@ -26,5 +26,7 @@ class InternalRequest {
     public $cookies;
     public $remaining;
     public $time;
+    public $httpDate;
+    public $isServerStopping;
     public $locals;
 }

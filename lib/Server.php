@@ -66,11 +66,6 @@ class Server {
     private $onParse;
     private $onCoroutineAppResolve;
     private $onCompletedResponse;
-    private $startResponseCodec;
-    private $genericResponseCodec;
-    private $headResponseCodec;
-    private $deflateResponseCodec;
-    private $chunkResponseCodec;
 
     /**
      * @param \Amp\Reactor $reactor
@@ -113,11 +108,6 @@ class Server {
         $this->onParse = $this->makePrivateCallable("onParse");
         $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
         $this->onCompletedResponse = $this->makePrivateCallable("onCompletedResponse");
-        $this->startResponseCodec = $this->makePrivateCallable("startResponseCodec");
-        $this->genericResponseCodec = $this->makePrivateCallable("genericResponseCodec");
-        $this->headResponseCodec = $this->makePrivateCallable("headResponseCodec");
-        $this->deflateResponseCodec = $this->makePrivateCallable("deflateResponseCodec");
-        $this->chunkResponseCodec = $this->makePrivateCallable("chunkResponseCodec");
     }
 
     /**
@@ -597,9 +587,13 @@ class Server {
         $this->clearKeepAliveTimeout($client);
         $requestCycle = $this->initializeRequestCycle($client, $parseResult);
         $requestCycle->preAppResponder = function(Request $request, Response $response) use ($error) {
-            $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
+            $status = HTTP_STATUS["BAD_REQUEST"];
+            $body = makeGenericBody($code, [
+                "msg" => $error,
+            ]);
+            $response->setStatus($status);
             $response->setHeader("Connection", "close");
-            $response->end($this->makeGenericBody($code, null, $error));
+            $response->end($body);
         };
 
         // @TODO Update $canRespondNow for HTTP/2.0 where we don't have to respond in order
@@ -637,8 +631,9 @@ class Server {
         )));
 
         $ireq = $requestCycle->internalRequest = new InternalRequest;
+        $ireq->isServerStopping = (bool) $this->stopPromisor;
         $ireq->time = $this->timeContext->currentTime;
-        $ireq->debug = $this->options->debug;
+        $ireq->httpDate = $this->timeContext->currentHttpDate;
         $ireq->locals = [];
         $ireq->remaining = $client->requestsRemaining;
         $ireq->isEncrypted = $client->isEncrypted;
@@ -653,10 +648,10 @@ class Server {
         $ireq->clientPort = $client->clientPort;
         $ireq->clientAddr = $client->clientAddr;
 
-        if ($ireq->headers["cookie"]) {
-            $ireq->cookies = array_merge(...array_map("\\Aerys\\parseCookie", $ireq->headers["cookie"]));
-        } else {
+        if (empty($ireq->headers["cookie"])) {
             $ireq->cookies = [];
+        } else {
+            $ireq->cookies = array_merge(...array_map("\\Aerys\\parseCookie", $ireq->headers["cookie"]));
         }
 
         $ireq->uriRaw = $uri;
@@ -720,44 +715,48 @@ class Server {
 
     private function sendPreAppVersionNotSupportedResponse(Request $request, Response $response) {
         $status = HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"];
+        $body = makeGenericBody($status);
         $response->setStatus($status);
         $response->setHeader("Connection", "close");
-        $response->end($body = $this->makeGenericBody($status));
+        $response->end($body);
     }
 
     private function sendPreAppServiceUnavailableResponse(Request $request, Response $response) {
         $status = HTTP_STATUS["SERVICE_UNAVAILABLE"];
+        $body = makeGenericBody($status);
         $response->setStatus($status);
         $response->setHeader("Connection", "close");
-        $response->end($body = $this->makeGenericBody($status));
+        $response->end($body);
     }
 
     private function sendPreAppInvalidHostResponse(Request $request, Response $response) {
         $status = HTTP_STATUS["BAD_REQUEST"];
+        $body = makeGenericBody($status);
         $response->setStatus($status);
         $response->setReason("Bad Request: Invalid Host");
         $response->setHeader("Connection", "close");
-        $response->end($this->makeGenericBody($status));
+        $response->end($body);
     }
 
     private function sendPreAppMethodNotAllowedResponse(Request $request, Response $response) {
         $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
+        $body = makeGenericBody($status);
         $response->setStatus($status);
         $response->setHeader("Connection", "close");
         $response->setHeader("Allow", implode(",", $this->options->allowedMethods));
-        $response->end($body = $this->makeGenericBody($status));
+        $response->end($body);
     }
 
     private function sendPreAppTraceResponse(Request $request, Response $response) {
         $response->setStatus(HTTP_STATUS["OK"]);
         $response->setHeader("Content-Type", "message/http");
-        $response->end($body = $ireq->trace);
+        $response->end($ireq->trace);
     }
 
     private function sendPreAppOptionsResponse(Request $request, Response $response) {
         $response->setStatus(HTTP_STATUS["OK"]);
         $response->setHeader("Allow", implode(",", $this->options->allowedMethods));
-        $response->end($body = null);
+        $response->end(null);
     }
 
     private function onCompletedResponse(Client $client) {
@@ -788,9 +787,11 @@ class Server {
                 $response->end();
             } else {
                 $status = HTTP_STATUS["NOT_FOUND"];
-                $subHeading = "Requested: {$requestCycle->internalRequest->uri}";
+                $body = makeGenericBody($status, [
+                    "sub_heading" => "Requested: {$requestCycle->internalRequest->uri}",
+                ]);
                 $response->setStatus($status);
-                $response->end($this->makeGenericBody($status, $subHeading));
+                $response->end($body);
             }
         } catch (ClientException $error) {
             // Do nothing -- responder actions aren't required to catch this
@@ -807,9 +808,11 @@ class Server {
                 $requestCycle->response->end();
             } else {
                 $status = HTTP_STATUS["NOT_FOUND"];
-                $subHeading = "Requested: {$requestCycle->internalRequest->uri}";
+                $body = makeGenericBody($status, [
+                    "sub_heading" => "Requested: {$requestCycle->internalRequest->uri}",
+                ]);
                 $requestCycle->response->setStatus($status);
-                $requestCycle->response->end($this->makeGenericBody($status, $subHeading));
+                $requestCycle->response->end($body);
             }
         } elseif (!$error instanceof ClientException) {
             // Ignore uncaught ClientException -- applications aren't required to catch this
@@ -846,7 +849,7 @@ class Server {
                 $this->sendErrorResponse($error, $requestCycle);
                 return;
             } catch (CodecException $error) {
-                // Keep trying until no broken codecs remain ...
+                // Keep trying until no broken filters remain ...
                 $this->logger->error($error);
             }
         } while (1);
@@ -854,12 +857,14 @@ class Server {
 
     private function sendErrorResponse(\BaseException $error, RequestCycle $requestCycle) {
         $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
-        $subHeading = "Requested: {$requestCycle->internalRequest->uri}";
         $msg = ($this->options->debug)
             ? $this->makeDebugMessage($error, $requestCycle->internalRequest)
             : "<p>Something went wrong ...</p>"
         ;
-        $body = $this->makeGenericBody($status, $subHeading, $msg);
+        $body = makeGenericBody($status, [
+            "sub_heading" =>"Requested: {$requestCycle->internalRequest->uri}",
+            "msg" => $msg,
+        ]);
         $requestCycle->response->setStatus(HTTP_STATUS["INTERNAL_SERVER_ERROR"]);
         $requestCycle->response->setHeader("Connection", "close");
         $requestCycle->response->end($body);
@@ -867,7 +872,6 @@ class Server {
 
     private function makeDebugMessage(\BaseException $error, InternalRequest $ireq): string {
         $vars = [
-            "debug"         => ($ireq->debug ? "true" : "false"),
             "isEncrypted"   => ($ireq->isEncrypted ? "true" : "false"),
             "serverAddr"    => $ireq->serverAddr,
             "serverPort"    => $ireq->serverPort,
@@ -888,23 +892,6 @@ class Server {
         $msg[] = "\n";
 
         return implode($msg);
-    }
-
-    private function makeGenericBody(int $status, string $subHeading = null, string $msg = null): string {
-        $serverToken = $this->options->sendServerToken ? (SERVER_TOKEN . " @ ") : "";
-        $reason = HTTP_REASON[$status] ?? "";
-        $subHeading = isset($subHeading) ? "<h3>{$subHeading}</h3>" : "";
-        $msg = isset($msg) ? "{$msg}\n" : "";
-
-        return sprintf(
-            "<html>\n<body>\n<h1>%d %s</h1>\n%s\n<hr/>\n<em>%s%s</em>\n<br/><br/>\n%s</body>\n</html>",
-            $status,
-            $reason,
-            $subHeading,
-            $serverToken,
-            $this->timeContext->currentHttpDate,
-            $msg
-        );
     }
 
     private function close(Client $client) {
@@ -938,209 +925,6 @@ class Server {
         assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
 
         return $this->decrementer;
-    }
-
-    private function startResponseCodec(InternalRequest $ireq): Generator {
-        $headers = yield;
-        $status = $headers[":status"];
-
-        if ($this->options->sendServerToken) {
-            $headers["server"] = [SERVER_TOKEN];
-        }
-
-        $contentLength = $headers[":aerys-entity-length"];
-        unset($headers[":aerys-entity-length"]);
-
-        if ($contentLength === "@") {
-            $hasContent = false;
-            $shouldClose = ($ireq->protocol === "1.0");
-            if ($status >= 200 && $status != 204 && $status != 304) {
-                $headers["content-length"] = ["0"];
-            }
-        } elseif ($contentLength !== "*") {
-            $hasContent = true;
-            $shouldClose = false;
-            $headers["content-length"] = [$contentLength];
-            unset($headers["transfer-encoding"]);
-        } elseif ($ireq->protocol === "1.1") {
-            $hasContent = true;
-            $shouldClose = false;
-            $headers["transfer-encoding"] = ["chunked"];
-            unset($headers["content-length"]);
-        } else {
-            $hasContent = true;
-            $shouldClose = true;
-        }
-
-        if ($hasContent && $status >= 200 && ($status < 300 || $status >= 400)) {
-            $type = $headers["content-type"][0] ?? $this->options->defaultContentType;
-            if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-                $type .= "; charset={$this->options->defaultTextCharset}";
-            }
-            $headers["content-type"] = [$type];
-        }
-
-        if ($shouldClose || $this->stopPromisor || $ireq->remaining === 0) {
-            $headers["connection"] = ["close"];
-        } else {
-            $keepAlive = "timeout={$this->options->keepAliveTimeout}, max={$ireq->remaining}";
-            $headers["keep-alive"] = [$keepAlive];
-        }
-
-        $headers["date"] = [$this->timeContext->currentHttpDate];
-
-        return $headers;
-    }
-
-    public function genericResponseCodec(InternalRequest $ireq): Generator {
-        $headers = yield;
-        if (empty($headers["aerys-generic-response"])) {
-            return;
-        }
-
-        $subHeading = "Requested: {$ireq->uri}";
-        unset($headers["aerys-generic-response"]);
-        unset($headers["transfer-encoding"]);
-        $body = $this->makeGenericBody($headers[":status"], $subHeading);
-        $headers["content-length"] = [strlen($body)];
-
-        yield $headers;
-
-        return $body;
-    }
-
-    public function headResponseCodec(InternalRequest $ireq): Generator {
-        // Receive the headers in the first yield and immediately send them back.
-        yield yield;
-
-        // Send back null (need more data) for all received body data
-        while (yield !== null);
-    }
-
-    public function deflateResponseCodec(InternalRequest $ireq): Generator {
-        if (empty($ireq->headers["accept-encoding"])) {
-            return;
-        }
-
-        foreach ($ireq->headers["accept-encoding"] as $value) {
-            // @TODO Perform a more sophisticated check for gzip acceptance.
-            // This check isn't technically correct as the gzip parameter
-            // could have a q-value of zero indicating "never accept gzip."
-            if (stripos($value, "gzip") !== false) {
-                break;
-            }
-            return;
-        }
-
-        $headers = yield;
-        if (empty($headers["content-type"])) {
-            return;
-        }
-
-        // Require a text/* mime Content-Type
-        // @TODO Allow option to configure which mime prefixes/types may be compressed
-        if (stripos($headers["content-type"][0], "text/") !== 0) {
-            return;
-        }
-
-        $minBodySize = $this->options->deflateMinimumLength;
-        $contentLength = $headers["content-length"][0] ?? null;
-        $bodyBuffer = "";
-
-        if (!isset($contentLength)) {
-            // Wait until we know there's enough stream data to compress before proceeding.
-            // If we receive a FLUSH or an END signal before we have enough then we won't
-            // use any compression.
-            while (!isset($bodyBuffer[$minBodySize])) {
-                $bodyBuffer .= ($tmp = yield);
-                if ($tmp === false || $tmp === null) {
-                    $bodyBuffer .= yield $headers;
-                    return $bodyBuffer;
-                }
-            }
-        } elseif (empty($contentLength) || $contentLength < $minBodySize) {
-            // If the Content-Length is too small we can't compress it.
-            return $headers;
-        }
-
-        // @TODO We have the ability to support DEFLATE and RAW encoding as well. Should we?
-        $mode = \ZLIB_ENCODING_GZIP;
-        if (($resource = \deflate_init($mode)) === false) {
-            $bodyBuffer .= yield $headers;
-            return $bodyBuffer;
-        }
-
-        // Once we decide to compress output we no longer know what the
-        // final Content-Length will be. We need to update our headers
-        // according to the HTTP protocol in use to reflect this.
-        unset($headers["content-length"]);
-        if ($ireq->protocol === "1.1") {
-            $headers["transfer-encoding"] = ["chunked"];
-        } else {
-            $headers["connection"] = ["close"];
-        }
-        $headers["content-encoding"] = ["gzip"];
-
-        $minFlushOffset = $this->options->deflateBufferSize;
-
-        $deflated = $headers;
-
-        while (($uncompressed = yield $deflated) !== null) {
-            $bodyBuffer .= $uncompressed;
-            if ($uncompressed === false) {
-                if ($bodyBuffer === "") {
-                    // If we don't have any buffered data there's nothing to flush
-                    $deflated = null;
-                } elseif (($deflated = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) === false) {
-                    // throw
-                } else {
-                    $bodyBuffer = "";
-                }
-            } elseif (!isset($bodyBuffer[$minFlushOffset])) {
-                $deflated = null;
-            } elseif (($deflated = \deflate_add($resource, $bodyBuffer)) === false) {
-                // throw
-            } else {
-                $bodyBuffer = "";
-            }
-        }
-
-        if (($deflated = \deflate_add($resource, $bodyBuffer, \ZLIB_FINISH)) === false) {
-            // throw
-        }
-
-        return $deflated;
-    }
-
-    public function chunkResponseCodec(InternalRequest $ireq): Generator {
-        $headers = yield;
-        if (empty($headers["transfer-encoding"])) {
-            return;
-        }
-        if (!in_array("chunked", $headers["transfer-encoding"])) {
-            return;
-        }
-
-        $bodyBuffer = "";
-        $bufferSize = $this->options->chunkBufferSize;
-        $unchunked = yield $headers;
-
-        do {
-            $bodyBuffer .= $unchunked;
-            if (isset($bodyBuffer[$bufferSize]) || ($unchunked === false && $bodyBuffer != "")) {
-                $chunk = \dechex(\strlen($bodyBuffer)) . "\r\n{$bodyBuffer}\r\n";
-                $bodyBuffer = "";
-            } else {
-                $chunk = null;
-            }
-        } while (($unchunked = yield $chunk) !== null);
-
-        $chunk = ($bodyBuffer != "")
-            ? (\dechex(\strlen($bodyBuffer)) . "\r\n{$bodyBuffer}\r\n0\r\n\r\n")
-            : "0\r\n\r\n"
-        ;
-
-        return $chunk;
     }
 
     private function h1ResponseWriter(RequestCycle $requestCycle): Generator {
@@ -1208,31 +992,32 @@ class Server {
     }
 
     private function initResponse(RequestCycle $requestCycle): Response {
+        $ireq = $requestCycle->internalRequest;
+
         $filters = [
-            $this->startResponseCodec,
-            $this->genericResponseCodec,
+            "\\Aerys\\startResponseFilter",
+            "\\Aerys\\genericResponseFilter",
         ];
 
         if ($userCodecs = $requestCycle->vhost->getCodecs()) {
             $filters = array_merge($filters, array_values($userCodecs));
         }
-        if ($requestCycle->internalRequest->method === "HEAD") {
-            $filters[] = $this->headResponseCodec;
-        }
         if ($this->options->deflateEnable) {
-            $filters[] = $this->deflateResponseCodec;
+            $filters[] = "\\Aerys\\deflateResponseFilter";
         }
-        if ($requestCycle->internalRequest->protocol === "1.1") {
-            $filters[] = $this->chunkResponseCodec;
+        if ($ireq->protocol === "1.1") {
+            $filters[] = "\\Aerys\\chunkedResponseFilter";
+        }
+        if ($ireq->method === "HEAD") {
+            $filters[] = "\\Aerys\\nullBodyResponseFilter";
         }
         if ($requestCycle->badCodecKeys) {
             $filters = array_diff_key($filters, array_flip($requestCycle->badCodecKeys));
         }
 
         // @TODO Use a different writer for HTTP/2.0 when $protocol === "2.0"
-        $ireq   = $requestCycle->internalRequest;
         $writer = $this->h1ResponseWriter($requestCycle);
-        $codec  = responseCodec($ireq, $writer, $filters);
+        $codec  = responseCodec($writer, $filters, $ireq, $this->options);
 
         return $requestCycle->response = new StandardResponse($codec);
     }

@@ -113,11 +113,11 @@ function makeGeneratorError(string $prefix, \Generator $generator): string {
  * @param array $filters
  * @return \Generator
  */
-function responseCodec(InternalRequest $ireq, \Generator $writer, array $filters): \Generator {
+function responseCodec(\Generator $writer, array $filters, ...$filterArgs): \Generator {
     try {
         $generators = [];
         foreach ($filters as $key => $filter) {
-            $out = $filter($ireq);
+            $out = $filter(...$filterArgs);
             if ($out instanceof \Generator) {
                 $generators[$key] = $out;
             }
@@ -378,4 +378,284 @@ function __validateCodecHeaders(\Generator $generator, array $headers) {
     }
 
     return true;
+}
+
+/**
+ * Normalize outgoing headers according to the request protocol and server options
+ *
+ * @param \Aerys\InternalRequest $ireq
+ * @param \Aerys\Options $options
+ * @return \Generator
+ */
+function startResponseFilter(InternalRequest $ireq, Options $options): \Generator {
+    $headers = yield;
+    $status = $headers[":status"];
+
+    if ($options->sendServerToken) {
+        $headers["server"] = [SERVER_TOKEN];
+    }
+
+    $contentLength = $headers[":aerys-entity-length"];
+    unset($headers[":aerys-entity-length"]);
+
+    if ($contentLength === "@") {
+        $hasContent = false;
+        $shouldClose = ($ireq->protocol === "1.0");
+        if (($status >= 200 && $status != 204 && $status != 304)) {
+            $headers["content-length"] = ["0"];
+        }
+    } elseif ($contentLength !== "*") {
+        $hasContent = true;
+        $shouldClose = false;
+        $headers["content-length"] = [$contentLength];
+        unset($headers["transfer-encoding"]);
+    } elseif ($ireq->protocol === "1.1") {
+        $hasContent = true;
+        $shouldClose = false;
+        $headers["transfer-encoding"] = ["chunked"];
+        unset($headers["content-length"]);
+    } else {
+        $hasContent = true;
+        $shouldClose = true;
+    }
+
+    if ($hasContent) {
+        $type = $headers["content-type"][0] ?? $options->defaultContentType;
+        if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
+            $type .= "; charset={$options->defaultTextCharset}";
+        }
+        $headers["content-type"] = [$type];
+    }
+
+    if ($shouldClose || $ireq->isServerStopping || $ireq->remaining === 0) {
+        $headers["connection"] = ["close"];
+    } else {
+        $keepAlive = "timeout={$options->keepAliveTimeout}, max={$ireq->remaining}";
+        $headers["keep-alive"] = [$keepAlive];
+    }
+
+    $headers["date"] = [$ireq->httpDate];
+
+    return $headers;
+}
+
+/**
+ * Apply negotiated gzip deflation to outgoing response bodies
+ *
+ * @param \Aerys\InternalRequest $ireq
+ * @param \Aerys\Options $options
+ * @return \Generator
+ */
+function deflateResponseFilter(InternalRequest $ireq, Options $options): \Generator {
+    if (empty($options->deflateEnable)) {
+        return;
+    }
+    if (empty($ireq->headers["accept-encoding"])) {
+        return;
+    }
+
+    // @TODO Perform a more sophisticated check for gzip acceptance.
+    // This check isn't technically correct as the gzip parameter
+    // could have a q-value of zero indicating "never accept gzip."
+    foreach ($ireq->headers["accept-encoding"] as $value) {
+        if (stripos($value, "gzip") !== false) {
+            break;
+        }
+        return;
+    }
+
+    $headers = yield;
+
+    // We can't deflate if we don't know the content-type
+    if (empty($headers["content-type"])) {
+        return;
+    }
+
+    // Require a text/* mime Content-Type
+    // @TODO Allow option to configure which mime prefixes/types may be compressed
+    if (stripos($headers["content-type"][0], "text/") !== 0) {
+        return;
+    }
+
+    $minBodySize = $options->deflateMinimumLength;
+    $contentLength = $headers["content-length"][0] ?? null;
+    $bodyBuffer = "";
+
+    if (!isset($contentLength)) {
+        // Wait until we know there's enough stream data to compress before proceeding.
+        // If we receive a FLUSH or an END signal before we have enough then we won't
+        // use any compression.
+        while (!isset($bodyBuffer[$minBodySize])) {
+            $bodyBuffer .= ($tmp = yield);
+            if ($tmp === false || $tmp === null) {
+                $bodyBuffer .= yield $headers;
+                return $bodyBuffer;
+            }
+        }
+    } elseif (empty($contentLength) || $contentLength < $minBodySize) {
+        // If the Content-Length is too small we can't compress it.
+        return $headers;
+    }
+
+    // @TODO We have the ability to support DEFLATE and RAW encoding as well. Should we?
+    $mode = \ZLIB_ENCODING_GZIP;
+    if (($resource = \deflate_init($mode)) === false) {
+        throw new \RuntimeException(
+            "Failed initializing deflate context"
+        );
+    }
+
+    // Once we decide to compress output we no longer know what the
+    // final Content-Length will be. We need to update our headers
+    // according to the HTTP protocol in use to reflect this.
+    // @TODO This may require updating for HTTP/2.0
+    unset($headers["content-length"]);
+    if ($ireq->protocol === "1.1") {
+        $headers["transfer-encoding"] = ["chunked"];
+    } else {
+        $headers["connection"] = ["close"];
+    }
+    $headers["content-encoding"] = ["gzip"];
+    $minFlushOffset = $options->deflateBufferSize;
+    $deflated = $headers;
+
+    while (($uncompressed = yield $deflated) !== null) {
+        $bodyBuffer .= $uncompressed;
+        if ($uncompressed === false) {
+            if ($bodyBuffer === "") {
+                $deflated = null;
+            } elseif (($deflated = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) === false) {
+                throw new \RuntimeException(
+                    "Failed adding data to deflate context"
+                );
+            } else {
+                $bodyBuffer = "";
+            }
+        } elseif (!isset($bodyBuffer[$minFlushOffset])) {
+            $deflated = null;
+        } elseif (($deflated = \deflate_add($resource, $bodyBuffer)) === false) {
+            throw new \RuntimeException(
+                "Failed adding data to deflate context"
+            );
+        } else {
+            $bodyBuffer = "";
+        }
+    }
+
+    if (($deflated = \deflate_add($resource, $bodyBuffer, \ZLIB_FINISH)) === false) {
+        throw new \RuntimeException(
+            "Failed adding data to deflate context"
+        );
+    }
+
+    return $deflated;
+}
+
+/**
+ * Apply chunk encoding to response entity bodies
+ *
+ * @param \Aerys\InternalRequest $ireq
+ * @param \Aerys\Options $options
+ * @return \Generator
+ */
+function chunkedResponseFilter(InternalRequest $ireq, Options $options = null): \Generator {
+    $headers = yield;
+
+    if ($ireq->protocol !== "1.1") {
+        return;
+    }
+    if (empty($headers["transfer-encoding"])) {
+        return;
+    }
+    if (!in_array("chunked", $headers["transfer-encoding"])) {
+        return;
+    }
+
+    $bodyBuffer = "";
+    $bufferSize = $options->chunkBufferSize ?? 8192;
+    $unchunked = yield $headers;
+
+    do {
+        $bodyBuffer .= $unchunked;
+        if (isset($bodyBuffer[$bufferSize]) || ($unchunked === false && $bodyBuffer != "")) {
+            $chunk = \dechex(\strlen($bodyBuffer)) . "\r\n{$bodyBuffer}\r\n";
+            $bodyBuffer = "";
+        } else {
+            $chunk = null;
+        }
+    } while (($unchunked = yield $chunk) !== null);
+
+    $chunk = ($bodyBuffer != "")
+        ? (\dechex(\strlen($bodyBuffer)) . "\r\n{$bodyBuffer}\r\n0\r\n\r\n")
+        : "0\r\n\r\n"
+    ;
+
+    return $chunk;
+}
+
+/**
+ * Filter out entity body data from a response stream
+ *
+ * @param \Aerys\InternalRequest $ireq
+ * @return \Generator
+ */
+function nullBodyResponseFilter(InternalRequest $ireq): \Generator {
+    // Receive headers and immediately send them back.
+    yield yield;
+    // Yield null (need more data) for all subsequent body data
+    while (yield !== null);
+}
+
+/**
+ * Use a generic HTML response if the requisite header is assigned
+ *
+ * @param \Aerys\InternalRequest $ireq
+ * @return \Generator
+ */
+function genericResponseFilter(InternalRequest $ireq, Options $options = null): \Generator {
+    $headers = yield;
+    if (empty($headers["aerys-generic-response"])) {
+        return;
+    }
+
+    $body = makeGenericBody($headers[":status"], $options = [
+        "reason"      => $headers[":reason"],
+        "sub_heading" => "Requested: {$ireq->uri}",
+        "server"      => $options->sendServerToken ?? false,
+        "http_date"   => $ireq->httpDate,
+    ]);
+    $headers["content-length"] = [strlen($body)];
+    unset(
+        $headers["aerys-generic-response"],
+        $headers["transfer-encoding"]
+    );
+
+    yield $headers;
+    yield $body;
+    while (yield !== null);
+}
+
+/**
+ * Create a generic HTML entity body
+ *
+ * @param int $status
+ * @param array $options
+ * @return string
+ */
+function makeGenericBody(int $status, array $options = []): string {
+    $reason = $options["reason"] ?? (HTTP_REASON[$status] ?? "");
+    $subhead = isset($options["sub_heading"]) ? "<h3>{$options["sub_heading"]}</h3>" : "";
+    $server = empty($options["server_token"]) ? "" : (SERVER_TOKEN . " @ ");
+    $date = $options["http_date"] ?? gmdate("D, d M Y H:i:s") . " GMT";
+    $msg = isset($options["msg"]) ? "{$options["msg"]}\n" : "";
+
+    return sprintf(
+        "<html>\n<body>\n<h1>%d %s</h1>\n%s\n<hr/>\n<em>%s%s</em>\n<br/><br/>\n%s</body>\n</html>",
+        $status,
+        $reason,
+        $subhead,
+        $server,
+        $date,
+        $msg
+    );
 }
