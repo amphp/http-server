@@ -27,11 +27,8 @@ class Client {
     public $onUpgrade;
     public $requestsRemaining;
 
-    // only for http/1.1 //
-    public $requestCycles;
-    public $currentRequestCycle;
-    
-    // new //
-    public $isHttp2;
-    public $h2Streams = [];
+    public $http;
+    public $exporter;
+
+    public $bodyPromisors = [];
 }

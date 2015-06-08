@@ -135,10 +135,9 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function onUpgrade(callable $onUpgrade): Response {
-        throw new \DomainException(
-            __METHOD__ . " disallowed; protocol upgrades handled by the websocket endpoint"
-        );
+    public function setCookie(string $name, string $value, array $flags = []): Response {
+        $this->response->setCookie($name, $value, $flags);
+        return $this;
     }
 
     /**

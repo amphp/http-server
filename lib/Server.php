@@ -32,13 +32,8 @@ class Server {
         "ENTITY_HEADERS" => 3,
         "ENITTY_PART" => 4,
         "ENTITY_RESULT" => 5,
-        "HTTP2_PREFACE" => 6,
+        "UPGRADE" => 6,
     ];
-    const HTTP2_PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-    const HTTP1_HEADER_REGEX = "(
-        ([^()<>@,;:\\\"/[\]?={}\x01-\x20\x7F]+):[\x20\x09]*
-        ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
-    )x";
 
     private $state = self::STOPPED;
     private $reactor;
@@ -57,15 +52,17 @@ class Server {
     private $exporter;
     private $nullBody;
     private $stopPromisor;
+    private $http;
 
     // private callables that we pass to external code //
     private $onAcceptable;
     private $negotiateCrypto;
     private $onReadable;
     private $onWritable;
+    private $startWrite;
     private $onParse;
     private $onCoroutineAppResolve;
-    private $onCompletedResponse;
+    private $onCompletedData;
 
     /**
      * @param \Amp\Reactor $reactor
@@ -96,6 +93,9 @@ class Server {
         };
         $this->timeContext->use($this->makePrivateCallable("timeoutKeepAlives"));
         $this->nullBody = new NullBody;
+        /* @TODO Replace the old version after websocket adaptation
+        $this->exporter = $this->makePrivateCallable("export");
+        */
         $this->exporter = function(Reactor $reactor, string $watcherId, Client $client) {
             ($client->onUpgrade)($client->socket, $this->export($client));
         };
@@ -105,11 +105,21 @@ class Server {
         $this->negotiateCrypto = $this->makePrivateCallable("negotiateCrypto");
         $this->onReadable = $this->makePrivateCallable("onReadable");
         $this->onWritable = $this->makePrivateCallable("onWritable");
+        $this->startWrite = $this->makePrivateCallable("startWrite");
         $this->onParse = $this->makePrivateCallable("onParse");
         $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
-        $this->onCompletedResponse = $this->makePrivateCallable("onCompletedResponse");
+        $this->onCompletedData = $this->makePrivateCallable("onCompletedData");
+
+        $this->initHttp(new Http1($options, $this->onParse, $this->startWrite));
+        //$this->initHttp(new Http2($options, $this->onParse, $this->startWrite));
     }
 
+    private function initHttp(Http $http) {
+        foreach ($http->versions() as $version) {
+            $this->http[$version] = $http;
+        }
+    }
+    
     /**
      * Retrieve the current server state
      *
@@ -310,7 +320,7 @@ class Server {
             ]);
             $this->pendingTlsStreams[$clientId] = [$watcherId, $client];
         } else {
-            $this->importClient($client, $peerName, $isHttp2 = false);
+            $this->importClient($client, $peerName, $this->http["1.1"]);
         }
     }
 
@@ -322,7 +332,7 @@ class Server {
             $meta = stream_get_meta_data($socket)["crypto"];
             $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
             assert($this->logDebug(sprintf("crypto negotiated %s%s", ($isH2 ? "(h2) " : ""), $peerName)));
-            $this->importClient($socket, $peerName, $isH2);
+            $this->importClient($socket, $peerName, $this->http[$isH2 ? "2.0" : "1.1"]);
         } elseif ($handshake === false) {
             assert($this->logDebug("crypto handshake error {$peerName}"));
             $this->failCryptoNegotiation($socket);
@@ -396,11 +406,12 @@ class Server {
         yield $this->notify();
     }
 
-    private function importClient($socket, string $peerName, bool $isHttp2) {
+    private function importClient($socket, string $peerName, Http $http) {
         $client = new Client;
         $client->id = (int) $socket;
         $client->socket = $socket;
-        $client->isHttp2 = $isHttp2;
+        $client->http = $http;
+        $client->exporter = $this->exporter;
         $client->requestsRemaining = $this->options->maxRequests;
 
         $portStartPos = strrpos($peerName, ":");
@@ -416,14 +427,8 @@ class Server {
         $client->cryptoInfo = $meta["crypto"] ?? [];
         $client->isEncrypted = (bool) $client->cryptoInfo;
 
-        // @TODO Use different parser for h2 connections
-        $parser = [$this, "h1Parser"];
-        $client->requestParser = \call_user_func($parser, $this->onParse, $options = [
-            "max_body_size" => $this->options->maxBodySize,
-            "max_header_size" => $this->options->maxHeaderSize,
-            "body_emit_size" => $this->options->ioGranularity,
-            "cb_data" => $client
-        ]);
+        $client->requestParser = $http->parser($client);
+        $client->requestParser->send("");
         $client->readWatcher = $this->reactor->onReadable($socket, $this->onReadable, $options = [
             "enable" => true,
             "cb_data" => $client,
@@ -436,6 +441,22 @@ class Server {
         $this->renewKeepAliveTimeout($client);
 
         $this->clients[$client->id] = $client;
+    }
+
+    private function startWrite(Client $client, $final = false) {
+        $this->onWritable($this->reactor, $client->writeWatcher, $client->socket, $client);
+        
+        if ($final) {
+            $this->reactor->immediately(function() use ($client) {
+                $client->requestParser->send("");
+            });
+
+            if ($client->writeBuffer == "") {
+                $this->onCompletedData($client);
+            } else {
+                $client->onWriteDrain = $this->onCompletedData;
+            }
+        }
     }
 
     private function onWritable(Reactor $reactor, string $watcherId, $socket, $client) {
@@ -493,12 +514,14 @@ class Server {
         }
 
         // We only renew the keep-alive timeout if the client isn't waiting
-        // for us to generate a response.
-        if (!($client->requestCycles || $client->currentRequestCycle)) {
-            $this->renewKeepAliveTimeout($client);
-        }
+        // for us to generate a response. (@TODO)
+        $this->renewKeepAliveTimeout($client);
 
-        $client->requestParser->send($data);
+        $send = $client->requestParser->send($data);
+        if ($send != "") {
+            $client->writeBuffer .= $send;
+            $this->onWritable($reactor, $client->writeWatcher, $client->socket, $client);
+        }
     }
 
     private function onParse(array $parseStruct, $client) {
@@ -519,76 +542,64 @@ class Server {
             case self::PARSE["ERROR"]:
                 $this->onParseError($client, $parseResult, $errorStruct);
                 break;
-            /*
-            // @TODO
-            case self::PARSE["HTTP2_PREFACE"]:
-                $initBuffer = $parseResult;
-                $this->transitionToHttp2c($client, $initBuffer);
+            case self::PARSE["UPGRADE"]:
+                // @TODO ensure that all of preface were consumed... (24 bytes for HTTP/2)
+                $this->onParseUpgrade($client, $parseResult);
                 break;
-            */
             default:
                 assert(false, "Unexpected parser result code encountered");
         }
     }
 
     private function onParsedMessageWithoutEntity(Client $client, array $parseResult) {
-        $requestCycle = $this->initializeRequestCycle($client, $parseResult);
+        $ireq = $this->initializeRequest($client, $parseResult);
         $this->clearKeepAliveTimeout($client);
 
-        // @TODO Update $canRespondNow for HTTP/2.0 where we don't have to respond in order
-        $canRespondNow = empty($client->requestCycles);
-
-        // @TODO Handle h2c HTTP/2.0 upgrade responses here.
-
-        if ($canRespondNow) {
-            $this->respond($requestCycle);
-        } else {
-            $client->requestCycles[] = $requestCycle;
+        // @TODO find better way to hook in!?
+        if ($this->http[$parseResult["protocol"]] != $client->http) {
+            $this->onParseUpgrade($client, $parseResult);
         }
+
+        $this->respond($ireq);
     }
 
     private function onParsedEntityPart(Client $client, array $parseResult) {
-        $client->currentRequestCycle->bodyPromisor->update($parseResult["body"]);
+        $id = $parseResult["id"];
+        $client->bodyPromisors[$id]->update($parseResult["body"]);
     }
 
     private function onParsedEntityHeaders(Client $client, array $parseResult) {
-        $requestCycle = $this->initializeRequestCycle($client, $parseResult);
-        $requestCycle->bodyPromisor = new Deferred;
-        $requestCycle->internalRequest->body = new StreamBody($requestCycle->bodyPromisor->promise());
+        $ireq = $this->initializeRequest($client, $parseResult);
+        $id = $parseResult["id"];
+        $client->bodyPromisors[$id] = $bodyPromisor = new Deferred;
+        $ireq->body = new StreamBody($bodyPromisor->promise());
         $this->clearKeepAliveTimeout($client);
 
-        // @TODO Update $canRespondNow for HTTP/2.0 where we don't have to respond in order
-        $canRespondNow = empty($client->requestCycles);
-
-        // @TODO Handle h2c HTTP/2.0 upgrade responses here.
-
-        if ($canRespondNow) {
-            $this->respond($requestCycle);
-        } else {
-            $client->requestCycles[] = $requestCycle;
-        }
+        $this->respond($ireq);
     }
 
     private function onParsedMessageWithEntity(Client $client, array $parseResult) {
-        $client->currentRequestCycle->bodyPromisor->succeed();
-        $client->currentRequestCycle->bodyPromisor = null;
+        $id = $parseResult["id"];
+        $client->bodyPromisors[$id]->succeed();
+        $client->bodyPromisors[$id] = null;
         // @TODO Update trailer headers if present
 
         // Don't respond() because we always start the response when headers arrive
 
-        // @TODO If receiving body as part of an h2c HTTP/2.0 upgrade we need to
-        // complete the transition to the h2parser here now that the full body has
-        // been received.
+        // @TODO find better way to hook in!?
+        if ($this->http[$parseResult["protocol"]] != $client->http) {
+            $this->onParseUpgrade($client, $parseResult);
+        }
     }
 
     private function onParseError(Client $client, array $parseResult, string $error) {
         // @TODO how to handle parse error with entity body after request cycle already started?
 
         $this->clearKeepAliveTimeout($client);
-        $requestCycle = $this->initializeRequestCycle($client, $parseResult);
-        $requestCycle->preAppResponder = function(Request $request, Response $response) use ($error) {
+        $ireq = $this->initializeRequest($client, $parseResult);
+        $ireq->preAppResponder = function(Request $request, Response $response) use ($error) {
             $status = HTTP_STATUS["BAD_REQUEST"];
-            $body = makeGenericBody($code, [
+            $body = makeGenericBody($status, [
                 "msg" => $error,
             ]);
             $response->setStatus($status);
@@ -596,22 +607,17 @@ class Server {
             $response->end($body);
         };
 
-        // @TODO Update $canRespondNow for HTTP/2.0 where we don't have to respond in order
-        $canRespondNow = empty($client->requestCycles);
-
-        if ($canRespondNow) {
-            $this->respond($requestCycle);
-        } else {
-            $client->requestCycles[] = $requestCycle;
-        }
+        $this->respond($ireq);
     }
 
-    private function initializeRequestCycle(Client $client, array $parseResult): RequestCycle {
-        $requestCycle = new RequestCycle;
-        $requestCycle->client = $client;
-        $client->requestsRemaining--;
-        $client->currentRequestCycle = $requestCycle;
+    private function onParseUpgrade(Client $client, array $parseResult) {
+        $initBuffer = $parseResult["unparsed"];
+        $client->http = $this->http[$parseResult["protocol"]];
+        $client->requestParser = $client->http->parser($client);
+        $client->requestParser->send($initBuffer);
+    }
 
+    private function initializeRequest(Client $client, array $parseResult): InternalRequest {
         $trace = $parseResult["trace"];
         $protocol = empty($parseResult["protocol"]) ? "1.0" : $parseResult["protocol"];
         $method = empty($parseResult["method"]) ? "GET" : $parseResult["method"];
@@ -630,7 +636,10 @@ class Server {
             $client->clientPort
         )));
 
-        $ireq = $requestCycle->internalRequest = new InternalRequest;
+        $client->requestsRemaining--;
+
+        $ireq = new InternalRequest;
+        $ireq->client = $client;
         $ireq->isServerStopping = (bool) $this->stopPromisor;
         $ireq->time = $this->timeContext->currentTime;
         $ireq->httpDate = $this->timeContext->currentHttpDate;
@@ -650,7 +659,7 @@ class Server {
 
         if (empty($ireq->headers["cookie"])) {
             $ireq->cookies = [];
-        } else {
+        } else { // @TODO delay initialization
             $ireq->cookies = array_merge(...array_map("\\Aerys\\parseCookie", $ireq->headers["cookie"]));
         }
 
@@ -670,47 +679,47 @@ class Server {
             $ireq->uri = $ireq->uriPath = $uri;
         }
 
-        if (!($protocol === "1.0" || $protocol === "1.1" || $protocol === "2.0")) {
-            $requestCycle->preAppResponder = [$this, "sendPreAppVersionNotSupportedResponse"];
+        if (!isset($this->http[$protocol])) {
+            $ireq->preAppResponder = [$this, "sendPreAppVersionNotSupportedResponse"];
         }
 
         if (!$vhost = $this->vhostContainer->selectHost($ireq)) {
             $vhost = $this->vhostContainer->getDefaultHost();
-            $requestCycle->preAppResponder = [$this, "sendPreAppInvalidHostResponse"];
+            $ireq->preAppResponder = [$this, "sendPreAppInvalidHostResponse"];
         }
 
-        $requestCycle->vhost = $vhost;
+        $ireq->vhost = $vhost;
 
-        if (!($client->isHttp2 || $client->isEncrypted)) {
+        if ($client->http instanceof Http1 && !$client->isEncrypted) {
             $h2cUpgrade = $headers["upgrade"][0] ?? "";
             $h2cSettings = $headers["http2-settings"][0] ?? "";
             if ($h2cUpgrade && $h2cSettings && strcasecmp($h2cUpgrade, "h2c") === 0) {
-                // @TODO
+                $this->onParseUpgrade($client, ["unparsed" => "", "protocol" => "2.0"]);
             }
         }
 
         // @TODO Handle 100 Continue responses
         // $expectsContinue = empty($headers["expect"]) ? false : stristr($headers["expect"], "100-continue");
 
-        return $requestCycle;
+        return $ireq;
     }
 
-    private function respond(RequestCycle $requestCycle) {
-        if ($requestCycle->preAppResponder) {
-            $application = $requestCycle->preAppResponder;
+    private function respond(InternalRequest $ireq) {
+        if ($ireq->preAppResponder) {
+            $application = $ireq->preAppResponder;
         } elseif ($this->stopPromisor) {
             $application = [$this, "sendPreAppServiceUnavailableResponse"];
-        } elseif (!in_array($requestCycle->internalRequest->method, $this->options->allowedMethods)) {
+        } elseif (!in_array($ireq->method, $this->options->allowedMethods)) {
             $application = [$this, "sendPreAppMethodNotAllowedResponse"];
-        } elseif ($requestCycle->internalRequest->method === "TRACE") {
+        } elseif ($ireq->method === "TRACE") {
             $application = [$this, "sendPreAppTraceResponse"];
-        } elseif ($requestCycle->internalRequest->method === "OPTIONS" && $uri->raw === "*") {
+        } elseif ($ireq->method === "OPTIONS" && $uri->raw === "*") {
             $application = [$this, "sendPreAppOptionsResponse"];
         } else {
-            $application = $requestCycle->vhost->getApplication();
+            $application = $ireq->vhost->getApplication();
         }
 
-        $this->tryApplication($requestCycle, $application);
+        $this->tryApplication($ireq, $application);
     }
 
     private function sendPreAppVersionNotSupportedResponse(Request $request, Response $response) {
@@ -759,14 +768,11 @@ class Server {
         $response->end(null);
     }
 
-    private function onCompletedResponse(Client $client) {
+    private function onCompletedData(Client $client) {
         if ($client->onUpgrade) {
             $this->reactor->immediately($this->exporter, $options = ["cb_data" => $client]);
         } elseif ($client->shouldClose) {
             $this->close($client);
-        } elseif ($client->requestCycles) {
-            $requestCycle = array_shift($client->requestCycles);
-            $this->respond($requestCycle);
         } else {
             // @TODO we need a flag to know if we're awaiting data for the
             //       currentRequestCycle before renewing this timeout.
@@ -774,21 +780,21 @@ class Server {
         }
     }
 
-    private function tryApplication(RequestCycle $requestCycle, callable $application) {
+    private function tryApplication(InternalRequest $ireq, callable $application) {
         try {
-            $response = $this->initResponse($requestCycle);
-            $request = new StandardRequest($requestCycle->internalRequest);
+            $response = $this->initResponse($ireq);
+            $request = new StandardRequest($ireq);
 
             $out = ($application)($request, $response);
             if ($out instanceof Generator) {
                 $promise = resolve($out, $this->reactor);
-                $promise->when($this->onCoroutineAppResolve, $requestCycle);
+                $promise->when($this->onCoroutineAppResolve, $ireq);
             } elseif ($response->state() & Response::STARTED) {
                 $response->end();
             } else {
                 $status = HTTP_STATUS["NOT_FOUND"];
                 $body = makeGenericBody($status, [
-                    "sub_heading" => "Requested: {$requestCycle->internalRequest->uri}",
+                    "sub_heading" => "Requested: {$ireq->uri}",
                 ]);
                 $response->setStatus($status);
                 $response->end($body);
@@ -796,32 +802,32 @@ class Server {
         } catch (ClientException $error) {
             // Do nothing -- responder actions aren't required to catch this
         } catch (\BaseException $error) {
-            $this->onApplicationError($error, $requestCycle);
+            $this->onApplicationError($error, $ireq);
         }
     }
 
-    private function onCoroutineAppResolve($error, $result, $requestCycle) {
+    private function onCoroutineAppResolve($error, $result, $ireq) {
         if (empty($error)) {
-            if ($requestCycle->client->isExported || $requestCycle->client->isDead) {
+            if ($ireq->client->isExported || $ireq->client->isDead) {
                 return;
-            } elseif ($requestCycle->response->state() & Response::STARTED) {
-                $requestCycle->response->end();
+            } elseif ($ireq->response->state() & Response::STARTED) {
+                $ireq->response->end();
             } else {
                 $status = HTTP_STATUS["NOT_FOUND"];
                 $body = makeGenericBody($status, [
-                    "sub_heading" => "Requested: {$requestCycle->internalRequest->uri}",
+                    "sub_heading" => "Requested: {$ireq->uri}",
                 ]);
-                $requestCycle->response->setStatus($status);
-                $requestCycle->response->end($body);
+                $ireq->response->setStatus($status);
+                $ireq->response->end($body);
             }
         } elseif (!$error instanceof ClientException) {
             // Ignore uncaught ClientException -- applications aren't required to catch this
-            $this->onApplicationError($error, $requestCycle);
+            $this->onApplicationError($error, $ireq);
         }
     }
 
-    private function onApplicationError(\BaseException $error, RequestCycle $requestCycle) {
-        $client = $requestCycle->client;
+    private function onApplicationError(\BaseException $error, InternalRequest $ireq) {
+        $client = $ireq->client;
         $this->logger->error($error);
 
         if ($client->isDead || $client->isExported) {
@@ -832,21 +838,21 @@ class Server {
         }
 
         // If response output has already started we can't proceed any further.
-        if ($requestCycle->response->state() & Response::STARTED) {
+        if (isset($ireq->response) && $ireq->response->state() & Response::STARTED) {
             $this->close($client);
             return;
         }
 
         if (!$error instanceof CodecException) {
-            $this->sendErrorResponse($error, $requestCycle);
+            $this->sendErrorResponse($error, $ireq);
             return;
         }
 
         do {
-            $requestCycle->badFilterKeys[] = $error->getCode();
-            $this->initResponse($requestCycle);
+            $ireq->badFilterKeys[] = $error->getCode();
+            $this->initResponse($ireq);
             try {
-                $this->sendErrorResponse($error, $requestCycle);
+                $this->sendErrorResponse($error, $ireq);
                 return;
             } catch (CodecException $error) {
                 // Keep trying until no broken filters remain ...
@@ -855,19 +861,19 @@ class Server {
         } while (1);
     }
 
-    private function sendErrorResponse(\BaseException $error, RequestCycle $requestCycle) {
+    private function sendErrorResponse(\BaseException $error, InternalRequest $ireq) {
         $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
         $msg = ($this->options->debug)
-            ? $this->makeDebugMessage($error, $requestCycle->internalRequest)
+            ? $this->makeDebugMessage($error, $ireq)
             : "<p>Something went wrong ...</p>"
         ;
         $body = makeGenericBody($status, [
-            "sub_heading" =>"Requested: {$requestCycle->internalRequest->uri}",
+            "sub_heading" =>"Requested: {$ireq->uri}",
             "msg" => $msg,
         ]);
-        $requestCycle->response->setStatus(HTTP_STATUS["INTERNAL_SERVER_ERROR"]);
-        $requestCycle->response->setHeader("Connection", "close");
-        $requestCycle->response->end($body);
+        $ireq->response->setStatus(HTTP_STATUS["INTERNAL_SERVER_ERROR"]);
+        $ireq->response->setHeader("Connection", "close");
+        $ireq->response->end($body);
     }
 
     private function makeDebugMessage(\BaseException $error, InternalRequest $ireq): string {
@@ -927,79 +933,13 @@ class Server {
         return $this->decrementer;
     }
 
-    private function h1ResponseWriter(RequestCycle $requestCycle): Generator {
-        $headers = yield;
-
-        $client = $requestCycle->client;
-        $protocol = $requestCycle->internalRequest->protocol;
-
-        if (!empty($headers["connection"])) {
-            foreach ($headers["connection"] as $connection) {
-                if (\strcasecmp($connection, "close") === 0) {
-                    $client->shouldClose = true;
-                }
-            }
-        }
-
-        // @TODO change the protocol upgrade mechanism ... it's garbage as currently implemented
-        if ($client->shouldClose || $headers[":status"] !== "101") {
-            $client->onUpgrade = null;
-        } else {
-            $client->onUpgrade = $headers[":on-upgrade"] ?? null;
-        }
-
-        $lines = ["HTTP/{$protocol} {$headers[":status"]} {$headers[":reason"]}"];
-        unset($headers[":status"], $headers[":reason"]);
-        foreach ($headers as $headerField => $headerLines) {
-            if ($headerField[0] !== ":") {
-                foreach ($headerLines as $headerLine) {
-                    $lines[] = "{$headerField}: {$headerLine}";
-                }
-            }
-        }
-        $lines[] = "\r\n";
-        $msgPart = \implode("\r\n", $lines);
-        $bufferSize = 0;
-
-        do {
-            if ($client->isDead) {
-                throw new ClientException;
-            }
-
-            $buffer[] = $msgPart;
-            $bufferSize += \strlen($msgPart);
-
-            if (($msgPart === false || $bufferSize > $this->options->outputBufferSize)) {
-                $client->writeBuffer .= \implode("", $buffer);
-                $buffer = [];
-                $bufferSize = 0;
-                $this->onWritable($this->reactor, $client->writeWatcher, $client->socket, $client);
-            }
-        } while (($msgPart = yield) !== null);
-
-        if ($bufferSize) {
-            $client->writeBuffer .= \implode("", $buffer);
-            $buffer = [];
-            $bufferSize = 0;
-        }
-
-        if ($client->writeBuffer == "") {
-            $this->onCompletedResponse($client);
-        } else {
-            $client->onWriteDrain = $this->onCompletedResponse;
-            $this->onWritable($this->reactor, $client->writeWatcher, $client->socket, $client);
-        }
-    }
-
-    private function initResponse(RequestCycle $requestCycle): Response {
-        $ireq = $requestCycle->internalRequest;
-
+    private function initResponse(InternalRequest $ireq): Response {
         $filters = [
             "\\Aerys\\startResponseFilter",
             "\\Aerys\\genericResponseFilter",
         ];
 
-        if ($userFilters = $requestCycle->vhost->getFilters()) {
+        if ($userFilters = $ireq->vhost->getFilters()) {
             $filters = array_merge($filters, array_values($userFilters));
         }
         if ($this->options->deflateEnable) {
@@ -1011,284 +951,44 @@ class Server {
         if ($ireq->method === "HEAD") {
             $filters[] = "\\Aerys\\nullBodyResponseFilter";
         }
-        if ($requestCycle->badFilterKeys) {
-            $filters = array_diff_key($filters, array_flip($requestCycle->badFilterKeys));
+        if (isset($ireq->headers["upgrade"]) && $ireq->headers["upgrade"] == "h2c" && $ireq->protocol == "1.1") {
+            $filters[] = $this->http2Filter;
+        }
+        if ($ireq->badFilterKeys) {
+            $filters = array_diff_key($filters, array_flip($ireq->badFilterKeys));
         }
 
-        // @TODO Use a different writer for HTTP/2.0 when $protocol === "2.0"
-        $writer = $this->h1ResponseWriter($requestCycle);
-        $codec  = responseCodec($writer, $filters, $ireq, $this->options);
+        $ireq->responseWriter = $ireq->client->http->writer($ireq);
+        $filter = $this->responseCodec(responseFilter($filters, $ireq, $this->options), $ireq);
 
-        return $requestCycle->response = new StandardResponse($codec);
+        return $ireq->response = new StandardResponse($filter);
     }
 
-    public static function h1Parser(callable $emitCallback, array $options = []): Generator {
-        $maxHeaderSize = $options["max_header_size"] ?? 32768;
-        $maxBodySize = $options["max_body_size"] ?? 131072;
-        $bodyEmitSize = $options["body_emit_size"] ?? 32768;
-        $callbackData = $options["cb_data"] ?? null;
-
-        $buffer = yield;
-
-        while (1) {
-            // break potential references
-            unset($traceBuffer, $protocol, $method, $uri, $headers);
-
-            $traceBuffer = null;
-            $headers = [];
-            $contentLength = null;
-            $isChunked = false;
-            $protocol = null;
-            $uri = null;
-            $method = null;
-
-            $parseResult = [
-                "trace" => &$traceBuffer,
-                "protocol" => &$protocol,
-                "method" => &$method,
-                "uri" => &$uri,
-                "headers" => &$headers,
-                "body" => "",
-            ];
-
-            while (1) {
-                $buffer = ltrim($buffer, "\r\n");
-
-                if ($headerPos = strpos($buffer, "\r\n\r\n")) {
-                    $startLineAndHeaders = substr($buffer, 0, $headerPos + 2);
-                    $buffer = (string)substr($buffer, $headerPos + 4);
-                    break;
-                } elseif ($maxHeaderSize > 0 && strlen($buffer) > $maxHeaderSize) {
-                    $error = "Bad Request: header size violation";
-                    break 2;
-                }
-
-                $buffer .= yield;
-            }
-
-            if (($startLineAndHeaders . "\r\n") === self::HTTP2_PREFACE) {
-                $emitCallback([self::PARSE["HTTP2_PREFACE"], ($startLineAndHeaders . $buffer), null], $callbackData);
-                break;
-            }
-
-            $startLineEndPos = strpos($startLineAndHeaders, "\n");
-            $startLine = rtrim(substr($startLineAndHeaders, 0, $startLineEndPos), "\r\n");
-            $rawHeaders = substr($startLineAndHeaders, $startLineEndPos + 1);
-            $traceBuffer = $startLineAndHeaders;
-
-            if (!$method = strtok($startLine, " ")) {
-                $error = "Bad Request: invalid request line";
-                break;
-            }
-
-            if (!$uri = strtok(" ")) {
-                $error = "Bad Request: invalid request line";
-                break;
-            }
-
-            $protocol = strtok(" ");
-            if (stripos($protocol, "HTTP/") !== 0) {
-                $error = "Bad Request: invalid request line";
-                break;
-            }
-
-            $protocol = substr($protocol, 5);
-
-            if ($rawHeaders) {
-                if (strpos($rawHeaders, "\n\x20") || strpos($rawHeaders, "\n\t")) {
-                    $error = "Bad Request: multi-line headers deprecated by RFC 7230";
-                    break;
-                }
-
-                if (!preg_match_all(self::HTTP1_HEADER_REGEX, $rawHeaders, $matches)) {
-                    $error = "Bad Request: header syntax violation";
-                    break;
-                }
-
-                list(, $fields, $values) = $matches;
-
-                $headers = [];
-                foreach ($fields as $index => $field) {
-                    $headers[$field][] = $values[$index];
-                }
-
-                if ($headers) {
-                    $headers = array_change_key_case($headers);
-                }
-
-                $contentLength = $headers["content-length"][0] ?? null;
-
-                if (isset($headers["transfer-encoding"])) {
-                    $value = $headers["transfer-encoding"][0];
-                    $isChunked = (bool) strcasecmp($value, "identity");
-                }
-
-                // @TODO validate that the bytes in matched headers match the raw input. If not there is a syntax error.
-            }
-
-            if ($contentLength > $maxBodySize) {
-                $error = "Bad request: entity too large";
-                break;
-            } elseif (($method == "HEAD" || $method == "TRACE" || $method == "OPTIONS") || $contentLength === 0) {
-                // No body allowed for these messages
-                $hasBody = false;
+    private function responseCodec(\Generator $filter, InternalRequest $ireq) {
+        while ($filter->valid()) {
+            $cur = $filter->current();
+            if ($cur === null) {
+                $filter->send(yield);
             } else {
-                $hasBody = $isChunked || $contentLength;
+                $ireq->responseWriter->send($cur);
+                $filter->next();
             }
-
-            if (!$hasBody) {
-                $parseResult["unparsed"] = $buffer;
-                $emitCallback([self::PARSE["RESULT"], $parseResult, null], $callbackData);
-                continue;
-            }
-
-            $emitCallback([self::PARSE["ENTITY_HEADERS"], $parseResult, null], $callbackData);
-            $body = "";
-
-            if ($isChunked) {
-                while (1) {
-                    while (false === ($lineEndPos = strpos($buffer, "\r\n"))) {
-                        $buffer .= yield;
-                    }
-
-                    $line = substr($buffer, 0, $lineEndPos);
-                    $buffer = substr($buffer, $lineEndPos + 2);
-                    $hex = trim(ltrim($line, "0")) ?: 0;
-                    $chunkLenRemaining = hexdec($hex);
-
-                    if ($lineEndPos === 0 || $hex != dechex($chunkLenRemaining)) {
-                        $error = "Bad Request: hex chunk size expected";
-                        break 2;
-                    }
-
-                    if ($chunkLenRemaining === 0) {
-                        while (!isset($buffer[1])) {
-                            $buffer .= yield;
-                        }
-                        $firstTwoBytes = substr($buffer, 0, 2);
-                        if ($firstTwoBytes === "\r\n") {
-                            $buffer = substr($buffer, 2);
-                            break; // finished ($is_chunked loop)
-                        }
-
-                        do {
-                            if ($trailerSize = strpos($buffer, "\r\n\r\n")) {
-                                $trailers = substr($buffer, 0, $trailerSize + 2);
-                                $buffer = substr($buffer, $trailerSize + 4);
-                            } else {
-                                $buffer .= yield;
-                                $trailerSize = \strlen($buffer);
-                                $trailers = null;
-                            }
-                            if ($maxHeaderSize > 0 && $trailerSize > $maxHeaderSize) {
-                                $error = "Trailer headers too large";
-                                break 3;
-                            }
-                        } while (!isset($trailers));
-
-                        if (strpos($trailers, "\n\x20") || strpos($trailers, "\n\t")) {
-                            $error = "Bad Request: multi-line trailers deprecated by RFC 7230";
-                            break 2;
-                        }
-
-                        if (!preg_match_all(self::HTTP1_HEADER_REGEX, $trailers, $matches)) {
-                            $error = "Bad Request: trailer syntax violation";
-                            break 2;
-                        }
-
-                        list(, $fields, $values) = $matches;
-                        $trailers = [];
-                        foreach ($fields as $index => $field) {
-                            $trailers[$field][] = $values[$index];
-                        }
-
-                        if ($trailers) {
-                            $trailers = array_change_key_case($trailers, CASE_UPPER);
-
-                            foreach (["transfer-encoding", "content-length", "trailer"] as $remove) {
-                                unset($trailers[$remove]);
-                            }
-
-                            if ($trailers) {
-                                $headers = array_merge($headers, $trailers);
-                            }
-                        }
-
-                        break; // finished ($is_chunked loop)
-                    } elseif ($chunkLenRemaining > $maxBodySize) {
-                        $error = "Bad Request: excessive chunk size";
-                        break 2;
-                    } else {
-                        $bodyBufferSize = 0;
-
-                        while (1) {
-                            $bufferLen = \strlen($buffer);
-                            // These first two (extreme) edge cases prevent errors where the packet boundary ends after
-                            // the \r and before the \n at the end of a chunk.
-                            if ($bufferLen === $chunkLenRemaining || $bufferLen === $chunkLenRemaining + 1) {
-                                $buffer .= yield;
-                                continue;
-                            } elseif ($bufferLen >= $chunkLenRemaining + 2) {
-                                $body .= substr($buffer, 0, $chunkLenRemaining);
-                                $buffer = substr($buffer, $chunkLenRemaining + 2);
-                                $bodyBufferSize += $chunkLenRemaining;
-                            } else {
-                                $body .= $buffer;
-                                $bodyBufferSize += $bufferLen;
-                                $chunkLenRemaining -= $bufferLen;
-                            }
-
-                            if ($bodyBufferSize >= $bodyEmitSize) {
-                                $emitCallback([self::PARSE["ENTITY_PART"], ["body" => $body], null], $callbackData);
-                                $body = '';
-                                $bodyBufferSize = 0;
-                            }
-
-                            if ($bufferLen >= $chunkLenRemaining + 2) {
-                                $chunkLenRemaining = null;
-                                continue 2; // next chunk ($is_chunked loop)
-                            } else {
-                                $buffer = yield;
-                            }
-                        }
-                    }
-                }
-            } else {
-                $bufferDataSize = \strlen($buffer);
-
-                while ($bufferDataSize < $contentLength) {
-                    if ($bufferDataSize >= $bodyEmitSize) {
-                        $emitCallback([self::PARSE["ENTITY_PART"], ["body" => $buffer], null], $callbackData);
-                        $buffer = "";
-                        $contentLength -= $bufferDataSize;
-                    }
-                    $buffer .= yield;
-                    $bufferDataSize = \strlen($buffer);
-                }
-
-                if ($bufferDataSize === $contentLength) {
-                    $body = $buffer;
-                    $buffer = "";
-                } else {
-                    $body = substr($buffer, 0, $contentLength);
-                    $buffer = (string)substr($buffer, $contentLength);
-                }
-            }
-
-            if ($body != "") {
-                $emitCallback([self::PARSE["ENTITY_PART"], ["body" => $body], null], $callbackData);
-            }
-
-            $parseResult["unparsed"] = $buffer;
-            $emitCallback([self::ENTITY_RESULT, $parseResult, null], $callbackData);
         }
+    }
 
-        // An error occurred...
-        // stop parsing here ...
-        $emitCallback([self::PARSE["ERROR"], $parseResult, $error], $callbackData);
-        while (1) {
-            yield;
-        }
+    private function http2Filter(InternalRequest $ireq) {
+        $ireq->responseWriter->send([
+            ":status" => HTTP_STATUS["SWITCHING_PROTOCOLS"],
+            ":reason" => "Switching Protocols",
+            "Connection" => "Upgrade",
+            "Upgrade" => "h2c",
+        ]);
+        $ireq->responseWriter->send(false); // flush before replacing
+
+        $http = $this->http["2.0"];
+        $ireq->client->http = $http;
+        $ireq->responseWriter = $http->writer($ireq);
+
     }
 
     /**

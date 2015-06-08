@@ -105,15 +105,13 @@ function makeGeneratorError(string $prefix, \Generator $generator): string {
  * Encode standardized response output into a byte-stream format
  *
  * Is this function's cyclomatic complexity off the charts? Yes. Is this an extremely hot
- * code path requiring maximum optimization? Yes. This is why it looks like the seventh
+ * code path requiring maximum optimization? Yes. This is why it looks like the ninth
  * circle of npath hell ... #DealWithIt
  *
- * @param \Aerys\InternalRequest $ireq
- * @param \Generator $writer
  * @param array $filters
  * @return \Generator
  */
-function responseCodec(\Generator $writer, array $filters, ...$filterArgs): \Generator {
+function responseFilter(array $filters, ...$filterArgs): \Generator {
     try {
         $generators = [];
         foreach ($filters as $key => $filter) {
@@ -206,7 +204,7 @@ function responseCodec(\Generator $writer, array $filters, ...$filterArgs): \Gen
             }
         }
 
-        $writer->send($headers);
+        yield $headers;
 
         $appendBuffer = null;
 
@@ -292,16 +290,16 @@ function responseCodec(\Generator $writer, array $filters, ...$filterArgs): \Gen
                 }
             }
 
-            $writer->send($toSend);
+            yield $toSend ?? true;
             if ($isFlushing && $toSend !== false) {
-                $writer->send($toSend = false);
+                yield $toSend = false;
             }
             $isFlushing = false;
 
         } while (!$isEnding);
 
         if (isset($toSend)) {
-            $writer->send(null);
+            yield true;
         }
     } catch (ClientException $uncaught) {
         throw $uncaught;
