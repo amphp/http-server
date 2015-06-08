@@ -627,8 +627,8 @@ function genericResponseFilter(InternalRequest $ireq, Options $options = null): 
     );
 
     yield $headers;
-    yield $body;
-    while (yield !== null);
+
+    return $body;
 }
 
 /**
