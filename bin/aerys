@@ -83,8 +83,5 @@ Amp\run(function(Amp\Reactor $reactor) use ($console) {
         ? new Aerys\DebugProcess($reactor, $logger)
         : new Aerys\WatcherProcess($reactor, $logger)
     ;
-    $process->registerSignalHandler();
-    $process->registerShutdownHandler();
-    $process->registerErrorHandler();
     yield from $process->start($console);
 });

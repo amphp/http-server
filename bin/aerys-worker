@@ -1,0 +1,37 @@
+<?php
+
+@cli_set_process_title("aerys-worker");
+error_reporting(E_ALL);
+require __DIR__ . "/../autoload.php";
+
+Amp\run(function(Amp\Reactor $reactor) {
+    $console = new Aerys\Console;
+    $console->addArgs([
+        "ipc" => [
+            "prefix"       => "i",
+        ],
+        "log" => [
+            "prefix"       => "l",
+            "defaultValue" => "warning",
+        ],
+        "color" => [
+            "longPrefix"   => "color",
+            "castTo"       => "string",
+            "defaultValue" => "auto",
+        ],
+        "config" => [
+            "prefix"       => "c",
+        ],
+    ]);
+
+    $ipcUri = $console->getArg("ipc");
+    $ipcUri = @inet_pton($ipcUri) ? "tcp://{$ipcUri}" : $ipcUri;
+    if (!$ipcSock = @stream_socket_client($ipcUri)) {
+        die("Failed initializing IPC connection");
+    }
+
+    //$logger = new Aerys\ConsoleLogger($console);
+    $logger = new Aerys\IpcLogger($reactor, $console, $ipcSock);
+    $process = new Aerys\WorkerProcess($reactor, $logger, $ipcSock);
+    yield from $process->start($console);
+});

@@ -11,10 +11,14 @@ use Amp\{
 };
 
 abstract class Process {
+    const STOPPED = 0;
+    const STARTED = 1;
+    const STOPPING = 2;
+
     private $reactor;
     private $logger;
     private $exitCode = 0;
-    private $isStopping = false;
+    private $state = self::STOPPED;
 
     abstract protected function doStart(Console $console): \Generator;
     abstract protected function doStop(): \Generator;
@@ -30,11 +34,22 @@ abstract class Process {
      * @param \Aerys\Console $console
      * @return \Generator
      */
-    final public function start(Console $console): \Generator {
+    public function start(Console $console): \Generator {
         try {
-            if (empty($this->isStopping)) {
-                yield from $this->doStart($console);
+            if ($this->state) {
+                throw new \LogicException(
+                    "A process may only be started once"
+                );
             }
+
+            $this->registerSignalHandler();
+            $this->registerShutdownHandler();
+            $this->registerErrorHandler();
+
+            $this->state = self::STARTED;
+
+            yield from $this->doStart($console);
+
             // Once we make it this far we no longer want to terminate
             // the process in the event of an uncaught exception inside
             // the event reactor -- log it instead.
@@ -51,12 +66,17 @@ abstract class Process {
      *
      * @return \Generator
      */
-    final public function stop(): \Generator {
+    public function stop(): \Generator {
         try {
-            if (empty($this->isStopping)) {
-                $this->isStopping = true;
-                yield from $this->doStop();
+            switch ($this->state) {
+                case self::STOPPED:
+                case self::STOPPING:
+                    return;
+                case self::STARTED:
+                    break;
             }
+            $this->state = self::STOPPING;
+            yield from $this->doStop();
         } catch (\BaseException $uncaught) {
             $this->exitCode = 1;
             yield $this->logger->critical($uncaught);
@@ -65,7 +85,7 @@ abstract class Process {
         }
     }
 
-    public function registerSignalHandler() {
+    private function registerSignalHandler() {
         if (php_sapi_name() === "phpdbg") {
             // phpdbg captures SIGINT so don't bother inside the debugger
             return;
@@ -83,7 +103,7 @@ abstract class Process {
         }
     }
 
-    public function registerShutdownHandler() {
+    private function registerShutdownHandler() {
         register_shutdown_function(function() {
             if (!$err = \error_get_last()) {
                 return;
@@ -114,7 +134,7 @@ abstract class Process {
         });
     }
 
-    public function registerErrorHandler() {
+    private function registerErrorHandler() {
         set_error_handler(coroutine(function($errno, $msg, $file, $line) {
             if (!(error_reporting() & $errno)) {
                 return;
