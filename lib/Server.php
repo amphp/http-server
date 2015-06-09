@@ -52,7 +52,7 @@ class Server {
     private $exporter;
     private $nullBody;
     private $stopPromisor;
-    private $http;
+    private $httpDriver;
 
     // private callables that we pass to external code //
     private $onAcceptable;
@@ -110,13 +110,13 @@ class Server {
         $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
         $this->onCompletedData = $this->makePrivateCallable("onCompletedData");
 
-        $this->initHttp(new Http1($options, $this->onParse, $this->startWrite));
-        //$this->initHttp(new Http2($options, $this->onParse, $this->startWrite));
+        $this->initHttp(new Http1Driver($options, $this->onParse, $this->startWrite));
+        //$this->initHttp(new Http2Driver($options, $this->onParse, $this->startWrite));
     }
 
-    private function initHttp(Http $http) {
+    private function initHttp(HttpDriver $http) {
         foreach ($http->versions() as $version) {
-            $this->http[$version] = $http;
+            $this->httpDriver[$version] = $http;
         }
     }
     
@@ -320,7 +320,7 @@ class Server {
             ]);
             $this->pendingTlsStreams[$clientId] = [$watcherId, $client];
         } else {
-            $this->importClient($client, $peerName, $this->http["1.1"]);
+            $this->importClient($client, $peerName, $this->httpDriver["1.1"]);
         }
     }
 
@@ -332,7 +332,7 @@ class Server {
             $meta = stream_get_meta_data($socket)["crypto"];
             $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
             assert($this->logDebug(sprintf("crypto negotiated %s%s", ($isH2 ? "(h2) " : ""), $peerName)));
-            $this->importClient($socket, $peerName, $this->http[$isH2 ? "2.0" : "1.1"]);
+            $this->importClient($socket, $peerName, $this->httpDriver[$isH2 ? "2.0" : "1.1"]);
         } elseif ($handshake === false) {
             assert($this->logDebug("crypto handshake error {$peerName}"));
             $this->failCryptoNegotiation($socket);
@@ -406,11 +406,11 @@ class Server {
         yield $this->notify();
     }
 
-    private function importClient($socket, string $peerName, Http $http) {
+    private function importClient($socket, string $peerName, HttpDriver $http) {
         $client = new Client;
         $client->id = (int) $socket;
         $client->socket = $socket;
-        $client->http = $http;
+        $client->httpDriver = $http;
         $client->exporter = $this->exporter;
         $client->requestsRemaining = $this->options->maxRequests;
 
@@ -556,7 +556,7 @@ class Server {
         $this->clearKeepAliveTimeout($client);
 
         // @TODO find better way to hook in!?
-        if ($this->http[$parseResult["protocol"]] != $client->http) {
+        if ($this->httpDriver[$parseResult["protocol"]] != $client->httpDriver) {
             $this->onParseUpgrade($client, $parseResult);
         }
 
@@ -587,7 +587,7 @@ class Server {
         // Don't respond() because we always start the response when headers arrive
 
         // @TODO find better way to hook in!?
-        if ($this->http[$parseResult["protocol"]] != $client->http) {
+        if ($this->httpDriver[$parseResult["protocol"]] != $client->httpDriver) {
             $this->onParseUpgrade($client, $parseResult);
         }
     }
@@ -612,8 +612,8 @@ class Server {
 
     private function onParseUpgrade(Client $client, array $parseResult) {
         $initBuffer = $parseResult["unparsed"];
-        $client->http = $this->http[$parseResult["protocol"]];
-        $client->requestParser = $client->http->parser($client);
+        $client->httpDriver = $this->httpDriver[$parseResult["protocol"]];
+        $client->requestParser = $client->httpDriver->parser($client);
         $client->requestParser->send($initBuffer);
     }
 
@@ -679,7 +679,7 @@ class Server {
             $ireq->uri = $ireq->uriPath = $uri;
         }
 
-        if (!isset($this->http[$protocol])) {
+        if (!isset($this->httpDriver[$protocol])) {
             $ireq->preAppResponder = [$this, "sendPreAppVersionNotSupportedResponse"];
         }
 
@@ -690,7 +690,7 @@ class Server {
 
         $ireq->vhost = $vhost;
 
-        if ($client->http instanceof Http1 && !$client->isEncrypted) {
+        if ($client->httpDriver instanceof Http1Driver && !$client->isEncrypted) {
             $h2cUpgrade = $headers["upgrade"][0] ?? "";
             $h2cSettings = $headers["http2-settings"][0] ?? "";
             if ($h2cUpgrade && $h2cSettings && strcasecmp($h2cUpgrade, "h2c") === 0) {
@@ -985,8 +985,8 @@ class Server {
         ]);
         $ireq->responseWriter->send(false); // flush before replacing
 
-        $http = $this->http["2.0"];
-        $ireq->client->http = $http;
+        $http = $this->httpDriver["2.0"];
+        $ireq->client->httpDriver = $http;
         $ireq->responseWriter = $http->writer($ireq);
 
     }

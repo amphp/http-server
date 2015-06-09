@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-interface Http {
+interface HttpDriver {
     public function versions(): array;
 
     public function writer(InternalRequest $ireq): \Generator;

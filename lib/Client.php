@@ -27,7 +27,7 @@ class Client {
     public $onUpgrade;
     public $requestsRemaining;
 
-    public $http;
+    public $httpDriver;
     public $exporter;
 
     public $bodyPromisors = [];

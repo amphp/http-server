@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-class Http1 implements Http {
+class Http1Driver implements HttpDriver {
     const HEADER_REGEX = "(
         ([^()<>@,;:\\\"/[\]?={}\x01-\x20\x7F]+):[\x20\x09]*
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
