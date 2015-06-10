@@ -80,7 +80,7 @@ class Router implements ServerObserver, LoggerAware, Middleware {
     public function __invoke(Request $request, Response $response) {
         list($isMethodAllowed, $data) = $request->getLocalVar("aerys.routed");
         if ($isMethodAllowed) {
-            return $data($request, $response);
+            return $data($request, $response, $request->getLocalVar("aerys.routeArgs"));
         } else {
             $allowedMethods = implode(",", $data);
             $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
