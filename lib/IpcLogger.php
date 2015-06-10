@@ -98,7 +98,7 @@ class IpcLogger extends Logger {
     }
 
     public function stop(): Promise {
-        if ($this->isDead) {
+        if ($this->isDead || $this->writeBuffer === "") {
             return new Success;
         } else {
             $this->stopPromisor = new Deferred;
