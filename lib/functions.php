@@ -204,11 +204,17 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
             }
         }
 
-        $toSend = yield $headers;
-
         $appendBuffer = null;
+        $toSend = $headers;
+        $isFlushing = false;
 
         do {
+            $toSend = yield $toSend;
+            if ($isFlushing) {
+                $toSend = yield false;
+            }
+            $isFlushing = false;
+
             if ($isEnding) {
                 $toSend = null;
             } elseif ($isFlushing) {
@@ -251,7 +257,11 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                             }
                         } else {
                             if ($isEnding) {
-                                $toSend = null;
+                                if (isset($toSend)) {
+                                    $toSend = null;
+                                } else {
+                                    break;
+                                }
                             } elseif ($isFlushing) {
                                 if ($toSend !== false) {
                                     $toSend = false;
@@ -285,18 +295,12 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                 }
             }
 
-            if ($isEnding && $toSend === null) {
-                break;
-            }
             if ($toSend === false) {
                 $isFlushing = false;
             }
-            $toSend = yield $toSend;
-            if ($isFlushing) {
-                $toSend = yield $toSend = false;
-            }
-            $isFlushing = false;
         } while (!$isEnding);
+
+        return $toSend;
     } catch (ClientException $uncaught) {
         throw $uncaught;
     } catch (CodecException $uncaught) {
@@ -437,9 +441,6 @@ function startResponseFilter(InternalRequest $ireq, Options $options): \Generato
  * @return \Generator
  */
 function deflateResponseFilter(InternalRequest $ireq, Options $options): \Generator {
-    if (empty($options->deflateEnable)) {
-        return;
-    }
     if (empty($ireq->headers["accept-encoding"])) {
         return;
     }

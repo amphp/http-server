@@ -949,6 +949,10 @@ class Server {
                 $ireq->responseWriter->send($cur);
             }
         }
+        $cur = $filter->getReturn();
+        if ($cur !== null) {
+            $ireq->responseWriter->send($cur);
+        }
         $ireq->responseWriter->send(null);
     }
 
