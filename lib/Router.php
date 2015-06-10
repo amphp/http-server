@@ -222,7 +222,7 @@ class Router implements ServerObserver, LoggerAware, Middleware {
             $canonicalUri = substr($uri, 0, -1);
             $redirectUri = substr($uri, 0, -2);
             $this->routes[] = [$method, $canonicalUri, $target, $middlewares];
-            $this->routes[] = [$method, $redirectUri, $this->canonicalRedirector];
+            $this->routes[] = [$method, $redirectUri, $this->canonicalRedirector, []];
         } else {
             $this->routes[] = [$method, $uri, $target, $middlewares];
         }
