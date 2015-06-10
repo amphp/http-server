@@ -90,8 +90,7 @@ class Router implements ServerObserver, LoggerAware, Middleware {
     }
 
     public function use(InternalRequest $ireq, Options $options) {
-        $uri = $ireq->uri;
-        $toMatch = ($qPos = stripos($uri, "?")) ? substr($uri, 0, $qPos) : $uri;
+        $toMatch = $ireq->uriPath;
 
         if (isset($this->cache[$toMatch])) {
             list($args, $routeArgs) = $cache = $this->cache[$toMatch];
