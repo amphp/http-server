@@ -6,6 +6,12 @@ use Amp\PromiseStream;
 
 class Message extends PromiseStream {
     public function buffer(): \Generator {
-        return implode(yield from parent::buffer());
+        $buffer = [];
+        foreach ($this->stream() as $promise) {
+            $buffer[] = yield $promise;
+        }
+        array_pop($buffer);
+
+        yield "return" => implode($buffer);
     }
 }
