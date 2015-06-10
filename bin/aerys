@@ -25,16 +25,11 @@ $help = <<<EOT
 
 EOT;
 
-if (PHP_MAJOR_VERSION < 7) {
-    echo "Aerys requires PHP >= 7.0.0\n\n";
-    exit(1);
-}
-
 @cli_set_process_title("aerys");
 error_reporting(E_ALL);
 require __DIR__ . "/../autoload.php";
-$climate = new League\CLImate\CLImate;
-$climate->arguments->add([
+$console = new Aerys\Console;
+$console->addArgs([
     "debug" => [
         "prefix"       => "d",
         "longPrefix"   => "debug",
@@ -77,23 +72,16 @@ $climate->arguments->add([
         "description"  => "Define a custom server config path",
     ],
 ]);
-$climate->arguments->parse();
-if ($climate->arguments->defined("help")) {
+if ($console->isArgDefined("help")) {
     echo $help;
     exit(0);
 }
 
-Amp\run(function(Amp\Reactor $reactor) use ($climate) {
-    try {
-        $logger = new Aerys\ConsoleLogger($climate);
-        if ($climate->arguments->defined("debug") || php_sapi_name() === "phpdbg") {
-            $watcher = new Aerys\DebugWatcher($reactor, $logger);
-        } else {
-            die("\nDebug mode flag required (-d)\n\n");
-        }
-        yield Amp\resolve($watcher->watch($climate));
-    } catch (\BaseException $uncaught) {
-        $logger->critical($uncaught);
-        exit(1);
-    }
+Amp\run(function(Amp\Reactor $reactor) use ($console) {
+    $logger = new Aerys\ConsoleLogger($console);
+    $process = ($console->isArgDefined("debug") || php_sapi_name() === "phpdbg")
+        ? new Aerys\DebugProcess($reactor, $logger)
+        : new Aerys\WatcherProcess($reactor, $logger)
+    ;
+    yield from $process->start($console);
 });

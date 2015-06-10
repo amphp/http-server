@@ -3,20 +3,25 @@
 namespace Aerys;
 
 use Amp\{ Reactor, Promise, Success, function any };
-use League\CLImate\CLImate;
 use Psr\Log\LoggerAwareInterface as PsrLoggerAware;
 
 class Bootstrapper {
+    private $hostAggregator;
+
+    public function __construct(callable $hostAggregator = null) {
+        $this->hostAggregator = $hostAggregator ?: ["\\Aerys\\Host", "getDefinitions"];
+    }
+
     /**
      * Bootstrap a server from command line options
      *
      * @param \Amp\Reactor $reactor
      * @param \Aerys\Logger $logger
-     * @param array $cliArgs An array of command line arguments
+     * @param \Aerys\Console $console
      * @return \Aerys\Server
      */
-    public function boot(Reactor $reactor, Logger $logger, CLImate $climate): Server {
-        $configFile = $this->selectConfigFile((string)$climate->arguments->get("config"));
+    public function boot(Reactor $reactor, Logger $logger, Console $console): Server {
+        $configFile = $this->selectConfigFile((string)$console->getArg("config"));
         $logger->info("Using config file found at $configFile");
         if (!include($configFile)) {
             throw new \DomainException(
@@ -31,23 +36,18 @@ class Bootstrapper {
                 "Invalid AERYS_OPTIONS constant: array expected, got " . gettype(AERYS_OPTIONS)
             );
         }
-        if ($climate->arguments->defined("debug")) {
+        if ($console->isArgDefined("debug")) {
             $options["debug"] = true;
         }
+
         $options = $this->generateOptionsObjFromArray($options);
-        $hosts = Host::getDefinitions() ?: [new Host];
+        $hosts = \call_user_func($this->hostAggregator) ?: [new Host];
         $vhosts = new VhostContainer;
         foreach ($hosts as $host) {
             $vhost = $this->buildVhost($logger, $host);
             $vhosts->use($vhost);
         }
-        $timeContext = $options->debug
-            ? new TimeContext($reactor, $logger)
-            : new class($reactor, $logger) extends TimeContext {
-                public $currentTime;
-                public $currentHttpDate;
-            }
-        ;
+        $timeContext = new TimeContext($reactor, $logger);
         $server = new Server($reactor, $options, $vhosts, $logger, $timeContext);
 
         return $server;
@@ -90,15 +90,20 @@ class Bootstrapper {
     }
 
     private function generatePublicOptionsStruct(Options $options): Options {
-        $code = "return new class extends \Aerys\Options {\n\tuse \Amp\Struct;\n";
+        $code = "return new class extends \Aerys\Options {\n";
         foreach ((new \ReflectionClass($options))->getProperties() as $property) {
             $name = $property->getName();
-            $value = $options->{$name};
-            $code .= "\tpublic \${$property} = " . var_export($value, true) . ";\n";
+            if ($name[0] !== "_") {
+                $code .= "\tpublic \${$name};\n";
+            }
         }
         $code .= "};\n";
+        $publicOptions = eval($code);
+        foreach ($publicOptions as $option => $value) {
+            $publicOptions->{$option} = $options->{$option};
+        }
 
-        return eval($code);
+        return $publicOptions;
     }
 
     private function buildVhost(Logger $logger, Host $host) {

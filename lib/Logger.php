@@ -3,19 +3,19 @@
 namespace Aerys;
 
 use Psr\Log\{
-    LogLevel,
+    LogLevel as PsrLogLevel,
     LoggerInterface as PsrLogger
 };
 
 abstract class Logger implements PsrLogger {
-    const DEBUG = LogLevel::DEBUG;
-    const INFO = LogLevel::INFO;
-    const NOTICE = LogLevel::NOTICE;
-    const WARNING = LogLevel::WARNING;
-    const ERROR = LogLevel::ERROR;
-    const CRITICAL = LogLevel::CRITICAL;
-    const ALERT = LogLevel::ALERT;
-    const EMERGENCY = LogLevel::EMERGENCY;
+    const DEBUG = PsrLogLevel::DEBUG;
+    const INFO = PsrLogLevel::INFO;
+    const NOTICE = PsrLogLevel::NOTICE;
+    const WARNING = PsrLogLevel::WARNING;
+    const ERROR = PsrLogLevel::ERROR;
+    const CRITICAL = PsrLogLevel::CRITICAL;
+    const ALERT = PsrLogLevel::ALERT;
+    const EMERGENCY = PsrLogLevel::EMERGENCY;
     const LEVELS = [
         self::DEBUG => 8,
         self::INFO => 7,
@@ -27,10 +27,10 @@ abstract class Logger implements PsrLogger {
         self::EMERGENCY => 1,
     ];
 
-    private static $nullLogger;
-    private $outputLevel = self::DEBUG;
+    private $outputLevel = self::LEVELS[self::DEBUG];
+    private $ansify = true;
 
-    abstract protected function doLog($level, $message, array $context = []);
+    abstract protected function output(string $message);
 
     final public function emergency($message, array $context = []) {
         return $this->log(self::EMERGENCY, $message, $context);
@@ -66,7 +66,34 @@ abstract class Logger implements PsrLogger {
 
     final public function log($level, $message, array $context = []) {
         if ($this->canEmit($level)) {
-            $this->doLog($level, $message, $context);
+            $message = $this->format($level, $message, $context);
+            return $this->output($message);
+        }
+    }
+
+    private function format($level, $message, array $context = []) {
+        $time = @date("H:i:s", $context["time"] ?? time());
+        $level = isset(self::LEVELS[$level]) ? $level : "unknown";
+        $level = $this->ansify ? $this->ansify($level) : $level;
+
+        return "[{$time}] {$level} {$message}";
+    }
+
+    private function ansify($level) {
+        switch ($level) {
+            case self::EMERGENCY:
+            case self::ALERT:
+            case self::CRITICAL:
+            case self::ERROR:
+                return "<bold><red>{$level}</red></bold>";
+            case self::WARNING:
+                return "<bold><yellow>{$level}</yellow></bold>";
+            case self::NOTICE:
+                return "<bold><green>{$level}</green></bold>";
+            case self::INFO:
+                return "<bold><magenta>{$level}</magenta></bold>";
+            case self::DEBUG:
+                return "<bold><cyan>{$level}</cyan></bold>";
         }
     }
 
@@ -84,5 +111,20 @@ abstract class Logger implements PsrLogger {
         }
 
         $this->outputLevel = $outputLevel;
+    }
+
+    final protected function setAnsify(string $mode) {
+        switch ($mode) {
+            case "auto":
+            case "on":
+                $this->ansify = true;
+                break;
+            case "off":
+                $this->ansify = false;
+                break;
+            default:
+                $this->ansify = true;
+                break;
+        }
     }
 }
