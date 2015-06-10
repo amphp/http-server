@@ -75,15 +75,16 @@ class Router implements ServerObserver, LoggerAware, Middleware {
      *
      * @param \Aerys\Request $request
      * @param \Aerys\Response $response
-     * @throws \UnexpectedValueException If unknown route dispatcher code encountered
      * @return mixed
      */
     public function __invoke(Request $request, Response $response) {
-        $action = $request->getLocalVar("aerys.routed");
-        if ($action) {
-            return $action($request, $response);
-        } elseif ($action === false) {
+        list($isMethodAllowed, $data) = $request->getLocalVar("aerys.routed");
+        if ($isMethodAllowed) {
+            return $data($request, $response);
+        } else {
+            $allowedMethods = implode(",", $data);
             $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
+            $response->setHeader("Allow", $allowedMethods);
             $response->setHeader("Aerys-Generic-Response", "enable");
             $response->end();
         }
@@ -100,7 +101,7 @@ class Router implements ServerObserver, LoggerAware, Middleware {
             unset($this->cache[$toMatch]);
             $this->cache[$toMatch] = $cache;
 
-            $ireq->locals["aerys.routed"] = $action;
+            $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
             if (!empty($middlewares)) {
                 yield from responseFilter($middlewares, $ireq, $options);
             }
@@ -117,7 +118,7 @@ class Router implements ServerObserver, LoggerAware, Middleware {
                     $this->cacheDispatchResult($toMatch, $routeArgs, $args);
                 }
 
-                $ireq->locals["aerys.routed"] = $action;
+                $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
                 if (!empty($middlewares)) {
                     yield from responseFilter($middlewares, $ireq, $options);
                 }
@@ -129,7 +130,8 @@ class Router implements ServerObserver, LoggerAware, Middleware {
                 return;
                 break;
             case Dispatcher::METHOD_NOT_ALLOWED:
-                $ireq->locals["aerys.routed"] = false;
+                $allowedMethods = $match[1];
+                $ireq->locals["aerys.routed"] = [$isMethodAllowed = false, $allowedMethods];
                 break;
             default:
                 throw new \UnexpectedValueException(
