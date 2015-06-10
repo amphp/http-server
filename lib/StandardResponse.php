@@ -291,20 +291,6 @@ class StandardResponse implements Response {
     /**
      * {@inheritDoc}
      */
-    public function onUpgrade(callable $onUpgrade): Response {
-        if ($this->state & self::STARTED) {
-            throw new \LogicException(
-                "Cannot assign onUpgrade callback; output already started"
-            );
-        }
-        $this->headers[":on-upgrade"] = $onUpgrade;
-
-        return $this;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
     public function state(): int {
         return $this->state;
     }

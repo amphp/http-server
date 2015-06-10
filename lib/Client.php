@@ -24,14 +24,10 @@ class Client {
     public $shouldClose;
     public $isDead;
     public $isExported;
-    public $onUpgrade;
     public $requestsRemaining;
 
-    // only for http/1.1 //
-    public $requestCycles;
-    public $currentRequestCycle;
-    
-    // new //
-    public $isHttp2;
-    public $h2Streams = [];
+    public $httpDriver;
+    public $exporter; // Requires Client object as first argument
+
+    public $bodyPromisors = [];
 }

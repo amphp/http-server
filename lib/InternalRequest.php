@@ -6,6 +6,15 @@ use Amp\Struct;
 
 class InternalRequest {
     use Struct;
+
+    public $client;
+    public $vhost;
+    public $preAppResponder;
+    public $response;
+    public $responseWriter;
+    public $exporter;
+    public $badFilterKeys = [];
+
     public $isEncrypted;
     public $cryptoInfo;
     public $clientPort;

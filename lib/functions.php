@@ -102,23 +102,21 @@ function makeGeneratorError(string $prefix, \Generator $generator): string {
 }
 
 /**
- * Encode standardized response output into a byte-stream format
+ * Process requests and responses with filters
  *
  * Is this function's cyclomatic complexity off the charts? Yes. Is this an extremely hot
- * code path requiring maximum optimization? Yes. This is why it looks like the seventh
+ * code path requiring maximum optimization? Yes. This is why it looks like the ninth
  * circle of npath hell ... #DealWithIt
  *
- * @param \Aerys\InternalRequest $ireq
- * @param \Generator $writer
  * @param array $filters
  * @return \Generator
  */
-function responseCodec(\Generator $writer, array $filters, ...$filterArgs): \Generator {
+function responseFilter(array $filters, ...$filterArgs): \Generator {
     try {
         $generators = [];
         foreach ($filters as $key => $filter) {
             $out = $filter(...$filterArgs);
-            if ($out instanceof \Generator) {
+            if ($out instanceof \Generator && $out->valid()) {
                 $generators[$key] = $out;
             }
         }
@@ -206,7 +204,7 @@ function responseCodec(\Generator $writer, array $filters, ...$filterArgs): \Gen
             }
         }
 
-        $writer->send($headers);
+        $toSend = yield $headers;
 
         $appendBuffer = null;
 
@@ -216,7 +214,6 @@ function responseCodec(\Generator $writer, array $filters, ...$filterArgs): \Gen
             } elseif ($isFlushing) {
                 $toSend = false;
             } else {
-                $toSend = yield;
                 if (!isset($toSend)) {
                     $isEnding = true;
                 } elseif ($toSend === false) {
@@ -254,11 +251,7 @@ function responseCodec(\Generator $writer, array $filters, ...$filterArgs): \Gen
                             }
                         } else {
                             if ($isEnding) {
-                                if (isset($toSend)) {
-                                    $toSend = null;
-                                } else {
-                                    break;
-                                }
+                                $toSend = null;
                             } elseif ($isFlushing) {
                                 if ($toSend !== false) {
                                     $toSend = false;
@@ -292,17 +285,18 @@ function responseCodec(\Generator $writer, array $filters, ...$filterArgs): \Gen
                 }
             }
 
-            $writer->send($toSend);
-            if ($isFlushing && $toSend !== false) {
-                $writer->send($toSend = false);
+            if ($isEnding && $toSend === null) {
+                break;
+            }
+            if ($toSend === false) {
+                $isFlushing = false;
+            }
+            $toSend = yield $toSend;
+            if ($isFlushing) {
+                $toSend = yield $toSend = false;
             }
             $isFlushing = false;
-
         } while (!$isEnding);
-
-        if (isset($toSend)) {
-            $writer->send(null);
-        }
     } catch (ClientException $uncaught) {
         throw $uncaught;
     } catch (CodecException $uncaught) {

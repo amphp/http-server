@@ -20,7 +20,7 @@ use Psr\Log\{
     LoggerAwareInterface as LoggerAware
 };
 
-class Router implements ServerObserver, LoggerAware {
+class Router implements ServerObserver, LoggerAware, Middleware {
     private $canonicalRedirector;
     private $routeDispatcher;
     private $routes = [];
@@ -79,30 +79,49 @@ class Router implements ServerObserver, LoggerAware {
      * @return mixed
      */
     public function __invoke(Request $request, Response $response) {
-        $uri = $request->getUri();
+        $action = $request->getLocalVar("aerys.routed");
+        if ($action) {
+            return $action($request, $response);
+        } elseif ($action === false) {
+            $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
+            $response->setHeader("Aerys-Generic-Response", "enable");
+            $response->end();
+        }
+    }
+
+    public function use(InternalRequest $ireq, Options $options) {
+        $uri = $ireq->uri;
         $toMatch = ($qPos = stripos($uri, "?")) ? substr($uri, 0, $qPos) : $uri;
 
         if (isset($this->cache[$toMatch])) {
-            list($action, $routeArgs) = $cache = $this->cache[$toMatch];
-            $request->setLocalVar("aerys.routeArgs", $routeArgs);
+            list($args, $routeArgs) = $cache = $this->cache[$toMatch];
+            list($action, $middlewares) = $args;
+            $ireq->locals["aerys.routeArgs"] = $routeArgs;
             // Keep the most recently used entry at the back of the LRU cache
             unset($this->cache[$toMatch]);
             $this->cache[$toMatch] = $cache;
 
-            return $action($request, $response);
+            $ireq->locals["aerys.routed"] = $action;
+            if (!empty($middlewares)) {
+                yield from responseFilter($middlewares, $ireq, $options);
+            }
         }
 
-        $match = $this->routeDispatcher->dispatch($request->getMethod(), $toMatch);
+        $match = $this->routeDispatcher->dispatch($ireq->method, $toMatch);
 
         switch ($match[0]) {
             case Dispatcher::FOUND:
-                list(, $action, $routeArgs) = $match;
-                $request->setLocalVar("aerys.routeArgs", $routeArgs);
+                list(, $args, $routeArgs) = $match;
+                list($action, $middlewares) = $args;
+                $ireq->locals["aerys.routeArgs"] = $routeArgs;
                 if ($this->maxCacheEntries > 0) {
-                    $this->cacheDispatchResult($toMatch, $routeArgs, $action);
+                    $this->cacheDispatchResult($toMatch, $routeArgs, $args);
                 }
 
-                return $action($request, $response);
+                $ireq->locals["aerys.routed"] = $action;
+                if (!empty($middlewares)) {
+                    yield from responseFilter($middlewares, $ireq, $options);
+                }
                 break;
             case Dispatcher::NOT_FOUND:
                 // Do nothing; allow actions further down the chain a chance to respond.
@@ -111,9 +130,7 @@ class Router implements ServerObserver, LoggerAware {
                 return;
                 break;
             case Dispatcher::METHOD_NOT_ALLOWED:
-                $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
-                $response->setHeader("Aerys-Generic-Response", "enable");
-                $response->end();
+                $ireq->locals["aerys.routed"] = false;
                 break;
             default:
                 throw new \UnexpectedValueException(
@@ -122,7 +139,7 @@ class Router implements ServerObserver, LoggerAware {
         }
     }
 
-    private function cacheDispatchResult(string $toMatch, array $routeArgs, callable $action) {
+    private function cacheDispatchResult(string $toMatch, array $routeArgs, array $action) {
         if ($this->cacheEntryCount < $this->maxCacheEntries) {
             $this->cacheEntryCount++;
         } else {
@@ -168,16 +185,16 @@ class Router implements ServerObserver, LoggerAware {
      *     $request->locals->routeArgs array.
      *
      * Route URIs ending in "/?" (without the quotes) allow a URI match with or without
-     * the trailing slash. Temorary redirects are used to redirect to the canonical URI
+     * the trailing slash. Temporary redirects are used to redirect to the canonical URI
      * (with a trailing slash) to avoid search engine duplicate content penalties.
      *
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
-     * @param callable $actions The action(s) to invoke upon matching this route
+     * @param callable|\Aerys\Middleware $actions The action(s) to invoke upon matching this route
      * @throws \DomainException on invalid empty parameters
      * @return self
      */
-    public function route(string $method, string $uri, callable ...$actions): Router {
+    public function route(string $method, string $uri, ...$actions): Router {
         if ($this->state !== Server::STOPPED) {
             throw new \LogicException(
                 "Cannot add routes once the server has started"
@@ -200,27 +217,37 @@ class Router implements ServerObserver, LoggerAware {
         }
 
         $uri = "/" . ltrim($uri, "/");
-        $target = $this->makeCallableTargetFromActionsArray($actions);
+        list($target, $middlewares) = $this->filterCallablesAndMiddlewaresFromActionsArray($actions);
         if (substr($uri, -2) === "/?") {
             $canonicalUri = substr($uri, 0, -1);
             $redirectUri = substr($uri, 0, -2);
-            $this->routes[] = [$method, $canonicalUri, $target];
+            $this->routes[] = [$method, $canonicalUri, $target, $middlewares];
             $this->routes[] = [$method, $redirectUri, $this->canonicalRedirector];
         } else {
-            $this->routes[] = [$method, $uri, $target];
+            $this->routes[] = [$method, $uri, $target, $middlewares];
         }
 
         return $this;
     }
 
-    private function makeCallableTargetFromActionsArray(array $actions): callable {
+    private function filterCallablesAndMiddlewaresFromActionsArray(array $actions) {
+        $middlewares = [];
+
         // We need to store ServerObserver route targets so they can be notified
         // upon server state changes.
-        foreach ($actions as $action) {
+        foreach ($actions as $key => $action) {
             if ($action instanceof ServerObserver) {
                 $this->serverObservers[] = $action;
             } elseif (is_array($action) && $action[0] instanceof ServerObserver) {
                 $this->serverObservers[] = $action[0];
+            }
+            if ($action instanceof Middleware) {
+                $middlewares[] = [$action, "use"];
+                if (!is_callable($action)) {
+                    unset($actions[$key]);
+                }
+            } elseif (is_array($action) && is_object($action[0]) && $action[0] instanceof Middleware) {
+                $middlewares[] = $action[0];
             }
             if ($action instanceof LoggerAware) {
                 $this->loggerAwares[] = $action;
@@ -229,11 +256,13 @@ class Router implements ServerObserver, LoggerAware {
             }
         }
 
+        $actions = array_values($actions);
+
         if (empty($actions[1])) {
-            return $actions[0];
+            return [$actions[0], $middlewares];
         }
 
-        return function(Request $request, Response $response) use ($actions) {
+        return [function(Request $request, Response $response) use ($actions) {
             foreach ($actions as $action) {
                 $result = ($action)($request, $response);
                 if ($result instanceof \Generator) {
@@ -243,7 +272,7 @@ class Router implements ServerObserver, LoggerAware {
                     return;
                 }
             }
-        };
+        }, $middlewares];
     }
 
     /**
@@ -284,8 +313,8 @@ class Router implements ServerObserver, LoggerAware {
                     break;
                 }
                 $this->routeDispatcher = simpleDispatcher(function(RouteCollector $rc) {
-                    foreach ($this->routes as list($method, $uri, $action)) {
-                        $rc->addRoute($method, $uri, $action);
+                    foreach ($this->routes as list($method, $uri, $action, $middlewares)) {
+                        $rc->addRoute($method, $uri, [$action, $middlewares]);
                     }
                 });
                 foreach ($this->loggerAwares as $loggerAware) {

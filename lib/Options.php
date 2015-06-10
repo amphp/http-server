@@ -20,6 +20,7 @@ class Options {
     private $maxBodySize = 131072;
     private $maxHeaderSize = 32768;
     private $ioGranularity = 32768;
+    private $maxPendingSize = 262144;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS"];  // can overlap for vhost with additional check once vhost is determined
     private $deflateEnable;
 
@@ -160,6 +161,16 @@ class Options {
         }
 
         $this->maxHeaderSize = $bytes;
+    }
+
+    private function setPendingSize(int $bytes) {
+        if ($bytes <= 0) {
+            throw new \DomainException(
+                "Max header size setting must be greater than zero"
+            );
+        }
+
+        $this->maxPendingSize = $bytes;
     }
 
     private function setIoGranularity(int $bytes) {

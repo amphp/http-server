@@ -61,7 +61,7 @@ abstract class Logger implements PsrLogger {
     }
 
     final public function debug($message, array $context = []) {
-        return $this->climate->out(self::DEBUG, $message, $context);
+        return $this->log(self::DEBUG, $message, $context);
     }
 
     final public function log($level, $message, array $context = []) {
