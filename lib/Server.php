@@ -448,7 +448,9 @@ class Server {
         
         if ($final) {
             $this->reactor->immediately(function() use ($client) {
-                $client->requestParser->send("");
+                if ($client->requestParser) {
+                    $client->requestParser->send("");
+                }
             });
 
             if ($client->writeBuffer == "") {
@@ -967,14 +969,12 @@ class Server {
 
     private function responseCodec(\Generator $filter, InternalRequest $ireq) {
         while ($filter->valid()) {
-            $cur = $filter->current();
-            if ($cur === null) {
-                $filter->send(yield);
-            } else {
+            $cur = $filter->send(yield);
+            if ($cur !== null) {
                 $ireq->responseWriter->send($cur);
-                $filter->next();
             }
         }
+        $ireq->responseWriter->send(null);
     }
 
     private function http2Filter(InternalRequest $ireq) {

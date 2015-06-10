@@ -72,7 +72,7 @@ class Http1Driver implements HttpDriver {
                 $bufferSize = 0;
                 ($this->write)($client);
             }
-        } while (($msgPart = yield) !== true);
+        } while (($msgPart = yield) !== null);
 
         if ($bufferSize) {
             $client->writeBuffer .= \implode("", $buffer);

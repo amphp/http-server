@@ -205,7 +205,7 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
             }
         }
 
-        yield $headers;
+        $toSend = yield $headers;
 
         $appendBuffer = null;
 
@@ -215,7 +215,6 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
             } elseif ($isFlushing) {
                 $toSend = false;
             } else {
-                $toSend = yield;
                 if (!isset($toSend)) {
                     $isEnding = true;
                 } elseif ($toSend === false) {
@@ -253,11 +252,7 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                             }
                         } else {
                             if ($isEnding) {
-                                if (isset($toSend)) {
-                                    $toSend = null;
-                                } else {
-                                    break;
-                                }
+                                $toSend = null;
                             } elseif ($isFlushing) {
                                 if ($toSend !== false) {
                                     $toSend = false;
@@ -291,17 +286,18 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                 }
             }
 
-            yield $toSend ?? true;
-            if ($isFlushing && $toSend !== false) {
-                yield $toSend = false;
+            if ($isEnding && $toSend === null) {
+                break;
+            }
+            if ($toSend === false) {
+                $isFlushing = false;
+            }
+            $toSend = yield $toSend;
+            if ($isFlushing) {
+                $toSend = yield $toSend = false;
             }
             $isFlushing = false;
-
         } while (!$isEnding);
-
-        if (isset($toSend)) {
-            yield true;
-        }
     } catch (ClientException $uncaught) {
         throw $uncaught;
     } catch (CodecException $uncaught) {
