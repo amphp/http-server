@@ -64,13 +64,6 @@ class Server {
     private $onCoroutineAppResolve;
     private $onCompletedData;
 
-    /**
-     * @param \Amp\Reactor $reactor
-     * @param \Aerys\Options $options
-     * @param \Aerys\VhostContainer $vhostContainer
-     * @param \Aerys\Logger $logger
-     * @param \Aerys\TimeContext $timeContext
-     */
     public function __construct(
         Reactor $reactor,
         Options $options,
@@ -93,12 +86,7 @@ class Server {
         };
         $this->timeContext->use($this->makePrivateCallable("timeoutKeepAlives"));
         $this->nullBody = new NullBody;
-        /* @TODO Replace the old version after websocket adaptation
         $this->exporter = $this->makePrivateCallable("export");
-        */
-        $this->exporter = function(Reactor $reactor, string $watcherId, Client $client) {
-            ($client->onUpgrade)($client->socket, $this->export($client));
-        };
 
         // private callables that we pass to external code //
         $this->onAcceptable = $this->makePrivateCallable("onAcceptable");
@@ -771,9 +759,7 @@ class Server {
     }
 
     private function onCompletedData(Client $client) {
-        if ($client->onUpgrade) {
-            $this->reactor->immediately($this->exporter, $options = ["cb_data" => $client]);
-        } elseif ($client->shouldClose) {
+        if ($client->shouldClose) {
             $this->close($client);
         } else {
             // @TODO we need a flag to know if we're awaiting data for the
@@ -913,7 +899,6 @@ class Server {
     }
 
     private function clear(Client $client) {
-        $client->onUpgrade = null;
         $client->requestParser = null;
         $client->onWriteDrain = null;
         $this->reactor->cancel($client->readWatcher);

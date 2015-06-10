@@ -8,19 +8,16 @@ use Amp\Promisor;
 class Handshake implements Response {
     const ACCEPT_CONCAT = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-    private $upgradePromisor;
     private $response;
     private $acceptKey;
     private $status = 101;
     private $isStarted = false;
 
     /**
-     * @param \Amp\Promisor $upgradePromisor resolve as false if handshake negotiation fails
      * @param \Aerys\Response $response The server Response to wrap for the handshake
      * @param string $acceptKey The client request's SEC-WEBSOCKET-KEY header value
      */
-    public function __construct(Promisor $upgradePromisor, Response $response, string $acceptKey) {
-        $this->upgradePromisor = $upgradePromisor;
+    public function __construct(Response $response, string $acceptKey) {
         $this->response = $response;
         $this->acceptKey = $acceptKey;
 
@@ -148,15 +145,12 @@ class Handshake implements Response {
     }
 
     private function handshake() {
-        if ($this->status !== 101) {
-            $this->upgradePromisor->succeed($wasUpgraded = false);
-            return;
+        if ($this->status === 101) {
+            $concatKeyStr = $this->acceptKey . self::ACCEPT_CONCAT;
+            $secWebSocketAccept = base64_encode(sha1($concatKeyStr, true));
+            $this->response->setHeader("Upgrade", "websocket");
+            $this->response->setHeader("Connection", "upgrade");
+            $this->response->setHeader("Sec-WebSocket-Accept", $secWebSocketAccept);
         }
-
-        $concatKeyStr = $this->acceptKey . self::ACCEPT_CONCAT;
-        $secWebSocketAccept = base64_encode(sha1($concatKeyStr, true));
-        $this->response->setHeader("Upgrade", "websocket");
-        $this->response->setHeader("Connection", "upgrade");
-        $this->response->setHeader("Sec-WebSocket-Accept", $secWebSocketAccept);
     }
 }

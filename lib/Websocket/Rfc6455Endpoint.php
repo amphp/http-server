@@ -15,7 +15,10 @@ use Amp\{
 
 use Aerys\{
     ClientException,
+    InternalRequest,
+    Middleware,
     NullBody,
+    Options,
     Request,
     Response,
     Server,
@@ -29,7 +32,7 @@ use Psr\Log\{
     LoggerAwareInterface as PsrLoggerAware
 };
 
-class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
+class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLoggerAware {
     private $application;
     private $logger;
     private $reactor;
@@ -160,51 +163,54 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
             return;
         }
 
-        return $this->import($acceptKey, $request, $response);
-    }
-
-    private function import(string $acceptKey, Request $request, Response $response): \Generator {
-        $client = new Rfc6455Client;
-        $client->connectedAt = $this->now;
-
-        $upgradePromisor = new Deferred;
-        $response->onUpgrade(function($socket, $refClearer) use ($client, $upgradePromisor) {
-            $client->id = (int) $socket;
-            $client->socket = $socket;
-            $client->serverRefClearer = $refClearer;
-            $upgradePromisor->succeed($wasUpgraded = true);
-        });
-
-        $handshaker = new Handshake($upgradePromisor, $response, $acceptKey);
+        $handshaker = new Handshake($response, $acceptKey);
 
         $onHandshakeResult = $this->application->onHandshake($request, $handshaker);
         if ($onHandshakeResult instanceof \Generator) {
             $onHandshakeResult = yield from $onHandshakeResult;
         }
+        $request->setLocalVar("aerys.websocket", $onHandshakeResult);
         $handshaker->end();
-        if (!$wasUpgraded = yield $upgradePromisor->promise()) {
-            return;
+    }
+
+    public function use(InternalRequest $ireq, Options $options) {
+        $headers = yield;
+        if ($headers[":status"] == 101) {
+            $yield = yield $headers;
+        } else {
+            return $headers; // detach if we don't want to establish websocket connection
         }
 
-        // ------ websocket upgrade complete -------
+        while ($yield !== null) {
+            $yield = yield $yield;
+        }
 
-        $socket = $client->socket;
-        $client->parser = $this->parser([$this, "onParse"], $options = [
-            "cb_data" => $client
-        ]);
-        $client->readWatcher = $this->reactor->onReadable($socket, [$this, "onReadable"], $options = [
-            "enable" => true,
-            "cb_data" => $client,
-        ]);
-        $client->writeWatcher = $this->reactor->onWritable($socket, [$this, "onWritable"], $options = [
-            "enable" => false,
-            "cb_data" => $client,
-        ]);
+        $this->reactor->immediately(function() use ($ireq) {
+            $client = new Rfc6455Client;
+            $client->connectedAt = $this->now;
+            $socket = $ireq->client->socket;
+            $client->id = (int)$socket;
+            $client->socket = $socket;
+            $client->writeBuffer = $ireq->client->writeBuffer;
+            $client->serverRefClearer = ($ireq->client->exporter)($ireq->client);
 
-        $this->clients[$client->id] = $client;
-        $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
+            $client->parser = $this->parser([$this, "onParse"], $options = [
+                "cb_data" => $client
+            ]);
+            $client->readWatcher = $this->reactor->onReadable($socket, [$this, "onReadable"], $options = [
+                "enable" => true,
+                "cb_data" => $client,
+            ]);
+            $client->writeWatcher = $this->reactor->onWritable($socket, [$this, "onWritable"], $options = [
+                "enable" => $client->writeBuffer != "",
+                "cb_data" => $client,
+            ]);
 
-        yield from $this->tryAppOnOpen($client->id, $onHandshakeResult);
+            $this->clients[$client->id] = $client;
+            $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
+
+            \Amp\resolve($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]));
+        });
     }
 
     /**
@@ -397,8 +403,9 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
         }
     }
 
-    public function onReadable($reactor, $watcherId, $socket, $client) {
+    public function onReadable($reactor, $watcherId, $socket, Rfc6455Client $client) {
         $data = @fread($socket, 8192);
+
         if ($data != "") {
             $client->lastReadAt = $this->now;
             $client->bytesRead += \strlen($data);
@@ -619,16 +626,20 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, PsrLoggerAware {
                 // we are not going to wait for a proper self::OP_CLOSE answer (because else we'd need to timeout for 3 seconds, not worth it), but we will ensure to at least *have written* it
                 $promises = [];
                 foreach ($this->clients as $client) {
-                    $promise = end($client->writeDeferredControlQueue)->promise();
-                    if ($promise) {
-                        $promises[] = $promise;
+                    if (!empty($client->writeDeferredControlQueue)) {
+                        $promise = end($client->writeDeferredControlQueue)->promise();
+                        if ($promise) {
+                            $promises[] = $promise;
+                        }
                     }
                 }
-                return any($promises)->when(function () {
+                $promise = any($promises);
+                $promise->when(function () {
                     foreach ($this->clients as $client) {
                         $this->unloadClient($client);
                     }
                 });
+                return $promise;
         }
 
         return new Success;

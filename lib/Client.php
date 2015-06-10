@@ -24,11 +24,10 @@ class Client {
     public $shouldClose;
     public $isDead;
     public $isExported;
-    public $onUpgrade;
     public $requestsRemaining;
 
     public $httpDriver;
-    public $exporter;
+    public $exporter; // Requires Client object as first argument
 
     public $bodyPromisors = [];
 }

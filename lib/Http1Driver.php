@@ -38,13 +38,6 @@ class Http1Driver implements HttpDriver {
             }
         }
 
-        // @TODO change the protocol upgrade mechanism ... it's garbage as currently implemented
-        if ($client->shouldClose || $headers[":status"] !== "101") {
-            $client->onUpgrade = null;
-        } else {
-            $client->onUpgrade = $headers[":on-upgrade"] ?? null;
-        }
-
         $lines = ["HTTP/{$protocol} {$headers[":status"]} {$headers[":reason"]}"];
         unset($headers[":status"], $headers[":reason"]);
         foreach ($headers as $headerField => $headerLines) {
