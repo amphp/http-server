@@ -30,7 +30,6 @@ Amp\run(function(Amp\Reactor $reactor) {
         die("Failed initializing IPC connection");
     }
 
-    //$logger = new Aerys\ConsoleLogger($console);
     $logger = new Aerys\IpcLogger($reactor, $console, $ipcSock);
     $process = new Aerys\WorkerProcess($reactor, $logger, $ipcSock);
     yield from $process->start($console);
