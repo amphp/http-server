@@ -78,7 +78,11 @@ class Router implements ServerObserver, LoggerAware, Middleware {
      * @return mixed
      */
     public function __invoke(Request $request, Response $response) {
-        list($isMethodAllowed, $data) = $request->getLocalVar("aerys.routed");
+        if (!$preRoute = $request->getLocalVar("aerys.routed")) {
+            return;
+        }
+
+        list($isMethodAllowed, $data) = $preRoute;
         if ($isMethodAllowed) {
             return $data($request, $response, $request->getLocalVar("aerys.routeArgs"));
         } else {
