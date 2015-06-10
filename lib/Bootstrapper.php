@@ -47,14 +47,7 @@ class Bootstrapper {
             $vhost = $this->buildVhost($logger, $host);
             $vhosts->use($vhost);
         }
-        $timeContext = $options->debug
-            ? new TimeContext($reactor, $logger)
-            : new class($reactor, $logger) extends TimeContext {
-                public $currentTime;
-                public $currentHttpDate;
-            }
-        ;
-
+        $timeContext = new TimeContext($reactor, $logger);
         $server = new Server($reactor, $options, $vhosts, $logger, $timeContext);
 
         return $server;
@@ -97,15 +90,20 @@ class Bootstrapper {
     }
 
     private function generatePublicOptionsStruct(Options $options): Options {
-        $code = "return new class extends \Aerys\Options {\n\tuse \Amp\Struct;\n";
+        $code = "return new class extends \Aerys\Options {\n";
         foreach ((new \ReflectionClass($options))->getProperties() as $property) {
             $name = $property->getName();
-            $value = $options->{$name};
-            $code .= "\tpublic \${$property} = " . var_export($value, true) . ";\n";
+            if ($name[0] !== "_") {
+                $code .= "\tpublic \${$name};\n";
+            }
         }
         $code .= "};\n";
+        $publicOptions = eval($code);
+        foreach ($publicOptions as $option => $value) {
+            $publicOptions->{$option} = $options->{$option};
+        }
 
-        return eval($code);
+        return $publicOptions;
     }
 
     private function buildVhost(Logger $logger, Host $host) {

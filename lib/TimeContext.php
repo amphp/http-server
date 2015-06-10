@@ -10,12 +10,15 @@ use Amp\{
 };
 
 class TimeContext implements ServerObserver {
+    use Struct;
+
     private $reactor;
     private $logger;
     private $watcherId;
-    private $currentTime;
-    private $currentHttpDate;
     private $useCallbacks;
+
+    public $currentTime;
+    public $currentHttpDate;
 
     final public function __construct(Reactor $reactor, Logger $logger) {
         $this->reactor = $reactor;
@@ -72,35 +75,5 @@ class TimeContext implements ServerObserver {
         } catch (\BaseException $uncaught) {
             $this->logger->critical($uncaught);
         }
-    }
-
-    /**
-     * Allow retrieval of "public" properties
-     *
-     * @param string $property
-     * @return mixed Returns the value of the requested property
-     * @throws \DomainException If an unknown property is requested
-     */
-    final public function __get(string $property) {
-        if ($property === "currentTime" || $property === "currentHttpDate") {
-            return $this->{$property};
-        } else {
-            throw new \DomainException(
-            "Unknown property: " . __CLASS__ . "::\${$property}"
-        );
-        }
-    }
-
-    /**
-     * Prevent external code from modifying our "public" time/date properties
-     *
-     * @param string $property
-     * @param mixed $value
-     * @throws \DomainException
-     */
-    final public function __set(string $property, $value) {
-        throw new \DomainException(
-            "Unknown property: " . __CLASS__ . "::\${$property}"
-        );
     }
 }
