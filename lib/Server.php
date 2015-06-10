@@ -713,7 +713,7 @@ class Server {
             $application = [$this, "sendPreAppMethodNotAllowedResponse"];
         } elseif ($ireq->method === "TRACE") {
             $application = [$this, "sendPreAppTraceResponse"];
-        } elseif ($ireq->method === "OPTIONS" && $uri->raw === "*") {
+        } elseif ($ireq->method === "OPTIONS" && $ireq->uriRaw === "*") {
             $application = [$this, "sendPreAppOptionsResponse"];
         } else {
             $application = $ireq->vhost->getApplication();
@@ -958,8 +958,9 @@ class Server {
             $filters = array_diff_key($filters, array_flip($ireq->badFilterKeys));
         }
 
-        $ireq->responseWriter = $ireq->client->http->writer($ireq);
+        $ireq->responseWriter = $ireq->client->httpDriver->writer($ireq);
         $filter = $this->responseCodec(responseFilter($filters, $ireq, $this->options), $ireq);
+        $filter->current(); // initialize filter
 
         return $ireq->response = new StandardResponse($filter);
     }

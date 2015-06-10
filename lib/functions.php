@@ -102,7 +102,7 @@ function makeGeneratorError(string $prefix, \Generator $generator): string {
 }
 
 /**
- * Encode standardized response output into a byte-stream format
+ * Process requests and responses with filters
  *
  * Is this function's cyclomatic complexity off the charts? Yes. Is this an extremely hot
  * code path requiring maximum optimization? Yes. This is why it looks like the ninth
@@ -117,6 +117,7 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
         foreach ($filters as $key => $filter) {
             $out = $filter(...$filterArgs);
             if ($out instanceof \Generator) {
+                $out->current();
                 $generators[$key] = $out;
             }
         }
