@@ -116,8 +116,7 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
         $generators = [];
         foreach ($filters as $key => $filter) {
             $out = $filter(...$filterArgs);
-            if ($out instanceof \Generator) {
-                $out->current();
+            if ($out instanceof \Generator && $out->valid()) {
                 $generators[$key] = $out;
             }
         }
