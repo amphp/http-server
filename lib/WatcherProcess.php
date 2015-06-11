@@ -57,6 +57,8 @@ class WatcherProcess extends Process {
     }
 
     protected function doStart(Console $console): \Generator {
+        $this->recommendAssertionSetting();
+        $this->recommendLogLevel($console);
         $this->console = $console;
         $this->workerCount = $this->determineWorkerCount($console);
         $this->ipcServerUri = $this->bindIpcServer();
@@ -64,6 +66,31 @@ class WatcherProcess extends Process {
 
         for ($i=0; $i<$this->workerCount; $i++) {
             yield $this->spawn();
+        }
+    }
+
+    protected function recommendAssertionSetting() {
+        if (ini_get("zend.assertions") === "1") {
+            $this->logger->warning(
+                "Running aerys in production with zend.assertions enabled is not recommended; " .
+                "set zend.assertions=-1 for best performance"
+            );
+        }
+    }
+
+    protected function recommendLogLevel(Console $console) {
+        if (!$console->isArgDefined("log")) {
+            return;
+        }
+        $level = strtolower($console->getArg("log"));
+        if (!isset(Logger::LEVELS[$level])) {
+            return;
+        }
+        if (Logger::LEVELS[$level] > Logger::WARNING) {
+            $this->logger->warning(
+                "Running aerys in production with a log level greater than \"warning\" is not " .
+                "recommended; using log level \"{$level}\""
+            );
         }
     }
 
