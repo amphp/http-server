@@ -242,7 +242,7 @@ class Server implements \SplSubject {
         $addresses = $this->vhostContainer->getBindableAddresses();
         $tlsBindings = $this->vhostContainer->getTlsBindingsByAddress();
         $backlogSize = $this->options->socketBacklogSize;
-        $shouldReusePort = empty($this->options->debug);
+        $shouldReusePort = !$this->options->debug;
 
         foreach ($addresses as $address) {
             $context = stream_context_create(["socket" => [

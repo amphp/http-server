@@ -264,7 +264,13 @@ class Router implements Bootable, Middleware, \SplObserver {
         }
 
         if (empty($applications[1])) {
-            return [$applications[0], $middlewares];
+            if (empty($applications[0])) {
+                throw new \DomainException(
+                    "Each route must have at least one callable"
+                );
+            } else {
+                return [$applications[0], $middlewares];
+            }
         }
 
         return [function(Request $request, Response $response) use ($applications) {

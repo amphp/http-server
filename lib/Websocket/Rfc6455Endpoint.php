@@ -7,6 +7,7 @@ use Amp\{
     Failure,
     Promise,
     Success,
+    Reactor,
     function all,
     function any,
     function reactor,
@@ -16,6 +17,7 @@ use Amp\{
 use Aerys\{
     ClientException,
     InternalRequest,
+    Logger,
     Middleware,
     NullBody,
     Options,
@@ -398,7 +400,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
             if (!$client->closedAt) {
                 $client->closedAt = $this->now;
                 $code = Code::ABNORMAL_CLOSE;
-                $reason = "Client closed underlying TCP connection"
+                $reason = "Client closed underlying TCP connection";
                 resolve($this->tryAppOnClose($client->id, $code, $reason), $this->reactor);
             } else {
                 unset($this->closeTimeouts[$client->id]);
