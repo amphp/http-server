@@ -2,8 +2,6 @@
 
 namespace Aerys;
 
-use \Generator;
-
 use Amp\{
     Struct,
     Reactor,
@@ -201,7 +199,7 @@ class Server implements \SplSubject {
         }
     }
 
-    private function doStart(): Generator {
+    private function doStart(): \Generator {
         assert($this->logDebug("starting"));
 
         $addrCtxMap = $this->generateBindableAddressContextMap();
@@ -350,7 +348,7 @@ class Server implements \SplSubject {
         }
     }
 
-    private function doStop(): Generator {
+    private function doStop(): \Generator {
         assert($this->logDebug("stopping"));
         $this->state = self::STOPPING;
 
@@ -763,7 +761,7 @@ class Server implements \SplSubject {
             $request = new StandardRequest($ireq);
 
             $out = ($application)($request, $response);
-            if ($out instanceof Generator) {
+            if ($out instanceof \Generator) {
                 $promise = resolve($out, $this->reactor);
                 $promise->when($this->onCoroutineAppResolve, $ireq);
             } elseif ($response->state() & Response::STARTED) {
