@@ -72,8 +72,9 @@ class WatcherProcess extends Process {
     protected function recommendAssertionSetting() {
         if (ini_get("zend.assertions") === "1") {
             $this->logger->warning(
-                "Running aerys in production with zend.assertions enabled is not recommended; " .
-                "set zend.assertions=-1 for best performance"
+                "Running aerys in production with assertions enabled is not recommended; " .
+                "disable assertions in php.ini (zend.assertions = -1) for best performance " .
+                "or enable debug mode (-d) to hide this warning."
             );
         }
     }
@@ -88,8 +89,9 @@ class WatcherProcess extends Process {
         }
         if (Logger::LEVELS[$level] > Logger::WARNING) {
             $this->logger->warning(
-                "Running aerys in production with a log level greater than \"warning\" is not " .
-                "recommended; using log level \"{$level}\""
+                "Running aerys in production with a log level higher than \"warning\" is not " .
+                "recommended. Note that internal \"debug\" events are NOT emitted by core " .
+                "aerys libs when assertions are disabled."
             );
         }
     }
@@ -98,11 +100,31 @@ class WatcherProcess extends Process {
         if (!$this->canReusePort()) {
             return 1;
         }
-        if ($workers = $console->getArg("workers")) {
-            return $workers;
+
+        $cpuCores = $this->countCpuCores();
+        if (!$console->isArgDefined("workers")) {
+            return $cpuCores;
         }
 
-        return $this->countCpuCores();
+        $workers = $console->getArg("workers");
+        if ($workers <= 0) {
+            $this->logger->warning(
+                "Invalid worker count specified; integer >= 0 expected. Using CPU core count ..."
+            );
+            return $cpuCores;
+        }
+
+        if ($workers > $cpuCores) {
+            $s = ($cpuCores === 1) ? "" : "s";
+            $this->logger->warning(
+                "Running aerys with more worker processes than available CPU cores is not " .
+                "recommended. Aerys counted {$cpuCores} core{$s}, but you specified {$workers} " .
+                "workers. If you know what you're doing you may safely ignore this message, " .
+                "but it's usually best to let the server determine the worker count."
+            );
+        }
+
+        return $workers;
     }
 
     private function canReusePort() {
