@@ -11,7 +11,7 @@ $help = <<<EOT
     -c, --config      Define a custom server config path
     -d, --debug       Start the server in debug mode
     -h, --help        Display the help screen
-    -l, --log         Set the minimum log output level (default: info)
+    -l, --log         Set the minimum log output level (default: warning)
     -r, --remote      @TODO A local port on which to listen for commands
     -w, --workers     Manually specify worker count (default: CPU core count)
         --color       Use ANSI codes in output (auto|on|off default: auto)
