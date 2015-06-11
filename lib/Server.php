@@ -28,7 +28,7 @@ class Server implements \SplSubject {
     private $options;
     private $vhostContainer;
     private $logger;
-    private $timeContext;
+    private $ticker;
     private $observers;
     private $decrementer;
     private $acceptWatcherIds = [];
@@ -57,21 +57,21 @@ class Server implements \SplSubject {
         Options $options,
         VhostContainer $vhostContainer,
         Logger $logger,
-        TimeContext $timeContext
+        Ticker $ticker
     ) {
         $this->reactor = $reactor;
         $this->options = $options;
         $this->vhostContainer = $vhostContainer;
         $this->logger = $logger;
-        $this->timeContext = $timeContext;
+        $this->ticker = $ticker;
         $this->observers = new \SplObjectStorage;
-        $this->observers->attach($timeContext);
+        $this->observers->attach($ticker);
         $this->decrementer = function() {
             if ($this->clientCount) {
                 $this->clientCount--;
             }
         };
-        $this->timeContext->use($this->makePrivateCallable("timeoutKeepAlives"));
+        $this->ticker->use($this->makePrivateCallable("timeoutKeepAlives"));
         $this->nullBody = new NullBody;
         $this->exporter = $this->makePrivateCallable("export");
 
@@ -466,7 +466,7 @@ class Server implements \SplSubject {
     }
 
     private function renewKeepAliveTimeout(Client $client) {
-        $timeoutAt = $this->timeContext->currentTime + $this->options->keepAliveTimeout;
+        $timeoutAt = $this->ticker->currentTime + $this->options->keepAliveTimeout;
         // DO NOT remove the call to unset(); it looks superfluous but it's not.
         // Keep-alive timeout entries must be ordered by value. This means that
         // it's not enough to replace the existing map entry -- we have to remove
@@ -618,8 +618,8 @@ class Server implements \SplSubject {
         $ireq = new InternalRequest;
         $ireq->client = $client;
         $ireq->isServerStopping = (bool) $this->stopPromisor;
-        $ireq->time = $this->timeContext->currentTime;
-        $ireq->httpDate = $this->timeContext->currentHttpDate;
+        $ireq->time = $this->ticker->currentTime;
+        $ireq->httpDate = $this->ticker->currentHttpDate;
         $ireq->locals = [];
         $ireq->remaining = $client->requestsRemaining;
         $ireq->isEncrypted = $client->isEncrypted;

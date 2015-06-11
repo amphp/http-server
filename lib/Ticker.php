@@ -9,7 +9,7 @@ use Amp\{
     Struct
 };
 
-class TimeContext implements \SplObserver {
+class Ticker implements \SplObserver {
     use Struct;
 
     private $reactor;

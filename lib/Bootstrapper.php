@@ -42,9 +42,8 @@ class Bootstrapper {
 
         $options = $this->generateOptionsObjFromArray($options);
         $vhosts = new VhostContainer;
-        $timeContext = new TimeContext($reactor, $logger);
-        $server = new Server($reactor, $options, $vhosts, $logger, $timeContext);
-        $server->attach($timeContext);
+        $ticker = new Ticker($reactor, $logger);
+        $server = new Server($reactor, $options, $vhosts, $logger, $ticker);
 
         $bootLoader = function(Bootable $bootable) use ($reactor, $server, $logger) {
             return $bootable->boot($reactor, $server, $logger);
