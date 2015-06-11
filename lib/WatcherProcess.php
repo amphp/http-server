@@ -127,8 +127,7 @@ class WatcherProcess extends Process {
     private function bindIpcServer() {
         if (!$ipcServer = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
             throw new \RuntimeException(sprintf(
-                "Failed binding socket server on %s: [%d] %s",
-                $uri,
+                "Failed binding socket server on tcp://127.0.0.1:*: [%d] %s",
                 $errno,
                 $errstr
             ));

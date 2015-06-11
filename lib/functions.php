@@ -44,8 +44,8 @@ function websocket($app, array $options = []) {
                     "Cannot boot websocket handler; Aerys\\Websocket required, {$type} provided"
                 );
             }
-            $endpoint = new Rfc6455Endpoint($reactor, $logger, $app);
-            foreach ($options as $key => $value) {
+            $endpoint = new Websocket\Rfc6455Endpoint($reactor, $logger, $app);
+            foreach ($this->options as $key => $value) {
                 $endpoint->setOption($key, $value);
             }
             $this->app = null;
