@@ -9,31 +9,24 @@ use FastRoute\{
 };
 
 use Amp\{
+    Reactor,
     Promise,
     Success,
     Failure,
     function any
 };
 
-use Psr\Log\{
-    LoggerInterface as PsrLogger,
-    LoggerAwareInterface as LoggerAware
-};
-
-class Router implements ServerObserver, LoggerAware, Middleware {
+class Router implements Bootable, Middleware, \SplObserver {
+    private $state = Server::STOPPED;
     private $canonicalRedirector;
+    private $bootLoader;
     private $routeDispatcher;
     private $routes = [];
     private $cache = [];
     private $cacheEntryCount = 0;
     private $maxCacheEntries = 512;
-    private $serverObservers = [];
-    private $loggerAwares = [];
-    private $logger;
-    private $state = Server::STOPPED;
 
-    public function __construct(array $options = []) {
-        $this->setOptions($options);
+    public function __construct() {
         $this->canonicalRedirector = function(Request $request, Response $response) {
             $uri = $request->getUri();
             if (stripos($uri, "?")) {
@@ -50,23 +43,29 @@ class Router implements ServerObserver, LoggerAware, Middleware {
         };
     }
 
-    private function setOptions(array $options) {
-        foreach ($options as $key => $value) {
-            switch ($key) {
-                case "max_cache_entries":
-                    if (!is_int($value)) {
-                        throw new \DomainException(sprintf(
-                            "max_cache_entries requires an integer; %s specified",
-                            is_object($value) ? get_class($value) : gettype($value)
-                        ));
-                    }
-                    $this->maxCacheEntries = ($value < 1) ? 0 : $value;
-                    break;
-                default:
-                    throw new \DomainException(
-                        "Unknown Router option: {$key}"
-                    );
-            }
+    /**
+     * Set a router option
+     *
+     * @param string $key
+     * @param mixed $value
+     * @throws \DomainException on unknown option key
+     * @retur void
+     */
+    public function setOption(string $key, $value) {
+        switch ($key) {
+            case "max_cache_entries":
+                if (!is_int($value)) {
+                    throw new \DomainException(sprintf(
+                        "max_cache_entries requires an integer; %s specified",
+                        is_object($value) ? get_class($value) : gettype($value)
+                    ));
+                }
+                $this->maxCacheEntries = ($value < 1) ? 0 : $value;
+                break;
+            default:
+                throw new \DomainException(
+                    "Unknown Router option: {$key}"
+                );
         }
     }
 
@@ -94,6 +93,9 @@ class Router implements ServerObserver, LoggerAware, Middleware {
         }
     }
 
+    /**
+     * Execute router middleware functionality
+     */
     public function do(InternalRequest $ireq, Options $options) {
         $toMatch = $ireq->uriPath;
 
@@ -217,59 +219,57 @@ class Router implements ServerObserver, LoggerAware, Middleware {
         }
         if (empty($actions)) {
             throw new \DomainException(
-                __METHOD__ . " requires at least one callable route action at Argument 3"
+                __METHOD__ . " requires at least one callable route action or middleware at Argument 3"
             );
         }
 
         $uri = "/" . ltrim($uri, "/");
-        list($target, $middlewares) = $this->filterCallablesAndMiddlewaresFromActionsArray($actions);
         if (substr($uri, -2) === "/?") {
             $canonicalUri = substr($uri, 0, -1);
             $redirectUri = substr($uri, 0, -2);
-            $this->routes[] = [$method, $canonicalUri, $target, $middlewares];
-            $this->routes[] = [$method, $redirectUri, $this->canonicalRedirector, []];
+            $this->routes[] = [$method, $canonicalUri, $actions];
+            $this->routes[] = [$method, $redirectUri, [$this->canonicalRedirector]];
         } else {
-            $this->routes[] = [$method, $uri, $target, $middlewares];
+            $this->routes[] = [$method, $uri, $actions];
         }
 
         return $this;
     }
 
-    private function filterCallablesAndMiddlewaresFromActionsArray(array $actions) {
-        $middlewares = [];
+    public function boot(Reactor $reactor, Server $server, Logger $logger) {
+        $server->attach($this);
+        $this->bootLoader = function(Bootable $bootable) use ($reactor, $server, $logger) {
+            return $bootable->boot($reactor, $server, $logger);
+        };
 
-        // We need to store ServerObserver route targets so they can be notified
-        // upon server state changes.
+        return [$this, "__invoke"];
+    }
+
+    private function bootRouteTarget(array $actions): array {
+        $middlewares = [];
+        $applications = [];
+
         foreach ($actions as $key => $action) {
-            if ($action instanceof ServerObserver) {
-                $this->serverObservers[] = $action;
-            } elseif (is_array($action) && $action[0] instanceof ServerObserver) {
-                $this->serverObservers[] = $action[0];
+            if ($action instanceof Bootable) {
+                $action = ($this->bootLoader)($action);
             }
             if ($action instanceof Middleware) {
                 $middlewares[] = [$action, "do"];
-                if (!is_callable($action)) {
-                    unset($actions[$key]);
-                }
-            } elseif (is_array($action) && is_object($action[0]) && $action[0] instanceof Middleware) {
-                $middlewares[] = $action[0];
+            } elseif (is_array($action) && $action[0] instanceof Middleware) {
+                $middlewares[] = [$action[0], "do"];
             }
-            if ($action instanceof LoggerAware) {
-                $this->loggerAwares[] = $action;
-            } elseif (is_array($action) && is_object($action[0]) && $action[0] instanceof LoggerAware) {
-                $this->loggerAwares[] = $action[0];
+            if (is_callable($action)) {
+                $applications[] = $action;
             }
         }
 
-        $actions = array_values($actions);
-
-        if (empty($actions[1])) {
-            return [$actions[0], $middlewares];
+        if (empty($applications[1])) {
+            return [$applications[0], $middlewares];
         }
 
-        return [function(Request $request, Response $response) use ($actions) {
-            foreach ($actions as $action) {
-                $result = ($action)($request, $response);
+        return [function(Request $request, Response $response) use ($applications) {
+            foreach ($applications as $application) {
+                $result = ($application)($request, $response);
                 if ($result instanceof \Generator) {
                     yield from $result;
                 }
@@ -281,53 +281,33 @@ class Router implements ServerObserver, LoggerAware, Middleware {
     }
 
     /**
-     * Assign the process-wide logger instance to route handlers requiring it
-     *
-     * @param PsrLogger $logger
-     * @return void
-     */
-    public function setLogger(PsrLogger $logger) {
-        $this->logger = $logger;
-    }
-
-    /**
      * React to server state changes
      *
      * Here we generate our dispatcher when the server notifies us that it is
-     * ready to start (Server::STARTING). Because the Router is an instance of
-     * Aerys\ServerObserver it will automatically be attached to the server as
-     * an observer when passed to Aerys\Host::use().
+     * ready to start (Server::STARTING).
      *
-     * @param \Aerys\Server $server The notifying Aerys\Server instance
+     * @param \SplSubject $subject
      * @return \Amp\Promise
      */
-    public function update(Server $server): Promise {
-        $observerPromises = [];
-        foreach ($this->serverObservers as $serverObserver) {
-            $observerPromises[] = $serverObserver->update($server);
-        }
-        switch ($this->state = $server->state()) {
+    public function update(\SplSubject $subject): Promise {
+        switch ($this->state = $subject->state()) {
             case Server::STOPPED:
                 $this->routeDispatcher = null;
                 break;
             case Server::STARTING:
                 if (empty($this->routes)) {
-                    $observerPromises[] = new Failure(new \DomainException(
+                    return new Failure(new \DomainException(
                         "Router start failure: no routes registered"
                     ));
-                    break;
                 }
                 $this->routeDispatcher = simpleDispatcher(function(RouteCollector $rc) {
-                    foreach ($this->routes as list($method, $uri, $action, $middlewares)) {
-                        $rc->addRoute($method, $uri, [$action, $middlewares]);
+                    foreach ($this->routes as list($method, $uri, $actions)) {
+                        $rc->addRoute($method, $uri, $this->bootRouteTarget($actions));
                     }
                 });
-                foreach ($this->loggerAwares as $loggerAware) {
-                    $loggerAware->setLogger($this->logger);
-                }
                 break;
         }
 
-        return any($observerPromises);
+        return new Success;
     }
 }

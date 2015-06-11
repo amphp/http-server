@@ -41,14 +41,19 @@ class Bootstrapper {
         }
 
         $options = $this->generateOptionsObjFromArray($options);
-        $hosts = \call_user_func($this->hostAggregator) ?: [new Host];
         $vhosts = new VhostContainer;
-        foreach ($hosts as $host) {
-            $vhost = $this->buildVhost($logger, $host);
-            $vhosts->use($vhost);
-        }
         $timeContext = new TimeContext($reactor, $logger);
         $server = new Server($reactor, $options, $vhosts, $logger, $timeContext);
+        $server->attach($timeContext);
+
+        $bootLoader = function(Bootable $bootable) use ($reactor, $server, $logger) {
+            return $bootable->boot($reactor, $server, $logger);
+        };
+        $hosts = \call_user_func($this->hostAggregator) ?: [new Host];
+        foreach ($hosts as $host) {
+            $vhost = $this->buildVhost($host, $bootLoader);
+            $vhosts->use($vhost);
+        }
 
         return $server;
     }
@@ -106,21 +111,21 @@ class Bootstrapper {
         return $publicOptions;
     }
 
-    private function buildVhost(Logger $logger, Host $host) {
+    private function buildVhost(Host $host, callable $bootLoader): Vhost {
         try {
             $hostExport = $host->export();
             $address = $hostExport["address"];
             $port = $hostExport["port"];
             $name = $hostExport["name"];
             $actions = $hostExport["actions"];
-            $filters = $hostExport["filters"];
-            $application = $this->buildApplication($logger, $actions);
-            $vhost = new Vhost($name, $address, $port, $application, $filters);
+            list($application, $middlewares) = $this->bootApplication($actions, $bootLoader);
+            $vhost = new Vhost($name, $address, $port, $application, $middlewares);
             if ($crypto = $hostExport["crypto"]) {
                 $vhost->setCrypto($crypto);
             }
 
             return $vhost;
+
         } catch (\BaseException $previousException) {
             throw new \DomainException(
                 "Failed building Vhost instance",
@@ -130,65 +135,65 @@ class Bootstrapper {
         }
     }
 
-    private function buildApplication(Logger $logger, array $actions) {
+    private function bootApplication(array $actions, callable $bootLoader): array {
+        $middlewares = [];
+        $applications = [];
+
         foreach ($actions as $key => $action) {
-            if (!is_callable($action)) {
-                throw new \DomainException(
-                    "Application action at index {$key} is not callable"
-                );
+            $action = ($action instanceof Bootable) ? $bootLoader($action) : $action;
+            if ($action instanceof Middleware) {
+                $middlewares[] = [$action, "do"];
+            } elseif (is_array($action) && $action[0] instanceof Middleware) {
+                $middlewares[] = [$action[0], "do"];
             }
-            if ($action instanceof PsrLoggerAware) {
-                $action->setLogger($logger);
-            } elseif (is_array($action) && is_object($action[0]) && $action[0] instanceof PsrLoggerAware) {
-                $action[0]->setLogger($logger);
+
+            if (is_callable($action)) {
+                $applications[] = $action;
             }
         }
 
-        if (empty($actions)) {
-            return function(Request $request, Response $response) {
+        if (empty($applications)) {
+            $application = function(Request $request, Response $response) {
                 $response->end("<html><body><h1>It works!</h1></body></html>");
             };
+
+            return [$application, $middlewares];
         }
 
-        if (count($actions) === 1) {
-            return current($actions);
+        if (count($applications) === 1) {
+            $application = current($applications);
+
+            return [$application, $middlewares];
         }
 
-        // We create a ServerObserver around our stateful multi-responder
-        // so that if the server stops while we're iterating over our coroutines
-        // we can send a 503 response. This prevents application responders from
-        // ever needing to pay attention to the server's state themselves.
-        $application = new class($actions) implements ServerObserver {
-            private $actions;
-            private $observers = [];
+        // Observe the Server in our stateful multi-responder so if a shutdown triggers
+        // while we're iterating over our coroutines we can send a 503 response. This
+        // obviates the need for applications to pay attention to server state themeselves.
+        $application = $bootLoader(new class($applications) implements Bootable, \SplObserver {
+            private $applications;
             private $isStopping = false;
 
-            public function __construct(array $actions) {
-                $this->actions = $actions;
-                foreach ($this->actions as $action) {
-                    if ($action instanceof ServerObserver) {
-                        $this->observers[] = $action;
-                    } elseif (is_array($action) && $action[0] instanceof ServerObserver) {
-                        $this->observers[] = $action[0];
-                    }
-                }
+            public function __construct(array $applications) {
+                $this->applications = $applications;
             }
 
-            public function update(Server $server): Promise {
-                $observerPromises = [];
-                foreach ($this->observers as $observer) {
-                    $observerPromises[] = $observer->update($server);
-                }
-                if ($server->state() === Server::STOPPING) {
+            public function boot(Reactor $reactor, Server $server, Logger $logger) {
+                $server->attach($this);
+
+                return [$this, "__invoke"];
+            }
+
+            public function update(\SplSubject $subject): Promise {
+                if ($subject->state() === Server::STOPPING) {
                     $this->isStopping = true;
                 }
 
-                return any($observerPromises);
+                return new Success;
             }
 
             public function __invoke(Request $request, Response $response) {
-                foreach ($this->actions as $action) {
-                    $out = ($action)($request, $response);
+                foreach ($this->applications as $action) {
+                    $out = $action($request, $response);
                     if ($out instanceof \Generator) {
                         yield from $out;
                     }
@@ -204,8 +209,8 @@ class Bootstrapper {
                     }
                 }
             }
-        };
+        });
 
-        return [$application, "__invoke"];
+        return [$application, $middlewares];
     }
 }

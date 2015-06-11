@@ -9,7 +9,7 @@ use Amp\{
     Struct
 };
 
-class TimeContext implements ServerObserver {
+class TimeContext implements \SplObserver {
     use Struct;
 
     private $reactor;
@@ -25,8 +25,8 @@ class TimeContext implements ServerObserver {
         $this->logger = $logger;
     }
 
-    final public function update(Server $server): Promise {
-        switch ($server->state()) {
+    final public function update(\SplSubject $subject): Promise {
+        switch ($subject->state()) {
             case Server::STARTED:
                 $this->watcherId = $this->reactor->repeat([$this, "updateTime"], 1000);
                 $this->updateTime();

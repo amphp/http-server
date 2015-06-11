@@ -7,19 +7,10 @@ use Amp\{
     function any
 };
 
-class VhostContainer implements \Countable, ServerObserver {
+class VhostContainer implements \Countable {
     private $vhosts = [];
     private $cachedVhostCount = 0;
     private $defaultHost;
-
-    public function update(Server $server): Promise {
-        $observerPromises = [];
-        foreach ($this->vhosts as $serverObserver) {
-            $observerPromises[] = $serverObserver->update($server);
-        }
-
-        return any($observerPromises);
-    }
 
     /**
      * Add a virtual host to the collection

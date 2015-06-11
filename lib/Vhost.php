@@ -7,7 +7,7 @@ use Amp\{
     Success
 };
 
-class Vhost implements ServerObserver {
+class Vhost {
     private $application;
     private $address;
     private $port;
@@ -56,14 +56,6 @@ class Vhost implements ServerObserver {
         $this->application = $application;
         $this->filters = $filters;
         $this->id = ($this->name ?? $this->address) . ":" . $this->port;
-    }
-
-    public function update(Server $server): Promise {
-        $app = is_array($this->application) ? $this->application[0] : $this->application;
-
-        return ($app instanceof ServerObserver)
-            ? $app->update($server)
-            : new Success;
     }
 
     private function setAddress(string $address) {

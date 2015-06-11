@@ -5,26 +5,25 @@ namespace Aerys\Root;
 use Amp\{
     Reactor,
     Promise,
-    Success,
-    function reactor
+    Success
 };
 use Aerys\{
     Server,
     Request,
     Response,
-    ServerObserver,
     const HTTP_STATUS
 };
 
-abstract class Root implements ServerObserver {
+abstract class Root implements \SplObserver {
     const PRECOND_NOT_MODIFIED = 1;
     const PRECOND_FAILED = 2;
     const PRECOND_IF_RANGE_OK = 3;
     const PRECOND_IF_RANGE_FAILED = 4;
     const PRECOND_OK = 5;
 
-    protected $root;
     protected $reactor;
+    protected $root;
+    protected $debug;
     protected $multipartBoundary;
     protected $cache = [];
     protected $cacheTimeouts = [];
@@ -46,7 +45,6 @@ abstract class Root implements ServerObserver {
     protected $bufferedFileCount = 0;
     protected $bufferedFileMaxCount = 50;
     protected $bufferedFileMaxSize = 524288;
-    protected $debug;
 
     /**
      * Generate a Stat instance from the given path and index file list
@@ -81,10 +79,12 @@ abstract class Root implements ServerObserver {
     abstract protected function respond(Response $response, Stat $stat, Range $range = null);
 
     /**
-     * @param string $root
      * @param \Amp\Reactor $reactor
+     * @param string $root
+     * @param bool $debug
      */
-    public function __construct(string $root, Reactor $reactor = null) {
+    public function __construct(Reactor $reactor, string $root, bool $debug) {
+        $this->reactor = $reactor;
         $root = str_replace("\\", "/", $root);
         if (!(is_readable($root) && is_dir($root))) {
             throw new \InvalidArgumentException(
@@ -92,7 +92,7 @@ abstract class Root implements ServerObserver {
             );
         }
         $this->root = rtrim(realpath($root), "/");
-        $this->reactor = $reactor ?: reactor();
+        $this->debug = $debug;
         $this->multipartBoundary = uniqid('', true);
         $this->cacheWatcher = $this->reactor->repeat(function() {
             $this->now = $now = time();
@@ -688,14 +688,11 @@ abstract class Root implements ServerObserver {
     /**
      * Receive notifications from the server when it starts/stops
      *
-     * @param \Aerys\Server $server
+     * @param \SplSubject $subject
      * @return \Amp\Promise
      */
-    public function update(Server $server): Promise {
-        switch ($server->state()) {
-            case Server::STARTING:
-                $this->debug = $server->getOption("debug");
-                break;
+    public function update(\SplSubject $subject): Promise {
+        switch ($subject->state()) {
             case Server::STARTED:
                 $this->reactor->enable($this->cacheWatcher);
                 break;

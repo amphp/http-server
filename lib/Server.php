@@ -17,7 +17,7 @@ use Amp\{
     function all
 };
 
-class Server {
+class Server implements \SplSubject {
     use Struct;
 
     const STOPPED  = 0;
@@ -67,7 +67,6 @@ class Server {
         $this->logger = $logger;
         $this->timeContext = $timeContext;
         $this->observers = new \SplObjectStorage;
-        $this->observers->attach($vhostContainer);
         $this->observers->attach($timeContext);
         $this->decrementer = function() {
             if ($this->clientCount) {
@@ -97,7 +96,7 @@ class Server {
             $this->httpDriver[$version] = $http;
         }
     }
-    
+
     /**
      * Retrieve the current server state
      *
@@ -119,22 +118,22 @@ class Server {
     }
 
     /**
-     * Attach a ServerObserver
+     * Attach an observer
      *
-     * @param \Aerys\ServerObserver $observer
+     * @param \SplObserver $observer
      * @return void
      */
-    public function attach(ServerObserver $observer) {
+    public function attach(\SplObserver $observer) {
         $this->observers->attach($observer);
     }
 
     /**
-     * Detach a ServerObserver
+     * Detach an Observer
      *
-     * @param \Aerys\ServerObserver $observer
+     * @param \SplObserver $observer
      * @return void
      */
-    public function detach(ServerObserver $observer) {
+    public function detach(\SplObserver $observer) {
         $this->observers->detach($observer);
     }
 
@@ -423,7 +422,7 @@ class Server {
 
     private function startWrite(Client $client, $final = false) {
         $this->onWritable($this->reactor, $client->writeWatcher, $client->socket, $client);
-        
+
         if ($final) {
             $this->reactor->immediately(function() use ($client) {
                 if ($client->requestParser) {

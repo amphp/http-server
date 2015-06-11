@@ -9,7 +9,6 @@ class Host {
     private $address = "*";
     private $crypto = [];
     private $actions = [];
-    private $filters = [];
     private $redirect;
 
     public function __construct() {
@@ -80,20 +79,13 @@ class Host {
      * @return self
      */
     public function use($action): Host {
-        $i = 0;
-        if (is_callable($action)) {
-            $i++;
-            $this->actions[] = $action;
-        }
-        if ($action instanceof Middleware) {
-            $i++;
-            $this->filters[] = [$action, "do"];
-        }
-        if (empty($i)) {
+        if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable)) {
             throw new \InvalidArgumentException(
                 __METHOD__ . " requires a callable action or Middleware instance"
             );
         }
+
+        $this->actions[] = $action;
 
         return $this;
     }
@@ -183,7 +175,6 @@ class Host {
             "name"      => $this->name,
             "crypto"    => $this->crypto,
             "actions"   => $actions,
-            "filters"   => $this->filters,
         ];
     }
 

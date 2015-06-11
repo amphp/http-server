@@ -22,20 +22,14 @@ use Aerys\{
     Request,
     Response,
     Server,
-    ServerObserver,
     Websocket,
     const HTTP_STATUS
 };
 
-use Psr\Log\{
-    LoggerInterface as PsrLogger,
-    LoggerAwareInterface as PsrLoggerAware
-};
-
-class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLoggerAware {
-    private $application;
-    private $logger;
+class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
     private $reactor;
+    private $logger;
+    private $application;
     private $proxy;
     private $state;
     private $clients = [];
@@ -72,21 +66,11 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
     const DATA = 2;
     const ERROR = 3;
 
-    public function __construct(Websocket $application, PsrLogger $logger = null, Reactor $reactor = null) {
+    public function __construct(Reactor $reactor, Logger $logger, Websocket $application) {
+        $this->reactor = $reactor;
+        $this->logger = $logger;
         $this->application = $application;
-        $this->reactor = $reactor ?: reactor();
         $this->proxy = new Rfc6455EndpointProxy($this);
-        $this->logger = $logger ?: new class implements PsrLogger {
-            public function emergency($message, array $context = []) {}
-            public function alert($message, array $context = []) {}
-            public function critical($message, array $context = []) {}
-            public function error($message, array $context = []) {}
-            public function warning($message, array $context = []) {}
-            public function notice($message, array $context = []) {}
-            public function info($message, array $context = []) {}
-            public function debug($message, array $context = []) {}
-            public function log($level, $message, array $context = []) {}
-        };
     }
 
     public function __invoke(Request $request, Response $response) {
@@ -209,7 +193,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
             $this->clients[$client->id] = $client;
             $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
 
-            \Amp\resolve($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]));
+            resolve($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]), $this->reactor);
         });
     }
 
@@ -332,7 +316,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
                     @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
                     $this->reactor->cancel($client->readWatcher);
                     $client->readWatcher = null;
-                    resolve($this->doClose($client, $code, $reason));
+                    resolve($this->doClose($client, $code, $reason), $this->reactor);
                 }
                 break;
 
@@ -359,7 +343,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
         if (!$client->msgPromisor) {
             $client->msgPromisor = new Deferred;
             $msg = new Message($client->msgPromisor->promise());
-            resolve($this->tryAppOnData($client, $msg));
+            resolve($this->tryAppOnData($client, $msg), $this->reactor);
         }
 
         $client->msgPromisor->update($data);
@@ -398,7 +382,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
             }
 
             if (!$client->closedAt) {
-                resolve($this->doClose($client, $code, $msg));
+                resolve($this->doClose($client, $code, $msg), $this->reactor);
             }
         }
     }
@@ -413,7 +397,9 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
         } elseif (!is_resource($socket) || @feof($socket)) {
             if (!$client->closedAt) {
                 $client->closedAt = $this->now;
-                resolve($this->tryAppOnClose($client->id, Code::ABNORMAL_CLOSE, "Client closed underlying TCP connection"));
+                $code = Code::ABNORMAL_CLOSE;
+                $reason = "Client closed underlying TCP connection"
+                resolve($this->tryAppOnClose($client->id, $code, $reason), $this->reactor);
             } else {
                 unset($this->closeTimeouts[$client->id]);
             }
@@ -560,7 +546,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
         if (isset($this->clients[$clientId])) {
-            resolve($this->doClose($this->clients[$clientId], $code, $reason));
+            resolve($this->doClose($this->clients[$clientId], $code, $reason), $this->reactor);
         }
     }
 
@@ -590,13 +576,12 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
         return array_keys($this->clients);
     }
 
-    public function update(Server $server): Promise {
-        $this->state = $state = $server->state();
-        switch ($state) {
+    public function update(\SplSubject $subject): Promise {
+        switch ($this->state = $subject->state()) {
             case Server::STARTING:
                 $result = $this->application->onStart($this->proxy);
                 if ($result instanceof \Generator) {
-                    resolve($result);
+                    return resolve($result, $this->reactor);
                 }
                 break;
 
@@ -618,13 +603,13 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
                 break;
 
             case Server::STOPPED:
+                $promises = [];
                 $result = $this->application->onStop();
                 if ($result instanceof \Generator) {
-                    resolve($result);
+                    $promises[] = resolve($result, $this->reactor);
                 }
 
                 // we are not going to wait for a proper self::OP_CLOSE answer (because else we'd need to timeout for 3 seconds, not worth it), but we will ensure to at least *have written* it
-                $promises = [];
                 foreach ($this->clients as $client) {
                     if (!empty($client->writeDeferredControlQueue)) {
                         $promise = end($client->writeDeferredControlQueue)->promise();
@@ -639,6 +624,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
                         $this->unloadClient($client);
                     }
                 });
+
                 return $promise;
         }
 
@@ -676,20 +662,6 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
                 break;
             }
         }
-    }
-
-    /**
-     * Assign the process-wide logger instance
-     *
-     * When added to a Host or Router the endpoint will have its
-     * Logger instance automatically assigned because this class
-     * implements PsrLoggerAware.
-     *
-     * @param PsrLogger $logger
-     * @return void
-     */
-    public function setLogger(PsrLogger $logger) {
-        $this->logger = $logger;
     }
 
     /**

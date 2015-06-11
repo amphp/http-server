@@ -8,8 +8,8 @@ use Aerys\Response;
 final class UvRoot extends Root {
     private $loop;
 
-    public function __construct(string $root, UvReactor $reactor) {
-        parent::__construct($root, $reactor);
+    public function __construct(UvReactor $reactor, string $root) {
+        parent::__construct($reactor, $root);
         $this->loop = $reactor->getUnderlyingLoop();
     }
 

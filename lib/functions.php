@@ -2,59 +2,95 @@
 
 namespace Aerys;
 
+use Amp\Reactor;
+
 /**
- * Create a router for use with Host instances
+ * Create a router for use in a Host instance
  *
  * @param array $options Router options
- * @return \Aerys\Router
+ * @return \Aerys\Router Returns a Bootable Router instance
  */
 function router(array $options = []) {
     $router = new Router;
     foreach ($options as $key => $value) {
-        $router->setOption($options);
+        $router->setOption($key, $value);
     }
+
     return $router;
 }
 
 /**
- * Create a Websocket application action for attachment to a Host
+ * Create a Websocket application for use in a Host instance
  *
- * @param \Aerys\Websocket $app The websocket app to use
+ * @param \Aerys\Websocket|\Aerys\Bootable $app The websocket app to use
  * @param array $options Endpoint options
- * @return \Aerys\WebsocketEndpoint
+ * @return \Aerys\Bootable Returns a Bootable to manufacture an Aerys\Websocket\Endpoint
  */
-function websocket(Websocket $app, array $options = []) {
-    $endpoint = new Rfc6455Endpoint($app);
-    foreach ($options as $key => $value) {
-        $endpoint->setOption($key, $value);
-    }
-    return $endpoint;
+function websocket($app, array $options = []) {
+    return new class($app, $options) implements Bootable {
+        private $app;
+        private $options;
+        public function __construct($app, array $options) {
+            $this->app = $app;
+            $this->options = $options;
+        }
+        public function boot(Reactor $reactor, Server $server, Logger $logger) {
+            $app = ($this->app instanceof Bootable)
+                ? $this->app->boot($reactor, $server, $logger)
+                : $this->app;
+            if (!$app instanceof Websocket) {
+                $type = is_object($app) ? get_class($app) : gettype($app);
+                throw new \DomainException(
+                    "Cannot boot websocket handler; Aerys\\Websocket required, {$type} provided"
+                );
+            }
+            $endpoint = new Rfc6455Endpoint($reactor, $logger, $app);
+            foreach ($options as $key => $value) {
+                $endpoint->setOption($key, $value);
+            }
+            $this->app = null;
+            $this->options = null;
+
+            return [$endpoint, "__invoke"];
+        }
+    };
 }
 
 /**
- * Create a static file root for use with Host instances
+ * Create a static file root for use in a Host instance
  *
  * @param string $docroot The filesystem directory from which to serve documents
- * @param array $options Root options
- * @return \Aerys\Root\Root
+ * @param array $options Static file serving options
+ * @return \Aerys\Bootable Returns a Bootable to manufacture an Aerys\Root\Root
  */
 function root(string $docroot, array $options = []) {
-    $reactor = \Amp\reactor();
-    if ($reactor instanceof \Amp\NativeReactor) {
-        $root = new Root\BlockingRoot($docroot, $reactor);
-    } elseif ($reactor instanceof \Amp\UvReactor) {
-        $root = new Root\UvRoot($docroot, $reactor);
-    }
+    return new class($docroot, $options) implements Bootable {
+        private $docroot;
+        private $options;
+        public function __construct(string $docroot, array $options) {
+            $this->docroot = $docroot;
+            $this->options = $options;
+        }
+        public function boot(Reactor $reactor, Server $server, Logger $logger) {
+            $debug = $server->getOption("debug");
+            $root = ($reactor instanceof \Amp\UvReactor)
+                ? new Root\UvRoot($reactor, $this->docroot, $debug)
+                : new Root\BlockingRoot($reactor, $this->docroot, $debug)
+            ;
+            $options = $this->options;
+            $defaultMimeFile = __DIR__ ."/../etc/mime";
+            if (!array_key_exists("mimeFile", $options) && file_exists($defaultMimeFile)) {
+                $options["mimeFile"] = $defaultMimeFile;
+            }
+            foreach ($options as $key => $value) {
+                $root->setOption($key, $value);
+            }
 
-    $defaultMimeFile = __DIR__ ."/../etc/mime";
-    if (!array_key_exists("mimeFile", $options) && file_exists($defaultMimeFile)) {
-        $options["mimeFile"] = $defaultMimeFile;
-    }
-    foreach ($options as $key => $value) {
-        $root->setOption($key, $value);
-    }
+            $server->attach($root);
 
-    return $root;
+            return [$root, "__invoke"];
+        }
+    };
 }
 
 /**
