@@ -959,8 +959,8 @@ class Server implements \SplSubject {
         $ireq->responseWriter->send([
             ":status" => HTTP_STATUS["SWITCHING_PROTOCOLS"],
             ":reason" => "Switching Protocols",
-            "Connection" => "Upgrade",
-            "Upgrade" => "h2c",
+            "connection" => ["Upgrade"],
+            "upgrade" => ["h2c"],
         ]);
         $ireq->responseWriter->send(false); // flush before replacing
 
