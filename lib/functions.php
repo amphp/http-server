@@ -51,6 +51,8 @@ function websocket($app, array $options = []) {
             $this->app = null;
             $this->options = null;
 
+            $server->attach($endpoint);
+
             return [$endpoint, "__invoke"];
         }
     };
