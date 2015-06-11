@@ -87,7 +87,7 @@ class Host {
         }
         if ($action instanceof Middleware) {
             $i++;
-            $this->filters[] = [$action, "use"];
+            $this->filters[] = [$action, "do"];
         }
         if (empty($i)) {
             throw new \InvalidArgumentException(

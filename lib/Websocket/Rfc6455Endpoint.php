@@ -173,7 +173,7 @@ class Rfc6455Endpoint implements Endpoint, ServerObserver, Middleware, PsrLogger
         $handshaker->end();
     }
 
-    public function use(InternalRequest $ireq, Options $options) {
+    public function do(InternalRequest $ireq, Options $options) {
         $headers = yield;
         if ($headers[":status"] == 101) {
             $yield = yield $headers;

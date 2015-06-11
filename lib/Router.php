@@ -94,7 +94,7 @@ class Router implements ServerObserver, LoggerAware, Middleware {
         }
     }
 
-    public function use(InternalRequest $ireq, Options $options) {
+    public function do(InternalRequest $ireq, Options $options) {
         $toMatch = $ireq->uriPath;
 
         if (isset($this->cache[$toMatch])) {
@@ -247,7 +247,7 @@ class Router implements ServerObserver, LoggerAware, Middleware {
                 $this->serverObservers[] = $action[0];
             }
             if ($action instanceof Middleware) {
-                $middlewares[] = [$action, "use"];
+                $middlewares[] = [$action, "do"];
                 if (!is_callable($action)) {
                     unset($actions[$key]);
                 }
