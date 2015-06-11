@@ -55,13 +55,13 @@ class Server implements \SplSubject {
     public function __construct(
         Reactor $reactor,
         Options $options,
-        VhostContainer $vhostContainer,
+        VhostContainer $vhosts,
         Logger $logger,
         Ticker $ticker
     ) {
         $this->reactor = $reactor;
         $this->options = $options;
-        $this->vhostContainer = $vhostContainer;
+        $this->vhosts = $vhosts;
         $this->logger = $logger;
         $this->ticker = $ticker;
         $this->observers = new \SplObjectStorage;
@@ -171,7 +171,7 @@ class Server implements \SplSubject {
         try {
             switch ($this->state) {
                 case self::STOPPED:
-                    if ($this->vhostContainer->count() === 0) {
+                    if ($this->vhosts->count() === 0) {
                         return new Failure(new \LogicException(
                             "Cannot start: no virtual hosts registered in composed VhostContainer"
                         ));
@@ -237,8 +237,8 @@ class Server implements \SplSubject {
 
     private function generateBindableAddressContextMap() {
         $addrCtxMap = [];
-        $addresses = $this->vhostContainer->getBindableAddresses();
-        $tlsBindings = $this->vhostContainer->getTlsBindingsByAddress();
+        $addresses = $this->vhosts->getBindableAddresses();
+        $tlsBindings = $this->vhosts->getTlsBindingsByAddress();
         $backlogSize = $this->options->socketBacklogSize;
         $shouldReusePort = !$this->options->debug;
 
@@ -660,8 +660,8 @@ class Server implements \SplSubject {
             $ireq->preAppResponder = [$this, "sendPreAppVersionNotSupportedResponse"];
         }
 
-        if (!$vhost = $this->vhostContainer->selectHost($ireq)) {
-            $vhost = $this->vhostContainer->getDefaultHost();
+        if (!$vhost = $this->vhosts->selectHost($ireq)) {
+            $vhost = $this->vhosts->getDefaultHost();
             $ireq->preAppResponder = [$this, "sendPreAppInvalidHostResponse"];
         }
 
