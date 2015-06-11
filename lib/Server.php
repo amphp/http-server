@@ -840,10 +840,7 @@ class Server implements \SplSubject {
 
     private function sendErrorResponse(\BaseException $error, InternalRequest $ireq) {
         $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
-        $msg = ($this->options->debug)
-            ? $this->makeDebugMessage($error, $ireq)
-            : "<p>Something went wrong ...</p>"
-        ;
+        $msg = ($this->options->debug) ? "<pre>{$error}</pre>" : "<p>Something went wrong ...</p>";
         $body = makeGenericBody($status, [
             "sub_heading" =>"Requested: {$ireq->uri}",
             "msg" => $msg,
@@ -851,30 +848,6 @@ class Server implements \SplSubject {
         $ireq->response->setStatus(HTTP_STATUS["INTERNAL_SERVER_ERROR"]);
         $ireq->response->setHeader("Connection", "close");
         $ireq->response->end($body);
-    }
-
-    private function makeDebugMessage(\BaseException $error, InternalRequest $ireq): string {
-        $vars = [
-            "isEncrypted"   => ($ireq->isEncrypted ? "true" : "false"),
-            "serverAddr"    => $ireq->serverAddr,
-            "serverPort"    => $ireq->serverPort,
-            "clientAddr"    => $ireq->clientAddr,
-            "clientPort"    => $ireq->clientPort,
-            "method"        => $ireq->method,
-            "protocol"      => $ireq->protocol,
-            "uri"           => $ireq->uriRaw,
-            "headers"       => $ireq->headers,
-        ];
-
-        $map = function($s) { return substr($s, 4); };
-        $vars = implode("\n", array_map($map, array_slice(explode("\n", print_r($vars, true)), 2, -2)));
-
-        $msg[] = "<pre>{$error}</pre>";
-        $msg[] = "\n<hr/>\n";
-        $msg[] = "<pre>{$vars}</pre>";
-        $msg[] = "\n";
-
-        return implode($msg);
     }
 
     private function close(Client $client) {
