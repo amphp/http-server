@@ -98,6 +98,10 @@ class WatcherProcess extends Process {
 
     private function determineWorkerCount(Console $console) {
         if (!$this->canReusePort()) {
+            $this->logger->warning(
+                "Environment does not support binding on the same port in multiple processes; " .
+                "only one worker will be used."
+            );
             return 1;
         }
 
