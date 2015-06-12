@@ -26,7 +26,7 @@ class Server implements \SplSubject {
     private $state = self::STOPPED;
     private $reactor;
     private $options;
-    private $vhostContainer;
+    private $vhosts;
     private $logger;
     private $ticker;
     private $observers;
