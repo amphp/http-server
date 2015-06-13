@@ -308,7 +308,7 @@ class Http1Driver implements HttpDriver {
                             }
 
                             if ($bodyBufferSize >= $bodyEmitSize) {
-                                ($this->emit)([HttpDriver::ENTITY_PART, ["body" => $body], null], $callbackData);
+                                ($this->emit)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $callbackData);
                                 $body = '';
                                 $bodyBufferSize = 0;
                             }
@@ -327,7 +327,7 @@ class Http1Driver implements HttpDriver {
 
                 while ($bufferDataSize < $contentLength) {
                     if ($bufferDataSize >= $bodyEmitSize) {
-                        ($this->emit)([HttpDriver::ENTITY_PART, ["body" => $buffer], null], $callbackData);
+                        ($this->emit)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $buffer], null], $callbackData);
                         $buffer = "";
                         $contentLength -= $bufferDataSize;
                     }
