@@ -345,7 +345,7 @@ class Http1Driver implements HttpDriver {
             }
 
             if ($body != "") {
-                ($this->emit)([HttpDriver::ENTITY_PART, ["body" => $body], null], $callbackData);
+                ($this->emit)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $callbackData);
             }
 
             $parseResult["unparsed"] = $buffer;
