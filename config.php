@@ -1,19 +1,29 @@
 <?php
 
-use Aerys\{ Host, Request, Response, Router, function root };
+use Aerys\{ Host, Request, Response, Router, function root, function router };
 
 /* --- Global server options -------------------------------------------------------------------- */
 
 const AERYS_OPTIONS = [
     "keepAliveTimeout" => 60,
-    "deflateMinimumLength" => 0,
+    //"deflateMinimumLength" => 0,
 ];
 
 /* --- http://localhost:1337/ ------------------------------------------------------------------- */
 
-$router = (new Router)
+$router = router()
     ->get("/", function(Request $req, Response $res) {
         $res->send("<html><body><h1>Hello, world.</h1></body></html>");
+        /*
+        $res->stream("<html><body><h1>Hello, world.</h1>");
+        $res->flush();
+        $res->stream("</body></html>");
+        $res->end();
+        */
+    })
+    ->get("/router/{myarg}", function(Request $req, Response $res, array $routeArgs) {
+        $body = "<html><body><h1>Route Args at param 3</h1>".print_r($routeArgs, true)."</body></html>";
+        $res->send($body);
     })
     ->post("/", function(Request $req, Response $res) {
         $res->send("<html><body><h1>Hello, world (POST).</h1></body></html>");
@@ -36,12 +46,12 @@ $router = (new Router)
         }
     })
     ->post("/body1", function(Request $req, Response $res) {
-        $body = yield $req->body;
+        $body = yield $req->getBody();
         $res->send("<html><body><h1>Buffer Body Echo:</h1><pre>{$body}</pre></body></html>");
     })
     ->post("/body2", function(Request $req, Response $res) {
         $body = "";
-        foreach ($req->body->stream() as $bodyPart) {
+        foreach ($req->getBody()->stream() as $bodyPart) {
             $body .= yield $bodyPart;
         }
         $res->send("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
