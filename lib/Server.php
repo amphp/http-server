@@ -12,8 +12,7 @@ use Amp\{
     function resolve,
     function timeout,
     function any,
-    function all,
-    function __coroutineYieldError
+    function all
 };
 
 class Server implements \SplSubject {
@@ -52,7 +51,6 @@ class Server implements \SplSubject {
     private $onParse;
     private $onCoroutineAppResolve;
     private $onCompletedData;
-    private $bodyPromisify;
 
     public function __construct(
         Reactor $reactor,
@@ -86,7 +84,6 @@ class Server implements \SplSubject {
         $this->onParse = $this->makePrivateCallable("onParse");
         $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
         $this->onCompletedData = $this->makePrivateCallable("onCompletedData");
-        $this->bodyPromisify = $this->makePrivateCallable("bodyPromisify");
 
         $this->initHttp(new Http1Driver($options, $this->onParse, $this->startWrite));
         //$this->initHttp(new Http2Driver($options, $this->onParse, $this->startWrite));
@@ -758,20 +755,6 @@ class Server implements \SplSubject {
         }
     }
 
-    private function bodyPromisify($generator, $key, $yielded) {
-        if ($yielded instanceof Body) {
-            $buffer = [];
-            foreach ($yielded->stream() as $part) {
-                $buffer[] = yield $part;
-            }
-            return implode($buffer);
-        } else {
-            throw new \DomainException(
-                __coroutineYieldError($generator, $key, $yielded)
-            );
-        }
-    }
-
     private function tryApplication(InternalRequest $ireq, callable $application) {
         try {
             $response = $this->initResponse($ireq);
@@ -779,7 +762,7 @@ class Server implements \SplSubject {
 
             $out = ($application)($request, $response);
             if ($out instanceof \Generator) {
-                $promise = resolve($out, $this->reactor, $this->bodyPromisify);
+                $promise = resolve($out, $this->reactor);
                 $promise->when($this->onCoroutineAppResolve, $ireq);
             } elseif ($response->state() & Response::STARTED) {
                 $response->end();
