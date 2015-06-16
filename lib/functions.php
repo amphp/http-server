@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Amp\Reactor;
+use Amp\{ Reactor, function makeGeneratorError };
 
 /**
  * Create a router for use in a Host instance
@@ -115,31 +115,6 @@ function parseCookie(string $cookies): array {
 }
 
 /**
- * A general purpose function for creating error messages from generator yields
- *
- * @param string $prefix
- * @param \Generator $generator
- * @return string
- */
-function makeGeneratorError(string $prefix, \Generator $generator): string {
-    if (!$generator->valid()) {
-        return $prefix;
-    }
-
-    $reflGen = new \ReflectionGenerator($generator);
-    $exeGen = $reflGen->getExecutingGenerator();
-    if ($isSubgenerator = ($exeGen !== $generator)) {
-        $reflGen = new \ReflectionGenerator($exeGen);
-    }
-
-    return sprintf(
-        $prefix . " on line %s in %s",
-        $reflGen->getExecutingLine(),
-        $reflGen->getExecutingFile()
-    );
-}
-
-/**
  * Process requests and responses with filters
  *
  * Is this function's cyclomatic complexity off the charts? Yes. Is this an extremely hot
@@ -179,8 +154,8 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                     } else {
                         $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                         throw new \DomainException(makeGeneratorError(
-                            "Codec error; header array required but {$type} returned",
-                            $filter
+                            $filter,
+                            "Codec error; header array required but {$type} returned"
                         ));
                     }
                 }
@@ -205,16 +180,16 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                             if ($filter->valid()) {
                                 $signal = isset($toSend) ? "FLUSH" : "END";
                                 throw new \DomainException(makeGeneratorError(
-                                    "Codec error; header array required from {$signal} signal",
-                                    $filter
+                                    $filter,
+                                    "Codec error; header array required from {$signal} signal"
                                 ));
                             } else {
                                 // this is always an error because the two-stage filter
                                 // process means any filter receiving non-header data
                                 // must participate in both stages
                                 throw new \DomainException(makeGeneratorError(
-                                    "Codec error; cannot detach without yielding/returning headers",
-                                    $filter
+                                    $filter,
+                                    "Codec error; cannot detach without yielding/returning headers"
                                 ));
                             }
                         }
@@ -225,8 +200,8 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                     } else {
                         $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                         throw new \DomainException(makeGeneratorError(
-                            "Codec error; header array required but {$type} yielded",
-                            $filter
+                            $filter,
+                            "Codec error; header array required but {$type} yielded"
                         ));
                     }
                 }
@@ -236,8 +211,8 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
             } else {
                 $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                 throw new \DomainException(makeGeneratorError(
+                    $filter,
                     "Codec error; header array required but {$type} yielded",
-                    $filter
                 ));
             }
         }
@@ -289,8 +264,8 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                             } else {
                                 $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                                 throw new \DomainException(makeGeneratorError(
-                                    "Codec error; string entity data required but {$type} returned",
-                                    $filter
+                                    $filter,
+                                    "Codec error; string entity data required but {$type} returned"
                                 ));
                             }
                         } else {
@@ -326,8 +301,8 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                     } else {
                         $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                         throw new \DomainException(makeGeneratorError(
-                            "Codec error; string entity data required but {$type} yielded",
-                            $filter
+                            $filter,
+                            "Codec error; string entity data required but {$type} yielded"
                         ));
                     }
                 }
@@ -359,34 +334,34 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
 function __validateCodecHeaders(\Generator $generator, array $headers) {
     if (!isset($headers[":status"])) {
         throw new \DomainException(makeGeneratorError(
-            "Missing :status key in yielded filter array",
-            $generator
+            $generator,
+            "Missing :status key in yielded filter array"
         ));
     }
     if (!is_int($headers[":status"])) {
         throw new \DomainException(makeGeneratorError(
-            "Non-integer :status key in yielded filter array",
-            $generator
+            $generator,
+            "Non-integer :status key in yielded filter array"
         ));
     }
     if ($headers[":status"] < 100 || $headers[":status"] > 599) {
         throw new \DomainException(makeGeneratorError(
-            ":status value must be in the range 100..599 in yielded filter array",
-            $generator
+            $generator,
+            ":status value must be in the range 100..599 in yielded filter array"
         ));
     }
     if (isset($headers[":reason"]) && !is_string($headers[":reason"])) {
         throw new \DomainException(makeGeneratorError(
-            "Non-string :reason value in yielded filter array",
-            $generator
+            $generator,
+            "Non-string :reason value in yielded filter array"
         ));
     }
 
     foreach ($headers as $headerField => $headerArray) {
         if (!is_string($headerField)) {
             throw new \DomainException(makeGeneratorError(
-                "Invalid numeric header field index in yielded filter array",
-                $generator
+                $generator,
+                "Invalid numeric header field index in yielded filter array"
             ));
         }
         if ($headerField[0] === ":") {
@@ -394,16 +369,16 @@ function __validateCodecHeaders(\Generator $generator, array $headers) {
         }
         if (!is_array($headerArray)) {
             throw new \DomainException(makeGeneratorError(
-                "Invalid non-array header entry at key {$headerField} in yielded filter array",
-                $generator
+                $generator,
+                "Invalid non-array header entry at key {$headerField} in yielded filter array"
             ));
         }
         foreach ($headerArray as $key => $headerValue) {
             if (!is_scalar($headerValue)) {
                 throw new \DomainException(makeGeneratorError(
+                    $generator,
                     "Invalid non-scalar header value at index {$key} of " .
-                    "{$headerField} array in yielded filter array",
-                    $generator
+                    "{$headerField} array in yielded filter array"
                 ));
             }
         }
