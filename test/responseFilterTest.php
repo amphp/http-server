@@ -64,4 +64,42 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
             }
         }
     }
+
+    public function testFilterThrowsIfHeadersNotReturnedWhenFlushing() {
+        try {
+            $filter = responseFilter([function() {
+                while(1) yield;
+            }]);
+            $filter->current();
+            $result = $filter->send([":status" => 200]);
+            $this->assertNull($result);
+            $filter->send(false);
+            $this->fail("Expected filter exception was not thrown");
+        } catch (CodecException $e) {
+            $e = $e->getPrevious();
+            $this->assertInstanceOf("DomainException", $e);
+            if (0 !== strpos($e->getMessage(), "Codec error; header array required from FLUSH signal")) {
+                $this->fail("Filter exception message differed from expected");
+            }
+        }
+    }
+
+    public function testFilterThrowsIfHeadersNotReturnedWhenEnding() {
+        try {
+            $filter = responseFilter([function() {
+                while(1) yield;
+            }]);
+            $filter->current();
+            $result = $filter->send([":status" => 200]);
+            $this->assertNull($result);
+            $filter->send(null);
+            $this->fail("Expected filter exception was not thrown");
+        } catch (CodecException $e) {
+            $e = $e->getPrevious();
+            $this->assertInstanceOf("DomainException", $e);
+            if (0 !== strpos($e->getMessage(), "Codec error; header array required from END signal")) {
+                $this->fail("Filter exception message differed from expected");
+            }
+        }
+    }
 }
