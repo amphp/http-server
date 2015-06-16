@@ -220,8 +220,8 @@ class Router implements Bootable, Middleware, \SplObserver {
 
         $uri = "/" . ltrim($uri, "/");
         if (substr($uri, -2) === "/?") {
-            $canonicalUri = substr($uri, 0, -1);
-            $redirectUri = substr($uri, 0, -2);
+            $canonicalUri = substr($uri, 0, -2);
+            $redirectUri = substr($uri, 0, -1);
             $this->routes[] = [$method, $canonicalUri, $actions];
             $this->routes[] = [$method, $redirectUri, [$this->canonicalRedirector]];
         } else {
