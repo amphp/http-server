@@ -212,11 +212,6 @@ class Router implements Bootable, Middleware, \SplObserver {
                 __METHOD__ . " requires a non-empty string HTTP method at Argument 1"
             );
         }
-        if ($uri === "") {
-            throw new \DomainException(
-                __METHOD__ . " requires a non-empty string URI at Argument 2"
-            );
-        }
         if (empty($actions)) {
             throw new \DomainException(
                 __METHOD__ . " requires at least one callable route action or middleware at Argument 3"
