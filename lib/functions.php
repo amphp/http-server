@@ -212,7 +212,7 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                 $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                 throw new \DomainException(makeGeneratorError(
                     $filter,
-                    "Codec error; header array required but {$type} yielded",
+                    "Codec error; header array required but {$type} yielded"
                 ));
             }
         }
