@@ -18,7 +18,6 @@ class Client {
     public $readWatcher;
     public $writeWatcher;
 
-    // not sure yet //
     public $writeBuffer;
     public $onWriteDrain;
     public $shouldClose;
@@ -30,4 +29,6 @@ class Client {
     public $exporter; // Requires Client object as first argument
 
     public $bodyPromisors = [];
+
+    public $parserEmitLock;
 }

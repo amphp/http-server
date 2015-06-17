@@ -11,7 +11,7 @@ interface HttpDriver {
     const UPGRADE = 6;
 
     public function versions(): array;
-
+    public function filters(InternalRequest $ireq): array;
     public function writer(InternalRequest $ireq): \Generator;
-    public function parser($callbackData): \Generator;
+    public function parser(Client $client): \Generator;
 }

@@ -3,7 +3,7 @@
 namespace Aerys;
 
 class StandardResponse implements Response {
-    private $sink;
+    private $codec;
     private $state = self::NONE;
     private $headers = [
         ":status" => 200,
@@ -12,10 +12,10 @@ class StandardResponse implements Response {
     private $cookies = [];
 
     /**
-     * @param \Generator $sink
+     * @param \Generator $codec
      */
-    public function __construct(\Generator $sink) {
-        $this->sink = $sink;
+    public function __construct(\Generator $codec) {
+        $this->codec = $codec;
     }
 
     /**
@@ -190,12 +190,12 @@ class StandardResponse implements Response {
             // A * (as opposed to a numeric length) indicates "streaming entity content"
             $headers = $this->headers;
             $headers[":aerys-entity-length"] = "*";
-            $this->sink->send($headers);
+            $this->codec->send($headers);
         }
 
-        $this->sink->send($partialBody);
+        $this->codec->send($partialBody);
 
-        // Don't update the state until *AFTER* the sink operation so that if
+        // Don't update the state until *AFTER* the codec operation so that if
         // it throws we can handle InternalFilterException appropriately in the server.
         $this->state = self::STREAMING|self::STARTED;
 
@@ -217,7 +217,7 @@ class StandardResponse implements Response {
                 "Cannot flush: response already sent"
             );
         } elseif ($this->state & self::STARTED) {
-            $this->sink->send(false);
+            $this->codec->send(false);
         } else {
             throw new \LogicException(
                 "Cannot flush: response output not started"
@@ -257,15 +257,15 @@ class StandardResponse implements Response {
             $entityValue = isset($finalBody) ? strlen($finalBody) : "@";
             $headers = $this->headers;
             $headers[":aerys-entity-length"] = $entityValue;
-            $this->sink->send($headers);
+            $this->codec->send($headers);
         }
 
-        $this->sink->send($finalBody);
+        $this->codec->send($finalBody);
         if (isset($finalBody)) {
-            $this->sink->send(null);
+            $this->codec->send(null);
         }
 
-        // Update the state *AFTER* the sink operation so that if it throws
+        // Update the state *AFTER* the codec operation so that if it throws
         // we can handle things appropriately in the server.
         $this->state = self::ENDED|self::STARTED;
 

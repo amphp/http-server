@@ -7,6 +7,7 @@ use Amp\Struct;
 class InternalRequest {
     use Struct;
 
+    public $options;
     public $client;
     public $vhost;
     public $preAppResponder;
@@ -36,6 +37,6 @@ class InternalRequest {
     public $remaining;
     public $time;
     public $httpDate;
-    public $isServerStopping;
     public $locals;
+    public $isServerStopping;
 }

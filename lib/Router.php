@@ -96,7 +96,7 @@ class Router implements Bootable, Middleware, \SplObserver {
     /**
      * Execute router middleware functionality
      */
-    public function do(InternalRequest $ireq, Options $options) {
+    public function do(InternalRequest $ireq) {
         $toMatch = $ireq->uriPath;
 
         if (isset($this->cache[$toMatch])) {
@@ -109,7 +109,7 @@ class Router implements Bootable, Middleware, \SplObserver {
 
             $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
             if (!empty($middlewares)) {
-                yield from responseFilter($middlewares, $ireq, $options);
+                yield from responseFilter($middlewares, $ireq);
             }
         }
 
@@ -126,7 +126,7 @@ class Router implements Bootable, Middleware, \SplObserver {
 
                 $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
                 if (!empty($middlewares)) {
-                    yield from responseFilter($middlewares, $ireq, $options);
+                    yield from responseFilter($middlewares, $ireq);
                 }
                 break;
             case Dispatcher::NOT_FOUND:

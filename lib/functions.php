@@ -115,6 +115,23 @@ function parseCookie(string $cookies): array {
 }
 
 /**
+ * @TODO docblock
+ */
+function responseCodec(\Generator $filter, InternalRequest $ireq): \Generator {
+    while ($filter->valid()) {
+        $cur = $filter->send(yield);
+        if ($cur !== null) {
+            $ireq->responseWriter->send($cur);
+        }
+    }
+    $cur = $filter->getReturn();
+    if ($cur !== null) {
+        $ireq->responseWriter->send($cur);
+    }
+    $ireq->responseWriter->send(null);
+}
+
+/**
  * Process requests and responses with filters
  *
  * Is this function's cyclomatic complexity off the charts? Yes. Is this an extremely hot
@@ -147,7 +164,7 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                         unset($filters[$key]);
                         continue;
                     } elseif (is_array($yielded)) {
-                        assert(__validateCodecHeaders($filter, $yielded));
+                        assert(__validateFilterHeaders($filter, $yielded));
                         $headers = $yielded;
                         unset($filters[$key]);
                         continue;
@@ -194,7 +211,7 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                             }
                         }
                     } elseif (is_array($yielded)) {
-                        assert(__validateCodecHeaders($filter, $yielded));
+                        assert(__validateFilterHeaders($filter, $yielded));
                         $headers = $yielded;
                         break;
                     } else {
@@ -206,7 +223,7 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
                     }
                 }
             } elseif (is_array($yielded)) {
-                assert(__validateCodecHeaders($filter, $yielded));
+                assert(__validateFilterHeaders($filter, $yielded));
                 $headers = $yielded;
             } else {
                 $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
@@ -316,13 +333,23 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
         return $toSend;
     } catch (ClientException $uncaught) {
         throw $uncaught;
-    } catch (CodecException $uncaught) {
-        // Userspace code isn't supposed to throw these; rethrow as
-        // a different type to avoid breaking our error handling.
-        throw new \Exception("", 0, $uncaught);
     } catch (\BaseException $uncaught) {
-        throw new CodecException("Uncaught filter exception", $key, $uncaught);
+        $filterExceptionClass = __getFilterExceptionClass();
+        throw new $filterExceptionClass("Uncaught filter exception", $key, $uncaught);
     }
+}
+
+/**
+ *
+ */
+function __getFilterExceptionClass() {
+    static $class;
+    if (empty($class)) {
+        $obj = new class extends \Exception {};
+        $class = get_class($obj);
+    }
+
+    return $class;
 }
 
 /**
@@ -331,7 +358,7 @@ function responseFilter(array $filters, ...$filterArgs): \Generator {
  * @param \Generator $generator
  * @param array $headers
  */
-function __validateCodecHeaders(\Generator $generator, array $headers) {
+function __validateFilterHeaders(\Generator $generator, array $headers) {
     if (!isset($headers[":status"])) {
         throw new \DomainException(makeGeneratorError(
             $generator,
@@ -388,72 +415,12 @@ function __validateCodecHeaders(\Generator $generator, array $headers) {
 }
 
 /**
- * Normalize outgoing headers according to the request protocol and server options
- *
- * @param \Aerys\InternalRequest $ireq
- * @param \Aerys\Options $options
- * @return \Generator
- */
-function startResponseFilter(InternalRequest $ireq, Options $options): \Generator {
-    $headers = yield;
-    $status = $headers[":status"];
-
-    if ($options->sendServerToken) {
-        $headers["server"] = [SERVER_TOKEN];
-    }
-
-    $contentLength = $headers[":aerys-entity-length"];
-    unset($headers[":aerys-entity-length"]);
-
-    if ($contentLength === "@") {
-        $hasContent = false;
-        $shouldClose = ($ireq->protocol === "1.0");
-        if (($status >= 200 && $status != 204 && $status != 304)) {
-            $headers["content-length"] = ["0"];
-        }
-    } elseif ($contentLength !== "*") {
-        $hasContent = true;
-        $shouldClose = false;
-        $headers["content-length"] = [$contentLength];
-        unset($headers["transfer-encoding"]);
-    } elseif ($ireq->protocol === "1.1") {
-        $hasContent = true;
-        $shouldClose = false;
-        $headers["transfer-encoding"] = ["chunked"];
-        unset($headers["content-length"]);
-    } else {
-        $hasContent = true;
-        $shouldClose = true;
-    }
-
-    if ($hasContent) {
-        $type = $headers["content-type"][0] ?? $options->defaultContentType;
-        if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-            $type .= "; charset={$options->defaultTextCharset}";
-        }
-        $headers["content-type"] = [$type];
-    }
-
-    if ($shouldClose || $ireq->isServerStopping || $ireq->remaining === 0) {
-        $headers["connection"] = ["close"];
-    } else {
-        $keepAlive = "timeout={$options->keepAliveTimeout}, max={$ireq->remaining}";
-        $headers["keep-alive"] = [$keepAlive];
-    }
-
-    $headers["date"] = [$ireq->httpDate];
-
-    return $headers;
-}
-
-/**
  * Apply negotiated gzip deflation to outgoing response bodies
  *
  * @param \Aerys\InternalRequest $ireq
- * @param \Aerys\Options $options
  * @return \Generator
  */
-function deflateResponseFilter(InternalRequest $ireq, Options $options): \Generator {
+function deflateResponseFilter(InternalRequest $ireq): \Generator {
     if (empty($ireq->headers["accept-encoding"])) {
         return;
     }
@@ -481,7 +448,7 @@ function deflateResponseFilter(InternalRequest $ireq, Options $options): \Genera
         return;
     }
 
-    $minBodySize = $options->deflateMinimumLength;
+    $minBodySize = $ireq->options->deflateMinimumLength;
     $contentLength = $headers["content-length"][0] ?? null;
     $bodyBuffer = "";
 
@@ -520,7 +487,7 @@ function deflateResponseFilter(InternalRequest $ireq, Options $options): \Genera
         $headers["connection"] = ["close"];
     }
     $headers["content-encoding"] = ["gzip"];
-    $minFlushOffset = $options->deflateBufferSize;
+    $minFlushOffset = $ireq->options->deflateBufferSize;
     $deflated = $headers;
 
     while (($uncompressed = yield $deflated) !== null) {
@@ -556,48 +523,6 @@ function deflateResponseFilter(InternalRequest $ireq, Options $options): \Genera
 }
 
 /**
- * Apply chunk encoding to response entity bodies
- *
- * @param \Aerys\InternalRequest $ireq
- * @param \Aerys\Options $options
- * @return \Generator
- */
-function chunkedResponseFilter(InternalRequest $ireq, Options $options = null): \Generator {
-    $headers = yield;
-
-    if ($ireq->protocol !== "1.1") {
-        return;
-    }
-    if (empty($headers["transfer-encoding"])) {
-        return;
-    }
-    if (!in_array("chunked", $headers["transfer-encoding"])) {
-        return;
-    }
-
-    $bodyBuffer = "";
-    $bufferSize = $options->chunkBufferSize ?? 8192;
-    $unchunked = yield $headers;
-
-    do {
-        $bodyBuffer .= $unchunked;
-        if (isset($bodyBuffer[$bufferSize]) || ($unchunked === false && $bodyBuffer != "")) {
-            $chunk = \dechex(\strlen($bodyBuffer)) . "\r\n{$bodyBuffer}\r\n";
-            $bodyBuffer = "";
-        } else {
-            $chunk = null;
-        }
-    } while (($unchunked = yield $chunk) !== null);
-
-    $chunk = ($bodyBuffer != "")
-        ? (\dechex(\strlen($bodyBuffer)) . "\r\n{$bodyBuffer}\r\n0\r\n\r\n")
-        : "0\r\n\r\n"
-    ;
-
-    return $chunk;
-}
-
-/**
  * Filter out entity body data from a response stream
  *
  * @param \Aerys\InternalRequest $ireq
@@ -616,7 +541,7 @@ function nullBodyResponseFilter(InternalRequest $ireq): \Generator {
  * @param \Aerys\InternalRequest $ireq
  * @return \Generator
  */
-function genericResponseFilter(InternalRequest $ireq, Options $options = null): \Generator {
+function genericResponseFilter(InternalRequest $ireq): \Generator {
     $headers = yield;
     if (empty($headers["aerys-generic-response"])) {
         return;
@@ -625,7 +550,7 @@ function genericResponseFilter(InternalRequest $ireq, Options $options = null): 
     $body = makeGenericBody($headers[":status"], $options = [
         "reason"      => $headers[":reason"],
         "sub_heading" => "Requested: {$ireq->uri}",
-        "server"      => $options->sendServerToken ?? false,
+        "server"      => $ireq->options->sendServerToken ?? false,
         "http_date"   => $ireq->httpDate,
     ]);
     $headers["content-length"] = [strlen($body)];

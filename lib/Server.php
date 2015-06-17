@@ -47,10 +47,8 @@ class Server implements \SplSubject {
     private $negotiateCrypto;
     private $onReadable;
     private $onWritable;
-    private $startWrite;
-    private $onParse;
     private $onCoroutineAppResolve;
-    private $onCompletedData;
+    private $onResponseDataDone;
 
     public function __construct(
         Reactor $reactor,
@@ -80,16 +78,17 @@ class Server implements \SplSubject {
         $this->negotiateCrypto = $this->makePrivateCallable("negotiateCrypto");
         $this->onReadable = $this->makePrivateCallable("onReadable");
         $this->onWritable = $this->makePrivateCallable("onWritable");
-        $this->startWrite = $this->makePrivateCallable("startWrite");
-        $this->onParse = $this->makePrivateCallable("onParse");
         $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
-        $this->onCompletedData = $this->makePrivateCallable("onCompletedData");
+        $this->onResponseDataDone = $this->makePrivateCallable("onResponseDataDone");
 
-        $this->initHttp(new Http1Driver($options, $this->onParse, $this->startWrite));
-        //$this->initHttp(new Http2Driver($options, $this->onParse, $this->startWrite));
+        // initialize http drivers //
+        $emitter = $this->makePrivateCallable("onParseEmit");
+        $writer = $this->makePrivateCallable("writeResponse");
+        $this->initializeHttpDrivers(new Http1Driver($options, $emitter, $writer));
+        //$this->initializeHttpDrivers(new Http2Driver($options, $emitter, $writer));
     }
 
-    private function initHttp(HttpDriver $http) {
+    private function initializeHttpDrivers(HttpDriver $http) {
         foreach ($http->versions() as $version) {
             $this->httpDriver[$version] = $http;
         }
@@ -418,21 +417,25 @@ class Server implements \SplSubject {
         $this->clients[$client->id] = $client;
     }
 
-    private function startWrite(Client $client, $final = false) {
+    private function writeResponse(Client $client, $final = false) {
         $this->onWritable($this->reactor, $client->writeWatcher, $client->socket, $client);
+        if (empty($final)) {
+            return;
+        }
 
-        if ($final) {
-            $this->reactor->immediately(function() use ($client) {
-                if ($client->requestParser) {
-                    $client->requestParser->send("");
-                }
-            });
+        $client->parserEmitLock = false;
+        if ($client->writeBuffer == "") {
+            $this->onResponseDataDone($client);
+        } else {
+            $client->onWriteDrain = $this->onResponseDataDone;
+        }
+    }
 
-            if ($client->writeBuffer == "") {
-                $this->onCompletedData($client);
-            } else {
-                $client->onWriteDrain = $this->onCompletedData;
-            }
+    private function onResponseDataDone(Client $client) {
+        if ($client->shouldClose) {
+            $this->close($client);
+        } else {
+            $this->renewKeepAliveTimeout($client);
         }
     }
 
@@ -490,7 +493,7 @@ class Server implements \SplSubject {
             return;
         }
 
-        // We only renew the keep-alive timeout if the client isn't waiting
+        // We should only renew the keep-alive timeout if the client isn't waiting
         // for us to generate a response. (@TODO)
         $this->renewKeepAliveTimeout($client);
 
@@ -501,7 +504,7 @@ class Server implements \SplSubject {
         }
     }
 
-    private function onParse(array $parseStruct, $client) {
+    private function onParseEmit(array $parseStruct, $client) {
         list($eventType, $parseResult, $errorStruct) = $parseStruct;
         switch ($eventType) {
             case HttpDriver::RESULT:
@@ -616,6 +619,7 @@ class Server implements \SplSubject {
         $client->requestsRemaining--;
 
         $ireq = new InternalRequest;
+        $ireq->options = $this->options;
         $ireq->client = $client;
         $ireq->isServerStopping = (bool) $this->stopPromisor;
         $ireq->time = $this->ticker->currentTime;
@@ -745,19 +749,9 @@ class Server implements \SplSubject {
         $response->end(null);
     }
 
-    private function onCompletedData(Client $client) {
-        if ($client->shouldClose) {
-            $this->close($client);
-        } else {
-            // @TODO we need a flag to know if we're awaiting data for the
-            //       currentRequestCycle before renewing this timeout.
-            $this->renewKeepAliveTimeout($client);
-        }
-    }
-
     private function tryApplication(InternalRequest $ireq, callable $application) {
         try {
-            $response = $this->initResponse($ireq);
+            $response = $this->initializeResponse($ireq);
             $request = new StandardRequest($ireq);
 
             $out = ($application)($request, $response);
@@ -779,6 +773,19 @@ class Server implements \SplSubject {
         } catch (\BaseException $error) {
             $this->onApplicationError($error, $ireq);
         }
+    }
+
+    private function initializeResponse(InternalRequest $ireq): Response {
+        $ireq->responseWriter = $ireq->client->httpDriver->writer($ireq);
+        $filters = $ireq->client->httpDriver->filters($ireq);
+        if ($ireq->badFilterKeys) {
+            $filters = array_diff_key($filters, array_flip($ireq->badFilterKeys));
+        }
+        $filter = responseFilter($filters, $ireq);
+        $codec = responseCodec($filter, $ireq);
+        $codec->current(); // initialize codec
+
+        return $ireq->response = new StandardResponse($codec);
     }
 
     private function onCoroutineAppResolve($error, $result, $ireq) {
@@ -818,20 +825,29 @@ class Server implements \SplSubject {
             return;
         }
 
-        if (!$error instanceof CodecException) {
+        $filterExceptionClass = __getFilterExceptionClass();
+        if (!is_a($error, $filterExceptionClass)) {
             $this->sendErrorResponse($error, $ireq);
             return;
         }
 
         do {
             $ireq->badFilterKeys[] = $error->getCode();
-            $this->initResponse($ireq);
+            $this->initializeResponse($ireq);
             try {
                 $this->sendErrorResponse($error, $ireq);
                 return;
-            } catch (CodecException $error) {
+            } catch (\BaseException $error) {
                 // Keep trying until no broken filters remain ...
-                $this->logger->error($error);
+                if (is_a($error, $filterExceptionClass)) {
+                    $this->logger->error($error);
+                } else {
+                    throw new \RuntimeException(
+                        "Uncaught exception while sending error response",
+                        0,
+                        $error
+                    );
+                }
             }
         } while (1);
     }
@@ -878,67 +894,6 @@ class Server implements \SplSubject {
         assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
 
         return $this->decrementer;
-    }
-
-    private function initResponse(InternalRequest $ireq): Response {
-        $filters = [
-            "\\Aerys\\startResponseFilter",
-            "\\Aerys\\genericResponseFilter",
-        ];
-
-        if ($userFilters = $ireq->vhost->getFilters()) {
-            $filters = array_merge($filters, array_values($userFilters));
-        }
-        if ($this->options->deflateEnable) {
-            $filters[] = "\\Aerys\\deflateResponseFilter";
-        }
-        if ($ireq->protocol === "1.1") {
-            $filters[] = "\\Aerys\\chunkedResponseFilter";
-        }
-        if ($ireq->method === "HEAD") {
-            $filters[] = "\\Aerys\\nullBodyResponseFilter";
-        }
-        if (isset($ireq->headers["upgrade"]) && $ireq->headers["upgrade"] == "h2c" && $ireq->protocol == "1.1") {
-            $filters[] = $this->http2Filter;
-        }
-        if ($ireq->badFilterKeys) {
-            $filters = array_diff_key($filters, array_flip($ireq->badFilterKeys));
-        }
-
-        $ireq->responseWriter = $ireq->client->httpDriver->writer($ireq);
-        $filter = $this->responseCodec(responseFilter($filters, $ireq, $this->options), $ireq);
-        $filter->current(); // initialize filter
-
-        return $ireq->response = new StandardResponse($filter);
-    }
-
-    private function responseCodec(\Generator $filter, InternalRequest $ireq) {
-        while ($filter->valid()) {
-            $cur = $filter->send(yield);
-            if ($cur !== null) {
-                $ireq->responseWriter->send($cur);
-            }
-        }
-        $cur = $filter->getReturn();
-        if ($cur !== null) {
-            $ireq->responseWriter->send($cur);
-        }
-        $ireq->responseWriter->send(null);
-    }
-
-    private function http2Filter(InternalRequest $ireq) {
-        $ireq->responseWriter->send([
-            ":status" => HTTP_STATUS["SWITCHING_PROTOCOLS"],
-            ":reason" => "Switching Protocols",
-            "connection" => ["Upgrade"],
-            "upgrade" => ["h2c"],
-        ]);
-        $ireq->responseWriter->send(false); // flush before replacing
-
-        $http = $this->httpDriver["2.0"];
-        $ireq->client->httpDriver = $http;
-        $ireq->responseWriter = $http->writer($ireq);
-
     }
 
     /**
