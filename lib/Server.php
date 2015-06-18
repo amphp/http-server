@@ -2,18 +2,8 @@
 
 namespace Aerys;
 
-use Amp\{
-    Struct,
-    Reactor,
-    Promise,
-    Success,
-    Failure,
-    Deferred,
-    function resolve,
-    function timeout,
-    function any,
-    function all
-};
+use Amp\{ Struct, Reactor, Promise, Success, Failure, Deferred };
+use function Amp\{ resolve, timeout, any, all, makeGeneratorError };
 
 class Server implements \SplSubject {
     use Struct;
@@ -498,6 +488,10 @@ class Server implements \SplSubject {
         $this->renewKeepAliveTimeout($client);
 
         $send = $client->requestParser->send($data);
+        if ($client->parserEmitLock) {
+            $client->parserEmitLock = false;
+        }
+
         if ($send != "") {
             $client->writeBuffer .= $send;
             $this->onWritable($reactor, $client->writeWatcher, $client->socket, $client);
@@ -781,11 +775,294 @@ class Server implements \SplSubject {
         if ($ireq->badFilterKeys) {
             $filters = array_diff_key($filters, array_flip($ireq->badFilterKeys));
         }
-        $filter = responseFilter($filters, $ireq);
-        $codec = responseCodec($filter, $ireq);
+        $filter = $this->responseFilter($filters, $ireq);
+        $codec = $this->responseCodec($filter, $ireq);
         $codec->current(); // initialize codec
 
         return $ireq->response = new StandardResponse($codec);
+    }
+
+    private function responseCodec(\Generator $filter, InternalRequest $ireq): \Generator {
+        while ($filter->valid()) {
+            $cur = $filter->send(yield);
+            if ($cur !== null) {
+                $ireq->responseWriter->send($cur);
+            }
+        }
+        $cur = $filter->getReturn();
+        if ($cur !== null) {
+            $ireq->responseWriter->send($cur);
+        }
+        $ireq->responseWriter->send(null);
+    }
+
+    /**
+     * Is this function's cyclomatic complexity off the charts? Yes. Is this also an extremely
+     * hot code path requiring maximum optimization? Yes. This is why it looks like the ninth
+     * circle of npath hell ... #DealWithIt
+     *
+     * NOTE: this function is marked as static so that we can easily reflect it without
+     * an instance for testing purposes. Normally we wouldn't want to unit test private
+     * functionality but this function's nested conditionals/loops (for performance) make
+     * it very easy to break. For this reason we want to ensure it's 100% covered with
+     * tests and the static declaration simplifies this process.
+     */
+    private static function responseFilter(array $filters, InternalRequest $ireq): \Generator {
+        try {
+            $generators = [];
+            foreach ($filters as $key => $filter) {
+                $out = $filter($ireq);
+                if ($out instanceof \Generator && $out->valid()) {
+                    $generators[$key] = $out;
+                }
+            }
+            $filters = $generators;
+            $isEnding = false;
+            $isFlushing = false;
+            $headers = yield;
+
+            foreach ($filters as $key => $filter) {
+                $yielded = $filter->send($headers);
+                if (!isset($yielded)) {
+                    if (!$filter->valid()) {
+                        $yielded = $filter->getReturn();
+                        if (!isset($yielded)) {
+                            unset($filters[$key]);
+                            continue;
+                        } elseif (is_array($yielded)) {
+                            assert(self::validateFilterHeaders($filter, $yielded) ?: 1);
+                            $headers = $yielded;
+                            unset($filters[$key]);
+                            continue;
+                        } else {
+                            $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
+                            throw new \DomainException(makeGeneratorError(
+                                $filter,
+                                "Filter error; header array required but {$type} returned"
+                            ));
+                        }
+                    }
+
+                    while (1) {
+                        if ($isEnding) {
+                            $toSend = null;
+                        } elseif ($isFlushing) {
+                            $toSend = false;
+                        } else {
+                            $toSend = yield;
+                            if (!isset($toSend)) {
+                                $isEnding = true;
+                            } elseif ($toSend === false) {
+                                $isFlushing = true;
+                            }
+                        }
+
+                        $yielded = $filter->send($toSend);
+                        if (!isset($yielded)) {
+                            if ($isEnding || $isFlushing) {
+                                if ($filter->valid()) {
+                                    $signal = isset($toSend) ? "FLUSH" : "END";
+                                    throw new \DomainException(makeGeneratorError(
+                                        $filter,
+                                        "Filter error; header array required from {$signal} signal"
+                                    ));
+                                } else {
+                                    // this is always an error because the two-stage filter
+                                    // process means any filter receiving non-header data
+                                    // must participate in both stages
+                                    throw new \DomainException(makeGeneratorError(
+                                        $filter,
+                                        "Filter error; cannot detach without yielding/returning headers"
+                                    ));
+                                }
+                            }
+                        } elseif (is_array($yielded)) {
+                            assert(self::validateFilterHeaders($filter, $yielded) ?: 1);
+                            $headers = $yielded;
+                            break;
+                        } else {
+                            $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
+                            throw new \DomainException(makeGeneratorError(
+                                $filter,
+                                "Filter error; header array required but {$type} yielded"
+                            ));
+                        }
+                    }
+                } elseif (is_array($yielded)) {
+                    assert(self::validateFilterHeaders($filter, $yielded) ?: 1);
+                    $headers = $yielded;
+                } else {
+                    $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
+                    throw new \DomainException(makeGeneratorError(
+                        $filter,
+                        "Filter error; header array required but {$type} yielded"
+                    ));
+                }
+            }
+
+            $appendBuffer = null;
+            $toSend = $headers;
+            $isFlushing = false;
+
+            do {
+                $toSend = yield $toSend;
+                if ($isFlushing) {
+                    $toSend = yield false;
+                }
+                $isFlushing = false;
+
+                if ($isEnding) {
+                    $toSend = null;
+                } elseif ($isFlushing) {
+                    $toSend = false;
+                } else {
+                    if (!isset($toSend)) {
+                        $isEnding = true;
+                    } elseif ($toSend === false) {
+                        $isFlushing = true;
+                    }
+                }
+
+                foreach ($filters as $key => $filter) {
+                    while (1) {
+                        $yielded = $filter->send($toSend);
+                        if (!isset($yielded)) {
+                            if (!$filter->valid()) {
+                                unset($filters[$key]);
+                                $yielded = $filter->getReturn();
+                                if (!isset($yielded)) {
+                                    if (isset($appendBuffer)) {
+                                        $toSend = $appendBuffer;
+                                        $appendBuffer = null;
+                                    }
+                                    break;
+                                } elseif (is_string($yielded)) {
+                                    if (isset($appendBuffer)) {
+                                        $toSend = $appendBuffer . $yielded;
+                                        $appendBuffer = null;
+                                    } else {
+                                        $toSend = $yielded;
+                                    }
+                                    break;
+                                } else {
+                                    $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
+                                    throw new \DomainException(makeGeneratorError(
+                                        $filter,
+                                        "Filter error; string entity data required but {$type} returned"
+                                    ));
+                                }
+                            } else {
+                                if ($isEnding) {
+                                    if (isset($toSend)) {
+                                        $toSend = null;
+                                    } else {
+                                        break;
+                                    }
+                                } elseif ($isFlushing) {
+                                    if ($toSend !== false) {
+                                        $toSend = false;
+                                    } else {
+                                        break;
+                                    }
+                                } else {
+                                    $toSend = yield;
+                                    if (!isset($toSend)) {
+                                        $isEnding = true;
+                                    } elseif ($toSend === false) {
+                                        $isFlushing = true;
+                                    }
+                                }
+                            }
+                        } elseif (is_string($yielded)) {
+                            if (isset($appendBuffer)) {
+                                $toSend = $appendBuffer . $yielded;
+                                $appendBuffer = null;
+                            } else {
+                                $toSend = $yielded;
+                            }
+                            break;
+                        } else {
+                            $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
+                            throw new \DomainException(makeGeneratorError(
+                                $filter,
+                                "Filter error; string entity data required but {$type} yielded"
+                            ));
+                        }
+                    }
+                }
+
+                if ($toSend === false) {
+                    $isFlushing = false;
+                }
+            } while (!$isEnding);
+
+            return $toSend;
+        } catch (ClientException $uncaught) {
+            throw $uncaught;
+        } catch (\BaseException $uncaught) {
+            $ireq->filterErrorFlag = true;
+            $ireq->badFilterKeys[] = $key;
+            throw new FilterException("Filter error", 0, $uncaught);
+        }
+    }
+
+    /**
+     * A static declaration is necessary here because it's used by Server::responseFilter()
+     */
+    private static function validateFilterHeaders(\Generator $generator, array $headers) {
+        if (!isset($headers[":status"])) {
+            throw new \DomainException(makeGeneratorError(
+                $generator,
+                "Missing :status key in yielded filter array"
+            ));
+        }
+        if (!is_int($headers[":status"])) {
+            throw new \DomainException(makeGeneratorError(
+                $generator,
+                "Non-integer :status key in yielded filter array"
+            ));
+        }
+        if ($headers[":status"] < 100 || $headers[":status"] > 599) {
+            throw new \DomainException(makeGeneratorError(
+                $generator,
+                ":status value must be in the range 100..599 in yielded filter array"
+            ));
+        }
+        if (isset($headers[":reason"]) && !is_string($headers[":reason"])) {
+            throw new \DomainException(makeGeneratorError(
+                $generator,
+                "Non-string :reason value in yielded filter array"
+            ));
+        }
+
+        foreach ($headers as $headerField => $headerArray) {
+            if (!is_string($headerField)) {
+                throw new \DomainException(makeGeneratorError(
+                    $generator,
+                    "Invalid numeric header field index in yielded filter array"
+                ));
+            }
+            if ($headerField[0] === ":") {
+                continue;
+            }
+            if (!is_array($headerArray)) {
+                throw new \DomainException(makeGeneratorError(
+                    $generator,
+                    "Invalid non-array header entry at key {$headerField} in yielded filter array"
+                ));
+            }
+            foreach ($headerArray as $key => $headerValue) {
+                if (!is_scalar($headerValue)) {
+                    throw new \DomainException(makeGeneratorError(
+                        $generator,
+                        "Invalid non-scalar header value at index {$key} of " .
+                        "{$headerField} array in yielded filter array"
+                    ));
+                }
+            }
+        }
+
+        return true;
     }
 
     private function onCoroutineAppResolve($error, $result, $ireq) {
@@ -809,59 +1086,65 @@ class Server implements \SplSubject {
     }
 
     private function onApplicationError(\BaseException $error, InternalRequest $ireq) {
-        $client = $ireq->client;
         $this->logger->error($error);
 
-        if ($client->isDead || $client->isExported) {
-            // Responder actions may catch the initial ClientException and continue
-            // doing further work. If an error arises at this point we can end up
-            // here and our only option is to log the error.
+        if ($ireq->client->isDead || $ireq->client->isExported) {
+            // Responder actions may catch an initial ClientException and continue
+            // doing further work. If an error arises at this point our only option
+            // is to log the error (which we just did above).
             return;
+        } elseif (isset($ireq->response) && $ireq->response->state() & Response::STARTED) {
+            $this->close($ireq->client);
+        } elseif (empty($ireq->filterErrorFlag)) {
+            $this->tryErrorResponse($error, $ireq);
+        } else {
+            $this->tryFilterErrorResponse($error, $ireq);
         }
-
-        // If response output has already started we can't proceed any further.
-        if (isset($ireq->response) && $ireq->response->state() & Response::STARTED) {
-            $this->close($client);
-            return;
-        }
-
-        $filterExceptionClass = __getFilterExceptionClass();
-        if (!is_a($error, $filterExceptionClass)) {
-            $this->sendErrorResponse($error, $ireq);
-            return;
-        }
-
-        do {
-            $ireq->badFilterKeys[] = $error->getCode();
-            $this->initializeResponse($ireq);
-            try {
-                $this->sendErrorResponse($error, $ireq);
-                return;
-            } catch (\BaseException $error) {
-                // Keep trying until no broken filters remain ...
-                if (is_a($error, $filterExceptionClass)) {
-                    $this->logger->error($error);
-                } else {
-                    throw new \RuntimeException(
-                        "Uncaught exception while sending error response",
-                        0,
-                        $error
-                    );
-                }
-            }
-        } while (1);
     }
 
-    private function sendErrorResponse(\BaseException $error, InternalRequest $ireq) {
-        $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
-        $msg = ($this->options->debug) ? "<pre>{$error}</pre>" : "<p>Something went wrong ...</p>";
-        $body = makeGenericBody($status, [
-            "sub_heading" =>"Requested: {$ireq->uri}",
-            "msg" => $msg,
-        ]);
-        $ireq->response->setStatus(HTTP_STATUS["INTERNAL_SERVER_ERROR"]);
-        $ireq->response->setHeader("Connection", "close");
-        $ireq->response->end($body);
+    /**
+     * When an uncaught exception is thrown by a filter we enable the $ireq->filterErrorFlag
+     * and add the offending filter's key to $ireq->badFilterKeys. Each time we initialize
+     * a response the bad filters are removed from the chain in an effort to invoke all possible
+     * filters. To handle the scenario where multiple filters error we need to continue looping
+     * until $ireq->filterErrorFlag no longer reports as true.
+     */
+    private function tryFilterErrorResponse(\BaseException $error, InternalRequest $ireq) {
+        while ($ireq->filterErrorFlag) {
+            try {
+                $ireq->filterErrorFlag = false;
+                $this->initializeResponse($ireq);
+                $this->tryErrorResponse($error, $ireq);
+            } catch (ClientException $error) {
+                return;
+            } catch (\BaseException $error) {
+                $this->logger->error($error);
+                $this->close($ireq->client);
+            }
+        }
+    }
+
+    private function tryErrorResponse(\BaseException $error, InternalRequest $ireq) {
+        try {
+            $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
+            $msg = ($this->options->debug) ? "<pre>{$error}</pre>" : "<p>Something went wrong ...</p>";
+            $body = makeGenericBody($status, [
+                "sub_heading" =>"Requested: {$ireq->uri}",
+                "msg" => $msg,
+            ]);
+            $ireq->response->setStatus(HTTP_STATUS["INTERNAL_SERVER_ERROR"]);
+            $ireq->response->setHeader("Connection", "close");
+            $ireq->response->end($body);
+        } catch (ClientException $error) {
+            return;
+        } catch (\BaseException $error) {
+            if ($ireq->filterErrorFlag) {
+                $this->tryFilterErrorResponse($error, $ireq);
+            } else {
+                $this->logger->error($error);
+                $this->close($ireq->client);
+            }
+        }
     }
 
     private function close(Client $client) {

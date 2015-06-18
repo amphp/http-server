@@ -15,7 +15,8 @@ class InternalRequest {
     public $responseWriter;
     public $exporter;
     public $badFilterKeys = [];
-
+    public $filterErrorFlag;
+    public $isServerStopping;
     public $isEncrypted;
     public $cryptoInfo;
     public $clientPort;
@@ -38,5 +39,4 @@ class InternalRequest {
     public $time;
     public $httpDate;
     public $locals;
-    public $isServerStopping;
 }

@@ -2,12 +2,20 @@
 
 namespace Aerys\Test;
 
-use function Aerys\responseFilter;
-use Aerys\CodecException;
+use Aerys\FilterException;
+use Aerys\InternalRequest;
 
 class responseFilterTest extends \PHPUnit_Framework_TestCase {
+    private function getFilter(array $filters, InternalRequest $ireq = null) {
+        $ireq = $ireq ?: new InternalRequest;
+        $f = new \ReflectionMethod('\Aerys\Server', 'responseFilter');
+        $f->setAccessible(true);
+
+        return $f->invoke(null, $filters, $ireq);
+    }
+
     public function testEmptyFilters() {
-        $filter = responseFilter([]);
+        $filter = $this->getFilter([]);
         $filter->current();
         $headers = [":status" => 200];
         $result = $filter->send($headers);
@@ -26,7 +34,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
     }
 
     public function testSingleHeaderArrayFilter() {
-        $filter = responseFilter([function() {
+        $filter = $this->getFilter([function() {
             $headers = yield;
             yield [":status" => 404];
         }]);
@@ -49,17 +57,17 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
 
     public function testBadHeaderTypeThrows() {
         try {
-            $filter = responseFilter([function() {
+            $filter = $this->getFilter([function() {
                 $headers = yield;
                 yield 42;
             }]);
             $filter->current();
             $result = $filter->send([":status" => 200]);
             $this->fail("Expected filter exception was not thrown");
-        } catch (CodecException $e) {
+        } catch (FilterException $e) {
             $e = $e->getPrevious();
             $this->assertInstanceOf("DomainException", $e);
-            if (0 !== strpos($e->getMessage(), "Codec error; header array required but integer yielded")) {
+            if (0 !== strpos($e->getMessage(), "Filter error; header array required but integer yielded")) {
                 $this->fail("Filter exception message differed from expected");
             }
         }
@@ -67,7 +75,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
 
     public function testFilterThrowsIfHeadersNotReturnedWhenFlushing() {
         try {
-            $filter = responseFilter([function() {
+            $filter = $this->getFilter([function() {
                 while(1) yield;
             }]);
             $filter->current();
@@ -75,10 +83,10 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
             $this->assertNull($result);
             $filter->send(false);
             $this->fail("Expected filter exception was not thrown");
-        } catch (CodecException $e) {
+        } catch (FilterException $e) {
             $e = $e->getPrevious();
             $this->assertInstanceOf("DomainException", $e);
-            if (0 !== strpos($e->getMessage(), "Codec error; header array required from FLUSH signal")) {
+            if (0 !== strpos($e->getMessage(), "Filter error; header array required from FLUSH signal")) {
                 $this->fail("Filter exception message differed from expected");
             }
         }
@@ -86,7 +94,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
 
     public function testFilterThrowsIfHeadersNotReturnedWhenEnding() {
         try {
-            $filter = responseFilter([function() {
+            $filter = $this->getFilter([function() {
                 while(1) yield;
             }]);
             $filter->current();
@@ -94,10 +102,10 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
             $this->assertNull($result);
             $filter->send(null);
             $this->fail("Expected filter exception was not thrown");
-        } catch (CodecException $e) {
+        } catch (FilterException $e) {
             $e = $e->getPrevious();
             $this->assertInstanceOf("DomainException", $e);
-            if (0 !== strpos($e->getMessage(), "Codec error; header array required from END signal")) {
+            if (0 !== strpos($e->getMessage(), "Filter error; header array required from END signal")) {
                 $this->fail("Filter exception message differed from expected");
             }
         }
@@ -105,7 +113,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
 
     public function testFilterThrowsIfDetchedBeforeHeaderReturn() {
         try {
-            $filter = responseFilter([function() {
+            $filter = $this->getFilter([function() {
                 yield;
                 yield;
                 return;
@@ -116,17 +124,17 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
             $filter->send("foo");
             $filter->send(null);
             $this->fail("Expected filter exception was not thrown");
-        } catch (CodecException $e) {
+        } catch (FilterException $e) {
             $e = $e->getPrevious();
             $this->assertInstanceOf("DomainException", $e);
-            if (0 !== strpos($e->getMessage(), "Codec error; cannot detach without yielding/returning headers")) {
+            if (0 !== strpos($e->getMessage(), "Filter error; cannot detach without yielding/returning headers")) {
                 $this->fail("Filter exception message differed from expected");
             }
         }
     }
 
     public function testBufferedFilterHeaderYield() {
-        $filter = responseFilter([function() {
+        $filter = $this->getFilter([function() {
             $headers = yield;
             $buffer = "";
             while (($part = yield) !== null) {
@@ -149,7 +157,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
 
     public function testBufferedFilterHeaderYieldThrowsIfNotAnArray() {
         try {
-            $filter = responseFilter([function() {
+            $filter = $this->getFilter([function() {
                 $headers = yield;
                 $buffer = "";
                 while (($part = yield) !== null) {
@@ -166,10 +174,10 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
             $this->assertNull($filter->send("baz"));
             $filter->send(null);
             $this->fail("Expected filter exception was not thrown");
-        } catch (CodecException $e) {
+        } catch (FilterException $e) {
             $e = $e->getPrevious();
             $this->assertInstanceOf("DomainException", $e);
-            if (0 !== strpos($e->getMessage(), "Codec error; header array required but integer yielded")) {
+            if (0 !== strpos($e->getMessage(), "Filter error; header array required but integer yielded")) {
                 $this->fail("Filter exception message differed from expected");
             }
         }
