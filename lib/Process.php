@@ -54,7 +54,7 @@ abstract class Process {
             // the process in the event of an uncaught exception inside
             // the event reactor -- log it instead.
             $this->reactor->onError([$this->logger, "critical"]);
-        } catch (\BaseException $uncaught) {
+        } catch (\Throwable $uncaught) {
             $this->exitCode = 1;
             yield $this->logger->critical($uncaught);
             $this->exit();
@@ -77,7 +77,7 @@ abstract class Process {
             }
             $this->state = self::STOPPING;
             yield from $this->doStop();
-        } catch (\BaseException $uncaught) {
+        } catch (\Throwable $uncaught) {
             $this->exitCode = 1;
             yield $this->logger->critical($uncaught);
         } finally {

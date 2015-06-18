@@ -210,12 +210,12 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
             if ($onOpenResult instanceof \Generator) {
                 $onOpenResult = yield from $onOpenResult;
             }
-        } catch (\BaseException $e) {
+        } catch (\Throwable $e) {
             yield from $this->onAppError($clientId, $e);
         }
     }
 
-    private function onAppError($clientId, \BaseException $e): \Generator {
+    private function onAppError($clientId, \Throwable $e): \Generator {
         $this->logger->error($e->__toString());
         $code = Code::UNEXPECTED_SERVER_ERROR;
         $reason = "Internal server error, aborting";
@@ -246,7 +246,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
             if ($onOpenResult instanceof \Generator) {
                 $onOpenResult = yield from $onOpenResult;
             }
-        } catch (\BaseException $e) {
+        } catch (\Throwable $e) {
             yield from $this->onAppError($clientId, $e);
         }
     }
@@ -363,7 +363,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
             if ($gen instanceof \Generator) {
                 yield from $gen;
             }
-        } catch (\BaseException $e) {
+        } catch (\Throwable $e) {
             yield from $this->onAppError($client->id, $e);
         }
     }

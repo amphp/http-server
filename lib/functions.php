@@ -317,7 +317,7 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
         return $toSend;
     } catch (ClientException $uncaught) {
         throw $uncaught;
-    } catch (\BaseException $uncaught) {
+    } catch (\Throwable $uncaught) {
         $ireq->filterErrorFlag = true;
         $ireq->badFilterKeys[] = $key;
         throw new FilterException("Filter error", 0, $uncaught);

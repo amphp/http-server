@@ -86,7 +86,7 @@ class Bootstrapper {
                 $optionsObj->{$key} = $value;
             }
             return $optionsObj->debug ? $optionsObj : $this->generatePublicOptionsStruct($optionsObj);
-        } catch (\BaseException $e) {
+        } catch (\Throwable $e) {
             throw new \DomainException(
                 "Failed assigning options from config file", 0, $e
             );
@@ -125,7 +125,7 @@ class Bootstrapper {
 
             return $vhost;
 
-        } catch (\BaseException $previousException) {
+        } catch (\Throwable $previousException) {
             throw new \DomainException(
                 "Failed building Vhost instance",
                 $code = 0,

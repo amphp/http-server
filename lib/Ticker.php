@@ -72,7 +72,7 @@ class Ticker implements \SplObserver {
     private function tryUseCallback(callable $useCallback) {
         try {
             $useCallback($this->currentTime, $this->currentHttpDate);
-        } catch (\BaseException $uncaught) {
+        } catch (\Throwable $uncaught) {
             $this->logger->critical($uncaught);
         }
     }

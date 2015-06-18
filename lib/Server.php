@@ -183,7 +183,7 @@ class Server implements \SplSubject {
                         sprintf("Unexpected server state encountered: %s", $this->state)
                     ));
             }
-        } catch (\BaseException $uncaught) {
+        } catch (\Throwable $uncaught) {
             return new Failure($uncaught);
         }
     }
@@ -764,7 +764,7 @@ class Server implements \SplSubject {
             }
         } catch (ClientException $error) {
             // Do nothing -- responder actions aren't required to catch this
-        } catch (\BaseException $error) {
+        } catch (\Throwable $error) {
             $this->onApplicationError($error, $ireq);
         }
     }
@@ -816,7 +816,7 @@ class Server implements \SplSubject {
         }
     }
 
-    private function onApplicationError(\BaseException $error, InternalRequest $ireq) {
+    private function onApplicationError(\Throwable $error, InternalRequest $ireq) {
         $this->logger->error($error);
 
         if ($ireq->client->isDead || $ireq->client->isExported) {
@@ -840,7 +840,7 @@ class Server implements \SplSubject {
      * filters. To handle the scenario where multiple filters error we need to continue looping
      * until $ireq->filterErrorFlag no longer reports as true.
      */
-    private function tryFilterErrorResponse(\BaseException $error, InternalRequest $ireq) {
+    private function tryFilterErrorResponse(\Throwable $error, InternalRequest $ireq) {
         while ($ireq->filterErrorFlag) {
             try {
                 $ireq->filterErrorFlag = false;
@@ -848,14 +848,14 @@ class Server implements \SplSubject {
                 $this->tryErrorResponse($error, $ireq);
             } catch (ClientException $error) {
                 return;
-            } catch (\BaseException $error) {
+            } catch (\Throwable $error) {
                 $this->logger->error($error);
                 $this->close($ireq->client);
             }
         }
     }
 
-    private function tryErrorResponse(\BaseException $error, InternalRequest $ireq) {
+    private function tryErrorResponse(\Throwable $error, InternalRequest $ireq) {
         try {
             $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
             $msg = ($this->options->debug) ? "<pre>{$error}</pre>" : "<p>Something went wrong ...</p>";
@@ -868,7 +868,7 @@ class Server implements \SplSubject {
             $ireq->response->end($body);
         } catch (ClientException $error) {
             return;
-        } catch (\BaseException $error) {
+        } catch (\Throwable $error) {
             if ($ireq->filterErrorFlag) {
                 $this->tryFilterErrorResponse($error, $ireq);
             } else {
