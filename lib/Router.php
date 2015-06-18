@@ -31,15 +31,15 @@ class Router implements Bootable, Middleware, \SplObserver {
             $uri = $request->getUri();
             if (stripos($uri, "?")) {
                 list($path, $query) = explode("?", $uri, 2);
-                $redirectTo = "{$path}/?{$query}";
+                $path = rtrim($path, "/");
+                $redirectTo = "{$path}?{$query}";
             } else {
-                $path = $uri;
-                $redirectTo = "{$uri}/";
+                $redirectTo = $path = substr($uri, 0, -1);
             }
             $response->setStatus(HTTP_STATUS["FOUND"]);
             $response->setHeader("Location", $redirectTo);
             $response->setHeader("Content-Type", "text/plain; charset=utf-8");
-            $response->end("Canonical resource URI: {$path}/");
+            $response->end("Canonical resource URI: {$path}");
         };
     }
 
