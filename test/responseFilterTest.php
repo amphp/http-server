@@ -2,16 +2,12 @@
 
 namespace Aerys\Test;
 
-use Aerys\FilterException;
-use Aerys\InternalRequest;
+use Aerys\{ FilterException, InternalRequest, function responseFilter };
 
 class responseFilterTest extends \PHPUnit_Framework_TestCase {
     private function getFilter(array $filters, InternalRequest $ireq = null) {
         $ireq = $ireq ?: new InternalRequest;
-        $f = new \ReflectionMethod('\Aerys\Server', 'responseFilter');
-        $f->setAccessible(true);
-
-        return $f->invoke(null, $filters, $ireq);
+        return responseFilter($filters, $ireq);
     }
 
     public function testEmptyFilters() {
