@@ -9,7 +9,7 @@ class Options {
 
     private $debug = false;
     private $maxConnections = 1000;
-    private $maxRequests = 250;
+    private $maxKeepAliveRequests = 1000;
     private $keepAliveTimeout = 5;
     private $defaultContentType = "text/html"; // can be vhost
     private $defaultTextCharset = "utf-8"; // can be vhost
@@ -93,14 +93,8 @@ class Options {
         $this->maxConnections = $count;
     }
 
-    private function setMaxRequests(int $count) {
-        if ($count < 1) {
-            throw new \DomainException(
-                "Max requests setting must be greater than or equal to one"
-            );
-        }
-
-        $this->maxRequests = $count;
+    private function setMaxKeepAliveRequests(int $count) {
+        $this->maxKeepAliveRequests = ($count > 0) ? $count : null;
     }
 
     private function setKeepAliveTimeout(int $seconds) {

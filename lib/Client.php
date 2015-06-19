@@ -23,7 +23,7 @@ class Client {
     public $shouldClose;
     public $isDead;
     public $isExported;
-    public $requestsRemaining;
+    public $remainingKeepAlives;
 
     public $httpDriver;
     public $exporter; // Requires Client object as first argument

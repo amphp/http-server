@@ -438,10 +438,14 @@ class Http1Driver implements HttpDriver {
             $headers["content-type"] = [$type];
         }
 
-        if ($shouldClose || $ireq->isServerStopping || $ireq->remaining === 0) {
+        $remainingKeepAlives = $ireq->client->remainingKeepAlives;
+        if ($shouldClose || $ireq->isServerStopping || $remainingKeepAlives === 0) {
             $headers["connection"] = ["close"];
+        } elseif (isset($remainingKeepAlives)) {
+            $keepAlive = "timeout={$ireq->options->keepAliveTimeout}, max={$remainingKeepAlives}";
+            $headers["keep-alive"] = [$keepAlive];
         } else {
-            $keepAlive = "timeout={$ireq->options->keepAliveTimeout}, max={$ireq->remaining}";
+            $keepAlive = "timeout={$ireq->options->keepAliveTimeout}";
             $headers["keep-alive"] = [$keepAlive];
         }
 

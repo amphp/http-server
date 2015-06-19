@@ -376,7 +376,7 @@ class Server implements \SplSubject {
         $client->socket = $socket;
         $client->httpDriver = $http;
         $client->exporter = $this->exporter;
-        $client->requestsRemaining = $this->options->maxRequests;
+        $client->remainingKeepAlives = $this->options->maxKeepAliveRequests;
 
         $portStartPos = strrpos($peerName, ":");
         $client->clientAddr = substr($peerName, 0, $portStartPos);
@@ -610,7 +610,9 @@ class Server implements \SplSubject {
             $client->clientPort
         )));
 
-        $client->requestsRemaining--;
+        if (isset($client->remainingKeepAlives)) {
+            $client->remainingKeepAlives--;
+        }
 
         $ireq = new InternalRequest;
         $ireq->options = $this->options;
@@ -619,7 +621,6 @@ class Server implements \SplSubject {
         $ireq->time = $this->ticker->currentTime;
         $ireq->httpDate = $this->ticker->currentHttpDate;
         $ireq->locals = [];
-        $ireq->remaining = $client->requestsRemaining;
         $ireq->isEncrypted = $client->isEncrypted;
         $ireq->cryptoInfo = $client->cryptoInfo;
         $ireq->trace = $trace;

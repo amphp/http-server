@@ -35,7 +35,6 @@ class InternalRequest {
     public $uriPath;
     public $uriQuery;
     public $cookies;
-    public $remaining;
     public $time;
     public $httpDate;
     public $locals;
