@@ -9,7 +9,7 @@ class Options {
 
     private $debug = false;
     private $maxConnections = 1000;
-    private $maxRequests = 100;
+    private $maxRequests = 250;
     private $keepAliveTimeout = 5;
     private $defaultContentType = "text/html"; // can be vhost
     private $defaultTextCharset = "utf-8"; // can be vhost
