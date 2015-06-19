@@ -13,7 +13,7 @@ class Options {
     private $keepAliveTimeout = 5;
     private $defaultContentType = "text/html"; // can be vhost
     private $defaultTextCharset = "utf-8"; // can be vhost
-    private $sendServerToken = true;
+    private $sendServerToken = false;
     private $disableKeepAlive = false;
     private $socketBacklogSize = 128;
     private $normalizeMethodCase = true;
