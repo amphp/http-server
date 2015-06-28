@@ -33,6 +33,7 @@ abstract class Root implements \SplObserver {
     protected $mimeTypes = [];
     protected $mimeFileTypes = [];
     protected $indexes = ["index.html", "index.htm"];
+    protected $fallback = false;
     protected $useEtagInode = true;
     protected $expiresPeriod = 86400 * 7;
     protected $defaultMimeType = "text/plain";
@@ -288,7 +289,16 @@ abstract class Root implements \SplObserver {
         // HTTP server can send a 404 and/or allow handlers further down the chain
         // a chance to respond.
         if (empty($stat->exists)) {
-            return;
+            if ($this->fallback) {
+                $response->setStatus(HTTP_STATUS["NOT_FOUND"]);
+                if (!$stat = $this->fetchCachedStat("*#fallback", $request)) {
+                    return $this->doResponseWithStat($this->fallback, "*#fallback", $request, $response);
+                } elseif (empty($stat->exists)) {
+                    return;
+                }
+            } else {
+                return;
+            }
         }
 
         switch ($request->getMethod()) {
@@ -522,6 +532,9 @@ abstract class Root implements \SplObserver {
             case "indexes":
                 $this->setIndexes($value);
                 break;
+            case "fallback":
+                $this->setFallback($value);
+                break;
             case "useEtagInode":
                 $this->setUseEtagInode($value);
                 break;
@@ -585,6 +598,10 @@ abstract class Root implements \SplObserver {
         }
 
         $this->indexes = array_filter($indexes);
+    }
+
+    protected function setFallback(string $fallback) {
+        $this->fallback = $fallback;
     }
 
     protected function setUseEtagInode(bool $useInode) {
