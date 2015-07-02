@@ -2,16 +2,6 @@
 
 namespace Aerys\Websocket;
 
-use Amp\PromiseStream;
+use Aerys\Body;
 
-class Message extends PromiseStream {
-    public function buffer(): \Generator {
-        $buffer = [];
-        foreach ($this->stream() as $promise) {
-            $buffer[] = yield $promise;
-        }
-        array_pop($buffer);
-
-        yield "return" => implode($buffer);
-    }
-}
+class Message extends Body {}

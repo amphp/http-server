@@ -795,7 +795,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
             }
 
             while (1) {
-                if (($bufferSize + $frameBytesRecd) >= $frameLength) {
+                if ($bufferSize + $frameBytesRecd >= $frameLength) {
                     $dataLen = $frameLength - $frameBytesRecd;
                 } else {
                     $dataLen = $bufferSize;
