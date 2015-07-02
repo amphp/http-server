@@ -513,11 +513,12 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
         }
     }
 
-    public function send(int $clientId, string $data): Promise {
+    public function send(int $clientId, string $data, bool $binary = false): Promise {
         if ($client = $this->clients[$clientId] ?? null) {
             $client->messagesSent++;
 
-            $opcode = self::OP_BIN;
+            $opcode = $binary ? self::OP_BIN : self::OP_TEXT;
+            assert($binary || preg_match("//u", $data), "non-binary data needs to be UTF-8 compatible");
 
             if (strlen($data) > 1.5 * $this->autoFrameSize) {
                 $len = strlen($data);
@@ -534,16 +535,24 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
         return new Success;
     }
 
-    public function broadcast(string $data, array $clientIds = null): Promise {
+    public function sendBinary(int $clientId, string $data): Promise {
+        $this->send($clientId, $data, true);
+    }
+
+    public function broadcast(string $data, array $clientIds = null, bool $binary = false): Promise {
         if ($clientIds === null) {
             $clientIds = array_keys($this->clients);
         }
 
         $promises = [];
         foreach ($clientIds as $clientId) {
-            $promises[] = $this->send($data, $clientId);
+            $promises[] = $this->send($data, $clientId, $binary);
         }
         return all($promises);
+    }
+
+    public function broadcastBinary(string $data, array $clientIds = null): Promise {
+        $this->broadcast($data, $clientIds, true);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
