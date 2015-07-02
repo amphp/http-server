@@ -125,7 +125,7 @@ class Handshake implements Response {
             $this->handshake();
         }
         $this->isStarted = true;
-        $this->response->send("");
+        $this->response->end();
         return $this;
     }
 
