@@ -17,31 +17,15 @@ use Amp\{
 };
 
 class Router implements Bootable, Middleware, \SplObserver {
+    private static $canonicalRedirector;
     private $state = Server::STOPPED;
-    private $canonicalRedirector;
     private $bootLoader;
     private $routeDispatcher;
     private $routes = [];
+    private $actions = [];
     private $cache = [];
     private $cacheEntryCount = 0;
     private $maxCacheEntries = 512;
-
-    public function __construct() {
-        $this->canonicalRedirector = function(Request $request, Response $response) {
-            $uri = $request->getUri();
-            if (stripos($uri, "?")) {
-                list($path, $query) = explode("?", $uri, 2);
-                $path = rtrim($path, "/");
-                $redirectTo = "{$path}?{$query}";
-            } else {
-                $redirectTo = $path = substr($uri, 0, -1);
-            }
-            $response->setStatus(HTTP_STATUS["FOUND"]);
-            $response->setHeader("Location", $redirectTo);
-            $response->setHeader("Content-Type", "text/plain; charset=utf-8");
-            $response->end("Canonical resource URI: {$path}");
-        };
-    }
 
     /**
      * Set a router option
@@ -146,6 +130,40 @@ class Router implements Bootable, Middleware, \SplObserver {
         }
     }
 
+    /*
+     * Import a router or attach a callable, Middleware or Bootable.
+     * Router imports do *not* import the options
+     *
+     * @param callable|\Aerys\Middleware|\Aerys\Bootable $action
+     */
+    public function use($action) {
+        if (is_callable($action) || $action instanceof Middleware || $action instanceof Bootable) {
+            throw new \InvalidArgumentException(
+                __METHOD__ . " requires a callable action or Middleware instance"
+            );
+        }
+
+        /* never overload the canonicalRedirector */
+        if ($action instanceof self) {
+            /* merge routes in for better performance */
+            foreach ($action->routes as $route) {
+                if ($route[2][0] != self::$canonicalRedirector) {
+                    $route[2] = array_merge($this->actions, $route[2]);
+                }
+                $this->routes[] = $route;
+            }
+        } else {
+            $this->actions[] = $action;
+            foreach ($this->routes as &$route) {
+                if ($route[2][0] != self::$canonicalRedirector) {
+                    $route[2][] = $action;
+                }
+            }
+        }
+
+        return $this;
+    }
+
     private function cacheDispatchResult(string $toMatch, array $routeArgs, array $action) {
         if ($this->cacheEntryCount < $this->maxCacheEntries) {
             $this->cacheEntryCount++;
@@ -169,7 +187,7 @@ class Router implements Bootable, Middleware, \SplObserver {
      *
      * @param string $method
      * @param string $uri
-     * @param callable $actions
+     * @param callable|\Aerys\Middleware|\Aerys\Bootable $actions
      * @return self
      */
     public function __call(string $method, array $args): Router {
@@ -197,7 +215,7 @@ class Router implements Bootable, Middleware, \SplObserver {
      *
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
-     * @param callable|\Aerys\Middleware $actions The action(s) to invoke upon matching this route
+     * @param callable|\Aerys\Middleware|\Aerys\Bootable $actions The action(s) to invoke upon matching this route
      * @throws \DomainException on invalid empty parameters
      * @return self
      */
@@ -217,6 +235,8 @@ class Router implements Bootable, Middleware, \SplObserver {
                 __METHOD__ . " requires at least one callable route action or middleware at Argument 3"
             );
         }
+
+        $actions = array_merge($this->actions, $actions);
 
         $uri = "/" . ltrim($uri, "/");
         if (substr($uri, -2) === "/?") {
@@ -243,10 +263,16 @@ class Router implements Bootable, Middleware, \SplObserver {
     private function bootRouteTarget(array $actions): array {
         $middlewares = [];
         $applications = [];
+        $booted = [];
 
         foreach ($actions as $key => $action) {
             if ($action instanceof Bootable) {
-                $action = ($this->bootLoader)($action);
+                /* don't ever boot a Bootable twice */
+                $hash = spl_object_hash($action);
+                if (!array_key_exists($hash, $booted)) {
+                    $booted[$hash] = ($this->bootLoader)($action);
+                }
+                $action = $booted[$hash];
             }
             if ($action instanceof Middleware) {
                 $middlewares[] = [$action, "do"];
@@ -312,3 +338,21 @@ class Router implements Bootable, Middleware, \SplObserver {
         return new Success;
     }
 }
+
+/* Have a generic (static) $canonicalRedictor, so that a) we won't retain individual objects $this scope and b) we can compare them */
+(function() {
+    Router::$canonicalRedirector = function (Request $request, Response $response) {
+        $uri = $request->getUri();
+        if (stripos($uri, "?")) {
+            list($path, $query) = explode("?", $uri, 2);
+            $path = rtrim($path, "/");
+            $redirectTo = "{$path}?{$query}";
+        } else {
+            $redirectTo = $path = substr($uri, 0, -1);
+        }
+        $response->setStatus(HTTP_STATUS["FOUND"]);
+        $response->setHeader("Location", $redirectTo);
+        $response->setHeader("Content-Type", "text/plain; charset=utf-8");
+        $response->end("Canonical resource URI: {$path}");
+    };
+})->bindTo(null, Router::class)();
