@@ -130,11 +130,12 @@ class Router implements Bootable, Middleware, \SplObserver {
         }
     }
 
-    /*
+    /**
      * Import a router or attach a callable, Middleware or Bootable.
      * Router imports do *not* import the options
      *
      * @param callable|\Aerys\Middleware|\Aerys\Bootable $action
+     * @return self
      */
     public function use($action) {
         if (is_callable($action) || $action instanceof Middleware || $action instanceof Bootable) {
@@ -158,6 +159,24 @@ class Router implements Bootable, Middleware, \SplObserver {
                 if ($route[2][0] != self::$canonicalRedirector) {
                     $route[2][] = $action;
                 }
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Prefix all the routes with a given prefix
+     *
+     * @param string $prefix
+     * @return self
+     */
+    public function prefix(string $prefix) {
+        $prefix = trim($prefix, "/");
+
+        if ($prefix != "") {
+            foreach ($this->routes as &$route) {
+                $route[1] = "/$prefix$route[1]";
             }
         }
 
