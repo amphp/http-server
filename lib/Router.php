@@ -17,7 +17,8 @@ use Amp\{
 };
 
 class Router implements Bootable, Middleware, \SplObserver {
-    private static $canonicalRedirector;
+    const CANONICAL_REDIRECT = 0;
+
     private $state = Server::STOPPED;
     private $bootLoader;
     private $routeDispatcher;
@@ -148,7 +149,7 @@ class Router implements Bootable, Middleware, \SplObserver {
         if ($action instanceof self) {
             /* merge routes in for better performance */
             foreach ($action->routes as $route) {
-                if ($route[2][0] != self::$canonicalRedirector) {
+                if ($route[2] !== self::CANONICAL_REDIRECT) {
                     $route[2] = array_merge($this->actions, $route[2]);
                 }
                 $this->routes[] = $route;
@@ -156,7 +157,7 @@ class Router implements Bootable, Middleware, \SplObserver {
         } else {
             $this->actions[] = $action;
             foreach ($this->routes as &$route) {
-                if ($route[2][0] != self::$canonicalRedirector) {
+                if ($route[2] !== self::CANONICAL_REDIRECT) {
                     $route[2][] = $action;
                 }
             }
@@ -262,7 +263,7 @@ class Router implements Bootable, Middleware, \SplObserver {
             $canonicalUri = substr($uri, 0, -2);
             $redirectUri = substr($uri, 0, -1);
             $this->routes[] = [$method, $canonicalUri, $actions];
-            $this->routes[] = [$method, $redirectUri, [$this->canonicalRedirector]];
+            $this->routes[] = [$method, $redirectUri, self::CANONICAL_REDIRECT];
         } else {
             $this->routes[] = [$method, $uri, $actions];
         }
@@ -283,6 +284,24 @@ class Router implements Bootable, Middleware, \SplObserver {
         $middlewares = [];
         $applications = [];
         $booted = [];
+
+        if ($actions === self::CANONICAL_REDIRECT) {
+            $actions = [function (Request $request, Response $response) {
+                $uri = $request->getUri();
+                if (stripos($uri, "?")) {
+                    list($path, $query) = explode("?", $uri, 2);
+                    $path = rtrim($path, "/");
+                    $redirectTo = "{$path}?{$query}";
+                } else {
+                    $redirectTo = $path = substr($uri, 0, -1);
+                }
+                $response->setStatus(HTTP_STATUS["FOUND"]);
+                $response->setHeader("Location", $redirectTo);
+                $response->setHeader("Content-Type", "text/plain; charset=utf-8");
+                $response->end("Canonical resource URI: {$path}");
+            }];
+        }
+
 
         foreach ($actions as $key => $action) {
             if ($action instanceof Bootable) {
@@ -357,21 +376,3 @@ class Router implements Bootable, Middleware, \SplObserver {
         return new Success;
     }
 }
-
-/* Have a generic (static) $canonicalRedictor, so that a) we won't retain individual objects $this scope and b) we can compare them */
-(function() {
-    Router::$canonicalRedirector = function (Request $request, Response $response) {
-        $uri = $request->getUri();
-        if (stripos($uri, "?")) {
-            list($path, $query) = explode("?", $uri, 2);
-            $path = rtrim($path, "/");
-            $redirectTo = "{$path}?{$query}";
-        } else {
-            $redirectTo = $path = substr($uri, 0, -1);
-        }
-        $response->setStatus(HTTP_STATUS["FOUND"]);
-        $response->setHeader("Location", $redirectTo);
-        $response->setHeader("Content-Type", "text/plain; charset=utf-8");
-        $response->end("Canonical resource URI: {$path}");
-    };
-})->bindTo(null, Router::class)();
