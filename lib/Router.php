@@ -280,7 +280,7 @@ class Router implements Bootable, Middleware, \SplObserver {
         return [$this, "__invoke"];
     }
 
-    private function bootRouteTarget(array $actions): array {
+    private function bootRouteTarget($actions): array {
         $middlewares = [];
         $applications = [];
         $booted = [];
