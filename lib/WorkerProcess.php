@@ -23,8 +23,8 @@ class WorkerProcess extends Process {
         $server = $this->bootstrapper->boot($this->reactor, $this->logger, $console);
         yield $server->start();
         $this->server = $server;
-        $this->reactor->onReadable($this->ipcSock, function($reactor, $watcherId) {
-            $reactor->cancel($watcherId);
+        $this->reactor->onReadable($this->ipcSock, function($watcherId) {
+            $this->reactor->cancel($watcherId);
             yield from $this->stop();
         });
     }

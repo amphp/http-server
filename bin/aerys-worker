@@ -4,7 +4,7 @@
 error_reporting(E_ALL);
 require __DIR__ . "/../autoload.php";
 
-Amp\run(function(Amp\Reactor $reactor) {
+Amp\run(function() {
     $console = new Aerys\Console;
     $console->addArgs([
         "ipc" => [
@@ -30,7 +30,7 @@ Amp\run(function(Amp\Reactor $reactor) {
         die("Failed initializing IPC connection");
     }
 
-    $logger = new Aerys\IpcLogger($reactor, $console, $ipcSock);
-    $process = new Aerys\WorkerProcess($reactor, $logger, $ipcSock);
+    $logger = new Aerys\IpcLogger(Amp\reactor(), $console, $ipcSock);
+    $process = new Aerys\WorkerProcess(Amp\reactor(), $logger, $ipcSock);
     yield from $process->start($console);
 });

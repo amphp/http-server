@@ -389,7 +389,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
         }
     }
 
-    public function onReadable($reactor, $watcherId, $socket, Rfc6455Client $client) {
+    public function onReadable($watcherId, $socket, Rfc6455Client $client) {
         $data = @fread($socket, 8192);
 
         if ($data != "") {
@@ -410,7 +410,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
         }
     }
 
-    public function onWritable($reactor, $watcherId, $socket, Rfc6455Client $client) {
+    public function onWritable($watcherId, $socket, Rfc6455Client $client) {
         $bytes = @fwrite($socket, $client->writeBuffer);
         $client->bytesSent += $bytes;
 
@@ -432,7 +432,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
                 $client->writeDeferred = array_shift($client->writeDeferredControlQueue);
             } elseif ($client->closedAt) {
                 @stream_socket_shutdown($socket, STREAM_SHUT_WR);
-                $reactor->cancel($watcherId);
+                $this->reactor->cancel($watcherId);
                 $client->writeWatcher = null;
             } elseif ($client->writeDataQueue) {
                 $client->writeBuffer = array_shift($client->writeDataQueue);
@@ -441,7 +441,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
                 $client->writeDeferred = array_shift($client->writeDeferredDataQueue)->succeed();
             } else {
                 $client->writeBuffer = "";
-                $reactor->disable($watcherId);
+                $this->reactor->disable($watcherId);
             }
         }
     }

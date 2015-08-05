@@ -38,13 +38,14 @@ class Body extends PromiseStream implements Promise {
     public function __construct(Promise $promise) {
         parent::__construct($promise);
         $this->promise = $promise;
-        $when = function($e, $string) use (&$cur) {
-            $cur = $string;
+        $when = function ($e, $bool) use (&$continue) {
+            $continue = $bool;
         };
-        $promise->when(function() use (&$cur, $when) {
-            foreach ($this->stream() as $promise) {
-                $promise->when($when);
-                $string[] = $cur;
+        $promise->when(function() use (&$continue, $when) {
+            $this->valid()->when($when);
+            while ($continue) {
+                $string[] = $this->consume();
+                $this->valid()->when($when);
             }
 
             if (isset($string)) {

@@ -261,7 +261,7 @@ class Server implements \SplSubject {
         return $socket;
     }
 
-    private function onAcceptable(Reactor $reactor, string $watcherId, $server) {
+    private function onAcceptable(string $watcherId, $server) {
         if (!$client = @stream_socket_accept($server, $timeout = 0, $peerName)) {
             return;
         }
@@ -288,10 +288,10 @@ class Server implements \SplSubject {
         }
     }
 
-    private function negotiateCrypto(Reactor $reactor, string $watcherId, $socket, string $peerName) {
+    private function negotiateCrypto(string $watcherId, $socket, string $peerName) {
         if ($handshake = @stream_socket_enable_crypto($socket, true)) {
             $socketId = (int) $socket;
-            $reactor->cancel($watcherId);
+            $this->reactor->cancel($watcherId);
             unset($this->pendingTlsStreams[$socketId]);
             $meta = stream_get_meta_data($socket)["crypto"];
             $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
@@ -408,7 +408,7 @@ class Server implements \SplSubject {
     }
 
     private function writeResponse(Client $client, $final = false) {
-        $this->onWritable($this->reactor, $client->writeWatcher, $client->socket, $client);
+        $this->onWritable($client->writeWatcher, $client->socket, $client);
         if (empty($final)) {
             return;
         }
@@ -429,7 +429,7 @@ class Server implements \SplSubject {
         }
     }
 
-    private function onWritable(Reactor $reactor, string $watcherId, $socket, $client) {
+    private function onWritable(string $watcherId, $socket, $client) {
         $bytesWritten = @fwrite($socket, $client->writeBuffer);
         if ($bytesWritten === false) {
             if (!is_resource($socket) || @feof($socket)) {
@@ -438,13 +438,13 @@ class Server implements \SplSubject {
             }
         } elseif ($bytesWritten === strlen($client->writeBuffer)) {
             $client->writeBuffer = "";
-            $reactor->disable($watcherId);
+            $this->reactor->disable($watcherId);
             if ($client->onWriteDrain) {
                 ($client->onWriteDrain)($client);
             }
         } else {
             $client->writeBuffer = substr($client->writeBuffer, $bytesWritten);
-            $reactor->enable($watcherId);
+            $this->reactor->enable($watcherId);
         }
     }
 
@@ -473,7 +473,7 @@ class Server implements \SplSubject {
         unset($this->keepAliveTimeouts[$client->id]);
     }
 
-    private function onReadable(Reactor $reactor, string $watcherId, $socket, $client) {
+    private function onReadable(string $watcherId, $socket, $client) {
         $data = @fread($socket, $this->options->ioGranularity);
         if ($data == "") {
             if (!is_resource($socket) || @feof($socket)) {
@@ -494,7 +494,7 @@ class Server implements \SplSubject {
 
         if ($send != "") {
             $client->writeBuffer .= $send;
-            $this->onWritable($reactor, $client->writeWatcher, $client->socket, $client);
+            $this->onWritable($this->reactor, $client->writeWatcher, $client->socket, $client);
         }
     }
 

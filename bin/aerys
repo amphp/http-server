@@ -77,11 +77,11 @@ if ($console->isArgDefined("help")) {
     exit(0);
 }
 
-Amp\run(function(Amp\Reactor $reactor) use ($console) {
+Amp\run(function() use ($console) {
     $logger = new Aerys\ConsoleLogger($console);
     $process = ($console->isArgDefined("debug") || php_sapi_name() === "phpdbg")
-        ? new Aerys\DebugProcess($reactor, $logger)
-        : new Aerys\WatcherProcess($reactor, $logger)
+        ? new Aerys\DebugProcess(Amp\reactor(), $logger)
+        : new Aerys\WatcherProcess(Amp\reactor(), $logger)
     ;
     yield from $process->start($console);
 });

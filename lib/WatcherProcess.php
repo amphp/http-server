@@ -192,7 +192,7 @@ class WatcherProcess extends Process {
         return stream_socket_get_name($ipcServer, $wantPeer = false);
     }
 
-    private function accept($reactor, $watcherId, $ipcServer) {
+    private function accept($watcherId, $ipcServer) {
         if (!$ipcClient = @stream_socket_accept($ipcServer, $timeout = 0)) {
             return;
         }
