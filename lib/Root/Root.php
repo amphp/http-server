@@ -3,7 +3,6 @@
 namespace Aerys\Root;
 
 use Amp\{
-    Reactor,
     Promise,
     Success
 };
@@ -21,7 +20,6 @@ abstract class Root implements \SplObserver {
     const PRECOND_IF_RANGE_FAILED = 4;
     const PRECOND_OK = 5;
 
-    protected $reactor;
     protected $root;
     protected $debug;
     protected $multipartBoundary;
@@ -80,12 +78,10 @@ abstract class Root implements \SplObserver {
     abstract protected function respond(Response $response, Stat $stat, Range $range = null);
 
     /**
-     * @param \Amp\Reactor $reactor
      * @param string $root
      * @param bool $debug
      */
-    public function __construct(Reactor $reactor, string $root, bool $debug) {
-        $this->reactor = $reactor;
+    public function __construct(string $root, bool $debug) {
         $root = str_replace("\\", "/", $root);
         if (!(is_readable($root) && is_dir($root))) {
             throw new \InvalidArgumentException(
@@ -95,7 +91,7 @@ abstract class Root implements \SplObserver {
         $this->root = rtrim(realpath($root), "/");
         $this->debug = $debug;
         $this->multipartBoundary = uniqid('', true);
-        $this->cacheWatcher = $this->reactor->repeat(function() {
+        $this->cacheWatcher = \Amp\repeat(function() {
             $this->now = $now = time();
             foreach ($this->cacheTimeouts as $path => $timeout) {
                 if ($now <= $timeout) {
@@ -711,10 +707,10 @@ abstract class Root implements \SplObserver {
     public function update(\SplSubject $subject): Promise {
         switch ($subject->state()) {
             case Server::STARTED:
-                $this->reactor->enable($this->cacheWatcher);
+                \Amp\enable($this->cacheWatcher);
                 break;
             case Server::STOPPED:
-                $this->reactor->disable($this->cacheWatcher);
+                \Amp\disable($this->cacheWatcher);
                 $this->cache = [];
                 $this->cacheTimeouts = [];
                 $this->cacheEntryCount = 0;

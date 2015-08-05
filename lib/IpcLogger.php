@@ -3,14 +3,12 @@
 namespace Aerys;
 
 use Amp\{
-    Reactor,
     Promise,
     Success,
     Deferred
 };
 
 class IpcLogger extends Logger {
-    private $reactor;
     private $ipcSock;
     private $writeWatcherId;
     private $writeQueue = [];
@@ -18,7 +16,7 @@ class IpcLogger extends Logger {
     private $stopPromisor;
     private $isDead;
 
-    public function __construct(Reactor $reactor, Console $console, $ipcSock) {
+    public function __construct(Console $console, $ipcSock) {
         if ($console->isArgDefined("color")) {
             $this->setAnsify($console->getArg("color"));
         }
@@ -28,8 +26,7 @@ class IpcLogger extends Logger {
 
         $onWritable = $this->makePrivateCallable("onWritable");
         $this->ipcSock = $ipcSock;
-        $this->reactor = $reactor;
-        $this->writeWatcherId = $this->reactor->onWritable($ipcSock, $onWritable, [
+        $this->writeWatcherId = \Amp\onWritable($ipcSock, $onWritable, [
             "enable" => false,
         ]);
     }
@@ -42,7 +39,7 @@ class IpcLogger extends Logger {
         if (empty($this->isDead)) {
             $this->writeQueue[] = pack("N", \strlen($message));
             $this->writeQueue[] = $message;
-            $this->reactor->enable($this->writeWatcherId);
+            \Amp\enable($this->writeWatcherId);
         }
     }
 
@@ -76,12 +73,12 @@ class IpcLogger extends Logger {
         $this->writeBuffer = "";
 
         if ($this->stopPromisor) {
-            $this->reactor->cancel($this->writeWatcherId);
+            \Amp\cancel($this->writeWatcherId);
             $promisor = $this->stopPromisor;
             $this->stopPromisor = null;
             $promisor->succeed();
         } else {
-            $this->reactor->disable($this->writeWatcherId);
+            \Amp\disable($this->writeWatcherId);
         }
     }
 
@@ -89,7 +86,7 @@ class IpcLogger extends Logger {
         $this->isDead = true;
         $this->writeBuffer = "";
         $this->writeQueue = [];
-        $this->reactor->cancel($this->writeWatcherId);
+        \Amp\cancel($this->writeWatcherId);
         if ($this->stopPromisor) {
             $promisor = $this->stopPromisor;
             $this->stopPromisor = null;

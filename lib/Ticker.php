@@ -3,7 +3,6 @@
 namespace Aerys;
 
 use Amp\{
-    Reactor,
     Promise,
     Success,
     Struct
@@ -12,7 +11,6 @@ use Amp\{
 class Ticker implements \SplObserver {
     use Struct;
 
-    private $reactor;
     private $logger;
     private $watcherId;
     private $useCallbacks;
@@ -20,19 +18,18 @@ class Ticker implements \SplObserver {
     public $currentTime;
     public $currentHttpDate;
 
-    final public function __construct(Reactor $reactor, Logger $logger) {
-        $this->reactor = $reactor;
+    final public function __construct(Logger $logger) {
         $this->logger = $logger;
     }
 
     final public function update(\SplSubject $subject): Promise {
         switch ($subject->state()) {
             case Server::STARTED:
-                $this->watcherId = $this->reactor->repeat([$this, "updateTime"], 1000);
+                $this->watcherId = \Amp\repeat([$this, "updateTime"], 1000);
                 $this->updateTime();
                 break;
             case Server::STOPPED:
-                $this->reactor->cancel($this->watcherId);
+                \Amp\cancel($this->watcherId);
                 $this->watcherId = null;
                 break;
         }

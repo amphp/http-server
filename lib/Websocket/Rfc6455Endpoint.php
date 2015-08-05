@@ -7,7 +7,6 @@ use Amp\{
     Failure,
     Promise,
     Success,
-    Reactor,
     function all,
     function any,
     function reactor,
@@ -29,7 +28,6 @@ use Aerys\{
 };
 
 class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
-    private $reactor;
     private $logger;
     private $application;
     private $proxy;
@@ -68,8 +66,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
     const DATA = 2;
     const ERROR = 3;
 
-    public function __construct(Reactor $reactor, Logger $logger, Websocket $application) {
-        $this->reactor = $reactor;
+    public function __construct(Logger $logger, Websocket $application) {
         $this->logger = $logger;
         $this->application = $application;
         $this->proxy = new Rfc6455EndpointProxy($this);
@@ -171,7 +168,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
             $yield = yield $yield;
         }
 
-        $this->reactor->immediately(function() use ($ireq) {
+        \Amp\immediately(function() use ($ireq) {
             $client = new Rfc6455Client;
             $client->connectedAt = $this->now;
             $socket = $ireq->client->socket;
@@ -183,11 +180,11 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
             $client->parser = $this->parser([$this, "onParse"], $options = [
                 "cb_data" => $client
             ]);
-            $client->readWatcher = $this->reactor->onReadable($socket, [$this, "onReadable"], $options = [
+            $client->readWatcher = \Amp\onReadable($socket, [$this, "onReadable"], $options = [
                 "enable" => true,
                 "cb_data" => $client,
             ]);
-            $client->writeWatcher = $this->reactor->onWritable($socket, [$this, "onWritable"], $options = [
+            $client->writeWatcher = \Amp\onWritable($socket, [$this, "onWritable"], $options = [
                 "enable" => $client->writeBuffer != "",
                 "cb_data" => $client,
             ]);
@@ -195,7 +192,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
             $this->clients[$client->id] = $client;
             $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
 
-            resolve($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]), $this->reactor);
+            resolve($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]));
         });
     }
 
@@ -254,10 +251,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
     private function unloadClient(Rfc6455Client $client) {
         $client->parser = null;
         if ($client->readWatcher) {
-            $this->reactor->cancel($client->readWatcher);
+            \Amp\cancel($client->readWatcher);
         }
         if ($client->writeWatcher) {
-            $this->reactor->cancel($client->writeWatcher);
+            \Amp\cancel($client->writeWatcher);
         }
 
         unset($this->heartbeatTimeouts[$client->id]);
@@ -316,9 +313,9 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
                     $reason = substr($data, 2);
 
                     @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
-                    $this->reactor->cancel($client->readWatcher);
+                    \Amp\cancel($client->readWatcher);
                     $client->readWatcher = null;
-                    resolve($this->doClose($client, $code, $reason), $this->reactor);
+                    resolve($this->doClose($client, $code, $reason));
                 }
                 break;
 
@@ -345,7 +342,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
         if (!$client->msgPromisor) {
             $client->msgPromisor = new Deferred;
             $msg = new Message($client->msgPromisor->promise());
-            resolve($this->tryAppOnData($client, $msg), $this->reactor);
+            resolve($this->tryAppOnData($client, $msg));
         }
 
         $client->msgPromisor->update($data);
@@ -379,12 +376,12 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
         if ($code) {
             if ($client->closedAt || $code == Code::PROTOCOL_ERROR) {
                 @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
-                $this->reactor->cancel($client->readWatcher);
+                \Amp\cancel($client->readWatcher);
                 $client->readWatcher = null;
             }
 
             if (!$client->closedAt) {
-                resolve($this->doClose($client, $code, $msg), $this->reactor);
+                resolve($this->doClose($client, $code, $msg));
             }
         }
     }
@@ -401,7 +398,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
                 $client->closedAt = $this->now;
                 $code = Code::ABNORMAL_CLOSE;
                 $reason = "Client closed underlying TCP connection";
-                resolve($this->tryAppOnClose($client->id, $code, $reason), $this->reactor);
+                resolve($this->tryAppOnClose($client->id, $code, $reason));
             } else {
                 unset($this->closeTimeouts[$client->id]);
             }
@@ -432,7 +429,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
                 $client->writeDeferred = array_shift($client->writeDeferredControlQueue);
             } elseif ($client->closedAt) {
                 @stream_socket_shutdown($socket, STREAM_SHUT_WR);
-                $this->reactor->cancel($watcherId);
+                \Amp\cancel($watcherId);
                 $client->writeWatcher = null;
             } elseif ($client->writeDataQueue) {
                 $client->writeBuffer = array_shift($client->writeDataQueue);
@@ -441,7 +438,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
                 $client->writeDeferred = array_shift($client->writeDeferredDataQueue)->succeed();
             } else {
                 $client->writeBuffer = "";
-                $this->reactor->disable($watcherId);
+                \Amp\disable($watcherId);
             }
         }
     }
@@ -479,7 +476,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
 
         $w .= $msg;
 
-        $this->reactor->enable($client->writeWatcher);
+        \Amp\enable($client->writeWatcher);
         if ($client->writeBuffer != "") {
             if ($frameInfo["opcode"] >= 0x8) {
                 $client->writeControlQueue[] = $w;
@@ -557,7 +554,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
         if (isset($this->clients[$clientId])) {
-            resolve($this->doClose($this->clients[$clientId], $code, $reason), $this->reactor);
+            resolve($this->doClose($this->clients[$clientId], $code, $reason));
         }
     }
 
@@ -592,13 +589,13 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
             case Server::STARTING:
                 $result = $this->application->onStart($this->proxy);
                 if ($result instanceof \Generator) {
-                    return resolve($result, $this->reactor);
+                    return resolve($result);
                 }
                 break;
 
             case Server::STARTED:
                 $f = (new \ReflectionClass($this))->getMethod("timeout")->getClosure($this);
-                $this->timeoutWatcher = $this->reactor->repeat($f, 1000);
+                $this->timeoutWatcher = \Amp\repeat($f, 1000);
                 break;
 
             case Server::STOPPING:
@@ -609,7 +606,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
                     $this->close($client->id, $code, $reason);
                 }
 
-                $this->reactor->cancel($this->timeoutWatcher);
+                \Amp\cancel($this->timeoutWatcher);
                 $this->timeoutWatcher = null;
                 break;
 
@@ -617,7 +614,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
                 $promises = [];
                 $result = $this->application->onStop();
                 if ($result instanceof \Generator) {
-                    $promises[] = resolve($result, $this->reactor);
+                    $promises[] = resolve($result);
                 }
 
                 // we are not going to wait for a proper self::OP_CLOSE answer (because else we'd need to timeout for 3 seconds, not worth it), but we will ensure to at least *have written* it

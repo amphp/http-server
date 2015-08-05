@@ -3,13 +3,11 @@
 namespace Aerys;
 
 use Amp\{
-    Reactor,
     Failure,
     Deferred
 };
 
 class WatcherProcess extends Process {
-    private $reactor;
     private $logger;
     private $console;
     private $workerCount;
@@ -21,11 +19,10 @@ class WatcherProcess extends Process {
     private $stopPromisor;
     private $defunctProcessCount = 0;
 
-    public function __construct(Reactor $reactor, Logger $logger) {
-        parent::__construct($reactor, $logger);
-        $this->reactor = $reactor;
+    public function __construct(Logger $logger) {
+        parent::__construct($logger);
         $this->logger = $logger;
-        $this->procGarbageWatcher = $reactor->repeat(function() {
+        $this->procGarbageWatcher = \Amp\repeat(function() {
             $this->collectProcessGarbage();
         }, 100, ["enable" => false]);
     }
@@ -46,12 +43,12 @@ class WatcherProcess extends Process {
 
         // If we've reaped all known dead processes we can stop checking
         if (empty($this->defunctProcessCount)) {
-            $this->reactor->disable($this->procGarbageWatcher);
+            \Amp\disable($this->procGarbageWatcher);
         }
 
         if ($this->stopPromisor && empty($this->processes)) {
-            $this->reactor->cancel($this->procGarbageWatcher);
-            $this->reactor->immediately([$this->stopPromisor, "succeed"]);
+            \Amp\cancel($this->procGarbageWatcher);
+            \Amp\immediately([$this->stopPromisor, "succeed"]);
             $this->stopPromisor = null;
         }
     }
@@ -187,7 +184,7 @@ class WatcherProcess extends Process {
         }
 
         stream_set_blocking($ipcServer, false);
-        $this->reactor->onReadable($ipcServer, function(...$args) { $this->accept(...$args); });
+        \Amp\onReadable($ipcServer, function(...$args) { $this->accept(...$args); });
 
         return stream_socket_get_name($ipcServer, $wantPeer = false);
     }
@@ -201,7 +198,7 @@ class WatcherProcess extends Process {
         stream_set_blocking($ipcClient, false);
         $parser = $this->parser($ipcClient);
         $onReadable = function() use ($parser) { $parser->next(); };
-        $readWatcherId = $this->reactor->onReadable($ipcClient, $onReadable);
+        $readWatcherId = \Amp\onReadable($ipcClient, $onReadable);
         $parser->send($readWatcherId);
     }
 
@@ -241,11 +238,11 @@ class WatcherProcess extends Process {
     }
 
     private function onDeadIpcClient(string $readWatcherId, $ipcClient) {
-        $this->reactor->cancel($readWatcherId);
+        \Amp\cancel($readWatcherId);
         @fclose($ipcClient);
         unset($this->ipcClients[(int)$ipcClient]);
         $this->defunctProcessCount++;
-        $this->reactor->enable($this->procGarbageWatcher);
+        \Amp\enable($this->procGarbageWatcher);
     }
 
     private function generateWorkerCommand(Console $console): string {

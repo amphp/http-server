@@ -2,8 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{ Reactor, Promise, Success, function any };
-use Psr\Log\LoggerAwareInterface as PsrLoggerAware;
+use Amp\{ Promise, Success, function any };
 
 class Bootstrapper {
     private $hostAggregator;
@@ -15,12 +14,11 @@ class Bootstrapper {
     /**
      * Bootstrap a server from command line options
      *
-     * @param \Amp\Reactor $reactor
      * @param \Aerys\Logger $logger
      * @param \Aerys\Console $console
      * @return \Aerys\Server
      */
-    public function boot(Reactor $reactor, Logger $logger, Console $console): Server {
+    public function boot(Logger $logger, Console $console): Server {
         $configFile = $this->selectConfigFile((string)$console->getArg("config"));
         $logger->info("Using config file found at $configFile");
         if (!include($configFile)) {
@@ -42,11 +40,11 @@ class Bootstrapper {
 
         $options = $this->generateOptionsObjFromArray($options);
         $vhosts = new VhostContainer;
-        $ticker = new Ticker($reactor, $logger);
-        $server = new Server($reactor, $options, $vhosts, $logger, $ticker);
+        $ticker = new Ticker($logger);
+        $server = new Server($options, $vhosts, $logger, $ticker);
 
-        $bootLoader = function(Bootable $bootable) use ($reactor, $server, $logger) {
-            return $bootable->boot($reactor, $server, $logger);
+        $bootLoader = function(Bootable $bootable) use ($server, $logger) {
+            return $bootable->boot($server, $logger);
         };
         $hosts = \call_user_func($this->hostAggregator) ?: [new Host];
         foreach ($hosts as $host) {
@@ -176,7 +174,7 @@ class Bootstrapper {
                 $this->applications = $applications;
             }
 
-            public function boot(Reactor $reactor, Server $server, Logger $logger) {
+            public function boot(Server $server, Logger $logger) {
                 $server->attach($this);
 
                 return [$this, "__invoke"];

@@ -80,8 +80,8 @@ if ($console->isArgDefined("help")) {
 Amp\run(function() use ($console) {
     $logger = new Aerys\ConsoleLogger($console);
     $process = ($console->isArgDefined("debug") || php_sapi_name() === "phpdbg")
-        ? new Aerys\DebugProcess(Amp\reactor(), $logger)
-        : new Aerys\WatcherProcess(Amp\reactor(), $logger)
+        ? new Aerys\DebugProcess($logger)
+        : new Aerys\WatcherProcess($logger)
     ;
     yield from $process->start($console);
 });

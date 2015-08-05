@@ -3,11 +3,9 @@
 namespace Aerys;
 
 use Amp\{
-    Reactor,
     UvReactor,
     function coroutine,
-    function resolve,
-    function wait
+    function resolve
 };
 
 abstract class Process {
@@ -15,7 +13,6 @@ abstract class Process {
     const STARTED = 1;
     const STOPPING = 2;
 
-    private $reactor;
     private $logger;
     private $exitCode = 0;
     private $state = self::STOPPED;
@@ -23,8 +20,7 @@ abstract class Process {
     abstract protected function doStart(Console $console): \Generator;
     abstract protected function doStop(): \Generator;
 
-    public function __construct(Reactor $reactor, Logger $logger) {
-        $this->reactor = $reactor;
+    public function __construct(Logger $logger) {
         $this->logger = $logger;
     }
 
@@ -53,7 +49,7 @@ abstract class Process {
             // Once we make it this far we no longer want to terminate
             // the process in the event of an uncaught exception inside
             // the event reactor -- log it instead.
-            $this->reactor->onError([$this->logger, "critical"]);
+            \Amp\onError([$this->logger, "critical"]);
         } catch (\Throwable $uncaught) {
             $this->exitCode = 1;
             yield $this->logger->critical($uncaught);
@@ -91,13 +87,13 @@ abstract class Process {
             return;
         }
 
-        $onSignal = coroutine([$this, "stop"], $this->reactor);
+        $onSignal = coroutine([$this, "stop"]);
 
-        if ($this->reactor instanceof UvReactor) {
-            $this->reactor->onSignal(\UV::SIGINT, $onSignal);
-            $this->reactor->onSignal(\UV::SIGTERM, $onSignal);
+        if (\Amp\reactor() instanceof UvReactor) {
+            \Amp\onSignal(\UV::SIGINT, $onSignal);
+            \Amp\onSignal(\UV::SIGTERM, $onSignal);
         } elseif (extension_loaded("pcntl")) {
-            $this->reactor->repeat("pcntl_signal_dispatch", 1000);
+            \Amp\repeat("pcntl_signal_dispatch", 1000);
             pcntl_signal(\SIGINT, $onSignal);
             pcntl_signal(\SIGTERM, $onSignal);
         }
@@ -129,8 +125,8 @@ abstract class Process {
                 yield $this->logger->critical($msg);
                 yield from $this->stop();
             };
-            $promise = resolve($gen($msg), $this->reactor);
-            wait($promise, $this->reactor);
+            $promise = resolve($gen($msg));
+            \Amp\wait($promise);
         });
     }
 
@@ -168,7 +164,7 @@ abstract class Process {
                     yield $this->logger->warning($msg);
                     break;
             }
-        }, $this->reactor));
+        }));
     }
 
     /**

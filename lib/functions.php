@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{ Reactor, function makeGeneratorError };
+use function Amp\makeGeneratorError;
 
 /**
  * Create a router for use in a Host instance
@@ -34,9 +34,9 @@ function websocket($app, array $options = []) {
             $this->app = $app;
             $this->options = $options;
         }
-        public function boot(Reactor $reactor, Server $server, Logger $logger) {
+        public function boot(Server $server, Logger $logger) {
             $app = ($this->app instanceof Bootable)
-                ? $this->app->boot($reactor, $server, $logger)
+                ? $this->app->boot($server, $logger)
                 : $this->app;
             if (!$app instanceof Websocket) {
                 $type = is_object($app) ? get_class($app) : gettype($app);
@@ -44,7 +44,7 @@ function websocket($app, array $options = []) {
                     "Cannot boot websocket handler; Aerys\\Websocket required, {$type} provided"
                 );
             }
-            $endpoint = new Websocket\Rfc6455Endpoint($reactor, $logger, $app);
+            $endpoint = new Websocket\Rfc6455Endpoint($logger, $app);
             foreach ($this->options as $key => $value) {
                 $endpoint->setOption($key, $value);
             }
@@ -73,11 +73,11 @@ function root(string $docroot, array $options = []) {
             $this->docroot = $docroot;
             $this->options = $options;
         }
-        public function boot(Reactor $reactor, Server $server, Logger $logger) {
+        public function boot(Server $server, Logger $logger) {
             $debug = $server->getOption("debug");
-            $root = ($reactor instanceof \Amp\UvReactor)
-                ? new Root\UvRoot($reactor, $this->docroot, $debug)
-                : new Root\BlockingRoot($reactor, $this->docroot, $debug)
+            $root = (\Amp\reactor() instanceof \Amp\UvReactor)
+                ? new Root\UvRoot($this->docroot, $debug)
+                : new Root\BlockingRoot($this->docroot, $debug)
             ;
             $options = $this->options;
             $defaultMimeFile = __DIR__ ."/../etc/mime";

@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{ Struct, Reactor, Promise, Success, Failure, Deferred };
+use Amp\{ Struct, Promise, Success, Failure, Deferred };
 use function Amp\{ resolve, timeout, any, all, makeGeneratorError };
 
 class Server implements \SplSubject {
@@ -14,7 +14,6 @@ class Server implements \SplSubject {
     const STOPPING = 3;
 
     private $state = self::STOPPED;
-    private $reactor;
     private $options;
     private $vhosts;
     private $logger;
@@ -40,14 +39,7 @@ class Server implements \SplSubject {
     private $onCoroutineAppResolve;
     private $onResponseDataDone;
 
-    public function __construct(
-        Reactor $reactor,
-        Options $options,
-        VhostContainer $vhosts,
-        Logger $logger,
-        Ticker $ticker
-    ) {
-        $this->reactor = $reactor;
+    public function __construct(Options $options, VhostContainer $vhosts, Logger $logger, Ticker $ticker) {
         $this->options = $options;
         $this->vhosts = $vhosts;
         $this->logger = $logger;
@@ -165,7 +157,7 @@ class Server implements \SplSubject {
                             "Cannot start: no virtual hosts registered in composed VhostContainer"
                         ));
                     }
-                    return resolve($this->doStart(), $this->reactor);
+                    return resolve($this->doStart());
                 case self::STARTING:
                     return new Failure(new \LogicException(
                         "Cannot start server: already STARTING"
@@ -219,7 +211,7 @@ class Server implements \SplSubject {
         assert($this->logDebug("started"));
 
         foreach ($this->boundServers as $serverName => $server) {
-            $this->acceptWatcherIds[$serverName] = $this->reactor->onReadable($server, $this->onAcceptable);
+            $this->acceptWatcherIds[$serverName] = \Amp\onReadable($server, $this->onAcceptable);
             $this->logger->info("Listening on {$serverName}");
         }
     }
@@ -279,7 +271,7 @@ class Server implements \SplSubject {
         $contextOptions = stream_context_get_options($client);
         if (isset($contextOptions["ssl"])) {
             $clientId = (int) $client;
-            $watcherId = $this->reactor->onReadable($client, $this->negotiateCrypto, $options = [
+            $watcherId = \Amp\onReadable($client, $this->negotiateCrypto, $options = [
                 "cb_data" => $peerName,
             ]);
             $this->pendingTlsStreams[$clientId] = [$watcherId, $client];
@@ -291,14 +283,14 @@ class Server implements \SplSubject {
     private function negotiateCrypto(string $watcherId, $socket, string $peerName) {
         if ($handshake = @stream_socket_enable_crypto($socket, true)) {
             $socketId = (int) $socket;
-            $this->reactor->cancel($watcherId);
+            \Amp\cancel($watcherId);
             unset($this->pendingTlsStreams[$socketId]);
             $meta = stream_get_meta_data($socket)["crypto"];
             $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
-            assert($this->logDebug(sprintf("crypto negotiated %s%s", ($isH2 ? "(h2) " : ""), $peerName)));
+            \assert($this->logDebug(sprintf("crypto negotiated %s%s", ($isH2 ? "(h2) " : ""), $peerName)));
             $this->importClient($socket, $peerName, $this->httpDriver[$isH2 ? "2.0" : "1.1"]);
         } elseif ($handshake === false) {
-            assert($this->logDebug("crypto handshake error {$peerName}"));
+            \assert($this->logDebug("crypto handshake error {$peerName}"));
             $this->failCryptoNegotiation($socket);
         }
     }
@@ -307,7 +299,7 @@ class Server implements \SplSubject {
         $this->clientCount--;
         $socketId = (int) $socket;
         list($watcherId) = $this->pendingTlsStreams[$socketId];
-        $this->reactor->cancel($watcherId);
+        \Amp\cancel($watcherId);
         unset($this->pendingTlsStreams[$socketId]);
         @fclose($socket);
     }
@@ -320,8 +312,8 @@ class Server implements \SplSubject {
     public function stop(): Promise {
         switch ($this->state) {
             case self::STARTED:
-                $stopPromise = resolve($this->doStop(), $this->reactor);
-                return timeout($stopPromise, $this->options->shutdownTimeout, $this->reactor);
+                $stopPromise = resolve($this->doStop());
+                return timeout($stopPromise, $this->options->shutdownTimeout);
             case self::STOPPED:
                 return new Success;
             case self::STOPPING:
@@ -342,7 +334,7 @@ class Server implements \SplSubject {
         $this->state = self::STOPPING;
 
         foreach ($this->acceptWatcherIds as $watcherId) {
-            $this->reactor->cancel($watcherId);
+            \Amp\cancel($watcherId);
         }
         $this->boundServers = [];
         $this->acceptWatcherIds = [];
@@ -393,11 +385,11 @@ class Server implements \SplSubject {
 
         $client->requestParser = $http->parser($client);
         $client->requestParser->send("");
-        $client->readWatcher = $this->reactor->onReadable($socket, $this->onReadable, $options = [
+        $client->readWatcher = \Amp\onReadable($socket, $this->onReadable, $options = [
             "enable" => true,
             "cb_data" => $client,
         ]);
-        $client->writeWatcher = $this->reactor->onWritable($socket, $this->onWritable, $options = [
+        $client->writeWatcher = \Amp\onWritable($socket, $this->onWritable, $options = [
             "enable" => false,
             "cb_data" => $client,
         ]);
@@ -438,13 +430,13 @@ class Server implements \SplSubject {
             }
         } elseif ($bytesWritten === strlen($client->writeBuffer)) {
             $client->writeBuffer = "";
-            $this->reactor->disable($watcherId);
+            \Amp\disable($watcherId);
             if ($client->onWriteDrain) {
                 ($client->onWriteDrain)($client);
             }
         } else {
             $client->writeBuffer = substr($client->writeBuffer, $bytesWritten);
-            $this->reactor->enable($watcherId);
+            \Amp\enable($watcherId);
         }
     }
 
@@ -494,7 +486,7 @@ class Server implements \SplSubject {
 
         if ($send != "") {
             $client->writeBuffer .= $send;
-            $this->onWritable($this->reactor, $client->writeWatcher, $client->socket, $client);
+            $this->onWritable($client->writeWatcher, $client->socket, $client);
         }
     }
 
@@ -751,7 +743,7 @@ class Server implements \SplSubject {
 
             $out = ($application)($request, $response);
             if ($out instanceof \Generator) {
-                $promise = resolve($out, $this->reactor);
+                $promise = resolve($out);
                 $promise->when($this->onCoroutineAppResolve, $ireq);
             } elseif ($response->state() & Response::STARTED) {
                 $response->end();
@@ -892,8 +884,8 @@ class Server implements \SplSubject {
     private function clear(Client $client) {
         $client->requestParser = null;
         $client->onWriteDrain = null;
-        $this->reactor->cancel($client->readWatcher);
-        $this->reactor->cancel($client->writeWatcher);
+        \Amp\cancel($client->readWatcher);
+        \Amp\cancel($client->writeWatcher);
         $this->clearKeepAliveTimeout($client);
         unset($this->clients[$client->id]);
         if ($this->stopPromisor && empty($this->clients)) {

@@ -9,7 +9,6 @@ use FastRoute\{
 };
 
 use Amp\{
-    Reactor,
     Promise,
     Success,
     Failure,
@@ -271,10 +270,10 @@ class Router implements Bootable, Middleware, \SplObserver {
         return $this;
     }
 
-    public function boot(Reactor $reactor, Server $server, Logger $logger) {
+    public function boot(Server $server, Logger $logger) {
         $server->attach($this);
-        $this->bootLoader = function(Bootable $bootable) use ($reactor, $server, $logger) {
-            return $bootable->boot($reactor, $server, $logger);
+        $this->bootLoader = function(Bootable $bootable) use ($server, $logger) {
+            return $bootable->boot($server, $logger);
         };
 
         return [$this, "__invoke"];

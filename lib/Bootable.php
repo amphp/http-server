@@ -2,8 +2,6 @@
 
 namespace Aerys;
 
-use Amp\Reactor;
-
 interface Bootable {
-    function boot(Reactor $reactor, Server $server, Logger $logger);
+    function boot(Server $server, Logger $logger);
 }
