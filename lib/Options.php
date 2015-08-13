@@ -21,7 +21,7 @@ class Options {
     private $maxHeaderSize = 32768;
     private $ioGranularity = 32768;
     private $maxPendingSize = 262144;
-    private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS"];  // can overlap for vhost with additional check once vhost is determined
+    private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
     private $deflateEnable;
 
     //@link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits
