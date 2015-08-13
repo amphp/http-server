@@ -97,6 +97,18 @@ class Server implements \SplSubject {
     }
 
     /**
+     * Assign a server option value
+     *
+     * @param string $option The option to retrieve
+     * @param mixed $newValue
+     * @throws \DomainException on unknown option
+     * @return void
+     */
+    public function setOption(string $option, $newValue) {
+        $this->options->{$option} = $newValue;
+    }
+
+    /**
      * Attach an observer
      *
      * @param \SplObserver $observer

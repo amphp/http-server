@@ -61,6 +61,9 @@ $router = router()
         $res->setHeader("Aerys-Generic-Response", "enable");
         $res->end();
     })
+    ->zanzibar("/zanzibar", function (Request $req, Response $res) {
+        $res->end("<html><body><h1>ZANZIBAR!</h1></body></html>");
+    })
 ;
 
 // If none of our routes match try to serve a static file

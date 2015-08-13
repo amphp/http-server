@@ -364,14 +364,27 @@ class Router implements Bootable, Middleware, \SplObserver {
                         "Router start failure: no routes registered"
                     ));
                 }
-                $this->routeDispatcher = simpleDispatcher(function(RouteCollector $rc) {
-                    foreach ($this->routes as list($method, $uri, $actions)) {
-                        $rc->addRoute($method, $uri, $this->bootRouteTarget($actions));
-                    }
+                $this->routeDispatcher = simpleDispatcher(function ($rc) use ($subject) {
+                    $this->buildRouter($rc, $subject);
                 });
                 break;
         }
 
         return new Success;
+    }
+
+    private function buildRouter(RouteCollector $rc, Server $server) {
+        $allowedMethods = [];
+        foreach ($this->routes as list($method, $uri, $actions)) {
+            $allowedMethods[] = $method;
+            $rc->addRoute($method, $uri, $this->bootRouteTarget($actions));
+        }
+        $originalMethods = $server->getOption("allowedMethods");
+        if ($server->getOption("normalizeMethodCase")) {
+            $allowedMethods = array_map("strtoupper", $allowedMethods);
+        }
+        $allowedMethods = array_merge($allowedMethods, $originalMethods);
+        $allowedMethods = array_unique($allowedMethods);
+        $server->setOption("allowedMethods", $allowedMethods);
     }
 }
