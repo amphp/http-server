@@ -1,7 +1,7 @@
 {
     "name": "amphp/aerys",
     "homepage": "https://github.com/amphp/aerys",
-    "description": "Non-blocking HTTP/Websocket server",
+    "description": "A non-blocking HTTP/Websocket server",
     "keywords": [
         "http",
         "websocket",
@@ -24,9 +24,11 @@
             "role": "Developer / API Coordinator"
         }
     ],
+    "minimum-stability": "dev",
     "require": {
         "php": ">=7.0.0-dev",
         "amphp/amp": "^1",
+        "amphp/file": "dev-master",
         "nikic/fast-route": "~0.4.0",
         "league/climate": "^3",
         "psr/log": "~1.0"

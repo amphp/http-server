@@ -75,10 +75,7 @@ function root(string $docroot, array $options = []) {
         }
         public function boot(Server $server, Logger $logger) {
             $debug = $server->getOption("debug");
-            $root = (\Amp\reactor() instanceof \Amp\UvReactor)
-                ? new Root\UvRoot($this->docroot, $debug)
-                : new Root\BlockingRoot($this->docroot, $debug)
-            ;
+            $root = new Root($this->docroot, $debug);
             $options = $this->options;
             $defaultMimeFile = __DIR__ ."/../etc/mime";
             if (!array_key_exists("mimeFile", $options) && file_exists($defaultMimeFile)) {

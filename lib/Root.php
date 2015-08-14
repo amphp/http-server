@@ -1,108 +1,75 @@
 <?php
 
-namespace Aerys\Root;
+namespace Aerys;
 
+use Amp\File as file;
 use Amp\{
+    Struct,
     Promise,
     Success
 };
-use Aerys\{
-    Server,
-    Request,
-    Response,
-    const HTTP_STATUS
-};
 
-abstract class Root implements \SplObserver {
+class Root implements \SplObserver {
     const PRECOND_NOT_MODIFIED = 1;
     const PRECOND_FAILED = 2;
     const PRECOND_IF_RANGE_OK = 3;
     const PRECOND_IF_RANGE_FAILED = 4;
     const PRECOND_OK = 5;
 
-    protected $root;
-    protected $debug;
-    protected $multipartBoundary;
-    protected $cache = [];
-    protected $cacheTimeouts = [];
-    protected $cacheWatcher;
-    protected $now;
+    private $root;
+    private $debug;
+    private $driver;
+    private $multipartBoundary;
+    private $cache = [];
+    private $cacheTimeouts = [];
+    private $cacheWatcher;
+    private $now;
 
-    protected $mimeTypes = [];
-    protected $mimeFileTypes = [];
-    protected $indexes = ["index.html", "index.htm"];
-    protected $fallback = false;
-    protected $useEtagInode = true;
-    protected $expiresPeriod = 86400 * 7;
-    protected $defaultMimeType = "text/plain";
-    protected $defaultCharset = "utf-8";
-    protected $useAggressiveCacheHeaders = false;
-    protected $aggressiveCacheMultiplier = 0.9;
-    protected $cacheEntryTtl = 10;
-    protected $cacheEntryCount = 0;
-    protected $cacheEntryMaxCount = 2048;
-    protected $bufferedFileCount = 0;
-    protected $bufferedFileMaxCount = 50;
-    protected $bufferedFileMaxSize = 524288;
-
-    /**
-     * Generate a Stat instance from the given path and index file list
-     *
-     * If the implementation determines the filesystem path to be a directory it
-     * is responsible for iterating over $this->index to attempt a match.
-     *
-     * Implementations must resolve the returned promise to a Stat instance. If
-     * the requested file is not found the Stat::$exists property must be set
-     * to a falsy value -- otherwise it must be intialized to true.
-     *
-     * If the resulting stat's file size is less than than the allowed buffer entry
-     * size the implementation should buffer it in $stat->buffer prior to resolving
-     * the returned promise.
-     *
-     * @param string $path The path for which to generate a file entry
-     * @param array $indexes An array of possible directory index file names
-     * @return \Amp\Promise
-     */
-    abstract protected function stat(string $path): \Generator;
-
-    /**
-     * Send the response entity body
-     *
-     * If the $range parameter is non-null implementations must send a range
-     * response appropriate to its contents.
-     *
-     * @param \Aerys\Response $response
-     * @param \Aerys\Root\Stat $stat
-     * @param \Aerys\Root\Range $range
-     */
-    abstract protected function respond(Response $response, Stat $stat, Range $range = null);
+    private $mimeTypes = [];
+    private $mimeFileTypes = [];
+    private $indexes = ["index.html", "index.htm"];
+    private $fallback = false;
+    private $useEtagInode = true;
+    private $expiresPeriod = 86400 * 7;
+    private $defaultMimeType = "text/plain";
+    private $defaultCharset = "utf-8";
+    private $useAggressiveCacheHeaders = false;
+    private $aggressiveCacheMultiplier = 0.9;
+    private $cacheEntryTtl = 10;
+    private $cacheEntryCount = 0;
+    private $cacheEntryMaxCount = 2048;
+    private $bufferedFileCount = 0;
+    private $bufferedFileMaxCount = 50;
+    private $bufferedFileMaxSize = 524288;
 
     /**
      * @param string $root
      * @param bool $debug
+     * @param \Amp\File\Driver $driver
      */
-    public function __construct(string $root, bool $debug) {
-        $root = str_replace("\\", "/", $root);
-        if (!(is_readable($root) && is_dir($root))) {
+    public function __construct(string $root, bool $debug, file\Driver $driver = null) {
+        $root = \str_replace("\\", "/", $root);
+        if (!(\is_readable($root) && \is_dir($root))) {
             throw new \InvalidArgumentException(
                 "Document root requires a readable directory: {$root}"
             );
         }
-        $this->root = rtrim(realpath($root), "/");
+        $this->root = \rtrim(\realpath($root), "/");
         $this->debug = $debug;
-        $this->multipartBoundary = uniqid('', true);
+        $this->driver = $driver ?: file\filesystem();
+        $this->multipartBoundary = \uniqid("", true);
         $this->cacheWatcher = \Amp\repeat(function() {
             $this->now = $now = time();
             foreach ($this->cacheTimeouts as $path => $timeout) {
                 if ($now <= $timeout) {
                     break;
                 }
-                $stat = $this->cache[$path];
+                $fileInfo = $this->cache[$path];
                 unset(
                     $this->cache[$path],
                     $this->cacheTimeouts[$path]
                 );
-                $this->bufferedFileCount -= isset($stat->buffer);
+                $this->bufferedFileCount -= isset($fileInfo->buffer);
                 $this->cacheEntryCount--;
             }
         }, 1000, $options = ["enable" => false]);
@@ -116,8 +83,8 @@ abstract class Root implements \SplObserver {
      */
     public function __invoke(Request $request, Response $response) {
         $uri = $request->getUri();
-        $path = ($qPos = stripos($uri, "?")) ? substr($uri, 0, $qPos) : $uri;
-        $path = $reqPath = str_replace("\\", "/", $path);
+        $path = ($qPos = \stripos($uri, "?")) ? \substr($uri, 0, $qPos) : $uri;
+        $path = $reqPath = \str_replace("\\", "/", $path);
         $path = $this->root . $path;
         $path = self::removeDotPathSegments($path);
 
@@ -133,9 +100,9 @@ abstract class Root implements \SplObserver {
         // We specifically break the lookup generator out into its own method
         // so that we can potentially avoid forcing the server to resolve a
         // coroutine when the file is already cached.
-        return ($stat = $this->fetchCachedStat($reqPath, $request))
-            ? $this->doResponse($stat, $request, $response)
-            : $this->doResponseWithStat($path, $reqPath, $request, $response);
+        return ($fileInfo = $this->fetchCachedStat($reqPath, $request))
+            ? $this->respond($fileInfo, $request, $response)
+            : $this->respondWithLookup($path, $reqPath, $request, $response);
     }
 
     public static function removeDotPathSegments(string $path): string {
@@ -221,7 +188,7 @@ abstract class Root implements \SplObserver {
         return implode($outputStack);
     }
 
-    protected function fetchCachedStat(string $reqPath, Request $request) {
+    private function fetchCachedStat(string $reqPath, Request $request) {
         // We specifically allow users to bypass cached representations in debug mode by
         // using their browser's "force refresh" functionality. This lets us avoid the
         // annoyance of stale file representations being served for a few seconds after
@@ -245,8 +212,8 @@ abstract class Root implements \SplObserver {
         return $this->cache[$reqPath] ?? null;
     }
 
-    protected function shouldBufferContent(Stat $stat) {
-        if ($stat->size > $this->bufferedFileMaxSize) {
+    private function shouldBufferContent($fileInfo) {
+        if ($fileInfo->size > $this->bufferedFileMaxSize) {
             return false;
         }
         if ($this->bufferedFileCount >= $this->bufferedFileMaxCount) {
@@ -259,37 +226,91 @@ abstract class Root implements \SplObserver {
         return true;
     }
 
-    protected function doResponseWithStat(string $realPath, string $reqPath, Request $request, Response $response): \Generator {
+    private function respondWithLookup(string $realPath, string $reqPath, Request $request, Response $response): \Generator {
         // We don't catch any potential exceptions from this yield because they represent
         // a legitimate error from some sort of disk failure. Just let them bubble up to
         // the server where they'll turn into a 500 response.
-        $stat = yield from $this->stat($realPath);
+        $fileInfo = yield from $this->lookup($realPath);
 
         // Specifically use the request path to reference this file in the
         // cache because the file entry path may differ if it's reflecting
         // a directory index file.
         if ($this->cacheEntryCount < $this->cacheEntryMaxCount) {
             $this->cacheEntryCount++;
-            $this->cache[$reqPath] = $stat;
+            $this->cache[$reqPath] = $fileInfo;
             $this->cacheTimeouts[$reqPath] = $this->now + $this->cacheEntryTtl;
         }
 
-        $result = $this->doResponse($stat, $request, $response);
+        $result = $this->respond($fileInfo, $request, $response);
         if ($result instanceof \Generator) {
             yield from $result;
         }
     }
 
-    protected function doResponse(Stat $stat, Request $request, Response $response) {
+    private function lookup(string $path): \Generator {
+        $fileInfo = new class {
+            use Struct;
+            public $exists;
+            public $path;
+            public $size;
+            public $mtime;
+            public $inode;
+            public $buffer;
+            public $etag;
+            public $handle;
+        };
+
+        $fileInfo->exists = false;
+        $fileInfo->path = $path;
+
+        if (!$stat = yield $this->driver->stat($path)) {
+            return $fileInfo;
+        }
+
+        if (yield $this->driver->isdir($path)) {
+            if ($indexPathArr = yield from $this->coalesceIndexPath($path)) {
+                list($fileInfo->path, $stat) = $indexPathArr;
+            } else {
+                return $fileInfo;
+            }
+        }
+
+        $fileInfo->exists = true;
+        $fileInfo->size = $stat["size"];
+        $fileInfo->mtime = $stat["mtime"];
+        $fileInfo->inode = $stat["ino"];
+        $inode = $this->useEtagInode ? $fileInfo->inode : "";
+        $fileInfo->etag = \md5("{$fileInfo->path}{$fileInfo->mtime}{$fileInfo->size}{$inode}");
+
+        if ($this->shouldBufferContent($fileInfo)) {
+            $fileInfo->buffer = yield $this->driver->get($fileInfo->path);
+            $this->bufferedFileCount++;
+        }
+
+        return $fileInfo;
+    }
+
+    private function coalesceIndexPath(string $dirPath): \Generator {
+        $dirPath = \rtrim($dirPath, "/") . "/";
+        foreach ($this->indexes as $indexFile) {
+            $coalescedPath = $dirPath . $indexFile;
+            if (yield $this->driver->isfile($coalescedPath)) {
+                yield $this->driver->stat($coalescedPath);
+                return [$coalescedPath, $stat];
+            }
+        }
+    }
+
+    private function respond($fileInfo, Request $request, Response $response) {
         // If the file doesn't exist don't bother to do anything else so the
         // HTTP server can send a 404 and/or allow handlers further down the chain
         // a chance to respond.
-        if (empty($stat->exists)) {
+        if (empty($fileInfo->exists)) {
             if ($this->fallback) {
                 $response->setStatus(HTTP_STATUS["NOT_FOUND"]);
-                if (!$stat = $this->fetchCachedStat("*#fallback", $request)) {
-                    return $this->doResponseWithStat($this->fallback, "*#fallback", $request, $response);
-                } elseif (empty($stat->exists)) {
+                if (!$fileInfo = $this->fetchCachedStat("*#fallback", $request)) {
+                    return $this->respondWithLookup($this->fallback, "*#fallback", $request, $response);
+                } elseif (empty($fileInfo->exists)) {
                     return;
                 }
             } else {
@@ -314,15 +335,15 @@ abstract class Root implements \SplObserver {
                 return;
         }
 
-        $precondition = $this->checkPreconditions($request, $stat->mtime, $stat->etag);
+        $precondition = $this->checkPreconditions($request, $fileInfo->mtime, $fileInfo->etag);
 
         switch ($precondition) {
             case self::PRECOND_NOT_MODIFIED:
                 $response->setStatus(HTTP_STATUS["NOT_MODIFIED"]);
-                $lastModifiedHttpDate = gmdate('D, d M Y H:i:s', $stat->mtime) . " GMT";
+                $lastModifiedHttpDate = \gmdate('D, d M Y H:i:s', $fileInfo->mtime) . " GMT";
                 $response->setHeader("Last-Modified", $lastModifiedHttpDate);
-                if ($stat->etag) {
-                    $response->setHeader("Etag", $stat->etag);
+                if ($fileInfo->etag) {
+                    $response->setHeader("Etag", $fileInfo->etag);
                 }
                 $response->end();
                 return;
@@ -332,44 +353,44 @@ abstract class Root implements \SplObserver {
                 return;
             case self::PRECOND_IF_RANGE_FAILED:
                 // Return this so the resulting generator will be auto-resolved
-                return $this->doNonRangeResponse($stat, $response);
+                return $this->doNonRangeResponse($fileInfo, $response);
         }
 
         if (!$rangeHeader = $request->getHeader("Range")) {
             // Return this so the resulting generator will be auto-resolved
-            return $this->doNonRangeResponse($stat, $response);
+            return $this->doNonRangeResponse($fileInfo, $response);
         }
 
-        if ($range = $this->normalizeByteRanges($stat->size, $rangeHeader)) {
+        if ($range = $this->normalizeByteRanges($fileInfo->size, $rangeHeader)) {
             // Return this so the resulting generator will be auto-resolved
-            return $this->doRangeResponse($range, $stat, $response);
+            return $this->doRangeResponse($range, $fileInfo, $response);
         }
 
         // If we're still here this is the only remaining response we can send
         $response->setStatus(HTTP_STATUS["REQUESTED_RANGE_NOT_SATISFIABLE"]);
-        $response->setHeader("Content-Range", "*/{$stat->size}");
+        $response->setHeader("Content-Range", "*/{$fileInfo->size}");
         $response->end();
     }
 
-    protected function checkPreconditions(Request $request, int $mtime, string $etag) {
+    private function checkPreconditions(Request $request, int $mtime, string $etag) {
         $ifMatch = $request->getHeader("If-Match");
-        if ($ifMatch && stripos($ifMatch, $etag) === false) {
+        if ($ifMatch && \stripos($ifMatch, $etag) === false) {
             return self::PRECOND_FAILED;
         }
 
         $ifNoneMatch = $request->getHeader("If-None-Match");
-        if ($ifNoneMatch && stripos($ifNoneMatch, $etag) !== false) {
+        if ($ifNoneMatch && \stripos($ifNoneMatch, $etag) !== false) {
             return self::PRECOND_NOT_MODIFIED;
         }
 
         $ifModifiedSince = $request->getHeader("If-Modified-Since");
-        $ifModifiedSince = $ifModifiedSince ? @strtotime($ifModifiedSince) : 0;
+        $ifModifiedSince = $ifModifiedSince ? @\strtotime($ifModifiedSince) : 0;
         if ($ifModifiedSince && $mtime > $ifModifiedSince) {
             return self::PRECOND_NOT_MODIFIED;
         }
 
         $ifUnmodifiedSince = $request->getHeader("If-Unmodified-Since");
-        $ifUnmodifiedSince = $ifUnmodifiedSince ? @strtotime($ifUnmodifiedSince) : 0;
+        $ifUnmodifiedSince = $ifUnmodifiedSince ? @\strtotime($ifUnmodifiedSince) : 0;
         if ($ifUnmodifiedSince && $mtime > $ifUnmodifiedSince) {
             return self::PRECOND_FAILED;
         }
@@ -387,7 +408,7 @@ abstract class Root implements \SplObserver {
          *
          * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.27
          */
-        if ($httpDate = @strtotime($ifRange)) {
+        if ($httpDate = @\strtotime($ifRange)) {
             return ($httpDate > $mtime) ? self::PRECOND_IF_RANGE_OK : self::PRECOND_IF_RANGE_FAILED;
         }
 
@@ -395,21 +416,21 @@ abstract class Root implements \SplObserver {
         return ($etag === $ifRange) ? self::PRECOND_IF_RANGE_OK : self::PRECOND_IF_RANGE_FAILED;
     }
 
-    protected function doNonRangeResponse(Stat $stat, Response $response) {
-        $this->assignCommonHeaders($stat, $response);
-        $response->setHeader("Content-Length",  (string) $stat->size);
-        $response->setHeader("Content-Type", $this->selectMimeTypeFromPath($stat->path));
+    private function doNonRangeResponse($fileInfo, Response $response) {
+        $this->assignCommonHeaders($fileInfo, $response);
+        $response->setHeader("Content-Length",  (string) $fileInfo->size);
+        $response->setHeader("Content-Type", $this->selectMimeTypeFromPath($fileInfo->path));
 
-        return isset($stat->buffer)
-            ? $response->end($stat->buffer)
-            : $this->respond($response, $stat);
+        return isset($fileInfo->buffer)
+            ? $response->end($fileInfo->buffer)
+            : $this->finalizeResponse($response, $fileInfo);
     }
 
-    protected function assignCommonHeaders(Stat $stat, Response $response) {
+    private function assignCommonHeaders($fileInfo, Response $response) {
         $response->setHeader("Accept-Ranges", "bytes");
         $response->setHeader("Cache-Control", "public");
-        $response->setHeader("Etag", $stat->etag);
-        $response->setHeader("Last-Modified", gmdate('D, d M Y H:i:s', $stat->mtime) . " GMT");
+        $response->setHeader("Etag", $fileInfo->etag);
+        $response->setHeader("Last-Modified", \gmdate('D, d M Y H:i:s', $fileInfo->mtime) . " GMT");
 
         $canCache = ($this->expiresPeriod > 0);
         if ($canCache && $this->useAggressiveCacheHeaders) {
@@ -420,18 +441,18 @@ abstract class Root implements \SplObserver {
             $response->setHeader("Cache-Control", $value);
         } elseif ($canCache) {
             $expiry =  $this->now + $this->expiresPeriod;
-            $response->setHeader("Expires", gmdate('D, d M Y H:i:s', $expiry) . " GMT");
+            $response->setHeader("Expires", \gmdate('D, d M Y H:i:s', $expiry) . " GMT");
         } else {
             $response->setHeader("Expires", "0");
         }
     }
 
-    protected function selectMimeTypeFromPath(string $path): string {
-        $ext = pathinfo($path, PATHINFO_EXTENSION);
+    private function selectMimeTypeFromPath(string $path): string {
+        $ext = \pathinfo($path, PATHINFO_EXTENSION);
         if (empty($ext)) {
             $mimeType = $this->defaultMimeType;
         } else {
-            $ext = strtolower($ext);
+            $ext = \strtolower($ext);
             if (isset($this->mimeTypes[$ext])) {
                 $mimeType = $this->mimeTypes[$ext];
             } elseif (isset($this->mimeFileTypes[$ext])) {
@@ -441,7 +462,7 @@ abstract class Root implements \SplObserver {
             }
         }
 
-        if (stripos($mimeType, "text/") === 0 && stripos($mimeType, "charset=") === false) {
+        if (\stripos($mimeType, "text/") === 0 && \stripos($mimeType, "charset=") === false) {
             $mimeType .= "; charset={$this->defaultCharset}";
         }
 
@@ -451,8 +472,8 @@ abstract class Root implements \SplObserver {
     /**
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
      */
-    protected function normalizeByteRanges(int $size, string $rawRanges) {
-        $rawRanges = str_ireplace([' ', 'bytes='], '', $rawRanges);
+    private function normalizeByteRanges(int $size, string $rawRanges) {
+        $rawRanges = \str_ireplace([' ', 'bytes='], '', $rawRanges);
         $rawRanges = explode(',', $rawRanges);
 
         $ranges = [];
@@ -490,29 +511,80 @@ abstract class Root implements \SplObserver {
             $ranges[] = [$startPos, $endPos];
         }
 
-        $range = new Range;
+        $range = new class {
+            use Struct;
+            public $ranges;
+            public $boundary;
+            public $contentType;
+        };
         $range->boundary = $this->multipartBoundary;
         $range->ranges = $ranges;
 
         return $range;
     }
 
-    protected function doRangeResponse(Range $range, Stat $stat, Response $response) {
-        $this->assignCommonHeaders($stat);
-        $range->contentType = $mime = $this->selectMimeTypeFromPath($stat->path);
+    private function doRangeResponse($range, $fileInfo, Response $response) {
+        $this->assignCommonHeaders($fileInfo);
+        $range->contentType = $mime = $this->selectMimeTypeFromPath($fileInfo->path);
 
         if (isset($range->ranges[1])) {
             $response->setHeader("Content-Type", "multipart/byteranges; boundary={$range->boundary}");
         } else {
             list($startPos, $endPos) = $range->ranges[0];
             $response->setHeader("Content-Length", (string) ($endPos - $startPos));
-            $response->setHeader("Content-Range", "bytes {$startPos}-{$endPos}/{$stat->size}");
+            $response->setHeader("Content-Range", "bytes {$startPos}-{$endPos}/{$fileInfo->size}");
             $response->setHeader("Content-Type", $mime);
         }
 
         $response->setStatus(HTTP_STATUS["PARTIAL_CONTENT"]);
 
-        return $this->respond($response, $stat, $range);
+        return $this->finalizeResponse($response, $fileInfo, $range);
+    }
+
+    private function finalizeResponse(Response $response, $fileInfo, $range = null): \Generator {
+        $handle = yield $this->driver->open($fileInfo->path, "r");
+
+        if (empty($range)) {
+            yield from $this->sendNonRange($handle, $response);
+        } elseif (empty($range->ranges[1])) {
+            list($startPos, $endPos) = $range->ranges[0];
+            yield from $this->sendSingleRange($handle, $response, $startPos, $endPos);
+        } else {
+            yield from $this->sendMultiRange($handle, $response, $fileInfo, $range);
+        }
+    }
+
+    private function sendNonRange(file\Handle $handle, Response $response): \Generator {
+        while (!$handle->eof()) {
+            $chunk = yield $handle->read(8192);
+            $response->stream($chunk);
+        }
+    }
+
+    private function sendSingleRange(file\Handle $handle, Response $response, int $startPos, int $endPos): \Generator {
+        $bytesRemaining = $endPos - $startPos;
+        while ($bytesRemaining) {
+            $toBuffer = ($bytesRemaining > 8192) ? 8192 : $bytesRemaining;
+            $chunk = yield $handle->read($toBuffer);
+            $response->stream($chunk);
+        }
+    }
+
+    private function sendMultiRange($handle, Response $response, $fileInfo, $range): \Generator {
+        foreach ($range->ranges as list($startPos, $endPos)) {
+            $header = sprintf(
+                "--%s\r\nContent-Type: %s\r\nContent-Range: bytes %d-%d/%d\r\n\r\n",
+                $range->boundary,
+                $range->contentType,
+                $startPos,
+                $endPos,
+                $fileInfo->size
+            );
+            $response->stream($header);
+            yield from $this->sendSingleRange($handle, $response, $startPos, $endPos);
+            $response->stream("\r\n");
+        }
+        $response->stream("--{$range->boundary}--");
     }
 
     /**
@@ -574,7 +646,7 @@ abstract class Root implements \SplObserver {
         }
     }
 
-    protected function setIndexes($indexes) {
+    private function setIndexes($indexes) {
         if (is_string($indexes)) {
             $indexes = array_map("trim", explode(" ", $indexes));
         } elseif (!is_array($indexes)) {
@@ -596,19 +668,19 @@ abstract class Root implements \SplObserver {
         $this->indexes = array_filter($indexes);
     }
 
-    protected function setFallback(string $fallback) {
+    private function setFallback(string $fallback) {
         $this->fallback = $fallback;
     }
 
-    protected function setUseEtagInode(bool $useInode) {
+    private function setUseEtagInode(bool $useInode) {
         $this->useEtagInode = $useInode;
     }
 
-    protected function setExpiresPeriod(int $seconds) {
+    private function setExpiresPeriod(int $seconds) {
         $this->expiresPeriod = ($seconds < 0) ? 0 : $seconds;
     }
 
-    protected function loadMimeFileTypes(string $mimeFile) {
+    private function loadMimeFileTypes(string $mimeFile) {
         $mimeFile = str_replace('\\', '/', $mimeFile);
         $mimeStr = @file_get_contents($mimeFile);
         if ($mimeStr === false) {
@@ -629,14 +701,14 @@ abstract class Root implements \SplObserver {
         $this->mimeFileTypes = $mimeTypes;
     }
 
-    protected function setMimeTypes(array $mimeTypes) {
+    private function setMimeTypes(array $mimeTypes) {
         foreach ($mimeTypes as $ext => $type) {
             $ext = strtolower(ltrim($ext, '.'));
             $this->mimeTypes[$ext] = $type;
         }
     }
 
-    protected function setDefaultMimeType(string $mimeType) {
+    private function setDefaultMimeType(string $mimeType) {
         if (empty($mimeType)) {
             throw new \InvalidArgumentException(
                 'Default mime type expects a non-empty string'
@@ -646,7 +718,7 @@ abstract class Root implements \SplObserver {
         $this->defaultMimeType = $mimeType;
     }
 
-    protected function setDefaultCharset(string $charset) {
+    private function setDefaultCharset(string $charset) {
         if (empty($charset)) {
             throw new \InvalidArgumentException(
                 'Default charset expects a non-empty string'
@@ -656,11 +728,11 @@ abstract class Root implements \SplObserver {
         $this->defaultCharset = $charset;
     }
 
-    protected function setUseAggressiveCacheHeaders(bool $bool) {
+    private function setUseAggressiveCacheHeaders(bool $bool) {
         $this->useAggressiveCacheHeaders = $bool;
     }
 
-    protected function setAggressiveCacheMultiplier(float $multiplier) {
+    private function setAggressiveCacheMultiplier(float $multiplier) {
         if ($multiplier > 0.00 && $multiplier < 1.0) {
             $this->aggressiveCacheMultiplier = $multiplier;
         } else {
@@ -670,28 +742,28 @@ abstract class Root implements \SplObserver {
         }
     }
 
-    protected function setCacheEntryTtl(int $seconds) {
+    private function setCacheEntryTtl(int $seconds) {
         if ($seconds < 1) {
             $seconds = 10;
         }
         $this->cacheEntryTtl = $seconds;
     }
 
-    protected function setCacheEntryMaxCount(int $count) {
+    private function setCacheEntryMaxCount(int $count) {
         if ($count < 1) {
             $count = 0;
         }
         $this->cacheEntryMaxCount = $count;
     }
 
-    protected function setBufferedFileMaxCount(int $count) {
+    private function setBufferedFileMaxCount(int $count) {
         if ($entries < 1) {
             $entries = 0;
         }
         $this->bufferedFileMaxCount = $entries;
     }
 
-    protected function setBufferedFileMaxSize(int $bytes) {
+    private function setBufferedFileMaxSize(int $bytes) {
         if ($bytes < 1) {
             $bytes = 524288;
         }
