@@ -74,8 +74,7 @@ function root(string $docroot, array $options = []) {
             $this->options = $options;
         }
         public function boot(Server $server, Logger $logger) {
-            $debug = $server->getOption("debug");
-            $root = new Root($this->docroot, $debug);
+            $root = new Root($this->docroot);
             $options = $this->options;
             $defaultMimeFile = __DIR__ ."/../etc/mime";
             if (!array_key_exists("mimeFile", $options) && file_exists($defaultMimeFile)) {

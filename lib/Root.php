@@ -2,12 +2,8 @@
 
 namespace Aerys;
 
+use Amp as amp;
 use Amp\File as file;
-use Amp\{
-    Struct,
-    Promise,
-    Success
-};
 
 class Root implements \SplObserver {
     const PRECOND_NOT_MODIFIED = 1;
@@ -18,7 +14,7 @@ class Root implements \SplObserver {
 
     private $root;
     private $debug;
-    private $driver;
+    private $filesystem;
     private $multipartBoundary;
     private $cache = [];
     private $cacheTimeouts = [];
@@ -44,21 +40,21 @@ class Root implements \SplObserver {
 
     /**
      * @param string $root
-     * @param bool $debug
-     * @param \Amp\File\Driver $driver
+     * @param \Amp\File\Driver $filesystem
+     * @param \Amp\Reactor $reactor
+     * @throws \DomainException On invalid root path
      */
-    public function __construct(string $root, bool $debug, file\Driver $driver = null) {
+    public function __construct(string $root, file\Driver $filesystem = null) {
         $root = \str_replace("\\", "/", $root);
         if (!(\is_readable($root) && \is_dir($root))) {
-            throw new \InvalidArgumentException(
-                "Document root requires a readable directory: {$root}"
+            throw new \DomainException(
+                "Document root requires a readable directory"
             );
         }
         $this->root = \rtrim(\realpath($root), "/");
-        $this->debug = $debug;
-        $this->driver = $driver ?: file\filesystem();
+        $this->filesystem = $filesystem ?: file\filesystem();
         $this->multipartBoundary = \uniqid("", true);
-        $this->cacheWatcher = \Amp\repeat(function() {
+        $this->cacheWatcher = amp\repeat(function() {
             $this->now = $now = time();
             foreach ($this->cacheTimeouts as $path => $timeout) {
                 if ($now <= $timeout) {
@@ -91,7 +87,7 @@ class Root implements \SplObserver {
         // IMPORTANT!
         // Protect against dot segment path traversal above the document root by
         // verifying that the path actually resides in the document root.
-        if (strpos($path, $this->root) !== 0) {
+        if (\strpos($path, $this->root) !== 0) {
             $response->setStatus(HTTP_STATUS["FORBIDDEN"]);
             $response->setHeader("Aerys-Generic-Response", "enable");
             $response->end();
@@ -105,6 +101,15 @@ class Root implements \SplObserver {
             : $this->respondWithLookup($path, $reqPath, $request, $response);
     }
 
+    /**
+     * Normalize paths with relative dot segments in their path
+     *
+     * This functionality is critical to avoid malicious URIs attempting to
+     * traverse the document root above the allowed base path.
+     *
+     * @param string $path
+     * @return string
+     */
     public static function removeDotPathSegments(string $path): string {
         if (strpos($path, '/.') === false) {
             return $path;
@@ -249,7 +254,7 @@ class Root implements \SplObserver {
 
     private function lookup(string $path): \Generator {
         $fileInfo = new class {
-            use Struct;
+            use amp\Struct;
             public $exists;
             public $path;
             public $size;
@@ -263,11 +268,11 @@ class Root implements \SplObserver {
         $fileInfo->exists = false;
         $fileInfo->path = $path;
 
-        if (!$stat = yield $this->driver->stat($path)) {
+        if (!$stat = yield $this->filesystem->stat($path)) {
             return $fileInfo;
         }
 
-        if (yield $this->driver->isdir($path)) {
+        if (yield $this->filesystem->isdir($path)) {
             if ($indexPathArr = yield from $this->coalesceIndexPath($path)) {
                 list($fileInfo->path, $stat) = $indexPathArr;
             } else {
@@ -283,7 +288,7 @@ class Root implements \SplObserver {
         $fileInfo->etag = \md5("{$fileInfo->path}{$fileInfo->mtime}{$fileInfo->size}{$inode}");
 
         if ($this->shouldBufferContent($fileInfo)) {
-            $fileInfo->buffer = yield $this->driver->get($fileInfo->path);
+            $fileInfo->buffer = yield $this->filesystem->get($fileInfo->path);
             $this->bufferedFileCount++;
         }
 
@@ -294,8 +299,8 @@ class Root implements \SplObserver {
         $dirPath = \rtrim($dirPath, "/") . "/";
         foreach ($this->indexes as $indexFile) {
             $coalescedPath = $dirPath . $indexFile;
-            if (yield $this->driver->isfile($coalescedPath)) {
-                yield $this->driver->stat($coalescedPath);
+            if (yield $this->filesystem->isfile($coalescedPath)) {
+                yield $this->filesystem->stat($coalescedPath);
                 return [$coalescedPath, $stat];
             }
         }
@@ -512,7 +517,7 @@ class Root implements \SplObserver {
         }
 
         $range = new class {
-            use Struct;
+            use amp\Struct;
             public $ranges;
             public $boundary;
             public $contentType;
@@ -542,7 +547,7 @@ class Root implements \SplObserver {
     }
 
     private function finalizeResponse(Response $response, $fileInfo, $range = null): \Generator {
-        $handle = yield $this->driver->open($fileInfo->path, "r");
+        $handle = yield $this->filesystem->open($fileInfo->path, "r");
 
         if (empty($range)) {
             yield from $this->sendNonRange($handle, $response);
@@ -776,13 +781,14 @@ class Root implements \SplObserver {
      * @param \SplSubject $subject
      * @return \Amp\Promise
      */
-    public function update(\SplSubject $subject): Promise {
+    public function update(\SplSubject $subject): amp\Promise {
         switch ($subject->state()) {
             case Server::STARTED:
-                \Amp\enable($this->cacheWatcher);
+                $this->debug = $subject->getOption("debug");
+                amp\enable($this->cacheWatcher);
                 break;
             case Server::STOPPED:
-                \Amp\disable($this->cacheWatcher);
+                amp\disable($this->cacheWatcher);
                 $this->cache = [];
                 $this->cacheTimeouts = [];
                 $this->cacheEntryCount = 0;
@@ -790,6 +796,6 @@ class Root implements \SplObserver {
                 break;
         }
 
-        return new Success;
+        return new amp\Success;
     }
 }
