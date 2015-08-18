@@ -20,7 +20,7 @@ class Console {
     public function output(string $msg) {
         return $this->climate->out($msg);
     }
-    
+
     public function addArgs(array $args) {
         return $this->climate->arguments->add($args);
     }
@@ -31,6 +31,10 @@ class Console {
         }
 
         return $this->climate->arguments->defined($arg);
+    }
+
+    public function forceAnsiOn() {
+        $this->climate->forceAnsiOn();
     }
 
     public function getArg(string $arg) {
