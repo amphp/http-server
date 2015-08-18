@@ -331,9 +331,9 @@ class Router implements Bootable, Middleware, \SplObserver {
             }
         }
 
-        return [function(Request $request, Response $response) use ($applications) {
+        return [function(Request $request, Response $response, array $args) use ($applications) {
             foreach ($applications as $application) {
-                $result = ($application)($request, $response);
+                $result = $application($request, $response, $args);
                 if ($result instanceof \Generator) {
                     yield from $result;
                 }
