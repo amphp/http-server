@@ -47,7 +47,7 @@ class Console {
 
     private function parseArgs() {
         if (empty($this->hasParsedArgs)) {
-            $this->climate->arguments->parse();
+            @$this->climate->arguments->parse();
             $this->hasParsedArgs = true;
         }
     }

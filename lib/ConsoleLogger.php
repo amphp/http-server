@@ -19,6 +19,7 @@ final class ConsoleLogger extends Logger {
     }
 
     private function setAnsiColorOption($value) {
+        $value = ($value === "") ? "on" : $value;
         $this->setAnsify($value);
         if ($value === "on") {
             $this->console->forceAnsiOn();
