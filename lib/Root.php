@@ -77,7 +77,7 @@ class Root implements \SplObserver {
      * @return mixed
      */
     public function __invoke(Request $request, Response $response) {
-        $uri = $request->getUri();
+        $uri = $request->getLocalVar("aerys.sendfile") ?: $request->getUri();
         $path = ($qPos = \stripos($uri, "?")) ? \substr($uri, 0, $qPos) : $uri;
         $path = $reqPath = \str_replace("\\", "/", $path);
         $path = $this->root . $path;
