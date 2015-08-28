@@ -280,9 +280,9 @@ class Root implements \SplObserver {
         }
 
         $fileInfo->exists = true;
-        $fileInfo->size = $stat["size"];
-        $fileInfo->mtime = $stat["mtime"];
-        $fileInfo->inode = $stat["ino"];
+        $fileInfo->size = (int) $stat["size"];
+        $fileInfo->mtime = $stat["mtime"] ?? 0;
+        $fileInfo->inode = $stat["ino"] ?? 0;
         $inode = $this->useEtagInode ? $fileInfo->inode : "";
         $fileInfo->etag = \md5("{$fileInfo->path}{$fileInfo->mtime}{$fileInfo->size}{$inode}");
 
