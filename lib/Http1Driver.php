@@ -83,6 +83,8 @@ class Http1Driver implements HttpDriver {
         foreach ($headers as $headerField => $headerLines) {
             if ($headerField[0] !== ":") {
                 foreach ($headerLines as $headerLine) {
+                    /* verify header fields (per RFC) and header values against containing \n */
+                    \assert(strpbrk($headerLine, "\n\t ()<>@,;:\\\"/[]?={}") === false && strpbrk($headerField, "\n") === false);
                     $lines[] = "{$headerField}: {$headerLine}";
                 }
             }
