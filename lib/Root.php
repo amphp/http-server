@@ -299,7 +299,7 @@ class Root implements \SplObserver {
         foreach ($this->indexes as $indexFile) {
             $coalescedPath = $dirPath . $indexFile;
             if (yield $this->filesystem->isfile($coalescedPath)) {
-                yield $this->filesystem->stat($coalescedPath);
+                $stat = yield $this->filesystem->stat($coalescedPath);
                 return [$coalescedPath, $stat];
             }
         }
