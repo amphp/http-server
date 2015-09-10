@@ -435,7 +435,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
                 $client->writeBuffer = array_shift($client->writeDataQueue);
                 $client->lastDataSentAt = $this->now;
                 $client->lastSentAt = $this->now;
-                $client->writeDeferred = array_shift($client->writeDeferredDataQueue)->succeed();
+                $client->writeDeferred = array_shift($client->writeDeferredDataQueue);
             } else {
                 $client->writeBuffer = "";
                 \Amp\disable($watcherId);
