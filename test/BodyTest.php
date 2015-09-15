@@ -2,48 +2,38 @@
 
 namespace Aerys\Test;
 
-use Amp\Promise;
-use Amp\PromiseStream;
+use Amp\Deferred;
 use Aerys\Body;
 
 class BodyTest extends \PHPUnit_Framework_TestCase {
-    public function testBuffer() {
-        $constraint = new \StdClass;
-        $constraint->invoked = false;
+    public function testPromiseImplementation() {
+        $deferred = new Deferred;
+        $body = new Body($deferred->promise());
 
-        $stub = new class($constraint) extends PromiseStream {
-            private $constraint;
-            function __construct($constraint) {
-                $this->constraint = $constraint;
-            }
-            function buffer(): Promise {
-                $this->constraint->invoked = true;
-                return parent::buffer();
-            }
-        };
+        $body->when(function ($e, $result) use (&$when) {
+            $this->assertNull($e);
+            $when = $result;
+        });
 
-        $body = new Body($stub);
-        $this->assertInstanceOf("Amp\\Promise", $body->buffer());
-        $this->assertTrue($constraint->invoked);
+        $deferred->succeed();
+        $this->assertEquals("", $when);
     }
 
     public function testStream() {
-        $constraint = new \StdClass;
-        $constraint->invoked = false;
+        $deferred = new Deferred;
+        $body = new Body($deferred->promise());
 
-        $stub = new class($constraint) extends PromiseStream {
-            private $constraint;
-            function __construct($constraint) {
-                $this->constraint = $constraint;
-            }
-            function stream(): \Generator {
-                $this->constraint->invoked = true;
-                return parent::stream();
-            }
-        };
+        $body->watch(function ($data) {
+            $this->assertEquals("text", $data);
+        });
+        $body->when(function ($e, $result) use (&$when) {
+            $this->assertNull($e);
+            $when = $result;
+        });
 
-        $body = new Body($stub);
-        $this->assertInstanceOf("Generator", $body->stream());
-        $this->assertTrue($constraint->invoked);
+        $deferred->update("text");
+        $deferred->update("text");
+        $deferred->succeed();
+        $this->assertEquals("texttext", $when);
     }
 }

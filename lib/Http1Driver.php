@@ -312,7 +312,7 @@ class Http1Driver implements HttpDriver {
                         }
 
                         if ($trailers) {
-                            $trailers = array_change_key_case($trailers, CASE_UPPER);
+                            $trailers = array_change_key_case($trailers);
 
                             foreach (["transfer-encoding", "content-length", "trailer"] as $remove) {
                                 unset($trailers[$remove]);

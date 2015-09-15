@@ -9,20 +9,25 @@ use Amp\ {
 };
 
 use Aerys\{
+    InternalRequest,
+    Options,
     Router,
     Server,
     Response,
-    Request
+    StandardRequest
 };
 
 class RouterTest extends \PHPUnit_Framework_TestCase {
     private function mockServer($state) {
         return new class($state) extends Server {
             private $state;
-            function __construct($state) { $this->state = $state; }
+            private $options;
+            function __construct($state) { $this->state = $state; $this->options = new Options; }
             function state(): int {
                 return $this->state;
             }
+            function getOption(string $opt) { return $this->options->$opt; }
+            function setOption(string $opt, $val) { return $this->options->$opt = $val; }
         };
     }
 
@@ -34,6 +39,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
             function setReason(string $phrase): Response { return $this; }
             function addHeader(string $field, string $value): Response { return $this; }
             function setHeader(string $field, string $value): Response { return $this; }
+            function setCookie(string $field, string $value, array $flags = []): Response { return $this; }
             function send(string $body): Response { $this->state = self::ENDED; return $this; }
             function stream(string $partialBodyChunk): Response { return $this; }
             function flush(): Response { return $this; }
@@ -103,17 +109,19 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $mock = $this->mockServer(Server::STARTING);
         $router->update($mock);
 
-        $request = new Request;
-        $request->locals = new \StdClass;
-        $request->method = "GET";
-        $request->uriPath = "/daniel/32";
+        $ireq = new InternalRequest;
+        $request = new StandardRequest($ireq);
+        $ireq->locals = [];
+        $ireq->method = "GET";
+        $ireq->uriPath = "/daniel/32";
         $response = $this->mockResponse();
 
+        $this->assertFalse($router->do($ireq)->valid());
         $multiAction = $router($request, $response);
 
         wait(resolve($multiAction));
 
-        $this->assertSame(2, $i);
-        $this->assertSame(["name" => "daniel", "age" => "32"], $request->locals->routeArgs);
+        $this->assertSame(3, $i);
+        $this->assertSame(["name" => "daniel", "age" => "32"], $ireq->locals["aerys.routeArgs"]);
     }
 }
