@@ -11,9 +11,9 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
      */
     public function testBadRequestBufferedParse($unparsable, $errCode, $errMsg, $opts) {
         $invoked = 0;
-        $resultCode;
-        $parseResult;
-        $errorStruct;
+        $resultCode = null;
+        $parseResult = null;
+        $errorStruct = null;
 
         $emitCallback = function($emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorStruct) {
             $invoked++;
@@ -35,9 +35,9 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
      */
     public function testBadRequestIncrementalParse($unparsable, $errCode, $errMsg, $opts) {
         $invoked = 0;
-        $resultCode;
-        $parseResult;
-        $errorStruct;
+        $resultCode = null;
+        $parseResult = null;
+        $errorStruct = null;
 
         $emitCallback = function($emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorStruct) {
             $invoked++;
@@ -65,7 +65,7 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
      */
     public function testBufferedRequestParse($msg, $expectations) {
         $invoked = 0;
-        $parseResult;
+        $parseResult = null;
         $body = "";
 
         $emitCallback = function($emitStruct) use (&$invoked, &$parseResult, &$body) {
@@ -92,7 +92,7 @@ class Rfc7230ServerTest extends \PHPUnit_Framework_TestCase {
      */
     public function testIncrementalRequestParse($msg, $expectations) {
         $invoked = 0;
-        $parseResult;
+        $parseResult = null;
         $body = "";
 
         $emitCallback = function($emitStruct) use (&$invoked, &$parseResult, &$body) {

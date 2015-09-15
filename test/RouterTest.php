@@ -89,7 +89,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $router = new Router;
         $mock = $this->mockServer(Server::STARTING);
         $result = $router->update($mock);
-        $this->assertInstanceOf("Amp\Failure", $result);
+        $this->assertInstanceOf("Amp\\Failure", $result);
         $i = 0;
         $result->when(function($e, $r) use (&$i) {
             $i++;
@@ -102,7 +102,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
     public function testMultiActionRouteInvokesEachCallableUntilResponseIsStarted() {
         $i = 0;
         $foo = function() use (&$i) { $i++; };
-        $bar = function($request, $response) {
+        $bar = function($request, $response) use (&$i) {
             $i++;
             $response->send("test");
         };

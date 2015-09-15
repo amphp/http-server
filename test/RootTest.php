@@ -49,8 +49,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Document root requires a readable directory
      */
     public function testConstructorThrowsOnInvalidDocRoot($badPath) {
-        $reactor = $this->getMock("Amp\Reactor");
-        $filesystem = $this->getMock("Amp\File\Driver");
+        $reactor = $this->getMock("Amp\\Reactor");
+        $filesystem = $this->getMock("Amp\\File\\Driver");
         $root = new \Aerys\Root($badPath, $filesystem, $reactor);
     }
 
@@ -65,15 +65,15 @@ class RootTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider provideRelativePathsAboveRoot
      */
     public function testForbiddenResponseOnRelativePathAboveRoot($relativePath) {
-        $reactor = $this->getMock("Amp\Reactor");
-        $filesystem = $this->getMock("Amp\File\Driver");
+        $reactor = $this->getMock("Amp\\Reactor");
+        $filesystem = $this->getMock("Amp\\File\\Driver");
         $root = new \Aerys\Root(self::fixturePath(), $filesystem, $reactor);
-        $request = $this->getMock("Aerys\Request");
+        $request = $this->getMock("Aerys\\Request");
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue($relativePath))
         ;
-        $response = $this->getMock("Aerys\Response");
+        $response = $this->getMock("Aerys\\Response");
         $response->expects($this->once())
             ->method("setStatus")
             ->with(\Aerys\HTTP_STATUS["FORBIDDEN"])

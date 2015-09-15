@@ -3,7 +3,8 @@
 namespace Aerys\Test;
 
 use Amp\Promise;
-use Aerys\{ Body, PromiseStream };
+use Amp\PromiseStream;
+use Aerys\Body;
 
 class BodyTest extends \PHPUnit_Framework_TestCase {
     public function testBuffer() {
@@ -22,7 +23,7 @@ class BodyTest extends \PHPUnit_Framework_TestCase {
         };
 
         $body = new Body($stub);
-        $this->assertInstanceOf("Amp\Promise", $body->buffer());
+        $this->assertInstanceOf("Amp\\Promise", $body->buffer());
         $this->assertTrue($constraint->invoked);
     }
 
