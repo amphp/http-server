@@ -50,22 +50,6 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
 
     /**
      * @expectedException DomainException
-     * @expectedExceptionMessage max_cache_entries requires an integer; string specified
-     */
-    public function testCtorFailsOnBadMaxCacheEntriesOption() {
-        (new Router)->setOption("max_cache_entries", "42");
-    }
-
-    /**
-     * @expectedException DomainException
-     * @expectedExceptionMessage Unknown Router option: zanzibar
-     */
-    public function testCtorFailsOnUnknownOption() {
-        (new Router)->setOption("zanzibar", 42);
-    }
-
-    /**
-     * @expectedException DomainException
      * @expectedExceptionMessage Aerys\Router::route requires a non-empty string HTTP method at Argument 1
      */
     public function testRouteThrowsOnEmptyMethodString() {

@@ -32,6 +32,10 @@ class Options {
 
     private $shutdownTimeout = 3000;
 
+
+    // @TODO add some possibility to extend the Options and add own options (e.g. at the time where the bootables are run)
+    private $routerCacheSize = 512;
+
     public function __construct() {
         $this->deflateEnable = \extension_loaded("zlib");
     }
@@ -264,5 +268,13 @@ class Options {
         }
 
         $this->shutdownTimeout = $milliseconds;
+    }
+
+    private function setRouterCacheSize(int $size) {
+        if ($size < 0) {
+            $size = 0;
+        }
+
+        $this->routerCacheSize = $size;
     }
 }

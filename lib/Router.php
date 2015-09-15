@@ -25,33 +25,7 @@ class Router implements Bootable, Middleware, \SplObserver {
     private $actions = [];
     private $cache = [];
     private $cacheEntryCount = 0;
-    private $maxCacheEntries = 512;
-
-    /**
-     * Set a router option
-     *
-     * @param string $key
-     * @param mixed $value
-     * @throws \DomainException on unknown option key
-     * @retur void
-     */
-    public function setOption(string $key, $value) {
-        switch ($key) {
-            case "max_cache_entries":
-                if (!is_int($value)) {
-                    throw new \DomainException(sprintf(
-                        "max_cache_entries requires an integer; %s specified",
-                        is_object($value) ? get_class($value) : gettype($value)
-                    ));
-                }
-                $this->maxCacheEntries = ($value < 1) ? 0 : $value;
-                break;
-            default:
-                throw new \DomainException(
-                    "Unknown Router option: {$key}"
-                );
-        }
-    }
+    private $server;
 
     /**
      * Route a request
@@ -104,7 +78,7 @@ class Router implements Bootable, Middleware, \SplObserver {
                 list(, $args, $routeArgs) = $match;
                 list($action, $middlewares) = $args;
                 $ireq->locals["aerys.routeArgs"] = $routeArgs;
-                if ($this->maxCacheEntries > 0) {
+                if ($this->server->getOption("routerCacheSize") > 0) {
                     $this->cacheDispatchResult($toMatch, $routeArgs, $args);
                 }
 
@@ -184,7 +158,7 @@ class Router implements Bootable, Middleware, \SplObserver {
     }
 
     private function cacheDispatchResult(string $toMatch, array $routeArgs, array $action) {
-        if ($this->cacheEntryCount < $this->maxCacheEntries) {
+        if ($this->cacheEntryCount < $this->server->getOption("routerCacheSize")) {
             $this->cacheEntryCount++;
         } else {
             // Remove the oldest entry from the LRU cache to make room
@@ -272,9 +246,10 @@ class Router implements Bootable, Middleware, \SplObserver {
 
     public function boot(Server $server, Logger $logger) {
         $server->attach($this);
-        $this->bootLoader = function(Bootable $bootable) use ($server, $logger) {
-            return $bootable->boot($server, $logger);
+        $this->bootLoader = function(Bootable $bootable) use ($logger) {
+            return $bootable->boot($this->server, $logger);
         };
+        $this->server = $server;
 
         return [$this, "__invoke"];
     }
