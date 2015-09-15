@@ -47,7 +47,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage max_cache_entries requires an integer; string specified
      */
     public function testCtorFailsOnBadMaxCacheEntriesOption() {
-        $router = new Router(["max_cache_entries" => "42"]);
+        (new Router)->setOption("max_cache_entries", "42");
     }
 
     /**
@@ -55,7 +55,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Unknown Router option: zanzibar
      */
     public function testCtorFailsOnUnknownOption() {
-        $router = new Router(["zanzibar" => 42]);
+        (new Router)->setOption("zanzibar", 42);
     }
 
     /**
@@ -69,16 +69,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
 
     /**
      * @expectedException DomainException
-     * @expectedExceptionMessage Aerys\Router::route requires a non-empty string URI at Argument 2
-     */
-    public function testRouteThrowsOnEmptyUriString() {
-        $router = new Router;
-        $router->route("GET", "", function(){});
-    }
-
-    /**
-     * @expectedException DomainException
-     * @expectedExceptionMessage Aerys\Router::route requires at least one callable route action at Argument 3
+     * @expectedExceptionMessage Aerys\Router::route requires at least one callable route action or middleware at Argument 3
      */
     public function testRouteThrowsOnEmptyActionsArray() {
         $router = new Router;
@@ -119,8 +110,8 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $response = $this->mockResponse();
 
         $multiAction = $router($request, $response);
-        $reactor = new NativeReactor;
-        wait(resolve($multiAction, $reactor), $reactor);
+
+        wait(resolve($multiAction));
 
         $this->assertSame(2, $i);
         $this->assertSame(["name" => "daniel", "age" => "32"], $request->locals->routeArgs);
