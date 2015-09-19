@@ -380,7 +380,7 @@ class Server implements \SplSubject {
         $client->socket = $socket;
         $client->httpDriver = $http;
         $client->exporter = $this->exporter;
-        $client->remainingKeepAlives = $this->options->maxKeepAliveRequests;
+        $client->remainingKeepAlives = $this->options->maxKeepAliveRequests ?: null;
 
         $portStartPos = strrpos($peerName, ":");
         $client->clientAddr = substr($peerName, 0, $portStartPos);
