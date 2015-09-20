@@ -101,7 +101,7 @@ class Http1Driver implements HttpDriver {
             $buffer[] = $msgPart;
             $bufferSize += \strlen($msgPart);
 
-            if (($msgPart === false || $bufferSize > $ireq->options->outputBufferSize)) {
+            if ($msgPart === false || $bufferSize > $ireq->options->outputBufferSize) {
                 $client->writeBuffer .= \implode("", $buffer);
                 $buffer = [];
                 $bufferSize = 0;

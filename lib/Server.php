@@ -62,12 +62,6 @@ class Server implements \SplSubject {
         $this->onWritable = $this->makePrivateCallable("onWritable");
         $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
         $this->onResponseDataDone = $this->makePrivateCallable("onResponseDataDone");
-
-        // initialize http drivers //
-        $emitter = $this->makePrivateCallable("onParseEmit");
-        $writer = $this->makePrivateCallable("writeResponse");
-        $this->initializeHttpDrivers(new Http1Driver($options, $emitter, $writer));
-        //$this->initializeHttpDrivers(new Http2Driver($options, $emitter, $writer));
     }
 
     private function initializeHttpDrivers(HttpDriver $http) {
@@ -105,6 +99,7 @@ class Server implements \SplSubject {
      * @return void
      */
     public function setOption(string $option, $newValue) {
+        \assert($this->state < self::STARTED);
         $this->options->{$option} = $newValue;
     }
 
@@ -209,6 +204,44 @@ class Server implements \SplSubject {
                 "Server::STARTING observer initialization failure"
             );
         }
+
+        /* enable direct access for performance, but Options now shouldn't be changed as Server has been STARTED */
+        try {
+            if (@\assert(false)) {
+                $options = new class extends Options {
+                    use \Amp\Struct;
+
+                    private $_initialized = false;
+
+                    public function __get(string $prop) {
+                        throw new \DomainException(
+                            $this->generateStructPropertyError($prop)
+                        );
+                    }
+
+                    public function __set(string $prop, $val) {
+                        if ($this->_initialized) {
+                            throw new \RuntimeException("Cannot add options after server has STARTED.");
+                        }
+                        $this->$prop = $val;
+                    }
+                };
+                foreach ((new \ReflectionObject($this->options))->getProperties() as $property) {
+                    $name = $property->getName();
+                    $options->$name = $this->options->$name;
+                }
+                $this->options = $options;
+            }
+        } catch (\AssertionError $e) { }
+
+        // lock options
+        $options->_initialized = true;
+
+        // initialize http drivers //
+        $emitter = $this->makePrivateCallable("onParseEmit");
+        $writer = $this->makePrivateCallable("writeResponse");
+        $this->initializeHttpDrivers(new Http1Driver($this->options, $emitter, $writer));
+        //$this->initializeHttpDrivers(new Http2Driver($options, $emitter, $writer));
 
         $this->state = self::STARTED;
 
