@@ -231,7 +231,7 @@ class Http1Driver implements HttpDriver {
             if ($contentLength > $maxBodySize) {
                 $error = "Bad request: entity too large";
                 break;
-            } elseif (($method == "HEAD" || $method == "TRACE" || $method == "OPTIONS") || $contentLength === 0) {
+            } elseif ($method == "HEAD" || $method == "TRACE" || $method == "OPTIONS" || $contentLength === 0) {
                 // No body allowed for these messages
                 $hasBody = false;
             } else {
