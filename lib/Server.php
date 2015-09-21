@@ -235,7 +235,7 @@ class Server implements \SplSubject {
         } catch (\AssertionError $e) { }
 
         // lock options
-        $options->_initialized = true;
+        $this->options->_initialized = true;
 
         // initialize http drivers //
         $emitter = $this->makePrivateCallable("onParseEmit");
