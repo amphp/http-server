@@ -127,7 +127,7 @@ class Http2Driver implements HttpDriver {
         $id = $ireq->streamId;
 
         $headers = yield;
-        unset($headers[":reason"]); // obsolete in HTTP/2.0
+        unset($headers[":reason"], $headers["connection"]); // obsolete in HTTP/2.0
         $headers = hpack_encode($headers);
 
         $lastPart = yield;

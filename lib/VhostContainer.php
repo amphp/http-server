@@ -59,7 +59,7 @@ class VhostContainer implements \Countable {
         } elseif (empty($ireq->headers["host"])) {
             return null;
         } else {
-            return $this->selectHostByHeader($ireq);
+            return $this->selectHostByAuthority($ireq, $ireq->headers["host"][0]);
         }
 
         // If null is returned a stream must return 400 for HTTP/1.1 requests and use the default
@@ -92,12 +92,10 @@ class VhostContainer implements \Countable {
         $port = $ireq->uriPort ?? ($ireq->isEncrypted ? 443 : 80);
         $vhostId = "{$ireq->uriHost}:{$port}";
 
-        return @$this->vhosts[$vhostId];
+        return $this->selectHostByAuthority($ireq, $vhostId);
     }
 
-    private function selectHostByHeader(InternalRequest $ireq) {
-        $explicitHostId = $ireq->headers["host"][0];
-
+    private function selectHostByAuthority(InternalRequest $ireq, string $explicitHostId) {
         if ($portStartPos = strrpos($explicitHostId, "]")) {
             $ipComparison = substr($explicitHostId, 0, $portStartPos + 1);
             $port = substr($explicitHostId, $portStartPos + 2);
