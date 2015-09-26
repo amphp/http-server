@@ -23,6 +23,7 @@ class InternalRequest {
     public $clientAddr;
     public $serverPort;
     public $serverAddr;
+    public $streamId;
     public $trace;
     public $protocol;
     public $method;

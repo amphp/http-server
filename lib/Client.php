@@ -31,4 +31,10 @@ class Client {
     public $bodyPromisors = [];
 
     public $parserEmitLock;
+
+
+    public $window = 0;
+    public $streamEnd = [];
+    public $streamWindow = [];
+    public $streamWindowBuffer = [];
 }

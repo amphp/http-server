@@ -241,7 +241,7 @@ class Server implements \SplSubject {
         $emitter = $this->makePrivateCallable("onParseEmit");
         $writer = $this->makePrivateCallable("writeResponse");
         $this->initializeHttpDrivers(new Http1Driver($this->options, $emitter, $writer));
-        //$this->initializeHttpDrivers(new Http2Driver($options, $emitter, $writer));
+        $this->initializeHttpDrivers(new Http2Driver($this->options, $emitter, $writer));
 
         $this->state = self::STARTED;
 
@@ -669,6 +669,7 @@ class Server implements \SplSubject {
         $ireq->serverAddr = $client->serverAddr;
         $ireq->clientPort = $client->clientPort;
         $ireq->clientAddr = $client->clientAddr;
+        $ireq->streamId = $parseResult["id"];
 
         if (empty($ireq->headers["cookie"])) {
             $ireq->cookies = [];
@@ -678,11 +679,11 @@ class Server implements \SplSubject {
 
         $ireq->uriRaw = $uri;
         if (stripos($uri, "http://") === 0 || stripos($uri, "https://") === 0) {
-            extract(parse_url($uri, EXTR_PREFIX_ALL, "uri"));
+            extract(parse_url($uri), EXTR_PREFIX_ALL, "uri");
             $ireq->uriHost = $uri_host;
-            $ireq->uriPort = $uri_port;
+            $ireq->uriPort = $uri_port ?? 80;
             $ireq->uriPath = $uri_path;
-            $ireq->uriQuery = $uri_query;
+            $ireq->uriQuery = $uri_query ?? "";
             $ireq->uri = isset($uri_query) ? "{$uri_path}?{$uri_query}" : $uri_path;
         } elseif ($qPos = strpos($uri, '?')) {
             $ireq->uriQuery = substr($uri, $qPos + 1);
@@ -705,10 +706,15 @@ class Server implements \SplSubject {
 
         if ($client->httpDriver instanceof Http1Driver && !$client->isEncrypted) {
             $h2cUpgrade = $headers["upgrade"][0] ?? "";
-            $h2cSettings = $headers["http2-settings"][0] ?? "";
-            if ($h2cUpgrade && $h2cSettings && strcasecmp($h2cUpgrade, "h2c") === 0) {
-                $this->onParseUpgrade($client, ["unparsed" => "", "protocol" => "2.0"]);
+            if ($h2cUpgrade && strcasecmp($h2cUpgrade, "h2c") === 0) {
+                if (isset($headers["http2-settings"][0]) && false !== $h2cSettings = base64_decode($headers["http2-settings"])) {
+                    $h2cSettingsFrame = substr(pack("N", \strlen($h2cSettings)), 1, 3) . Http2Driver::SETTINGS . Http2Driver::NOFLAG . "\0\0\0\0$h2cSettings";
+                    $this->onParseUpgrade($client, ["unparsed" => $h2cSettingsFrame, "protocol" => "2.0"]);
+                } else {
+                    // handle case where no http2-settings header is specified
+                }
             }
+
         }
 
         // @TODO Handle 100 Continue responses

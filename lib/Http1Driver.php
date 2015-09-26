@@ -243,9 +243,14 @@ class Http1Driver implements HttpDriver {
             if (!$hasBody) {
                 $parseResult["unparsed"] = $buffer;
                 if ($method == "PRI") {
+                    while (\strlen($buffer) < 6) { // HTTP/2 SM\r\n\r\n
+                        $buffer .= yield;
+                    }
+                    $parseResult["unparsed"] = substr($buffer, 6);
                     ($this->parseEmitter)([HttpDriver::UPGRADE, $parseResult, null], $client);
                     return;
                 } else {
+                    $parseResult["unparsed"] = $buffer;
                     ($this->parseEmitter)([HttpDriver::RESULT, $parseResult, null], $client);
                     continue;
                 }
