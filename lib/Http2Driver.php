@@ -75,6 +75,9 @@ class Http2Driver implements HttpDriver {
         if ($userFilters = $ireq->vhost->getFilters()) {
             $filters = array_merge($filters, array_values($userFilters));
         }
+        if ($this->options->deflateEnable) {
+            $filters[] = '\Aerys\deflateResponseFilter';
+        }
         if ($ireq->method === "HEAD") {
             $filters[] = '\Aerys\nullBodyResponseFilter';
         }

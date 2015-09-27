@@ -442,7 +442,6 @@ function deflateResponseFilter(InternalRequest $ireq): \Generator {
     // Once we decide to compress output we no longer know what the
     // final Content-Length will be. We need to update our headers
     // according to the HTTP protocol in use to reflect this.
-    // @TODO This may require updating for HTTP/2.0
     unset($headers["content-length"]);
     if ($ireq->protocol === "1.1") {
         $headers["transfer-encoding"] = ["chunked"];
