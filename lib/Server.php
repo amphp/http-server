@@ -554,7 +554,7 @@ class Server implements \SplSubject {
                 $this->onParseError($client, $parseResult, $errorStruct);
                 break;
             case HttpDriver::UPGRADE:
-                // @TODO ensure that all of preface were consumed... (24 bytes for HTTP/2)
+                // assumes all of preface were consumed... (24 bytes for HTTP/2)
                 $this->onParseUpgrade($client, $parseResult);
                 break;
             default:

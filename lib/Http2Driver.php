@@ -2,9 +2,7 @@
 
 namespace Aerys;
 
-require __DIR__ . "/hpack.php";
-
-// @TODO check for more errors (especially HPACK)
+// @TODO add error checking to HPACK
 // @TODO trailer headers??
 // @TODO add ServerObserver for properly sending GOAWAY frames
 class Http2Driver implements HttpDriver {
@@ -131,7 +129,7 @@ class Http2Driver implements HttpDriver {
 
         $headers = yield;
         unset($headers[":reason"], $headers["connection"]); // obsolete in HTTP/2.0
-        $headers = hpack_encode($headers);
+        $headers = HPack::encode($headers);
 
         $lastPart = yield;
 
@@ -237,7 +235,7 @@ class Http2Driver implements HttpDriver {
     private function writeFrame(Client $client, $data, $type, $flags, $stream = 0) {
         assert($stream >= 0);
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "OUT: ");
-assert(!\defined("Aerys\\DEBUG_HTTP2") || var_dump(bin2hex(substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data)));
+assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data)));
         $client->writeBuffer .= substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
         ($this->write)($client, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
@@ -249,14 +247,13 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || var_dump(bin2hex(substr(pack("N", \str
         $maxBodySize = $this->options->maxBodySize;
         // $bodyEmitSize = $this->options->ioGranularity; // redundant because data frames (?)
 
-!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n";
+assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
 
         $this->writeFrame($client, pack("nN", self::INITIAL_WINDOW_SIZE, $maxBodySize), self::SETTINGS, self::NOFLAG);
         $this->writeFrame($client, "\x7f\xfe\xff\xff", self::WINDOW_UPDATE, self::NOFLAG); // effectively disabling flow control...
 
-        $data = [];
         $headers = [];
-        $table = (object) ["headers" => [], "maxSize" => 4096, "size" => 0];
+        $table = new HPack;
         $initialWindowSize = 65536;
         $client->window = 65536;
 
@@ -285,6 +282,20 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         break 2;
                     }
 
+                    if (!isset($client->bodyPromisors[$id])) {
+                        if (isset($headers[$id])) {
+                            $error = self::PROTOCOL_ERROR;
+                            break 2;
+                        } else {
+                            $error = self::STREAM_CLOSED;
+                            while (\strlen($buffer) < $length) {
+                                $buffer .= yield;
+                            }
+                            $buffer = substr($buffer, $length);
+                            goto stream_error;
+                        }
+                    }
+
                     if (($flags & self::PADDED) != "\0") {
                         if ($buffer === "") {
                             $buffer = yield;
@@ -292,6 +303,11 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         $padding = ord($buffer[0]);
                         $buffer = substr($buffer, 1);
                         $length--;
+
+                        if ($padding >= $length) {
+                            $error = self::PROTOCOL_ERROR;
+                            break 2;
+                        }
                     } else {
                         $padding = 0;
                     }
@@ -300,10 +316,10 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         $buffer .= yield;
                     }
 
-                    if (($flags & self::END_STREAM) == "\0") {
-                        $type = HttpDriver::ENTITY_PART;
-                    } else {
+                    if (($flags & self::END_STREAM) != "\0") {
                         $type = HttpDriver::ENTITY_RESULT;
+                    } else {
+                        $type = HttpDriver::ENTITY_PART;
                     }
 
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer, 0, $length - $padding)."\n");
@@ -320,6 +336,11 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                         $padding = ord($buffer[0]);
                         $buffer = substr($buffer, 1);
                         $length--;
+
+                        if ($padding >= $length) {
+                            $error = self::PROTOCOL_ERROR;
+                            break 2;
+                        }
                     } else {
                         $padding = 0;
                     }
@@ -361,6 +382,15 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                 case self::PRIORITY:
                     if ($length != 5) {
                         $error = self::FRAME_SIZE_ERROR;
+                        while (\strlen($buffer) < $length) {
+                            $buffer .= yield;
+                        }
+                        $buffer = substr($buffer, $length);
+                        goto stream_error;
+                    }
+
+                    if ($id === 0) {
+                        $error = self::PROTOCOL_ERROR;
                         break 2;
                     }
 
@@ -384,7 +414,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                     */
 
                     $buffer = substr($buffer, 5);
-!defined("Aerys\\DEBUG_HTTP2") || print "PRIORITY: - \n";
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "PRIORITY: - \n");
                     continue 2;
 
                 case self::RST_STREAM:
@@ -404,18 +434,26 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
 
                     $error = unpack("N", $buffer)[1];
 
-!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n";
-                    unset($headers[$id], $data[$id], $client->streamWindow[$id], $client->streamEnd[$id], $client->streamWindowBuffer[$id]);
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
+                    if (isset($client->bodyPromisors[$id])) {
+                        $client->bodyPromisors[$id]->fail(new ClientException);
+                    }
+                    unset($headers[$id], $client->streamWindow[$id], $client->streamEnd[$id], $client->streamWindowBuffer[$id], $client->bodyPromisors[$id]);
                     continue 2;
 
                 case self::SETTINGS:
+                    if ($id !== 0) {
+                        $error = self::PROTOCOL_ERROR;
+                        break 2;
+                    }
+
                     if (($flags & self::ACK) != "\0") {
                         if ($length) {
                             $error = self::PROTOCOL_ERROR;
                             break 2;
                         }
 
-!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n";
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                         // got ACK
                         continue 2;
                     } elseif ($length % 6 != 0) {
@@ -428,16 +466,25 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                             $buffer .= yield;
                         }
 
-                        $unpacked = unpack("nsetting/Nvalue", $buffer);
-!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]}): {$unpacked["value"]}\n";
+                        $unpacked = unpack("nsetting/Nvalue", $buffer); // $unpacked["value" >= 0
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]}): {$unpacked["value"]}\n");
 
                         switch ($unpacked["setting"]) {
+                            case self::MAX_HEADER_LIST_SIZE:
+                                if ($unpacked["value"] >= 4096) {
+                                    $error = self::PROTOCOL_ERROR; // @TODO correct error??
+                                    break 4;
+                                }
+                                $table->table_resize($unpacked["value"]);
+                                break;
+
                             case self::INITIAL_WINDOW_SIZE:
-                                if ($unpacked["value"] < 0) {
+                                if ($unpacked["value"] >= 1 << 31) {
                                     $error = self::FLOW_CONTROL_ERROR;
                                     break 4;
                                 }
                                 $initialWindowSize = $unpacked["value"];
+                                break;
                         }
 
                         $buffer = substr($buffer, 6);
@@ -477,6 +524,11 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                     continue 2;
 
                 case self::GOAWAY:
+                    if ($id !== 0) {
+                        $error = self::PROTOCOL_ERROR;
+                        break 2;
+                    }
+
                     $lastId = unpack("N", $buffer)[1];
                     // the highest bit must be zero... but RFC does not specify what should happen when it is set to 1?
                     if ($lastId < 0) {
@@ -495,6 +547,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                         // ($this->emit)([HttpDriver::ERROR, ["body" => substr($buffer, 0, $length)], $error], $client);
                     }
 
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer, 0, $length)."\n");
                     return; // @TODO verify whether it needs to be manually closed
 
                 case self::WINDOW_UPDATE:
@@ -502,9 +555,13 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                         $buffer .= yield;
                     }
 
-                    if ($buffer == "\0\0\0\0") {
+                    if ($buffer === "\0\0\0\0") {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        if ($id) {
+                            goto stream_error;
+                        } else {
+                            break 2;
+                        }
                     }
 
                     $windowSize = unpack("N", $buffer)[1];
@@ -553,13 +610,14 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                     continue 2;
 
                 default:
-                    print "BAD TYPE: ".ord($type)."\n"; // @TODO handle error...
-                    continue 2;
+                    print "BAD TYPE: ".ord($type)."\n";
+                    $error = self::PROTOCOL_ERROR;
+                    break 2;
             }
 
 parse_headers:
-            $headerList = hpack_decode($padding ? substr($packed, 0, -$padding) : $packed, $table);
-!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(".(\strlen($packed) - $padding)."): ".implode(" | ", array_map(function($x){return implode(": ", $x);},$headerList))."\n";
+            $headerList = $table->decode($padding ? substr($packed, 0, -$padding) : $packed);
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(".(\strlen($packed) - $padding)."): ".implode(" | ", array_map(function($x){return implode(": ", $x);},$headerList))."\n");
 
             $headerArray = [];
             foreach ($headerList as list($name, $value)) {
@@ -587,9 +645,14 @@ parse_headers:
                 ($this->emit)([HttpDriver::ENTITY_HEADERS, $parseResult, null], $client);
             }
             continue;
+
+stream_error:
+            $this->writeFrame($client, pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "Stream ERROR: $error\n");
+            continue;
         }
 
-        // @TODO error handling
-print "ERROR: $error\n";
+        $this->writeFrame($client, pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
     }
 }
