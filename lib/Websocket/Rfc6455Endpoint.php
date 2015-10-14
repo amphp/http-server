@@ -543,7 +543,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
 
         $promises = [];
         foreach ($clientIds as $clientId) {
-            $promises[] = $this->send($data, $clientId, $binary);
+            $promises[] = $this->send($clientId, $data, $binary);
         }
         return all($promises);
     }
