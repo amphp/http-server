@@ -36,7 +36,7 @@ class Host {
      * @return self
      * @TODO Make "*" listen on all IPv6 interfaces as well as IPv4
      */
-    public function expose(string $address = "*", int $port = 1337): Host {
+    public function expose(string $address = "*", int $port = 80): Host {
         if ($address !== "*" && !@inet_pton($address)) {
             throw new \DomainException(
                 "Invalid IP address"
