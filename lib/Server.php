@@ -253,11 +253,7 @@ class Server implements \SplSubject {
             );
         }
 
-        if (extension_loaded("posix")) {
-            $this->switchUser($this->options->user);
-        } else {
-            $this->logger->warning("Couldn't switch user, because POSIX is not available!");
-        }
+        $this->dropPrivileges();
 
         assert($this->logDebug("started"));
 
@@ -960,17 +956,32 @@ class Server implements \SplSubject {
         return $this->decrementer;
     }
 
-    private function switchUser(string $user) {
-        $info = posix_getpwnam($user);
-
-        if (!$info) {
-            throw new \RuntimeException("Switching to user '{$user}' failed, because it doesn't exist!");
+    private function dropPrivileges() {
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            return;
         }
 
-        $success = posix_setuid($info["uid"]);
+        if (!extension_loaded("posix")) {
+            throw new \RuntimeException("Posix extension must be enabled!");
+        }
 
-        if (!$success) {
-            throw new \RuntimeException("Switching to user '{$user}' failed, probably because of missing privilege.'");
+        if (posix_getuid() === 0) {
+            $user = $this->options->user;
+            if (!$user) {
+                // FIXME: Currently logged once per worker!
+                $this->logger->warning("Running as privileged user is discouraged! Use the 'user' option to switch to another user after startup!");
+                return;
+            }
+
+            $info = posix_getpwnam($user);
+            if (!$info) {
+                throw new \RuntimeException("Switching to user '{$user}' failed, because it doesn't exist!");
+            }
+
+            $success = posix_setuid($info["uid"]);
+            if (!$success) {
+                throw new \RuntimeException("Switching to user '{$user}' failed, probably because of missing privileges.'");
+            }
         }
     }
 

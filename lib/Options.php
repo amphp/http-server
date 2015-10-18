@@ -8,7 +8,7 @@ class Options {
     use Struct;
 
     private $debug = false;
-    private $user = "www-data";
+    private $user = null;
     private $maxConnections = 1000;
     private $maxKeepAliveRequests = 1000;
     private $keepAliveTimeout = 5;
