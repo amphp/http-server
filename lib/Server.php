@@ -253,6 +253,12 @@ class Server implements \SplSubject {
             );
         }
 
+        if (extension_loaded("posix")) {
+            $this->switchUser($this->options->user);
+        } else {
+            $this->logger->warning("Couldn't switch user, because POSIX is not available!");
+        }
+
         assert($this->logDebug("started"));
 
         foreach ($this->boundServers as $serverName => $server) {
@@ -952,6 +958,20 @@ class Server implements \SplSubject {
         assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
 
         return $this->decrementer;
+    }
+
+    private function switchUser(string $user) {
+        $info = posix_getpwnam($user);
+
+        if (!$info) {
+            throw new \RuntimeException("Switching to user '{$user}' failed, because it doesn't exist!");
+        }
+
+        $success = posix_setuid($info["uid"]);
+
+        if (!$success) {
+            throw new \RuntimeException("Switching to user '{$user}' failed, probably because of missing privilege.'");
+        }
     }
 
     /**
