@@ -25,7 +25,11 @@ $help = <<<EOT
 
 EOT;
 
-@cli_set_process_title("aerys");
+// some command line SAPIs (e.g. phpdbg) don't have that function
+if (function_exists("cli_set_process_title")) {
+    @cli_set_process_title("aerys");
+}
+
 error_reporting(E_ALL);
 require __DIR__ . "/../autoload.php";
 $console = new Aerys\Console;
