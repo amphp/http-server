@@ -92,7 +92,7 @@ class Bootstrapper {
     }
 
     private function generatePublicOptionsStruct(Options $options): Options {
-        $code = "return new class extends \Aerys\Options {\n";
+        $code = "return new class extends \\Aerys\\Options {\n";
         foreach ((new \ReflectionClass($options))->getProperties() as $property) {
             $name = $property->getName();
             if ($name[0] !== "_") {
