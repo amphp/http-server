@@ -8,6 +8,7 @@ class Options {
     use Struct;
 
     private $debug = false;
+    private $user = null;
     private $maxConnections = 1000;
     private $maxKeepAliveRequests = 1000;
     private $keepAliveTimeout = 5;
@@ -87,6 +88,10 @@ class Options {
 
     private function setDebug(bool $flag) {
         $this->debug = $flag;
+    }
+
+    private function setUser(string $user) {
+        $this->user = $user;
     }
 
     private function setMaxConnections(int $count) {

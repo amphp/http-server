@@ -253,6 +253,8 @@ class Server implements \SplSubject {
             );
         }
 
+        $this->dropPrivileges();
+
         assert($this->logDebug("started"));
 
         foreach ($this->boundServers as $serverName => $server) {
@@ -952,6 +954,35 @@ class Server implements \SplSubject {
         assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
 
         return $this->decrementer;
+    }
+
+    private function dropPrivileges() {
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            return;
+        }
+
+        if (!extension_loaded("posix")) {
+            throw new \RuntimeException("Posix extension must be enabled!");
+        }
+
+        if (posix_getuid() === 0) {
+            $user = $this->options->user;
+            if (!$user) {
+                // FIXME: Currently logged once per worker!
+                $this->logger->warning("Running as privileged user is discouraged! Use the 'user' option to switch to another user after startup!");
+                return;
+            }
+
+            $info = posix_getpwnam($user);
+            if (!$info) {
+                throw new \RuntimeException("Switching to user '{$user}' failed, because it doesn't exist!");
+            }
+
+            $success = posix_setuid($info["uid"]);
+            if (!$success) {
+                throw new \RuntimeException("Switching to user '{$user}' failed, probably because of missing privileges.'");
+            }
+        }
     }
 
     /**
