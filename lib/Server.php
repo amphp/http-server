@@ -961,14 +961,13 @@ class Server implements \SplSubject {
             return;
         }
 
+        $user = $this->options->user;
         if (!extension_loaded("posix")) {
-            throw new \RuntimeException("Posix extension must be enabled!");
-        }
-
-        if (posix_getuid() === 0) {
-            $user = $this->options->user;
-            if (!$user) {
-                // FIXME: Currently logged once per worker!
+            if ($user !== null) {
+                throw new \RuntimeException("Posix extension must be enabled to switch to user '{$user}'!");
+            }
+        } elseif (posix_geteuid() === 0) {
+            if ($user === null) {
                 $this->logger->warning("Running as privileged user is discouraged! Use the 'user' option to switch to another user after startup!");
                 return;
             }
@@ -978,7 +977,7 @@ class Server implements \SplSubject {
                 throw new \RuntimeException("Switching to user '{$user}' failed, because it doesn't exist!");
             }
 
-            $success = posix_setuid($info["uid"]);
+            $success = posix_seteuid($info["uid"]);
             if (!$success) {
                 throw new \RuntimeException("Switching to user '{$user}' failed, probably because of missing privileges.'");
             }

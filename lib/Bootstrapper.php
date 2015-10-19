@@ -19,7 +19,7 @@ class Bootstrapper {
      * @return \Aerys\Server
      */
     public function boot(Logger $logger, Console $console): Server {
-        $configFile = $this->selectConfigFile((string)$console->getArg("config"));
+        $configFile = $this->selectConfigFile((string) $console->getArg("config"));
         $logger->info("Using config file found at $configFile");
         if (!include($configFile)) {
             throw new \DomainException(

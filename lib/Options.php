@@ -90,7 +90,8 @@ class Options {
         $this->debug = $flag;
     }
 
-    private function setUser(string $user) {
+    // Note this is a required string|null parameter, just = null because we don't have proper union types with null yet...
+    private function setUser(string $user = null) {
         $this->user = $user;
     }
 
