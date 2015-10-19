@@ -296,7 +296,11 @@ class HPack {
         $c = \ord($input);
         $int = $c & 0x7f;
         $i = 1;
+        $len = \strlen($input);
         while ($c & 0x80) {
+            if ($i == $len) {
+                return -0x80;
+            }
             $c = \ord($input[$i]);
             $int += ($c & 0x7f) << ($i++ * 7);
         }
@@ -325,12 +329,19 @@ class HPack {
             if ($index & 0x80) {
                 // range check
                 if ($index <= self::LAST_INDEX + 0x80) {
+                    if ($index === 0x80) {
+                        return null;
+                    }
                     $headers[] = self::TABLE[$index - 0x81];
                 } else {
                     if ($index == 0xff) {
                         $index = self::decode_dynamic_integer($input) + 0xff;
                     }
-                    $headers[] = $this->headers[$index - 0x81 - self::LAST_INDEX];
+                    $index -= 0x81 + self::LAST_INDEX;
+                    if (!isset($this->headers[$index])) {
+                        return null;
+                    }
+                    $headers[] = $this->headers[$index];
                 }
             } elseif (($index & 0x40) || !($index & 0x20)) { // bit 4: never index is ignored
                 $dynamic = (bool)($index & 0x40);
@@ -353,6 +364,9 @@ class HPack {
                     if ($len == 0x7f) {
                         $len = self::decode_dynamic_integer($input) + 0x7f;
                     }
+                    if (\strlen($input) < $len || $len <= 0) {
+                        return null;
+                    }
                     if ($huffman) {
                         $header = [self::huffman_decode(\substr($input, 0, $len))];
                     } else {
@@ -366,6 +380,9 @@ class HPack {
                 $input = \substr($input, 1);
                 if ($len == 0x7f) {
                     $len = self::decode_dynamic_integer($input) + 0x7f;
+                }
+                if (\strlen($input) < $len || $len < 0 || $len === false) {
+                    return null;
                 }
                 if ($huffman) {
                     $header[1] = self::huffman_decode(substr($input, 0, $len));
@@ -387,7 +404,7 @@ class HPack {
                     $index = self::decode_dynamic_integer($input) + 0x40;
                 }
                 if ($index > 4096) { // initial limit … may be adjusted??
-                    // error
+                    return null;
                 } else {
                     $this->table_resize($index);
                 }

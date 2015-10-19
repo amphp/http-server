@@ -2,7 +2,6 @@
 
 namespace Aerys;
 
-// @TODO add error checking to HPACK
 // @TODO trailer headers??
 // @TODO add ServerObserver for properly sending GOAWAY frames
 class Http2Driver implements HttpDriver {
@@ -617,6 +616,10 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
 
 parse_headers:
             $headerList = $table->decode($padding ? substr($packed, 0, -$padding) : $packed);
+            if ($headerList === null) {
+                $error = self::COMPRESSION_ERROR;
+                break;
+            }
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(".(\strlen($packed) - $padding)."): ".implode(" | ", array_map(function($x){return implode(": ", $x);},$headerList))."\n");
 
             $headerArray = [];
