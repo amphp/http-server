@@ -1,13 +1,11 @@
 # Aerys
 
-A non-blocking HTTP/1.1 application/websocket server written in PHP.
+A non-blocking HTTP/1.1 application, websocket and static file server written in PHP.
 
 ## Installation
 
 ```bash
-$ git clone https://github.com/rdlowrey/Aerys.git
-$ cd Aerys
-$ composer install
+$ composer require amphp/aerys
 ```
 
 ## Running a Server
