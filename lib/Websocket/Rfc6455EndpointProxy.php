@@ -11,20 +11,12 @@ class Rfc6455EndpointProxy implements Endpoint {
         $this->endpoint = $endpoint;
     }
 
-    public function send(int $clientId, string $data): Promise {
+    public function send($clientId, string $data): Promise {
         return $this->endpoint->send($clientId, $data);
     }
 
-    public function sendBinary(int $clientId, string $data): Promise {
+    public function sendBinary($clientId, string $data): Promise {
         return $this->endpoint->send($clientId, $data, $binary = true);
-    }
-
-    public function broadcast(string $data, array $clientIds = null): Promise {
-        return $this->endpoint->broadcast($data, $clientIds);
-    }
-
-    public function broadcastBinary(string $data, array $clientIds = null): Promise {
-        return $this->endpoint->broadcast($data, $clientIds, $binary = true);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {

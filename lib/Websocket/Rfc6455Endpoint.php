@@ -510,7 +510,19 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
         }
     }
 
-    public function send(int $clientId, string $data, bool $binary = false): Promise {
+    public function send(/* int|array|null */ $clientId, string $data, bool $binary = false): Promise {
+        if ($clientId === null) {
+            $clientId = array_keys($this->clients);
+        }
+
+        if (\is_array($clientId)) {
+            $promises = [];
+            foreach ($clientId as $id) {
+                $promises[] = $this->send($id, $data, $binary);
+            }
+            return all($promises);
+        }
+
         if ($client = $this->clients[$clientId] ?? null) {
             $client->messagesSent++;
 
@@ -532,24 +544,8 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
         return new Success;
     }
 
-    public function sendBinary(int $clientId, string $data): Promise {
+    public function sendBinary($clientId, string $data): Promise {
         $this->send($clientId, $data, true);
-    }
-
-    public function broadcast(string $data, array $clientIds = null, bool $binary = false): Promise {
-        if ($clientIds === null) {
-            $clientIds = array_keys($this->clients);
-        }
-
-        $promises = [];
-        foreach ($clientIds as $clientId) {
-            $promises[] = $this->send($clientId, $data, $binary);
-        }
-        return all($promises);
-    }
-
-    public function broadcastBinary(string $data, array $clientIds = null): Promise {
-        $this->broadcast($data, $clientIds, true);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
