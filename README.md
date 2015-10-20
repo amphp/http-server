@@ -15,7 +15,7 @@ $ composer install
 To start a server pass a config file to the aerys binary using the `-c, --config` switches:
 
 ```bash
-$ bin/aerys -c demo.php
+$ bin/aerys -c config.php
 ```
 
 Use the `-h, --help` switches for more instructions.
