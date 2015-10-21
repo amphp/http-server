@@ -5,7 +5,7 @@ namespace Aerys;
 class Host {
     private static $definitions = [];
     private $name = "localhost";
-    private $port = 1337;
+    private $port = 80;
     private $address = "*";
     private $crypto = [];
     private $actions = [];
