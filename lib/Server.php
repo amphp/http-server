@@ -965,6 +965,8 @@ class Server implements \SplSubject {
         if (!extension_loaded("posix")) {
             if ($user !== null) {
                 throw new \RuntimeException("Posix extension must be enabled to switch to user '{$user}'!");
+            } else {
+                $this->logger->warning("Posix extension not enabled, be sure not to run your server as root!");
             }
         } elseif (posix_geteuid() === 0) {
             if ($user === null) {
