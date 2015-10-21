@@ -5,6 +5,17 @@ A non-blocking HTTP/1.1 application, websocket and static file server written in
 Though Aerys has been iterated on for quite a while there no official tagged releases (yet).
 APIs are still subject to change and you may run into rogue ---bugs--- features. We love PRs, though :)
 
+## Selected Built-in Features ...
+
+- Static file serving
+- Websockets
+- Dynamic app endpoint routing
+- Name-based virtual hosting
+- Full TLS support
+- Customizable GZIP output compression
+- HTTP/2 (in-progress)
+- Middleware hooks
+
 ## Requirements
 
 - PHP 7
@@ -45,26 +56,7 @@ $ php bin/aerys -c /path/to/my/config.php
 
 Use the `-h, --help` switches for more instructions.
 
-## Host Configuration
+## Example Host Configurations
 
 @TODO
 
-### Name-Based Virtual Hosting
-
-@TODO
-
-## Server-Wide Option Settings
-
-@TODO
-
-## Host TLS Encryption
-
-@TODO
-
-## Serving Static Files
-
-@TODO
-
-## Websockets
-
-@TODO
