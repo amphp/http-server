@@ -2,6 +2,13 @@
 
 A non-blocking HTTP/1.1 application, websocket and static file server written in PHP.
 
+Though Aerys has been iterated on for quite a while there no official tagged releases (yet).
+APIs are still subject to change and you may run into rogue ---bugs--- features. We love PRs, though :)
+
+## Requirements
+
+- PHP 7
+
 ## Installation
 
 ```bash
@@ -10,10 +17,54 @@ $ composer require amphp/aerys
 
 ## Running a Server
 
-To start a server pass a config file to the aerys binary using the `-c, --config` switches:
+```bash
+$ php bin/aerys
+```
+
+Simply execute the aerys binary (with php7) to start a server listening on `http://localhost/` using
+the default configuration file (packaged with the repo).
+
+## Config File
+
+Aerys looks for its config file in the following locations (relative to the repo root):
+
+ - ./config.php
+ - ./etc/config.php
+ - ./bin/config.php
+
+If none of the relative locations holds a config.php the server checks the following absolute path:
+
+ - /etc/aerys/config.php
+
+The first discovered config.php is used. Alternatively, the `-c, --config` switches define a custom
+config file:
 
 ```bash
-$ bin/aerys -c config.php
+$ php bin/aerys -c /path/to/my/config.php
 ```
 
 Use the `-h, --help` switches for more instructions.
+
+## Host Configuration
+
+@TODO
+
+### Name-Based Virtual Hosting
+
+@TODO
+
+## Server-Wide Option Settings
+
+@TODO
+
+## Host TLS Encryption
+
+@TODO
+
+## Serving Static Files
+
+@TODO
+
+## Websockets
+
+@TODO
