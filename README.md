@@ -3,7 +3,7 @@
 A non-blocking HTTP/1.1 application, websocket and static file server written in PHP.
 
 Though Aerys has been iterated on for quite a while there no official tagged releases (yet).
-APIs are still subject to change and you may run into rogue ---bugs--- features. We love PRs, though :)
+APIs are still subject to change and you may run into rogue ~~bugs~~ features. We love PRs, though :)
 
 ## Selected Built-in Features ...
 
