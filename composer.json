@@ -34,7 +34,8 @@
         "psr/log": "~1.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "~5.0"
+        "phpunit/phpunit": "~5.0",
+        "fabpot/php-cs-fixer": "~1.9"
     },
     "autoload": {
         "psr-4": {
