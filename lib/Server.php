@@ -5,7 +5,7 @@ namespace Aerys;
 use Amp\{ Struct, Promise, Success, Failure, Deferred };
 use function Amp\{ resolve, timeout, any, all, makeGeneratorError };
 
-class Server implements \SplSubject {
+class Server {
     use Struct;
 
     const STOPPED  = 0;
@@ -106,20 +106,20 @@ class Server implements \SplSubject {
     /**
      * Attach an observer
      *
-     * @param \SplObserver $observer
+     * @param ServerObserver $observer
      * @return void
      */
-    public function attach(\SplObserver $observer) {
+    public function attach(ServerObserver $observer) {
         $this->observers->attach($observer);
     }
 
     /**
      * Detach an Observer
      *
-     * @param \SplObserver $observer
+     * @param ServerObserver $observer
      * @return void
      */
-    public function detach(\SplObserver $observer) {
+    public function detach(ServerObserver $observer) {
         $this->observers->detach($observer);
     }
 
@@ -130,14 +130,13 @@ class Server implements \SplSubject {
      *
      * @return \Amp\Promise
      */
-    public function notify(): Promise {
+    private function notify(): Promise {
         $promises = [];
         foreach ($this->observers as $observer) {
             $promises[] = $observer->update($this);
         }
 
-        $promise = any($promises);
-        $promise->when(function($error, $result) {
+        return any($promises)->when(function($error, $result) {
             // $error is always empty because an any() combinator promise never fails.
             // Instead we check the error array at index zero in the two-item amy() $result
             // and log as needed.
@@ -146,8 +145,6 @@ class Server implements \SplSubject {
                 $this->logger->error($error);
             }
         });
-
-        return $promise;
     }
 
     /**

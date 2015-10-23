@@ -5,7 +5,7 @@ namespace Aerys;
 use Amp as amp;
 use Amp\File as file;
 
-class Root implements \SplObserver {
+class Root implements ServerObserver {
     const PRECOND_NOT_MODIFIED = 1;
     const PRECOND_FAILED = 2;
     const PRECOND_IF_RANGE_OK = 3;
@@ -761,13 +761,13 @@ class Root implements \SplObserver {
     /**
      * Receive notifications from the server when it starts/stops
      *
-     * @param \SplSubject $subject
+     * @param Server $server
      * @return \Amp\Promise
      */
-    public function update(\SplSubject $subject): amp\Promise {
-        switch ($subject->state()) {
+    public function update(Server $server): amp\Promise {
+        switch ($server->state()) {
             case Server::STARTED:
-                $this->debug = $subject->getOption("debug");
+                $this->debug = $server->getOption("debug");
                 amp\enable($this->cacheWatcher);
                 break;
             case Server::STOPPED:

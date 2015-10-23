@@ -8,7 +8,7 @@ use Amp\{
     Struct
 };
 
-class Ticker implements \SplObserver {
+class Ticker implements ServerObserver {
     use Struct;
 
     private $logger;
@@ -22,8 +22,8 @@ class Ticker implements \SplObserver {
         $this->logger = $logger;
     }
 
-    final public function update(\SplSubject $subject): Promise {
-        switch ($subject->state()) {
+    final public function update(Server $server): Promise {
+        switch ($server->state()) {
             case Server::STARTED:
                 $this->watcherId = \Amp\repeat([$this, "updateTime"], 1000);
                 $this->updateTime();

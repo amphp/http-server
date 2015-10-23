@@ -23,11 +23,12 @@ use Aerys\{
     Request,
     Response,
     Server,
+    ServerObserver,
     Websocket,
     const HTTP_STATUS
 };
 
-class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
+class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     private $logger;
     private $application;
     private $proxy;
@@ -580,8 +581,8 @@ class Rfc6455Endpoint implements Endpoint, Middleware, \SplObserver {
         return array_keys($this->clients);
     }
 
-    public function update(\SplSubject $subject): Promise {
-        switch ($this->state = $subject->state()) {
+    public function update(Server $server): Promise {
+        switch ($this->state = $server->state()) {
             case Server::STARTING:
                 $result = $this->application->onStart($this->proxy);
                 if ($result instanceof \Generator) {

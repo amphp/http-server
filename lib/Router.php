@@ -15,7 +15,7 @@ use Amp\{
     function any
 };
 
-class Router implements Bootable, Middleware, \SplObserver {
+class Router implements Bootable, Middleware, ServerObserver {
     const CANONICAL_REDIRECT = 0;
 
     private $state = Server::STOPPED;
@@ -350,11 +350,11 @@ class Router implements Bootable, Middleware, \SplObserver {
      * Here we generate our dispatcher when the server notifies us that it is
      * ready to start (Server::STARTING).
      *
-     * @param \SplSubject $subject
+     * @param Server $server
      * @return \Amp\Promise
      */
-    public function update(\SplSubject $subject): Promise {
-        switch ($this->state = $subject->state()) {
+    public function update(Server $server): Promise {
+        switch ($this->state = $server->state()) {
             case Server::STOPPED:
                 $this->routeDispatcher = null;
                 break;
@@ -364,8 +364,8 @@ class Router implements Bootable, Middleware, \SplObserver {
                         "Router start failure: no routes registered"
                     ));
                 }
-                $this->routeDispatcher = simpleDispatcher(function ($rc) use ($subject) {
-                    $this->buildRouter($rc, $subject);
+                $this->routeDispatcher = simpleDispatcher(function ($rc) use ($server) {
+                    $this->buildRouter($rc, $server);
                 });
                 break;
         }

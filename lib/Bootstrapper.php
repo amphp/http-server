@@ -166,7 +166,7 @@ class Bootstrapper {
         // Observe the Server in our stateful multi-responder so if a shutdown triggers
         // while we're iterating over our coroutines we can send a 503 response. This
         // obviates the need for applications to pay attention to server state themeselves.
-        $application = $bootLoader(new class($applications) implements Bootable, \SplObserver {
+        $application = $bootLoader(new class($applications) implements Bootable, ServerObserver {
             private $applications;
             private $isStopping = false;
 
@@ -180,8 +180,8 @@ class Bootstrapper {
                 return [$this, "__invoke"];
             }
 
-            public function update(\SplSubject $subject): Promise {
-                if ($subject->state() === Server::STOPPING) {
+            public function update(Server $server): Promise {
+                if ($server->state() === Server::STOPPING) {
                     $this->isStopping = true;
                 }
 
