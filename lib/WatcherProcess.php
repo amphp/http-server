@@ -151,19 +151,20 @@ class WatcherProcess extends Process {
         $os = (stripos(PHP_OS, "WIN") === 0) ? "win" : strtolower(trim(shell_exec("uname")));
         switch ($os) {
             case "win":
-            $cmd = "wmic cpu get NumberOfCores";
-            break;
+                $cmd = "wmic cpu get NumberOfCores";
+                break;
             case "linux":
-            $cmd = "cat /proc/cpuinfo | grep processor | wc -l";
-            break;
+                $cmd = "cat /proc/cpuinfo | grep processor | wc -l";
+                break;
             case "freebsd":
-            $cmd = "sysctl -a | grep 'hw.ncpu' | cut -d ':' -f2";
-            break;
+                $cmd = "sysctl -a | grep 'hw.ncpu' | cut -d ':' -f2";
+                break;
             case "darwin":
-            $cmd = "sysctl -a | grep 'hw.ncpu:' | awk '{ print $2 }'";
-            break;
+                $cmd = "sysctl -a | grep 'hw.ncpu:' | awk '{ print $2 }'";
+                break;
             default:
-            $cmd = NULL;
+                $cmd = NULL;
+                break;
         }
         $execResult = $cmd ? shell_exec($cmd) : 1;
         if ($os === 'win') {
@@ -247,23 +248,36 @@ class WatcherProcess extends Process {
 
     private function generateWorkerCommand(Console $console): string {
         $parts[] = \PHP_BINARY;
+
         if ($ini = \get_cfg_var("cfg_file_path")) {
-            $parts[] = "-c \"{$ini}\"";
-        }
-        $parts[] = "-d zend.assertions=" . ini_get("zend.assertions");
-        $parts[] = __DIR__ . "/../bin/aerys-worker";
-        $parts[] = "-i {$this->ipcServerUri}";
-        if ($console->isArgDefined("config")) {
-            $parts[] = "-c " . $console->getArg("config");
-        }
-        if ($console->isArgDefined("color")) {
-            $parts[] = "--color " . $console->getArg("color");
-        }
-        if ($console->isArgDefined("log")) {
-            $parts[] = "-l " . $console->getArg("log");
+            $parts[] = "-c";
+            $parts[] = $ini;
         }
 
-        return implode(" ", $parts);
+        $parts[] = "-d";
+        $parts[] = "zend.assertions=" . ini_get("zend.assertions");
+
+        $parts[] = __DIR__ . "/../bin/aerys-worker";
+
+        $parts[] = "-i";
+        $parts[] = $this->ipcServerUri;
+
+        if ($console->isArgDefined("config")) {
+            $parts[] = "-c";
+            $parts[] = $console->getArg("config");
+        }
+
+        if ($console->isArgDefined("color")) {
+            $parts[] = "--color";
+            $parts[] = $console->getArg("color");
+        }
+
+        if ($console->isArgDefined("log")) {
+            $parts[] = "-l";
+            $parts[] = $console->getArg("log");
+        }
+
+        return implode(" ", array_map("escapeshellarg", $parts));
     }
 
     private function spawn() {

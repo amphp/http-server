@@ -101,7 +101,7 @@ function parseBody(Request $req) {
     $type = $req->getHeader("content-type");
 
     if ($type === null || $type === "application/x-www-form-urlencoded") {
-        return \Amp\pipe($req->getBody(), function ($data) use ($type) {
+        return \Amp\pipe($req->getBody(), function ($data) {
             parse_str($data, $fields);
             return new ParsedBody($fields);
         });
