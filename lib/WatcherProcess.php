@@ -248,21 +248,31 @@ class WatcherProcess extends Process {
 
     private function generateWorkerCommand(Console $console): string {
         $parts[] = \PHP_BINARY;
+
         if ($ini = \get_cfg_var("cfg_file_path")) {
-            $ini = escapeshellarg($ini);
-            $parts[] = "-c {$ini}";
+            $parts[] = "-c";
+            $parts[] = escapeshellarg($ini);
         }
-        $parts[] = "-d zend.assertions=" . ini_get("zend.assertions");
+
+        $parts[] = "-d zend.assertions=" . escapeshellarg(ini_get("zend.assertions"));
         $parts[] = escapeshellarg(__DIR__ . "/../bin/aerys-worker");
-        $parts[] = "-i {$this->ipcServerUri}";
+
+        $parts[] = "-i";
+        $parts[] = escapeshellarg($this->ipcServerUri);
+
         if ($console->isArgDefined("config")) {
-            $parts[] = "-c " . $console->getArg("config");
+            $parts[] = "-c";
+            $parts[] = escapeshellarg($console->getArg("config"));
         }
+
         if ($console->isArgDefined("color")) {
-            $parts[] = "--color " . $console->getArg("color");
+            $parts[] = "--color";
+            $parts[] = escapeshellarg($console->getArg("color"));
         }
+
         if ($console->isArgDefined("log")) {
-            $parts[] = "-l " . $console->getArg("log");
+            $parts[] = "-l";
+            $parts[] = escapeshellarg($console->getArg("log"));
         }
 
         return implode(" ", $parts);
