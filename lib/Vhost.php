@@ -210,7 +210,7 @@ class Vhost {
             );
         }
 
-        if (!preg_match("#-----BEGIN [A-Z]+ PRIVATE KEY-----#", $rawCert)) {
+        if (!preg_match("#-----BEGIN( [A-Z]+)? PRIVATE KEY-----#", $rawCert)) {
             throw new \RuntimeException(
                 "TLS certificate `{$certBase}` appears to be missing the private key in host " .
                 "`{$this}`; encrypted hosts must concatenate their private key into the same " .
