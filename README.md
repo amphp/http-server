@@ -56,6 +56,10 @@ $ php bin/aerys -c /path/to/my/config.php
 
 Use the `-h, --help` switches for more instructions.
 
+## Static File Serving
+
+To start a static file server simply pass a root handler as part of your config file.
+
 ## Example Host Configurations
 
 @TODO
