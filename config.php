@@ -14,12 +14,6 @@ const AERYS_OPTIONS = [
 $router = router()
     ->get("/", function(Request $req, Response $res) {
         $res->send("<html><body><h1>Hello, world.</h1></body></html>");
-        /*
-        $res->stream("<html><body><h1>Hello, world.</h1>");
-        $res->flush();
-        $res->stream("</body></html>");
-        $res->end();
-        */
     })
     ->get("/router/{myarg}", function(Request $req, Response $res, array $routeArgs) {
         $body = "<html><body><h1>Route Args at param 3</h1>".print_r($routeArgs, true)."</body></html>";
