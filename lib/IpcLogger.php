@@ -13,7 +13,6 @@ class IpcLogger extends Logger {
     private $writeWatcherId;
     private $writeQueue = [];
     private $writeBuffer = "";
-    private $stopPromisor;
     private $isDead;
 
     public function __construct(Console $console, $ipcSock) {
@@ -26,6 +25,7 @@ class IpcLogger extends Logger {
 
         $onWritable = $this->makePrivateCallable("onWritable");
         $this->ipcSock = $ipcSock;
+        stream_set_blocking($ipcSock, false);
         $this->writeWatcherId = \Amp\onWritable($ipcSock, $onWritable, [
             "enable" => false,
         ]);
@@ -72,14 +72,7 @@ class IpcLogger extends Logger {
 
         $this->writeBuffer = "";
 
-        if ($this->stopPromisor) {
-            \Amp\cancel($this->writeWatcherId);
-            $promisor = $this->stopPromisor;
-            $this->stopPromisor = null;
-            $promisor->succeed();
-        } else {
-            \Amp\disable($this->writeWatcherId);
-        }
+        \Amp\disable($this->writeWatcherId);
     }
 
     private function onDeadIpcSock() {
@@ -87,19 +80,15 @@ class IpcLogger extends Logger {
         $this->writeBuffer = "";
         $this->writeQueue = [];
         \Amp\cancel($this->writeWatcherId);
-        if ($this->stopPromisor) {
-            $promisor = $this->stopPromisor;
-            $this->stopPromisor = null;
-            $promisor->succeed();
-        }
     }
 
-    public function stop(): Promise {
-        if ($this->isDead || $this->writeBuffer === "") {
-            return new Success;
-        } else {
-            $this->stopPromisor = new Deferred;
-            return $this->stopPromisor->promise();
+    public function flush() { // BLOCKING
+        if ($this->isDead || ($this->writeBuffer === "" && empty($this->writeQueue))) {
+            return;
         }
+
+        stream_set_blocking($this->ipcSock, true);
+        $this->onWritable();
+        stream_set_blocking($this->ipcSock, false);
     }
 }

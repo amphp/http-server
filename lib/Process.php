@@ -52,8 +52,8 @@ abstract class Process {
             \Amp\onError([$this->logger, "critical"]);
         } catch (\Throwable $uncaught) {
             $this->exitCode = 1;
-            yield $this->logger->critical($uncaught);
-            $this->exit();
+            $this->logger->critical($uncaught);
+            static::exit();
         }
     }
 
@@ -75,9 +75,9 @@ abstract class Process {
             yield from $this->doStop();
         } catch (\Throwable $uncaught) {
             $this->exitCode = 1;
-            yield $this->logger->critical($uncaught);
+            $this->logger->critical($uncaught);
         } finally {
-            $this->exit();
+            static::exit();
         }
     }
 
@@ -121,12 +121,11 @@ abstract class Process {
 
             $this->exitCode = 1;
             $msg = "{$err["message"]} in {$err["file"]} on line {$err["line"]}";
-            $gen = function($msg) {
-                yield $this->logger->critical($msg);
+            // FIXME: Fatal error: Uncaught LogicException: Cannot run() recursively; event reactor already active
+            \Amp\run(function() use ($msg) {
+                $this->logger->critical($msg);
                 yield from $this->stop();
-            };
-            $promise = resolve($gen($msg));
-            \Amp\wait($promise);
+            });
         });
     }
 
@@ -145,23 +144,23 @@ abstract class Process {
                 case E_CORE_ERROR:
                 case E_COMPILE_ERROR:
                 case E_RECOVERABLE_ERROR:
-                    yield $this->logger->error($msg);
+                    $this->logger->error($msg);
                     break;
                 case E_CORE_WARNING:
                 case E_COMPILE_WARNING:
                 case E_WARNING:
                 case E_USER_WARNING:
-                    yield $this->logger->warning($msg);
+                    $this->logger->warning($msg);
                     break;
                 case E_NOTICE:
                 case E_USER_NOTICE:
                 case E_DEPRECATED:
                 case E_USER_DEPRECATED:
                 case E_STRICT:
-                    yield $this->logger->notice($msg);
+                    $this->logger->notice($msg);
                     break;
                 default:
-                    yield $this->logger->warning($msg);
+                    $this->logger->warning($msg);
                     break;
             }
         }));

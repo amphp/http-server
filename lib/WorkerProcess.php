@@ -28,7 +28,12 @@ class WorkerProcess extends Process {
     protected function doStop(): \Generator {
         if ($this->server) {
             yield $this->server->stop();
-            yield $this->logger->stop();
         }
+        $this->logger->flush();
+    }
+
+    protected function exit() {
+        $this->logger->flush();
+        parent::exit();
     }
 }
