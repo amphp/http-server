@@ -44,7 +44,11 @@ class Bootstrapper {
         $server = new Server($options, $vhosts, $logger, $ticker);
 
         $bootLoader = function(Bootable $bootable) use ($server, $logger) {
-            return $bootable->boot($server, $logger);
+            $booted = $bootable->boot($server, $logger);
+            if ($booted !== null && (!$booted instanceof Middleware || !is_callable($booted))) {
+                throw new \InvalidArgumentException("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Middleware and/or be callable');
+            }
+            return $booted ?? $bootable;
         };
         $hosts = \call_user_func($this->hostAggregator) ?: [new Host];
         foreach ($hosts as $host) {
@@ -137,7 +141,9 @@ class Bootstrapper {
         $applications = [];
 
         foreach ($actions as $key => $action) {
-            $action = ($action instanceof Bootable) ? $bootLoader($action) : $action;
+            if ($action instanceof Bootable) {
+                $action = $bootLoader($action);
+            }
             if ($action instanceof Middleware) {
                 $middlewares[] = [$action, "do"];
             } elseif (is_array($action) && $action[0] instanceof Middleware) {
@@ -165,7 +171,7 @@ class Bootstrapper {
 
         // Observe the Server in our stateful multi-responder so if a shutdown triggers
         // while we're iterating over our coroutines we can send a 503 response. This
-        // obviates the need for applications to pay attention to server state themeselves.
+        // obviates the need for applications to pay attention to server state themselves.
         $application = $bootLoader(new class($applications) implements Bootable, ServerObserver {
             private $applications;
             private $isStopping = false;
@@ -176,8 +182,6 @@ class Bootstrapper {
 
             public function boot(Server $server, Logger $logger) {
                 $server->attach($this);
-
-                return [$this, "__invoke"];
             }
 
             public function update(Server $server): Promise {

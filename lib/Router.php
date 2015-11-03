@@ -273,10 +273,12 @@ class Router implements Bootable, Middleware, ServerObserver {
     public function boot(Server $server, Logger $logger) {
         $server->attach($this);
         $this->bootLoader = function(Bootable $bootable) use ($server, $logger) {
-            return $bootable->boot($server, $logger);
+            $booted = $bootable->boot($server, $logger);
+            if ($booted !== null && (!$booted instanceof Middleware || !is_callable($booted))) {
+                throw new \InvalidArgumentException("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Middleware and/or be callable');
+            }
+            return $booted ?? $bootable;
         };
-
-        return [$this, "__invoke"];
     }
 
     private function bootRouteTarget($actions): array {
