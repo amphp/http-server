@@ -26,6 +26,12 @@ APIs are still subject to change and you may run into rogue ~~bugs~~ features. W
 $ composer require amphp/aerys
 ```
 
+## Documentation
+
+* [Official Documentation](http://amphp.org/docs/aerys/)
+* [Getting Started with Aerys](http://blog.kelunik.com/2015/10/21/getting-started-with-aerys.html)
+* [Getting Started with Aerys WebSockets](http://blog.kelunik.com/2015/10/20/getting-started-with-aerys-websockets.html)
+
 ## Running a Server
 
 ```bash
