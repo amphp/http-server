@@ -21,9 +21,9 @@ class Host {
     /**
      * Assign the IP and port on which to listen
      *
-     * The address may be any valid IPv4 or IPv6 address. The "*" wildcard character indicates
+     * The address may be any valid IPv4 or IPv6 address. The "0.0.0.0" indicates
      * "all IPv4 interfaces" and is appropriate for most users. Use "[::]" to indicate "all IPv6
-     * interfaces."
+     * interfaces". To indicate "all IPv4 *and* IPv6 interfaces", use a "*" wildcard character.
      *
      * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
      * well-known services (like HTTP on port 80) and port numbers less than 1024 require root
@@ -31,27 +31,25 @@ class Host {
      * default port for encrypted sockets (https) is 443. If you plan to use encryption with this
      * host you'll generally want to use port 443.
      *
-     * The default $address is null, which means "all IPv4 *and* IPv6 interfaces".
-     *
-     * @param string|null $address The IPv4 or IPv6 interface to listen to
+     * @param string $address The IPv4 or IPv6 interface to listen to
      * @param int $port The port number on which to listen
      * @return self
      */
-    public function expose(string $address = null, int $port = 80): Host {
+    public function expose(string $address, int $port = 80): Host {
         if ($port < 1 || $port > 65535) {
             throw new \DomainException(
                 "Invalid port number; integer in the range 1..65535 required"
             );
         }
 
-        if ($address === null) {
-            $this->interfaces[] = ["*", $port];
+        if ($address === "*") {
+            $this->interfaces[] = ["0.0.0.0", $port];
             $this->interfaces[] = ["[::]", $port];
 
             return $this;
         }
 
-        if ($address !== "*" && !@inet_pton($address)) {
+        if (!@inet_pton($address)) {
             throw new \DomainException(
                 "Invalid IP address"
             );
@@ -178,7 +176,7 @@ class Host {
         }
 
         return [
-            "interfaces" => array_unique($this->interfaces ?? [["*", 80], ["[::]", 80]], SORT_REGULAR),
+            "interfaces" => array_unique($this->interfaces ?? [["0.0.0.0", 80], ["[::]", 80]], SORT_REGULAR),
             "name"       => $this->name,
             "crypto"     => $this->crypto,
             "actions"    => $actions,
