@@ -27,15 +27,14 @@ class Host {
      *
      * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
      * well-known services (like HTTP on port 80) and port numbers less than 1024 require root
-     * access on UNIX-like systems. Port 80 is assumed in the absence of port specification. The
-     * default port for encrypted sockets (https) is 443. If you plan to use encryption with this
-     * host you'll generally want to use port 443.
+     * access on UNIX-like systems. The default port for encrypted sockets (https) is 443. If you
+     * plan to use encryption with this host you'll generally want to use port 443.
      *
      * @param string $address The IPv4 or IPv6 interface to listen to
      * @param int $port The port number on which to listen
      * @return self
      */
-    public function expose(string $address, int $port = 80): Host {
+    public function expose(string $address, int $port): Host {
         if ($port < 1 || $port > 65535) {
             throw new \DomainException(
                 "Invalid port number; integer in the range 1..65535 required"
@@ -175,8 +174,10 @@ class Host {
             $actions[] = $this->redirect;
         }
 
+        $defaultPort = $this->crypto ? 443 : 80;
+
         return [
-            "interfaces" => array_unique($this->interfaces ?? [["0.0.0.0", 80], ["[::]", 80]], SORT_REGULAR),
+            "interfaces" => array_unique($this->interfaces ?? [["0.0.0.0", $defaultPort], ["[::]", $defaultPort]], SORT_REGULAR),
             "name"       => $this->name,
             "crypto"     => $this->crypto,
             "actions"    => $actions,
