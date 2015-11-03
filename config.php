@@ -1,6 +1,6 @@
 <?php
 
-use Aerys\{ Host, Request, Response, Router, function root, function router };
+use Aerys\{ Host, Request, Response, Router, Websocket, function root, function router, function websocket };
 
 /* --- Global server options -------------------------------------------------------------------- */
 
@@ -57,8 +57,28 @@ $router = router()
     })
     ->zanzibar("/zanzibar", function (Request $req, Response $res) {
         $res->end("<html><body><h1>ZANZIBAR!</h1></body></html>");
-    })
-;
+    });
+
+$websocket = websocket(new class implements Aerys\Websocket {
+    private $endpoint;
+
+    public function onStart(Websocket\Endpoint $endpoint) {
+        $this->endpoint = $endpoint;
+    }
+
+    public function onHandshake(Request $request, Response $response) { /* check origin header here */ }
+    public function onOpen(int $clientId, $handshakeData) { }
+
+    public function onData(int $clientId, Websocket\Message $msg) {
+        // broadcast to all connected clients
+        $this->endpoint->send(null, yield $msg);
+    }
+
+    public function onClose(int $clientId, int $code, string $reason) { }
+    public function onStop() { }
+});
+
+$router->get("/ws", $websocket);
 
 // If none of our routes match try to serve a static file
 $root = root($docrootPath = __DIR__);
