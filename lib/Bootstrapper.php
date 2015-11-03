@@ -77,7 +77,7 @@ class Bootstrapper {
         }
 
         throw new \DomainException(
-            "No config file found"
+            "No config file found, specify one via the -c switch on command line"
         );
     }
 
