@@ -189,8 +189,7 @@ class Server {
 
         $addrCtxMap = $this->generateBindableAddressContextMap();
         foreach ($addrCtxMap as $address => $context) {
-            $serverName = substr(str_replace('0.0.0.0', '*', $address), 6);
-            $this->boundServers[$serverName] = $this->bind($address, $context);
+            $this->boundServers[$address] = $this->bind($address, $context);
         }
 
         $this->state = self::STARTING;

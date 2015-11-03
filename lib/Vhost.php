@@ -9,9 +9,10 @@ use Amp\{
 
 class Vhost {
     private $application;
-    private $address;
-    private $port;
+    private $interfaces;
+    private $addressMap;
     private $name;
+    private $ids;
     private $filters = [];
     private $tlsContextArr = [];
     private $tlsDefaults = [
@@ -49,75 +50,87 @@ class Vhost {
         "any"       => STREAM_CRYPTO_METHOD_ANY_SERVER,
     ];
 
-    public function __construct(string $name, string $address, int $port, callable $application, array $filters) {
+    public function __construct(string $name, array $interfaces, callable $application, array $filters) {
         $this->name = isset($name) ? strtolower($name) : "";
-        $this->setAddress($address);
-        $this->setPort($port);
+        if (!$interfaces) {
+            throw new \InvalidArgumentException(
+                "At least one interface must be passed, an empty interfaces array is not allowed"
+            );
+        }
+        foreach ($interfaces as $interface) {
+            $this->addInterface($interface);
+        }
         $this->application = $application;
         $this->filters = $filters;
-        $this->id = ($this->name ?? $this->address) . ":" . $this->port;
-    }
 
-    private function setAddress(string $address) {
-        $address = trim($address, "[]");
-        if ($address === "*") {
-            $this->address = $address;
-        } elseif ($address === "::") {
-            $this->address = "[::]";
-        } elseif (!$packedAddress = @inet_pton($address)) {
-            throw new \InvalidArgumentException(
-                "IPv4, IPv6 or wildcard address required: {$address}"
-            );
+        if ($this->name !== null) {
+            $addresses = [$this->name];
         } else {
-            $this->address = isset($packedAddress[4]) ? "[{$address}]" : $address;
+            $addresses = array_unique(array_column($interfaces, 0));
+        }
+        $ports = array_unique(array_column($interfaces, 1));
+        foreach ($addresses as $address) {
+            foreach ($ports as $port) {
+                $this->ids[] = "$address:$port";
+            }
         }
     }
 
-    private function setPort(int $port) {
+    private function addInterface(array $interface) {
+        list($address, $port) = $interface;
+
         if ($port < 1 || $port > 65535) {
             throw new \InvalidArgumentException(
                 "Invalid host port: {$port}; integer in the range [1-65535] required"
             );
         }
-        $this->port = $port;
+
+        $address = trim($address, "[]");
+        if ($address === "*") {
+            // Ok
+        } elseif ($address === "::") {
+            $address = "[::]";
+        } elseif (!$packedAddress = @inet_pton($address)) {
+            throw new \InvalidArgumentException(
+                "IPv4, IPv6 or wildcard address required: {$address}"
+            );
+        } else {
+            $address = isset($packedAddress[4]) ? "[{$address}]" : $address;
+        }
+
+        $this->interfaces[] = [$address, $port];
+        $this->addressMap[@inet_pton($address)][] = $port;
     }
 
     /**
-     * Retrieve the name:port ID for this host
+     * Retrieve the name:port IDs for this host
      *
-     * @return string
+     * @return array<string>
      */
-    public function getId(): string {
-        return $this->id;
+    public function getIds(): array {
+        return $this->ids;
     }
 
     /**
-     * Retrieve the IP on which the host listens (may be a wildcard "*" or "[::]")
+     * Retrieve the list of address-port pairs on which this host listens (address may be a wildcard "*" or "[::]")
      *
-     * @return string
+     * @return array<array<string, int>>
      */
-    public function getAddress(): string {
-        return $this->address;
+    public function getInterfaces(): array {
+        return $this->interfaces;
     }
 
     /**
-     * Retrieve the port on which this host listens
+     * Retrieve the URIs on which this host should be bound
      *
-     * @return int
+     * @return array
      */
-    public function getPort(): int {
-        return $this->port;
-    }
-
-    /**
-     * Retrieve the URI on which this host should be bound
-     *
-     * @return string
-     */
-    public function getBindableAddress(): string {
-        $ip = ($this->address === "*") ? "0.0.0.0" : $this->address;
-
-        return "tcp://{$ip}:{$this->port}";
+    public function getBindableAddresses(): array {
+        return array_map(function($interface) {
+            list($address, $port) = $interface;
+            $ip = $address === "*" ? "0.0.0.0" : $address;
+            return "tcp://$ip:$port";
+        }, $this->interfaces);
     }
 
     /**
@@ -139,29 +152,29 @@ class Vhost {
     }
 
     /**
-     * Is this host's address defined by a wildcard character?
-     *
-     * @return bool
-     */
-    public function hasWildcardAddress(): bool {
-        return ($this->address === "*" || $this->address === "[::]");
-    }
-
-    /**
-     * Does the specified IP address (or wildcard) match this host's address?
-     *
      * @param string $address
-     * @return bool
+     * @return array<int> The list of listening ports on this address
      */
-    public function matchesAddress(string $address): bool {
-        if ($this->address === '*' || $this->address === '[::]') {
-            return true;
-        }
+    public function getPorts(string $address): array {
         if ($address === '*' || $address === '[::]') {
-            return true;
+            $ports = [];
+            foreach ($this->addressMap as $packedAddress => $port_list) {
+                if (\strlen($packedAddress) === ($address === '*' ? 4 : 16)) {
+                    $ports = array_merge($ports, $port_list);
+                }
+            }
+            return $ports;
         }
 
-        return (@inet_pton($this->address) === @inet_pton($address));
+        $packedAddress = inet_pton($address); // if this yields a warning, there's something else buggy, but no @ missing.
+        $wildcard = \strlen($packedAddress) === 4 ? "*" : "[::]";
+        if (!isset($this->addressMap[$wildcard])) {
+            return $this->addressMap[$packedAddress] ?? [];
+        } elseif (!isset($this->addressMap[$packedAddress])) {
+            return $this->addressMap[$wildcard];
+        } else {
+            return array_merge($this->addressMap[$wildcard], $this->addressMap[$packedAddress]);
+        }
     }
 
     /**
@@ -352,8 +365,7 @@ class Vhost {
             : gettype($this->application);
 
         return [
-            "address" => $this->address,
-            "port" => $this->port,
+            "interfaces" => $this->interfaces,
             "name" => $this->name,
             "tls" => $this->tlsContextArr,
             "application" => $appType,

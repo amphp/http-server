@@ -21,26 +21,30 @@ class VhostContainer implements \Countable {
      */
     public function use(Vhost $vhost) {
         $this->preventCryptoSocketConflict($vhost);
-        $this->vhosts[$vhost->getId()] = $vhost;
+        foreach ($vhost->getIds() as $id) {
+            $this->vhosts[$id] = $vhost;
+       }
         $this->cachedVhostCount++;
     }
 
     private function preventCryptoSocketConflict(Vhost $new) {
         foreach ($this->vhosts as $old) {
-            // If both hosts are encrypted there is no conflict
-            if ($new->IsEncrypted() && $old->isEncrypted()) {
+            // If both hosts are encrypted or both unencrypted there is no conflict
+            if ($new->IsEncrypted() == $old->isEncrypted()) {
                 continue;
             }
-            if ($new->matchesAddress($old->getAddress()) && ($old->getPort() == $new->getPort())) {
-                throw new \LogicException(
-                    sprintf(
-                        "Cannot register encrypted host `%s`; unencrypted " .
-                        "host `%s` registered on conflicting port `%s`",
-                        $new->IsEncrypted() ? $new->getId() : $old->getId(),
-                        $new->IsEncrypted() ? $old->getId() : $new->getId(),
-                        $new->getAddress() . ":" . $new->getPort()
-                    )
-                );
+            foreach ($old->getInterfaces() as list($address, $port)) {
+                if (in_array($port, $new->getPorts($address))) {
+                    throw new \LogicException(
+                        sprintf(
+                            "Cannot register encrypted host `%s`; unencrypted " .
+                            "host `%s` registered on conflicting port `%s`",
+                            ($new->IsEncrypted() ? $new->getName() : $old->getName()) ?: "*",
+                            ($new->IsEncrypted() ? $old->getName() : $new->getName()) ?: "*",
+                            "$address:$port"
+                        )
+                    );
+                }
             }
         }
     }
@@ -118,13 +122,11 @@ class VhostContainer implements \Countable {
             $vhost = $this->vhosts[$wildcardHost];
         } elseif (isset($this->vhosts[$ipv6WildcardHost])) {
             $vhost = $this->vhosts[$ipv6WildcardHost];
-        } elseif (count($this->vhosts) !== 1) {
+        } elseif ($this->cachedVHostCount !== 1) {
             $vhost = null;
         } elseif (!@inet_pton($ipComparison)) {
             $vhost = null;
-        } elseif (!(($vhost = $this->getDefaultHost())
-            && ($vhost->getAddress() === $ipComparison || $vhost->hasWildcardAddress())
-        )) {
+        } elseif (!(($vhost = $this->getDefaultHost()) && $vhost->getPorts($ipComparison))) {
             $vhost = null;
         }
 
@@ -133,7 +135,7 @@ class VhostContainer implements \Countable {
         // displaying unencrypted data as a result of carefully crafted Host headers. This is an
         // extreme edge case but it's potentially exploitable without this check.
         // DO NOT REMOVE THIS UNLESS YOU'RE SURE YOU KNOW WHAT YOU'RE DOING.
-        if ($vhost && $vhost->isEncrypted() && !$ireq->isEncrypted) {
+        if ($vhost && $vhost->isEncrypted() != $ireq->isEncrypted) {
             $vhost = null;
         }
 
@@ -146,9 +148,9 @@ class VhostContainer implements \Countable {
      * @return array Returns an array of unique host addresses in the form: tcp://ip:port
      */
     public function getBindableAddresses(): array {
-        return array_unique(array_map(function($vhost) {
-            return $vhost->getBindableAddress();
-        }, $this->vhosts));
+        return array_unique(array_merge(...array_values(array_map(function($vhost) {
+            return $vhost->getBindableAddresses();
+        }, $this->vhosts))));
     }
 
     /**

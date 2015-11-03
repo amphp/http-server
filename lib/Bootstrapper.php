@@ -115,12 +115,11 @@ class Bootstrapper {
     private function buildVhost(Host $host, callable $bootLoader): Vhost {
         try {
             $hostExport = $host->export();
-            $address = $hostExport["address"];
-            $port = $hostExport["port"];
+            $interfaces = $hostExport["interfaces"];
             $name = $hostExport["name"];
             $actions = $hostExport["actions"];
             list($application, $middlewares) = $this->bootApplication($actions, $bootLoader);
-            $vhost = new Vhost($name, $address, $port, $application, $middlewares);
+            $vhost = new Vhost($name, $interfaces, $application, $middlewares);
             if ($crypto = $hostExport["crypto"]) {
                 $vhost->setCrypto($crypto);
             }

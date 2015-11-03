@@ -5,8 +5,7 @@ namespace Aerys;
 class Host {
     private static $definitions = [];
     private $name = "localhost";
-    private $port = 80;
-    private $address = "*";
+    private $interfaces = null;
     private $crypto = [];
     private $actions = [];
     private $redirect;
@@ -32,24 +31,33 @@ class Host {
      * default port for encrypted sockets (https) is 443. If you plan to use encryption with this
      * host you'll generally want to use port 443.
      *
+     * The default $address is null, which means "all IPv4 *and* IPv6 interfaces".
+     *
+     * @param string|null $address The IPv4 or IPv6 interface to listen to
      * @param int $port The port number on which to listen
      * @return self
-     * @TODO Make "*" listen on all IPv6 interfaces as well as IPv4
      */
-    public function expose(string $address = "*", int $port = 80): Host {
-        if ($address !== "*" && !@inet_pton($address)) {
-            throw new \DomainException(
-                "Invalid IP address"
-            );
-        }
+    public function expose(string $address = null, int $port = 80): Host {
         if ($port < 1 || $port > 65535) {
             throw new \DomainException(
                 "Invalid port number; integer in the range 1..65535 required"
             );
         }
 
-        $this->address = $address;
-        $this->port = $port;
+        if ($address === null) {
+            $this->interfaces[] = ["*", $port];
+            $this->interfaces[] = ["[::]", $port];
+
+            return $this;
+        }
+
+        if ($address !== "*" && !@inet_pton($address)) {
+            throw new \DomainException(
+                "Invalid IP address"
+            );
+        }
+
+        $this->interfaces[] = [$address, $port];
 
         return $this;
     }
@@ -170,11 +178,10 @@ class Host {
         }
 
         return [
-            "address"   => $this->address,
-            "port"      => $this->port,
-            "name"      => $this->name,
-            "crypto"    => $this->crypto,
-            "actions"   => $actions,
+            "interfaces" => array_unique($this->interfaces ?? [["*", 80], ["[::]", 80]], SORT_REGULAR),
+            "name"       => $this->name,
+            "crypto"     => $this->crypto,
+            "actions"    => $actions,
         ];
     }
 
