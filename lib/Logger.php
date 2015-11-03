@@ -74,9 +74,12 @@ abstract class Logger implements PsrLogger {
     private function format($level, $message, array $context = []) {
         $time = @date("H:i:s", $context["time"] ?? time());
         $level = isset(self::LEVELS[$level]) ? $level : "unknown";
+
+        // align for better readability, 9 is the length of the longest log level
+        $space = str_repeat(" ", max(9 - strlen($level), 0));
         $level = $this->ansify ? $this->ansify($level) : $level;
 
-        return "[{$time}] {$level} {$message}";
+        return "[{$time}] {$level}{$space} {$message}";
     }
 
     private function ansify($level) {
