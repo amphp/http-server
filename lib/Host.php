@@ -171,7 +171,7 @@ class Host {
         static $separateIPv6 = null;
 
         if ($separateIPv6 === null) {
-            $separateIPv6 = !file_exists("/proc/sys/net/ipv6/bindv6only") || file_get_contents("/proc/sys/net/ipv6/bindv6only");
+            $separateIPv6 = !file_exists("/proc/sys/net/ipv6/bindv6only") || trim(file_get_contents("/proc/sys/net/ipv6/bindv6only"));
         }
 
         return $separateIPv6;
