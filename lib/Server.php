@@ -426,8 +426,6 @@ class Server {
         $client->cryptoInfo = $meta["crypto"] ?? [];
         $client->isEncrypted = (bool) $client->cryptoInfo;
 
-        $client->requestParser = $http->parser($client);
-        $client->requestParser->send("");
         $client->readWatcher = \Amp\onReadable($socket, $this->onReadable, $options = [
             "enable" => true,
             "cb_data" => $client,
@@ -437,9 +435,12 @@ class Server {
             "cb_data" => $client,
         ]);
 
-        $this->renewKeepAliveTimeout($client);
-
         $this->clients[$client->id] = $client;
+
+        $client->requestParser = $http->parser($client);
+        $client->requestParser->send("");
+
+        $this->renewKeepAliveTimeout($client);
     }
 
     private function writeResponse(Client $client, $final = false) {
