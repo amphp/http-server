@@ -25,6 +25,9 @@ class Host {
      * "all IPv4 interfaces" and is appropriate for most users. Use "[::]" to indicate "all IPv6
      * interfaces". To indicate "all IPv4 *and* IPv6 interfaces", use a "*" wildcard character.
      *
+     * Note that "[::]" may also listen on some systems on IPv4 interfaces. PHP currently does
+     * not expose the IPV6_V6ONLY constant.
+     *
      * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
      * well-known services (like HTTP on port 80) and port numbers less than 1024 require root
      * access on UNIX-like systems. The default port for encrypted sockets (https) is 443. If you
@@ -42,13 +45,14 @@ class Host {
         }
 
         if ($address === "*") {
-            $this->interfaces[] = ["0.0.0.0", $port];
-            $this->interfaces[] = ["[::]", $port];
+            if (self::separateIPv4Binding()) {
+                $this->interfaces[] = ["0.0.0.0", $port];
+            }
 
-            return $this;
+            $address = "[::]";
         }
 
-        if (!@inet_pton($address)) {
+        if (!@inet_pton(trim($address, "[]"))) {
             throw new \DomainException(
                 "Invalid IP address"
             );
@@ -163,6 +167,16 @@ class Host {
         return $this;
     }
 
+    private static function separateIPv4Binding(): bool {
+        static $separateIPv6 = null;
+
+        if ($separateIPv6 === null) {
+            $separateIPv6 = !file_exists("/proc/sys/net/ipv6/bindv6only") || file_get_contents("/proc/sys/net/ipv6/bindv6only");
+        }
+
+        return $separateIPv6;
+    }
+
     /**
      * Retrieve an associative array summarizing the host definition
      *
@@ -176,8 +190,17 @@ class Host {
 
         $defaultPort = $this->crypto ? 443 : 80;
 
+        if (isset($this->interfaces)) {
+            $interfaces = array_unique($this->interfaces, SORT_REGULAR);
+        } else {
+            $interfaces = [["[::]", $defaultPort]];
+            if (self::separateIPv4Binding()) {
+                $interfaces[] = ["0.0.0.0", $defaultPort];
+            }
+        }
+
         return [
-            "interfaces" => array_unique($this->interfaces ?? [["0.0.0.0", $defaultPort], ["[::]", $defaultPort]], SORT_REGULAR),
+            "interfaces" => $interfaces,
             "name"       => $this->name,
             "crypto"     => $this->crypto,
             "actions"    => $actions,
