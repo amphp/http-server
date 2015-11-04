@@ -331,7 +331,8 @@ class Server {
             $meta = stream_get_meta_data($socket)["crypto"];
             $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
             \assert($this->logDebug(sprintf("crypto negotiated %s%s", ($isH2 ? "(h2) " : ""), $peerName)));
-            $this->importClient($socket, $peerName, $this->httpDriver[$isH2 ? "2.0" : "1.1"]);
+            // Dispatch via HTTP 1 driver for now, it knows how to handle PRI * requests, maybe we can improve that later...
+            $this->importClient($socket, $peerName, $this->httpDriver["1.1"]);
         } elseif ($handshake === false) {
             \assert($this->logDebug("crypto handshake error {$peerName}"));
             $this->failCryptoNegotiation($socket);
