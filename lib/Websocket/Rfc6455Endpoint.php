@@ -332,7 +332,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     }
 
     private function onParsedData(Rfc6455Client $client, array $parseResult) {
-        if ($client->closedAt) {
+        if ($client->closedAt || $this->state === Server::STOPPING) {
             return;
         }
 
