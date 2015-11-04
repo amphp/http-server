@@ -438,6 +438,8 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                         $client->bodyPromisors[$id]->fail(new ClientException);
                     }
                     unset($headers[$id], $client->streamWindow[$id], $client->streamEnd[$id], $client->streamWindowBuffer[$id], $client->bodyPromisors[$id]);
+
+                    $buffer = substr($buffer, 4);
                     continue 2;
 
                 case self::SETTINGS:
