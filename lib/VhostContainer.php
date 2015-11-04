@@ -166,12 +166,13 @@ class VhostContainer implements \Countable {
                 continue;
             }
 
-            $bindAddress = $vhost->getBindableAddress();
-            $contextArr = $vhost->getTlsContextArr();
-            $bindMap[$bindAddress] = $contextArr;
+            foreach ($vhost->getBindableAddresses() as $bindAddress) {
+                $contextArr = $vhost->getTlsContextArr();
+                $bindMap[$bindAddress] = $contextArr;
 
-            if ($vhost->hasName()) {
-                $sniNameMap[$bindAddress][$vhost->getName()] = $contextArr["local_cert"];
+                if ($vhost->hasName()) {
+                    $sniNameMap[$bindAddress][$vhost->getName()] = $contextArr["local_cert"];
+                }
             }
         }
 
