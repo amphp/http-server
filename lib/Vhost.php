@@ -30,7 +30,6 @@ class Vhost {
         "reneg_limit"           => 0,
         "reneg_limit_callback"  => null,
         "crypto_method"         => STREAM_CRYPTO_METHOD_TLS_SERVER,
-        //"alpn_protocols"        => "h2", // @TODO
     ];
 
     private static $cryptoMethodMap = [
@@ -62,6 +61,10 @@ class Vhost {
         }
         $this->application = $application;
         $this->filters = $filters;
+
+        if (self::hasAlpnSupport()) {
+            $this->tlsDefaults["alpn_protocols"] = "h2";
+        }
 
         if ($this->name !== null) {
             $addresses = [$this->name];
@@ -313,6 +316,18 @@ class Vhost {
         $tls['crypto_method'] = $bitmask;
 
         return $tls;
+    }
+
+    /**
+     * @see https://wiki.openssl.org/index.php/Manual:OPENSSL_VERSION_NUMBER(3)
+     * @return bool
+     */
+    private static function hasAlpnSupport() {
+        if (!defined("OPENSSL_VERSION_NUMBER")) {
+            return false;
+        }
+
+        return \OPENSSL_VERSION_NUMBER >= 0x10002000;
     }
 
     /**
