@@ -596,26 +596,43 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 break;
 
             case Server::STOPPING:
-                $code = Code::GOING_AWAY;
-                $reason = "Server shutting down!";
-
-                foreach ($this->clients as $client) {
-                    $this->close($client->id, $code, $reason);
+                $result = $this->application->onStop();
+                if ($result instanceof \Generator) {
+                    $promise = resolve($result);
+                } elseif ($result instanceof Promise) {
+                    $promise = $result;
+                } else {
+                    $promise = new Success;
                 }
+
+                $promise->when(function () {
+                    $code = Code::GOING_AWAY;
+                    $reason = "Server shutting down!";
+
+                    foreach ($this->clients as $client) {
+                        $this->close($client->id, $code, $reason);
+                    }
+                });
 
                 \Amp\cancel($this->timeoutWatcher);
                 $this->timeoutWatcher = null;
-                break;
+
+                return $promise;
 
             case Server::STOPPED:
                 $promises = [];
-                $result = $this->application->onStop();
-                if ($result instanceof \Generator) {
-                    $promises[] = resolve($result);
-                }
 
                 // we are not going to wait for a proper self::OP_CLOSE answer (because else we'd need to timeout for 3 seconds, not worth it), but we will ensure to at least *have written* it
                 foreach ($this->clients as $client) {
+                    // only if we couldn't successfully send it in STOPPING
+                    $code = Code::GOING_AWAY;
+                    $reason = "Server shutting down!";
+
+                    $result = $this->doClose($client, $code, $reason);
+                    if ($result instanceof \Generator) {
+                        $promise[] = resolve($result);
+                    }
+
                     if (!empty($client->writeDeferredControlQueue)) {
                         $promise = end($client->writeDeferredControlQueue)->promise();
                         if ($promise) {

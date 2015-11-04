@@ -72,9 +72,8 @@ interface Websocket {
      * If the application initialized resources in Websocket::onStart() this is the
      * place to free them.
      *
-     * There is no need to call Endpoint::close() in this method because the
-     * websocket endpoint automatically closes all connected clients before this application
-     * method is ever invoked.
+     * This method is called right before the clients will be all automatically closed.
+     * There is no need to call Endpoint::close() manually in this method.
      *
      * If this method is a Generator it will be resolved as a coroutine before the server
      * is allowed to fully shutdown. Additionally, if this method returns a Promise the
