@@ -336,7 +336,7 @@ class Server {
         }
 
         $data = unpack("ctype/nversion/nlength/Nembed/ntopversion", $raw);
-        \assert($data["type"] == 0x16); // is handshake
+        // do not assert anything here, user might accidentally send a request via http for example
         if ($data["version"] < 0x303 && $data["version"] >= 0x301) { // minimum version: TLS, but older than TLS 1.2
             if ($data["topversion"] >= 0x303) {
                 // force at least TLS 1.2 if available! (This is important as some browsers reject HTTP/2 connections with TLS 1.0 or 1.1)
