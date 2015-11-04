@@ -22,10 +22,10 @@ class Host {
      * Assign the IP and port on which to listen
      *
      * The address may be any valid IPv4 or IPv6 address. The "0.0.0.0" indicates
-     * "all IPv4 interfaces" and is appropriate for most users. Use "[::]" to indicate "all IPv6
+     * "all IPv4 interfaces" and is appropriate for most users. Use "::" to indicate "all IPv6
      * interfaces". To indicate "all IPv4 *and* IPv6 interfaces", use a "*" wildcard character.
      *
-     * Note that "[::]" may also listen on some systems on IPv4 interfaces. PHP currently does
+     * Note that "::" may also listen on some systems on IPv4 interfaces. PHP currently does
      * not expose the IPV6_V6ONLY constant.
      *
      * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
@@ -49,10 +49,10 @@ class Host {
                 $this->interfaces[] = ["0.0.0.0", $port];
             }
 
-            $address = "[::]";
+            $address = "::";
         }
 
-        if (!@inet_pton(trim($address, "[]"))) {
+        if (!@inet_pton($address)) {
             throw new \DomainException(
                 "Invalid IP address"
             );
@@ -193,7 +193,7 @@ class Host {
         if (isset($this->interfaces)) {
             $interfaces = array_unique($this->interfaces, SORT_REGULAR);
         } else {
-            $interfaces = [["[::]", $defaultPort]];
+            $interfaces = [["::", $defaultPort]];
             if (self::separateIPv4Binding()) {
                 $interfaces[] = ["0.0.0.0", $defaultPort];
             }

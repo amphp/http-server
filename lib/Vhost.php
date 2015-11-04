@@ -70,6 +70,9 @@ class Vhost {
         }
         $ports = array_unique(array_column($interfaces, 1));
         foreach ($addresses as $address) {
+            if (strpos($address, ":") !== false) {
+                $address = "[$address]";
+            }
             foreach ($ports as $port) {
                 $this->ids[] = "$address:$port";
             }
@@ -85,19 +88,14 @@ class Vhost {
             );
         }
 
-        $address = trim($address, "[]");
-        if ($address === "::") {
-            $address = "[::]";
-        } elseif (!$packedAddress = @inet_pton($address)) {
+        if (!$packedAddress = @inet_pton($address)) {
             throw new \InvalidArgumentException(
                 "IPv4, IPv6 or wildcard address required: {$address}"
             );
-        } else {
-            $address = isset($packedAddress[4]) ? "[{$address}]" : $address;
         }
 
         $this->interfaces[] = [$address, $port];
-        $this->addressMap[@inet_pton($address)][] = $port;
+        $this->addressMap[$packedAddress][] = $port;
     }
 
     /**
@@ -126,6 +124,9 @@ class Vhost {
     public function getBindableAddresses(): array {
         return array_map(function($interface) {
             list($address, $port) = $interface;
+            if (strpos($address, ":") !== false) {
+                $address = "[$address]";
+            }
             return "tcp://$address:$port";
         }, $this->interfaces);
     }
@@ -153,7 +154,7 @@ class Vhost {
      * @return array<int> The list of listening ports on this address
      */
     public function getPorts(string $address): array {
-        if ($address === '0.0.0.0' || $address === '[::]') {
+        if ($address === '0.0.0.0' || $address === '::') {
             $ports = [];
             foreach ($this->addressMap as $packedAddress => $port_list) {
                 if (\strlen($packedAddress) === ($address === '0.0.0.0' ? 4 : 16)) {
@@ -164,7 +165,7 @@ class Vhost {
         }
 
         $packedAddress = inet_pton($address); // if this yields a warning, there's something else buggy, but no @ missing.
-        $wildcard = \strlen($packedAddress) === 4 ? "0.0.0.0" : "[::]";
+        $wildcard = \strlen($packedAddress) === 4 ? "0.0.0.0" : "::";
         if (!isset($this->addressMap[$wildcard])) {
             return $this->addressMap[$packedAddress] ?? [];
         } elseif (!isset($this->addressMap[$packedAddress])) {
