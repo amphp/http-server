@@ -50,7 +50,7 @@ class Vhost {
     ];
 
     public function __construct(string $name, array $interfaces, callable $application, array $filters) {
-        $this->name = isset($name) ? strtolower($name) : "";
+        $this->name = strtolower($name);
         if (!$interfaces) {
             throw new \InvalidArgumentException(
                 "At least one interface must be passed, an empty interfaces array is not allowed"
@@ -66,7 +66,7 @@ class Vhost {
             $this->tlsDefaults["alpn_protocols"] = "h2";
         }
 
-        if ($this->name !== null) {
+        if ($this->name !== '') {
             $addresses = [$this->name];
         } else {
             $addresses = array_unique(array_column($interfaces, 0));
@@ -248,7 +248,7 @@ class Vhost {
         }
 
         if (time() > $cert['validTo_time_t']) {
-            date_default_timezone_set(@date_default_timezone_get() ?: 'UTC');
+            date_default_timezone_set(@date_default_timezone_get());
             $expiration = date('Y-m-d', $cert['validTo_time_t']);
             trigger_error(
                 "TLS certificate `{$certBase}` for host `{$this}` expired {$expiration}; web " .
