@@ -148,7 +148,7 @@ class Vhost {
      *
      * @return callable
      */
-    public function getApplication() {
+    public function getApplication(): callable {
         return $this->application;
     }
 
@@ -267,7 +267,7 @@ class Vhost {
         $this->tlsContextArr = $tls;
     }
 
-    private function parseNamesFromTlsCertArray(array $cert) {
+    private function parseNamesFromTlsCertArray(array $cert): array {
         $names = [];
         if (!empty($cert['subject']['CN'])) {
             $names[] = $cert['subject']['CN'];
@@ -287,7 +287,7 @@ class Vhost {
         return array_map('strtolower', $names);
     }
 
-    private function normalizeTlsCryptoMethod(array $tls) {
+    private function normalizeTlsCryptoMethod(array $tls): array {
         $cryptoMethod = $tls['crypto_method'];
 
         if (is_string($cryptoMethod)) {
@@ -322,7 +322,7 @@ class Vhost {
      * @see https://wiki.openssl.org/index.php/Manual:OPENSSL_VERSION_NUMBER(3)
      * @return bool
      */
-    private static function hasAlpnSupport() {
+    private static function hasAlpnSupport(): bool {
         if (!defined("OPENSSL_VERSION_NUMBER")) {
             return false;
         }
@@ -335,7 +335,7 @@ class Vhost {
      *
      * @return array An array of stream encryption context options
      */
-    public function getTlsContextArr() {
+    public function getTlsContextArr(): array {
         return $this->tlsContextArr;
     }
 
@@ -372,7 +372,7 @@ class Vhost {
      *
      * @return array
      */
-    public function __debugInfo() {
+    public function __debugInfo(): array {
         $appType = is_object($this->application)
             ? get_class($this->application)
             : gettype($this->application);
