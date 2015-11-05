@@ -45,8 +45,8 @@ class Bootstrapper {
 
         $bootLoader = function(Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
-            if ($booted !== null && (!$booted instanceof Middleware || !is_callable($booted))) {
-                throw new \InvalidArgumentException("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Middleware and/or be callable');
+            if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
+                throw new \InvalidArgumentException("Any return value of " . get_class($bootable) . "::boot() must return an instance of Aerys\\Middleware and/or be callable, got " . gettype($booted) . ".");
             }
             return $booted ?? $bootable;
         };

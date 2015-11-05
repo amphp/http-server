@@ -10,7 +10,7 @@ use function Amp\makeGeneratorError;
  * @param array $options Router options
  * @return \Aerys\Router Returns a Bootable Router instance
  */
-function router(array $options = []) {
+function router(array $options = []): Router {
     $router = new Router;
     foreach ($options as $key => $value) {
         $router->setOption($key, $value);
@@ -26,7 +26,7 @@ function router(array $options = []) {
  * @param array $options Endpoint options
  * @return \Aerys\Bootable Returns a Bootable to manufacture an Aerys\Websocket\Endpoint
  */
-function websocket($app, array $options = []) {
+function websocket($app, array $options = []): Bootable {
     return new class($app, $options) implements Bootable {
         private $app;
         private $options;
@@ -65,7 +65,7 @@ function websocket($app, array $options = []) {
  * @param array $options Static file serving options
  * @return \Aerys\Bootable Returns a Bootable to manufacture an Aerys\Root\Root
  */
-function root(string $docroot, array $options = []) {
+function root(string $docroot, array $options = []): Bootable {
     return new class($docroot, $options) implements Bootable {
         private $docroot;
         private $options;
@@ -214,11 +214,11 @@ function parseCookie(string $cookies): array {
 
 /**
  * Filter response data
- * 
+ *
  * Is this function's cyclomatic complexity off the charts? Yes. Is this also an extremely
  * hot code path requiring maximum optimization? Yes. This is why it looks like the ninth
  * circle of npath hell ... #DealWithIt
- * 
+ *
  * @param array $filters
  * @param \Aerys\InternalRequest $ireq
  * @return \Generator
