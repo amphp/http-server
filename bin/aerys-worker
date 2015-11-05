@@ -5,33 +5,50 @@
 error_reporting(E_ALL);
 require __DIR__ . "/../autoload.php";
 
-Amp\run(function() {
-    $console = new Aerys\Console;
-    $console->addArgs([
-        "ipc" => [
-            "prefix"       => "i",
-        ],
-        "log" => [
-            "prefix"       => "l",
-            "defaultValue" => "warning",
-        ],
-        "color" => [
-            "longPrefix"   => "color",
-            "castTo"       => "string",
-            "defaultValue" => "auto",
-        ],
-        "config" => [
-            "prefix"       => "c",
-        ],
-    ]);
+if (function_exists("pcntl_signal")) {
+    // prevent worker from crashing in case something writes directly to stdout or stderr
+    pcntl_signal(SIGPIPE, SIG_IGN);
+}
 
-    $ipcUri = $console->getArg("ipc");
-    $ipcUri = @inet_pton($ipcUri) ? "tcp://{$ipcUri}" : $ipcUri;
-    if (!$ipcSock = @stream_socket_client($ipcUri)) {
-        die("Failed initializing IPC connection");
+$console = new Aerys\Console;
+$console->addArgs([
+    "ipc" => [
+        "prefix"       => "i",
+    ],
+    "log" => [
+        "prefix"       => "l",
+        "defaultValue" => "warning",
+    ],
+    "color" => [
+        "longPrefix"   => "color",
+        "castTo"       => "string",
+        "defaultValue" => "auto",
+    ],
+    "config" => [
+        "prefix"       => "c",
+    ],
+]);
+
+$ipcUri = $console->getArg("ipc");
+$ipcUri = @inet_pton($ipcUri) ? "tcp://{$ipcUri}" : $ipcUri;
+if (!$ipcSock = @stream_socket_client($ipcUri)) {
+    die("Failed initializing IPC connection");
+}
+
+$logger = new Aerys\IpcLogger($console, $ipcSock);
+
+ob_start(function($output) use ($logger) {
+    static $linebuf = "";
+    $linebuf .= $output;
+
+    if (($end = strrpos($linebuf, "\n")) !== false) {
+        $logger->warning("Data written to STDOUT in worker (PID: ".getmypid()."):\n".substr($linebuf, 0, $end));
+        $linebuf = substr($linebuf, $end + 1);
     }
+}, 1, PHP_OUTPUT_HANDLER_CLEANABLE | PHP_OUTPUT_HANDLER_FLUSHABLE);
 
-    $logger = new Aerys\IpcLogger($console, $ipcSock);
-    $process = new Aerys\WorkerProcess($logger, $ipcSock);
+$process = new Aerys\WorkerProcess($logger, $ipcSock);
+
+Amp\run(function() use ($process, $console) {
     yield from $process->start($console);
 });
