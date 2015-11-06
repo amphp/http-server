@@ -122,7 +122,7 @@ class VhostContainer implements \Countable {
             $vhost = $this->vhosts[$wildcardHost];
         } elseif (isset($this->vhosts[$ipv6WildcardHost])) {
             $vhost = $this->vhosts[$ipv6WildcardHost];
-        } elseif ($this->cachedVHostCount !== 1) {
+        } elseif ($this->cachedVhostCount !== 1) {
             $vhost = null;
         } elseif (!@inet_pton($ipComparison)) {
             $vhost = null;
