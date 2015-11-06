@@ -16,16 +16,24 @@ class Bootstrapper {
      *
      * @param \Aerys\Logger $logger
      * @param \Aerys\Console $console
-     * @return \Aerys\Server
+     * @return \Generator
      */
-    public function boot(Logger $logger, Console $console): Server {
+    public function boot(Logger $logger, Console $console): \Generator {
         $configFile = $this->selectConfigFile((string) $console->getArg("config"));
         $logger->info("Using config file found at $configFile");
-        if (!include($configFile)) {
+
+        $returnValue = include $configFile;
+
+        if (!$returnValue) {
             throw new \DomainException(
                 "Config file inclusion failure: {$configFile}"
             );
-        } elseif (!defined("AERYS_OPTIONS")) {
+        } elseif ($returnValue instanceof Promise) {
+            // allow async I/O in config files and wait for it
+            yield $returnValue;
+        }
+
+        if (!defined("AERYS_OPTIONS")) {
             $options = [];
         } elseif (is_array(AERYS_OPTIONS)) {
             $options = AERYS_OPTIONS;

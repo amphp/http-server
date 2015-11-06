@@ -14,7 +14,7 @@ class DebugProcess extends Process {
     }
 
     protected function doStart(Console $console): \Generator {
-        $server = $this->bootstrapper->boot($this->logger, $console);
+        $server = yield from $this->bootstrapper->boot($this->logger, $console);
         yield $server->start();
         $this->server = $server;
     }
