@@ -45,18 +45,7 @@ Add a `-d` switch to see some debug output like the routes called etc.
 
 ## Config File
 
-Aerys looks for its config file in the following locations (relative to the repo root):
-
- - ./config.php
- - ./etc/config.php
- - ./bin/config.php
-
-If none of the relative locations holds a config.php the server checks the following absolute path:
-
- - /etc/aerys/config.php
-
-The first discovered config.php is used. Alternatively, the `-c, --config` switches define a custom
-config file:
+Use the `-c, --config` switches to define the config file:
 
 ```bash
 $ php bin/aerys -c /path/to/my/config.php
