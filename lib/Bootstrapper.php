@@ -78,6 +78,7 @@ class Bootstrapper {
             __DIR__ . "/../bin/config.php",
             "/etc/aerys/config.php",
         ];
+
         foreach ($paths as $path) {
             if (file_exists($path)) {
                 return realpath($path);
