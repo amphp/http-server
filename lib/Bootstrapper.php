@@ -22,14 +22,16 @@ class Bootstrapper {
         $configFile = $this->selectConfigFile((string) $console->getArg("config"));
         $logger->info("Using config file found at $configFile");
 
+        // may return Promise or Generator for async I/O inside config file
         $returnValue = include $configFile;
 
         if (!$returnValue) {
             throw new \DomainException(
                 "Config file inclusion failure: {$configFile}"
             );
+        } elseif ($returnValue instanceof \Generator) {
+            yield from $returnValue;
         } elseif ($returnValue instanceof Promise) {
-            // allow async I/O in config files and wait for it
             yield $returnValue;
         }
 
@@ -68,26 +70,13 @@ class Bootstrapper {
     }
 
     private function selectConfigFile(string $configFile): string {
-        if ($configFile !== "") {
-            return realpath(is_dir($configFile) ? rtrim($configFile, "/") . "/config.php" : $configFile);
+        if ($configFile == "") {
+            throw new \DomainException(
+                "No config file found, specify one via the -c switch on command line"
+            );
         }
 
-        $paths = [
-            __DIR__ . "/../config.php",
-            __DIR__ . "/../etc/config.php",
-            __DIR__ . "/../bin/config.php",
-            "/etc/aerys/config.php",
-        ];
-
-        foreach ($paths as $path) {
-            if (file_exists($path)) {
-                return realpath($path);
-            }
-        }
-
-        throw new \DomainException(
-            "No config file found, specify one via the -c switch on command line"
-        );
+        return realpath(is_dir($configFile) ? rtrim($configFile, "/") . "/config.php" : $configFile);
     }
 
     private function generateOptionsObjFromArray(array $optionsArray): Options {

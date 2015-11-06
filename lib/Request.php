@@ -59,7 +59,7 @@ interface Request {
     /**
      * Retrieve an array of all headers in the message
      *
-     * The returned array uses header names normalized to all-uppercase for
+     * The returned array uses header names normalized to all-lowercase for
      * simplified querying via isset().
      *
      * @return array
