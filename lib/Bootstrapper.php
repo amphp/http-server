@@ -29,7 +29,13 @@ class Bootstrapper {
             throw new \DomainException(
                 "Config file inclusion failure: {$configFile}"
             );
-        } elseif ($returnValue instanceof \Generator) {
+        }
+
+        if (is_callable($returnValue)) {
+            $returnValue = \call_user_func($returnValue);
+        }
+
+        if ($returnValue instanceof \Generator) {
             yield from $returnValue;
         } elseif ($returnValue instanceof Promise) {
             yield $returnValue;
