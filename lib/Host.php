@@ -171,7 +171,12 @@ class Host {
         static $separateIPv6 = null;
 
         if ($separateIPv6 === null) {
-            $separateIPv6 = !file_exists("/proc/sys/net/ipv6/bindv6only") || trim(file_get_contents("/proc/sys/net/ipv6/bindv6only"));
+            // PHP 7.0.0 doesn't have ipv6_v6only socket option yet
+            if (PHP_VERSION_ID < 70001) {
+                $separateIPv6 = !file_exists("/proc/sys/net/ipv6/bindv6only") || trim(file_get_contents("/proc/sys/net/ipv6/bindv6only"));
+            } else {
+                $separateIPv6 = true;
+            }
         }
 
         return $separateIPv6;

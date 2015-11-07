@@ -272,6 +272,7 @@ class Server {
             $context = stream_context_create(["socket" => [
                 "backlog"      => $backlogSize,
                 "so_reuseport" => $shouldReusePort,
+                "ipv6_v6only"  => true,
             ]]);
             if (isset($tlsBindings[$address])) {
                 stream_context_set_option($context, ["ssl" => $tlsBindings[$address]]);
