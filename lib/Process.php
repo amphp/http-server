@@ -90,8 +90,8 @@ abstract class Process {
         $onSignal = coroutine([$this, "stop"]);
 
         if (\Amp\reactor() instanceof UvReactor) {
-            \Amp\onSignal(\UV::SIGINT, $onSignal);
-            \Amp\onSignal(\UV::SIGTERM, $onSignal);
+            \Amp\onSignal(\UV::SIGINT, $onSignal, ["keep_alive" => false]);
+            \Amp\onSignal(\UV::SIGTERM, $onSignal, ["keep_alive" => false]);
         } elseif (extension_loaded("pcntl")) {
             \Amp\repeat("pcntl_signal_dispatch", 1000);
             pcntl_signal(\SIGINT, $onSignal);
