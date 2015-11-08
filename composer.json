@@ -34,6 +34,7 @@
         "php": ">=7.0.0-dev",
         "amphp/amp": "^1",
         "amphp/file": "dev-master",
+        "amphp/socket": "^0.9",
         "league/climate": "^3",
         "nikic/fast-route": "^0.4",
         "psr/log": "^1"

@@ -12,7 +12,7 @@ $help = <<<EOT
     -d, --debug       Start the server in debug mode
     -h, --help        Display the help screen
     -l, --log         Set the minimum log output level (default: warning)
-    -r, --remote      @TODO A local port on which to listen for commands
+    -r, --restart     Restart a running Aerys server with that config
     -w, --workers     Manually specify worker count (default: CPU core count)
         --color       Use ANSI codes in output (auto|on|off default: auto)
 
@@ -52,12 +52,6 @@ $console->addArgs([
         "description"  => "Set the minimum log output level",
         "defaultValue" => "info",
     ],
-    "remote" => [
-        "prefix"       => "r",
-        "longPrefix"   => "remote",
-        "description"  => "A local port on which to listen for commands",
-        "castTo"       => "int",
-    ],
     "workers" => [
         "prefix"       => "w",
         "longPrefix"   => "workers",
@@ -75,6 +69,12 @@ $console->addArgs([
         "longPrefix"   => "config",
         "description"  => "Define a custom server config path",
     ],
+    "restart" => [
+        "prefix"       => "r",
+        "longPrefix"   => "restart",
+        "description"  => "Gracefully restart the workers",
+        "noValue"      => true,
+    ]
 ]);
 if ($console->isArgDefined("help")) {
     echo $help;
