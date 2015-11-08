@@ -11,9 +11,13 @@ class CommandClient {
     private $written = 0;
     private $writeWatcher;
 
-    public function __construct($config) {
-        $this->path = sys_get_temp_dir()."/aerys_".str_replace(["/", ":"], "_", Bootstrapper::selectConfigFile($config)).".tmp";
+    public function __construct(string $config) {
+        $this->path = self::socketPath($config);
         $this->writer = (new \ReflectionClass($this))->getMethod("writer")->getClosure($this);
+    }
+
+    public static function socketPath(string $config) {
+        return sys_get_temp_dir()."/aerys_".str_replace(["/", ":"], "_", Bootstrapper::selectConfigFile($config)).".tmp";
     }
 
     private function send($msg): \Amp\Promise {
@@ -28,7 +32,7 @@ class CommandClient {
     }
 
     private function establish() {
-        \Amp\pipe(\Amp\file\get($this->path), 'Amp\socket\connect')->when(function ($e, $sock) {
+        \Amp\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect')->when(function ($e, $sock) {
             if ($e) {
                 $this->failAll();
                 return;

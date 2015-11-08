@@ -16,7 +16,7 @@ class DebugProcess extends Process {
     protected function doStart(Console $console): \Generator {
         if ($console->isArgDefined("restart")) {
             $this->logger->critical("You cannot restart a debug aerys instance via command");
-            exit;
+            exit(1);
         }
 
         $server = yield from $this->bootstrapper->boot($this->logger, $console);

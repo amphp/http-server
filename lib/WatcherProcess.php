@@ -88,7 +88,7 @@ class WatcherProcess extends Process {
     }
 
     private function bindCommandServer(string $config) {
-        $path = sys_get_temp_dir()."/aerys_".str_replace(["/", ":"], "_", Bootstrapper::selectConfigFile($config)).".tmp";
+        $path = CommandClient::socketPath(Bootstrapper::selectConfigFile($config));
 
         if (yield \Amp\file\exists($path)) {
             if (is_resource(@stream_socket_client(yield \Amp\file\get($path)))) {

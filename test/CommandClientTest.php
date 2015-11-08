@@ -17,26 +17,32 @@ class CommandClientTest extends \PHPUnit_Framework_TestCase {
                 return;
             }
 
-            file_put_contents(sys_get_temp_dir()."/aerys_".str_replace(["/", ":"], "_", Bootstrapper::selectConfigFile(__FILE__)).".tmp", stream_socket_get_name($commandServer, $wantPeer = false));
+            try {
+                $path = CommandClient::socketPath(Bootstrapper::selectConfigFile(__FILE__));
+                file_put_contents($path, stream_socket_get_name($commandServer, $wantPeer = false));
 
-            $client = new CommandClient(__FILE__);
+                $client = new CommandClient(__FILE__);
 
-            \Amp\onReadable($commandServer, function ($watcher, $commandServer) use (&$clientSocket) {
-                if ($clientSocket = stream_socket_accept($commandServer, $timeout = 0)) {
-                    \Amp\cancel($watcher);
-                }
-            });
+                \Amp\onReadable($commandServer, function ($watcher, $commandServer) use (&$clientSocket) {
+                    if ($clientSocket = stream_socket_accept($commandServer, $timeout = 0)) {
+                        \Amp\cancel($watcher);
+                    }
+                });
 
-            yield $client->restart();
-            yield; // force freeing of client and the socket
-            unset($client);
-            gc_collect_cycles();
+                yield $client->restart();
 
-            $data = stream_get_contents($clientSocket);
-            $this->assertEquals(\strlen($data) - 4, unpack("Nlength", $data)["length"]);
+                yield; // implicit immediate to not have $client in the backtrace so that gc_collect_cyles() will really collect it
+                unset($client); // force freeing of client and the socket
+                gc_collect_cycles();
 
-            $response = json_decode(substr($data, 4), true);
-            $this->assertEquals(["action" => "restart"], $response);
+                $data = stream_get_contents($clientSocket);
+                $this->assertEquals(\strlen($data) - 4, unpack("Nlength", $data)["length"]);
+
+                $response = json_decode(substr($data, 4), true);
+                $this->assertEquals(["action" => "restart"], $response);
+            } finally {
+                @unlink($path);
+            }
         });
     }
 }
