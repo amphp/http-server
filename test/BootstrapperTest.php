@@ -10,11 +10,10 @@ use function Amp\wait;
 
 class BootstrapperTest extends \PHPUnit_Framework_TestCase {
     /**
-     * @test
      * @expectedException \DomainException
      * @expectedExceptionMessage No config file found, specify one via the -c switch on command line
      */
-    public function throwsWithoutConfig() {
+    public function testThrowsWithoutConfig() {
         $bootstrapper = new Bootstrapper(function() {
             return [];
         });

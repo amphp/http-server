@@ -93,7 +93,7 @@ abstract class Process {
             \Amp\onSignal(\UV::SIGINT, $onSignal, ["keep_alive" => false]);
             \Amp\onSignal(\UV::SIGTERM, $onSignal, ["keep_alive" => false]);
         } elseif (extension_loaded("pcntl")) {
-            \Amp\repeat("pcntl_signal_dispatch", 1000);
+            \Amp\repeat("pcntl_signal_dispatch", 1000, ["keep_alive" => false]);
             pcntl_signal(\SIGINT, $onSignal);
             pcntl_signal(\SIGTERM, $onSignal);
         }
@@ -110,7 +110,7 @@ abstract class Process {
                 case E_PARSE:
                 case E_USER_ERROR:
                 case E_CORE_ERROR:
-                case E_CORE_WARNING:
+                case E_CORE_WARNING:git add
                 case E_COMPILE_ERROR:
                 case E_COMPILE_WARNING:
                 case E_RECOVERABLE_ERROR:
