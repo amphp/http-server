@@ -19,7 +19,7 @@ class Bootstrapper {
      * @return \Generator
      */
     public function boot(Logger $logger, Console $console): \Generator {
-        $configFile = $this->selectConfigFile((string) $console->getArg("config"));
+        $configFile = self::selectConfigFile((string) $console->getArg("config"));
         $logger->info("Using config file found at $configFile");
 
         // may return Promise or Generator for async I/O inside config file
@@ -75,7 +75,7 @@ class Bootstrapper {
         return $server;
     }
 
-    private function selectConfigFile(string $configFile): string {
+    public static function selectConfigFile(string $configFile): string {
         if ($configFile == "") {
             throw new \DomainException(
                 "No config file found, specify one via the -c switch on command line"

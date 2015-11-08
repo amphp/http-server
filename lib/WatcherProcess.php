@@ -2,10 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{
-    Failure,
-    Deferred
-};
+use Amp\Deferred;
 
 class WatcherProcess extends Process {
     private $logger;
@@ -17,7 +14,9 @@ class WatcherProcess extends Process {
     private $ipcClients = [];
     private $procGarbageWatcher;
     private $stopPromisor;
+    private $spawnPromisors = [];
     private $defunctProcessCount = 0;
+    private $expectedFailures = 0;
 
     public function __construct(Logger $logger) {
         parent::__construct($logger);
@@ -36,6 +35,10 @@ class WatcherProcess extends Process {
             $this->defunctProcessCount--;
             proc_close($procHandle);
             unset($this->processes[$key]);
+            if ($this->expectedFailures > 0) {
+                $this->expectedFailures--;
+                continue;
+            }
             if (empty($this->stopPromisor)) {
                 $this->spawn();
             }
@@ -54,16 +57,118 @@ class WatcherProcess extends Process {
     }
 
     protected function doStart(Console $console): \Generator {
+        if (yield from $this->checkCommands($console)) {
+            return;
+        }
+
         $this->recommendAssertionSetting();
         $this->recommendLogLevel($console);
         $this->console = $console;
         $this->workerCount = $this->determineWorkerCount($console);
         $this->ipcServerUri = $this->bindIpcServer();
         $this->workerCommand = $this->generateWorkerCommand($console);
+        yield from $this->bindCommandServer((string) $console->getArg("config"));
 
-        for ($i=0; $i<$this->workerCount; $i++) {
-            yield $this->spawn();
+        $promises = [];
+        for ($i = 0; $i < $this->workerCount; $i++) {
+            $promises[] = $this->spawn();
         }
+        yield \Amp\any($promises);
+    }
+
+    private function checkCommands(Console $console) {
+        if ($console->isArgDefined("restart")) {
+            yield (new CommandClient((string) $console->getArg("config")))->restart();
+            $this->logger->info("Restarting initiated ...");
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private function bindCommandServer(string $config) {
+        $path = sys_get_temp_dir()."/aerys_".str_replace(["/", ":"], "_", Bootstrapper::selectConfigFile($config)).".tmp";
+
+        if (yield \Amp\file\exists($path)) {
+            if (is_resource(@stream_socket_client(yield \Amp\file\get($path)))) {
+                throw new \RuntimeException("Aerys is already running, can't start it again");
+            }
+        }
+
+        if (!$commandServer = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
+            throw new \RuntimeException(sprintf(
+                "Failed binding socket server on tcp://127.0.0.1:*: [%d] %s",
+                $errno,
+                $errstr
+            ));
+        }
+
+        stream_set_blocking($commandServer, false);
+        \Amp\onReadable($commandServer, function(...$args) { $this->acceptCommand(...$args); });
+
+        register_shutdown_function(function () use ($path) {
+            @\unlink($path);
+        });
+        yield \Amp\file\put($path, stream_socket_get_name($commandServer, $wantPeer = false));
+    }
+
+    private function acceptCommand($watcherId, $commandServer) {
+        if (!$client = @stream_socket_accept($commandServer, $timeout = 0)) {
+            return;
+        }
+        stream_set_blocking($client, false);
+        $parser = $this->commandParser($client);
+        $readWatcherId = \Amp\onReadable($client, function() use ($parser) { $parser->next(); });
+        $parser->send($readWatcherId);
+    }
+
+    private function commandParser($client): \Generator {
+        $readWatcherId = yield;
+        $buffer = "";
+        $length = null;
+
+        do {
+            yield;
+            $data = @fread($client, 8192);
+            if ($data == "" && (!is_resource($client) || @feof($client))) {
+                \Amp\cancel($readWatcherId);
+                return;
+            }
+
+            $buffer .= $data;
+            do {
+                if (!isset($length)) {
+                    if (!isset($buffer[3])) {
+                        break;
+                    }
+                    $length = unpack("Nlength", substr($buffer, 0, 4))["length"];
+                    $buffer = substr($buffer, 4);
+                }
+                if (!isset($buffer[$length - 1])) {
+                    break;
+                }
+                $message = @\json_decode(substr($buffer, 0, $length), true);
+                $buffer = (string) substr($buffer, $length);
+                $length = null;
+
+                if (!isset($message["action"])) {
+                    continue;
+                }
+
+                switch ($message["action"]) {
+                    case "restart":
+                        $spawn = count($this->ipcClients);
+                        for ($i = 0; $i < $spawn; $i++) {
+                            $this->spawn()->when(function() {
+                                @\fwrite(current($this->ipcClients), "\n");
+                                next($this->ipcClients);
+                            });
+                        }
+                        $this->expectedFailures += $spawn;
+                }
+            } while (1);
+        } while (1);
     }
 
     protected function recommendAssertionSetting() {
@@ -194,13 +299,14 @@ class WatcherProcess extends Process {
         if (!$ipcClient = @stream_socket_accept($ipcServer, $timeout = 0)) {
             return;
         }
-        $clientId = (int) $ipcClient;
-        $this->ipcClients[$clientId] = $ipcClient;
         stream_set_blocking($ipcClient, false);
         $parser = $this->parser($ipcClient);
-        $onReadable = function() use ($parser) { $parser->next(); };
-        $readWatcherId = \Amp\onReadable($ipcClient, $onReadable);
+        $readWatcherId = \Amp\onReadable($ipcClient, function() use ($parser) { $parser->next(); });
+        $this->ipcClients[$readWatcherId] = $ipcClient;
         $parser->send($readWatcherId);
+
+        assert(!empty($this->spawnPromisors));
+        array_shift($this->spawnPromisors)->succeed();
     }
 
     private function parser($ipcClient): \Generator {
@@ -215,6 +321,7 @@ class WatcherProcess extends Process {
                 $this->onDeadIpcClient($readWatcherId, $ipcClient);
                 return;
             }
+
             $buffer .= $data;
             do {
                 if (!isset($length)) {
@@ -233,7 +340,6 @@ class WatcherProcess extends Process {
 
                 // all messages received from workers are sent to STDOUT
                 $this->console->output($message);
-
             } while (1);
         } while (1);
     }
@@ -241,7 +347,7 @@ class WatcherProcess extends Process {
     private function onDeadIpcClient(string $readWatcherId, $ipcClient) {
         \Amp\cancel($readWatcherId);
         @fclose($ipcClient);
-        unset($this->ipcClients[(int)$ipcClient]);
+        unset($this->ipcClients[$readWatcherId]);
         $this->defunctProcessCount++;
         \Amp\enable($this->procGarbageWatcher);
     }
@@ -293,12 +399,14 @@ class WatcherProcess extends Process {
             @fclose($pipe);
         }
         $this->processes[] = $procHandle;
+
+        return ($this->spawnPromisors[] = new Deferred)->promise();
     }
 
     protected function doStop(): \Generator {
         $this->stopPromisor = new Deferred;
         foreach ($this->ipcClients as $ipcClient) {
-            @fwrite($ipcClient, "\n");
+            @\fwrite($ipcClient, "\n");
         }
 
         yield $this->stopPromisor->promise();
