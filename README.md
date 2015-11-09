@@ -13,7 +13,7 @@ APIs are still subject to change and you may run into rogue ~~bugs~~ features. W
 - Name-based virtual hosting
 - Full TLS support
 - Customizable GZIP output compression
-- HTTP/2 (in-progress)
+- HTTP/2.0 support
 - Middleware hooks
 
 ## Requirements
