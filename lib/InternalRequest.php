@@ -7,13 +7,11 @@ use Amp\Struct;
 class InternalRequest {
     use Struct;
 
-    public $options;
     public $client;
     public $vhost;
     public $preAppResponder;
     public $response;
     public $responseWriter;
-    public $exporter;
     public $badFilterKeys = [];
     public $filterErrorFlag;
     public $isServerStopping;

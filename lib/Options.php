@@ -24,6 +24,7 @@ class Options {
     private $maxPendingSize = 262144;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
     private $deflateEnable;
+    private $configPath = null;
 
     //@link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits
     private $deflateMinimumLength = 860; // can be vhost
@@ -278,5 +279,15 @@ class Options {
         }
 
         $this->shutdownTimeout = $milliseconds;
+    }
+
+    private function setConfigPath(string $config) {
+        if ($this->configPath !== null) {
+            throw new \LogicException(
+                "Config path can't be altered at run-time"
+            );
+        }
+
+        $this->configPath = $config;
     }
 }

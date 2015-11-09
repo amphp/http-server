@@ -25,6 +25,7 @@ class Client {
     public $isExported;
     public $remainingKeepAlives;
 
+    public $options;
     public $httpDriver;
     public $exporter; // Requires Client object as first argument
 

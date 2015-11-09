@@ -441,6 +441,7 @@ class Server {
         $client->id = (int) $socket;
         $client->socket = $socket;
         $client->httpDriver = $http;
+        $client->options = $this->options;
         $client->exporter = $this->exporter;
         $client->remainingKeepAlives = $this->options->maxKeepAliveRequests ?: null;
 
@@ -683,7 +684,6 @@ class Server {
         }
 
         $ireq = new InternalRequest;
-        $ireq->options = $this->options;
         $ireq->client = $client;
         $ireq->isServerStopping = (bool) $this->stopPromisor;
         $ireq->time = $this->ticker->currentTime;

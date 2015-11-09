@@ -54,6 +54,8 @@ class Bootstrapper {
             $options["debug"] = true;
         }
 
+        $options["configPath"] = $configFile;
+
         $options = $this->generateOptionsObjFromArray($options);
         $vhosts = new VhostContainer;
         $ticker = new Ticker($logger);
