@@ -48,7 +48,7 @@ class Http2Driver implements HttpDriver {
     const HTTP_1_1_REQUIRED = 0xd;
 
     private $options;
-    private $counter = "aaaaaaaa"; // 64 bit for ping (we maybe want to timeout once a day and reset the first letter of counter to "a")
+    private $counter = "aaaaaaaa"; // 64 bit for ping (@TODO we maybe want to timeout once a day and reset the first letter of counter to "a")
 
     private $emit;
     private $write;
@@ -81,7 +81,7 @@ class Http2Driver implements HttpDriver {
         return $filters;
     }
 
-    public static function responseInitFilter(InternalRequest $ireq) {
+    public function responseInitFilter(InternalRequest $ireq) {
         $ireq->headers["host"] = $ireq->headers[":authority"];
         unset($ireq->headers[":authority"], $ireq->headers[":scheme"], $ireq->headers[":method"], $ireq->headers[":path"]);
 
@@ -89,6 +89,17 @@ class Http2Driver implements HttpDriver {
 
         if ($ireq->options->sendServerToken) {
             $headers["server"] = [SERVER_TOKEN];
+        }
+
+        if (!empty($headers[":aerys-push"])) {
+            foreach ($headers[":aerys-push"] as $url => $pushHeaders) {
+                if ($ireq->client->allowsPush) {
+                    $this->dispatchInternalRequest($ireq, $url, $pushHeaders);
+                } else {
+                    $headers["link"][] = "<$url>; rel=preload";
+                }
+            }
+            unset($headers[":aerys-push"]);
         }
 
         $status = $headers[":status"];
@@ -120,6 +131,98 @@ class Http2Driver implements HttpDriver {
         $headers["date"] = [$ireq->httpDate];
 
         return $headers;
+    }
+
+    private function dispatchInternalRequest(InternalRequest $ireq, string $url, array $pushHeaders = null) {
+        $client = $ireq->client;
+        $id = $client->serverStreamId += 2;
+
+        if ($pushHeaders === null) {
+            // headers to take over from original request if present
+            $pushHeaders = array_intersect_key($ireq->headers, [
+                "accept" => 1,
+                "accept-charset" => 1,
+                "accept-encoding" => 1,
+                "accept-language" => 1,
+                "authorization" => 1,
+                "cookie" => 1,
+                "date" => 1,
+                "transfer-encoding" => 1,
+                "user-agent" => 1,
+                "via" => 1,
+            ]);
+            $pushHeaders["referer"] = $ireq->uri;
+        }
+
+        $headerArray = $headerList = [];
+
+        $url = parse_url($url);
+        $scheme = $url["scheme"] ?? ($ireq->isEncrypted ? "https" : "http");
+        $authority = $url["host"] ?? $ireq->uriHost;
+        if (isset($url["port"])) {
+            $authority .= ":" . $url["port"];
+        } elseif (isset($ireq->uriPort)) {
+            $authority .= ":" . $ireq->uriPort;
+        }
+        $path = $url["path"] . ($url["query"] ?? "");
+
+        $headerArray[":authority"][0] = $authority;
+        $headerList[] = [":authority", $authority];
+        $headerArray[":scheme"][0] = $scheme;
+        $headerList[] = [":scheme", $scheme];
+        $headerArray[":path"][0] = $path;
+        $headerList[] = [":path", $path];
+        $headerArray[":method"][0] = "GET";
+        $headerList[] = [":method", "GET"];
+
+        foreach (array_change_key_case($pushHeaders, CASE_LOWER) as $name => $header) {
+            if (\is_int($name)) {
+                \assert(\is_array($header));
+                $headerList[] = $header;
+                list($name, $header) = $header;
+                $headerArray[$name][] = $header;
+            } elseif (\is_string($header)) {
+                $headerList[] = [$name, $header];
+                $headerArray[$name][] = $header;
+            } else {
+                \assert(\is_array($header));
+                foreach ($header as $value) {
+                    $headerList[] = [$name, $value];
+                }
+                $headerArray[$name] = $header;
+            }
+        }
+
+        $parseResult = [
+            "id" => $id,
+            "trace" => $headerList,
+            "protocol" => "2.0",
+            "method" => "GET",
+            "uri" => $authority ? "$scheme://$authority$path" : $path,
+            "headers" => $headerArray,
+            "body" => "",
+            "server_push" => $ireq->uri,
+        ];
+
+        $client->streamWindow[$id] = $client->initialWindowSize;
+        $client->streamWindowBuffer[$id] = "";
+
+        $headers = pack("N", $id) . HPack::encode($headerArray);
+        if (\strlen($headers) >= 16384) {
+            $split = str_split($headers, 16384);
+            $headers = array_shift($split);
+            $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::NOFLAG, $ireq->streamId);
+
+            $headers = array_pop($split);
+            foreach ($split as $msgPart) {
+                $this->writeFrame($client, $msgPart, self::CONTINUATION, self::NOFLAG, $ireq->streamId);
+            }
+            $this->writeFrame($client, $headers, self::CONTINUATION, self::END_HEADERS, $ireq->streamId);
+        } else {
+            $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::END_HEADERS, $ireq->streamId);
+        }
+
+        ($this->emit)([HttpDriver::RESULT, $parseResult, null], $client);
     }
 
     public function writer(InternalRequest $ireq): \Generator {
@@ -253,8 +356,6 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
 
         $headers = [];
         $table = new HPack;
-        $initialWindowSize = 65536;
-        $client->window = 65536;
 
         $buffer = yield;
 
@@ -484,7 +585,15 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
                                     $error = self::FLOW_CONTROL_ERROR;
                                     break 4;
                                 }
-                                $initialWindowSize = $unpacked["value"];
+                                $client->initialWindowSize = $unpacked["value"];
+                                break;
+
+                            case self::ENABLE_PUSH:
+                                if ($unpacked["value"] & ~1) {
+                                    $error = self::PROTOCOL_ERROR;
+                                    break 4;
+                                }
+                                $client->allowsPush = (bool) $unpacked["value"];
                                 break;
                         }
 
@@ -568,7 +677,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
                     $windowSize = unpack("N", $buffer)[1];
                     if ($id) {
                         if (!isset($client->streamWindow[$id])) {
-                            $client->streamWindow[$id] = $initialWindowSize + $windowSize;
+                            $client->streamWindow[$id] = $client->initialWindowSize + $windowSize;
                         } else {
                             $client->streamWindow[$id] += $windowSize;
                         }
@@ -640,7 +749,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(".(\strlen($packed) - $pa
             ];
 
             if (!isset($client->streamWindow[$id])) {
-                $client->streamWindow[$id] = $initialWindowSize;
+                $client->streamWindow[$id] = $client->initialWindowSize;
             }
             $client->streamWindowBuffer[$id] = "";
 

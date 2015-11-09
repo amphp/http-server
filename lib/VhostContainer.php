@@ -113,7 +113,7 @@ class VhostContainer implements \Countable {
             $explicitHostId .= ":{$port}";
         }
 
-        $wildcardHost = "*:{$port}";
+        $wildcardHost = "0.0.0.0:{$port}";
         $ipv6WildcardHost = "[::]:{$port}";
 
         if (isset($this->vhosts[$explicitHostId])) {

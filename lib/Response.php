@@ -118,6 +118,15 @@ interface Response {
     public function end(string $finalBodyChunk = null): Response;
 
     /**
+     * Indicate resources which a client likely needs to fetch. (e.g. Link: preload or HTTP/2 Server Push)
+     *
+     * @param string $url The URL this request should be dispatched to
+     * @param array $headers Optional custom headers, else the server will try to reuse headers from the last request
+     * @return Response
+     */
+    public function push(string $url, array $headers = null): Response;
+
+    /**
      * Retrieve the current response state
      *
      * The response state is a bitmask of the following flags:

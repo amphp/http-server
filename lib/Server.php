@@ -669,12 +669,13 @@ class Server {
         $headers = empty($parseResult["headers"]) ? [] : $parseResult["headers"];
 
         assert($this->logDebug(sprintf(
-            "%s %s HTTP/%s @ %s:%s",
+            "%s %s HTTP/%s @ %s:%s%s",
             $method,
             $uri,
             $protocol,
             $client->clientAddr,
-            $client->clientPort
+            $client->clientPort,
+            empty($parseResult["server_push"]) ? "" : " (server-push via {$parseResult["server_push"]})"
         )));
 
         if (isset($client->remainingKeepAlives)) {

@@ -478,7 +478,6 @@ function __validateFilterHeaders(\Generator $generator, array $headers) {
     return true;
 }
 
-
 /**
  * Apply negotiated gzip deflation to outgoing response bodies
  *

@@ -290,6 +290,39 @@ class StandardResponse implements Response {
 
     /**
      * {@inheritDoc}
+     * @throws \LogicException If output already started
+     * @return self
+     */
+    public function push(string $url, array $headers = null): Response {
+        if ($this->state & self::STARTED) {
+            throw new \LogicException(
+                "Cannot add push promise; output already started"
+            );
+        }
+
+        \assert((function($headers) {
+            foreach ($headers ?? [] as $name => $header) {
+                if (\is_int($name)) {
+                    if (count($header) != 2) {
+                        return false;
+                    }
+                    list($name) = $header;
+                }
+                if ($name[0] == ":" || !strncasecmp("host", $name, 4)) {
+                    return false;
+                }
+            }
+            return true;
+        })($headers), "Headers must not contain colon prefixed headers or a Host header. Use a full URL if necessary, the method is always GET.");
+
+        $this->headers[":aerys-push"][$url] = $headers;
+
+        return $this;
+    }
+
+
+    /**
+     * {@inheritDoc}
      */
     public function state(): int {
         return $this->state;

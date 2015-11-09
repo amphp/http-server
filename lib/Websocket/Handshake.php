@@ -140,6 +140,13 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
+    public function push(string $url, array $headers = null): Response {
+        return $this->response->push($url, $headers);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public function state(): int {
         return $this->response->state();
     }

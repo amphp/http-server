@@ -32,8 +32,10 @@ class Client {
 
     public $parserEmitLock;
 
-
-    public $window = 0;
+    public $allowsPush = true;
+    public $window = 65536;
+    public $initialWindowSize = 65536;
+    public $streamId = 0;
     public $streamEnd = [];
     public $streamWindow = [];
     public $streamWindowBuffer = [];

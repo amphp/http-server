@@ -44,6 +44,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
             function stream(string $partialBodyChunk): Response { return $this; }
             function flush(): Response { return $this; }
             function end(string $finalBodyChunk = null): Response { return $this; }
+            function push(string $url, array $headers = null): Response { return $this; }
             function state(): int { return 42; }
         };
     }

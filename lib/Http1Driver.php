@@ -413,6 +413,13 @@ class Http1Driver implements HttpDriver {
             $headers["server"] = [SERVER_TOKEN];
         }
 
+        if (!empty($headers[":aerys-push"])) {
+            foreach ($headers[":aerys-push"] as $url => $pushHeaders) {
+                $headers["link"][] = "<$url>; rel=preload";
+            }
+            unset($headers[":aerys-push"]);
+        }
+
         $contentLength = $headers[":aerys-entity-length"];
         unset($headers[":aerys-entity-length"]);
 
