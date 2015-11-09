@@ -16,6 +16,17 @@ class WorkerProcess extends Process {
     }
 
     protected function doStart(Console $console): \Generator {
+        // Shutdown the whole server in case we needed to stop during startup
+        register_shutdown_function(function() use ($console) {
+            if (!$this->server) {
+                // ensure a clean reactor for clean shutdown
+                $reactor = \Amp\reactor();
+                \Amp\reactor(\Amp\driver());
+                \Amp\wait((new CommandClient((string) $console->getArg("config")))->stop());
+                \Amp\reactor($reactor);
+            }
+        });
+
         $server = yield from $this->bootstrapper->boot($this->logger, $console);
         yield $server->start();
         $this->server = $server;

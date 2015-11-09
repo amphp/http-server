@@ -84,6 +84,10 @@ class CommandClient {
         return $this->send(["action" => "restart"]);
     }
 
+    public function stop(): \Amp\Promise {
+        return $this->send(["action" => "stop"]);
+    }
+
     public function __destruct() {
         @fclose($this->sock);
     }

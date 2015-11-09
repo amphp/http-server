@@ -158,14 +158,12 @@ class WatcherProcess extends Process {
 
                 switch ($message["action"]) {
                     case "restart":
-                        $spawn = count($this->ipcClients);
-                        for ($i = 0; $i < $spawn; $i++) {
-                            $this->spawn()->when(function() {
-                                @\fwrite(current($this->ipcClients), "\n");
-                                next($this->ipcClients);
-                            });
-                        }
-                        $this->expectedFailures += $spawn;
+                        $this->restart();
+                        break;
+
+                    case "stop":
+                        \Amp\resolve($this->stop())->when('Amp\stop');
+                        break;
                 }
             } while (1);
         } while (1);
@@ -401,6 +399,17 @@ class WatcherProcess extends Process {
         $this->processes[] = $procHandle;
 
         return ($this->spawnPromisors[] = new Deferred)->promise();
+    }
+
+    protected function restart() {
+        $spawn = count($this->ipcClients);
+        for ($i = 0; $i < $spawn; $i++) {
+            $this->spawn()->when(function() {
+                @\fwrite(current($this->ipcClients), "\n");
+                next($this->ipcClients);
+            });
+        }
+        $this->expectedFailures += $spawn;
     }
 
     protected function doStop(): \Generator {
