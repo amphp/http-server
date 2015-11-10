@@ -156,9 +156,9 @@ class VhostContainer implements \Countable {
     /**
      * Retrieve stream encryption settings by bind address
      *
-     * @param return array
+     * @return array
      */
-    public function getTlsBindingsByAddress() {
+    public function getTlsBindingsByAddress(): array {
         $bindMap = [];
         $sniNameMap = [];
         foreach ($this->vhosts as $vhost) {
@@ -189,5 +189,12 @@ class VhostContainer implements \Countable {
 
     public function count() {
         return $this->cachedVhostCount;
+    }
+
+    public function __debugInfo() {
+        return [
+            "vhosts" => $this->vhosts,
+            "defaultHost" => $this->defaultHost,
+        ];
     }
 }

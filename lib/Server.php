@@ -12,6 +12,12 @@ class Server {
     const STARTING = 1;
     const STARTED  = 2;
     const STOPPING = 3;
+    const STATES = [
+        self::STOPPED => "STOPPED",
+        self::STARTING => "STARTING",
+        self::STARTED => "STARTED",
+        self::STOPPING => "STOPPING",
+    ];
 
     private $state = self::STOPPED;
     private $options;
@@ -26,12 +32,12 @@ class Server {
     private $clients = [];
     private $clientCount = 0;
     private $keepAliveTimeouts = [];
-    private $exporter;
     private $nullBody;
     private $stopPromisor;
     private $httpDriver;
 
     // private callables that we pass to external code //
+    private $exporter;
     private $onAcceptable;
     private $negotiateCrypto;
     private $verifyCrypto;
@@ -54,9 +60,9 @@ class Server {
         };
         $this->ticker->use($this->makePrivateCallable("timeoutKeepAlives"));
         $this->nullBody = new NullBody;
-        $this->exporter = $this->makePrivateCallable("export");
 
         // private callables that we pass to external code //
+        $this->exporter = $this->makePrivateCallable("export");
         $this->onAcceptable = $this->makePrivateCallable("onAcceptable");
         $this->negotiateCrypto = $this->makePrivateCallable("negotiateCrypto");
         $this->verifyCrypto = $this->makePrivateCallable("verifyCrypto");
@@ -156,30 +162,17 @@ class Server {
      */
     public function start(): Promise {
         try {
-            switch ($this->state) {
-                case self::STOPPED:
-                    if ($this->vhosts->count() === 0) {
-                        return new Failure(new \LogicException(
-                            "Cannot start: no virtual hosts registered in composed VhostContainer"
-                        ));
-                    }
-                    return resolve($this->doStart());
-                case self::STARTING:
+            if ($this->state == self::STOPPED) {
+                if ($this->vhosts->count() === 0) {
                     return new Failure(new \LogicException(
-                        "Cannot start server: already STARTING"
+                        "Cannot start: no virtual hosts registered in composed VhostContainer"
                     ));
-                case self::STARTED:
-                    return new Failure(new \LogicException(
-                        "Cannot start server: already STARTED"
-                    ));
-                case self::STOPPING:
-                    return new Failure(new \LogicException(
-                        "Cannot start server: already STOPPING"
-                    ));
-                default:
-                    return new Failure(new \LogicException(
-                        sprintf("Unexpected server state encountered: %s", $this->state)
-                    ));
+                }
+                return resolve($this->doStart());
+            } else {
+                return new Failure(new \LogicException(
+                    "Cannot start server: already ".self::STATES[$this->state]
+                ));
             }
         } catch (\Throwable $uncaught) {
             return new Failure($uncaught);
@@ -390,16 +383,10 @@ class Server {
                 return timeout($stopPromise, $this->options->shutdownTimeout);
             case self::STOPPED:
                 return new Success;
-            case self::STOPPING:
-                return new Failure(new \LogicException(
-                    "Cannot stop server: currently STOPPING"
-                ));
-            case self::STARTING:
-                return new Failure(new \LogicException(
-                    "Cannot stop server: currently STARTING"
-                ));
             default:
-                return new Success;
+                return new Failure(new \LogicException(
+                    "Cannot stop server: currently ".self::STATES[$this->state]
+                ));
         }
     }
 
@@ -1034,5 +1021,21 @@ class Server {
     private function logDebug($message) {
         $this->logger->log(Logger::DEBUG, (string) $message);
         return true;
+    }
+
+    public function __debugInfo() {
+        return [
+            "state" => $this->state,
+            "vhosts" => $this->vhosts,
+            "ticker" => $this->ticker,
+            "observers" => $this->observers,
+            "acceptWatcherIds" => $this->acceptWatcherIds,
+            "boundServers" => $this->boundServers,
+            "pendingTlsStreams" => $this->pendingTlsStreams,
+            "clients" => $this->clients,
+            "keepAliveTimeouts" => $this->keepAliveTimeouts,
+            "stopPromise" => $this->stopPromisor ? $this->stopPromisor->promise() : null,
+            "httpDriver" => $this->httpDriver,
+        ];
     }
 }

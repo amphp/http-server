@@ -8,7 +8,7 @@ class Bootstrapper {
     private $hostAggregator;
 
     public function __construct(callable $hostAggregator = null) {
-        $this->hostAggregator = $hostAggregator ?: ["\\Aerys\\Host", "getDefinitions"];
+        $this->hostAggregator = $hostAggregator ?: ['\Aerys\Host', "getDefinitions"];
     }
 
     /**
@@ -47,7 +47,7 @@ class Bootstrapper {
             $options = AERYS_OPTIONS;
         } else {
             throw new \DomainException(
-                "Invalid AERYS_OPTIONS constant: array expected, got " . gettype(AERYS_OPTIONS)
+                "Invalid AERYS_OPTIONS constant: expected array, got " . gettype(AERYS_OPTIONS)
             );
         }
         if ($console->isArgDefined("debug")) {
@@ -64,13 +64,13 @@ class Bootstrapper {
         $bootLoader = function(Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
             if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
-                throw new \InvalidArgumentException("Any return value of " . get_class($bootable) . "::boot() must return an instance of Aerys\\Middleware and/or be callable, got " . gettype($booted) . ".");
+                throw new \InvalidArgumentException("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Middleware and/or be callable, got ' . gettype($booted) . ".");
             }
             return $booted ?? $bootable;
         };
         $hosts = \call_user_func($this->hostAggregator) ?: [new Host];
         foreach ($hosts as $host) {
-            $vhost = $this->buildVhost($host, $bootLoader);
+            $vhost = self::buildVhost($host, $bootLoader);
             $vhosts->use($vhost);
         }
 
@@ -118,20 +118,93 @@ class Bootstrapper {
         return $publicOptions;
     }
 
-    private function buildVhost(Host $host, callable $bootLoader): Vhost {
+
+    private static function buildVhost(Host $host, callable $bootLoader): Vhost {
         try {
             $hostExport = $host->export();
             $interfaces = $hostExport["interfaces"];
             $name = $hostExport["name"];
             $actions = $hostExport["actions"];
-            list($application, $middlewares) = $this->bootApplication($actions, $bootLoader);
+
+            $middlewares = [];
+            $applications = [];
+
+            foreach ($actions as $key => $action) {
+                if ($action instanceof Bootable) {
+                    $action = $bootLoader($action);
+                }
+                if ($action instanceof Middleware) {
+                    $middlewares[] = [$action, "do"];
+                } elseif (is_array($action) && $action[0] instanceof Middleware) {
+                    $middlewares[] = [$action[0], "do"];
+                }
+
+                if (is_callable($action)) {
+                    $applications[] = $action;
+                }
+            }
+
+            if (empty($applications)) {
+                $application = function(Request $request, Response $response) {
+                    $response->end("<html><body><h1>It works!</h1></body></html>");
+                };
+            } elseif (count($applications) === 1) {
+                $application = current($applications);
+            } else {
+                // Observe the Server in our stateful multi-responder so if a shutdown triggers
+                // while we're iterating over our coroutines we can send a 503 response. This
+                // obviates the need for applications to pay attention to server state themselves.
+                $application = $bootLoader(new class($applications) implements Bootable, ServerObserver {
+                    private $applications;
+                    private $isStopping = false;
+
+                    public function __construct(array $applications) {
+                        $this->applications = $applications;
+                    }
+
+                    public function boot(Server $server, Logger $logger) {
+                        $server->attach($this);
+                    }
+
+                    public function update(Server $server): Promise {
+                        if ($server->state() === Server::STOPPING) {
+                            $this->isStopping = true;
+                        }
+
+                        return new Success;
+                    }
+
+                    public function __invoke(Request $request, Response $response) {
+                        foreach ($this->applications as $action) {
+                            $out = $action($request, $response);
+                            if ($out instanceof \Generator) {
+                                yield from $out;
+                            }
+                            if ($response->state() & Response::STARTED) {
+                                return;
+                            }
+                            if ($this->isStopping) {
+                                $response->setStatus(HTTP_STATUS["SERVICE_UNAVAILABLE"]);
+                                $response->setReason("Server shutting down");
+                                $response->setHeader("Aerys-Generic-Response", "enable");
+                                $response->end();
+                                return;
+                            }
+                        }
+                    }
+
+                    public function __debugInfo() {
+                        return ["applications" => $this->applications];
+                    }
+                });
+            }
+
             $vhost = new Vhost($name, $interfaces, $application, $middlewares);
             if ($crypto = $hostExport["crypto"]) {
                 $vhost->setCrypto($crypto);
             }
 
             return $vhost;
-
         } catch (\Throwable $previousException) {
             throw new \DomainException(
                 "Failed building Vhost instance",
@@ -139,84 +212,5 @@ class Bootstrapper {
                 $previousException
             );
         }
-    }
-
-    private function bootApplication(array $actions, callable $bootLoader): array {
-        $middlewares = [];
-        $applications = [];
-
-        foreach ($actions as $key => $action) {
-            if ($action instanceof Bootable) {
-                $action = $bootLoader($action);
-            }
-            if ($action instanceof Middleware) {
-                $middlewares[] = [$action, "do"];
-            } elseif (is_array($action) && $action[0] instanceof Middleware) {
-                $middlewares[] = [$action[0], "do"];
-            }
-
-            if (is_callable($action)) {
-                $applications[] = $action;
-            }
-        }
-
-        if (empty($applications)) {
-            $application = function(Request $request, Response $response) {
-                $response->end("<html><body><h1>It works!</h1></body></html>");
-            };
-
-            return [$application, $middlewares];
-        }
-
-        if (count($applications) === 1) {
-            $application = current($applications);
-
-            return [$application, $middlewares];
-        }
-
-        // Observe the Server in our stateful multi-responder so if a shutdown triggers
-        // while we're iterating over our coroutines we can send a 503 response. This
-        // obviates the need for applications to pay attention to server state themselves.
-        $application = $bootLoader(new class($applications) implements Bootable, ServerObserver {
-            private $applications;
-            private $isStopping = false;
-
-            public function __construct(array $applications) {
-                $this->applications = $applications;
-            }
-
-            public function boot(Server $server, Logger $logger) {
-                $server->attach($this);
-            }
-
-            public function update(Server $server): Promise {
-                if ($server->state() === Server::STOPPING) {
-                    $this->isStopping = true;
-                }
-
-                return new Success;
-            }
-
-            public function __invoke(Request $request, Response $response) {
-                foreach ($this->applications as $action) {
-                    $out = $action($request, $response);
-                    if ($out instanceof \Generator) {
-                        yield from $out;
-                    }
-                    if ($response->state() & Response::STARTED) {
-                        return;
-                    }
-                    if ($this->isStopping) {
-                        $response->setStatus(HTTP_STATUS["SERVICE_UNAVAILABLE"]);
-                        $response->setReason("Server shutting down");
-                        $response->setHeader("Aerys-Generic-Response", "enable");
-                        $response->end();
-                        return;
-                    }
-                }
-            }
-        });
-
-        return [$application, $middlewares];
     }
 }
