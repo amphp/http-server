@@ -512,7 +512,9 @@ function deflateResponseFilter(InternalRequest $ireq): \Generator {
         return;
     }
 
-    $minBodySize = $ireq->options->deflateMinimumLength;
+    $options = $ireq->client->options;
+
+    $minBodySize = $options->deflateMinimumLength;
     $contentLength = $headers["content-length"][0] ?? null;
     $bodyBuffer = "";
 
@@ -550,7 +552,7 @@ function deflateResponseFilter(InternalRequest $ireq): \Generator {
         $headers["connection"] = ["close"];
     }
     $headers["content-encoding"] = ["gzip"];
-    $minFlushOffset = $ireq->options->deflateBufferSize;
+    $minFlushOffset = $options->deflateBufferSize;
     $deflated = $headers;
 
     while (($uncompressed = yield $deflated) !== null) {

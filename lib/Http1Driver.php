@@ -101,7 +101,7 @@ class Http1Driver implements HttpDriver {
             $buffer[] = $msgPart;
             $bufferSize += \strlen($msgPart);
 
-            if ($msgPart === false || $bufferSize > $ireq->options->outputBufferSize) {
+            if ($msgPart === false || $bufferSize > $ireq->client->options->outputBufferSize) {
                 $client->writeBuffer .= \implode("", $buffer);
                 $buffer = [];
                 $bufferSize = 0;
@@ -408,8 +408,9 @@ class Http1Driver implements HttpDriver {
     public static function responseInitFilter(InternalRequest $ireq) {
         $headers = yield;
         $status = $headers[":status"];
+        $options = $ireq->client->options;
 
-        if ($ireq->options->sendServerToken) {
+        if ($options->sendServerToken) {
             $headers["server"] = [SERVER_TOKEN];
         }
 
@@ -445,9 +446,9 @@ class Http1Driver implements HttpDriver {
         }
 
         if ($hasContent) {
-            $type = $headers["content-type"][0] ?? $ireq->options->defaultContentType;
+            $type = $headers["content-type"][0] ?? $options->defaultContentType;
             if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-                $type .= "; charset={$ireq->options->defaultTextCharset}";
+                $type .= "; charset={$options->defaultTextCharset}";
             }
             $headers["content-type"] = [$type];
         }
@@ -456,10 +457,10 @@ class Http1Driver implements HttpDriver {
         if ($shouldClose || $ireq->isServerStopping || $remainingKeepAlives === 0) {
             $headers["connection"] = ["close"];
         } elseif (isset($remainingKeepAlives)) {
-            $keepAlive = "timeout={$ireq->options->keepAliveTimeout}, max={$remainingKeepAlives}";
+            $keepAlive = "timeout={$options->keepAliveTimeout}, max={$remainingKeepAlives}";
             $headers["keep-alive"] = [$keepAlive];
         } else {
-            $keepAlive = "timeout={$ireq->options->keepAliveTimeout}";
+            $keepAlive = "timeout={$options->keepAliveTimeout}";
             $headers["keep-alive"] = [$keepAlive];
         }
 
@@ -485,7 +486,7 @@ class Http1Driver implements HttpDriver {
         }
 
         $bodyBuffer = "";
-        $bufferSize = $ireq->options->chunkBufferSize ?? 8192;
+        $bufferSize = $ireq->client->options->chunkBufferSize ?? 8192;
         $unchunked = yield $headers;
 
         do {

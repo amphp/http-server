@@ -82,12 +82,15 @@ class Http2Driver implements HttpDriver {
     }
 
     public function responseInitFilter(InternalRequest $ireq) {
-        $ireq->headers["host"] = $ireq->headers[":authority"];
+        if (isset($ireq->headers[":authority"])) {
+            $ireq->headers["host"] = $ireq->headers[":authority"];
+        }
         unset($ireq->headers[":authority"], $ireq->headers[":scheme"], $ireq->headers[":method"], $ireq->headers[":path"]);
 
+        $options = $ireq->client->options;
         $headers = yield;
 
-        if ($ireq->options->sendServerToken) {
+        if ($options->sendServerToken) {
             $headers["server"] = [SERVER_TOKEN];
         }
 
@@ -121,9 +124,9 @@ class Http2Driver implements HttpDriver {
         }
 
         if ($hasContent) {
-            $type = $headers["content-type"][0] ?? $ireq->options->defaultContentType;
+            $type = $headers["content-type"][0] ?? $options->defaultContentType;
             if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-                $type .= "; charset={$ireq->options->defaultTextCharset}";
+                $type .= "; charset={$options->defaultTextCharset}";
             }
             $headers["content-type"] = [$type];
         }

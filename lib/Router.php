@@ -93,7 +93,14 @@ class Router implements Bootable, Middleware, ServerObserver {
 
             $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
             if (!empty($middlewares)) {
-                yield from responseFilter($middlewares, $ireq);
+                try {
+                    return yield from responseFilter($middlewares, $ireq);
+                } catch (FilterException $e) {
+                    end($ireq->badFilterKeys);
+                    unset($ireq->badFilterKeys[key($ireq->badFilterKeys)]);
+                    $ireq->filterErrorFlag = false;
+                    throw $e->getPrevious();
+                }
             }
         }
 
@@ -110,7 +117,14 @@ class Router implements Bootable, Middleware, ServerObserver {
 
                 $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
                 if (!empty($middlewares)) {
-                    yield from responseFilter($middlewares, $ireq);
+                    try {
+                        return yield from responseFilter($middlewares, $ireq);
+                    } catch (FilterException $e) {
+                        end($ireq->badFilterKeys);
+                        unset($ireq->badFilterKeys[key($ireq->badFilterKeys)]);
+                        $ireq->filterErrorFlag = false;
+                        throw $e->getPrevious();
+                    }
                 }
                 break;
             case Dispatcher::NOT_FOUND:
