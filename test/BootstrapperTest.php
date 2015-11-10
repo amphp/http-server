@@ -61,13 +61,13 @@ class BootstrapperTest extends \PHPUnit_Framework_TestCase {
 
 
         $info = $server->__debugInfo();
-        $this->assertEquals(["tcp://[::]:80", "tcp://0.0.0.0:80", "tcp://127.0.0.1:80"], $info["vhosts"]->getBindableAddresses());
+        $this->assertEquals(["tcp://[::]:443", "tcp://0.0.0.0:443", "tcp://127.0.0.1:80"], $info["vhosts"]->getBindableAddresses());
         $this->assertEquals($console::ARGS["config"], $server->getOption("configPath"));
         $this->assertEquals(5000, $server->getOption("shutdownTimeout")); // custom option test
 
         $vhosts = $info["vhosts"]->__debugInfo()["vhosts"];
-        $this->assertEquals(["localhost:80", "example.com:80", "foo.bar:80"], array_keys($vhosts));
-        $this->assertTrue(is_callable($vhosts["localhost:80"]->getApplication()));
+        $this->assertEquals(["localhost:443", "example.com:80", "foo.bar:80"], array_keys($vhosts));
+        $this->assertTrue(is_callable($vhosts["localhost:443"]->getApplication()));
         $middleware = current($vhosts["example.com:80"]->getFilters());
         $this->assertInstanceOf("OurMiddleware", $middleware[0]);
         $this->assertEquals("do", $middleware[1]);

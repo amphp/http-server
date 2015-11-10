@@ -30,7 +30,7 @@ class VhostContainer implements \Countable {
     private function preventCryptoSocketConflict(Vhost $new) {
         foreach ($this->vhosts as $old) {
             // If both hosts are encrypted or both unencrypted there is no conflict
-            if ($new->IsEncrypted() == $old->isEncrypted()) {
+            if ($new->isEncrypted() == $old->isEncrypted()) {
                 continue;
             }
             foreach ($old->getInterfaces() as list($address, $port)) {
@@ -101,7 +101,7 @@ class VhostContainer implements \Countable {
 
     private function selectHostByAuthority(InternalRequest $ireq, string $explicitHostId) {
         if ($portStartPos = strrpos($explicitHostId, "]")) {
-            $ipComparison = substr($explicitHostId, 0, $portStartPos + 1);
+            $ipComparison = substr($explicitHostId, 1, $portStartPos - 1);
             $port = substr($explicitHostId, $portStartPos + 2);
             $port = ($port === FALSE) ? ($ireq->isEncrypted ? "443" : "80") : $port;
         } elseif ($portStartPos = strrpos($explicitHostId, ":")) {
