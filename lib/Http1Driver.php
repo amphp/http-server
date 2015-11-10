@@ -479,10 +479,10 @@ class Http1Driver implements HttpDriver {
         $headers = yield;
 
         if (empty($headers["transfer-encoding"])) {
-            return;
+            return $headers;
         }
         if (!in_array("chunked", $headers["transfer-encoding"])) {
-            return;
+            return $headers;
         }
 
         $bodyBuffer = "";

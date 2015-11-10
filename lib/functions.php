@@ -465,13 +465,13 @@ function deflateResponseFilter(InternalRequest $ireq): \Generator {
 
     // We can't deflate if we don't know the content-type
     if (empty($headers["content-type"])) {
-        return;
+        return $headers;
     }
 
     // Require a text/* mime Content-Type
     // @TODO Allow option to configure which mime prefixes/types may be compressed
     if (stripos($headers["content-type"][0], "text/") !== 0) {
-        return;
+        return $headers;
     }
 
     $options = $ireq->client->options;
@@ -571,7 +571,7 @@ function nullBodyResponseFilter(InternalRequest $ireq): \Generator {
 function genericResponseFilter(InternalRequest $ireq): \Generator {
     $headers = yield;
     if (empty($headers["aerys-generic-response"])) {
-        return;
+        return $headers;
     }
 
     $body = makeGenericBody($headers[":status"], $options = [
