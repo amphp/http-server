@@ -45,9 +45,11 @@ class Host {
         }
 
         if ($address === "*") {
-            $this->interfaces[] = ["0.0.0.0", $port];
-            $this->interfaces[] = ["::", $port];
-            return $this;
+            if (self::separateIPv4Binding()) {
+                $this->interfaces[] = ["0.0.0.0", $port];
+            }
+
+            $address = "::";
         }
 
         if (!@inet_pton($address)) {
@@ -158,11 +160,26 @@ class Host {
 
         $this->redirect = function(Request $req, Response $res) use ($redirectUri, $redirectCode) {
             $res->setStatus($redirectCode);
-            $res->setHeader("Location", $redirectUri . $req->getUri());
+            $res->setHeader("Location", $redirectUri . $req->uri);
             $res->end();
         };
 
         return $this;
+    }
+
+    private static function separateIPv4Binding(): bool {
+        static $separateIPv6 = null;
+
+        if ($separateIPv6 === null) {
+            // PHP 7.0.0 doesn't have ipv6_v6only socket option yet
+            if (PHP_VERSION_ID < 70001) {
+                $separateIPv6 = !file_exists("/proc/sys/net/ipv6/bindv6only") || trim(file_get_contents("/proc/sys/net/ipv6/bindv6only"));
+            } else {
+                $separateIPv6 = true;
+            }
+        }
+
+        return $separateIPv6;
     }
 
     /**
@@ -181,7 +198,10 @@ class Host {
         if (isset($this->interfaces)) {
             $interfaces = array_unique($this->interfaces, SORT_REGULAR);
         } else {
-            $interfaces = [["::", $defaultPort], ["0.0.0.0", $defaultPort]];
+            $interfaces = [["::", $defaultPort]];
+            if (self::separateIPv4Binding()) {
+                $interfaces[] = ["0.0.0.0", $defaultPort];
+            }
         }
 
         return [

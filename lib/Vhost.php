@@ -248,6 +248,7 @@ class Vhost {
         }
 
         if (time() > $cert['validTo_time_t']) {
+            date_default_timezone_set(@date_default_timezone_get());
             $expiration = date('Y-m-d', $cert['validTo_time_t']);
             trigger_error(
                 "TLS certificate `{$certBase}` for host `{$this}` expired {$expiration}; web " .
