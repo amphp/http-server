@@ -254,20 +254,20 @@ class StandardResponse implements Response {
         if (!($this->state & self::STARTED)) {
             $this->setCookies();
             // An @ (as opposed to a numeric length) indicates "no entity content"
-            $entityValue = isset($finalBody) ? strlen($finalBody) : "@";
+            $entityValue = isset($finalBody) ? \strlen($finalBody) : "@";
             $headers = $this->headers;
             $headers[":aerys-entity-length"] = $entityValue;
             $this->codec->send($headers);
         }
 
-        $this->codec->send($finalBody);
         if (isset($finalBody)) {
-            $this->codec->send(null);
+            $this->codec->send($finalBody);
         }
+        $this->codec->send(null);
 
         // Update the state *AFTER* the codec operation so that if it throws
         // we can handle things appropriately in the server.
-        $this->state = self::ENDED|self::STARTED;
+        $this->state = self::ENDED | self::STARTED;
 
         return $this;
     }

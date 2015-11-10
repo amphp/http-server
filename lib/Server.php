@@ -845,12 +845,19 @@ class Server {
     }
 
     private function responseCodec(\Generator $filter, InternalRequest $ireq): \Generator {
-        while ($filter->valid()) {
-            $cur = $filter->send(yield);
-            if ($cur !== null) {
+        do {
+            $cur = $filter->send($yield = yield);
+            if ($yield === false) {
+                $ireq->responseWriter->send($cur);
+                if (\is_array($cur)) { // in case of headers, to flush a maybe started body too, we need to send false twice
+                    $ireq->responseWriter->send($filter->send(false));
+                }
+                $ireq->responseWriter->send(false);
+            } elseif ($cur !== null) {
                 $ireq->responseWriter->send($cur);
             }
-        }
+        } while ($yield !== null);
+
         $cur = $filter->getReturn();
         if ($cur !== null) {
             $ireq->responseWriter->send($cur);

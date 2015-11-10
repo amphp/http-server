@@ -219,7 +219,7 @@ function parseCookie(string $cookies): array {
  * hot code path requiring maximum optimization? Yes. This is why it looks like the ninth
  * circle of npath hell ... #DealWithIt
  *
- * @param array $filters
+ * @param array $filters *ordered* filters array
  * @param \Aerys\InternalRequest $ireq
  * @return \Generator
  */
@@ -233,186 +233,146 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
             }
         }
         $filters = $generators;
+
         $isEnding = false;
         $isFlushing = false;
-        $headers = yield;
-
-        foreach ($filters as $key => $filter) {
-            $yielded = $filter->send($headers);
-            if (!isset($yielded)) {
-                if (!$filter->valid()) {
-                    $yielded = $filter->getReturn();
-                    if (!isset($yielded)) {
-                        unset($filters[$key]);
-                        continue;
-                    } elseif (is_array($yielded)) {
-                        assert(__validateFilterHeaders($filter, $yielded) ?: 1);
-                        $headers = $yielded;
-                        unset($filters[$key]);
-                        continue;
-                    } else {
-                        $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                        throw new \DomainException(makeGeneratorError(
-                            $filter,
-                            "Filter error; header array required but {$type} returned"
-                        ));
-                    }
-                }
-
-                while (1) {
-                    if ($isEnding) {
-                        $toSend = null;
-                    } elseif ($isFlushing) {
-                        $toSend = false;
-                    } else {
-                        $toSend = yield;
-                        if (!isset($toSend)) {
-                            $isEnding = true;
-                        } elseif ($toSend === false) {
-                            $isFlushing = true;
-                        }
-                    }
-
-                    $yielded = $filter->send($toSend);
-                    if (!isset($yielded)) {
-                        if ($isEnding || $isFlushing) {
-                            if ($filter->valid()) {
-                                $signal = isset($toSend) ? "FLUSH" : "END";
-                                throw new \DomainException(makeGeneratorError(
-                                    $filter,
-                                    "Filter error; header array required from {$signal} signal"
-                                ));
-                            } else {
-                                // this is always an error because the two-stage filter
-                                // process means any filter receiving non-header data
-                                // must participate in both stages
-                                throw new \DomainException(makeGeneratorError(
-                                    $filter,
-                                    "Filter error; cannot detach without yielding/returning headers"
-                                ));
-                            }
-                        }
-                    } elseif (is_array($yielded)) {
-                        assert(__validateFilterHeaders($filter, $yielded) ?: 1);
-                        $headers = $yielded;
-                        break;
-                    } else {
-                        $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                        throw new \DomainException(makeGeneratorError(
-                            $filter,
-                            "Filter error; header array required but {$type} yielded"
-                        ));
-                    }
-                }
-            } elseif (is_array($yielded)) {
-                assert(__validateFilterHeaders($filter, $yielded) ?: 1);
-                $headers = $yielded;
-            } else {
-                $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                throw new \DomainException(makeGeneratorError(
-                    $filter,
-                    "Filter error; header array required but {$type} yielded"
-                ));
-            }
-        }
-
-        $appendBuffer = null;
-        $toSend = $headers;
-        $isFlushing = false;
+        $hadHeaders = -1;
+        $send = null;
 
         do {
-            $toSend = yield $toSend;
-            if ($isFlushing) {
-                $toSend = yield false;
-            }
-            $isFlushing = false;
-
-            if ($isEnding) {
-                $toSend = null;
-            } elseif ($isFlushing) {
-                $toSend = false;
-            } else {
-                if (!isset($toSend)) {
-                    $isEnding = true;
-                } elseif ($toSend === false) {
-                    $isFlushing = true;
-                }
+            $toSend[] = $yielded = yield $send;
+            if ($yielded === null) {
+                $isEnding = true;
+                $isFlushing = true;
+            } elseif ($yielded === false) {
+                $isFlushing = true;
             }
 
             foreach ($filters as $key => $filter) {
-                while (1) {
-                    $yielded = $filter->send($toSend);
-                    if (!isset($yielded)) {
-                        if (!$filter->valid()) {
+                $sendArray = $toSend;
+                $toSend = null;
+
+                do {
+                    $send = array_shift($sendArray);
+                    $yielded = $filter->send($send);
+                    if ($yielded === null) {
+                        if ($filter->valid()) {
+                            if ($key > $hadHeaders) {
+                                if ($send === null) {
+                                    throw new \DomainException(makeGeneratorError(
+                                        $filter,
+                                        "Filter error; header array required from END (null) signal"
+                                    ));
+                                } elseif ($send === false) {
+                                    throw new \DomainException(makeGeneratorError(
+                                        $filter,
+                                        "Filter error; header array required from FLUSH (false) signal"
+                                    ));
+                                }
+                            }
+                        } else {
                             unset($filters[$key]);
                             $yielded = $filter->getReturn();
-                            if (!isset($yielded)) {
-                                if (isset($appendBuffer)) {
-                                    $toSend = $appendBuffer;
-                                    $appendBuffer = null;
-                                }
-                                break;
-                            } elseif (is_string($yielded)) {
-                                if (isset($appendBuffer)) {
-                                    $toSend = $appendBuffer . $yielded;
-                                    $appendBuffer = null;
+
+                            if ($key > $hadHeaders) {
+                                if (\is_array($yielded)) {
+                                    assert(__validateFilterHeaders($filter, $yielded) ?: 1);
+                                    $toSend[] = $yielded;
+                                } elseif ($yielded !== null && ($send === null || $send === false)) {
+                                    $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
+                                    throw new \DomainException(makeGeneratorError(
+                                        $filter,
+                                        "Filter error; header array required but {$type} returned"
+                                    ));
                                 } else {
-                                    $toSend = $yielded;
+                                    // this is always an error because the two-stage filter
+                                    // process means any filter receiving non-header data
+                                    // must participate in both stages
+                                    throw new \DomainException(makeGeneratorError(
+                                        $filter,
+                                        "Filter error; cannot detach without yielding/returning headers"
+                                    ));
                                 }
-                                break;
-                            } else {
+                            } elseif (\is_string($yielded)) {
+                                if ($toSend && \is_string(\end($toSend))) {
+                                    $toSend[\key($toSend)] .= $yielded;
+                                } else {
+                                    $toSend[] = $yielded;
+                                }
+                            } elseif ($yielded !== null) {
                                 $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                                 throw new \DomainException(makeGeneratorError(
                                     $filter,
                                     "Filter error; string entity data required but {$type} returned"
                                 ));
                             }
-                        } else {
-                            if ($isEnding) {
-                                if (isset($toSend)) {
-                                    $toSend = null;
-                                } else {
-                                    break;
-                                }
-                            } elseif ($isFlushing) {
-                                if ($toSend !== false) {
-                                    $toSend = false;
-                                } else {
-                                    break;
-                                }
-                            } else {
-                                $toSend = yield;
-                                if (!isset($toSend)) {
-                                    $isEnding = true;
-                                } elseif ($toSend === false) {
-                                    $isFlushing = true;
-                                }
-                            }
+
+                            $toSend = $toSend ? array_merge($toSend, $sendArray) : $sendArray;
+                            break;
                         }
-                    } elseif (is_string($yielded)) {
-                        if (isset($appendBuffer)) {
-                            $toSend = $appendBuffer . $yielded;
-                            $appendBuffer = null;
+                    } elseif (\is_string($yielded) && $key <= $hadHeaders) {
+                        if ($toSend && \is_string(\end($toSend))) {
+                            $toSend[\key($toSend)] .= $yielded;
                         } else {
-                            $toSend = $yielded;
+                            $toSend[] = $yielded;
                         }
-                        break;
+                    } elseif (\is_array($yielded) && $key > $hadHeaders) {
+                        assert(__validateFilterHeaders($filter, $yielded) ?: 1);
+                        $toSend[] = $yielded;
+                        $hadHeaders = $key;
+                        if ($isEnding && empty($sendArray)) {
+                            $sendArray = [null];
+                        }
                     } else {
                         $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                         throw new \DomainException(makeGeneratorError(
                             $filter,
-                            "Filter error; string entity data required but {$type} yielded"
+                            "Filter error; " . ($key > $hadHeaders ? "header array" : "string entity data") . " required but {$type} yielded"
                         ));
                     }
+                } while ($sendArray);
+
+                if ($isFlushing) {
+                    $toSend[] = $isEnding ? null : false;
+                }
+                if ($toSend === null) {
+                    break;
                 }
             }
 
-            if ($toSend === false) {
-                $isFlushing = false;
+            $isFlushing = false;
+
+            if ($toSend) {
+                if (isset($toSend[1])) {
+                    $sendArray = $toSend;
+                    $toSend = [];
+                    if (\is_array($sendArray[0])) {
+                        $send = array_shift($sendArray);
+
+                        $toSend = [$yielded = yield $send];
+                        if ($yielded === null) {
+                            $isEnding = true;
+                            $isFlushing = true;
+                        } elseif ($yielded === false) {
+                            $isFlushing = true;
+                        }
+                    }
+
+                    $send = implode($sendArray);
+                } else {
+                    $send = $toSend[0];
+                    $toSend = [];
+                }
+                if ($send === "") {
+                    $send = null;
+                }
+            } else {
+                $send = null;
+                $toSend = [];
             }
         } while (!$isEnding);
 
-        return $toSend;
+        return $send;
     } catch (ClientException $uncaught) {
         throw $uncaught;
     } catch (\Throwable $uncaught) {
@@ -492,12 +452,14 @@ function deflateResponseFilter(InternalRequest $ireq): \Generator {
     // @TODO Perform a more sophisticated check for gzip acceptance.
     // This check isn't technically correct as the gzip parameter
     // could have a q-value of zero indicating "never accept gzip."
-    foreach ($ireq->headers["accept-encoding"] as $value) {
-        if (stripos($value, "gzip") !== false) {
-            break;
+    do {
+        foreach ($ireq->headers["accept-encoding"] as $value) {
+            if (stripos($value, "gzip") !== false) {
+                break 2;
+            }
         }
         return;
-    }
+    } while (0);
 
     $headers = yield;
 
@@ -522,13 +484,13 @@ function deflateResponseFilter(InternalRequest $ireq): \Generator {
         // Wait until we know there's enough stream data to compress before proceeding.
         // If we receive a FLUSH or an END signal before we have enough then we won't
         // use any compression.
-        while (!isset($bodyBuffer[$minBodySize])) {
+        do {
             $bodyBuffer .= ($tmp = yield);
             if ($tmp === false || $tmp === null) {
                 $bodyBuffer .= yield $headers;
                 return $bodyBuffer;
             }
-        }
+        } while (!isset($bodyBuffer[$minBodySize]));
     } elseif (empty($contentLength) || $contentLength < $minBodySize) {
         // If the Content-Length is too small we can't compress it.
         return $headers;

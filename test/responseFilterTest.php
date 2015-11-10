@@ -41,7 +41,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
 
         $body = "1";
         $result = $filter->send($body);
-        $this->assertSame($body, $result);
+        $this->assertNull($result);
 
         $body = "2";
         $result = $filter->send($body);
@@ -82,7 +82,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
         } catch (FilterException $e) {
             $e = $e->getPrevious();
             $this->assertInstanceOf("DomainException", $e);
-            if (0 !== strpos($e->getMessage(), "Filter error; header array required from FLUSH signal")) {
+            if (0 !== strpos($e->getMessage(), "Filter error; header array required from FLUSH (false) signal")) {
                 $this->fail("Filter exception message differed from expected");
             }
         }
@@ -101,7 +101,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
         } catch (FilterException $e) {
             $e = $e->getPrevious();
             $this->assertInstanceOf("DomainException", $e);
-            if (0 !== strpos($e->getMessage(), "Filter error; header array required from END signal")) {
+            if (0 !== strpos($e->getMessage(), "Filter error; header array required from END (null) signal")) {
                 $this->fail("Filter exception message differed from expected");
             }
         }
@@ -149,6 +149,61 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
         $this->assertSame([":status" => 200], $filter->send(null));
         $this->assertNull($filter->send(null));
         $this->assertSame("foobarbaz", $filter->getReturn());
+    }
+
+    public function testNestedBufferedFilterHeaderYield() {
+        $filter = $this->getFilter([function() {
+            $headers = yield;
+            $this->assertSame("foo", yield $headers);
+            $this->assertSame("bar", yield "foo");
+            $this->assertSame(null, yield "bar");
+        }, function() {
+            $headers = yield;
+            $buffer = "";
+            while (($part = yield) !== null) {
+                $buffer .= $part;
+            }
+            yield $headers;
+            return $buffer;
+        }]);
+        $filter->current();
+        $result = $filter->send([":status" => 200]);
+        $this->assertNull($result);
+        $this->assertNull($filter->send("foo"));
+        $this->assertNull($filter->send("bar"));
+        $this->assertSame([":status" => 200], $filter->send(null));
+        $this->assertNull($filter->send(null));
+        $this->assertSame("foobar", $filter->getReturn());
+    }
+
+    public function testFlushBufferedFilterHeaderYield() {
+        $filter = $this->getFilter([function() {
+            $headers = yield;
+            $buffer = "";
+            while (($part = yield) !== null) {
+                if ($part === false) {
+                    if ($headers) {
+                        $buffer .= yield $headers;
+                        $headers = null;
+                    } else {
+                        $buffer = yield $buffer;
+                    }
+                }
+                $buffer .= $part;
+            }
+
+            return $buffer;
+        }]);
+        $filter->current();
+        $result = $filter->send([":status" => 200]);
+        $this->assertNull($result);
+        $this->assertNull($filter->send("foo"));
+        $this->assertSame([":status" => 200], $filter->send(false));
+        $this->assertNull($filter->send("bar"));
+        $this->assertSame("foobar", $filter->send(false));
+        $this->assertNull($filter->send("baz"));
+        $this->assertNull($filter->send(null));
+        $this->assertSame("baz", $filter->getReturn());
     }
 
     public function testBufferedFilterHeaderYieldThrowsIfNotAnArray() {
