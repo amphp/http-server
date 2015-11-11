@@ -17,10 +17,6 @@ class InternalRequest {
     public $isServerStopping;
     public $isEncrypted;
     public $cryptoInfo;
-    public $clientPort;
-    public $clientAddr;
-    public $serverPort;
-    public $serverAddr;
     public $streamId;
     public $trace;
     public $protocol;

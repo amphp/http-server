@@ -278,9 +278,6 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
                                 if (\is_array($yielded)) {
                                     assert(__validateFilterHeaders($filter, $yielded) ?: 1);
                                     $toSend[] = $yielded;
-                                } elseif ($yielded === null && \is_array($send)) {
-                                    // we need to allow headers to not be returned at all in the first step, funcs may return before any yield;
-                                    $toSend[] = $send;
                                 } elseif ($send === null || $send === false) {
                                     $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                                     throw new \DomainException(makeGeneratorError(

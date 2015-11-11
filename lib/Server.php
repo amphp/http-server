@@ -46,7 +46,7 @@ class Server {
     private $onCoroutineAppResolve;
     private $onResponseDataDone;
 
-    public function __construct(Options $options, VhostContainer $vhosts, Logger $logger, Ticker $ticker) {
+    public function __construct(Options $options, VhostContainer $vhosts, Logger $logger, Ticker $ticker, array $httpDrivers) {
         $this->options = $options;
         $this->vhosts = $vhosts;
         $this->logger = $logger;
@@ -70,11 +70,15 @@ class Server {
         $this->onWritable = $this->makePrivateCallable("onWritable");
         $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
         $this->onResponseDataDone = $this->makePrivateCallable("onResponseDataDone");
-    }
 
-    private function initializeHttpDrivers(HttpDriver $http) {
-        foreach ($http->versions() as $version) {
-            $this->httpDriver[$version] = $http;
+        foreach ($httpDrivers as $driver) {
+            $emitter = $this->makePrivateCallable("onParseEmit");
+            $writer = $this->makePrivateCallable("writeResponse");
+            $http = $driver($emitter, $writer);
+            \assert($http instanceof HttpDriver);
+            foreach ($http->versions() as $version) {
+                $this->httpDriver[$version] = $http;
+            }
         }
     }
 
@@ -228,30 +232,25 @@ class Server {
         // lock options
         $this->options->_initialized = true;
 
-        // initialize http drivers //
-        $emitter = $this->makePrivateCallable("onParseEmit");
-        $writer = $this->makePrivateCallable("writeResponse");
-        $this->initializeHttpDrivers(new Http1Driver($this->options, $emitter, $writer));
-        $this->initializeHttpDrivers(new Http2Driver($this->options, $emitter, $writer));
-
-        $this->state = self::STARTED;
-
-        $notifyResult = yield $this->notify();
-        if ($hadErrors = $notifyResult[0]) {
-            yield from $this->doStop();
-            throw new \RuntimeException(
-                "Server::STARTED observer initialization failure"
-            );
-        }
-
         $this->dropPrivileges();
 
+        $this->state = self::STARTED;
         assert($this->logDebug("started"));
 
         foreach ($this->boundServers as $serverName => $server) {
             $this->acceptWatcherIds[$serverName] = \Amp\onReadable($server, $this->onAcceptable);
             $this->logger->info("Listening on {$serverName}");
         }
+
+        return $this->notify()->when(function($e, $notifyResult) {
+            if ($hadErrors = $e || $notifyResult[0]) {
+                resolve($this->doStop())->when(function($e) {
+                    throw new \RuntimeException(
+                        "Server::STARTED observer initialization failure", 0, $e
+                    );
+                });
+            }
+        });
     }
 
     private function generateBindableAddressContextMap() {
@@ -683,10 +682,6 @@ class Server {
         $ireq->method = $method;
         $ireq->headers = $headers;
         $ireq->body = $this->nullBody;
-        $ireq->serverPort = $client->serverPort;
-        $ireq->serverAddr = $client->serverAddr;
-        $ireq->clientPort = $client->clientPort;
-        $ireq->clientAddr = $client->clientAddr;
         $ireq->streamId = $parseResult["id"];
 
         if (empty($ireq->headers["cookie"])) {
@@ -838,25 +833,37 @@ class Server {
             $filters = array_diff_key($filters, array_flip($ireq->badFilterKeys));
         }
         $filter = responseFilter($filters, $ireq);
+        $filter->current(); // initialize filters
         $codec = $this->responseCodec($filter, $ireq);
-        $codec->current(); // initialize codec
 
         return $ireq->response = new StandardResponse($codec);
     }
 
     private function responseCodec(\Generator $filter, InternalRequest $ireq): \Generator {
-        do {
-            $cur = $filter->send($yield = yield);
+        while (($yield = yield) !== null) {
+            $cur = $filter->send($yield);
             if ($yield === false) {
-                $ireq->responseWriter->send($cur);
-                if (\is_array($cur)) { // in case of headers, to flush a maybe started body too, we need to send false twice
-                    $ireq->responseWriter->send($filter->send(false));
+                if ($cur !== null) {
+                    $ireq->responseWriter->send($cur);
+                    if (\is_array($cur)) { // in case of headers, to flush a maybe started body too, we need to send false twice
+                        $cur = $filter->send(false);
+                        if ($cur !== null) {
+                            $ireq->responseWriter->send($cur);
+                        }
+                    }
                 }
                 $ireq->responseWriter->send(false);
             } elseif ($cur !== null) {
                 $ireq->responseWriter->send($cur);
             }
-        } while ($yield !== null);
+        }
+
+        $cur = $filter->send(null);
+        if (\is_array($cur)) {
+            $ireq->responseWriter->send($cur);
+            $filter->send(null);
+        }
+        \assert($filter->valid() === false);
 
         $cur = $filter->getReturn();
         if ($cur !== null) {

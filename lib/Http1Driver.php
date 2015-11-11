@@ -8,13 +8,11 @@ class Http1Driver implements HttpDriver {
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
     )x";
 
-    private $options;
     private $parseEmitter;
     private $responseWriter;
     private $h2cUpgradeFilter;
 
-    public function __construct(Options $options, callable $parseEmitter, callable $responseWriter) {
-        $this->options = $options;
+    public function __invoke(callable $parseEmitter, callable $responseWriter) {
         $this->parseEmitter = $parseEmitter;
         $this->responseWriter = $responseWriter;
         $this->h2cUpgradeFilter = function(InternalRequest $ireq) {
@@ -31,6 +29,7 @@ class Http1Driver implements HttpDriver {
             $ireq->client->httpDriver = $httpDriver;
             $ireq->responseWriter = $httpDriver->writer($ireq);
         };
+        return $this;
     }
 
     public function versions(): array {
@@ -45,7 +44,7 @@ class Http1Driver implements HttpDriver {
         if ($userFilters = $ireq->vhost->getFilters()) {
             $filters = array_merge($filters, array_values($userFilters));
         }
-        if ($this->options->deflateEnable) {
+        if ($ireq->client->options->deflateEnable) {
             $filters[] = '\Aerys\deflateResponseFilter';
         }
         if ($ireq->protocol === "1.1") {
@@ -117,10 +116,10 @@ class Http1Driver implements HttpDriver {
     }
 
     public function parser(Client $client): \Generator {
-        $maxHeaderSize = $this->options->maxHeaderSize;
-        $maxPendingSize = $this->options->maxPendingSize;
-        $maxBodySize = $this->options->maxBodySize;
-        $bodyEmitSize = $this->options->ioGranularity;
+        $maxHeaderSize = $client->options->maxHeaderSize;
+        $maxPendingSize = $client->options->maxPendingSize;
+        $maxBodySize = $client->options->maxBodySize;
+        $bodyEmitSize = $client->options->ioGranularity;
 
         $buffer = "";
 

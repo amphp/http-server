@@ -47,17 +47,15 @@ class Http2Driver implements HttpDriver {
     const INADEQUATE_SECURITY = 0xc;
     const HTTP_1_1_REQUIRED = 0xd;
 
-    private $options;
     private $counter = "aaaaaaaa"; // 64 bit for ping (@TODO we maybe want to timeout once a day and reset the first letter of counter to "a")
 
     private $emit;
     private $write;
 
-    public function __construct(Options $options, callable $emit, callable $write) {
-        $this->options = $options;
-
+    public function __invoke(callable $emit, callable $write) {
         $this->emit = $emit;
         $this->write = $write;
+        return $this;
     }
 
     public function versions(): array {
@@ -72,7 +70,7 @@ class Http2Driver implements HttpDriver {
         if ($userFilters = $ireq->vhost->getFilters()) {
             $filters = array_merge($filters, array_values($userFilters));
         }
-        if ($this->options->deflateEnable) {
+        if ($ireq->client->options->deflateEnable) {
             $filters[] = '\Aerys\deflateResponseFilter';
         }
         if ($ireq->method === "HEAD") {
@@ -138,7 +136,7 @@ class Http2Driver implements HttpDriver {
 
     private function dispatchInternalRequest(InternalRequest $ireq, string $url, array $pushHeaders = null) {
         $client = $ireq->client;
-        $id = $client->serverStreamId += 2;
+        $id = $client->streamId += 2;
 
         if ($pushHeaders === null) {
             // headers to take over from original request if present
@@ -347,10 +345,10 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack(
 
     public function parser(Client $client): \Generator {
         // @TODO apply restrictions
-        $maxHeaderSize = $this->options->maxHeaderSize;
-        $maxPendingSize = $this->options->maxPendingSize;
-        $maxBodySize = $this->options->maxBodySize;
-        // $bodyEmitSize = $this->options->ioGranularity; // redundant because data frames (?)
+        $maxHeaderSize = $client->options->maxHeaderSize;
+        $maxPendingSize = $client->options->maxPendingSize;
+        $maxBodySize = $client->options->maxBodySize;
+        // $bodyEmitSize = $client->options->ioGranularity; // redundant because data frames (?)
 
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
 

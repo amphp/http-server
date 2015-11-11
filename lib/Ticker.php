@@ -18,11 +18,11 @@ class Ticker implements ServerObserver {
     public $currentTime;
     public $currentHttpDate;
 
-    final public function __construct(Logger $logger) {
+    public function __construct(Logger $logger) {
         $this->logger = $logger;
     }
 
-    final public function update(Server $server): Promise {
+    public function update(Server $server): Promise {
         switch ($server->state()) {
             case Server::STARTED:
                 $this->watcherId = \Amp\repeat([$this, "updateTime"], 1000);
@@ -45,7 +45,7 @@ class Ticker implements ServerObserver {
      * @param callable $useCallback
      * @return void
      */
-    final public function use(callable $useCallback) {
+    public function use(callable $useCallback) {
         $this->useCallbacks[] = $useCallback;
     }
 
@@ -54,7 +54,7 @@ class Ticker implements ServerObserver {
      *
      * @return void
      */
-    final public function updateTime() {
+    public function updateTime() {
         // Date string generation is (relatively) expensive. Since we only need HTTP
         // dates at a granularity of one second we're better off to generate this
         // information once per second and cache it.
