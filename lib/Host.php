@@ -167,7 +167,7 @@ class Host {
         return $this;
     }
 
-    private static function separateIPv4Binding(): bool {
+    public static function separateIPv4Binding(): bool {
         static $separateIPv6 = null;
 
         if ($separateIPv6 === null) {

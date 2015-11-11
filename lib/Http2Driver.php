@@ -158,7 +158,7 @@ class Http2Driver implements HttpDriver {
         $headerArray = $headerList = [];
 
         $url = parse_url($url);
-        $scheme = $url["scheme"] ?? ($ireq->isEncrypted ? "https" : "http");
+        $scheme = $url["scheme"] ?? ($ireq->client->isEncrypted ? "https" : "http");
         $authority = $url["host"] ?? $ireq->uriHost;
         if (isset($url["port"])) {
             $authority .= ":" . $url["port"];

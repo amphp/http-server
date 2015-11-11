@@ -117,13 +117,14 @@ class StandardRequest implements Request {
      * {@inheritdoc}
      */
     public function getConnectionInfo(): array {
+        $client = $this->internalRequest->client;
         return [
-            "client_port" => $this->internalRequest->clientPort,
-            "client_addr" => $this->internalRequest->clientAddr,
-            "server_port" => $this->internalRequest->serverPort,
-            "server_addr" => $this->internalRequest->serverAddr,
-            "is_encrypted"=> $this->internalRequest->isEncrypted,
-            "crypto_info" => $this->internalRequest->cryptoInfo,
+            "client_port" => $client->clientPort,
+            "client_addr" => $client->clientAddr,
+            "server_port" => $client->serverPort,
+            "server_addr" => $client->serverAddr,
+            "is_encrypted"=> $client->isEncrypted,
+            "crypto_info" => $client->cryptoInfo,
         ];
     }
 }

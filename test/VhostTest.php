@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\Client;
 use Aerys\InternalRequest;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
@@ -17,6 +18,7 @@ class VhostTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals(2, $vhosts->count());
 
         $ireq = new InternalRequest;
+        $ireq->client = new Client;
         $ireq->headers["host"][0] = "localhost";
         $this->assertEquals($localvhost, $vhosts->selectHost($ireq));
         $ireq->headers["host"][0] = "[::]:80";

@@ -456,7 +456,7 @@ class Server {
         $this->clients[$client->id] = $client;
 
         $client->requestParser = $http->parser($client);
-        $client->requestParser->send("");
+        $client->requestParser->valid();
 
         $this->renewKeepAliveTimeout($client);
     }
@@ -675,8 +675,6 @@ class Server {
         $ireq->time = $this->ticker->currentTime;
         $ireq->httpDate = $this->ticker->currentHttpDate;
         $ireq->locals = [];
-        $ireq->isEncrypted = $client->isEncrypted;
-        $ireq->cryptoInfo = $client->cryptoInfo;
         $ireq->trace = $trace;
         $ireq->protocol = $protocol;
         $ireq->method = $method;

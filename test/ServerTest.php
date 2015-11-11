@@ -13,6 +13,7 @@ use Aerys\Server;
 use Aerys\Ticker;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
+use Amp\Socket as sock;
 
 class ServerTest extends \PHPUnit_Framework_TestCase {
     function tryRequest($emit, $responder, $middlewares = []) {
@@ -32,7 +33,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
 
     function tryLowLevelRequest($vhosts, $responder, $middlewares) {
         $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
-        $server = new Server(new Options, $vhosts, $logger, new Ticker($logger), [$driver = new class($this) implements HttpDriver {
+        new Server(new Options, $vhosts, $logger, new Ticker($logger), [$driver = new class($this) implements HttpDriver {
             private $test;
             private $emit;
             public $headers;
@@ -208,4 +209,110 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals("Weinand is 19!", $body);
     }
 
+    function startServer($parser, $tls) {
+        if (!$server = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
+            $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
+        }
+        $address = stream_socket_get_name($server, $wantPeer = false);
+        fclose($server);
+
+        $vhosts = new class($tls, $address, $this) extends VhostContainer {
+            public function __construct($tls, $address, $test) { $this->tls = $tls; $this->test = $test; $this->address = $address; }
+            public function getBindableAddresses(): array { return [$this->address]; }
+            public function getTlsBindingsByAddress(): array { return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_TLS_SERVER]] : []; }
+            public function selectHost(InternalRequest $ireq): Vhost { $this->test->fail("We should never get to dispatching requests here..."); }
+            public function count() { return 1; }
+        };
+
+        $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
+        $server = new Server(new Options, $vhosts, $logger, new Ticker($logger), [$driver = new class($this) implements HttpDriver {
+            private $test;
+            private $write;
+            public $parser;
+
+            public function __construct($test) {
+                $this->test = $test;
+            }
+
+            public function __invoke(callable $emit, callable $write) {
+                $this->write = $write;
+                return $this;
+            }
+
+            public function versions(): array {
+                return ["1.1"]; // default entry point is 1.1
+            }
+
+            public function filters(InternalRequest $ireq): array {
+                return $ireq->vhost->getFilters();
+            }
+
+            public function writer(InternalRequest $ireq): \Generator {
+                $this->test->fail("We shouldn't be invoked the writer when not dispatching requests");
+            }
+
+            public function parser(Client $client): \Generator {
+                yield from ($this->parser)($client, $this->write);
+            }
+        }]);
+        $driver->parser = $parser;
+        yield $server->start();
+        return $address;
+    }
+
+    function testUnencryptedIO() {
+        \Amp\run(function() {
+            $address = yield from $this->startServer(function (Client $client, $write) {
+                $this->assertFalse($client->isEncrypted);
+
+                $this->assertEquals("a", yield);
+                $this->assertEquals("b", yield);
+                $client->writeBuffer .= "c";
+                $write($client, false);
+                $client->writeBuffer .= "d";
+                $write($client, true);
+            }, false);
+
+            $client = new sock\Client(yield sock\connect($address));
+            yield $client->write("a");
+            yield; // give readWatcher a chance
+            yield $client->write("b");
+            $this->assertEquals("cd", yield $client->read(2));
+            \Amp\stop();
+            \Amp\reactor(\Amp\driver());
+        });
+    }
+
+    function testEncryptedIO() {
+        \Amp\run(function() {
+            $deferred = new \Amp\Deferred;
+            $address = yield from $this->startServer(function (Client $client, $write) use ($deferred) {
+                $this->assertTrue($client->isEncrypted);
+                $this->assertNotTrue($client->isDead);
+
+                do {
+                    $dump = ($dump ?? "") . yield;
+                } while (strlen($dump) <= 65537);
+                $this->assertEquals("1a", substr($dump, -2));
+                $client->writeBuffer = "b";
+                $write($client, true);
+
+                try {
+                    yield;
+                } finally {
+                    $this->assertTrue($client->isDead);
+                    $deferred->succeed();
+                }
+            }, true);
+
+            $client = new sock\Client(yield sock\cryptoConnect($address, ["allow_self_signed" => true, "peer_name" => "localhost"]));
+            yield $client->write(str_repeat("1", 65537)); // larger than one TCP frame
+            yield $client->write("a");
+            $this->assertEquals("b", yield $client->read(1));
+            $client->close();
+            yield $deferred->promise();
+            \Amp\stop();
+            \Amp\reactor(\Amp\driver());
+        });
+    }
 }

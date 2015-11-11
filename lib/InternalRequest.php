@@ -15,8 +15,6 @@ class InternalRequest {
     public $badFilterKeys = [];
     public $filterErrorFlag;
     public $isServerStopping;
-    public $isEncrypted;
-    public $cryptoInfo;
     public $streamId;
     public $trace;
     public $protocol;

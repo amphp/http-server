@@ -93,7 +93,7 @@ class VhostContainer implements \Countable {
      *       virtual host when in this mode.
      */
     private function selectHostByAbsoluteUri(InternalRequest $ireq) {
-        $port = $ireq->uriPort ?? ($ireq->isEncrypted ? 443 : 80);
+        $port = $ireq->uriPort ?? ($ireq->client->isEncrypted ? 443 : 80);
         $vhostId = "{$ireq->uriHost}:{$port}";
 
         return $this->selectHostByAuthority($ireq, $vhostId);
@@ -103,12 +103,12 @@ class VhostContainer implements \Countable {
         if ($portStartPos = strrpos($explicitHostId, "]")) {
             $ipComparison = substr($explicitHostId, 1, $portStartPos - 1);
             $port = substr($explicitHostId, $portStartPos + 2);
-            $port = ($port === FALSE) ? ($ireq->isEncrypted ? "443" : "80") : $port;
+            $port = ($port === FALSE) ? ($ireq->client->isEncrypted ? "443" : "80") : $port;
         } elseif ($portStartPos = strrpos($explicitHostId, ":")) {
             $ipComparison = substr($explicitHostId, 0, $portStartPos);
             $port = substr($explicitHostId, $portStartPos + 1);
         } else {
-            $port = $ireq->isEncrypted ? "443" : "80";
+            $port = $ireq->client->isEncrypted ? "443" : "80";
             $ipComparison = $explicitHostId;
             $explicitHostId .= ":{$port}";
         }
@@ -135,7 +135,7 @@ class VhostContainer implements \Countable {
         // displaying unencrypted data as a result of carefully crafted Host headers. This is an
         // extreme edge case but it's potentially exploitable without this check.
         // DO NOT REMOVE THIS UNLESS YOU'RE SURE YOU KNOW WHAT YOU'RE DOING.
-        if ($vhost && $vhost->isEncrypted() != $ireq->isEncrypted) {
+        if ($vhost && $vhost->isEncrypted() != $ireq->client->isEncrypted) {
             $vhost = null;
         }
 
