@@ -584,7 +584,7 @@ class Server {
         $this->clearKeepAliveTimeout($client);
 
         // @TODO find better way to hook in!?
-        if ($this->httpDriver[$parseResult["protocol"]] != $client->httpDriver) {
+        if (isset($this->httpDriver[$parseResult["protocol"]]) && $this->httpDriver[$parseResult["protocol"]] != $client->httpDriver) {
             $this->onParseUpgrade($client, $parseResult);
         }
 
@@ -615,7 +615,7 @@ class Server {
         // Don't respond() because we always start the response when headers arrive
 
         // @TODO find better way to hook in!?
-        if ($this->httpDriver[$parseResult["protocol"]] != $client->httpDriver) {
+        if (isset($this->httpDriver[$parseResult["protocol"]]) && $this->httpDriver[$parseResult["protocol"]] != $client->httpDriver) {
             $this->onParseUpgrade($client, $parseResult);
         }
     }

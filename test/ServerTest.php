@@ -27,7 +27,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
 
     function tryIterativeRequest($responder, $middlewares = []) {
         $vhosts = new VhostContainer;
-        $vhosts->use(new Vhost("", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));
+        $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));
         yield from $this->tryLowLevelRequest($vhosts, $responder, $middlewares);
     }
 
@@ -77,11 +77,10 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
                 ($this->emit)($emit, $this->client);
             }
         }]);
-
         $part = yield;
         while (1) {
             $driver->emit($part);
-            $part = yield [$driver->headers, $driver->body];
+            $part = yield [&$driver->headers, &$driver->body];
         }
     }
 
@@ -209,6 +208,87 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals("Weinand is 19!", $body);
     }
 
+    /**
+     * @dataProvider providePreResponderHeaders
+     */
+    function testPreResponderFailures($result, $status) {
+        $parseResult = $result + [
+            "id" => 2,
+            "trace" => [["host", "localhost"]],
+            "protocol" => "2.0",
+            "method" => "GET",
+            "uri" => "/foo",
+            "headers" => ["host" => ["localhost"]],
+            "body" => "",
+        ];
+
+        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) { $this->fail("We should already have failed and never invoke the responder..."); });
+
+        $this->assertEquals($status, $headers[":status"]);
+    }
+
+    public function providePreResponderHeaders() {
+        return [
+            [["protocol" => "0.9"], \Aerys\HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]],
+            [["headers" => ["host" => "undefined"]], \Aerys\HTTP_STATUS["BAD_REQUEST"]],
+            [["method" => "NOT_ALLOWED"], \Aerys\HTTP_STATUS["METHOD_NOT_ALLOWED"]],
+        ];
+    }
+
+    function testOptionsRequest() {
+        $parseResult = [
+                "id" => 2,
+                "trace" => [["host", "localhost"]],
+                "protocol" => "2.0",
+                "method" => "OPTIONS",
+                "uri" => "*",
+                "headers" => ["host" => ["localhost"]],
+                "body" => "",
+            ];
+
+        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) { $this->fail("We should already have failed and never invoke the responder..."); });
+
+        $this->assertEquals(\Aerys\HTTP_STATUS["OK"], $headers[":status"]);
+        $this->assertEquals(implode(",", (new Options)->allowedMethods), $headers["allow"][0]);
+    }
+
+    function testError() {
+        $parseResult = [
+                "id" => 2,
+                "trace" => [["host", "localhost"]],
+                "protocol" => "2.0",
+                "method" => "GET",
+                "uri" => "/foo",
+                "headers" => ["host" => ["localhost"]],
+                "body" => "",
+            ];
+
+        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) { throw new \Exception; });
+
+        $this->assertEquals(\Aerys\HTTP_STATUS["INTERNAL_SERVER_ERROR"], $headers[":status"]);
+    }
+
+    function testNotFound() {
+        $parseResult = [
+                "id" => 2,
+                "trace" => [["host", "localhost"]],
+                "protocol" => "2.0",
+                "method" => "GET",
+                "uri" => "/foo",
+                "headers" => ["host" => ["localhost"]],
+                "body" => "",
+            ];
+
+        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) { /* nothing */ });
+        $this->assertEquals(\Aerys\HTTP_STATUS["NOT_FOUND"], $headers[":status"]);
+
+        // with coroutine
+        $deferred = new \Amp\Deferred;
+        $result = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) use ($deferred) { yield $deferred->promise(); });
+        $deferred->succeed();
+        $this->assertEquals(\Aerys\HTTP_STATUS["NOT_FOUND"], $result[0][":status"]);
+    }
+
     function startServer($parser, $tls) {
         if (!$server = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
             $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
@@ -257,12 +337,12 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
         }]);
         $driver->parser = $parser;
         yield $server->start();
-        return $address;
+        return [$address, $server];
     }
 
     function testUnencryptedIO() {
         \Amp\run(function() {
-            $address = yield from $this->startServer(function (Client $client, $write) {
+            list($address, $server) = yield from $this->startServer(function (Client $client, $write) {
                 $this->assertFalse($client->isEncrypted);
 
                 $this->assertEquals("a", yield);
@@ -278,6 +358,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             yield; // give readWatcher a chance
             yield $client->write("b");
             $this->assertEquals("cd", yield $client->read(2));
+            yield $server->stop();
             \Amp\stop();
             \Amp\reactor(\Amp\driver());
         });
@@ -286,7 +367,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
     function testEncryptedIO() {
         \Amp\run(function() {
             $deferred = new \Amp\Deferred;
-            $address = yield from $this->startServer(function (Client $client, $write) use ($deferred) {
+            list($address) = yield from $this->startServer(function (Client $client, $write) use ($deferred) {
                 $this->assertTrue($client->isEncrypted);
                 $this->assertNotTrue($client->isDead);
 
