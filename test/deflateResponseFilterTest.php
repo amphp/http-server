@@ -39,7 +39,7 @@ class deflateResponseFilterTest extends \PHPUnit_Framework_TestCase {
                 }
             }
             if ($newHeader === null) {
-                $newHeader = $deflate->getReturn() ?? $header;
+                $newHeader = $deflate->getReturn();
             } else {
                 $result .= $deflate->getReturn();
                 $this->assertEquals($data, $result);
