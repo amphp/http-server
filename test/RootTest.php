@@ -93,6 +93,14 @@ class RootTest extends \PHPUnit_Framework_TestCase {
 
     function testBasicFileResponse() {
         $root = new \Aerys\Root(self::fixturePath());
+        $server = new class extends Server {
+            function __construct() {}
+            function attach(ServerObserver $obj){}
+            function detach(ServerObserver $obj){}
+            function getOption(string $option) { return true; }
+            function state(): int { return Server::STARTING; }
+        };
+        $root->update($server);
         foreach ([
             ["/", "test"],
             ["/index.htm", "test"],
@@ -109,9 +117,19 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             $response->expects($this->once())
                 ->method("end")
                 ->with($contents);
+            $response->expects($this->atLeastOnce())
+                ->method("setHeader")
+                ->will($this->returnCallback(function ($header, $value) use ($response, &$wasCalled): Response {
+                    if ($header === "Content-Type") {
+                        $this->assertEquals("text/html; charset=utf-8", $value);
+                        $wasCalled = true;
+                    }
+                    return $response;
+                }));
             $generator = $root->__invoke($request, $response);
             $promise = \Amp\resolve($generator);
             \Amp\wait($promise);
+            $this->assertTrue($wasCalled);
         }
 
         // Return so we can test cached responses in the next case
