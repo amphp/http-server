@@ -90,7 +90,7 @@ class Host {
     public function use($action): Host {
         if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable)) {
             throw new \InvalidArgumentException(
-                __METHOD__ . " requires a callable action or Middleware instance"
+                __METHOD__ . " requires a callable action or Bootable or Middleware instance"
             );
         }
 
