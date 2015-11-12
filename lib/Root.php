@@ -401,7 +401,7 @@ class Root implements ServerObserver {
          *
          *     If-Range = "If-Range" ":" ( entity-tag | HTTP-date )
          *
-         * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.27
+         * @link https://tools.ietf.org/html/rfc7233#section-3.2
          */
         if ($httpDate = @\strtotime($ifRange)) {
             return ($httpDate > $mtime) ? self::PRECOND_IF_RANGE_OK : self::PRECOND_IF_RANGE_FAILED;
@@ -465,7 +465,7 @@ class Root implements ServerObserver {
     }
 
     /**
-     * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
+     * @link https://tools.ietf.org/html/rfc7233#section-2.1
      */
     private function normalizeByteRanges(int $size, string $rawRanges) {
         $rawRanges = \str_ireplace([' ', 'bytes='], '', $rawRanges);
@@ -709,7 +709,7 @@ class Root implements ServerObserver {
         $this->defaultMimeType = $mimeType;
     }
 
-    private function setDefaultCharset(string $charset) {
+    private function setDefaultTextCharset(string $charset) {
         if (empty($charset)) {
             throw new \InvalidArgumentException(
                 'Default charset expects a non-empty string'
@@ -748,10 +748,10 @@ class Root implements ServerObserver {
     }
 
     private function setBufferedFileMaxCount(int $count) {
-        if ($entries < 1) {
-            $entries = 0;
+        if ($count < 1) {
+            $count = 0;
         }
-        $this->bufferedFileMaxCount = $entries;
+        $this->bufferedFileMaxCount = $count;
     }
 
     private function setBufferedFileMaxSize(int $bytes) {
