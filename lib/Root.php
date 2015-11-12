@@ -161,7 +161,7 @@ class Root implements ServerObserver {
                 break;
             }
             if (substr($inputBuffer, 0, 4) === "/../") {
-                array_pop($outputStack);
+                while (array_pop($outputStack) === "/");
                 $inputBuffer = substr($inputBuffer, 3);
                 continue;
             }
@@ -479,7 +479,7 @@ class Root implements ServerObserver {
                 return null;
             }
 
-            list($startPos, $endPos) = explode('-', rtrim($range));
+            list($startPos, $endPos) = explode('-', rtrim($range), 2);
 
             if ($startPos === '' && $endPos === '') {
                 return null;
@@ -519,14 +519,14 @@ class Root implements ServerObserver {
     }
 
     private function doRangeResponse($range, $fileInfo, Response $response) {
-        $this->assignCommonHeaders($fileInfo);
+        $this->assignCommonHeaders($fileInfo, $response);
         $range->contentType = $mime = $this->selectMimeTypeFromPath($fileInfo->path);
 
         if (isset($range->ranges[1])) {
             $response->setHeader("Content-Type", "multipart/byteranges; boundary={$range->boundary}");
         } else {
             list($startPos, $endPos) = $range->ranges[0];
-            $response->setHeader("Content-Length", (string) ($endPos - $startPos));
+            $response->setHeader("Content-Length", (string) ($endPos - $startPos + 1));
             $response->setHeader("Content-Range", "bytes {$startPos}-{$endPos}/{$fileInfo->size}");
             $response->setHeader("Content-Type", $mime);
         }
@@ -547,6 +547,7 @@ class Root implements ServerObserver {
         } else {
             yield from $this->sendMultiRange($handle, $response, $fileInfo, $range);
         }
+        $response->end();
     }
 
     private function sendNonRange(file\Handle $handle, Response $response): \Generator {
@@ -557,10 +558,12 @@ class Root implements ServerObserver {
     }
 
     private function sendSingleRange(file\Handle $handle, Response $response, int $startPos, int $endPos): \Generator {
-        $bytesRemaining = $endPos - $startPos;
+        $bytesRemaining = $endPos - $startPos + 1;
+        yield $handle->seek($startPos);
         while ($bytesRemaining) {
             $toBuffer = ($bytesRemaining > 8192) ? 8192 : $bytesRemaining;
             $chunk = yield $handle->read($toBuffer);
+            $bytesRemaining -= \strlen($chunk);
             $response->stream($chunk);
         }
     }
@@ -766,6 +769,9 @@ class Root implements ServerObserver {
      */
     public function update(Server $server): amp\Promise {
         switch ($server->state()) {
+            case Server::STARTING:
+                $this->loadMimeFileTypes(__DIR__."/../etc/mime");
+                break;
             case Server::STARTED:
                 $this->debug = $server->getOption("debug");
                 amp\enable($this->cacheWatcher);
