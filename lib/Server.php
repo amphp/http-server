@@ -718,7 +718,7 @@ class Server {
         if ($client->httpDriver instanceof Http1Driver && !$client->isEncrypted) {
             $h2cUpgrade = $headers["upgrade"][0] ?? "";
             if ($h2cUpgrade && strcasecmp($h2cUpgrade, "h2c") === 0) {
-                if (isset($headers["http2-settings"][0]) && false !== $h2cSettings = base64_decode($headers["http2-settings"])) {
+                if (isset($headers["http2-settings"][0]) && false !== $h2cSettings = base64_decode($headers["http2-settings"][0])) {
                     $h2cSettingsFrame = substr(pack("N", \strlen($h2cSettings)), 1, 3) . Http2Driver::SETTINGS . Http2Driver::NOFLAG . "\0\0\0\0$h2cSettings";
                     $this->onParseUpgrade($client, ["unparsed" => $h2cSettingsFrame, "protocol" => "2.0"]);
                 } else {

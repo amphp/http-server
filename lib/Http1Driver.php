@@ -10,25 +10,10 @@ class Http1Driver implements HttpDriver {
 
     private $parseEmitter;
     private $responseWriter;
-    private $h2cUpgradeFilter;
 
     public function __invoke(callable $parseEmitter, callable $responseWriter) {
         $this->parseEmitter = $parseEmitter;
         $this->responseWriter = $responseWriter;
-        $this->h2cUpgradeFilter = function(InternalRequest $ireq) {
-            $ireq->responseWriter->send([
-                ":status" => HTTP_STATUS["SWITCHING_PROTOCOLS"],
-                ":reason" => "Switching Protocols",
-                "connection" => ["Upgrade"],
-                "upgrade" => ["h2c"],
-            ]);
-            $ireq->responseWriter->send(false); // flush before replacing
-
-            // @TODO inject this into the current h1 driver instance when instantiated
-            $httpDriver = $this->h2Driver;
-            $ireq->client->httpDriver = $httpDriver;
-            $ireq->responseWriter = $httpDriver->writer($ireq);
-        };
         return $this;
     }
 
@@ -37,6 +22,43 @@ class Http1Driver implements HttpDriver {
     }
 
     public function filters(InternalRequest $ireq): array {
+        // We need this in filters to be able to return HTTP/2.0 filters; if we allow HTTP/1.1 filters to be returned, we have lost
+        if (isset($ireq->headers["upgrade"][0]) &&
+            $ireq->headers["upgrade"][0] === "h2c" &&
+            $ireq->protocol === "1.1"
+        ) {
+            // Send upgrading response
+            $ireq->responseWriter->send([
+                ":status" => HTTP_STATUS["SWITCHING_PROTOCOLS"],
+                ":reason" => "Switching Protocols",
+                "connection" => ["Upgrade"],
+                "upgrade" => ["h2c"],
+            ]);
+            $ireq->responseWriter->send(false); // flush before replacing
+
+            // internal upgrade
+            ($this->parseEmitter)([HttpDriver::UPGRADE, ["protocol" => "2.0", "unparsed" => ""], null], $ireq->client);
+            $ireq->responseWriter = $ireq->client->httpDriver->writer($ireq);
+            $ireq->streamId = 1;
+            $ireq->client->streamWindow[$ireq->streamId] = $ireq->client->window;
+            $ireq->client->streamWindowBuffer[$ireq->streamId] = "";
+            $ireq->protocol = "2.0";
+
+            /// Make request look HTTP/2 compatible
+            $ireq->headers[":scheme"] = $ireq->client->isEncrypted ? ["https"] : ["http"];
+            $ireq->headers[":authority"] = $ireq->headers["host"];
+            $ireq->headers[":path"] = $ireq->uriPath;
+            $ireq->headers[":method"] = $ireq->method;
+            $host = explode(":", $ireq->headers["host"][0]);
+            if (count($host) > 1) {
+                $ireq->uriPort = array_pop($host);
+            }
+            $ireq->uriHost = implode(":", $host);
+            unset($ireq->headers["host"]);
+
+            return $ireq->client->httpDriver->filters($ireq);
+        }
+
         $filters = [
             [$this, "responseInitFilter"],
             '\Aerys\genericResponseFilter',
@@ -52,12 +74,6 @@ class Http1Driver implements HttpDriver {
         }
         if ($ireq->method === "HEAD") {
             $filters[] = '\Aerys\nullBodyResponseFilter';
-        }
-        if ($ireq->protocol === "1.1" &&
-            isset($ireq->headers["upgrade"][0]) &&
-            $ireq->headers["upgrade"][0] === "h2c"
-        ) {
-            $filters[] = $this->h2cUpgradeFilter;
         }
 
         return $filters;

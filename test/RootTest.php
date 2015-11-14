@@ -2,7 +2,6 @@
 
 namespace Aerys\Test;
 
-use Aerys\InternalRequest;
 use Aerys\Response;
 use Aerys\Server;
 use Aerys\ServerObserver;
