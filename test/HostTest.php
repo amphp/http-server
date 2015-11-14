@@ -50,7 +50,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Invalid redirect URI
      */
     function testBadRedirectUrl() {
-        $this->getHost()->redirect(".");
+        $this->getHost()->redirect(":");
     }
 
     /**

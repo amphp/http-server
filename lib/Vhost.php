@@ -2,11 +2,6 @@
 
 namespace Aerys;
 
-use Amp\{
-    Promise,
-    Success
-};
-
 class Vhost {
     private $application;
     private $interfaces;
@@ -49,6 +44,7 @@ class Vhost {
         "any"       => STREAM_CRYPTO_METHOD_ANY_SERVER,
     ];
 
+    /** @Note Vhosts do not allow wildcards, only separate 0.0.0.0 and :: */
     public function __construct(string $name, array $interfaces, callable $application, array $filters) {
         $this->name = strtolower($name);
         if (!$interfaces) {
@@ -93,7 +89,7 @@ class Vhost {
 
         if (!$packedAddress = @inet_pton($address)) {
             throw new \InvalidArgumentException(
-                "IPv4, IPv6 or wildcard address required: {$address}"
+                "IPv4 or IPv6 address required: {$address}"
             );
         }
 
@@ -199,7 +195,7 @@ class Vhost {
     /**
      * Define TLS encryption settings for this host
      *
-     * @param array An array mapping TLS stream context values
+     * @param array $tls An array mapping TLS stream context values
      * @link http://php.net/manual/en/context.ssl.php
      * @return void
      */
@@ -224,11 +220,11 @@ class Vhost {
             );
         }
 
-        if (!preg_match("#-----BEGIN( [A-Z]+)? PRIVATE KEY-----#", $rawCert)) {
+        if (!isset($tls['local_pk']) && !preg_match("#-----BEGIN( [A-Z]+)? PRIVATE KEY-----#", $rawCert)) {
             throw new \RuntimeException(
                 "TLS certificate `{$certBase}` appears to be missing the private key in host " .
                 "`{$this}`; encrypted hosts must concatenate their private key into the same " .
-                "file with the public key and any intermediate CA certs."
+                "file with the public key and any intermediate CA certs or use the local_pk option."
             );
         }
 
@@ -337,16 +333,6 @@ class Vhost {
      */
     public function getTlsContextArr(): array {
         return $this->tlsContextArr;
-    }
-
-    /**
-     * Add a filter to this host
-     *
-     * @param callable $callable
-     * @return void
-     */
-    public function addFilter(callable $callable) {
-        $this->filters[] = $callable;
     }
 
     /**
