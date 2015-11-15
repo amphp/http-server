@@ -81,7 +81,10 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
 
         $executed = false; $frame = 0;
         // do not iterate 1 by 1 for big strings, that's too slow.
-        for ($i = 0, $off = max(strlen($msg) << 6, 1), $it = ceil(strlen($msg) / $off); $i < $it; $i++) {
+        for ($i = 0, $off = max(strlen($msg) >> 6, 1); $i < $off; $i++) {
+            $parser->send($msg[$i]);
+        }
+        for ($i = 1, $it = ceil(strlen($msg) / $off); $i < $it; $i++) {
             $parser->send(substr($msg, $i * $off, $off));
         }
         if (array_reduce($expected, function($error, $expectation) { return $error || $expectation[0] === Rfc6455Endpoint::ERROR; }, false)) {
@@ -173,8 +176,8 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
 
         // 35 ---- utf-8 validation must fail for bad utf-8 data (multiple big frames) ------------>
 
-        $data = "H".str_repeat("ö", 32770);
-        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, substr($data, 0, 32769)) . $this->compile(Rfc6455Endpoint::OP_CONT, true, substr($data, 32770));
+        $data = "H".str_repeat("ö", 40000);
+        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, substr($data, 0, 32767)) . $this->compile(Rfc6455Endpoint::OP_CONT, false, substr($data, 32768));
         $return[] = [$input, [[Rfc6455Endpoint::ERROR, Code::INCONSISTENT_FRAME_DATA_TYPE]]];
 
         // 36 ---- error conditions: using a too large payload with a control opcode -------------->
@@ -185,6 +188,11 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
         // 37 ---- error conditions: unmasked data ------------------------------------------------>
 
         $input = substr($this->compile(Rfc6455Endpoint::OP_PING, true, str_repeat("*", 125)), 0, -4) & ("\xFF\x7F" . str_repeat("\xFF", 0xFF));
+        $return[] = [$input, [[Rfc6455Endpoint::ERROR, Code::PROTOCOL_ERROR]]];
+
+        // 38 ---- error conditions: too large frame (> 2^63 bit) --------------------------------->
+
+        $input = $this->compile(Rfc6455Endpoint::OP_BIN, true, str_repeat("*", 65536)) | ("\x00\x00\x80" . str_repeat("\x00", 0xFF));
         $return[] = [$input, [[Rfc6455Endpoint::ERROR, Code::PROTOCOL_ERROR]]];
 
         // x -------------------------------------------------------------------------------------->
