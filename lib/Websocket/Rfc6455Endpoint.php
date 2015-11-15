@@ -49,10 +49,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     private $queuedPingLimit = 3;
     // @TODO add minimum average frame size rate threshold to prevent tiny-frame DoS
 
-    const FRAME_END = 1;
-    const MESSAGE_END = 2;
-    const CONTROL_END = 3;
-
     /* Frame control bits */
     const FIN      = 0b1;
     const RSV_NONE = 0b000;
@@ -463,7 +459,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         }
 
         $msg = $frameInfo["msg"];
-        $len = strlen($msg);
+        $len = \strlen($msg);
 
         $w = chr(($frameInfo["fin"] << 7) | ($frameInfo["rsv"] << 4) | $frameInfo["opcode"]);
 
@@ -484,7 +480,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $deferred = $client->writeDeferredDataQueue[] = new Deferred;
             } else {
                 $client->writeDataQueue[] = $w;
-                $deferred =  $client->writeDeferredControlQueue[] = new Deferred;
+                $deferred = $client->writeDeferredControlQueue[] = new Deferred;
             }
         } else {
             $client->writeBuffer = $w;
@@ -530,8 +526,8 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             $opcode = $binary ? self::OP_BIN : self::OP_TEXT;
             assert($binary || preg_match("//u", $data), "non-binary data needs to be UTF-8 compatible");
 
-            if (strlen($data) > 1.5 * $this->autoFrameSize) {
-                $len = strlen($data);
+            if (\strlen($data) > 1.5 * $this->autoFrameSize) {
+                $len = \strlen($data);
                 $slices = ceil($len / $this->autoFrameSize);
                 $frames = str_split($data, ceil($len / $slices));
                 foreach ($frames as $frame) {
@@ -699,9 +695,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         $maxFrameSize = $options["max_frame_size"] ?? PHP_INT_MAX;
         $maxMsgSize = $options["max_msg_size"] ?? PHP_INT_MAX;
         $textOnly = $options["text_only"] ?? false;
-        $validateUtf8 = $options["validate_utf8"] ?? false;
+        $doUtf8Validation = $validateUtf8 = $options["validate_utf8"] ?? false;
 
         $dataMsgBytesRecd = 0;
+        $nextEmit = $emitThreshold;
         $dataArr = [];
 
         $buffer = yield;
@@ -710,7 +707,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
         while (1) {
             $frameBytesRecd = 0;
-            $isControlFrame = null;
             $payloadReference = '';
 
             while ($bufferSize < 2) {
@@ -732,7 +728,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             $maskingKey = null;
             $frameLength = $secondByte & 0b01111111;
 
-            $isControlFrame = ($opcode >= 0x08);
+            $isControlFrame = $opcode >= 0x08;
+            if ($validateUtf8 && $opcode !== self::OP_CONT && !$isControlFrame) {
+                $doUtf8Validation = $opcode === self::OP_TEXT;
+            }
 
             if ($frameLength === 0x7E) {
                 while ($bufferSize < 2) {
@@ -772,13 +771,28 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 }
             }
 
-            if ($isControlFrame && !$fin) {
+            if ($frameLength > 0 && !$isMasked) {
                 $code = Code::PROTOCOL_ERROR;
-                $errorMsg = 'Illegal control frame fragmentation';
+                $errorMsg = 'Payload mask required';
                 break;
-            } elseif ($isControlFrame && $frameLength > 125) {
+            } elseif ($isControlFrame) {
+                if (!$fin) {
+                    $code = Code::PROTOCOL_ERROR;
+                    $errorMsg = 'Illegal control frame fragmentation';
+                    break;
+                } elseif ($frameLength > 125) {
+                    $code = Code::PROTOCOL_ERROR;
+                    $errorMsg = 'Control frame payload must be of maximum 125 bytes or less';
+                    break;
+                }
+            } elseif (($opcode === 0x00) === ($dataMsgBytesRecd === 0)) {
+                // We deliberately do not accept a non-fin empty initial text frame
                 $code = Code::PROTOCOL_ERROR;
-                $errorMsg = 'Control frame payload must be of maximum 125 bytes or less';
+                if ($opcode === 0x00) {
+                    $errorMsg = 'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY';
+                } else {
+                    $errorMsg = 'Illegal data type opcode after unfinished previous data type frame; opcode MUST be CONTINUATION';
+                }
                 break;
             } elseif ($maxFrameSize && $frameLength > $maxFrameSize) {
                 $code = Code::MESSAGE_TOO_LARGE;
@@ -791,14 +805,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             } elseif ($textOnly && $opcode === 0x02) {
                 $code = Code::UNACCEPTABLE_TYPE;
                 $errorMsg = 'BINARY opcodes (0x02) not accepted';
-                break;
-            } elseif ($frameLength > 0 && !$isMasked) {
-                $code = Code::PROTOCOL_ERROR;
-                $errorMsg = 'Payload mask required';
-                break;
-            } elseif (!($opcode || $isControlFrame)) {
-                $code = Code::PROTOCOL_ERROR;
-                $errorMsg = 'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY';
                 break;
             }
 
@@ -840,18 +846,40 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
                 // if we want to validate UTF8, we must *not* send incremental mid-frame updates because the message might be broken in the middle of an utf-8 sequence
                 // also, control frames always are <= 125 bytes, so we never will need this as per https://tools.ietf.org/html/rfc6455#section-5.5
-                if (!$isControlFrame && !($opcode === self::OP_TEXT && $validateUtf8) && $dataMsgBytesRecd >= $emitThreshold) {
+                if (!$isControlFrame && $dataMsgBytesRecd >= $nextEmit) {
                     if ($isMasked) {
                         $payloadReference ^= str_repeat($maskingKey, ($frameBytesRecd + 3) >> 2);
                         // Shift the mask so that the next data where the mask is used on has correct offset.
                         $maskingKey = substr($maskingKey . $maskingKey, $frameBytesRecd % 4, 4);
                     }
 
-                    $emitCallback([self::DATA, $payloadReference, false], $callbackData);
+                    if ($dataArr) {
+                        $dataArr[] = $payloadReference;
+                        $payloadReference = implode($dataArr);
+                        $dataArr = [];
+                    }
+
+                    if ($doUtf8Validation) {
+                        $string = $payloadReference;
+                        for ($i = 0; !preg_match('//u', $payloadReference) && $i < 8; $i++) {
+                            $payloadReference = substr($payloadReference, 0, -1);
+                        }
+                        if ($i == 8) {
+                            $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
+                            $errorMsg = 'Invalid TEXT data; UTF-8 required';
+                            break;
+                        }
+
+                        $emitCallback([self::DATA, $payloadReference, false], $callbackData);
+                        $payloadReference = $i > 0 ? substr($string, -$i) : '';
+                    } else {
+                        $emitCallback([self::DATA, $payloadReference, false], $callbackData);
+                        $payloadReference = '';
+                    }
 
                     $frameLength -= $frameBytesRecd;
+                    $nextEmit = $dataMsgBytesRecd + $emitThreshold;
                     $frameBytesRecd = 0;
-                    $payloadReference = '';
                 }
 
                 $buffer .= yield $frames;
@@ -865,14 +893,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $payloadReference ^= str_repeat($maskingKey, ($frameLength + 3) >> 2);
             }
 
-            if ($opcode === self::OP_TEXT && $validateUtf8 && !preg_match('//u', $payloadReference)) {
-                $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
-                $errorMsg = 'Invalid TEXT data; UTF-8 required';
-                break;
-            }
-
-            $frames++;
-
             if ($fin || $dataMsgBytesRecd >= $emitThreshold) {
                 if ($isControlFrame) {
                     $emit = [self::CONTROL, $payloadReference, $opcode];
@@ -883,14 +903,39 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                         $dataArr = [];
                     }
 
+                    if ($doUtf8Validation) {
+                        if ($fin) {
+                            $i = preg_match('//u', $payloadReference) ? 0 : 8;
+                        } else {
+                            $string = $payloadReference;
+                            for ($i = 0; !preg_match('//u', $payloadReference) && $i < 8; $i++) {
+                                $payloadReference = substr($payloadReference, 0, -1);
+                            }
+                            if ($i > 0) {
+                                $dataArr[] = substr($string, -$i);
+                            }
+                        }
+                        if ($i == 8) {
+                            $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
+                            $errorMsg = 'Invalid TEXT data; UTF-8 required';
+                            break;
+                        }
+                    }
+
                     $emit = [self::DATA, $payloadReference, $fin];
-                    $dataMsgBytesRecd = 0;
+
+                    if ($fin) {
+                        $dataMsgBytesRecd = 0;
+                    }
+                    $nextEmit = $dataMsgBytesRecd + $emitThreshold;
                 }
 
                 $emitCallback($emit, $callbackData);
             } else {
                 $dataArr[] = $payloadReference;
             }
+
+            $frames++;
         }
 
         // An error occurred...

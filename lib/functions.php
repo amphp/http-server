@@ -255,7 +255,7 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
                 do {
                     $send = array_shift($sendArray);
                     $yielded = $filter->send($send);
-                    if ($yielded === null) {
+                    if ($yielded === null || $yielded === false) {
                         if ($filter->valid()) {
                             if ($key > $hadHeaders) {
                                 if ($send === null) {
@@ -299,7 +299,7 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
                                 } else {
                                     $toSend[] = $yielded;
                                 }
-                            } elseif ($yielded !== null) {
+                            } elseif ($yielded !== null && $yielded !== false) {
                                 $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                                 throw new \DomainException(makeGeneratorError(
                                     $filter,
