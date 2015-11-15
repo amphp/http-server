@@ -24,11 +24,11 @@ class Vhost {
         "disable_compression"   => true,
         "reneg_limit"           => 0,
         "reneg_limit_callback"  => null,
-        "crypto_method"         => STREAM_CRYPTO_METHOD_TLS_SERVER,
+        "crypto_method"         => STREAM_CRYPTO_METHOD_SSLv23_SERVER, /* means: TLS 1.0 and up */
     ];
 
     private static $cryptoMethodMap = [
-        "tls"       => STREAM_CRYPTO_METHOD_TLS_SERVER,
+        "tls"       => STREAM_CRYPTO_METHOD_SSLv23_SERVER, // no, not STREAM_CRYPTO_METHOD_TLS_SERVER, which is equivalent to TLS v1.0 only
         "tls1"      => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
         "tlsv1"     => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
         "tlsv1.0"   => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
@@ -40,7 +40,6 @@ class Vhost {
         "sslv2"     => STREAM_CRYPTO_METHOD_SSLv2_SERVER,
         "ssl3"      => STREAM_CRYPTO_METHOD_SSLv3_SERVER,
         "sslv3"     => STREAM_CRYPTO_METHOD_SSLv3_SERVER,
-        "sslv23"    => STREAM_CRYPTO_METHOD_SSLv23_SERVER,
         "any"       => STREAM_CRYPTO_METHOD_ANY_SERVER,
     ];
 
@@ -289,7 +288,7 @@ class Vhost {
         if (is_string($cryptoMethod)) {
             $cryptoMethodArray = explode(' ', strtolower($cryptoMethod));
         } elseif (is_array($cryptoMethod)) {
-            $cryptoMethodArray =& $cryptoMethod;
+            $cryptoMethodArray = array_map("strtolower", $cryptoMethod);
         } else {
             throw new \DomainException(
                 sprintf('Invalid crypto method type: %s. String or array required', gettype($cryptoMethod))

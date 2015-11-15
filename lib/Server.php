@@ -40,7 +40,6 @@ class Server {
     private $exporter;
     private $onAcceptable;
     private $negotiateCrypto;
-    private $verifyCrypto;
     private $onReadable;
     private $onWritable;
     private $onCoroutineAppResolve;
@@ -65,7 +64,6 @@ class Server {
         $this->exporter = $this->makePrivateCallable("export");
         $this->onAcceptable = $this->makePrivateCallable("onAcceptable");
         $this->negotiateCrypto = $this->makePrivateCallable("negotiateCrypto");
-        $this->verifyCrypto = $this->makePrivateCallable("verifyCrypto");
         $this->onReadable = $this->makePrivateCallable("onReadable");
         $this->onWritable = $this->makePrivateCallable("onWritable");
         $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
@@ -309,40 +307,13 @@ class Server {
         $contextOptions = stream_context_get_options($client);
         if (isset($contextOptions["ssl"])) {
             $clientId = (int) $client;
-            $watcherId = \Amp\onReadable($client, $this->verifyCrypto, $options = [
+            $watcherId = \Amp\onReadable($client, $this->negotiateCrypto, $options = [
                 "cb_data" => $peerName,
             ]);
             $this->pendingTlsStreams[$clientId] = [$watcherId, $client];
         } else {
             $this->importClient($client, $peerName, $this->httpDriver["1.1"]);
         }
-    }
-
-    private function verifyCrypto(string $watcherId, $socket, string $peerName) {
-        $raw = stream_socket_recvfrom($socket, 11, \STREAM_PEEK);
-        if (\strlen($raw) < 11) {
-            if (@feof($socket)) {
-                \assert($this->logDebug("crypto message not received: {$peerName} disconnected"));
-                $this->failCryptoNegotiation($socket);
-            }
-            return;
-        }
-
-        $data = unpack("ctype/nversion/nlength/Nembed/ntopversion", $raw);
-        // do not assert anything here, user might accidentally send a request via http for example
-        if ($data["version"] < 0x303 && $data["version"] >= 0x301) { // minimum version: TLS, but older than TLS 1.2
-            if ($data["topversion"] >= 0x303) {
-                // force at least TLS 1.2 if available! (This is important as some browsers reject HTTP/2 connections with TLS 1.0 or 1.1)
-                stream_context_set_option($socket, "ssl", "crypto_method", STREAM_CRYPTO_METHOD_TLSv1_2_SERVER);
-            }
-        }
-
-        \Amp\cancel($watcherId);
-        $watcherId = \Amp\onReadable($socket, $this->negotiateCrypto, $options = [
-            "cb_data" => $peerName,
-        ]);
-        $this->pendingTlsStreams[(int) $socket][0] = $watcherId;
-        $this->negotiateCrypto($watcherId, $socket, $peerName);
     }
 
     private function negotiateCrypto(string $watcherId, $socket, string $peerName) {

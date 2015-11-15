@@ -299,7 +299,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
         $vhosts = new class($tls, $address, $this) extends VhostContainer {
             public function __construct($tls, $address, $test) { $this->tls = $tls; $this->test = $test; $this->address = $address; }
             public function getBindableAddresses(): array { return [$this->address]; }
-            public function getTlsBindingsByAddress(): array { return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_TLS_SERVER]] : []; }
+            public function getTlsBindingsByAddress(): array { return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER]] : []; }
             public function selectHost(InternalRequest $ireq): Vhost { $this->test->fail("We should never get to dispatching requests here..."); }
             public function count() { return 1; }
         };
@@ -386,7 +386,8 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
                 }
             }, true);
 
-            $client = new sock\Client(yield sock\cryptoConnect($address, ["allow_self_signed" => true, "peer_name" => "localhost"]));
+            // lowest possible
+            $client = new sock\Client(yield sock\cryptoConnect($address, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]));
             yield $client->write(str_repeat("1", 65537)); // larger than one TCP frame
             yield $client->write("a");
             $this->assertEquals("b", yield $client->read(1));
