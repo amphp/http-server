@@ -326,10 +326,6 @@ class WatcherProcess extends Process {
         do {
             yield;
             $data = @fread($ipcClient, 8192);
-            if ($data == "" && (!is_resource($ipcClient) || @feof($ipcClient))) {
-                $this->onDeadIpcClient($readWatcherId, $ipcClient);
-                return;
-            }
 
             $buffer .= $data;
             do {
@@ -350,6 +346,11 @@ class WatcherProcess extends Process {
                 // all messages received from workers are sent to STDOUT
                 $this->console->output($message);
             } while (1);
+
+            if (($data == "" && !is_resource($ipcClient)) || @feof($ipcClient)) {
+                $this->onDeadIpcClient($readWatcherId, $ipcClient);
+                return;
+            }
         } while (1);
     }
 
