@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Amp\Deferred;
+use Amp\{ Deferred, Success };
 
 class WatcherProcess extends Process {
     private $logger;
@@ -10,7 +10,7 @@ class WatcherProcess extends Process {
     private $workerCount;
     private $ipcServerUri;
     private $workerCommand;
-    private $processes = [];
+    private $processes;
     private $ipcClients = [];
     private $procGarbageWatcher;
     private $stopPromisor;
@@ -39,7 +39,7 @@ class WatcherProcess extends Process {
                 $this->expectedFailures--;
                 continue;
             }
-            if (empty($this->stopPromisor)) {
+            if (!$this->stopPromisor) {
                 $this->spawn();
             }
         }
@@ -51,8 +51,10 @@ class WatcherProcess extends Process {
 
         if ($this->stopPromisor && empty($this->processes)) {
             \Amp\cancel($this->procGarbageWatcher);
-            \Amp\immediately([$this->stopPromisor, "succeed"]);
-            $this->stopPromisor = null;
+            if ($this->stopPromisor !== true) {
+                \Amp\immediately([$this->stopPromisor, "succeed"]);
+            }
+            $this->stopPromisor = true;
         }
     }
 
@@ -63,6 +65,7 @@ class WatcherProcess extends Process {
 
         $this->recommendAssertionSetting();
         $this->recommendLogLevel($console);
+        $this->stopPromisor = null;
         $this->console = $console;
         $this->workerCount = $this->determineWorkerCount($console);
         $this->ipcServerUri = $this->bindIpcServer();
@@ -297,11 +300,18 @@ class WatcherProcess extends Process {
         if (!$ipcClient = @stream_socket_accept($ipcServer, $timeout = 0)) {
             return;
         }
-        stream_set_blocking($ipcClient, false);
-        $parser = $this->parser($ipcClient);
-        $readWatcherId = \Amp\onReadable($ipcClient, function() use ($parser) { $parser->next(); });
-        $this->ipcClients[$readWatcherId] = $ipcClient;
-        $parser->send($readWatcherId);
+
+        if ($this->stopPromisor) {
+            @\fwrite("\n", $ipcClient);
+        } else {
+            stream_set_blocking($ipcClient, false);
+            $parser = $this->parser($ipcClient);
+            $readWatcherId = \Amp\onReadable($ipcClient, function () use ($parser) {
+                $parser->next();
+            });
+            $this->ipcClients[$readWatcherId] = $ipcClient;
+            $parser->send($readWatcherId);
+        }
 
         assert(!empty($this->spawnPromisors));
         array_shift($this->spawnPromisors)->succeed();
@@ -413,11 +423,14 @@ class WatcherProcess extends Process {
     }
 
     protected function doStop(): \Generator {
-        $this->stopPromisor = new Deferred;
-        foreach ($this->ipcClients as $ipcClient) {
-            @\fwrite($ipcClient, "\n");
+        if (!$this->stopPromisor) {
+            $this->stopPromisor = new Deferred;
+            foreach ($this->ipcClients as $ipcClient) {
+                @\fwrite($ipcClient, "\n");
+            }
         }
 
-        yield $this->stopPromisor->promise();
+        yield $this->stopPromisor === true ? new Success : $this->stopPromisor->promise();
+
     }
 }
