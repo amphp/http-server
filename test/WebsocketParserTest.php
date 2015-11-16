@@ -2,6 +2,18 @@
 
 namespace Aerys\Test;
 
+use Aerys\Bootable;
+use Aerys\Client;
+use Aerys\HttpDriver;
+use Aerys\InternalRequest;
+use Aerys\Logger;
+use Aerys\Middleware;
+use Aerys\Options;
+use Aerys\Server;
+use Aerys\Ticker;
+use Aerys\Vhost;
+use Aerys\VhostContainer;
+use Aerys\Websocket;
 use Aerys\Websocket\Code;
 use Aerys\Websocket\Rfc6455Endpoint;
 
@@ -198,5 +210,114 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
         // x -------------------------------------------------------------------------------------->
 
         return $return;
+    }
+
+    /**
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage Cannot boot websocket handler; Aerys\Websocket required, boolean provided
+     */
+    function testBadWebsocketClass() {
+        \Aerys\websocket(new class implements Bootable { public function boot(Server $server, Logger $logger) { return false; } })
+            ->boot(new class extends Server { function __construct() { } }, new class extends Logger { protected function output(string $message) { } });
+    }
+
+    function testUpgrading() {
+        \Amp\run(function() use (&$sock) {
+            $client = new Client;
+            $client->exporter = function() use (&$exported) {
+                $exported = true;
+                return function () { $this->fail("This test doesn't expect the client to be closed or unloaded"); };
+            };
+            list($sock, $client->socket) = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+
+            $vhosts = new VhostContainer;
+            $logger = new class extends Logger {
+                protected function output(string $message) { /* /dev/null */
+                }
+            };
+            $server = new Server(new Options, $vhosts, $logger, new Ticker($logger), [$driver = new class($this, $client) implements HttpDriver {
+                private $test;
+                private $emit;
+                public $headers;
+                public $body;
+                private $client;
+
+                public function __construct($test, $client) {
+                    $this->test = $test;
+                    $this->client = $client;
+                    $this->client->httpDriver = $this;
+                }
+
+                public function __invoke(callable $emit, callable $write) {
+                    $this->emit = $emit;
+                    return $this;
+                }
+
+                public function versions(): array {
+                    return ["1.1"];
+                }
+
+                public function filters(InternalRequest $ireq): array {
+                    return $ireq->vhost->getFilters();
+                }
+
+                public function writer(InternalRequest $ireq): \Generator {
+                    $this->headers = yield;
+                    $this->body = "";
+                    do {
+                        $this->body .= $part = yield;
+                    } while ($part !== null);
+                }
+
+                public function parser(Client $client): \Generator {
+                    $this->test->fail("We shouldn't be invoked the parser with no actual clients");
+                }
+
+                public function emit() {
+                    ($this->emit)([HttpDriver::RESULT, [
+                        "id" => 0,
+                        "protocol" => "1.1",
+                        "method" => "GET",
+                        "uri" => "/foo",
+                        "headers" => ["host" => ["localhost"], "sec-websocket-key" => ["x3JJHMbDL1EzLkh9GBhXDw=="], "sec-websocket-version" => ["13"], "upgrade" => ["websocket"], "connection" => ["upgrade"]],
+                        "trace" => [["host", "localhost"], /* irrelevant ... */],
+                        "body" => "",
+                    ], null], $this->client);
+                }
+            }]);
+
+            $ws = $this->getMock(Websocket::class);
+            $ws->expects($this->exactly(1))
+                ->method("onHandshake")
+                ->will($this->returnValue("foo"));
+            $ws->expects($this->exactly(1))
+                ->method("onOpen")
+                ->willReturnCallback(function (int $clientId, $handshakeData) {
+                    $this->assertEquals("foo", $handshakeData);
+                });
+            $ws = \Aerys\websocket($ws);
+
+            $responder = $ws->boot($server, $logger);
+            $middlewares = [];
+            if (is_array($responder) && $responder[0] instanceof Middleware) {
+                $middlewares[] = [$responder[0], "do"];
+            }
+            $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));
+
+            $driver->emit();
+            $headers = $driver->headers;
+            $this->assertEquals(\Aerys\HTTP_STATUS["SWITCHING_PROTOCOLS"], $headers[":status"]);
+            $this->assertEquals(["websocket"], $headers["upgrade"]);
+            $this->assertEquals(["upgrade"], $headers["connection"]);
+            $this->assertEquals(["HSmrc0sMlYUkAGmm5OPpG2HaGWk="], $headers["sec-websocket-accept"]);
+            $this->assertEquals("", $driver->body);
+
+            yield; // run immediate
+
+            $this->assertTrue($exported);
+
+            \Amp\stop();
+        });
+        \Amp\reactor(\Amp\driver());
     }
 }

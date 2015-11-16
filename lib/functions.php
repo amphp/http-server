@@ -40,7 +40,7 @@ function websocket($app, array $options = []): Bootable {
                 : $this->app;
             if (!$app instanceof Websocket) {
                 $type = is_object($app) ? get_class($app) : gettype($app);
-                throw new \DomainException(
+                throw new \InvalidArgumentException(
                     "Cannot boot websocket handler; Aerys\\Websocket required, {$type} provided"
                 );
             }

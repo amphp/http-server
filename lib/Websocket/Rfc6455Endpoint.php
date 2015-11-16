@@ -165,32 +165,34 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             $yield = yield $yield;
         }
 
-        \Amp\immediately(function() use ($ireq) {
-            $client = new Rfc6455Client;
-            $client->connectedAt = $this->now;
-            $socket = $ireq->client->socket;
-            $client->id = (int)$socket;
-            $client->socket = $socket;
-            $client->writeBuffer = $ireq->client->writeBuffer;
-            $client->serverRefClearer = ($ireq->client->exporter)($ireq->client);
+        \Amp\immediately([$this, "reapClient"], ["cb_data" => $ireq]);
+    }
 
-            $client->parser = $this->parser([$this, "onParse"], $options = [
-                "cb_data" => $client
-            ]);
-            $client->readWatcher = \Amp\onReadable($socket, [$this, "onReadable"], $options = [
-                "enable" => true,
-                "cb_data" => $client,
-            ]);
-            $client->writeWatcher = \Amp\onWritable($socket, [$this, "onWritable"], $options = [
-                "enable" => $client->writeBuffer != "",
-                "cb_data" => $client,
-            ]);
+    public function reapClient($watcherId, InternalRequest $ireq) {
+        $client = new Rfc6455Client;
+        $client->connectedAt = $this->now;
+        $socket = $ireq->client->socket;
+        $client->id = (int) $socket;
+        $client->socket = $socket;
+        $client->writeBuffer = $ireq->client->writeBuffer;
+        $client->serverRefClearer = ($ireq->client->exporter)($ireq->client);
 
-            $this->clients[$client->id] = $client;
-            $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
+        $client->parser = $this->parser([$this, "onParse"], $options = [
+            "cb_data" => $client
+        ]);
+        $client->readWatcher = \Amp\onReadable($socket, [$this, "onReadable"], $options = [
+            "enable" => true,
+            "cb_data" => $client,
+        ]);
+        $client->writeWatcher = \Amp\onWritable($socket, [$this, "onWritable"], $options = [
+            "enable" => $client->writeBuffer != "",
+            "cb_data" => $client,
+        ]);
 
-            resolve($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]));
-        });
+        $this->clients[$client->id] = $client;
+        $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
+
+        resolve($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]));
     }
 
     /**
