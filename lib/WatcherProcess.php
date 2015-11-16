@@ -301,17 +301,18 @@ class WatcherProcess extends Process {
             return;
         }
 
+
         if ($this->stopPromisor) {
-            @\fwrite("\n", $ipcClient);
-        } else {
-            stream_set_blocking($ipcClient, false);
-            $parser = $this->parser($ipcClient);
-            $readWatcherId = \Amp\onReadable($ipcClient, function () use ($parser) {
-                $parser->next();
-            });
-            $this->ipcClients[$readWatcherId] = $ipcClient;
-            $parser->send($readWatcherId);
+            @\fwrite($ipcClient, "\n");
         }
+
+        stream_set_blocking($ipcClient, false);
+        $parser = $this->parser($ipcClient);
+        $readWatcherId = \Amp\onReadable($ipcClient, function () use ($parser) {
+            $parser->next();
+        });
+        $this->ipcClients[$readWatcherId] = $ipcClient;
+        $parser->send($readWatcherId);
 
         assert(!empty($this->spawnPromisors));
         array_shift($this->spawnPromisors)->succeed();
