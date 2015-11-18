@@ -18,7 +18,7 @@ use Aerys\Websocket\Code;
 use Aerys\Websocket\Rfc6455Endpoint;
 
 class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
-    function compile($opcode, $fin, $msg = "", $rsv = 0b000) {
+    static function compile($opcode, $fin, $msg = "", $rsv = 0b000) {
         $len = strlen($msg);
 
         // FRRROOOO per RFC 6455 Section 5.2

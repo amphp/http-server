@@ -430,6 +430,11 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $client->writeBuffer = array_shift($client->writeControlQueue);
                 $client->lastSentAt = $this->now;
                 $client->writeDeferred = array_shift($client->writeDeferredControlQueue);
+            } elseif ($client->closedAt) {
+                @stream_socket_shutdown($socket, STREAM_SHUT_WR);
+                \Amp\cancel($watcherId);
+                $client->writeWatcher = null;
+                $client->writeBuffer = "";
             } elseif ($client->writeDataQueue) {
                 $client->writeBuffer = array_shift($client->writeDataQueue);
                 $client->lastDataSentAt = $this->now;
@@ -438,11 +443,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             } else {
                 $client->writeBuffer = "";
                 \Amp\disable($watcherId);
-            }
-            if ($client->closedAt) {
-                @stream_socket_shutdown($socket, STREAM_SHUT_WR);
-                \Amp\cancel($watcherId);
-                $client->writeWatcher = null;
             }
         }
     }
@@ -484,10 +484,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         if ($client->writeBuffer != "") {
             if ($frameInfo["opcode"] >= 0x8) {
                 $client->writeControlQueue[] = $w;
-                $deferred = $client->writeDeferredDataQueue[] = new Deferred;
+                $deferred = $client->writeDeferredControlQueue[] = new Deferred;
             } else {
                 $client->writeDataQueue[] = $w;
-                $deferred = $client->writeDeferredControlQueue[] = new Deferred;
+                $deferred = $client->writeDeferredDataQueue[] = new Deferred;
             }
         } else {
             $client->writeBuffer = $w;
@@ -537,6 +537,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $len = \strlen($data);
                 $slices = ceil($len / $this->autoFrameSize);
                 $frames = str_split($data, ceil($len / $slices));
+                $data = array_pop($frames);
                 foreach ($frames as $frame) {
                     $this->compile($client, $frame, $opcode, false);
                     $opcode = self::OP_CONT;
@@ -549,7 +550,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     }
 
     public function sendBinary($clientId, string $data): Promise {
-        $this->send($clientId, $data, true);
+        return $this->send($clientId, $data, true);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {

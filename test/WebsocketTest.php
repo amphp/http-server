@@ -4,6 +4,7 @@ namespace Aerys\Test;
 
 use Aerys\Body;
 use Aerys\Client;
+use Aerys\ClientException;
 use Aerys\InternalRequest;
 use Aerys\Logger;
 use Aerys\NullBody;
@@ -56,10 +57,11 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         }
     }
 
-    function initEndpoint($ws) {
+    function initEndpoint($ws, $timeoutTest = false) {
         $ireq = new InternalRequest();
         $ireq->client = $client = new Client;
         list($sock, $client->socket) = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        stream_set_blocking($client->socket, false);
         $server = new class extends Server {
             public $state;
             public $allowKill = false;
@@ -81,10 +83,12 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
         $endpoint = new Rfc6455Endpoint($logger, $ws);
 
-        // okay, let's cheat a bit in order to properly test timeout...
-        (function() {
-            $this->now -= 10;
-        })->call($endpoint);
+        if ($timeoutTest) {
+            // okay, let's cheat a bit in order to properly test timeout...
+            (function () {
+                $this->now -= 10;
+            })->call($endpoint);
+        }
 
         $server->state = Server::STARTING;
         yield $endpoint->update($server);
@@ -93,6 +97,12 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         $client = $endpoint->reapClient("idiotic parameter...", $ireq);
 
         return [$endpoint, $client, $sock, $server];
+    }
+
+    function waitOnRead($sock) {
+        $deferred = new Deferred;
+        $watcher = \Amp\onReadable($sock, [$deferred, "succeed"]);
+        return $deferred->promise()->when(function() use ($watcher) { \Amp\cancel($watcher); });
     }
 
     function triggerTimeout(Rfc6455Endpoint $endpoint) {
@@ -178,7 +188,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 ->willReturnCallback(function() {
                     throw new \Exception;
                 });
-            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws);
+            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws, $timeoutTest = true);
 
             if ($call !== null) {
                 list($method, $args) = $call;
@@ -288,5 +298,102 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         // x -------------------------------------------------------------------------------------->
 
         return $return;
+    }
+
+    function testIOClose() {
+        \Amp\run(function() {
+            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
+                function onData(int $clientId, Websocket\Message $msg) {
+                    try {
+                        yield $msg;
+                    } catch (\Throwable $e) {
+                        $this->test->assertInstanceOf(ClientException::class, $e);
+                    } finally {
+                        if (!isset($e)) {
+                            $this->test->fail("Expected ClientException was not thrown");
+                        }
+                    }
+                }
+            });
+            $endpoint->onParse([Rfc6455Endpoint::DATA, "foo", false], $client);
+            fclose($sock);
+            $server->allowKill = true;
+            yield;yield; // to have it read and closed...
+
+            \Amp\stop();
+        });
+        \Amp\reactor(\Amp\driver());
+    }
+
+    function testIORead() {
+        \Amp\run(function () {
+            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
+            fwrite($sock, WebsocketParserTest::compile(Rfc6455Endpoint::OP_PING, true, "foo"));
+            yield $this->waitOnRead($sock);
+            fclose($client->socket);
+            $this->assertSocket([[Rfc6455Endpoint::OP_PONG, "foo"]], stream_get_contents($sock));
+
+            \Amp\stop();
+        });
+        \Amp\reactor(\Amp\driver());
+    }
+
+    function testMultiWrite() {
+        \Amp\run(function() {
+            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
+                function onData(int $clientId, Websocket\Message $msg) {
+                    $this->endpoint->send(null, "foo");
+                    $this->endpoint->send($clientId, "bar");
+                    yield $this->endpoint->send([$clientId], "baz");
+                    $this->endpoint->close($clientId);
+                }
+            });
+            $endpoint->onParse([Rfc6455Endpoint::DATA, true, "start..."], $client);
+            $endpoint->onParse([Rfc6455Endpoint::CONTROL, "pingpong", Rfc6455Endpoint::OP_PING], $client);
+            stream_set_blocking($sock, false);
+            $data = "";
+            do {
+                yield $this->waitOnRead($sock); // to have it read and parsed...
+                $data .= fread($sock, 1024);
+            } while (!feof($sock));
+            $this->assertSocket([
+                [Rfc6455Endpoint::OP_TEXT, "foo"],
+                [Rfc6455Endpoint::OP_PONG, "pingpong"],
+                [Rfc6455Endpoint::OP_TEXT, "bar"],
+                [Rfc6455Endpoint::OP_TEXT, "baz"],
+                [Rfc6455Endpoint::OP_CLOSE],
+            ], $data);
+
+            \Amp\stop();
+        });
+        \Amp\reactor(\Amp\driver());
+    }
+
+    function testFragmentation() {
+        \Amp\run(function () {
+            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
+            $endpoint->sendBinary(null, str_repeat("*", 65528))->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->allowKill = true; });
+            $data = "";
+            do {
+                yield $this->waitOnRead($sock); // to have it read and parsed...
+                $data .= $x = fread($sock, 8192);
+            } while ($x != "" || !feof($sock));
+            $this->assertSocket([[Rfc6455Endpoint::OP_BIN, str_repeat("*", 32764)], [Rfc6455Endpoint::OP_CONT, str_repeat("*", 32764)]], $data);
+
+            \Amp\stop();
+        });
+        \Amp\reactor(\Amp\driver());
+    }
+
+    function testSinglePong() {
+        \Amp\run(function () {
+            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
+            $client->pingCount = 2;
+            $endpoint->onParse([Rfc6455Endpoint::CONTROL, "1", Rfc6455Endpoint::OP_PONG], $client);
+            $this->assertEquals(1, $client->pongCount);
+
+            \Amp\stop();
+        });
+        \Amp\reactor(\Amp\driver());
     }
 }
