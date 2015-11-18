@@ -94,6 +94,8 @@ class HPack {
         $encodingAccess = [];
         $terminals = [];
 
+        gc_disable();
+
         foreach (self::HUFFMAN_CODE as $chr => $bits) {
             $len = self::HUFFMAN_CODE_LENGTHS[$chr];
             for ($bit = 0; $bit < 8; $bit++) {
@@ -119,13 +121,14 @@ class HPack {
             }
         }
 
+        $memoize = [];
         for ($off = 7; $off > 0; $off--) {
             foreach ($terminals[$off] as &$terminal) {
                 $key = $terminal[0];
                 $next = &$terminal[1];
                 if ($next[$key][0] === null) {
                     foreach ($encodingAccess[$off] as $chr => &$cur) {
-                        $next[str_pad($key, 8, "0", STR_PAD_RIGHT) | $chr] = [&$cur[0], $next[$key][1] != "" ? $next[$key][1] . $cur[1] : ""];
+                        $next[($memoize[$key] ?? $memoize[$key] = str_pad($key, 8, "0", STR_PAD_RIGHT)) | $chr] = [&$cur[0], $next[$key][1] != "" ? $next[$key][1] . $cur[1] : ""];
                     }
 
                     unset($next[$key]);
@@ -133,10 +136,11 @@ class HPack {
             }
         }
 
-        ($fn = function (&$arr) use (&$fn, &$encodingAccess) {
-            ksort($arr);
+        $memoize = [];
+        ($fn = function (&$arr) use (&$fn, &$encodingAccess, &$memoize, &$n) {
+            ksort($arr, SORT_STRING);
             foreach ($arr as $k => $v) {
-                $arr[chr(bindec($k))] = $v;
+                $arr[$memoize[$k] ?? $memoize[$k] = chr(bindec($k))] = $v;
                 unset($arr[$k]);
             }
             foreach ($arr as $k => $v) {
@@ -145,6 +149,9 @@ class HPack {
                 }
             }
         })($encodingAccess[0]);
+
+        gc_enable();
+        gc_collect_cycles();
 
         return $encodingAccess[0];
     }
