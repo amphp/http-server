@@ -231,10 +231,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
             list($sock, $client->socket) = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
 
             $vhosts = new VhostContainer;
-            $logger = new class extends Logger {
-                protected function output(string $message) { /* /dev/null */
-                }
-            };
+            $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
             $server = new Server(new Options, $vhosts, $logger, new Ticker($logger), [$driver = new class($this, $client) implements HttpDriver {
                 private $test;
                 private $emit;
@@ -289,7 +286,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
             $ws = $this->getMock(Websocket::class);
             $ws->expects($this->exactly(1))
                 ->method("onHandshake")
-                ->will($this->returnValue("foo"));
+                ->will($this->returnValue((function() { if (0) { yield; } return "foo"; })()));
             $ws->expects($this->exactly(1))
                 ->method("onOpen")
                 ->willReturnCallback(function (int $clientId, $handshakeData) {

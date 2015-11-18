@@ -63,7 +63,7 @@ function websocket($app, array $options = []): Bootable {
  *
  * @param string $docroot The filesystem directory from which to serve documents
  * @param array $options Static file serving options
- * @return \Aerys\Bootable Returns a Bootable to manufacture an Aerys\Root\Root
+ * @return \Aerys\Bootable Returns a Bootable to manufacture an Aerys\Root
  */
 function root(string $docroot, array $options = []): Bootable {
     return new class($docroot, $options) implements Bootable {

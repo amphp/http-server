@@ -66,6 +66,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     public function __construct(Logger $logger, Websocket $application) {
         $this->logger = $logger;
         $this->application = $application;
+        $this->now = time();
         $this->proxy = new Rfc6455EndpointProxy($this);
     }
 
@@ -193,6 +194,8 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
 
         resolve($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]));
+
+        return $client;
     }
 
     /**
@@ -231,9 +234,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         // Don't unload the client here, it will be unloaded upon timeout
     }
 
-    private function sendCloseFrame(Rfc6455Client $client, $code, $msg) {
+    private function sendCloseFrame(Rfc6455Client $client, $code, $msg): Promise {
+        $promise = $this->compile($client, pack('n', $code) . $msg, self::OP_CLOSE);
         $client->closedAt = $this->now;
-        return $this->compile($client, pack('n', $code) . $msg, self::OP_CLOSE);
+        return $promise;
     }
 
     private function tryAppOnClose(int $clientId, $code, $reason): \Generator {
@@ -426,10 +430,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $client->writeBuffer = array_shift($client->writeControlQueue);
                 $client->lastSentAt = $this->now;
                 $client->writeDeferred = array_shift($client->writeDeferredControlQueue);
-            } elseif ($client->closedAt) {
-                @stream_socket_shutdown($socket, STREAM_SHUT_WR);
-                \Amp\cancel($watcherId);
-                $client->writeWatcher = null;
             } elseif ($client->writeDataQueue) {
                 $client->writeBuffer = array_shift($client->writeDataQueue);
                 $client->lastDataSentAt = $this->now;
@@ -438,6 +438,11 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             } else {
                 $client->writeBuffer = "";
                 \Amp\disable($watcherId);
+            }
+            if ($client->closedAt) {
+                @stream_socket_shutdown($socket, STREAM_SHUT_WR);
+                \Amp\cancel($watcherId);
+                $client->writeWatcher = null;
             }
         }
     }
@@ -664,20 +669,21 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     private function timeout() {
         $this->now = $now = time();
 
+        foreach ($this->closeTimeouts as $clientId => $expiryTime) {
+            if ($expiryTime < $now) {
+                $this->unloadClient($this->clients[$clientId]);
+                unset($this->closeTimeouts[$clientId]);
+            } else {
+                break;
+            }
+        }
+
         foreach ($this->heartbeatTimeouts as $clientId => $expiryTime) {
             if ($expiryTime < $now) {
                 $client = $this->clients[$clientId];
                 unset($this->heartbeatTimeouts[$clientId]);
                 $this->heartbeatTimeouts[$clientId] = $now + $this->heartbeatPeriod;
                 $this->sendHeartbeatPing($client);
-            } else {
-                break;
-            }
-        }
-        foreach ($this->closeTimeouts as $clientId => $expiryTime) {
-            if ($expiryTime < $now) {
-                $this->unloadClient($this->clients[$clientId]);
-                unset($this->closeTimeouts[$clientId]);
             } else {
                 break;
             }
@@ -717,7 +723,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $frames = 0;
             }
 
-            $firstByte = ord($buffer[0]);
+            $firstByte = ord($buffer);
             $secondByte = ord($buffer[1]);
 
             $buffer = substr($buffer, 2);
@@ -742,7 +748,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                     $frames = 0;
                 }
 
-                $frameLength = current(unpack('n', $buffer[0] . $buffer[1]));
+                $frameLength = unpack('n', $buffer[0] . $buffer[1])[1];
                 $buffer = substr($buffer, 2);
                 $bufferSize -= 2;
             } elseif ($frameLength === 0x7F) {
@@ -752,19 +758,19 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                     $frames = 0;
                 }
 
-                $lengthLong32Pair = array_values(unpack('N2', substr($buffer, 0, 8)));
+                $lengthLong32Pair = unpack('N2', substr($buffer, 0, 8));
                 $buffer = substr($buffer, 8);
                 $bufferSize -= 8;
 
                 if (PHP_INT_MAX === 0x7fffffff) {
-                    if ($lengthLong32Pair[0] !== 0 || $lengthLong32Pair[1] < 0) {
+                    if ($lengthLong32Pair[1] !== 0 || $lengthLong32Pair[2] < 0) {
                         $code = Code::MESSAGE_TOO_LARGE;
                         $errorMsg = 'Payload exceeds maximum allowable size';
                         break;
                     }
-                    $frameLength = $lengthLong32Pair[1];
+                    $frameLength = $lengthLong32Pair[2];
                 } else {
-                    $frameLength = ($lengthLong32Pair[0] << 32) | $lengthLong32Pair[1];
+                    $frameLength = ($lengthLong32Pair[1] << 32) | $lengthLong32Pair[2];
                     if ($frameLength < 0) {
                         $code = Code::PROTOCOL_ERROR;
                         $errorMsg = 'Most significant bit of 64-bit length field set';
