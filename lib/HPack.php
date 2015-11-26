@@ -93,7 +93,6 @@ class HPack {
     private static function huffman_lookup_init() {
         $encodingAccess = [];
         $terminals = [];
-
         gc_disable();
 
         foreach (self::HUFFMAN_CODE as $chr => $bits) {
@@ -137,8 +136,8 @@ class HPack {
         }
 
         $memoize = [];
-        ($fn = function (&$arr) use (&$fn, &$encodingAccess, &$memoize, &$n) {
-            ksort($arr, SORT_STRING);
+        ($fn = function (&$arr) use (&$fn, &$encodingAccess, &$memoize) {
+            ksort($arr, SORT_STRING); // this line is really not performant...
             foreach ($arr as $k => $v) {
                 $arr[$memoize[$k] ?? $memoize[$k] = chr(bindec($k))] = $v;
                 unset($arr[$k]);
@@ -152,7 +151,6 @@ class HPack {
 
         gc_enable();
         gc_collect_cycles();
-
         return $encodingAccess[0];
     }
 
@@ -299,19 +297,17 @@ class HPack {
         ["www-authenticate", ""]
     ];
 
-    private static function decode_dynamic_integer(&$input) {
-        $c = \ord($input);
+    private static function decode_dynamic_integer(&$input, &$off) {
+        $c = \ord($input[$off++]);
         $int = $c & 0x7f;
-        $i = 1;
-        $len = \strlen($input);
+        $i = 0;
         while ($c & 0x80) {
-            if ($i == $len) {
+            if (isset($input[$off])) {
                 return -0x80;
             }
-            $c = \ord($input[$i]);
-            $int += ($c & 0x7f) << ($i++ * 7);
+            $c = \ord($input[$off++]);
+            $int += ($c & 0x7f) << (++$i * 7);
         }
-        $input = \substr($input, $i);
         return $int;
     }
 
@@ -328,11 +324,12 @@ class HPack {
 
     public function decode($input) {
         $headers = [];
+        $off = 0;
+        $inputlen = \strlen($input);
 
         // dynamic $table as per 2.3.2
-        while ($input != "") {
-            $index = \ord($input);
-            $input = \substr($input, 1);
+        while ($off < $inputlen) {
+            $index = \ord($input[$off++]);
             if ($index & 0x80) {
                 // range check
                 if ($index <= self::LAST_INDEX + 0x80) {
@@ -342,7 +339,7 @@ class HPack {
                     $headers[] = self::TABLE[$index - 0x81];
                 } else {
                     if ($index == 0xff) {
-                        $index = self::decode_dynamic_integer($input) + 0xff;
+                        $index = self::decode_dynamic_integer($input, $off) + 0xff;
                     }
                     $index -= 0x81 + self::LAST_INDEX;
                     if (!isset($this->headers[$index])) {
@@ -350,11 +347,11 @@ class HPack {
                     }
                     $headers[] = $this->headers[$index];
                 }
-            } elseif (($index & 0x40) || !($index & 0x20)) { // bit 4: never index is ignored
+            } elseif (($index & 0x60) != 0x20) { // (($index & 0x40) || !($index & 0x20)): bit 4: never index is ignored
                 $dynamic = (bool)($index & 0x40);
-                if ($index & ($dynamic ? 0x3f : 0x0f)) {
-                    if ($dynamic ? $index == 0x7f : (($index & 0x1f) == 0x1f)) {
-                        $index = self::decode_dynamic_integer($input) + ($dynamic ? 0x40 : 0x10);
+                if ($index & ($dynamic ? 0x3f : 0x0f)) { // separate length
+                    if (($dynamic && $index == 0x7f) || (($index & 0x1f) == 0x1f)) {
+                        $index = self::decode_dynamic_integer($input, $off) + ($dynamic ? 0x40 : 0x10);
                     } else {
                         $index &= $dynamic ? 0x3f : 0x0f;
                     }
@@ -364,39 +361,37 @@ class HPack {
                         $header = $this->headers[$index - 1 - self::LAST_INDEX];
                     }
                 } else {
-                    $len = \ord($input);
+                    $len = \ord($input[$off++]);
                     $huffman = $len & 0x80;
                     $len &= 0x7f;
-                    $input = \substr($input, 1);
                     if ($len == 0x7f) {
-                        $len = self::decode_dynamic_integer($input) + 0x7f;
+                        $len = self::decode_dynamic_integer($input, $off) + 0x7f;
                     }
-                    if (\strlen($input) < $len || $len <= 0) {
+                    if ($inputlen - $off < $len || $len <= 0) {
                         return null;
                     }
                     if ($huffman) {
-                        $header = [self::huffman_decode(\substr($input, 0, $len))];
+                        $header = [self::huffman_decode(\substr($input, $off, $len))];
                     } else {
-                        $header = [\substr($input, 0, $len)];
+                        $header = [\substr($input, $off, $len)];
                     }
-                    $input = \substr($input, $len);
+                    $off += $len;
                 }
-                $len = \ord($input);
+                $len = \ord($input[$off++]);
                 $huffman = $len & 0x80;
                 $len &= 0x7f;
-                $input = \substr($input, 1);
                 if ($len == 0x7f) {
-                    $len = self::decode_dynamic_integer($input) + 0x7f;
+                    $len = self::decode_dynamic_integer($input, $off) + 0x7f;
                 }
-                if (\strlen($input) < $len || $len < 0 || $len === false) {
+                if ($inputlen - $off < $len || $len < 0) {
                     return null;
                 }
                 if ($huffman) {
-                    $header[1] = self::huffman_decode(substr($input, 0, $len));
+                    $header[1] = self::huffman_decode(\substr($input, $off, $len));
                 } else {
-                    $header[1] = \substr($input, 0, $len);
+                    $header[1] = \substr($input, $off, $len);
                 }
-                $input = \substr($input, $len);
+                $off += $len;
                 if ($dynamic) {
                     \array_unshift($this->headers, $header);
                     $this->size += 32 + \strlen($header[0]) + \strlen($header[1]);
@@ -407,8 +402,7 @@ class HPack {
                 $headers[] = $header;
             } else { //if ($index & 0x20) {
                 if ($index == 0x3f) {
-                    $input = \substr($input, 1);
-                    $index = self::decode_dynamic_integer($input) + 0x40;
+                    $index = self::decode_dynamic_integer($input, $off) + 0x40;
                 }
                 if ($index > 4096) { // initial limit … may be adjusted??
                     return null;
