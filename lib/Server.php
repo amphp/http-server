@@ -803,42 +803,9 @@ class Server {
         }
         $filter = responseFilter($filters, $ireq);
         $filter->current(); // initialize filters
-        $codec = $this->responseCodec($filter, $ireq);
+        $codec = responseCodec($filter, $ireq);
 
         return $ireq->response = new StandardResponse($codec);
-    }
-
-    private function responseCodec(\Generator $filter, InternalRequest $ireq): \Generator {
-        while (($yield = yield) !== null) {
-            $cur = $filter->send($yield);
-            if ($yield === false) {
-                if ($cur !== null) {
-                    $ireq->responseWriter->send($cur);
-                    if (\is_array($cur)) { // in case of headers, to flush a maybe started body too, we need to send false twice
-                        $cur = $filter->send(false);
-                        if ($cur !== null) {
-                            $ireq->responseWriter->send($cur);
-                        }
-                    }
-                }
-                $ireq->responseWriter->send(false);
-            } elseif ($cur !== null) {
-                $ireq->responseWriter->send($cur);
-            }
-        }
-
-        $cur = $filter->send(null);
-        if (\is_array($cur)) {
-            $ireq->responseWriter->send($cur);
-            $filter->send(null);
-        }
-        \assert($filter->valid() === false);
-
-        $cur = $filter->getReturn();
-        if ($cur !== null) {
-            $ireq->responseWriter->send($cur);
-        }
-        $ireq->responseWriter->send(null);
     }
 
     private function onCoroutineAppResolve($error, $result, $ireq) {
