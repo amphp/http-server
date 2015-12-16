@@ -616,7 +616,7 @@ function genericResponseFilter(InternalRequest $ireq): \Generator {
     $body = makeGenericBody($headers[":status"], $options = [
         "reason"      => $headers[":reason"],
         "sub_heading" => "Requested: {$ireq->uri}",
-        "server"      => $ireq->options->sendServerToken ?? false,
+        "server"      => $ireq->client->options->sendServerToken ?? false,
         "http_date"   => $ireq->httpDate,
     ]);
     $headers["content-length"] = [strlen($body)];
