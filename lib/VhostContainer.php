@@ -11,6 +11,14 @@ class VhostContainer implements \Countable {
     private $vhosts = [];
     private $cachedVhostCount = 0;
     private $defaultHost;
+    private $httpDrivers = [];
+    private $defaultHttpDriver;
+    private $setupHttpDrivers = [];
+    private $setupArgs;
+
+    public function __construct(HttpDriver $driver) {
+        $this->defaultHttpDriver = $driver;
+    }
 
     /**
      * Add a virtual host to the collection
@@ -23,7 +31,8 @@ class VhostContainer implements \Countable {
         $this->preventCryptoSocketConflict($vhost);
         foreach ($vhost->getIds() as $id) {
             $this->vhosts[$id] = $vhost;
-       }
+        }
+        $this->addHttpDriver($vhost);
         $this->cachedVhostCount++;
     }
 
@@ -47,6 +56,59 @@ class VhostContainer implements \Countable {
                 }
             }
         }
+    }
+
+    private function addHttpDriver(Vhost $vhost) {
+        $driver = $vhost->getHttpDriver() ?? $this->defaultHttpDriver;
+        foreach ($vhost->getInterfaces() as list($address, $port)) {
+            $generic = $this->httpDrivers[$port][\strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"] ?? $driver;
+            if (($this->httpDrivers[$port][$address] ?? $generic) !== $driver) {
+                throw new \LogicException(
+                    "Cannot use two different HttpDriver instances on an equivalent address-port pair"
+                );
+            }
+            if ($address == "0.0.0.0" || $address == "::") {
+                foreach ($this->httpDrivers[$port] ?? [] as $oldAddr => $oldDriver) {
+                    if ($oldDriver !== $driver && (\strlen(inet_pton($address)) === 4) == ($address == "0.0.0.0")) {
+                        throw new \LogicException(
+                            "Cannot use two different HttpDriver instances on an equivalent address-port pair"
+                        );
+                    }
+                }
+            }
+            $this->httpDrivers[$port][$address] = $driver;
+        }
+        $hash = spl_object_hash($driver);
+        if ($this->setupArgs && $this->setupHttpDrivers[$hash] ?? false) {
+            $driver->setup(...$this->setupArgs);
+            $this->setupHttpDrivers[$hash] = true;
+        }
+
+    }
+
+    public function setupHttpDrivers(...$args) {
+        if ($this->setupHttpDrivers) {
+            throw new \LogicException("Can setup http drivers only once");
+        }
+        $this->setupArgs = $args;
+        foreach ($this->httpDrivers as $drivers) {
+            foreach ($drivers as $driver) {
+                $hash = spl_object_hash($driver);
+                if ($this->setupHttpDrivers[$hash] ?? false) {
+                    continue;
+                }
+                $this->setupHttpDrivers[$hash] = true;
+                $driver->setup(...$args);
+            }
+        }
+    }
+
+    /**
+     * Select the suited HttpDriver instance, filtered by address and port pair
+     */
+    public function selectHttpDriver($address, $port) {
+        return $this->httpDrivers[$port][$address] ??
+            $this->httpDrivers[$port][\strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"];
     }
 
     /**

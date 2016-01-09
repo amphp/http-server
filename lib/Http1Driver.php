@@ -12,11 +12,11 @@ class Http1Driver implements HttpDriver {
     private $parseEmitter;
     private $responseWriter;
 
-    public function __invoke(callable $parseEmitter, callable $responseWriter) {
+    public function setup(callable $parseEmitter, callable $responseWriter) {
         $this->parseEmitter = $parseEmitter;
         $this->responseWriter = $responseWriter;
-        $this->http2 = (new Http2Driver)($parseEmitter, $responseWriter);
-        return $this;
+        $this->http2 = new Http2Driver;
+        $this->http2->setup($parseEmitter, $responseWriter);
     }
 
     public function filters(InternalRequest $ireq): array {
@@ -37,12 +37,17 @@ class Http1Driver implements HttpDriver {
             $ireq->responseWriter->send(false); // flush before replacing
 
             // internal upgrade
+            $client = $ireq->client;
+            $client->httpDriver = $this->http2;
+            $client->requestParser = $client->httpDriver->parser($client);
+
             $h2cSettingsFrame = substr(pack("N", \strlen($h2cSettings)), 1, 3) . Http2Driver::SETTINGS . Http2Driver::NOFLAG . "\0\0\0\0$h2cSettings";
-            ($this->parseEmitter)([HttpDriver::UPGRADE, ["driver" => $this->http2, "unparsed" => "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$h2cSettingsFrame"], null], $ireq->client);
+            $client->requestParser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$h2cSettingsFrame");
+
             $ireq->responseWriter = $ireq->client->httpDriver->writer($ireq);
             $ireq->streamId = 1;
-            $ireq->client->streamWindow[$ireq->streamId] = $ireq->client->window;
-            $ireq->client->streamWindowBuffer[$ireq->streamId] = "";
+            $client->streamWindow[$ireq->streamId] = $ireq->client->window;
+            $client->streamWindowBuffer[$ireq->streamId] = "";
             $ireq->protocol = "2.0";
 
             // Make request look HTTP/2 compatible
@@ -215,7 +220,9 @@ class Http1Driver implements HttpDriver {
             if ($protocol != "1.1" && $protocol != "1.0") {
                 // @TODO eventually add an option to disable HTTP/2.0 support???
                 if ($protocol == "2.0") {
-                    ($this->parseEmitter)([HttpDriver::UPGRADE, ["driver" => $this->http2, "unparsed" => "$startLineAndHeaders\r\n$buffer"], null], $client);
+                    $client->httpDriver = $this->http2;
+                    $client->requestParser = $client->httpDriver->parser($client);
+                    $client->requestParser->send("$startLineAndHeaders\r\n$buffer");
                     return;
                 } else {
                     $error = HttpDriver::BAD_VERSION;

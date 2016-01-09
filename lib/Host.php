@@ -9,6 +9,7 @@ class Host {
     private $crypto = [];
     private $actions = [];
     private $redirect;
+    private $httpDriver;
 
     public function __construct() {
         self::$definitions[] = $this;
@@ -88,13 +89,26 @@ class Host {
      * @return self
      */
     public function use($action): Host {
-        if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable)) {
+        $isAction = is_callable($action) || $action instanceof Middleware || $action instanceof Bootable;
+        $isDriver = $action instanceof HttpDriver;
+
+        if (!$isAction && !$isDriver) {
             throw new \InvalidArgumentException(
-                __METHOD__ . " requires a callable action or Bootable or Middleware instance"
+                __METHOD__ . " requires a callable action or Bootable or Middleware or HttpDriver instance"
             );
         }
 
-        $this->actions[] = $action;
+        if ($isAction) {
+            $this->actions[] = $action;
+        }
+        if ($isDriver) {
+            if ($this->httpDriver) {
+                throw new \LogicException(
+                    "Impossible to define two HttpDriver instances for one same Host; an instance of " . get_class($this->httpDriver) . " has already been defined as driver"
+                );
+            }
+            $this->httpDriver = $action;
+        }
 
         return $this;
     }
@@ -209,6 +223,7 @@ class Host {
             "name"       => $this->name,
             "crypto"     => $this->crypto,
             "actions"    => $actions,
+            "httpdriver" => $this->httpDriver,
         ];
     }
 

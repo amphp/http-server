@@ -9,6 +9,7 @@ class Vhost {
     private $name;
     private $ids;
     private $filters = [];
+    private $httpDriver;
     private $tlsContextArr = [];
     private $tlsDefaults = [
         "local_cert"            => null,
@@ -44,7 +45,7 @@ class Vhost {
     ];
 
     /** @Note Vhosts do not allow wildcards, only separate 0.0.0.0 and :: */
-    public function __construct(string $name, array $interfaces, callable $application, array $filters) {
+    public function __construct(string $name, array $interfaces, callable $application, array $filters, HttpDriver $driver = null) {
         $this->name = strtolower($name);
         if (!$interfaces) {
             throw new \InvalidArgumentException(
@@ -56,6 +57,7 @@ class Vhost {
         }
         $this->application = $application;
         $this->filters = $filters;
+        $this->httpDriver = $driver;
 
         if (self::hasAlpnSupport()) {
             $this->tlsDefaults["alpn_protocols"] = "h2";
@@ -171,6 +173,10 @@ class Vhost {
         } else {
             return array_merge($this->addressMap[$wildcard], $this->addressMap[$packedAddress]);
         }
+    }
+
+    public function getHttpDriver() {
+        return $this->httpDriver;
     }
 
     /**

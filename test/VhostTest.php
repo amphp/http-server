@@ -9,7 +9,7 @@ use Aerys\VhostContainer;
 
 class VhostTest extends \PHPUnit_Framework_TestCase {
     function testVhostSelection() {
-        $vhosts = new VhostContainer();
+        $vhosts = new VhostContainer($this->getMock('Aerys\HttpDriver'));
         $localvhost = new Vhost("localhost", [["127.0.0.1", 80], ["::", 8080]], function(){}, [function(){yield;}]);
         $vhosts->use($localvhost);
         $vhost = new Vhost("", [["127.0.0.1", 80], ["::", 80]], function(){}, [function(){yield;}]);
@@ -35,7 +35,7 @@ class VhostTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot register encrypted host `localhost`; unencrypted host `*` registered on conflicting port `127.0.0.1:80`
      */
     function testCryptoResolutionFailure() {
-        $vhosts = new VhostContainer();
+        $vhosts = new VhostContainer($this->getMock('Aerys\HttpDriver'));
         $vhost = new Vhost("", [["127.0.0.1", 80], ["::", 80]], function(){}, [function(){yield;}]);
         $vhosts->use($vhost);
         $vhost = new Vhost("localhost", [["127.0.0.1", 80]], function(){}, [function(){yield;}]);
@@ -44,7 +44,7 @@ class VhostTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testCryptoVhost() {
-        $vhosts = new VhostContainer();
+        $vhosts = new VhostContainer($this->getMock('Aerys\HttpDriver'));
         $vhost = new Vhost("", [["127.0.0.1", 80], ["::", 80]], function(){}, []);
         $vhosts->use($vhost);
         $vhost = new Vhost("localhost", [["127.0.0.1", 80]], function(){}, []);

@@ -3,6 +3,8 @@
 namespace Aerys\Test;
 
 use Aerys\Host;
+use Aerys\Http1Driver;
+use Aerys\Http2Driver;
 use Aerys\StandardRequest;
 use Aerys\StandardResponse;
 
@@ -39,7 +41,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
 
     /**
      * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage Aerys\Host::use requires a callable action or Bootable or Middleware instance
+     * @expectedExceptionMessage Aerys\Host::use requires a callable action or Bootable or Middleware or HttpDriver instance
      */
     function testBadUse() {
         $this->getHost()->use(1);
@@ -70,7 +72,6 @@ class HostTest extends \PHPUnit_Framework_TestCase {
         $this->getHost()->redirect("http://localhost/path");
     }
 
-
     /**
      * @expectedException \DomainException
      * @expectedExceptionMessage Invalid redirect code; code in the range 300..399 required
@@ -78,6 +79,15 @@ class HostTest extends \PHPUnit_Framework_TestCase {
     function testBadRedirectCode() {
         $this->getHost()->redirect("http://localhost", 201);
     }
+
+    /**
+     * @expectedException \LogicException
+     * @expectedExceptionMessage Impossible to define two HttpDriver instances for one same Host; an instance of Aerys\Http1Driver has already been defined as driver
+     */
+    function testDriverRedefine() {
+        $this->getHost()->use(new Http1Driver)->use(new Http2Driver);
+    }
+
 
     function testSuccessfulRedirect() {
         $actions = $this->getHost()->redirect("http://localhost", 301)->export()["actions"];

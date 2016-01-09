@@ -230,9 +230,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
             };
             list($sock, $client->socket) = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
 
-            $vhosts = new VhostContainer;
-            $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
-            $server = new Server(new Options, $vhosts, $logger, new Ticker($logger), $driver = new class($this, $client) implements HttpDriver {
+            $vhosts = new VhostContainer($driver = new class($this, $client) implements HttpDriver {
                 private $test;
                 private $emit;
                 public $headers;
@@ -245,9 +243,8 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                     $this->client->httpDriver = $this;
                 }
 
-                public function __invoke(callable $emit, callable $write) {
+                public function setup(callable $emit, callable $write) {
                     $this->emit = $emit;
-                    return $this;
                 }
 
                 public function filters(InternalRequest $ireq): array {
@@ -278,6 +275,9 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                     ], null], $this->client);
                 }
             });
+            $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
+            $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
+            $driver->setup((new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server), "strlen");
 
             $ws = $this->getMock(Websocket::class);
             $ws->expects($this->exactly(1))

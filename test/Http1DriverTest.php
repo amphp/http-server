@@ -28,7 +28,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         foreach ($opts as $key => $val) {
             $client->options->$key = $val;
         }
-        $parser = (new Http1Driver)($emitCallback, function(){})->parser($client);
+        $driver = new Http1Driver;
+        $driver->setup($emitCallback, function(){});
+        $parser = $driver->parser($client);
         $parser->send($unparsable);
 
         $this->assertTrue($invoked > 0);
@@ -55,7 +57,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         foreach ($opts as $key => $val) {
             $client->options->$key = $val;
         }
-        $parser = (new Http1Driver)($emitCallback, function(){})->parser($client);
+        $driver = new Http1Driver;
+        $driver->setup($emitCallback, function(){});
+        $parser = $driver->parser($client);
 
         for ($i = 0, $c = strlen($unparsable); $i < $c; $i++) {
             $parser->send($unparsable[$i]);
@@ -86,7 +90,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
 
         $client = new Client;
         $client->options = new Options;
-        $parser = (new Http1Driver)($emitCallback, function(){})->parser($client);
+        $driver = new Http1Driver;
+        $driver->setup($emitCallback, function(){});
+        $parser = $driver->parser($client);
         $parser->send($msg);
 
         $this->assertSame($expectations["invocations"], $invoked, "invocations mismatch");
@@ -115,7 +121,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
 
         $client = new Client;
         $client->options = new Options;
-        $parser = (new Http1Driver)($emitCallback, function(){})->parser($client);
+        $driver = new Http1Driver;
+        $driver->setup($emitCallback, function(){});
+        $parser = $driver->parser($client);
         for($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
         }
@@ -152,7 +160,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $client = new Client;
         $client->options = new Options;
         $client->options->ioGranularity = 1;
-        $parser = (new Http1Driver)($emitCallback, function(){})->parser($client);
+        $driver = new Http1Driver;
+        $driver->setup($emitCallback, function(){});
+        $parser = $driver->parser($client);
         for($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
         }
@@ -191,7 +201,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $client = new Client;
         $client->options = new Options;
         $client->options->ioGranularity = 1;
-        $parser = (new Http1Driver)($emitCallback, function(){})->parser($client);
+        $driver = new Http1Driver;
+        $driver->setup($emitCallback, function(){});
+        $parser = $driver->parser($client);
         $headers =
             "POST /post-endpoint HTTP/1.1\r\n" .
             "Host: localhost\r\n" .
@@ -234,7 +246,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $client = new Client;
         $client->options = new Options;
         $client->options->ioGranularity = 1;
-        $parser = (new Http1Driver)($emitCallback, function(){})->parser($client);
+        $driver = new Http1Driver;
+        $driver->setup($emitCallback, function(){});
+        $parser = $driver->parser($client);
 
         for($i=0,$c=strlen($msg);$i<$c;$i++) {
             $parser->send($msg[$i]);

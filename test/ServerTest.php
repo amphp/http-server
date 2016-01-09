@@ -26,14 +26,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
 
 
     function tryIterativeRequest($responder, $middlewares = []) {
-        $vhosts = new VhostContainer;
-        $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));
-        yield from $this->tryLowLevelRequest($vhosts, $responder, $middlewares);
-    }
-
-    function tryLowLevelRequest($vhosts, $responder, $middlewares) {
-        $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
-        new Server(new Options, $vhosts, $logger, new Ticker($logger), $driver = new class($this) implements HttpDriver {
+        $vhosts = new VhostContainer($driver = new class($this) implements HttpDriver {
             private $test;
             private $emit;
             public $headers;
@@ -46,9 +39,8 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
                 $this->client->httpDriver = $this;
             }
 
-            public function __invoke(callable $emit, callable $write) {
+            public function setup(callable $emit, callable $write) {
                 $this->emit = $emit;
-                return $this;
             }
 
             public function filters(InternalRequest $ireq): array {
@@ -73,6 +65,11 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
                 ($this->emit)($emit, $this->client);
             }
         });
+        $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));
+
+        $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
+        $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
+        $driver->setup((new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server), "strlen");
         $part = yield;
         while (1) {
             $driver->emit($part);
@@ -291,16 +288,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
         $address = stream_socket_get_name($server, $wantPeer = false);
         fclose($server);
 
-        $vhosts = new class($tls, $address, $this) extends VhostContainer {
-            public function __construct($tls, $address, $test) { $this->tls = $tls; $this->test = $test; $this->address = $address; }
-            public function getBindableAddresses(): array { return [$this->address]; }
-            public function getTlsBindingsByAddress(): array { return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER]] : []; }
-            public function selectHost(InternalRequest $ireq): Vhost { $this->test->fail("We should never get to dispatching requests here..."); }
-            public function count() { return 1; }
-        };
-
-        $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
-        $server = new Server(new Options, $vhosts, $logger, new Ticker($logger), $driver = new class($this) implements HttpDriver {
+        $driver = new class($this) implements HttpDriver {
             private $test;
             private $write;
             public $parser;
@@ -309,9 +297,8 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
                 $this->test = $test;
             }
 
-            public function __invoke(callable $emit, callable $write) {
+            public function setup(callable $emit, callable $write) {
                 $this->write = $write;
-                return $this;
             }
 
             public function filters(InternalRequest $ireq): array {
@@ -325,7 +312,20 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             public function parser(Client $client): \Generator {
                 yield from ($this->parser)($client, $this->write);
             }
-        });
+        };
+
+        $vhosts = new class($tls, $address, $this, $driver) extends VhostContainer {
+            public function __construct($tls, $address, $test, $driver) { $this->tls = $tls; $this->test = $test; $this->address = $address; $this->driver = $driver; }
+            public function getBindableAddresses(): array { return [$this->address]; }
+            public function getTlsBindingsByAddress(): array { return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER]] : []; }
+            public function selectHost(InternalRequest $ireq): Vhost { $this->test->fail("We should never get to dispatching requests here..."); }
+            public function selectHttpDriver($addr, $port) { return $this->driver; }
+            public function count() { return 1; }
+        };
+
+        $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
+        $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
+        $driver->setup("strlen", (new \ReflectionClass($server))->getMethod("writeResponse")->getClosure($server));
         $driver->parser = $parser;
         yield $server->start();
         return [$address, $server];

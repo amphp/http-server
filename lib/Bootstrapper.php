@@ -57,9 +57,9 @@ class Bootstrapper {
         $options["configPath"] = $configFile;
 
         $options = $this->generateOptionsObjFromArray($options);
-        $vhosts = new VhostContainer;
+        $vhosts = new VhostContainer(new Http1Driver);
         $ticker = new Ticker($logger);
-        $server = new Server($options, $vhosts, $logger, $ticker, new Http1Driver);
+        $server = new Server($options, $vhosts, $logger, $ticker);
 
         $bootLoader = function(Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
@@ -199,7 +199,7 @@ class Bootstrapper {
                 });
             }
 
-            $vhost = new Vhost($name, $interfaces, $application, $middlewares);
+            $vhost = new Vhost($name, $interfaces, $application, $middlewares, $hostExport["httpdriver"]);
             if ($crypto = $hostExport["crypto"]) {
                 $vhost->setCrypto($crypto);
             }

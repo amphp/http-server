@@ -52,10 +52,9 @@ class Http2Driver implements HttpDriver {
     private $emit;
     private $write;
 
-    public function __invoke(callable $emit, callable $write) {
+    public function setup(callable $emit, callable $write) {
         $this->emit = $emit;
         $this->write = $write;
-        return $this;
     }
 
     public function filters(InternalRequest $ireq): array {

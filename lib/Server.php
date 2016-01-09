@@ -34,7 +34,6 @@ class Server {
     private $keepAliveTimeouts = [];
     private $nullBody;
     private $stopPromisor;
-    private $httpDriver;
 
     // private callables that we pass to external code //
     private $exporter;
@@ -45,7 +44,7 @@ class Server {
     private $onCoroutineAppResolve;
     private $onResponseDataDone;
 
-    public function __construct(Options $options, VhostContainer $vhosts, Logger $logger, Ticker $ticker, $driver) {
+    public function __construct(Options $options, VhostContainer $vhosts, Logger $logger, Ticker $ticker) {
         $this->options = $options;
         $this->vhosts = $vhosts;
         $this->logger = $logger;
@@ -68,11 +67,6 @@ class Server {
         $this->onWritable = $this->makePrivateCallable("onWritable");
         $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
         $this->onResponseDataDone = $this->makePrivateCallable("onResponseDataDone");
-
-        $emitter = $this->makePrivateCallable("onParseEmit");
-        $writer = $this->makePrivateCallable("writeResponse");
-        $this->httpDriver = ($driver)($emitter, $writer);
-        assert($this->httpDriver instanceof HttpDriver);
     }
 
     /**
@@ -178,6 +172,10 @@ class Server {
 
     private function doStart(): \Generator {
         assert($this->logDebug("starting"));
+
+        $emitter = $this->makePrivateCallable("onParseEmit");
+        $writer = $this->makePrivateCallable("writeResponse");
+        $this->vhosts->setupHttpDrivers($emitter, $writer);
 
         $addrCtxMap = $this->generateBindableAddressContextMap();
         foreach ($addrCtxMap as $address => $context) {
@@ -393,7 +391,6 @@ class Server {
         $client = new Client;
         $client->id = (int) $socket;
         $client->socket = $socket;
-        $client->httpDriver = $this->httpDriver;
         $client->options = $this->options;
         $client->exporter = $this->exporter;
         $client->remainingKeepAlives = $this->options->maxKeepAliveRequests ?: null;
@@ -422,6 +419,7 @@ class Server {
 
         $this->clients[$client->id] = $client;
 
+        $client->httpDriver = $this->vhosts->selectHttpDriver($client->serverAddr, $client->serverPort);
         $client->requestParser = $client->httpDriver->parser($client);
         $client->requestParser->valid();
 
@@ -534,10 +532,6 @@ class Server {
             case HttpDriver::ENTITY_RESULT:
                 $this->onParsedMessageWithEntity($client, $parseResult);
                 break;
-            case HttpDriver::UPGRADE:
-                // assumes all of preface were consumed... (24 bytes for HTTP/2)
-                $this->onParseUpgrade($client, $parseResult);
-                break;
             case HttpDriver::ERROR:
                 $this->onParseError($client, $parseResult, $errorStruct);
                 break;
@@ -598,13 +592,6 @@ class Server {
         };
 
         $this->respond($ireq);
-    }
-
-    private function onParseUpgrade(Client $client, array $parseResult) {
-        $initBuffer = $parseResult["unparsed"];
-        $client->httpDriver = $parseResult["driver"];
-        $client->requestParser = $client->httpDriver->parser($client);
-        $client->requestParser->send($initBuffer);
     }
 
     private function initializeRequest(Client $client, array $parseResult): InternalRequest {
@@ -948,7 +935,6 @@ class Server {
             "clients" => $this->clients,
             "keepAliveTimeouts" => $this->keepAliveTimeouts,
             "stopPromise" => $this->stopPromisor ? $this->stopPromisor->promise() : null,
-            "httpDriver" => $this->httpDriver,
         ];
     }
 }
