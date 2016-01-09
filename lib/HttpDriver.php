@@ -10,7 +10,8 @@ interface HttpDriver {
     const ENTITY_RESULT = 5;
     const UPGRADE = 6;
 
-    public function versions(): array;
+    const BAD_VERSION = 1;
+
     public function filters(InternalRequest $ireq): array;
     public function writer(InternalRequest $ireq): \Generator;
     public function parser(Client $client): \Generator;

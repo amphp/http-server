@@ -232,7 +232,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
 
             $vhosts = new VhostContainer;
             $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
-            $server = new Server(new Options, $vhosts, $logger, new Ticker($logger), [$driver = new class($this, $client) implements HttpDriver {
+            $server = new Server(new Options, $vhosts, $logger, new Ticker($logger), $driver = new class($this, $client) implements HttpDriver {
                 private $test;
                 private $emit;
                 public $headers;
@@ -248,10 +248,6 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                 public function __invoke(callable $emit, callable $write) {
                     $this->emit = $emit;
                     return $this;
-                }
-
-                public function versions(): array {
-                    return ["1.1"];
                 }
 
                 public function filters(InternalRequest $ireq): array {
@@ -281,7 +277,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                         "body" => "",
                     ], null], $this->client);
                 }
-            }]);
+            });
 
             $ws = $this->getMock(Websocket::class);
             $ws->expects($this->exactly(1))

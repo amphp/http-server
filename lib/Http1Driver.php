@@ -8,24 +8,24 @@ class Http1Driver implements HttpDriver {
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
     )x";
 
+    private $http2;
     private $parseEmitter;
     private $responseWriter;
 
     public function __invoke(callable $parseEmitter, callable $responseWriter) {
         $this->parseEmitter = $parseEmitter;
         $this->responseWriter = $responseWriter;
+        $this->http2 = (new Http2Driver)($parseEmitter, $responseWriter);
         return $this;
-    }
-
-    public function versions(): array {
-        return ["1.0", "1.1"];
     }
 
     public function filters(InternalRequest $ireq): array {
         // We need this in filters to be able to return HTTP/2.0 filters; if we allow HTTP/1.1 filters to be returned, we have lost
         if (isset($ireq->headers["upgrade"][0]) &&
             $ireq->headers["upgrade"][0] === "h2c" &&
-            $ireq->protocol === "1.1"
+            $ireq->protocol === "1.1" &&
+            isset($headers["http2-settings"][0]) &&
+            false !== $h2cSettings = base64_decode($headers["http2-settings"][0])
         ) {
             // Send upgrading response
             $ireq->responseWriter->send([
@@ -37,19 +37,20 @@ class Http1Driver implements HttpDriver {
             $ireq->responseWriter->send(false); // flush before replacing
 
             // internal upgrade
-            ($this->parseEmitter)([HttpDriver::UPGRADE, ["protocol" => "2.0", "unparsed" => ""], null], $ireq->client);
+            $h2cSettingsFrame = substr(pack("N", \strlen($h2cSettings)), 1, 3) . Http2Driver::SETTINGS . Http2Driver::NOFLAG . "\0\0\0\0$h2cSettings";
+            ($this->parseEmitter)([HttpDriver::UPGRADE, ["driver" => $this->http2, "unparsed" => "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$h2cSettingsFrame"], null], $ireq->client);
             $ireq->responseWriter = $ireq->client->httpDriver->writer($ireq);
             $ireq->streamId = 1;
             $ireq->client->streamWindow[$ireq->streamId] = $ireq->client->window;
             $ireq->client->streamWindowBuffer[$ireq->streamId] = "";
             $ireq->protocol = "2.0";
 
-            /// Make request look HTTP/2 compatible
+            // Make request look HTTP/2 compatible
             $ireq->headers[":scheme"] = $ireq->client->isEncrypted ? ["https"] : ["http"];
             $ireq->headers[":authority"] = $ireq->headers["host"];
             $ireq->headers[":path"] = $ireq->uriPath;
             $ireq->headers[":method"] = $ireq->method;
-            $host = explode(":", $ireq->headers["host"][0]);
+            $host = \explode(":", $ireq->headers["host"][0]);
             if (count($host) > 1) {
                 $ireq->uriPort = array_pop($host);
             }
@@ -139,7 +140,7 @@ class Http1Driver implements HttpDriver {
 
         $buffer = "";
 
-        while (1) {
+        do {
             // break potential references
             unset($traceBuffer, $protocol, $method, $uri, $headers);
 
@@ -174,11 +175,11 @@ class Http1Driver implements HttpDriver {
             }
 
             while (1) {
-                $buffer = ltrim($buffer, "\r\n");
+                $buffer = \ltrim($buffer, "\r\n");
 
-                if ($headerPos = strpos($buffer, "\r\n\r\n")) {
-                    $startLineAndHeaders = substr($buffer, 0, $headerPos + 2);
-                    $buffer = (string)substr($buffer, $headerPos + 4);
+                if ($headerPos = \strpos($buffer, "\r\n\r\n")) {
+                    $startLineAndHeaders = \substr($buffer, 0, $headerPos + 2);
+                    $buffer = (string) \substr($buffer, $headerPos + 4);
                     break;
                 } elseif ($maxHeaderSize > 0 && strlen($buffer) > $maxHeaderSize) {
                     $error = "Bad Request: header size violation";
@@ -188,36 +189,47 @@ class Http1Driver implements HttpDriver {
                 $buffer .= yield;
             }
 
-            $startLineEndPos = strpos($startLineAndHeaders, "\n");
-            $startLine = rtrim(substr($startLineAndHeaders, 0, $startLineEndPos), "\r\n");
-            $rawHeaders = substr($startLineAndHeaders, $startLineEndPos + 1);
+            $startLineEndPos = \strpos($startLineAndHeaders, "\n");
+            $startLine = \rtrim(substr($startLineAndHeaders, 0, $startLineEndPos), "\r\n");
+            $rawHeaders = \substr($startLineAndHeaders, $startLineEndPos + 1);
             $traceBuffer = $startLineAndHeaders;
 
-            if (!$method = strtok($startLine, " ")) {
+            if (!$method = \strtok($startLine, " ")) {
                 $error = "Bad Request: invalid request line";
                 break;
             }
 
-            if (!$uri = strtok(" ")) {
+            if (!$uri = \strtok(" ")) {
                 $error = "Bad Request: invalid request line";
                 break;
             }
 
-            $protocol = strtok(" ");
+            $protocol = \strtok(" ");
             if (stripos($protocol, "HTTP/") !== 0) {
                 $error = "Bad Request: invalid request line";
                 break;
             }
 
-            $protocol = substr($protocol, 5);
+            $protocol = \substr($protocol, 5);
+
+            if ($protocol != "1.1" && $protocol != "1.0") {
+                // @TODO eventually add an option to disable HTTP/2.0 support???
+                if ($protocol == "2.0") {
+                    ($this->parseEmitter)([HttpDriver::UPGRADE, ["driver" => $this->http2, "unparsed" => "$startLineAndHeaders\r\n$buffer"], null], $client);
+                    return;
+                } else {
+                    $error = HttpDriver::BAD_VERSION;
+                    break;
+                }
+            }
 
             if ($rawHeaders) {
-                if (strpos($rawHeaders, "\n\x20") || strpos($rawHeaders, "\n\t")) {
+                if (\strpos($rawHeaders, "\n\x20") || \strpos($rawHeaders, "\n\t")) {
                     $error = "Bad Request: multi-line headers deprecated by RFC 7230";
                     break;
                 }
 
-                if (!preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches)) {
+                if (!\preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches)) {
                     $error = "Bad Request: header syntax violation";
                     break;
                 }
@@ -230,14 +242,14 @@ class Http1Driver implements HttpDriver {
                 }
 
                 if ($headers) {
-                    $headers = array_change_key_case($headers);
+                    $headers = \array_change_key_case($headers);
                 }
 
                 $contentLength = $headers["content-length"][0] ?? null;
 
                 if (isset($headers["transfer-encoding"])) {
                     $value = $headers["transfer-encoding"][0];
-                    $isChunked = (bool) strcasecmp($value, "identity");
+                    $isChunked = (bool) \strcasecmp($value, "identity");
                 }
 
                 // @TODO validate that the bytes in matched headers match the raw input. If not there is a syntax error.
@@ -256,19 +268,8 @@ class Http1Driver implements HttpDriver {
             $client->parserEmitLock = true;
 
             if (!$hasBody) {
-                $parseResult["unparsed"] = $buffer;
-                if ($method == "PRI") {
-                    while (\strlen($buffer) < 6) { // HTTP/2 SM\r\n\r\n
-                        $buffer .= yield;
-                    }
-                    $parseResult["unparsed"] = substr($buffer, 6);
-                    ($this->parseEmitter)([HttpDriver::UPGRADE, $parseResult, null], $client);
-                    return;
-                } else {
-                    $parseResult["unparsed"] = $buffer;
-                    ($this->parseEmitter)([HttpDriver::RESULT, $parseResult, null], $client);
-                    continue;
-                }
+                ($this->parseEmitter)([HttpDriver::RESULT, $parseResult, null], $client);
+                continue;
             }
 
             ($this->parseEmitter)([HttpDriver::ENTITY_HEADERS, $parseResult, null], $client);
@@ -276,16 +277,16 @@ class Http1Driver implements HttpDriver {
 
             if ($isChunked) {
                 while (1) {
-                    while (false === ($lineEndPos = strpos($buffer, "\r\n"))) {
+                    while (false === ($lineEndPos = \strpos($buffer, "\r\n"))) {
                         $buffer .= yield;
                     }
 
-                    $line = substr($buffer, 0, $lineEndPos);
-                    $buffer = substr($buffer, $lineEndPos + 2);
-                    $hex = trim(ltrim($line, "0")) ?: 0;
-                    $chunkLenRemaining = hexdec($hex);
+                    $line = \substr($buffer, 0, $lineEndPos);
+                    $buffer = \substr($buffer, $lineEndPos + 2);
+                    $hex = \trim(\ltrim($line, "0")) ?: 0;
+                    $chunkLenRemaining = \hexdec($hex);
 
-                    if ($lineEndPos === 0 || $hex != dechex($chunkLenRemaining)) {
+                    if ($lineEndPos === 0 || $hex != \dechex($chunkLenRemaining)) {
                         $error = "Bad Request: hex chunk size expected";
                         break 2;
                     }
@@ -294,16 +295,16 @@ class Http1Driver implements HttpDriver {
                         while (!isset($buffer[1])) {
                             $buffer .= yield;
                         }
-                        $firstTwoBytes = substr($buffer, 0, 2);
+                        $firstTwoBytes = \substr($buffer, 0, 2);
                         if ($firstTwoBytes === "\r\n") {
-                            $buffer = substr($buffer, 2);
+                            $buffer = \substr($buffer, 2);
                             break; // finished ($is_chunked loop)
                         }
 
                         do {
-                            if ($trailerSize = strpos($buffer, "\r\n\r\n")) {
-                                $trailers = substr($buffer, 0, $trailerSize + 2);
-                                $buffer = substr($buffer, $trailerSize + 4);
+                            if ($trailerSize = \strpos($buffer, "\r\n\r\n")) {
+                                $trailers = \substr($buffer, 0, $trailerSize + 2);
+                                $buffer = \substr($buffer, $trailerSize + 4);
                             } else {
                                 $buffer .= yield;
                                 $trailerSize = \strlen($buffer);
@@ -315,12 +316,12 @@ class Http1Driver implements HttpDriver {
                             }
                         } while (!isset($trailers));
 
-                        if (strpos($trailers, "\n\x20") || strpos($trailers, "\n\t")) {
+                        if (\strpos($trailers, "\n\x20") || \strpos($trailers, "\n\t")) {
                             $error = "Bad Request: multi-line trailers deprecated by RFC 7230";
                             break 2;
                         }
 
-                        if (!preg_match_all(self::HEADER_REGEX, $trailers, $matches)) {
+                        if (!\preg_match_all(self::HEADER_REGEX, $trailers, $matches)) {
                             $error = "Bad Request: trailer syntax violation";
                             break 2;
                         }
@@ -332,14 +333,14 @@ class Http1Driver implements HttpDriver {
                         }
 
                         if ($trailers) {
-                            $trailers = array_change_key_case($trailers);
+                            $trailers = \array_change_key_case($trailers);
 
                             foreach (["transfer-encoding", "content-length", "trailer"] as $remove) {
                                 unset($trailers[$remove]);
                             }
 
                             if ($trailers) {
-                                $headers = array_merge($headers, $trailers);
+                                $headers = \array_merge($headers, $trailers);
                             }
                         }
 
@@ -400,7 +401,7 @@ class Http1Driver implements HttpDriver {
                     $buffer = "";
                 } else {
                     $body = substr($buffer, 0, $contentLength);
-                    $buffer = (string)substr($buffer, $contentLength);
+                    $buffer = (string) \substr($buffer, $contentLength);
                 }
             }
 
@@ -408,9 +409,8 @@ class Http1Driver implements HttpDriver {
                 ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
             }
 
-            $parseResult["unparsed"] = $buffer;
             ($this->parseEmitter)([HttpDriver::ENTITY_RESULT, $parseResult, null], $client);
-        }
+        } while (true);
 
         // An error occurred...
         // stop parsing here ...
@@ -496,7 +496,7 @@ class Http1Driver implements HttpDriver {
         if (empty($headers["transfer-encoding"])) {
             return $headers;
         }
-        if (!in_array("chunked", $headers["transfer-encoding"])) {
+        if (!\in_array("chunked", $headers["transfer-encoding"])) {
             return $headers;
         }
 

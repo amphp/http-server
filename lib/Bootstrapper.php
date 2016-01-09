@@ -59,7 +59,7 @@ class Bootstrapper {
         $options = $this->generateOptionsObjFromArray($options);
         $vhosts = new VhostContainer;
         $ticker = new Ticker($logger);
-        $server = new Server($options, $vhosts, $logger, $ticker, [new Http1Driver, new Http2Driver]);
+        $server = new Server($options, $vhosts, $logger, $ticker, new Http1Driver);
 
         $bootLoader = function(Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);

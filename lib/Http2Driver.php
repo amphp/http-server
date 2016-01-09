@@ -58,10 +58,6 @@ class Http2Driver implements HttpDriver {
         return $this;
     }
 
-    public function versions(): array {
-        return ["2.0"];
-    }
-
     public function filters(InternalRequest $ireq): array {
         $filters = [
             [$this, "responseInitFilter"],
@@ -360,21 +356,34 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
 
         $buffer = yield;
 
+        $preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+        while (\strlen($buffer) > \strlen($preface)) {
+            $buffer .= yield;
+        }
+        if (\strncmp($buffer, $preface, \strlen($preface)) !== 0) {
+            $start = \strpos($buffer, "HTTP/") + 5;
+            ($this->emit)([HttpDriver::ERROR, ["protocol" => \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start)], HttpDriver::BAD_VERSION], $client);
+            while (1) {
+                yield;
+            }
+        }
+        $buffer = \substr($buffer, \strlen($preface));
+
         while (1) {
             while (\strlen($buffer) < 9) {
                 $buffer .= yield;
             }
-            $length = unpack("N", "\0$buffer")[1];
+            $length = \unpack("N", "\0$buffer")[1];
             // @TODO SETTINGS: MAX_FRAME_SIZE
             $type = $buffer[3];
             $flags = $buffer[4];
-            $id = unpack("N", substr($buffer, 5, 4))[1];
+            $id = \unpack("N", substr($buffer, 5, 4))[1];
             // the highest bit must be zero... but RFC does not specify what should happen when it is set to 1?
             if ($id < 0) {
                 $id = ~$id;
             }
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type: ".bin2hex($type)."; Stream: $id; Length: $length\n");
-            $buffer = substr($buffer, 9);
+            $buffer = \substr($buffer, 9);
 
             switch ($type) {
                 case self::DATA:
@@ -392,7 +401,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;
                             }
-                            $buffer = substr($buffer, $length);
+                            $buffer = \substr($buffer, $length);
                             goto stream_error;
                         }
                     }
@@ -401,8 +410,8 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         if ($buffer === "") {
                             $buffer = yield;
                         }
-                        $padding = ord($buffer[0]);
-                        $buffer = substr($buffer, 1);
+                        $padding = \ord($buffer);
+                        $buffer = \substr($buffer, 1);
                         $length--;
 
                         if ($padding >= $length) {
@@ -424,8 +433,8 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                     }
 
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer, 0, $length - $padding)."\n");
-                    ($this->emit)([$type, ["id" => $id, "protocol" => "2.0", "body" => substr($buffer, 0, $length - $padding)], null], $client);
-                    $buffer = substr($buffer, $length);
+                    ($this->emit)([$type, ["id" => $id, "protocol" => "2.0", "body" => \substr($buffer, 0, $length - $padding)], null], $client);
+                    $buffer = \substr($buffer, $length);
 
                     continue 2;
 
@@ -434,8 +443,8 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                         if ($buffer == "") {
                             $buffer = yield;
                         }
-                        $padding = ord($buffer[0]);
-                        $buffer = substr($buffer, 1);
+                        $padding = \ord($buffer);
+                        $buffer = \substr($buffer, 1);
                         $length--;
 
                         if ($padding >= $length) {
@@ -460,7 +469,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                         }
                         $weight = $buffer[4];
                         */
-                        $buffer = substr($buffer, 5);
+                        $buffer = \substr($buffer, 5);
                         $length -= 5;
                     }
 
@@ -468,8 +477,8 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                         $buffer .= yield;
                     }
 
-                    $packed = substr($buffer, 0, $length);
-                    $buffer = substr($buffer, $length);
+                    $packed = \substr($buffer, 0, $length);
+                    $buffer = \substr($buffer, $length);
 
                     $streamEnd = ($flags & self::END_STREAM) != "\0";
                     if (($flags & self::END_HEADERS) != "\0") {
@@ -514,7 +523,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                     $weight = $buffer[4];
                     */
 
-                    $buffer = substr($buffer, 5);
+                    $buffer = \substr($buffer, 5);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "PRIORITY: - \n");
                     continue 2;
 
@@ -533,7 +542,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "PRIORITY: - \n");
                         $buffer .= yield;
                     }
 
-                    $error = unpack("N", $buffer)[1];
+                    $error = \unpack("N", $buffer)[1];
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                     if (isset($client->bodyPromisors[$id])) {
@@ -541,7 +550,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                     }
                     unset($headers[$id], $client->streamWindow[$id], $client->streamEnd[$id], $client->streamWindowBuffer[$id], $client->bodyPromisors[$id]);
 
-                    $buffer = substr($buffer, 4);
+                    $buffer = \substr($buffer, 4);
                     continue 2;
 
                 case self::SETTINGS:
@@ -569,7 +578,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                             $buffer .= yield;
                         }
 
-                        $unpacked = unpack("nsetting/Nvalue", $buffer); // $unpacked["value" >= 0
+                        $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value" >= 0
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]}): {$unpacked["value"]}\n");
 
                         switch ($unpacked["setting"]) {
@@ -598,7 +607,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
                                 break;
                         }
 
-                        $buffer = substr($buffer, 6);
+                        $buffer = \substr($buffer, 6);
                         $length -= 6;
                     }
 
@@ -622,7 +631,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
                         $buffer .= yield;
                     }
 
-                    $data = substr($buffer, 0, 8);
+                    $data = \substr($buffer, 0, 8);
 
                     if ($flags & self::ACK) {
                         // @TODO resolve ping
@@ -630,7 +639,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
                         $this->writeFrame($client, $data, self::PING, self::ACK);
                     }
 
-                    $buffer = substr($buffer, 8);
+                    $buffer = \substr($buffer, 8);
 
                     continue 2;
 
@@ -640,14 +649,14 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
                         break 2;
                     }
 
-                    $lastId = unpack("N", $buffer)[1];
+                    $lastId = \unpack("N", $buffer)[1];
                     // the highest bit must be zero... but RFC does not specify what should happen when it is set to 1?
                     if ($lastId < 0) {
                         $lastId = ~$lastId;
                     }
-                    $error = unpack("N", substr($buffer, 4, 4))[1];
+                    $error = \unpack("N", substr($buffer, 4, 4))[1];
 
-                    $buffer = substr($buffer, 8);
+                    $buffer = \substr($buffer, 8);
                     $length -= 8;
 
                     while (\strlen($buffer) < $length) {
@@ -675,7 +684,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
                         }
                     }
 
-                    $windowSize = unpack("N", $buffer)[1];
+                    $windowSize = \unpack("N", $buffer)[1];
                     if ($id) {
                         if (!isset($client->streamWindow[$id])) {
                             $client->streamWindow[$id] = $client->initialWindowSize + $windowSize;
@@ -695,7 +704,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
                         }
                     }
 
-                    $buffer = substr($buffer, 4);
+                    $buffer = \substr($buffer, 4);
 
                     continue 2;
 
@@ -709,8 +718,8 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
                         $buffer .= yield;
                     }
 
-                    $headers[$id] .= substr($buffer, 0, $length);
-                    $buffer = substr($buffer, $length);
+                    $headers[$id] .= \substr($buffer, 0, $length);
+                    $buffer = \substr($buffer, $length);
 
                     if (($flags & self::END_HEADERS) != "\0") {
                         $packed = $headers[$id];
@@ -769,5 +778,9 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "Stream ERROR: $error\n");
 
         $this->writeFrame($client, pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
+
+        while (1) {
+            yield;
+        }
     }
 }

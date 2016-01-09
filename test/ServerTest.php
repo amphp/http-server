@@ -33,7 +33,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
 
     function tryLowLevelRequest($vhosts, $responder, $middlewares) {
         $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
-        new Server(new Options, $vhosts, $logger, new Ticker($logger), [$driver = new class($this) implements HttpDriver {
+        new Server(new Options, $vhosts, $logger, new Ticker($logger), $driver = new class($this) implements HttpDriver {
             private $test;
             private $emit;
             public $headers;
@@ -49,10 +49,6 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             public function __invoke(callable $emit, callable $write) {
                 $this->emit = $emit;
                 return $this;
-            }
-
-            public function versions(): array {
-                return ["2.0"];
             }
 
             public function filters(InternalRequest $ireq): array {
@@ -76,7 +72,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             public function emit($emit) {
                 ($this->emit)($emit, $this->client);
             }
-        }]);
+        });
         $part = yield;
         while (1) {
             $driver->emit($part);
@@ -229,7 +225,6 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
 
     public function providePreResponderHeaders() {
         return [
-            [["protocol" => "0.9"], \Aerys\HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]],
             [["headers" => ["host" => "undefined"]], \Aerys\HTTP_STATUS["BAD_REQUEST"]],
             [["method" => "NOT_ALLOWED"], \Aerys\HTTP_STATUS["METHOD_NOT_ALLOWED"]],
         ];
@@ -305,7 +300,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
         };
 
         $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
-        $server = new Server(new Options, $vhosts, $logger, new Ticker($logger), [$driver = new class($this) implements HttpDriver {
+        $server = new Server(new Options, $vhosts, $logger, new Ticker($logger), $driver = new class($this) implements HttpDriver {
             private $test;
             private $write;
             public $parser;
@@ -319,10 +314,6 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
                 return $this;
             }
 
-            public function versions(): array {
-                return ["1.1"]; // default entry point is 1.1
-            }
-
             public function filters(InternalRequest $ireq): array {
                 return $ireq->vhost->getFilters();
             }
@@ -334,7 +325,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             public function parser(Client $client): \Generator {
                 yield from ($this->parser)($client, $this->write);
             }
-        }]);
+        });
         $driver->parser = $parser;
         yield $server->start();
         return [$address, $server];

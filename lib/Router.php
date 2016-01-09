@@ -132,7 +132,6 @@ class Router implements Bootable, Middleware, ServerObserver {
                 // If no other registered host actions respond the server will send a
                 // 404 automatically anyway.
                 return;
-                break;
             case Dispatcher::METHOD_NOT_ALLOWED:
                 $allowedMethods = $match[1];
                 $ireq->locals["aerys.routed"] = [$isMethodAllowed = false, $allowedMethods];

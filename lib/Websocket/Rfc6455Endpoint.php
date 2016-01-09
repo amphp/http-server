@@ -128,7 +128,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
         if (!$acceptKey = $request->getHeader("Sec-Websocket-Key")) {
             $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
-            $response->setReason("Bad Request: \"Sec-Broker-Key\" header required");
+            $response->setReason("Bad Request: \"Sec-Websocket-Key\" header required");
             $response->setHeader("Aerys-Generic-Response", "enable");
             $response->end();
             return;
@@ -242,9 +242,9 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
     private function tryAppOnClose(int $clientId, $code, $reason): \Generator {
         try {
-            $onOpenResult = $this->application->onClose($clientId, $code, $reason);
-            if ($onOpenResult instanceof \Generator) {
-                $onOpenResult = yield from $onOpenResult;
+            $onCloseResult = $this->application->onClose($clientId, $code, $reason);
+            if ($onCloseResult instanceof \Generator) {
+                $onCloseResult = yield from $onCloseResult;
             }
         } catch (\Throwable $e) {
             yield from $this->onAppError($clientId, $e);

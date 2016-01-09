@@ -45,7 +45,7 @@ class Server {
     private $onCoroutineAppResolve;
     private $onResponseDataDone;
 
-    public function __construct(Options $options, VhostContainer $vhosts, Logger $logger, Ticker $ticker, array $httpDrivers) {
+    public function __construct(Options $options, VhostContainer $vhosts, Logger $logger, Ticker $ticker, $driver) {
         $this->options = $options;
         $this->vhosts = $vhosts;
         $this->logger = $logger;
@@ -69,15 +69,10 @@ class Server {
         $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
         $this->onResponseDataDone = $this->makePrivateCallable("onResponseDataDone");
 
-        foreach ($httpDrivers as $driver) {
-            $emitter = $this->makePrivateCallable("onParseEmit");
-            $writer = $this->makePrivateCallable("writeResponse");
-            $http = $driver($emitter, $writer);
-            \assert($http instanceof HttpDriver);
-            foreach ($http->versions() as $version) {
-                $this->httpDriver[$version] = $http;
-            }
-        }
+        $emitter = $this->makePrivateCallable("onParseEmit");
+        $writer = $this->makePrivateCallable("writeResponse");
+        $this->httpDriver = ($driver)($emitter, $writer);
+        assert($this->httpDriver instanceof HttpDriver);
     }
 
     /**
@@ -148,7 +143,7 @@ class Server {
 
         return any($promises)->when(function($error, $result) {
             // $error is always empty because an any() combinator promise never fails.
-            // Instead we check the error array at index zero in the two-item amy() $result
+            // Instead we check the error array at index zero in the two-item any() $result
             // and log as needed.
             list($observerErrors) = $result;
             foreach ($observerErrors as $error) {
@@ -274,8 +269,7 @@ class Server {
     }
 
     private function bind(string $address, $context) {
-        $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
-        if (!$socket = stream_socket_server($address, $errno, $errstr, $flags, $context)) {
+        if (!$socket = stream_socket_server($address, $errno, $errstr, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, $context)) {
             throw new \RuntimeException(
                 sprintf(
                     "Failed binding socket on %s: [Err# %s] %s",
@@ -290,7 +284,7 @@ class Server {
     }
 
     private function onAcceptable(string $watcherId, $server) {
-        if (!$client = @stream_socket_accept($server, $timeout = 0, $peerName)) {
+        if (!$client = @\stream_socket_accept($server, $timeout = 0, $peerName)) {
             return;
         }
 
@@ -301,10 +295,10 @@ class Server {
             return;
         }
 
-        assert($this->logDebug("accept {$peerName}"));
+        \assert($this->logDebug("accept {$peerName}"));
 
-        stream_set_blocking($client, false);
-        $contextOptions = stream_context_get_options($client);
+        \stream_set_blocking($client, false);
+        $contextOptions = \stream_context_get_options($client);
         if (isset($contextOptions["ssl"])) {
             $clientId = (int) $client;
             $watcherId = \Amp\onReadable($client, $this->negotiateCrypto, $options = [
@@ -312,22 +306,24 @@ class Server {
             ]);
             $this->pendingTlsStreams[$clientId] = [$watcherId, $client];
         } else {
-            $this->importClient($client, $peerName, $this->httpDriver["1.1"]);
+            $this->importClient($client, $peerName);
         }
     }
 
     private function negotiateCrypto(string $watcherId, $socket, string $peerName) {
-        if ($handshake = @stream_socket_enable_crypto($socket, true)) {
-            $socketId = (int) $socket;
+        if ($handshake = @\stream_socket_enable_crypto($socket, true)) {
+            $socketId = (int)$socket;
             \Amp\cancel($watcherId);
             unset($this->pendingTlsStreams[$socketId]);
-            $meta = stream_get_meta_data($socket)["crypto"];
-            $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
-            \assert($this->logDebug(sprintf("crypto negotiated %s%s", ($isH2 ? "(h2) " : ""), $peerName)));
-            // Dispatch via HTTP 1 driver for now, it knows how to handle PRI * requests, maybe we can improve that later...
-            $this->importClient($socket, $peerName, $this->httpDriver["1.1"]);
+            assert(function () use ($socket, $peerName) {
+                $meta = stream_get_meta_data($socket)["crypto"];
+                $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
+                return $this->logDebug(sprintf("crypto negotiated %s%s", ($isH2 ? "(h2) " : ""), $peerName));
+            });
+            // Dispatch via HTTP 1 driver; it knows how to handle PRI * requests - for now it is easier to dispatch only via content (ignore alpn)...
+            $this->importClient($socket, $peerName);
         } elseif ($handshake === false) {
-            \assert($this->logDebug("crypto handshake error {$peerName}"));
+            assert($this->logDebug("crypto handshake error {$peerName}"));
             $this->failCryptoNegotiation($socket);
         }
     }
@@ -393,11 +389,11 @@ class Server {
         yield $this->notify();
     }
 
-    private function importClient($socket, string $peerName, HttpDriver $http) {
+    private function importClient($socket, string $peerName) {
         $client = new Client;
         $client->id = (int) $socket;
         $client->socket = $socket;
-        $client->httpDriver = $http;
+        $client->httpDriver = $this->httpDriver;
         $client->options = $this->options;
         $client->exporter = $this->exporter;
         $client->remainingKeepAlives = $this->options->maxKeepAliveRequests ?: null;
@@ -426,7 +422,7 @@ class Server {
 
         $this->clients[$client->id] = $client;
 
-        $client->requestParser = $http->parser($client);
+        $client->requestParser = $client->httpDriver->parser($client);
         $client->requestParser->valid();
 
         $this->renewKeepAliveTimeout($client);
@@ -455,20 +451,20 @@ class Server {
     }
 
     private function onWritable(string $watcherId, $socket, $client) {
-        $bytesWritten = @fwrite($socket, $client->writeBuffer);
+        $bytesWritten = @\fwrite($socket, $client->writeBuffer);
         if ($bytesWritten === false) {
-            if (!is_resource($socket) || @feof($socket)) {
+            if (!\is_resource($socket) || @\feof($socket)) {
                 $client->isDead = true;
                 $this->close($client);
             }
-        } elseif ($bytesWritten === strlen($client->writeBuffer)) {
+        } elseif ($bytesWritten === \strlen($client->writeBuffer)) {
             $client->writeBuffer = "";
             \Amp\disable($watcherId);
             if ($client->onWriteDrain) {
                 ($client->onWriteDrain)($client);
             }
         } else {
-            $client->writeBuffer = substr($client->writeBuffer, $bytesWritten);
+            $client->writeBuffer = \substr($client->writeBuffer, $bytesWritten);
             \Amp\enable($watcherId);
         }
     }
@@ -499,9 +495,9 @@ class Server {
     }
 
     private function onReadable(string $watcherId, $socket, $client) {
-        $data = @fread($socket, $this->options->ioGranularity);
+        $data = @\fread($socket, $this->options->ioGranularity);
         if ($data == "") {
-            if (!is_resource($socket) || @feof($socket)) {
+            if (!\is_resource($socket) || @\feof($socket)) {
                 $client->isDead = true;
                 $this->close($client);
             }
@@ -538,12 +534,12 @@ class Server {
             case HttpDriver::ENTITY_RESULT:
                 $this->onParsedMessageWithEntity($client, $parseResult);
                 break;
-            case HttpDriver::ERROR:
-                $this->onParseError($client, $parseResult, $errorStruct);
-                break;
             case HttpDriver::UPGRADE:
                 // assumes all of preface were consumed... (24 bytes for HTTP/2)
                 $this->onParseUpgrade($client, $parseResult);
+                break;
+            case HttpDriver::ERROR:
+                $this->onParseError($client, $parseResult, $errorStruct);
                 break;
             default:
                 assert(false, "Unexpected parser result code encountered");
@@ -553,11 +549,6 @@ class Server {
     private function onParsedMessageWithoutEntity(Client $client, array $parseResult) {
         $ireq = $this->initializeRequest($client, $parseResult);
         $this->clearKeepAliveTimeout($client);
-
-        // @TODO find better way to hook in!?
-        if (isset($this->httpDriver[$parseResult["protocol"]]) && $this->httpDriver[$parseResult["protocol"]] != $client->httpDriver) {
-            $this->onParseUpgrade($client, $parseResult);
-        }
 
         $this->respond($ireq);
     }
@@ -584,11 +575,6 @@ class Server {
         // @TODO Update trailer headers if present
 
         // Don't respond() because we always start the response when headers arrive
-
-        // @TODO find better way to hook in!?
-        if (isset($this->httpDriver[$parseResult["protocol"]]) && $this->httpDriver[$parseResult["protocol"]] != $client->httpDriver) {
-            $this->onParseUpgrade($client, $parseResult);
-        }
     }
 
     private function onParseError(Client $client, array $parseResult, string $error) {
@@ -596,8 +582,13 @@ class Server {
 
         $this->clearKeepAliveTimeout($client);
         $ireq = $this->initializeRequest($client, $parseResult);
-        $ireq->preAppResponder = function(Request $request, Response $response) use ($error) {
-            $status = HTTP_STATUS["BAD_REQUEST"];
+        $ireq->preAppResponder = function(Request $request, Response $response) use ($parseResult, $error) {
+            if ($error === HttpDriver::BAD_VERSION) {
+                $status = HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"];
+                $error = "Unsupported version {$parseResult['protocol']}";
+            } else {
+                $status = HTTP_STATUS["BAD_REQUEST"];
+            }
             $body = makeGenericBody($status, [
                 "msg" => $error,
             ]);
@@ -611,7 +602,7 @@ class Server {
 
     private function onParseUpgrade(Client $client, array $parseResult) {
         $initBuffer = $parseResult["unparsed"];
-        $client->httpDriver = $this->httpDriver[$parseResult["protocol"]];
+        $client->httpDriver = $parseResult["driver"];
         $client->requestParser = $client->httpDriver->parser($client);
         $client->requestParser->send($initBuffer);
     }
@@ -656,7 +647,7 @@ class Server {
         if (empty($ireq->headers["cookie"])) {
             $ireq->cookies = [];
         } else { // @TODO delay initialization
-            $ireq->cookies = array_merge(...array_map("\\Aerys\\parseCookie", $ireq->headers["cookie"]));
+            $ireq->cookies = array_merge(...array_map('\Aerys\parseCookie', $ireq->headers["cookie"]));
         }
 
         $ireq->uriRaw = $uri;
@@ -675,32 +666,12 @@ class Server {
             $ireq->uri = $ireq->uriPath = $uri;
         }
 
-        if (!isset($this->httpDriver[$protocol])) {
-            $ireq->preAppResponder = [$this, "sendPreAppVersionNotSupportedResponse"];
-        }
-
         if (!$vhost = $this->vhosts->selectHost($ireq)) {
             $vhost = $this->vhosts->getDefaultHost();
             $ireq->preAppResponder = [$this, "sendPreAppInvalidHostResponse"];
         }
 
         $ireq->vhost = $vhost;
-
-        if ($client->httpDriver instanceof Http1Driver && !$client->isEncrypted) {
-            $h2cUpgrade = $headers["upgrade"][0] ?? "";
-            if ($h2cUpgrade && strcasecmp($h2cUpgrade, "h2c") === 0) {
-                if (isset($headers["http2-settings"][0]) && false !== $h2cSettings = base64_decode($headers["http2-settings"][0])) {
-                    $h2cSettingsFrame = substr(pack("N", \strlen($h2cSettings)), 1, 3) . Http2Driver::SETTINGS . Http2Driver::NOFLAG . "\0\0\0\0$h2cSettings";
-                    $this->onParseUpgrade($client, ["unparsed" => $h2cSettingsFrame, "protocol" => "2.0"]);
-                } else {
-                    // handle case where no http2-settings header is specified
-                }
-            }
-
-        }
-
-        // @TODO Handle 100 Continue responses
-        // $expectsContinue = empty($headers["expect"]) ? false : stristr($headers["expect"], "100-continue");
 
         return $ireq;
     }
@@ -721,14 +692,6 @@ class Server {
         }
 
         $this->tryApplication($ireq, $application);
-    }
-
-    private function sendPreAppVersionNotSupportedResponse(Request $request, Response $response) {
-        $status = HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"];
-        $body = makeGenericBody($status);
-        $response->setStatus($status);
-        $response->setHeader("Connection", "close");
-        $response->end($body);
     }
 
     private function sendPreAppServiceUnavailableResponse(Request $request, Response $response) {
