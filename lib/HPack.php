@@ -302,7 +302,7 @@ class HPack {
         $int = $c & 0x7f;
         $i = 0;
         while ($c & 0x80) {
-            if (isset($input[$off])) {
+            if (!isset($input[$off])) {
                 return -0x80;
             }
             $c = \ord($input[$off++]);
@@ -350,10 +350,17 @@ class HPack {
             } elseif (($index & 0x60) != 0x20) { // (($index & 0x40) || !($index & 0x20)): bit 4: never index is ignored
                 $dynamic = (bool)($index & 0x40);
                 if ($index & ($dynamic ? 0x3f : 0x0f)) { // separate length
-                    if (($dynamic && $index == 0x7f) || (($index & 0x1f) == 0x1f)) {
-                        $index = self::decode_dynamic_integer($input, $off) + ($dynamic ? 0x40 : 0x10);
+                    if ($dynamic) {
+                        if ($index == 0x7f) {
+                            $index = self::decode_dynamic_integer($input, $off) + 0x3f;
+                        } else {
+                            $index &= 0x3f;
+                        }
                     } else {
-                        $index &= $dynamic ? 0x3f : 0x0f;
+                        $index &= 0x0f;
+                        if ($index == 0x0f) {
+                            $index = self::decode_dynamic_integer($input, $off) + 0x0f;
+                        }
                     }
                     if ($index <= self::LAST_INDEX) {
                         $header = self::TABLE[$index - 1];

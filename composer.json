@@ -41,6 +41,7 @@
     },
     "require-dev": {
         "fabpot/php-cs-fixer": "^1.9",
+        "http2jp/hpack-test-case": "1.0",
         "phpunit/phpunit": "^5"
     },
     "autoload": {
@@ -59,5 +60,19 @@
         "branch-alias": {
             "dev-master": "0.1.0-dev"
         }
-    }
+    },
+    "repositories": [
+        {
+            "type": "package",
+            "package": {
+                "name": "http2jp/hpack-test-case",
+                "version": "1.0",
+                "source": {
+                    "url": "https://github.com/http2jp/hpack-test-case",
+                    "type": "git",
+                    "reference": "origin/master"
+                }
+            }
+        }
+    ]
 }
