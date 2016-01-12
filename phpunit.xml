@@ -13,7 +13,7 @@
 >
     <php>
         <!-- WHY IN THE FUCKING HELL does @dataProvider use ITERATOR_TO_ARRAY?!?!?!? -->
-        <ini name="memory_limit" value="500M" />
+        <ini name="memory_limit" value="1G" />
     </php>
     <testsuites>
         <testsuite name="AerysTest">
