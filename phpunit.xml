@@ -14,6 +14,7 @@
     <php>
         <!-- WHY IN THE FUCKING HELL does @dataProvider use ITERATOR_TO_ARRAY?!?!?!? -->
         <ini name="memory_limit" value="1G" />
+        <ini name="error_reporting" value="-1" />
     </php>
     <testsuites>
         <testsuite name="AerysTest">

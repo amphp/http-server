@@ -5,14 +5,17 @@ namespace Aerys\Test;
 use Aerys\Client;
 use Aerys\HttpDriver;
 use Aerys\Http1Driver;
+use Aerys\Http2Driver;
+use Aerys\InternalRequest;
 use Aerys\Options;
+use Amp\Artax\Parser;
 
 class Http1DriverTest extends \PHPUnit_Framework_TestCase {
 
     /**
      * @dataProvider provideUnparsableRequests
      */
-    public function testBadRequestBufferedParse($unparsable, $errCode, $errMsg, $opts) {
+    function testBadRequestBufferedParse($unparsable, $errCode, $errMsg, $opts) {
         $invoked = 0;
         $resultCode = null;
         $parseResult = null;
@@ -41,7 +44,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
     /**
      * @dataProvider provideUnparsableRequests
      */
-    public function testBadRequestIncrementalParse($unparsable, $errCode, $errMsg, $opts) {
+    function testBadRequestIncrementalParse($unparsable, $errCode, $errMsg, $opts) {
         $invoked = 0;
         $resultCode = null;
         $parseResult = null;
@@ -76,7 +79,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
     /**
      * @dataProvider provideParsableRequests
      */
-    public function testBufferedRequestParse($msg, $expectations) {
+    function testBufferedRequestParse($msg, $expectations) {
         $invoked = 0;
         $parseResult = null;
         $body = "";
@@ -107,7 +110,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
     /**
      * @dataProvider provideParsableRequests
      */
-    public function testIncrementalRequestParse($msg, $expectations) {
+    function testIncrementalRequestParse($msg, $expectations) {
         $invoked = 0;
         $parseResult = null;
         $body = "";
@@ -137,7 +140,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $this->assertSame($expectations["body"], $body, "body mismatch");
     }
 
-    public function testIdentityBodyParseEmit() {
+    function testIdentityBodyParseEmit() {
         $originalBody = "12345";
         $msg =
             "POST /post-endpoint HTTP/1.0\r\n" .
@@ -172,7 +175,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $this->assertSame($originalBody, $body);
     }
 
-    public function testStreamingBodyParseEmit() {
+    function testStreamingBodyParseEmit() {
         $body = "";
         $invoked = 0;
         $emitCallback = function($emitStruct) use (&$invoked, &$body) {
@@ -219,7 +222,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $this->assertSame("1\r\n2", $body);
     }
 
-    public function testChunkedBodyParseEmit() {
+    function testChunkedBodyParseEmit() {
         $msg =
             "POST /post-endpoint HTTP/1.0\r\n" .
             "Host: localhost\r\n" .
@@ -258,7 +261,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $this->assertSame($expectedBody, $body);
     }
 
-    public function provideParsableRequests() {
+    function provideParsableRequests() {
         $return = [];
 
         // 0 --- basic request -------------------------------------------------------------------->
@@ -444,7 +447,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         return $return;
     }
 
-    public function provideUnparsableRequests() {
+    function provideUnparsableRequests() {
         $return = [];
 
         // 0 -------------------------------------------------------------------------------------->
@@ -536,5 +539,113 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         // x -------------------------------------------------------------------------------------->
 
         return $return;
+    }
+
+    function verifyWrite($input, $status, $headers, $data) {
+        $parser = new Parser(Parser::MODE_RESPONSE);
+        $parsed = $parser->parse($input);
+        $this->assertEquals($status, $parsed["status"]);
+        $this->assertEquals($headers, $parsed["headers"]);
+        $this->assertEquals($data, stream_get_contents($parsed["body"]));
+    }
+
+    function testWriter() {
+        $headers = ["test" => ["successful"]];
+        $status = 200;
+        $rawHeaders = $headers + [":status" => $status, ":reason" => "OK", ":aerys-entity-length" => "*"];
+        $data = "foobar";
+
+        $driver = new Http1Driver;
+        $driver->setup(function(){$this->fail();}, function($client, $final = false) use (&$fin) { $fin = $final; });
+        $client = new Client;
+        $client->options = new Options;
+        foreach (["keepAliveTimeout" => 60, "defaultContentType" => "text/html", "defaultTextCharset" => "utf-8", "deflateEnable" => false, "sendServerToken" => false] as $k => $v) {
+            $client->options->$k = $v;
+        }
+        $ireq = new InternalRequest;
+        $ireq->client = $client;
+        $ireq->protocol = "1.1";
+        $ireq->responseWriter = $driver->writer($ireq);
+        $ireq->httpDate = "date";
+        $ireq->vhost = new class { function getFilters() { return []; }}; // good enough for here...
+        $ireq->method = "GET";
+        $writer = \Aerys\responseCodec(\Aerys\responseFilter($driver->filters($ireq), $ireq), $ireq);
+        $writer->send($rawHeaders);
+        foreach (str_split($data) as $c) {
+            $writer->send($c);
+            $writer->send(false);
+        }
+        $writer->send(null);
+
+        $this->assertTrue($fin);
+        $this->verifyWrite($client->writeBuffer, $status, $headers + ["transfer-encoding" => ["chunked"], "content-type" => ["text/html; charset=utf-8"], "keep-alive" => ["timeout=60"], "date" => ["date"]], $data);
+        $this->assertNotTrue($client->shouldClose);
+    }
+
+    function testHttp2Upgrade() {
+        $ireq = new InternalRequest;
+        $ireq->protocol = "1.1";
+        $ireq->headers = ["upgrade" => ["h2c"], "http2-settings" => [base64_encode("somesettings")], "host" => ["foo.bar"]];
+        $ireq->responseWriter = (function() use (&$headers) {
+            $headers = yield;
+        })();
+        $ireq->uriPath = "/path";
+        $ireq->method = "GET";
+        $ireq->client = new Client;
+        $ireq->client->options = new Options;
+
+        $driver = new Http1Driver;
+        $http2 = new class implements HttpDriver {
+            public function setup(callable $parseEmitter, callable $responseWriter) {}
+            public function filters(InternalRequest $ireq): array { return []; }
+            public function writer(InternalRequest $ireq): \Generator { yield; }
+
+            public $received;
+            public function parser(Client $client): \Generator {
+                while (1) {
+                    $this->received .= yield;
+                }
+            }
+
+        };
+        (function() use ($http2) {
+            $this->http2 = $http2;
+        })->call($driver);
+        $driver->filters($ireq);
+
+        $this->assertEquals([
+            ":status" => \Aerys\HTTP_STATUS["SWITCHING_PROTOCOLS"],
+            ":reason" => "Switching Protocols",
+            "connection" => ["Upgrade"],
+            "upgrade" => ["h2c"]
+        ], $headers);
+        $this->assertEquals("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\0\0\xc" . Http2Driver::SETTINGS . Http2Driver::NOFLAG . "\0\0\0\0somesettings", $http2->received);
+    }
+
+    function testNativeHttp2() {
+        $driver = new Http1Driver;
+        $http2 = new class implements HttpDriver {
+            public function setup(callable $parseEmitter, callable $responseWriter) {}
+            public function filters(InternalRequest $ireq): array { return []; }
+            public function writer(InternalRequest $ireq): \Generator { yield; }
+
+            public $received;
+            public function parser(Client $client): \Generator {
+                while (1) {
+                    $this->received .= yield;
+                }
+            }
+
+        };
+        (function() use ($http2) {
+            $this->http2 = $http2;
+        })->call($driver);
+
+        $client = new Client;
+        $client->options = new Options;
+        $data = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\nbinary data";
+        $driver->parser($client)->send($data);
+        $this->assertEquals($data, $http2->received);
+
     }
 }

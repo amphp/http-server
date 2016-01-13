@@ -24,8 +24,8 @@ class Http1Driver implements HttpDriver {
         if (isset($ireq->headers["upgrade"][0]) &&
             $ireq->headers["upgrade"][0] === "h2c" &&
             $ireq->protocol === "1.1" &&
-            isset($headers["http2-settings"][0]) &&
-            false !== $h2cSettings = base64_decode($headers["http2-settings"][0])
+            isset($ireq->headers["http2-settings"][0]) &&
+            false !== $h2cSettings = base64_decode($ireq->headers["http2-settings"][0])
         ) {
             // Send upgrading response
             $ireq->responseWriter->send([
@@ -44,15 +44,16 @@ class Http1Driver implements HttpDriver {
             $h2cSettingsFrame = substr(pack("N", \strlen($h2cSettings)), 1, 3) . Http2Driver::SETTINGS . Http2Driver::NOFLAG . "\0\0\0\0$h2cSettings";
             $client->requestParser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$h2cSettingsFrame");
 
-            $ireq->responseWriter = $ireq->client->httpDriver->writer($ireq);
+            $ireq->responseWriter = $client->httpDriver->writer($ireq);
             $ireq->streamId = 1;
-            $client->streamWindow[$ireq->streamId] = $ireq->client->window;
+            $client->streamWindow[$ireq->streamId] = $client->window;
             $client->streamWindowBuffer[$ireq->streamId] = "";
             $ireq->protocol = "2.0";
 
+            /* unnecessary:
             // Make request look HTTP/2 compatible
-            $ireq->headers[":scheme"] = $ireq->client->isEncrypted ? ["https"] : ["http"];
-            $ireq->headers[":authority"] = $ireq->headers["host"];
+            $ireq->headers[":scheme"] = $client->isEncrypted ? "https" : "http";
+            $ireq->headers[":authority"] = $ireq->headers["host"][0];
             $ireq->headers[":path"] = $ireq->uriPath;
             $ireq->headers[":method"] = $ireq->method;
             $host = \explode(":", $ireq->headers["host"][0]);
@@ -61,8 +62,9 @@ class Http1Driver implements HttpDriver {
             }
             $ireq->uriHost = implode(":", $host);
             unset($ireq->headers["host"]);
+            */
 
-            return $ireq->client->httpDriver->filters($ireq);
+            return $client->httpDriver->filters($ireq);
         }
 
         $filters = [
@@ -89,7 +91,6 @@ class Http1Driver implements HttpDriver {
         $headers = yield;
 
         $client = $ireq->client;
-        $protocol = $ireq->protocol;
 
         if (!empty($headers["connection"])) {
             foreach ($headers["connection"] as $connection) {
@@ -99,7 +100,7 @@ class Http1Driver implements HttpDriver {
             }
         }
 
-        $lines = ["HTTP/{$protocol} {$headers[":status"]} {$headers[":reason"]}"];
+        $lines = ["HTTP/{$ireq->protocol} {$headers[":status"]} {$headers[":reason"]}"];
         unset($headers[":status"], $headers[":reason"]);
         foreach ($headers as $headerField => $headerLines) {
             if ($headerField[0] !== ":") {
