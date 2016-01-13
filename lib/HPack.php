@@ -425,41 +425,40 @@ class HPack {
     private static function encode_dynamic_integer($int) {
         $out = "";
         $i = 0;
-        while ($int >> $i) {
+        while (($int >> $i) > 0x80) {
             $out .= \chr(0x80 | (($int >> $i) & 0x7f));
             $i += 7;
         }
-        return $out == "" ? "\0" : $out;
+        return $out . chr($int >> $i);
     }
 
     public static function encode($headers) {
         // @TODO implementation is deliberately primitive... [doesn't use any dynamic table...]
         $output = [];
 
-        foreach ($headers as $name => $value) {
-            if (\is_array($value)) {
-                $value = $value[0];
-            }
-            foreach (self::TABLE as $index => list($header_name)) {
+        foreach ($headers as $name => $values) {
+            foreach ((array) $values as $value) {
+                foreach (self::TABLE as $index => list($header_name)) {
+                    if ($name == $header_name) {
+                        break;
+                    }
+                }
                 if ($name == $header_name) {
-                    break;
-                }
-            }
-            if ($name == $header_name) {
-                if (++$index < 0x10) {
-                    $output[] = \chr($index);
+                    if (++$index < 0x10) {
+                        $output[] = \chr($index);
+                    } else {
+                        $output[] = "\x0f" . \chr($index - 0x0f);
+                    }
+                } elseif (\strlen($name) < 0x7f) {
+                    $output[] = "\0" . \chr(\strlen($name)) . $name;
                 } else {
-                    $output[] = "\x0f" . \chr($index - 0x0f);
+                    $output[] = "\0\x7f" . self::encode_dynamic_integer(\strlen($name) - 0x7f) . $name;
                 }
-            } elseif (\strlen($name) <= 0x7f) {
-                $output[] = "\0" . \chr(\strlen($name)) . $name;
-            } else {
-                $output[] = "\0\x7f" . self::encode_dynamic_integer(\strlen($name) - 0x80) . $name;
-            }
-            if (\strlen($value) < 0x7f) {
-                $output[] = \chr(\strlen($value)) . $value;
-            } else {
-                $output[] = "\x7f" . self::encode_dynamic_integer(\strlen($value) - 0x80) . $value;
+                if (\strlen($value) < 0x7f) {
+                    $output[] = \chr(\strlen($value)) . $value;
+                } else {
+                    $output[] = "\x7f" . self::encode_dynamic_integer(\strlen($value) - 0x7f) . $value;
+                }
             }
         }
 
