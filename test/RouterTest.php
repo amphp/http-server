@@ -3,22 +3,23 @@
 namespace Aerys\Test;
 
 use Amp\ {
-    NativeReactor,
     function wait,
     function resolve
 };
 
 use Aerys\{
     InternalRequest,
+    Middleware,
     Options,
     Router,
     Server,
     Response,
-    StandardRequest
+    StandardRequest,
+    StandardResponse
 };
 
 class RouterTest extends \PHPUnit_Framework_TestCase {
-    private function mockServer($state) {
+    function mockServer($state) {
         return new class($state) extends Server {
             private $state;
             private $options;
@@ -31,7 +32,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         };
     }
 
-    private function mockResponse($state = Response::NONE) {
+    function mockResponse($state = Response::NONE) {
         return new class($state) implements Response {
             private $state;
             public function __construct($state) { $this->state = $state; }
@@ -53,7 +54,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
      * @expectedException DomainException
      * @expectedExceptionMessage Aerys\Router::route requires a non-empty string HTTP method at Argument 1
      */
-    public function testRouteThrowsOnEmptyMethodString() {
+    function testRouteThrowsOnEmptyMethodString() {
         $router = new Router;
         $router->route("", "/uri", function(){});
     }
@@ -62,12 +63,12 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
      * @expectedException DomainException
      * @expectedExceptionMessage Aerys\Router::route requires at least one callable route action or middleware at Argument 3
      */
-    public function testRouteThrowsOnEmptyActionsArray() {
+    function testRouteThrowsOnEmptyActionsArray() {
         $router = new Router;
         $router->route("GET", "/uri");
     }
 
-    public function testUpdateFailsIfStartedWithoutAnyRoutes() {
+    function testUpdateFailsIfStartedWithoutAnyRoutes() {
         $router = new Router;
         $mock = $this->mockServer(Server::STARTING);
         $result = $router->update($mock);
@@ -81,7 +82,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $this->assertSame($i, 1);
     }
 
-    public function testMultiActionRouteInvokesEachCallableUntilResponseIsStarted() {
+    function testMultiActionRouteInvokesEachCallableUntilResponseIsStarted() {
         $i = 0;
         $foo = function() use (&$i) { $i++; };
         $bar = function($request, $response) use (&$i) {
@@ -91,6 +92,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
 
         $router = new Router;
         $router->route("GET", "/{name}/{age}", $foo, $bar, $foo);
+        $router->prefix("/genius");
         $mock = $this->mockServer(Server::STARTING);
         $router->update($mock);
 
@@ -98,7 +100,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $request = new StandardRequest($ireq);
         $ireq->locals = [];
         $ireq->method = "GET";
-        $ireq->uriPath = "/daniel/32";
+        $ireq->uriPath = "/genius/daniel/32";
         $response = $this->mockResponse();
 
         $this->assertFalse($router->do($ireq)->valid());
@@ -108,5 +110,49 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
 
         $this->assertSame(3, $i);
         $this->assertSame(["name" => "daniel", "age" => "32"], $ireq->locals["aerys.routeArgs"]);
+    }
+
+    function testCachedMiddlewareRoute() {
+        $middleware = new class implements Middleware {
+            function do(InternalRequest $ireq) {
+                $data = yield;
+                $data = "middleware + " . yield $data;
+                while (true) {
+                    $data = yield $data;
+                }
+            }
+        };
+        $action = function($req, $res) {
+            $res->end("action");
+        };
+
+        $router = new Router;
+        $router->get("/", $middleware, $action);
+        $mock = $this->mockServer(Server::STARTING);
+        $router->update($mock);
+
+        for ($i = 0; $i < 2; $i++) {
+            $received = "";
+
+            $ireq = new InternalRequest;
+            $ireq->locals = [];
+            $ireq->method = "GET";
+            $ireq->uriPath = "/";
+            $ireq->responseWriter = (function () use (&$headers, &$received) {
+                $headers = yield;
+                while (true) {
+                    $received .= yield;
+                }
+            })();
+
+            $request = new StandardRequest($ireq);
+            $filter = \Aerys\responseFilter([[$router, "do"]], $ireq);
+            $filter->current();
+            $response = new StandardResponse(\Aerys\responseCodec($filter, $ireq));
+
+            $router($request, $response);
+
+            $this->assertEquals("middleware + action", $received);
+        }
     }
 }

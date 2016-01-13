@@ -52,7 +52,7 @@ class HPackTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals($output, $decoded, "Failure on testcase #$i (standalone)");
         }
 
-
+        // Ensure that usage of dynamic table works as expected
         $encHpack = new HPack;
         $decHpack = new HPack;
         foreach ($cases as $i => list($input, $output)) {
@@ -81,7 +81,7 @@ class HPackTest extends \PHPUnit_Framework_TestCase {
                 $cases[$case->seqno ?? $i] = [$headers, $case->headers];
                 $i++;
             }
-            yield basename($path).": $data->description" => [$cases];
+            yield basename($path) . (isset($data->description) ? ": $data->description" : "") => [$cases];
         }
     }
 
