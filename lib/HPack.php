@@ -384,6 +384,9 @@ class HPack {
                     }
                     $off += $len;
                 }
+                if ($off == $inputlen) {
+                    return null;
+                }
                 $len = \ord($input[$off++]);
                 $huffman = $len & 0x80;
                 $len &= 0x7f;

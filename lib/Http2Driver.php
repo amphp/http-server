@@ -129,7 +129,7 @@ class Http2Driver implements HttpDriver {
         return $headers;
     }
 
-    private function dispatchInternalRequest(InternalRequest $ireq, string $url, array $pushHeaders = null) {
+    protected function dispatchInternalRequest(InternalRequest $ireq, string $url, array $pushHeaders = null) {
         $client = $ireq->client;
         $id = $client->streamId += 2;
 
@@ -229,27 +229,18 @@ class Http2Driver implements HttpDriver {
         unset($headers[":reason"], $headers["connection"]); // obsolete in HTTP/2.0
         $headers = HPack::encode($headers);
 
-        $lastPart = yield;
-
         // @TODO decide whether to use max-frame size
 
         if (\strlen($headers) >= 16384) {
             $split = str_split($headers, 16384);
             $headers = array_shift($split);
-            $this->writeFrame($client, $headers, self::HEADERS, $lastPart === null ? self::END_STREAM : self::NOFLAG, $id);
+            $this->writeFrame($client, $headers, self::HEADERS, self::NOFLAG, $id);
 
             $headers = array_pop($split);
             foreach ($split as $msgPart) {
                 $this->writeFrame($client, $msgPart, self::CONTINUATION, self::NOFLAG, $id);
             }
             $this->writeFrame($client, $headers, self::CONTINUATION, self::END_HEADERS, $id);
-
-            if ($lastPart === null) {
-                return;
-            }
-        } elseif ($lastPart === null) {
-            $this->writeFrame($client, $headers, self::HEADERS, self::END_HEADERS | self::END_STREAM, $id);
-            return;
         } else {
             $this->writeFrame($client, $headers, self::HEADERS, self::END_HEADERS, $id);
         }
@@ -263,30 +254,21 @@ class Http2Driver implements HttpDriver {
                 continue;
             }
 
-            if (\strlen($lastPart) >= 16384) {
-                foreach (str_split($lastPart, 16384) as $lastPart) {
-                    $this->writeData($client, $lastPart, $id, false);
+            if (\strlen($msgPart) >= 16384) {
+                foreach (str_split($msgPart, 16384) as $msgPart) {
+                    $this->writeData($client, $msgPart, $id, false);
                 }
             } else {
-                $this->writeData($client, $lastPart, $id, false);
-            }
-            $lastPart = $msgPart;
-        }
-
-        if (\strlen($lastPart) >= 16384) {
-            $split = str_split($lastPart, 16384);
-            $lastPart = array_pop($split);
-            foreach ($split as $msgPart) {
                 $this->writeData($client, $msgPart, $id, false);
             }
         }
 
-        $this->writeData($client, $lastPart, $id);
+        $this->writeData($client, "", $id, true);
     }
 
-    public function writeData(Client $client, $data, $stream, $last = true) {
+    public function writeData(Client $client, $data, $stream, $last) {
         $len = \strlen($data);
-        if ($client->window < $len || $client->streamWindow[$stream] < $len) {
+        if ($client->streamWindowBuffer[$stream] != "" || $client->window < $len || $client->streamWindow[$stream] < $len) {
             $client->streamWindowBuffer[$stream] .= $data; // @TODO limit maximum buffer size
             if ($last) {
                 $client->streamEnd[$stream] = true;
@@ -306,7 +288,7 @@ class Http2Driver implements HttpDriver {
 
     private function tryDataSend(Client $client, $id) {
         $delta = min($client->window, $client->streamWindow[$id]);
-        if ($delta > \strlen($client->streamWindowBuffer[$id])) {
+        if ($delta >= \strlen($client->streamWindowBuffer[$id])) {
             $client->window -= \strlen($client->streamWindowBuffer[$id]);
             if (isset($client->streamEnd[$id])) {
                 $this->writeFrame($client, $client->streamWindowBuffer[$id], self::DATA, self::END_STREAM, $id);
@@ -330,7 +312,7 @@ class Http2Driver implements HttpDriver {
         $this->writeFrame($client, $data, self::PING, self::NOFLAG);
     }
 
-    private function writeFrame(Client $client, $data, $type, $flags, $stream = 0) {
+    protected function writeFrame(Client $client, $data, $type, $flags, $stream = 0) {
         assert($stream >= 0);
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "OUT: ");
 assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data)));
@@ -356,12 +338,14 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
         $buffer = yield;
 
         $preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-        while (\strlen($buffer) > \strlen($preface)) {
+        while (\strlen($buffer) < \strlen($preface)) {
             $buffer .= yield;
         }
         if (\strncmp($buffer, $preface, \strlen($preface)) !== 0) {
             $start = \strpos($buffer, "HTTP/") + 5;
-            ($this->emit)([HttpDriver::ERROR, ["protocol" => \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start)], HttpDriver::BAD_VERSION], $client);
+            if ($start < \strlen($buffer)) {
+                ($this->emit)([HttpDriver::ERROR, ["protocol" => \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start)], HttpDriver::BAD_VERSION], $client);
+            }
             while (1) {
                 yield;
             }
@@ -378,9 +362,9 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
             $flags = $buffer[4];
             $id = \unpack("N", substr($buffer, 5, 4))[1];
             // the highest bit must be zero... but RFC does not specify what should happen when it is set to 1?
-            if ($id < 0) {
+            /*if ($id < 0) {
                 $id = ~$id;
-            }
+            }*/
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type: ".bin2hex($type)."; Stream: $id; Length: $length\n");
             $buffer = \substr($buffer, 9);
 
@@ -405,7 +389,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         }
                     }
 
-                    if (($flags & self::PADDED) != "\0") {
+                    if (($flags & self::PADDED) !== "\0") {
                         if ($buffer === "") {
                             $buffer = yield;
                         }
@@ -413,7 +397,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         $buffer = \substr($buffer, 1);
                         $length--;
 
-                        if ($padding >= $length) {
+                        if ($padding > $length) {
                             $error = self::PROTOCOL_ERROR;
                             break 2;
                         }
@@ -425,36 +409,34 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         $buffer .= yield;
                     }
 
-                    if (($flags & self::END_STREAM) != "\0") {
+                    if (($flags & self::END_STREAM) !== "\0") {
                         $type = HttpDriver::ENTITY_RESULT;
                     } else {
                         $type = HttpDriver::ENTITY_PART;
                     }
 
-assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer, 0, $length - $padding)."\n");
-                    ($this->emit)([$type, ["id" => $id, "protocol" => "2.0", "body" => \substr($buffer, 0, $length - $padding)], null], $client);
+                    $body = \substr($buffer, 0, $length - $padding);
+assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
+                    if ($body != "") {
+                        ($this->emit)([$type, ["id" => $id, "protocol" => "2.0", "body" => $body], null], $client);
+                    }
                     $buffer = \substr($buffer, $length);
 
                     continue 2;
 
                 case self::HEADERS:
-                    if (($flags & self::PADDED) != "\0") {
+                    if (($flags & self::PADDED) !== "\0") {
                         if ($buffer == "") {
                             $buffer = yield;
                         }
                         $padding = \ord($buffer);
                         $buffer = \substr($buffer, 1);
                         $length--;
-
-                        if ($padding >= $length) {
-                            $error = self::PROTOCOL_ERROR;
-                            break 2;
-                        }
                     } else {
                         $padding = 0;
                     }
 
-                    if (($flags & self::PRIORITY_FLAG) != "\0") {
+                    if (($flags & self::PRIORITY_FLAG) !== "\0") {
                         while (\strlen($buffer) < 5) {
                             $buffer .= yield;
                         }
@@ -472,14 +454,19 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): ".substr($buffer
                         $length -= 5;
                     }
 
+                    if ($padding >= $length) {
+                        $error = self::PROTOCOL_ERROR;
+                        break 2;
+                    }
+
                     while (\strlen($buffer) < $length) {
                         $buffer .= yield;
                     }
 
-                    $packed = \substr($buffer, 0, $length);
+                    $packed = \substr($buffer, 0, $length - $padding);
                     $buffer = \substr($buffer, $length);
 
-                    $streamEnd = ($flags & self::END_STREAM) != "\0";
+                    $streamEnd = ($flags & self::END_STREAM) !== "\0";
                     if (($flags & self::END_HEADERS) != "\0") {
                         goto parse_headers;
                     } else {
@@ -558,7 +545,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                         break 2;
                     }
 
-                    if (($flags & self::ACK) != "\0") {
+                    if (($flags & self::ACK) !== "\0") {
                         if ($length) {
                             $error = self::PROTOCOL_ERROR;
                             break 2;
@@ -632,7 +619,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
 
                     $data = \substr($buffer, 0, 8);
 
-                    if ($flags & self::ACK) {
+                    if (($flags & self::ACK) !== "\0") {
                         // @TODO resolve ping
                     } else {
                         $this->writeFrame($client, $data, self::PING, self::ACK);
@@ -720,7 +707,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
                     $headers[$id] .= \substr($buffer, 0, $length);
                     $buffer = \substr($buffer, $length);
 
-                    if (($flags & self::END_HEADERS) != "\0") {
+                    if (($flags & self::END_HEADERS) !== "\0") {
                         $packed = $headers[$id];
                         unset($headers[$id]);
                         goto parse_headers;
@@ -735,7 +722,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
             }
 
 parse_headers:
-            $headerList = $table->decode($padding ? substr($packed, 0, -$padding) : $packed);
+            $headerList = $table->decode($packed);
             if ($headerList === null) {
                 $error = self::COMPRESSION_ERROR;
                 break;

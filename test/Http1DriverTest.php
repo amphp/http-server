@@ -552,7 +552,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
     function testWriter() {
         $headers = ["test" => ["successful"]];
         $status = 200;
-        $rawHeaders = $headers + [":status" => $status, ":reason" => "OK", ":aerys-entity-length" => "*"];
+        $rawHeaders = $headers + [":status" => $status, ":reason" => "OK", ":aerys-entity-length" => "*", ":aerys-push" => ["/foo" => []]];
         $data = "foobar";
 
         $driver = new Http1Driver;
@@ -578,7 +578,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $writer->send(null);
 
         $this->assertTrue($fin);
-        $this->verifyWrite($client->writeBuffer, $status, $headers + ["transfer-encoding" => ["chunked"], "content-type" => ["text/html; charset=utf-8"], "keep-alive" => ["timeout=60"], "date" => ["date"]], $data);
+        $this->verifyWrite($client->writeBuffer, $status, $headers + ["transfer-encoding" => ["chunked"], "link" => ["</foo>; rel=preload"], "content-type" => ["text/html; charset=utf-8"], "keep-alive" => ["timeout=60"], "date" => ["date"]], $data);
         $this->assertNotTrue($client->shouldClose);
     }
 
