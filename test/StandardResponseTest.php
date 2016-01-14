@@ -2,7 +2,7 @@
 
 namespace Aerys\Test;
 
-use Aerys\{ Filter, InternalRequest, Response, StandardResponse, function responseFilter };
+use Aerys\{ Client, Filter, InternalRequest, Response, StandardResponse, function responseFilter };
 
 class StandardResponseTest extends \PHPUnit_Framework_TestCase {
 
@@ -11,7 +11,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot set status code; output already started
      */
     public function testSetStatusErrorsIfResponseAlreadyStarted() {
-        $response = new StandardResponse((function() { while (1) yield; })());
+        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->stream("test");
         $response->setStatus(200);
     }
@@ -21,7 +21,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot set reason phrase; output already started
      */
     public function testSetReasonErrorsIfResponseAlreadyStarted() {
-        $response = new StandardResponse((function() { while (1) yield; })());
+        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->stream("test");
         $response->setReason("zanzibar");
     }
@@ -31,7 +31,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot add header; output already started
      */
     public function testAddHeaderErrorsIfResponseAlreadyStarted() {
-        $response = new StandardResponse((function() { while (1) yield; })());
+        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->stream("test");
         $response->addHeader("Content-Length", "42");
     }
@@ -41,7 +41,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot set header; output already started
      */
     public function testSetHeaderErrorsIfResponseAlreadyStarted() {
-        $response = new StandardResponse((function() { while (1) yield; })());
+        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->stream("test");
         $response->setHeader("Content-Length", "42");
     }
@@ -56,7 +56,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
             }
         };
 
-        $response = new StandardResponse($writer());
+        $response = new StandardResponse($writer(), new Client);
         $response->end("test");
         $expected = [":aerys-entity-length" => 4, ":reason" => null, ":status" => 200];
         $this->assertEquals($expected, $headers);
@@ -70,7 +70,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot stream: response already sent
      */
     public function testSendThrowsIfResponseAlreadyComplete() {
-        $response = new StandardResponse((function() { while (1) yield; })());
+        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->end("test");
         $response->stream("this should throw");
     }
@@ -80,7 +80,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot stream: response already sent
      */
     public function testStreamThrowsIfResponseAlreadySent() {
-        $response = new StandardResponse((function() { while (1) yield; })());
+        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->end("test");
         $response->stream("this should throw");
     }
@@ -90,7 +90,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot stream: response already sent
      */
     public function testStreamThrowsIfResponseAlreadyEnded() {
-        $response = new StandardResponse((function() { while (1) yield; })());
+        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->end();
         $response->stream("this should throw");
     }
@@ -105,7 +105,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
             }
         };
 
-        $response = new StandardResponse($writer());
+        $response = new StandardResponse($writer(), new Client);
         $response->stream("foo\n");
         $response->stream("bar\n");
         $response->stream("baz\n");
@@ -120,7 +120,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot flush: response already sent
      */
     public function testFlushThrowsIfResponseAlreadySent() {
-        $response = new StandardResponse((function() { while (1) yield; })());
+        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->end();
         $response->flush();
     }
@@ -130,7 +130,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot flush: response output not started
      */
     public function testFlushThrowsIfResponseOutputNotStarted() {
-        $response = new StandardResponse((function() { while (1) yield; })());
+        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->flush();
     }
 }

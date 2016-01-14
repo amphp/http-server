@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\Client;
 use Aerys\Host;
 use Aerys\Http1Driver;
 use Aerys\Http2Driver;
@@ -101,7 +102,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals("http://localhost/foo", $headers["location"][0]);
             $this->assertEquals(301, $headers[":status"]);
             $body = yield === null;
-        })()));
+        })(), new Client));
         $this->assertTrue($body);
     }
 }

@@ -4,6 +4,7 @@ namespace Aerys;
 
 class StandardResponse implements Response {
     private $codec;
+    private $client;
     private $state = self::NONE;
     private $headers = [
         ":status" => 200,
@@ -11,16 +12,11 @@ class StandardResponse implements Response {
     ];
     private $cookies = [];
 
-    /**
-     * @param \Generator $codec
-     */
-    public function __construct(\Generator $codec) {
+    public function __construct(\Generator $codec, Client $client) {
         $this->codec = $codec;
+        $this->client = $client;
     }
 
-    /**
-     * @return array
-     */
     public function __debugInfo(): array {
         return $this->headers;
     }
@@ -152,9 +148,8 @@ class StandardResponse implements Response {
      * @param string $body The full response entity body
      * @throws \LogicException If response output already started
      * @throws \Aerys\ClientException If the client has already disconnected
-     * @return self
      */
-    public function send(string $body): Response {
+    public function send(string $body) {
         if ($this->state & self::ENDED) {
             throw new \LogicException(
                 "Cannot send: response already sent"
@@ -164,7 +159,7 @@ class StandardResponse implements Response {
                 "Cannot send: response already streaming"
             );
         } else {
-            return $this->end($body);
+            $this->end($body);
         }
     }
 
@@ -176,9 +171,9 @@ class StandardResponse implements Response {
      *
      * @param string $partialBody
      * @throws \LogicException If response output already complete
-     * @return self
+     * @return \Amp\Promise to be succeeded whenever local buffers aren't full
      */
-    public function stream(string $partialBody): Response {
+    public function stream(string $partialBody): \Amp\Promise {
         if ($this->state & self::ENDED) {
             throw new \LogicException(
                 "Cannot stream: response already sent"
@@ -199,7 +194,7 @@ class StandardResponse implements Response {
         // it throws we can handle InternalFilterException appropriately in the server.
         $this->state = self::STREAMING|self::STARTED;
 
-        return $this;
+        return $this->client->bufferPromisor ? $this->client->bufferPromisor->promise() : new \Amp\Success;
     }
 
     /**
@@ -209,9 +204,8 @@ class StandardResponse implements Response {
      * Invoking it before calling stream() or after send()/end() is a logic error.
      *
      * @throws \LogicException If invoked before stream() or after send()/end()
-     * @return self
      */
-    public function flush(): Response {
+    public function flush() {
         if ($this->state & self::ENDED) {
             throw new \LogicException(
                 "Cannot flush: response already sent"
@@ -223,8 +217,6 @@ class StandardResponse implements Response {
                 "Cannot flush: response output not started"
             );
         }
-
-        return $this;
     }
 
     /**
@@ -239,16 +231,15 @@ class StandardResponse implements Response {
      *     $response->end();
      *
      * @param string $finalBody Optional final body data to send
-     * @return self
      */
-    public function end(string $finalBody = null): Response {
+    public function end(string $finalBody = null) {
         if ($this->state & self::ENDED) {
             if (isset($finalBody)) {
                 throw new \LogicException(
                     "Cannot send body data: response output already ended"
                 );
             }
-            return $this;
+            return;
         }
 
         if (!($this->state & self::STARTED)) {
@@ -268,8 +259,6 @@ class StandardResponse implements Response {
         // Update the state *AFTER* the codec operation so that if it throws
         // we can handle things appropriately in the server.
         $this->state = self::ENDED | self::STARTED;
-
-        return $this;
     }
 
     private function setCookies() {

@@ -123,11 +123,19 @@ class Http1Driver implements HttpDriver {
             $buffer[] = $msgPart;
             $bufferSize += \strlen($msgPart);
 
-            if ($msgPart === false || $bufferSize > $ireq->client->options->outputBufferSize) {
+            if ($msgPart === false || $bufferSize > $client->options->outputBufferSize) {
                 $client->writeBuffer .= \implode("", $buffer);
                 $buffer = [];
                 $bufferSize = 0;
                 ($this->responseWriter)($client);
+                $client->bufferSize = \strlen($client->writeBuffer);
+                if ($client->bufferPromisor) {
+                    if ($client->bufferSize <= $client->options->softStreamCap) {
+                        $client->bufferPromisor->succeed();
+                    }
+                } elseif ($client->bufferSize > $client->options->softStreamCap) {
+                    $client->bufferPromisor = new \Amp\Deferred;
+                }
             }
         } while (($msgPart = yield) !== null);
 
@@ -173,7 +181,8 @@ class Http1Driver implements HttpDriver {
 
                 $buffer .= $yield;
                 if (\strlen($buffer) > $maxPendingSize) {
-                    // @TODO check if handling is not too primitive… hmm…
+                    stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
+                    $buffer = ""; // free memory
                     while (1) {
                         yield;
                     }

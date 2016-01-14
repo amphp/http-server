@@ -455,15 +455,22 @@ class Server {
                 $client->isDead = true;
                 $this->close($client);
             }
-        } elseif ($bytesWritten === \strlen($client->writeBuffer)) {
-            $client->writeBuffer = "";
-            \Amp\disable($watcherId);
-            if ($client->onWriteDrain) {
-                ($client->onWriteDrain)($client);
-            }
         } else {
-            $client->writeBuffer = \substr($client->writeBuffer, $bytesWritten);
-            \Amp\enable($watcherId);
+            if ($bytesWritten === \strlen($client->writeBuffer)) {
+                $client->writeBuffer = "";
+                \Amp\disable($watcherId);
+                if ($client->onWriteDrain) {
+                    ($client->onWriteDrain)($client);
+                }
+            } else {
+                $client->writeBuffer = \substr($client->writeBuffer, $bytesWritten);
+                \Amp\enable($watcherId);
+            }
+            $client->bufferSize -= $bytesWritten;
+            if ($client->bufferPromisor && $client->bufferSize <= $client->options->softStreamCap) {
+                $client->bufferPromisor->succeed();
+                $client->bufferPromisor = null;
+            }
         }
     }
 
@@ -755,7 +762,7 @@ class Server {
         $filter->current(); // initialize filters
         $codec = responseCodec($filter, $ireq);
 
-        return $ireq->response = new StandardResponse($codec);
+        return $ireq->response = new StandardResponse($codec, $ireq->client);
     }
 
     private function onCoroutineAppResolve($error, $result, $ireq) {
@@ -848,6 +855,17 @@ class Server {
         }
         $this->clientCount--;
         assert($this->logDebug("close {$client->clientAddr}:{$client->clientPort}"));
+        if ($client->bodyPromisors) {
+            $ex = new ClientException;
+            foreach ($client->bodyPromisors as $promisor) {
+                $promisor->fail($ex);
+            }
+        }
+        if ($client->bufferPromisor) {
+            $ex = new ClientException;
+            $client->bufferPromisor->fail($ex);
+        }
+
     }
 
     private function clear(Client $client) {

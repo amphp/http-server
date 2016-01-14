@@ -3,7 +3,6 @@
 namespace Aerys\Websocket;
 
 use Aerys\Response;
-use Amp\Promisor;
 
 class Handshake implements Response {
     const ACCEPT_CONCAT = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -82,7 +81,7 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function stream(string $partialBodyChunk): Response {
+    public function stream(string $partialBodyChunk): \Amp\Promise {
         if ($this->status === 101) {
             throw new \DomainException(
                 "Cannot stream(); entity body content disallowed for Switching Protocols Response"
@@ -92,14 +91,13 @@ class Handshake implements Response {
             $this->handshake();
         }
         $this->isStarted = true;
-        $this->response->stream($partialBodyChunk);
-        return $this;
+        return $this->response->stream($partialBodyChunk);
     }
 
     /**
      * {@inheritDoc}
      */
-    public function flush(): Response {
+    public function flush() {
         if ($this->status === 101) {
             throw new \DomainException(
                 "Cannot flush(); entity body content disallowed for Switching Protocols Response"
@@ -115,7 +113,7 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function end(string $finalBodyChunk = null): Response {
+    public function end(string $finalBodyChunk = null) {
         if ($this->status === 101 && isset($finalBodyChunk)) {
             throw new \DomainException(
                 "Cannot end() with body data; entity body content disallowed for Switching Protocols Response"

@@ -66,9 +66,8 @@ interface Response {
      * Note: Headers are sent when Response::send() is called.
      *
      * @param string $body The full response entity body
-     * @return self
      */
-    public function send(string $body): Response;
+    public function send(string $body);
 
     /**
      * Incrementally stream parts of the response entity body
@@ -81,19 +80,17 @@ interface Response {
      * Note: Headers are sent upon the first invocation of Response::stream().
      *
      * @param string $partialBodyChunk A portion of the response entity body
-     * @return self
+     * @return \Amp\Promise to be succeeded whenever local buffers aren't full
      */
-    public function stream(string $partialBodyChunk): Response;
+    public function stream(string $partialBodyChunk): \Amp\Promise;
 
     /**
      * Request that buffered stream data be flushed to the client
      *
      * This method only makes sense when streaming output via Response::stream().
      * Invoking it before calling stream() or after send()/end() is a logic error.
-     *
-     * @return self
      */
-    public function flush(): Response;
+    public function flush();
 
     /**
      * Signify the end of streaming response output
@@ -113,9 +110,8 @@ interface Response {
      * Response::send($finalBodyChunk).
      *
      * @param string $finalBodyChunk Optional final body data to send
-     * @return self
      */
-    public function end(string $finalBodyChunk = null): Response;
+    public function end(string $finalBodyChunk = null);
 
     /**
      * Indicate resources which a client likely needs to fetch. (e.g. Link: preload or HTTP/2 Server Push)

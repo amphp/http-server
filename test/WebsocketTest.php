@@ -228,7 +228,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         $endpoint(new StandardRequest($ireq), new StandardResponse((function () use (&$headers, &$body) {
             $headers = yield;
             $body = yield;
-        })()))->next();
+        })(), $ireq->client))->next();
 
         $this->assertEquals($expected, array_intersect_key($headers, $expected));
         if ($expected[":status"] === 101) {
@@ -241,6 +241,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
         // 0 ----- valid Handshake request -------------------------------------------------------->
         $ireq = new InternalRequest;
+        $ireq->client = new Client;
         $ireq->method = "GET";
         $ireq->protocol = "1.1";
         $ireq->headers = [

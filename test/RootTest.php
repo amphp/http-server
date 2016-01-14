@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\Client;
 use Aerys\Response;
 use Aerys\Server;
 use Aerys\ServerObserver;
@@ -381,7 +382,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             while (($part = yield) !== null) {
                 $body .= $part;
             }
-        })()));
+        })(), new Client));
         $this->assertNull($part);
         $promise = \Amp\resolve($generator);
         \Amp\wait($promise);

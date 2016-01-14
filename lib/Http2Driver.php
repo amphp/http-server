@@ -273,6 +273,10 @@ class Http2Driver implements HttpDriver {
             if ($last) {
                 $client->streamEnd[$stream] = true;
             }
+            $client->bufferSize += $len;
+            if ($client->bufferSize > $client->options->softStreamCap) {
+                $client->bufferPromisor = new \Amp\Deferred;
+            }
             $this->tryDataSend($client, $stream);
         } else {
             $client->window -= $len;
@@ -288,17 +292,20 @@ class Http2Driver implements HttpDriver {
 
     private function tryDataSend(Client $client, $id) {
         $delta = min($client->window, $client->streamWindow[$id]);
-        if ($delta >= \strlen($client->streamWindowBuffer[$id])) {
-            $client->window -= \strlen($client->streamWindowBuffer[$id]);
+        $len = \strlen($client->streamWindowBuffer[$id]);
+        if ($delta >= $len) {
+            $client->window -= $len;
+            $client->bufferSize -= $len;
             if (isset($client->streamEnd[$id])) {
                 $this->writeFrame($client, $client->streamWindowBuffer[$id], self::DATA, self::END_STREAM, $id);
                 unset($client->streamWindowBuffer[$id], $client->streamEnd[$id], $client->streamWindow[$id]);
             } else {
                 $this->writeFrame($client, $client->streamWindowBuffer[$id], self::DATA, self::NOFLAG, $id);
-                $client->streamWindow[$id] -= \strlen($client->streamWindowBuffer[$id]);
+                $client->streamWindow[$id] -= $len;
                 $client->streamWindowBuffer[$id] = "";
             }
         } elseif ($delta > 0) {
+            $client->bufferSize -= $delta;
             $this->writeFrame($client, substr($client->streamWindowBuffer[$id], 0, $delta), self::DATA, self::NOFLAG, $id);
             $client->streamWindowBuffer[$id] = substr($client->streamWindowBuffer[$id], $delta);
             $client->streamWindow[$id] -= $delta;
@@ -316,7 +323,12 @@ class Http2Driver implements HttpDriver {
         assert($stream >= 0);
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "OUT: ");
 assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data)));
-        $client->writeBuffer .= substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
+        $new = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
+        $client->writeBuffer .= $new;
+        $client->bufferSize += \strlen($new);
+        if ($client->bufferSize > $client->options->softStreamCap) {
+            $client->bufferPromisor = new \Amp\Deferred;
+        }
         ($this->write)($client, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
 

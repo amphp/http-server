@@ -3,11 +3,14 @@
 namespace Aerys\Test;
 
 use Amp\ {
+    Promise,
+    Success,
     function wait,
     function resolve
 };
 
 use Aerys\{
+    Client,
     InternalRequest,
     Middleware,
     Options,
@@ -41,10 +44,10 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
             function addHeader(string $field, string $value): Response { return $this; }
             function setHeader(string $field, string $value): Response { return $this; }
             function setCookie(string $field, string $value, array $flags = []): Response { return $this; }
-            function send(string $body): Response { $this->state = self::ENDED; return $this; }
-            function stream(string $partialBodyChunk): Response { return $this; }
-            function flush(): Response { return $this; }
-            function end(string $finalBodyChunk = null): Response { return $this; }
+            function send(string $body) { $this->state = self::ENDED; }
+            function stream(string $partialBodyChunk): Promise { return new Success; }
+            function flush() { }
+            function end(string $finalBodyChunk = null) { }
             function push(string $url, array $headers = null): Response { return $this; }
             function state(): int { return 42; }
         };
@@ -148,7 +151,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
             $request = new StandardRequest($ireq);
             $filter = \Aerys\responseFilter([[$router, "do"]], $ireq);
             $filter->current();
-            $response = new StandardResponse(\Aerys\responseCodec($filter, $ireq));
+            $response = new StandardResponse(\Aerys\responseCodec($filter, $ireq), new Client);
 
             $router($request, $response);
 

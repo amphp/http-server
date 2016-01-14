@@ -19,6 +19,8 @@ class Client {
     public $writeWatcher;
 
     public $writeBuffer;
+    public $bufferSize = 0;
+    public $bufferPromisor;
     public $onWriteDrain;
     public $shouldClose;
     public $isDead;

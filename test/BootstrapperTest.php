@@ -3,6 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Bootstrapper;
+use Aerys\Client;
 use Aerys\Console;
 use Aerys\Host;
 use Aerys\InternalRequest;
@@ -78,7 +79,7 @@ class BootstrapperTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals("do", $middleware[1]);
         $this->assertInstanceOf("OurMiddleware", $vhosts["example.com:80"]->getApplication());
         $this->assertEquals(2, count($vhosts["foo.bar:80"]->getApplication()->__debugInfo()["applications"]));
-        $vhosts["foo.bar:80"]->getApplication()(new StandardRequest($ireq = new InternalRequest), new StandardResponse((function(){yield;})()))->next();
+        $vhosts["foo.bar:80"]->getApplication()(new StandardRequest($ireq = new InternalRequest), new StandardResponse((function(){yield;})(), new Client))->next();
         $this->assertEquals(["responder" => 1, "foo.bar" => 1], $ireq->locals);
     }
 }

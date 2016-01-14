@@ -553,7 +553,7 @@ class Root implements ServerObserver {
     private function sendNonRange(file\Handle $handle, Response $response): \Generator {
         while (!$handle->eof()) {
             $chunk = yield $handle->read(8192);
-            $response->stream($chunk);
+            yield $response->stream($chunk);
         }
     }
 
@@ -564,7 +564,7 @@ class Root implements ServerObserver {
             $toBuffer = ($bytesRemaining > 8192) ? 8192 : $bytesRemaining;
             $chunk = yield $handle->read($toBuffer);
             $bytesRemaining -= \strlen($chunk);
-            $response->stream($chunk);
+            yield $response->stream($chunk);
         }
     }
 
@@ -578,7 +578,7 @@ class Root implements ServerObserver {
                 $endPos,
                 $fileInfo->size
             );
-            $response->stream($header);
+            yield $response->stream($header);
             yield from $this->sendSingleRange($handle, $response, $startPos, $endPos);
             $response->stream("\r\n");
         }

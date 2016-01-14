@@ -22,6 +22,7 @@ class Options {
     private $maxHeaderSize = 32768;
     private $ioGranularity = 32768;
     private $maxPendingSize = 262144;
+    private $softStreamCap = 262144; // @TODO verify whether we also need a minimum size where to reactivate buffer // should be multiple of outputBufferSize
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
     private $deflateEnable;
     private $configPath = null;
@@ -179,6 +180,17 @@ class Options {
 
         $this->maxPendingSize = $bytes;
     }
+
+    private function setSoftStreamCap(int $bytes) {
+        if ($bytes < 0) {
+            throw new \DomainException(
+                "Soft stream cap setting must be greater than or equal to zero"
+            );
+        }
+
+        $this->softStreamCap = $bytes;
+    }
+
 
     private function setIoGranularity(int $bytes) {
         if ($bytes <= 0) {
