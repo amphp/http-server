@@ -112,9 +112,13 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
         $hasConnectionUpgrade = false;
         foreach ($request->getHeaderArray("Connection") as $value) {
-            if (strcasecmp($value, "Upgrade") === 0) {
-                $hasConnectionUpgrade = true;
-                break;
+            $values = array_map("trim", explode(",", $value));
+
+            foreach ($values as $token) {
+                if (strcasecmp($token, "Upgrade") === 0) {
+                    $hasConnectionUpgrade = true;
+                    break;
+                }
             }
         }
         if (empty($hasConnectionUpgrade)) {
