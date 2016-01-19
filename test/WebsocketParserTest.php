@@ -269,7 +269,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                         "protocol" => "1.1",
                         "method" => "GET",
                         "uri" => "/foo",
-                        "headers" => ["host" => ["localhost"], "sec-websocket-key" => ["x3JJHMbDL1EzLkh9GBhXDw=="], "sec-websocket-version" => ["13"], "upgrade" => ["websocket"], "connection" => ["upgrade"]],
+                        "headers" => ["host" => ["localhost"], "sec-websocket-key" => ["x3JJHMbDL1EzLkh9GBhXDw=="], "sec-websocket-version" => ["13"], "upgrade" => ["websocket"], "connection" => ["keep-alive, upgrade"]],
                         "trace" => [["host", "localhost"], /* irrelevant ... */],
                         "body" => "",
                     ], null], $this->client);

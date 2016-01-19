@@ -343,7 +343,7 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
             $isFlushing = false;
 
             if ($toSend) {
-                if (isset($toSend[1])) {
+                if (isset($toSend[1]) && $toSend[1] != "") {
                     $sendArray = $toSend;
                     $toSend = [];
                     if (\is_array($sendArray[0])) {
@@ -445,6 +445,7 @@ function __validateFilterHeaders(\Generator $generator, array $headers) {
 function responseCodec(\Generator $filter, InternalRequest $ireq): \Generator {
     while (($yield = yield) !== null) {
         $cur = $filter->send($yield);
+
         if ($yield === false) {
             if ($cur !== null) {
                 $ireq->responseWriter->send($cur);

@@ -2,6 +2,8 @@
 
 namespace Aerys;
 
+use Amp\Deferred;
+
 class Http1Driver implements HttpDriver {
     const HEADER_REGEX = "(
         ([^()<>@,;:\\\"/[\]?={}\x01-\x20\x7F]+):[\x20\x09]*
@@ -116,10 +118,6 @@ class Http1Driver implements HttpDriver {
         $bufferSize = 0;
 
         do {
-            if ($client->isDead) {
-                throw new ClientException;
-            }
-
             $buffer[] = $msgPart;
             $bufferSize += \strlen($msgPart);
 
@@ -128,13 +126,24 @@ class Http1Driver implements HttpDriver {
                 $buffer = [];
                 $bufferSize = 0;
                 ($this->responseWriter)($client);
+
+                if ($client->isDead) {
+                    if (!$client->bufferPromisor) {
+                        $client->bufferPromisor = new Deferred;
+                        $client->bufferPromisor->fail(new ClientException);
+                    }
+                    while (true) {
+                        yield;
+                    }
+                }
+
                 $client->bufferSize = \strlen($client->writeBuffer);
                 if ($client->bufferPromisor) {
                     if ($client->bufferSize <= $client->options->softStreamCap) {
                         $client->bufferPromisor->succeed();
                     }
                 } elseif ($client->bufferSize > $client->options->softStreamCap) {
-                    $client->bufferPromisor = new \Amp\Deferred;
+                    $client->bufferPromisor = new Deferred;
                 }
             }
         } while (($msgPart = yield) !== null);
@@ -144,6 +153,11 @@ class Http1Driver implements HttpDriver {
         }
 
         ($this->responseWriter)($client, $final = true);
+
+        if ($client->isDead && !$client->bufferPromisor) {
+            $client->bufferPromisor = new Deferred;
+            $client->bufferPromisor->fail(new ClientException);
+        }
     }
 
     public function parser(Client $client): \Generator {

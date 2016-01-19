@@ -206,6 +206,36 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
         $this->assertSame("baz", $filter->getReturn());
     }
 
+    public function testDoubleFlushWithHeader() {
+        $filter = $this->getFilter([function() {
+            $headers = yield;
+            $this->assertTrue(is_array($headers));
+
+            $data = yield;
+            $this->assertEquals("stream", $data);
+
+            $flush = yield;
+            $this->assertFalse($flush);
+            $flush = yield $headers;
+            $this->assertFalse($flush);
+
+            $end = yield $data;
+            $this->assertEquals("end", $end);
+            yield $end;
+
+            $this->assertNull(yield);
+        }]);
+        $filter->current();
+        $this->assertNull($filter->send([":status" => 200]));
+        $this->assertNull($filter->send("stream"));
+        $this->assertSame([":status" => 200], $filter->send(false));
+        $this->assertSame("stream", $filter->send(false));
+        $this->assertEquals("end", $filter->send("end"));
+        $this->assertNull($filter->send(null));
+        $this->assertNull($filter->getReturn());
+    }
+
+
     public function testBufferedFilterHeaderYieldThrowsIfNotAnArray() {
         try {
             $filter = $this->getFilter([function() {

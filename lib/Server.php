@@ -428,6 +428,7 @@ class Server {
 
     private function writeResponse(Client $client, $final = false) {
         $this->onWritable($client->writeWatcher, $client->socket, $client);
+
         if (empty($final)) {
             return;
         }
@@ -862,7 +863,7 @@ class Server {
             }
         }
         if ($client->bufferPromisor) {
-            $ex = new ClientException;
+            $ex = $ex ?? new ClientException;
             $client->bufferPromisor->fail($ex);
         }
 

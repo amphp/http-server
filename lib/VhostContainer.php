@@ -28,6 +28,7 @@ class VhostContainer implements \Countable {
      * @TODO Validate to prevent conflicts between wildcard and specific IPs
      */
     public function use(Vhost $vhost) {
+        $vhost = clone $vhost; // do not allow change of state after use()
         $this->preventCryptoSocketConflict($vhost);
         foreach ($vhost->getIds() as $id) {
             $this->vhosts[$id] = $vhost;

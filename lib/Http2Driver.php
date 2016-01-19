@@ -4,6 +4,8 @@ namespace Aerys;
 
 // @TODO trailer headers??
 // @TODO add ServerObserver for properly sending GOAWAY frames
+use Amp\Deferred;
+
 class Http2Driver implements HttpDriver {
     const NOFLAG = "\x00";
     const ACK = "\x01";
@@ -246,10 +248,6 @@ class Http2Driver implements HttpDriver {
         }
 
         while (($msgPart = yield) !== null) {
-            if ($client->isDead || !isset($client->streamWindow[$id])) {
-                throw new ClientException;
-            }
-
             if ($msgPart == false) {
                 continue;
             }
@@ -261,9 +259,23 @@ class Http2Driver implements HttpDriver {
             } else {
                 $this->writeData($client, $msgPart, $id, false);
             }
+
+            if ($client->isDead) {
+                if (!$client->bufferPromisor) {
+                    $client->bufferPromisor = new Deferred;
+                    $client->bufferPromisor->fail(new ClientException);
+                }
+                while (true) {
+                    yield;
+                }
+            }
         }
 
         $this->writeData($client, "", $id, true);
+
+        if ($client->isDead && !$client->bufferPromisor) {
+            $client->bufferPromisor = new Failure(new ClientException);
+        }
     }
 
     public function writeData(Client $client, $data, $stream, $last) {
@@ -275,7 +287,7 @@ class Http2Driver implements HttpDriver {
             }
             $client->bufferSize += $len;
             if ($client->bufferSize > $client->options->softStreamCap) {
-                $client->bufferPromisor = new \Amp\Deferred;
+                $client->bufferPromisor = new Deferred;
             }
             $this->tryDataSend($client, $stream);
         } else {
@@ -327,7 +339,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack(
         $client->writeBuffer .= $new;
         $client->bufferSize += \strlen($new);
         if ($client->bufferSize > $client->options->softStreamCap) {
-            $client->bufferPromisor = new \Amp\Deferred;
+            $client->bufferPromisor = new Deferred;
         }
         ($this->write)($client, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
@@ -545,8 +557,9 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "PRIORITY: - \n");
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                     if (isset($client->bodyPromisors[$id])) {
                         $client->bodyPromisors[$id]->fail(new ClientException);
+                        unset($client->bodyPromisors[$id]);
                     }
-                    unset($headers[$id], $client->streamWindow[$id], $client->streamEnd[$id], $client->streamWindowBuffer[$id], $client->bodyPromisors[$id]);
+                    unset($headers[$id], $client->streamWindow[$id], $client->streamEnd[$id], $client->streamWindowBuffer[$id]);
 
                     $buffer = \substr($buffer, 4);
                     continue 2;
