@@ -46,6 +46,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
                 $this->assertEquals("/uri", explode("?", $req->getUri())[0]);
                 $this->assertEquals(["foo" => "bar", "baz" => ["1", "2", "qux" => "3"]], $req->getQueryVars());
                 $this->assertEquals(["header"], $req->getHeaderArray("custom"));
+                $this->assertEquals("value", $req->getCookie("test"));
 
                 $res->setCookie("cookie", "with value");
                 $res->setHeader("custom", "header");
@@ -57,6 +58,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             });
 
             $cookies = new \Amp\Artax\Cookie\ArrayCookieJar;
+            $cookies->store(new \Amp\Artax\Cookie\Cookie("test", "value", null, "/", "localhost"));
             $client = new Client($cookies);
             $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
             $port = parse_url($address, PHP_URL_PORT);

@@ -85,10 +85,6 @@ class StandardRequest implements Request {
     public function getCookie(string $name) {
         $ireq = $this->internalRequest;
 
-        if (!isset($ireq->cookies)) {
-            $ireq->generateCookies();
-        }
-
         return $ireq->cookies[$name] ?? null;
     }
 

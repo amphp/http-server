@@ -151,7 +151,7 @@ class Router implements Bootable, Middleware, ServerObserver {
      * @return self
      */
     public function use($action) {
-        if (is_callable($action) || $action instanceof Middleware || $action instanceof Bootable) {
+        if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable)) {
             throw new \InvalidArgumentException(
                 __METHOD__ . " requires a callable action or Middleware instance"
             );

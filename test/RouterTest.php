@@ -38,18 +38,20 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
     function mockResponse($state = Response::NONE) {
         return new class($state) implements Response {
             private $state;
+            public $headers = [];
+            public $status = 200;
             public function __construct($state) { $this->state = $state; }
-            function setStatus(int $code): Response { return $this; }
+            function setStatus(int $code): Response { $this->status = $code; return $this; }
             function setReason(string $phrase): Response { return $this; }
-            function addHeader(string $field, string $value): Response { return $this; }
-            function setHeader(string $field, string $value): Response { return $this; }
+            function addHeader(string $field, string $value): Response { $this->headers[strtolower($field)] = $value; return $this; }
+            function setHeader(string $field, string $value): Response { $this->headers[strtolower($field)] = $value; return $this; }
             function setCookie(string $field, string $value, array $flags = []): Response { return $this; }
             function send(string $body) { $this->state = self::ENDED; }
             function stream(string $partialBodyChunk): Promise { return new Success; }
             function flush() { }
             function end(string $finalBodyChunk = null) { }
             function push(string $url, array $headers = null): Response { return $this; }
-            function state(): int { return 42; }
+            function state(): int { return $this->state; }
         };
     }
 
@@ -83,6 +85,50 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
             $this->assertSame("Router start failure: no routes registered", $e->getMessage());
         });
         $this->assertSame($i, 1);
+    }
+
+    function testUseCanonicalRedirector() {
+        $router = new Router;
+        $router->route("GET", "/{name}/{age}/?", function($req, $res) { $res->send("OK"); });
+        $router->prefix("/mediocre-dev");
+        $router = (new Router)->use($router);
+        $mock = $this->mockServer(Server::STARTING);
+        $router->update($mock);
+
+        $ireq = new InternalRequest;
+        $request = new StandardRequest($ireq);
+        $ireq->locals = [];
+        $ireq->method = "GET";
+        $ireq->uri = $ireq->uriPath = "/mediocre-dev/bob/19/";
+        $response = $this->mockResponse();
+
+        $this->assertFalse($router->do($ireq)->valid());
+        $multiAction = $router($request, $response);
+
+        if ($multiAction) {
+            wait(resolve($multiAction));
+        }
+
+        $this->assertEquals(\Aerys\HTTP_STATUS["FOUND"], $response->status);
+        $this->assertEquals("/mediocre-dev/bob/19", $response->headers["location"]);
+        $this->assertSame(["name" => "bob", "age" => "19"], $ireq->locals["aerys.routeArgs"]);
+
+        $ireq = new InternalRequest;
+        $request = new StandardRequest($ireq);
+        $ireq->locals = [];
+        $ireq->method = "GET";
+        $ireq->uriPath = "/mediocre-dev/bob/19";
+        $response = $this->mockResponse();
+
+        $this->assertFalse($router->do($ireq)->valid());
+        $multiAction = $router($request, $response);
+
+        if ($multiAction) {
+            wait(resolve($multiAction));
+        }
+
+        $this->assertEquals(\Aerys\Response::ENDED, $response->state());
+        $this->assertEquals(\Aerys\HTTP_STATUS["OK"], $response->status);
     }
 
     function testMultiActionRouteInvokesEachCallableUntilResponseIsStarted() {
