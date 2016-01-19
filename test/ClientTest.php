@@ -17,7 +17,6 @@ use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Artax\Notify;
 use Amp\Artax\SocketException;
-use Amp\Socket as sock;
 
 class ClientTest extends \PHPUnit_Framework_TestCase {
     function startServer($handler, $filters = []) {
@@ -39,12 +38,53 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
         return [$address, $server];
     }
 
+    function testTrivialHttpRequest() {
+        \Amp\run(function() {
+            $deferred = new \Amp\Deferred;
+            list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) {
+                $this->assertEquals("GET", $req->getMethod());
+                $this->assertEquals("/uri", explode("?", $req->getUri())[0]);
+                $this->assertEquals(["foo" => "bar", "baz" => ["1", "2", "qux" => "3"]], $req->getQueryVars());
+                $this->assertEquals(["header"], $req->getHeaderArray("custom"));
+
+                $res->setCookie("cookie", "with value");
+                $res->setHeader("custom", "header");
+
+                $res->stream("data");
+                yield $res->stream(str_repeat("*", 100000));
+                yield $res->flush();
+                $res->end("data");
+            });
+
+            $cookies = new \Amp\Artax\Cookie\ArrayCookieJar;
+            $client = new Client($cookies);
+            $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
+            $port = parse_url($address, PHP_URL_PORT);
+            $promise = $client->request((new \Amp\Artax\Request)
+                ->setUri("https://localhost:$port/uri?foo=bar&baz[]=1&baz[]=2&baz[qux]=3")
+                ->setMethod("GET")
+                ->setHeader("custom", "header")
+            );
+
+            $res = yield $promise;
+            $this->assertEquals(200, $res->getStatus());
+            $this->assertEquals(["header"], $res->getHeader("custom"));
+            $this->assertEquals("data".str_repeat("*", 100000)."data", $res->getBody());
+            $this->assertEquals("with value", $cookies->get("localhost", "/", "cookie")[0]->getValue());
+
+            \Amp\stop();
+            \Amp\reactor(\Amp\driver());
+        });
+    }
+
     function testClientDisconnect() {
         \Amp\run(function() {
             $deferred = new \Amp\Deferred;
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) use ($deferred, &$server) {
                 $this->assertEquals("POST", $req->getMethod());
                 $this->assertEquals("/", $req->getUri());
+                $this->assertEquals([], $req->getQueryVars());
+                $this->assertEquals("body", yield $req->getBody());
 
                 try {
                     $res->stream("data");
@@ -79,6 +119,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             $promise = $client->request((new \Amp\Artax\Request)
                 ->setUri("https://$address/")
                 ->setMethod("POST")
+                ->setBody("body")
             );
 
             $body = "";

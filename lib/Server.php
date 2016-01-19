@@ -573,7 +573,7 @@ class Server {
     private function onParsedMessageWithEntity(Client $client, array $parseResult) {
         $id = $parseResult["id"];
         $client->bodyPromisors[$id]->succeed();
-        $client->bodyPromisors[$id] = null;
+        unset($client->bodyPromisors[$id]);
         // @TODO Update trailer headers if present
 
         // Don't respond() because we always start the response when headers arrive
