@@ -82,4 +82,8 @@ class BootstrapperTest extends \PHPUnit_Framework_TestCase {
         $vhosts["foo.bar:80"]->getApplication()(new StandardRequest($ireq = new InternalRequest), new StandardResponse((function(){yield;})(), new Client))->next();
         $this->assertEquals(["responder" => 1, "foo.bar" => 1], $ireq->locals);
     }
+
+    public function tearDown() {
+        (function() { Host::$definitions = []; })->bindTo(null, Host::class)();
+    }
 }

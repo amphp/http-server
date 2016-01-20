@@ -22,6 +22,8 @@ class Bootstrapper {
         $configFile = self::selectConfigFile((string) $console->getArg("config"));
         $logger->info("Using config file found at $configFile");
 
+        $options = new Options;
+
         // may return Promise or Generator for async I/O inside config file
         $returnValue = include $configFile;
 
@@ -41,22 +43,22 @@ class Bootstrapper {
             yield $returnValue;
         }
 
-        if (!defined("AERYS_OPTIONS")) {
-            $options = [];
-        } elseif (is_array(AERYS_OPTIONS)) {
-            $options = AERYS_OPTIONS;
-        } else {
-            throw new \DomainException(
-                "Invalid AERYS_OPTIONS constant: expected array, got " . gettype(AERYS_OPTIONS)
-            );
+        if (defined("AERYS_OPTIONS")) {
+            if (is_array(AERYS_OPTIONS)) {
+                $options = $this->generateOptionsObjFromArray(AERYS_OPTIONS);
+                trigger_error("Usage of AERYS_OPTIONS constant is deprecated and will be removed in at most v0.4.0", E_USER_DEPRECATED);
+            } else {
+                throw new \DomainException(
+                    "Invalid AERYS_OPTIONS constant: expected array, got " . gettype(AERYS_OPTIONS)
+                );
+            }
         }
         if ($console->isArgDefined("debug")) {
-            $options["debug"] = true;
+            $options->debug = true;
         }
 
-        $options["configPath"] = $configFile;
+        $options->configPath = $configFile;
 
-        $options = $this->generateOptionsObjFromArray($options);
         $vhosts = new VhostContainer(new Http1Driver);
         $ticker = new Ticker($logger);
         $server = new Server($options, $vhosts, $logger, $ticker);
@@ -93,31 +95,13 @@ class Bootstrapper {
             foreach ($optionsArray as $key => $value) {
                 $optionsObj->{$key} = $value;
             }
-            return $optionsObj->debug ? $optionsObj : $this->generatePublicOptionsStruct($optionsObj);
+            return $optionsObj;
         } catch (\Throwable $e) {
             throw new \DomainException(
                 "Failed assigning options from config file", 0, $e
             );
         }
     }
-
-    private function generatePublicOptionsStruct(Options $options): Options {
-        $code = "return new class extends \\Aerys\\Options {\n";
-        foreach ((new \ReflectionClass($options))->getProperties() as $property) {
-            $name = $property->getName();
-            if ($name[0] !== "_") {
-                $code .= "\tpublic \${$name};\n";
-            }
-        }
-        $code .= "};\n";
-        $publicOptions = eval($code);
-        foreach ($publicOptions as $option => $value) {
-            $publicOptions->{$option} = $options->{$option};
-        }
-
-        return $publicOptions;
-    }
-
 
     private static function buildVhost(Host $host, callable $bootLoader): Vhost {
         try {
