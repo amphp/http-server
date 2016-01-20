@@ -1,8 +1,7 @@
 <?php
 
-const AERYS_OPTIONS = [
-    "shutdownTimeout" => 5000
-];
+/** @var Aerys\Options $options */
+$options->shutdownTimeout = 5000;
 
 class OurMiddleware implements \Aerys\Middleware {
     public function do(\Aerys\InternalRequest $ireq) {
