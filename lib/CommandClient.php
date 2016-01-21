@@ -17,7 +17,7 @@ class CommandClient {
     }
 
     public static function socketPath(string $config) {
-        return sys_get_temp_dir()."/aerys_".str_replace(["/", ":"], "_", Bootstrapper::selectConfigFile($config)).".tmp";
+        return sys_get_temp_dir()."/aerys_".str_replace(["\\", "/", ":"], "_", Bootstrapper::selectConfigFile($config)).".tmp";
     }
 
     private function send($msg): \Amp\Promise {
