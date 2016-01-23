@@ -19,6 +19,16 @@ class DebugProcess extends Process {
             exit(1);
         }
 
+        if (ini_get("zend.assertions") === "-1") {
+            $this->logger->warning(
+                "Running aerys in debug mode with assertions disabled is not recommended; " .
+                "enable assertions in php.ini (zend.assertions = 1) " .
+                "or disable debug mode (-d) to hide this warning."
+            );
+        } else {
+            ini_set("zend.assertions", 1);
+        }
+
         $server = yield from $this->bootstrapper->boot($this->logger, $console);
         yield $server->start();
         $this->server = $server;
