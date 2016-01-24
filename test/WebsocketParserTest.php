@@ -207,6 +207,13 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
         $input = $this->compile(Rfc6455Endpoint::OP_BIN, true, str_repeat("*", 65536)) | ("\x00\x00\x80" . str_repeat("\x00", 0xFF));
         $return[] = [$input, [[Rfc6455Endpoint::ERROR, Code::PROTOCOL_ERROR]]];
 
+
+        // 39 ---- utf-8 must be accepted for interrupted text with interleaved control frame ----->
+
+        $data = "H".str_repeat("ö", 32770);
+        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, substr($data, 0, 32768)) . $this->compile(Rfc6455Endpoint::OP_PING, true, "foo") . $this->compile(Rfc6455Endpoint::OP_CONT, true, substr($data, 32768));
+        $return[] = [$input, [[Rfc6455Endpoint::CONTROL, "foo", Rfc6455Endpoint::OP_PING], [Rfc6455Endpoint::DATA, $data]]];
+
         // x -------------------------------------------------------------------------------------->
 
         return $return;

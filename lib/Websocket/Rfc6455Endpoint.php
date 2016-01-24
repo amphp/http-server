@@ -720,7 +720,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
         while (1) {
             $frameBytesRecd = 0;
-            $payloadReference = '';
+            $payload = '';
 
             while ($bufferSize < 2) {
                 $buffer .= yield $frames;
@@ -840,14 +840,11 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                     $dataLen = $bufferSize;
                 }
 
-                if ($isControlFrame) {
-                    $payloadReference =& $controlPayload;
-                } else {
-                    $payloadReference =& $dataPayload;
+                if (!$isControlFrame) {
                     $dataMsgBytesRecd += $dataLen;
                 }
 
-                $payloadReference .= substr($buffer, 0, $dataLen);
+                $payload .= substr($buffer, 0, $dataLen);
                 $frameBytesRecd += $dataLen;
 
                 $buffer = substr($buffer, $dataLen);
@@ -861,21 +858,21 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 // also, control frames always are <= 125 bytes, so we never will need this as per https://tools.ietf.org/html/rfc6455#section-5.5
                 if (!$isControlFrame && $dataMsgBytesRecd >= $nextEmit) {
                     if ($isMasked) {
-                        $payloadReference ^= str_repeat($maskingKey, ($frameBytesRecd + 3) >> 2);
+                        $payload ^= str_repeat($maskingKey, ($frameBytesRecd + 3) >> 2);
                         // Shift the mask so that the next data where the mask is used on has correct offset.
                         $maskingKey = substr($maskingKey . $maskingKey, $frameBytesRecd % 4, 4);
                     }
 
                     if ($dataArr) {
-                        $dataArr[] = $payloadReference;
-                        $payloadReference = implode($dataArr);
+                        $dataArr[] = $payload;
+                        $payload = implode($dataArr);
                         $dataArr = [];
                     }
 
                     if ($doUtf8Validation) {
-                        $string = $payloadReference;
-                        for ($i = 0; !preg_match('//u', $payloadReference) && $i < 8; $i++) {
-                            $payloadReference = substr($payloadReference, 0, -1);
+                        $string = $payload;
+                        for ($i = 0; !preg_match('//u', $payload) && $i < 8; $i++) {
+                            $payload = substr($payload, 0, -1);
                         }
                         if ($i == 8) {
                             $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
@@ -883,11 +880,11 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                             break;
                         }
 
-                        $emitCallback([self::DATA, $payloadReference, false], $callbackData);
-                        $payloadReference = $i > 0 ? substr($string, -$i) : '';
+                        $emitCallback([self::DATA, $payload, false], $callbackData);
+                        $payload = $i > 0 ? substr($string, -$i) : '';
                     } else {
-                        $emitCallback([self::DATA, $payloadReference, false], $callbackData);
-                        $payloadReference = '';
+                        $emitCallback([self::DATA, $payload, false], $callbackData);
+                        $payload = '';
                     }
 
                     $frameLength -= $frameBytesRecd;
@@ -903,26 +900,26 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             if ($isMasked) {
                 // This is memory hungry but it's ~70x faster than iterating byte-by-byte
                 // over the masked string. Deal with it; manual iteration is untenable.
-                $payloadReference ^= str_repeat($maskingKey, ($frameLength + 3) >> 2);
+                $payload ^= str_repeat($maskingKey, ($frameLength + 3) >> 2);
             }
 
             if ($fin || $dataMsgBytesRecd >= $emitThreshold) {
                 if ($isControlFrame) {
-                    $emit = [self::CONTROL, $payloadReference, $opcode];
+                    $emit = [self::CONTROL, $payload, $opcode];
                 } else {
                     if ($dataArr) {
-                        $dataArr[] = $payloadReference;
-                        $payloadReference = implode($dataArr);
+                        $dataArr[] = $payload;
+                        $payload = implode($dataArr);
                         $dataArr = [];
                     }
 
                     if ($doUtf8Validation) {
                         if ($fin) {
-                            $i = preg_match('//u', $payloadReference) ? 0 : 8;
+                            $i = preg_match('//u', $payload) ? 0 : 8;
                         } else {
-                            $string = $payloadReference;
-                            for ($i = 0; !preg_match('//u', $payloadReference) && $i < 8; $i++) {
-                                $payloadReference = substr($payloadReference, 0, -1);
+                            $string = $payload;
+                            for ($i = 0; !preg_match('//u', $payload) && $i < 8; $i++) {
+                                $payload = substr($payload, 0, -1);
                             }
                             if ($i > 0) {
                                 $dataArr[] = substr($string, -$i);
@@ -935,7 +932,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                         }
                     }
 
-                    $emit = [self::DATA, $payloadReference, $fin];
+                    $emit = [self::DATA, $payload, $fin];
 
                     if ($fin) {
                         $dataMsgBytesRecd = 0;
@@ -945,7 +942,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
                 $emitCallback($emit, $callbackData);
             } else {
-                $dataArr[] = $payloadReference;
+                $dataArr[] = $payload;
             }
 
             $frames++;
