@@ -34,12 +34,14 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     private $proxy;
     private $state;
     private $clients = [];
+    private $lowCapacityClients = [];
     private $closeTimeouts = [];
     private $heartbeatTimeouts = [];
     private $timeoutWatcher;
     private $now;
 
     private $autoFrameSize = 32 << 10;
+    private $maxBytesPerMinute = 8 << 20;
     private $maxFrameSize = 2 << 20;
     private $maxMsgSize = 10 << 20;
     private $heartbeatPeriod = 10;
@@ -68,6 +70,34 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         $this->application = $application;
         $this->now = time();
         $this->proxy = new Rfc6455EndpointProxy($this);
+    }
+
+    public function setOption(string $option, $value) {
+        switch ($option) {
+            case "maxBytesPerMinute":
+                if (8192 > $value) {
+                    throw new \DomainException("$option must be at least 8192 bytes");
+                }
+            case "autoFrameSize":
+            case "maxFrameSize":
+            case "maxMsgSize":
+            case "heartbeatPeriod":
+            case "closePeriod":
+            case "queuedPingLimit":
+                if (0 <= $value = filter_var($value, FILTER_VALIDATE_INT)) {
+                    throw new \DomainException("$option must be a positive integer greater than 0");
+                }
+                break;
+            case "validateUtf8":
+            case "textOnly":
+                if (null === $value = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)) {
+                    throw new \DomainException("$option must be a boolean value");
+                }
+                break;
+            default:
+                throw new \DomainException("Unknown option $option");
+        }
+        $this->$option = $value;
     }
 
     public function __invoke(Request $request, Response $response) {
@@ -175,6 +205,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
     public function reapClient($watcherId, InternalRequest $ireq) {
         $client = new Rfc6455Client;
+        $client->capacity = $this->maxBytesPerMinute;
         $client->connectedAt = $this->now;
         $socket = $ireq->client->socket;
         $client->id = (int) $socket;
@@ -183,7 +214,12 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         $client->serverRefClearer = ($ireq->client->exporter)($ireq->client);
 
         $client->parser = $this->parser([$this, "onParse"], $options = [
-            "cb_data" => $client
+            "cb_data" => $client,
+            "max_msg_size" => $this->maxMsgSize,
+            "max_frame_size" => $this->maxFrameSize,
+            "validate_utf8" => $this->validateUtf8,
+            "text_only" => $this->textOnly,
+            "threshold" => $this->autoFrameSize,
         ]);
         $client->readWatcher = \Amp\onReadable($socket, [$this, "onReadable"], $options = [
             "enable" => true,
@@ -399,6 +435,13 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         if ($data != "") {
             $client->lastReadAt = $this->now;
             $client->bytesRead += \strlen($data);
+            $client->capacity -= \strlen($data);
+            if ($client->capacity < $this->maxBytesPerMinute / 2) {
+                $this->lowCapacityClients[$client->id] = $client;
+                if ($client->capacity <= 0) {
+                    \Amp\disable($watcherId);
+                }
+            }
             $client->framesRead += $client->parser->send($data);
         } elseif (!is_resource($socket) || @feof($socket)) {
             if (!$client->closedAt) {
@@ -691,6 +734,16 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $this->sendHeartbeatPing($client);
             } else {
                 break;
+            }
+        }
+
+        foreach ($this->lowCapacityClients as $id => $client) {
+            $client->capacity += $this->maxBytesPerMinute / 60;
+            if ($client->capacity > $this->maxBytesPerMinute) {
+                unset($this->lowCapacityClients[$id]);
+            }
+            if ($client->capacity > 8192) {
+                \Amp\enable($client->readWatcher);
             }
         }
     }
