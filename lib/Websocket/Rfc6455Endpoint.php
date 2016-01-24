@@ -840,10 +840,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                     $dataLen = $bufferSize;
                 }
 
-                if ($isControlFrame) {
-                    $payloadReference =& $controlPayload;
-                } else {
-                    $payloadReference =& $dataPayload;
+                if (!$isControlFrame) {
                     $dataMsgBytesRecd += $dataLen;
                 }
 
