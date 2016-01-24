@@ -718,7 +718,7 @@ class Server {
     private function sendPreAppTraceResponse(Request $request, Response $response) {
         $response->setStatus(HTTP_STATUS["OK"]);
         $response->setHeader("Content-Type", "message/http");
-        $response->end($ireq->trace);
+        $response->end($request->getTrace());
     }
 
     private function sendPreAppOptionsResponse(Request $request, Response $response) {
