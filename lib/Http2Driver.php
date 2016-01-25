@@ -4,6 +4,7 @@ namespace Aerys;
 
 // @TODO trailer headers??
 // @TODO add ServerObserver for properly sending GOAWAY frames
+// @TODO maybe display a real HTML error page for artificial limits exceeded
 use Amp\Deferred;
 
 class Http2Driver implements HttpDriver {
@@ -276,6 +277,15 @@ class Http2Driver implements HttpDriver {
         if ($client->isDead && !$client->bufferPromisor) {
             $client->bufferPromisor = new Failure(new ClientException);
         }
+
+        if ($client->bufferPromisor) {
+            $keepAlives = &$client->remainingKeepAlives; // avoid cyclic reference
+            $client->bufferPromisor->when(function() use (&$keepAlives) {
+                $keepAlives++;
+            });
+        } else {
+            $client->remainingKeepAlives++;
+        }
     }
 
     public function writeData(Client $client, $data, $stream, $last) {
@@ -347,16 +357,17 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack(
     public function parser(Client $client): \Generator {
         // @TODO apply restrictions
         $maxHeaderSize = $client->options->maxHeaderSize;
-        $maxPendingSize = $client->options->maxPendingSize;
         $maxBodySize = $client->options->maxBodySize;
-        // $bodyEmitSize = $client->options->ioGranularity; // redundant because data frames (?)
+        $maxStreams = $client->options->maxConcurrentStreams;
+        // $bodyEmitSize = $client->options->ioGranularity; // redundant because data frames, which is 16 KB
 
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
 
-        $this->writeFrame($client, pack("nN", self::INITIAL_WINDOW_SIZE, $maxBodySize), self::SETTINGS, self::NOFLAG);
-        $this->writeFrame($client, "\x7f\xfe\xff\xff", self::WINDOW_UPDATE, self::NOFLAG); // effectively disabling flow control...
+        $this->writeFrame($client, pack("nNnN", self::INITIAL_WINDOW_SIZE, $maxBodySize + 256, self::MAX_CONCURRENT_STREAMS, $maxStreams), self::SETTINGS, self::NOFLAG);
+        $this->writeFrame($client, "\x7f\xfe\xff\xff", self::WINDOW_UPDATE, self::NOFLAG); // effectively disabling global flow control...
 
         $headers = [];
+        $bodyLens = [];
         $table = new HPack;
 
         $buffer = yield;
@@ -375,6 +386,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
             }
         }
         $buffer = \substr($buffer, \strlen($preface));
+        $client->remainingKeepAlives = $maxStreams;
 
         while (1) {
             while (\strlen($buffer) < 9) {
@@ -429,13 +441,30 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         $padding = 0;
                     }
 
+                    if ($length > (1 << 14)) {
+                        $error = self::PROTOCOL_ERROR;
+                        break 2;
+                    }
+
+                    if (($bodyLens[$id] ?? 0) + $length > $maxBodySize) {
+                        $error = self::ENHANCE_YOUR_CALM;
+                        while ($length) {
+                            $buffer = yield;
+                            $length -= \strlen($buffer);
+                        }
+                        $buffer = substr($buffer, \strlen($buffer) + $length);
+                        goto stream_error;
+                    }
+
                     while (\strlen($buffer) < $length) {
                         $buffer .= yield;
                     }
 
                     if (($flags & self::END_STREAM) !== "\0") {
+                        $bodyLens[$id] = $length;
                         $type = HttpDriver::ENTITY_RESULT;
                     } else {
+                        unset($bodyLens[$id]);
                         $type = HttpDriver::ENTITY_PART;
                     }
 
@@ -449,6 +478,16 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                     continue 2;
 
                 case self::HEADERS:
+                    if (isset($headers[$id])) {
+                        $error = self::PROTOCOL_ERROR;
+                        break 2;
+                    }
+
+                    if ($client->remainingKeepAlives-- == 0) {
+                        $error = self::PROTOCOL_ERROR;
+                        break 2;
+                    }
+
                     if (($flags & self::PADDED) !== "\0") {
                         if ($buffer == "") {
                             $buffer = yield;
@@ -481,6 +520,16 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                     if ($padding >= $length) {
                         $error = self::PROTOCOL_ERROR;
                         break 2;
+                    }
+
+                    if ($length > $maxHeaderSize) {
+                        $error = self::ENHANCE_YOUR_CALM;
+                        while ($length) {
+                            $buffer = yield;
+                            $length -= \strlen($buffer);
+                        }
+                        $buffer = substr($buffer, \strlen($buffer) + $length);
+                        goto stream_error;
                     }
 
                     while (\strlen($buffer) < $length) {
@@ -559,7 +608,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                         $client->bodyPromisors[$id]->fail(new ClientException);
                         unset($client->bodyPromisors[$id]);
                     }
-                    unset($headers[$id], $client->streamWindow[$id], $client->streamEnd[$id], $client->streamWindowBuffer[$id]);
+                    unset($headers[$id], $bodyLens[$id], $client->streamWindow[$id], $client->streamEnd[$id], $client->streamWindowBuffer[$id]);
 
                     $buffer = \substr($buffer, 4);
                     continue 2;
@@ -589,7 +638,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                             $buffer .= yield;
                         }
 
-                        $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value" >= 0
+                        $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value"] >= 0
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]}): {$unpacked["value"]}\n");
 
                         switch ($unpacked["setting"]) {
@@ -784,6 +833,8 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(".(\strlen($packed) - $pa
 stream_error:
             $this->writeFrame($client, pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "Stream ERROR: $error\n");
+            unset($headers[$id], $bodyLens[$id]);
+            $client->remainingKeepAlives++;
             continue;
         }
 

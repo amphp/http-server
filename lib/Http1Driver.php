@@ -154,15 +154,21 @@ class Http1Driver implements HttpDriver {
 
         ($this->responseWriter)($client, $final = true);
 
-        if ($client->isDead && !$client->bufferPromisor) {
-            $client->bufferPromisor = new Deferred;
-            $client->bufferPromisor->fail(new ClientException);
+        if ($client->isDead) {
+            if (!$client->bufferPromisor) {
+                $client->bufferPromisor = new Deferred;
+                $client->bufferPromisor->fail(new ClientException);
+            }
+        } else {
+            $client->parserEmitLock = false;
+            if ($client->requestParser) {
+                $client->requestParser->send('');
+            }
         }
     }
 
     public function parser(Client $client): \Generator {
         $maxHeaderSize = $client->options->maxHeaderSize;
-        $maxPendingSize = $client->options->maxPendingSize;
         $maxBodySize = $client->options->maxBodySize;
         $bodyEmitSize = $client->options->ioGranularity;
 
@@ -190,17 +196,15 @@ class Http1Driver implements HttpDriver {
                 "body" => "",
             ];
 
-            while ($client->parserEmitLock) {
-                $yield = yield;
-
-                $buffer .= $yield;
-                if (\strlen($buffer) > $maxPendingSize) {
-                    stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
-                    $buffer = ""; // free memory
-                    while (1) {
-                        yield;
+            if ($client->parserEmitLock) {
+                do {
+                    if (\strlen($buffer) > $maxHeaderSize + $maxBodySize) {
+                        \Amp\disable($client->readWatcher);
                     }
-                }
+
+                    $buffer .= yield;
+                } while ($client->parserEmitLock);
+                \Amp\enable($client->readWatcher);
             }
 
             while (1) {

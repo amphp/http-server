@@ -433,7 +433,6 @@ class Server {
             return;
         }
 
-        $client->parserEmitLock = false;
         if ($client->writeBuffer == "") {
             $this->onResponseDataDone($client);
         } else {
@@ -514,15 +513,7 @@ class Server {
         // for us to generate a response. (@TODO)
         $this->renewKeepAliveTimeout($client);
 
-        $send = $client->requestParser->send($data);
-        if ($client->parserEmitLock) {
-            $client->parserEmitLock = false;
-        }
-
-        if ($send != "") {
-            $client->writeBuffer .= $send;
-            $this->onWritable($client->writeWatcher, $client->socket, $client);
-        }
+        $client->requestParser->send($data);
     }
 
     private function onParseEmit(array $parseStruct, $client) {
@@ -870,7 +861,7 @@ class Server {
     }
 
     private function clear(Client $client) {
-        $client->requestParser = null;
+        $client->requestParser = null; // break cyclic reference
         $client->onWriteDrain = null;
         \Amp\cancel($client->readWatcher);
         \Amp\cancel($client->writeWatcher);

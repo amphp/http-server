@@ -20,9 +20,9 @@ class Options {
     private $normalizeMethodCase = true;
     private $maxBodySize = 131072;
     private $maxHeaderSize = 32768;
-    private $ioGranularity = 32768;
-    private $maxPendingSize = 262144;
+    private $ioGranularity = 32768; // recommended: at least 16 KB
     private $softStreamCap = 262144; // @TODO verify whether we also need a minimum size where to reactivate buffer // should be multiple of outputBufferSize
+    private $maxConcurrentStreams = 20;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
     private $deflateEnable;
     private $configPath = null;
@@ -171,16 +171,6 @@ class Options {
         $this->maxHeaderSize = $bytes;
     }
 
-    private function setPendingSize(int $bytes) {
-        if ($bytes <= 0) {
-            throw new \DomainException(
-                "Max header size setting must be greater than zero"
-            );
-        }
-
-        $this->maxPendingSize = $bytes;
-    }
-
     private function setSoftStreamCap(int $bytes) {
         if ($bytes < 0) {
             throw new \DomainException(
@@ -191,6 +181,15 @@ class Options {
         $this->softStreamCap = $bytes;
     }
 
+    private function setMaxConcurrentStreams(int $streams) {
+        if ($streams <= 0) {
+            throw new \DomainException(
+                "Max number of concurrent streams setting must be greater than zero"
+            );
+        }
+
+        $this->maxConcurrentStreams = $streams;
+    }
 
     private function setIoGranularity(int $bytes) {
         if ($bytes <= 0) {
