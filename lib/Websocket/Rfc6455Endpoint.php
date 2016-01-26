@@ -43,7 +43,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     private $autoFrameSize = 32 << 10;
     private $maxBytesPerMinute = 8 << 20;
     private $maxFrameSize = 2 << 20;
-    private $maxMsgSize = 10 << 20;
+    private $maxMsgSize = 2 << 20;
     private $heartbeatPeriod = 10;
     private $closePeriod = 3;
     private $validateUtf8 = false;

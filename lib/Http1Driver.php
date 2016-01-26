@@ -160,10 +160,10 @@ class Http1Driver implements HttpDriver {
                 $client->bufferPromisor->fail(new ClientException);
             }
         } else {
-            $client->parserEmitLock = false;
-            if ($client->requestParser) {
+            if ($client->requestParser && !$client->parserEmitLock) {
                 $client->requestParser->send('');
             }
+            $client->parserEmitLock = false;
         }
     }
 
@@ -200,12 +200,15 @@ class Http1Driver implements HttpDriver {
                 do {
                     if (\strlen($buffer) > $maxHeaderSize + $maxBodySize) {
                         \Amp\disable($client->readWatcher);
+                        $client->parserEmitLock = false;
                     }
 
                     $buffer .= yield;
                 } while ($client->parserEmitLock);
                 \Amp\enable($client->readWatcher);
             }
+
+            $client->parserEmitLock = true;
 
             while (1) {
                 $buffer = \ltrim($buffer, "\r\n");
@@ -299,8 +302,6 @@ class Http1Driver implements HttpDriver {
             } else {
                 $hasBody = $isChunked || $contentLength;
             }
-
-            $client->parserEmitLock = true;
 
             if (!$hasBody) {
                 ($this->parseEmitter)([HttpDriver::RESULT, $parseResult, null], $client);
