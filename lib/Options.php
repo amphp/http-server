@@ -9,7 +9,7 @@ class Options {
 
     private $debug = false;
     private $user = null;
-    private $maxConnections = 1000;
+    private $maxConnections = 1000; // no checks against IP, useless against IPv6
     private $maxKeepAliveRequests = 1000;
     private $keepAliveTimeout = 6; // seconds
     private $defaultContentType = "text/html"; // can be vhost

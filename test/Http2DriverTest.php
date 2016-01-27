@@ -272,6 +272,7 @@ class Http2DriverTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals([(new HPack)->encode([":status" => 201]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], array_pop($driver->frames));
 
         $writer->send("**");
+        $writer->send(false);
 
         $this->assertEquals(1, count($driver->frames));
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
@@ -281,6 +282,7 @@ class Http2DriverTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals(3, $stream);
 
         $writer->send("*");
+        $writer->send(false);
         $this->assertEquals(0, count($driver->frames)); // global window too small
 
         $parser->send($this->packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
