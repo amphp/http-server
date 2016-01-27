@@ -40,7 +40,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     private $timeoutWatcher;
     private $now;
 
-    private $autoFrameSize = 32 << 10;
+    private $autoFrameSize = 64 << 10;
     private $maxBytesPerMinute = 8 << 20;
     private $maxFrameSize = 2 << 20;
     private $maxMsgSize = 2 << 20;
@@ -479,11 +479,11 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $client->writeBuffer = array_shift($client->writeControlQueue);
                 $client->lastSentAt = $this->now;
                 $client->writeDeferred = array_shift($client->writeDeferredControlQueue);
-                while (\strlen($client->writeBuffer) < 8192 && $client->writeControlQueue) {
+                while (\strlen($client->writeBuffer) < 65536 && $client->writeControlQueue) {
                     $client->writeBuffer .= array_shift($client->writeControlQueue);
                     array_shift($client->writeDeferredControlQueue)->succeed($client->writeDeferred);
                 }
-                while (\strlen($client->writeBuffer) < 8192 && $client->writeDataQueue) {
+                while (\strlen($client->writeBuffer) < 65536 && $client->writeDataQueue) {
                     $client->writeBuffer .= array_shift($client->writeDataQueue);
                     array_shift($client->writeDeferredDataQueue)->succeed($client->writeDeferred);
                 }
@@ -498,7 +498,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $client->lastDataSentAt = $this->now;
                 $client->lastSentAt = $this->now;
                 $client->writeDeferred = array_shift($client->writeDeferredDataQueue);
-                while (\strlen($client->writeBuffer) < 8192 && $client->writeDataQueue) {
+                while (\strlen($client->writeBuffer) < 65536 && $client->writeDataQueue) {
                     $client->writeBuffer .= array_shift($client->writeDataQueue);
                     array_shift($client->writeDeferredDataQueue)->succeed($client->writeDeferred);
                 }
@@ -544,7 +544,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
         \Amp\enable($client->writeWatcher);
         if ($client->writeBuffer != "") {
-            if (\strlen($client->writeBuffer) < 8192) {
+            if (\strlen($client->writeBuffer) < 65536) {
                 $client->writeBuffer .= $w;
                 $deferred = $client->writeDeferred;
             } elseif ($frameInfo["opcode"] >= 0x8) {

@@ -343,7 +343,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         \Amp\run(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 function onData(int $clientId, Websocket\Message $msg) {
-                    $this->endpoint->send(null, "foo");
+                    $this->endpoint->send(null, "foo".str_repeat("*", 65528 /* fill buffer */));
                     $this->endpoint->send($clientId, "bar");
                     yield $this->endpoint->send([$clientId], "baz");
                     $this->endpoint->close($clientId);
@@ -358,9 +358,9 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 $data .= fread($sock, 1024);
             } while (!feof($sock));
             $this->assertSocket([
-                [Rfc6455Endpoint::OP_TEXT, "foo"],
-                [Rfc6455Endpoint::OP_PONG, "pingpong"],
+                [Rfc6455Endpoint::OP_TEXT, "foo".str_repeat("*", 65528)],
                 [Rfc6455Endpoint::OP_TEXT, "bar"],
+                [Rfc6455Endpoint::OP_PONG, "pingpong"],
                 [Rfc6455Endpoint::OP_TEXT, "baz"],
                 [Rfc6455Endpoint::OP_CLOSE],
             ], $data);
@@ -373,13 +373,13 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testFragmentation() {
         \Amp\run(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $endpoint->sendBinary(null, str_repeat("*", 65528))->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->allowKill = true; });
+            $endpoint->sendBinary(null, str_repeat("*", 131064))->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->allowKill = true; });
             $data = "";
             do {
                 yield $this->waitOnRead($sock); // to have it read and parsed...
                 $data .= $x = fread($sock, 8192);
             } while ($x != "" || !feof($sock));
-            $this->assertSocket([[Rfc6455Endpoint::OP_BIN, str_repeat("*", 32764)], [Rfc6455Endpoint::OP_CONT, str_repeat("*", 32764)]], $data);
+            $this->assertSocket([[Rfc6455Endpoint::OP_BIN, str_repeat("*", 65532)], [Rfc6455Endpoint::OP_CONT, str_repeat("*", 65532)]], $data);
 
             \Amp\stop();
         });
