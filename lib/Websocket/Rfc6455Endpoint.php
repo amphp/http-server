@@ -49,7 +49,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     private $validateUtf8 = false;
     private $textOnly = false;
     private $queuedPingLimit = 3;
-    // @TODO add minimum average frame size rate threshold to prevent tiny-frame DoS
 
     /* Frame control bits */
     const FIN      = 0b1;
@@ -258,7 +257,9 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         $this->logger->error($e->__toString());
         $code = Code::UNEXPECTED_SERVER_ERROR;
         $reason = "Internal server error, aborting";
-        yield from $this->doClose($this->clients[$clientId], $code, $reason);
+        if (isset($this->clients[$clientId])) { // might have been already unloaded + closed
+            yield from $this->doClose($this->clients[$clientId], $code, $reason);
+        }
     }
 
     private function doClose(Rfc6455Client $client, int $code, string $reason): \Generator {
@@ -403,6 +404,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             if ($gen instanceof \Generator) {
                 yield from $gen;
             }
+        } catch (ClientException $e) {
         } catch (\Throwable $e) {
             yield from $this->onAppError($client->id, $e);
         }
