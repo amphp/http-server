@@ -9,7 +9,8 @@ class Options {
 
     private $debug = false;
     private $user = null;
-    private $maxConnections = 1000; // no checks against IP, useless against IPv6
+    private $maxConnections = 1000;
+    private $connectionsPerIP = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
     private $maxKeepAliveRequests = 1000;
     private $keepAliveTimeout = 6; // seconds
     private $defaultContentType = "text/html"; // can be vhost
@@ -105,6 +106,16 @@ class Options {
         }
 
         $this->maxConnections = $count;
+    }
+
+    private function setConnectionsPerIP(int $count) {
+        if ($count < 1) {
+            throw new \DomainException(
+                "Connections per IP maximum must be greater than or equal to one"
+            );
+        }
+
+        $this->connectionsPerIP = $count;
     }
 
     private function setMaxKeepAliveRequests(int $count) {

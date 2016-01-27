@@ -31,6 +31,7 @@ class Server {
     private $pendingTlsStreams = [];
     private $clients = [];
     private $clientCount = 0;
+    private $clientsPerIP = [];
     private $keepAliveTimeouts = [];
     private $nullBody;
     private $stopPromisor;
@@ -51,11 +52,6 @@ class Server {
         $this->ticker = $ticker;
         $this->observers = new \SplObjectStorage;
         $this->observers->attach($ticker);
-        $this->decrementer = function() {
-            if ($this->clientCount) {
-                $this->clientCount--;
-            }
-        };
         $this->ticker->use($this->makePrivateCallable("timeoutKeepAlives"));
         $this->nullBody = new NullBody;
 
@@ -286,9 +282,20 @@ class Server {
             return;
         }
 
-        if ($this->clientCount++ === $this->options->maxConnections) {
+        $portStartPos = strrpos($peerName, ":");
+        $ip = substr($peerName, 0, $portStartPos);
+        $port = substr($peerName, $portStartPos + 1);
+        $net = @\inet_pton($ip);
+        if (isset($net[4])) {
+            $perIP = &$this->clientsPerIP[substr($net, 0, 7 /* /56 block */)];
+        } else {
+            $perIP = &$this->clientsPerIP[$net];
+        }
+
+        if (($this->clientCount++ === $this->options->maxConnections) | ($perIP++ === $this->options->connectionsPerIP)) {
             assert($this->logDebug("client denied: too many existing connections"));
             $this->clientCount--;
+            $perIP--;
             @fclose($client);
             return;
         }
@@ -300,34 +307,41 @@ class Server {
         if (isset($contextOptions["ssl"])) {
             $clientId = (int) $client;
             $watcherId = \Amp\onReadable($client, $this->negotiateCrypto, $options = [
-                "cb_data" => $peerName,
+                "cb_data" => [$ip, $port],
             ]);
             $this->pendingTlsStreams[$clientId] = [$watcherId, $client];
         } else {
-            $this->importClient($client, $peerName);
+            $this->importClient($client, $ip, $port);
         }
     }
 
-    private function negotiateCrypto(string $watcherId, $socket, string $peerName) {
+    private function negotiateCrypto(string $watcherId, $socket, $peer) {
+        list($ip, $port) = $peer;
         if ($handshake = @\stream_socket_enable_crypto($socket, true)) {
             $socketId = (int)$socket;
             \Amp\cancel($watcherId);
             unset($this->pendingTlsStreams[$socketId]);
-            assert(function () use ($socket, $peerName) {
+            assert(function () use ($socket, $ip, $port) {
                 $meta = stream_get_meta_data($socket)["crypto"];
                 $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
-                return $this->logDebug(sprintf("crypto negotiated %s%s", ($isH2 ? "(h2) " : ""), $peerName));
+                return $this->logDebug(sprintf("crypto negotiated %s%s:%d", ($isH2 ? "(h2) " : ""), $ip, $port));
             });
             // Dispatch via HTTP 1 driver; it knows how to handle PRI * requests - for now it is easier to dispatch only via content (ignore alpn)...
-            $this->importClient($socket, $peerName);
+            $this->importClient($socket, $ip, $port);
         } elseif ($handshake === false) {
-            assert($this->logDebug("crypto handshake error {$peerName}"));
-            $this->failCryptoNegotiation($socket);
+            assert($this->logDebug("crypto handshake error $ip:$port"));
+            $this->failCryptoNegotiation($socket, $ip);
         }
     }
 
-    private function failCryptoNegotiation($socket) {
+    private function failCryptoNegotiation($socket, $ip) {
         $this->clientCount--;
+        $net = @\inet_pton($ip);
+        if (isset($net[4])) {
+            $net = substr($net, 0, 7 /* /56 block */);
+        }
+        $this->clientsPerIP[$net]--;
+
         $socketId = (int) $socket;
         list($watcherId) = $this->pendingTlsStreams[$socketId];
         \Amp\cancel($watcherId);
@@ -364,7 +378,7 @@ class Server {
         $this->boundServers = [];
         $this->acceptWatcherIds = [];
         foreach ($this->pendingTlsStreams as list(, $socket)) {
-            $this->failCryptoNegotiation($socket);
+            $this->failCryptoNegotiation($socket, key($this->clientsPerIP) /* doesn't matter after stop */);
         }
 
         $this->stopPromisor = new Deferred;
@@ -387,7 +401,7 @@ class Server {
         yield $this->notify();
     }
 
-    private function importClient($socket, string $peerName) {
+    private function importClient($socket, $ip, $port) {
         $client = new Client;
         $client->id = (int) $socket;
         $client->socket = $socket;
@@ -395,9 +409,8 @@ class Server {
         $client->exporter = $this->exporter;
         $client->remainingKeepAlives = $this->options->maxKeepAliveRequests ?: null;
 
-        $portStartPos = strrpos($peerName, ":");
-        $client->clientAddr = substr($peerName, 0, $portStartPos);
-        $client->clientPort = substr($peerName, $portStartPos + 1);
+        $client->clientAddr = $ip;
+        $client->clientPort = $port;
 
         $serverName = stream_socket_get_name($socket, false);
         $portStartPos = strrpos($serverName, ":");
@@ -849,6 +862,11 @@ class Server {
             $client->isDead = true;
         }
         $this->clientCount--;
+        $net = @\inet_pton($client->clientAddr);
+        if (isset($net[4])) {
+            $net = substr($net, 0, 7 /* /56 block */);
+        }
+        $this->clientsPerIP[$net]--;
         assert($this->logDebug("close {$client->clientAddr}:{$client->clientPort}"));
         if ($client->bodyPromisors) {
             $ex = new ClientException;
@@ -882,7 +900,16 @@ class Server {
 
         assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
 
-        return $this->decrementer;
+        $net = @\inet_pton($client->clientAddr);
+        if (isset($net[4])) {
+            $net = substr($net, 0, 7 /* /56 block */);
+        }
+        return function() use ($net) {
+            $this->clientCount--;
+            $this->clientsPerIP[$net]--;
+            \assert($this->clientCount >= 0);
+            \assert($this->clientsPerIP[$net] >= 0);
+        };
     }
 
     private function dropPrivileges() {
