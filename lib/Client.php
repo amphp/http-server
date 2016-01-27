@@ -26,6 +26,7 @@ class Client {
     public $isDead;
     public $isExported;
     public $remainingKeepAlives;
+    public $pendingResponses = 0;
 
     public $options;
     public $httpDriver;

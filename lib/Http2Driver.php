@@ -248,17 +248,25 @@ class Http2Driver implements HttpDriver {
             $this->writeFrame($client, $headers, self::HEADERS, self::END_HEADERS, $id);
         }
 
-        while (($msgPart = yield) !== null) {
-            if ($msgPart == false) {
-                continue;
-            }
+        $bufferSize = 0;
+        $buffer = [];
 
-            if (\strlen($msgPart) >= 16384) {
-                foreach (str_split($msgPart, 16384) as $msgPart) {
-                    $this->writeData($client, $msgPart, $id, false);
+        while (($msgPart = yield) !== null) {
+            $buffer[] = $msgPart;
+            $bufferSize += \strlen($msgPart);
+
+            if ($msgPart === false || $bufferSize > $client->options->outputBufferSize) {
+                $data = \implode("", $buffer);
+                $buffer = [];
+                $bufferSize = 0;
+
+                if (\strlen($data) >= 16384) {
+                    foreach (str_split($data, 16384) as $data) {
+                        $this->writeData($client, $data, $id, false);
+                    }
+                } else {
+                    $this->writeData($client, $data, $id, false);
                 }
-            } else {
-                $this->writeData($client, $msgPart, $id, false);
             }
 
             if ($client->isDead) {
@@ -272,7 +280,7 @@ class Http2Driver implements HttpDriver {
             }
         }
 
-        $this->writeData($client, "", $id, true);
+        $this->writeData($client, implode($buffer), $id, true);
 
         if ($client->isDead && !$client->bufferPromisor) {
             $client->bufferPromisor = new Failure(new ClientException);
@@ -838,6 +846,8 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "Stream ERROR: $error\n");
             continue;
         }
 
+        $client->shouldClose = true;
+        stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
         $this->writeFrame($client, pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
 

@@ -11,7 +11,7 @@ class Options {
     private $user = null;
     private $maxConnections = 1000;
     private $maxKeepAliveRequests = 1000;
-    private $keepAliveTimeout = 5;
+    private $keepAliveTimeout = 6; // seconds
     private $defaultContentType = "text/html"; // can be vhost
     private $defaultTextCharset = "utf-8"; // can be vhost
     private $sendServerToken = false;
@@ -21,7 +21,7 @@ class Options {
     private $maxBodySize = 131072;
     private $maxHeaderSize = 32768;
     private $ioGranularity = 32768; // recommended: at least 16 KB
-    private $softStreamCap = 262144; // @TODO verify whether we also need a minimum size where to reactivate buffer // should be multiple of outputBufferSize
+    private $softStreamCap = 131072; // should be multiple of outputBufferSize
     private $maxConcurrentStreams = 20;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
     private $deflateEnable;
@@ -33,7 +33,7 @@ class Options {
     private $chunkBufferSize = 8192; // can be vhost
     private $outputBufferSize = 8192; // can be vhost
 
-    private $shutdownTimeout = 3000;
+    private $shutdownTimeout = 3000; // milliseconds
 
     private $_initialized = false;
 

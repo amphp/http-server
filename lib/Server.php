@@ -444,6 +444,7 @@ class Server {
         if ($client->shouldClose) {
             $this->close($client);
         } else {
+            $client->pendingResponses--;
             $this->renewKeepAliveTimeout($client);
         }
     }
@@ -477,7 +478,13 @@ class Server {
     private function timeoutKeepAlives(int $now) {
         foreach ($this->keepAliveTimeouts as $id => $expiresAt) {
             if ($now > $expiresAt) {
-                $this->close($this->clients[$id]);
+                $client = $this->clients[$id];
+                // do not close in case some longer response is taking longer, but do in case bodyPromisors aren't fulfilled
+                if ($client->pendingResponses > \count($client->bodyPromisors)) {
+                    $this->clearKeepAliveTimeout($client); // renewed when response ends
+                } else {
+                    $this->close($client);
+                }
             } else {
                 break;
             }
@@ -509,10 +516,7 @@ class Server {
             return;
         }
 
-        // We should only renew the keep-alive timeout if the client isn't waiting
-        // for us to generate a response. (@TODO)
         $this->renewKeepAliveTimeout($client);
-
         $client->requestParser->send($data);
     }
 
@@ -541,7 +545,6 @@ class Server {
 
     private function onParsedMessageWithoutEntity(Client $client, array $parseResult) {
         $ireq = $this->initializeRequest($client, $parseResult);
-        $this->clearKeepAliveTimeout($client);
 
         $this->respond($ireq);
     }
@@ -556,7 +559,6 @@ class Server {
         $id = $parseResult["id"];
         $client->bodyPromisors[$id] = $bodyPromisor = new Deferred;
         $ireq->body = new Body($bodyPromisor->promise());
-        $this->clearKeepAliveTimeout($client);
 
         $this->respond($ireq);
     }
@@ -677,6 +679,7 @@ class Server {
             $application = $ireq->vhost->getApplication();
         }
 
+        $ireq->client->pendingResponses++;
         $this->tryApplication($ireq, $application);
     }
 
