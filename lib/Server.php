@@ -25,7 +25,6 @@ class Server {
     private $logger;
     private $ticker;
     private $observers;
-    private $decrementer;
     private $acceptWatcherIds = [];
     private $boundServers = [];
     private $pendingTlsStreams = [];
@@ -586,9 +585,15 @@ class Server {
     }
 
     private function onParseError(Client $client, array $parseResult, string $error) {
-        // @TODO how to handle parse error with entity body after request cycle already started?
-
         $this->clearKeepAliveTimeout($client);
+
+        if ($client->bodyPromisors) {
+            $client->writeBuffer .= "\n\n$error";
+            $client->shouldClose = true;
+            $this->writeResponse($client, true);
+            return;
+        }
+
         $ireq = $this->initializeRequest($client, $parseResult);
         $ireq->preAppResponder = function(Request $request, Response $response) use ($parseResult, $error) {
             if ($error === HttpDriver::BAD_VERSION) {

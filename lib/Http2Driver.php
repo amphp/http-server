@@ -847,7 +847,6 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "Stream ERROR: $error\n");
         }
 
         $client->shouldClose = true;
-        stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
         $this->writeFrame($client, pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
 
