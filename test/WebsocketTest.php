@@ -373,13 +373,13 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testFragmentation() {
         \Amp\run(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $endpoint->sendBinary(null, str_repeat("*", 131064))->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->allowKill = true; });
+            $endpoint->sendBinary(null, str_repeat("*", 131046))->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->allowKill = true; });
             $data = "";
             do {
                 yield $this->waitOnRead($sock); // to have it read and parsed...
                 $data .= $x = fread($sock, 8192);
             } while ($x != "" || !feof($sock));
-            $this->assertSocket([[Rfc6455Endpoint::OP_BIN, str_repeat("*", 65532)], [Rfc6455Endpoint::OP_CONT, str_repeat("*", 65532)]], $data);
+            $this->assertSocket([[Rfc6455Endpoint::OP_BIN, str_repeat("*", 65523)], [Rfc6455Endpoint::OP_CONT, str_repeat("*", 65523)]], $data);
 
             \Amp\stop();
         });

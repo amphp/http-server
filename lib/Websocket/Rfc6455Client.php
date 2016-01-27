@@ -41,4 +41,5 @@ class Rfc6455Client {
     public $messagesSent = 0;
 
     public $capacity;
+    public $framesLastSecond = 0;
 }

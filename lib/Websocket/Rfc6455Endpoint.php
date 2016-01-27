@@ -35,12 +35,13 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     private $state;
     private $clients = [];
     private $lowCapacityClients = [];
+    private $highFramesPerSecondClients = [];
     private $closeTimeouts = [];
     private $heartbeatTimeouts = [];
     private $timeoutWatcher;
     private $now;
 
-    private $autoFrameSize = 64 << 10;
+    private $autoFrameSize = (64 << 10) - 9 /* frame overhead */;
     private $maxBytesPerMinute = 8 << 20;
     private $maxFrameSize = 2 << 20;
     private $maxMsgSize = 2 << 20;
@@ -49,6 +50,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
     private $validateUtf8 = false;
     private $textOnly = false;
     private $queuedPingLimit = 3;
+    private $maxFramesPerSecond = 100; // do not bother with setting it too low, fread(8192) may anyway include up to 2700 frames
 
     /* Frame control bits */
     const FIN      = 0b1;
@@ -79,6 +81,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 }
             case "autoFrameSize":
             case "maxFrameSize":
+            case "maxFramesPerSecond":
             case "maxMsgSize":
             case "heartbeatPeriod":
             case "closePeriod":
@@ -444,7 +447,15 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                     \Amp\disable($watcherId);
                 }
             }
-            $client->framesRead += $client->parser->send($data);
+            $frames = $client->parser->send($data);
+            $client->framesRead += $frames;
+            $client->framesLastSecond += $frames;
+            if ($client->framesLastSecond > $this->maxFramesPerSecond / 2) {
+                if ($client->framesLastSecond > $this->maxFramesPerSecond * 1.5) {
+                    \Amp\disable($watcherId);
+                }
+                $this->highFramesPerSecondClients[$client->id] = $client;
+            }
         } elseif (!is_resource($socket) || @feof($socket)) {
             if (!$client->closedAt) {
                 $client->closedAt = $this->now;
@@ -761,6 +772,14 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 unset($this->lowCapacityClients[$id]);
             }
             if ($client->capacity > 8192) {
+                \Amp\enable($client->readWatcher);
+            }
+        }
+
+        foreach ($this->highFramesPerSecondClients as $id => $client) {
+            unset($this->highFramesPerSecondClients[$id]);
+            $client->framesLastSecond -= $this->maxFramesPerSecond;
+            if ($client->capacity > 8192 && $client->framesLastSecond > $this->maxFramesPerSecond) {
                 \Amp\enable($client->readWatcher);
             }
         }
