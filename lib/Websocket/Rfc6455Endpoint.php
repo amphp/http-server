@@ -479,6 +479,15 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $client->writeBuffer = array_shift($client->writeControlQueue);
                 $client->lastSentAt = $this->now;
                 $client->writeDeferred = array_shift($client->writeDeferredControlQueue);
+                while (\strlen($client->writeBuffer) < 8192 && $client->writeControlQueue) {
+                    $client->writeBuffer .= array_shift($client->writeControlQueue);
+                    array_shift($client->writeDeferredControlQueue)->succeed($client->writeDeferred);
+                }
+                while (\strlen($client->writeBuffer) < 8192 && $client->writeDataQueue) {
+                    $client->writeBuffer .= array_shift($client->writeDataQueue);
+                    array_shift($client->writeDeferredDataQueue)->succeed($client->writeDeferred);
+                }
+
             } elseif ($client->closedAt) {
                 @stream_socket_shutdown($socket, STREAM_SHUT_WR);
                 \Amp\cancel($watcherId);
@@ -489,6 +498,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $client->lastDataSentAt = $this->now;
                 $client->lastSentAt = $this->now;
                 $client->writeDeferred = array_shift($client->writeDeferredDataQueue);
+                while (\strlen($client->writeBuffer) < 8192 && $client->writeDataQueue) {
+                    $client->writeBuffer .= array_shift($client->writeDataQueue);
+                    array_shift($client->writeDeferredDataQueue)->succeed($client->writeDeferred);
+                }
             } else {
                 $client->writeBuffer = "";
                 \Amp\disable($watcherId);
@@ -531,7 +544,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
         \Amp\enable($client->writeWatcher);
         if ($client->writeBuffer != "") {
-            if ($frameInfo["opcode"] >= 0x8) {
+            if (\strlen($client->writeBuffer) < 8192) {
+                $client->writeBuffer .= $w;
+                $deferred = $client->writeDeferred;
+            } elseif ($frameInfo["opcode"] >= 0x8) {
                 $client->writeControlQueue[] = $w;
                 $deferred = $client->writeDeferredControlQueue[] = new Deferred;
             } else {
