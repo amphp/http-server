@@ -115,17 +115,15 @@ class Http1Driver implements HttpDriver {
         }
         $lines[] = "\r\n";
         $msgPart = \implode("\r\n", $lines);
-        $bufferSize = 0;
+        $msgs = "";
 
         do {
-            $buffer[] = $msgPart;
-            $bufferSize += \strlen($msgPart);
+            $msgs .= $msgPart;
 
-            if ($msgPart === false || $bufferSize > $client->options->outputBufferSize) {
-                $client->writeBuffer .= \implode("", $buffer);
-                $buffer = [];
-                $bufferSize = 0;
+            if ($msgPart === false || \strlen($msgs) > $client->options->outputBufferSize) {
+                $client->writeBuffer .= $msgs;
                 ($this->responseWriter)($client);
+                $msgs = "";
 
                 if ($client->isDead) {
                     if (!$client->bufferPromisor) {
@@ -148,10 +146,7 @@ class Http1Driver implements HttpDriver {
             }
         } while (($msgPart = yield) !== null);
 
-        if ($bufferSize) {
-            $client->writeBuffer .= \implode("", $buffer);
-        }
-
+        $client->writeBuffer .= $msgs;
         ($this->responseWriter)($client, $final = true);
 
         if ($client->isDead) {

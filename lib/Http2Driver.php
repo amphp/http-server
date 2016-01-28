@@ -234,7 +234,7 @@ class Http2Driver implements HttpDriver {
 
         // @TODO decide whether to use max-frame size
 
-        if (\strlen($headers) >= 16384) {
+        if (\strlen($headers) > 16384) {
             $split = str_split($headers, 16384);
             $headers = array_shift($split);
             $this->writeFrame($client, $headers, self::HEADERS, self::NOFLAG, $id);
@@ -249,24 +249,14 @@ class Http2Driver implements HttpDriver {
         }
 
         $bufferSize = 0;
-        $buffer = [];
+        $msgs = "";
 
         while (($msgPart = yield) !== null) {
-            $buffer[] = $msgPart;
-            $bufferSize += \strlen($msgPart);
+            $msgs .= $msgPart;
 
-            if ($msgPart === false || $bufferSize > $client->options->outputBufferSize) {
-                $data = \implode("", $buffer);
-                $buffer = [];
-                $bufferSize = 0;
-
-                if (\strlen($data) >= 16384) {
-                    foreach (str_split($data, 16384) as $data) {
-                        $this->writeData($client, $data, $id, false);
-                    }
-                } else {
-                    $this->writeData($client, $data, $id, false);
-                }
+            if ($msgPart === false || \strlen($msgs) > $client->options->outputBufferSize) {
+                $this->writeData($client, $msgs, $id, false);
+                $msgs = "";
             }
 
             if ($client->isDead) {
@@ -280,7 +270,7 @@ class Http2Driver implements HttpDriver {
             }
         }
 
-        $this->writeData($client, implode($buffer), $id, true);
+        $this->writeData($client, $msgs, $id, true);
 
         if ($client->isDead && !$client->bufferPromisor) {
             $client->bufferPromisor = new Failure(new ClientException);
@@ -296,10 +286,11 @@ class Http2Driver implements HttpDriver {
         }
     }
 
+    // Note: bufferSize is increased in writeData(), but also here to respect data in streamWindowBuffers; thus needs to be decreased here when shifting data from streamWindowBuffers to writeData()
     public function writeData(Client $client, $data, $stream, $last) {
         $len = \strlen($data);
         if ($client->streamWindowBuffer[$stream] != "" || $client->window < $len || $client->streamWindow[$stream] < $len) {
-            $client->streamWindowBuffer[$stream] .= $data; // @TODO limit maximum buffer size
+            $client->streamWindowBuffer[$stream] .= $data;
             if ($last) {
                 $client->streamEnd[$stream] = true;
             }
@@ -310,6 +301,13 @@ class Http2Driver implements HttpDriver {
             $this->tryDataSend($client, $stream);
         } else {
             $client->window -= $len;
+            if ($len > 16384) {
+                $split = str_split($data, 16384);
+                $data = array_pop($split);
+                foreach ($split as $part) {
+                    $this->writeFrame($client, $part, self::DATA, self::NOFLAG, $stream);
+                }
+            }
             if ($last) {
                 $this->writeFrame($client, $data, self::DATA, $last ? self::END_STREAM : self::NOFLAG, $stream);
                 unset($client->streamWindow[$stream], $client->streamWindowBuffer[$stream]);
@@ -326,6 +324,13 @@ class Http2Driver implements HttpDriver {
         if ($delta >= $len) {
             $client->window -= $len;
             $client->bufferSize -= $len;
+            if ($len > 16384) {
+                $split = str_split($client->streamWindowBuffer[$id], 16384);
+                $client->streamWindowBuffer[$id] = array_pop($split);
+                foreach ($split as $part) {
+                    $this->writeFrame($client, $part, self::DATA, self::NOFLAG, $id);
+                }
+            }
             if (isset($client->streamEnd[$id])) {
                 $this->writeFrame($client, $client->streamWindowBuffer[$id], self::DATA, self::END_STREAM, $id);
                 unset($client->streamWindowBuffer[$id], $client->streamEnd[$id], $client->streamWindow[$id]);
@@ -335,17 +340,22 @@ class Http2Driver implements HttpDriver {
                 $client->streamWindowBuffer[$id] = "";
             }
         } elseif ($delta > 0) {
+            $data = $client->streamWindowBuffer[$id];
+            $end = $delta - 16384;
             $client->bufferSize -= $delta;
-            $this->writeFrame($client, substr($client->streamWindowBuffer[$id], 0, $delta), self::DATA, self::NOFLAG, $id);
-            $client->streamWindowBuffer[$id] = substr($client->streamWindowBuffer[$id], $delta);
+            for ($off = 0; $off < $end; $off += 16384) {
+                $this->writeFrame($client, substr($data, $off, 16384), self::DATA, self::NOFLAG, $id);
+            }
+            $this->writeFrame($client, substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
+            $client->streamWindowBuffer[$id] = substr($data, $delta);
             $client->streamWindow[$id] -= $delta;
             $client->window -= $delta;
         }
     }
 
     public function writePing(Client $client) {
+        // no need to receive the PONG frame, that's anyway registered by the keep-alive handler
         $data = $this->counter++;
-        // @TODO store ping; add timeout
         $this->writeFrame($client, $data, self::PING, self::NOFLAG);
     }
 
