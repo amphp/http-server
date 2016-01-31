@@ -373,7 +373,6 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack(
     }
 
     public function parser(Client $client): \Generator {
-        // @TODO apply restrictions
         $maxHeaderSize = $client->options->maxHeaderSize;
         $maxBodySize = $client->options->maxBodySize;
         $maxStreams = $client->options->maxConcurrentStreams;
@@ -712,7 +711,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
                     $data = \substr($buffer, 0, 8);
 
                     if (($flags & self::ACK) !== "\0") {
-                        // @TODO resolve ping
+                        // do not resolve ping - unneeded because of keepAliveTimeout
                     } else {
                         $this->writeFrame($client, $data, self::PING, self::ACK);
                     }
@@ -746,7 +745,11 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
                     }
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer, 0, $length)."\n");
-                    return; // @TODO verify whether it needs to be manually closed
+                    $client->shouldClose = true;
+                    while (1) {
+                        yield;
+                    }
+                    // keepAliveTimeout will force a close when necessary
 
                 case self::WINDOW_UPDATE:
                     while (\strlen($buffer) < 4) {

@@ -771,16 +771,18 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             if ($client->capacity > $this->maxBytesPerMinute) {
                 unset($this->lowCapacityClients[$id]);
             }
-            if ($client->capacity > 8192) {
+            if ($client->capacity > 8192 && !isset($this->highFramesPerSecondClients[$id])) {
                 \Amp\enable($client->readWatcher);
             }
         }
 
         foreach ($this->highFramesPerSecondClients as $id => $client) {
-            unset($this->highFramesPerSecondClients[$id]);
             $client->framesLastSecond -= $this->maxFramesPerSecond;
-            if ($client->capacity > 8192 && $client->framesLastSecond > $this->maxFramesPerSecond) {
-                \Amp\enable($client->readWatcher);
+            if ($client->framesLastSecond < $this->maxFramesPerSecond) {
+                unset($this->highFramesPerSecondClients[$id]);
+                if ($client->capacity > 8192) {
+                    \Amp\enable($client->readWatcher);
+                }
             }
         }
     }
