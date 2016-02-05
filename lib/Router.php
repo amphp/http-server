@@ -33,7 +33,8 @@ class Router implements Bootable, Middleware, ServerObserver {
      * @param string $key
      * @param mixed $value
      * @throws \DomainException on unknown option key
-     * @retur void
+     * @throws \TypeError on max_cache_entries not an integer
+     * @return void
      */
     public function setOption(string $key, $value) {
         switch ($key) {
@@ -79,6 +80,7 @@ class Router implements Bootable, Middleware, ServerObserver {
 
     /**
      * Execute router middleware functionality
+     * @param InternalRequest $ireq
      */
     public function do(InternalRequest $ireq) {
         $toMatch = $ireq->uriPath;
@@ -218,9 +220,8 @@ class Router implements Bootable, Middleware, ServerObserver {
      * directly.
      *
      * @param string $method
-     * @param string $uri
-     * @param callable|\Aerys\Middleware|\Aerys\Bootable $actions
-     * @return self
+     * @param array $args
+     * @return Router
      */
     public function __call(string $method, array $args): Router {
         $uri = $args ? array_shift($args) : "";
@@ -247,7 +248,7 @@ class Router implements Bootable, Middleware, ServerObserver {
      *
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
-     * @param callable|\Aerys\Middleware|\Aerys\Bootable $actions The action(s) to invoke upon matching this route
+     * @param Bootable|Middleware|array|callable ...$actions The action(s) to invoke upon matching this route
      * @throws \DomainException on invalid empty parameters
      * @return self
      */
