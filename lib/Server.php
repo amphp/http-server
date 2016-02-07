@@ -320,11 +320,11 @@ class Server {
             $socketId = (int)$socket;
             \Amp\cancel($watcherId);
             unset($this->pendingTlsStreams[$socketId]);
-            assert(function () use ($socket, $ip, $port) {
+            assert((function () use ($socket, $ip, $port) {
                 $meta = stream_get_meta_data($socket)["crypto"];
                 $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
                 return $this->logDebug(sprintf("crypto negotiated %s%s:%d", ($isH2 ? "(h2) " : ""), $ip, $port));
-            });
+            })());
             // Dispatch via HTTP 1 driver; it knows how to handle PRI * requests - for now it is easier to dispatch only via content (ignore alpn)...
             $this->importClient($socket, $ip, $port);
         } elseif ($handshake === false) {
@@ -595,7 +595,7 @@ class Server {
         }
 
         $ireq = $this->initializeRequest($client, $parseResult);
-        $ireq->preAppResponder = function(Request $request, Response $response) use ($parseResult, $error) {
+        $ireq->preAppResponder = static function(Request $request, Response $response) use ($parseResult, $error) {
             if ($error === HttpDriver::BAD_VERSION) {
                 $status = HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"];
                 $error = "Unsupported version {$parseResult['protocol']}";

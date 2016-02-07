@@ -122,7 +122,7 @@ class Vhost {
      * @return array
      */
     public function getBindableAddresses(): array {
-        return array_map(function($interface) {
+        return array_map(static function($interface) {
             list($address, $port) = $interface;
             if (strpos($address, ":") !== false) {
                 $address = "[$address]";

@@ -61,7 +61,7 @@ class Bootstrapper {
         $ticker = new Ticker($logger);
         $server = new Server($options, $vhosts, $logger, $ticker);
 
-        $bootLoader = function(Bootable $bootable) use ($server, $logger) {
+        $bootLoader = static function(Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
             if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
                 throw new \InvalidArgumentException("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Middleware and/or be callable, got ' . gettype($booted) . ".");
@@ -145,7 +145,7 @@ class Bootstrapper {
             }
 
             if (empty($applications)) {
-                $application = function(Request $request, Response $response) {
+                $application = static function(Request $request, Response $response) {
                     $response->end("<html><body><h1>It works!</h1></body></html>");
                 };
             } elseif (count($applications) === 1) {

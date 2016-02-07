@@ -31,13 +31,12 @@ use Amp\Promise;
  *     };
  */
 class Body extends PromiseStream implements Promise {
-    private $promise;
     private $whens = [];
+    private $watchers = [];
     private $string;
 
     public function __construct(Promise $promise) {
         parent::__construct($promise);
-        $this->promise = $promise;
         $when = function ($e, $bool) use (&$continue) {
             $continue = $bool;
         };
@@ -63,6 +62,11 @@ class Body extends PromiseStream implements Promise {
                 $when(null, $string, $data);
             }
         });
+        $promise->watch(function($data) {
+            foreach ($this->watchers as list($func, $cbData)) {
+                $func($data, $cbData);
+            }
+        });
     }
 
     public function when(callable $func, $data = null) {
@@ -75,7 +79,7 @@ class Body extends PromiseStream implements Promise {
     }
 
     public function watch(callable $func, $data = null) {
-        $this->promise->watch($func, $data);
+        $this->watchers[] = [$func, $data];
         return $this;
     }
 }

@@ -172,7 +172,7 @@ class Host {
             );
         }
 
-        $this->redirect = function(Request $req, Response $res) use ($redirectUri, $redirectCode) {
+        $this->redirect = static function(Request $req, Response $res) use ($redirectUri, $redirectCode) {
             $res->setStatus($redirectCode);
             $res->setHeader("location", $redirectUri . $req->getUri());
             $res->end();

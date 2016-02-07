@@ -278,7 +278,7 @@ class Http2Driver implements HttpDriver {
 
         if ($client->bufferPromisor) {
             $keepAlives = &$client->remainingKeepAlives; // avoid cyclic reference
-            $client->bufferPromisor->when(function() use (&$keepAlives) {
+            $client->bufferPromisor->when(static function() use (&$keepAlives) {
                 $keepAlives++;
             });
         } else {

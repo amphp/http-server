@@ -487,16 +487,22 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             $client->framesSent++;
             $client->writeDeferred->succeed();
             if ($client->writeControlQueue) {
-                $client->writeBuffer = array_shift($client->writeControlQueue);
+                $key = key($client->writeControlQueue);
+                $client->writeBuffer = $client->writeControlQueue[$key];
                 $client->lastSentAt = $this->now;
-                $client->writeDeferred = array_shift($client->writeDeferredControlQueue);
+                $client->writeDeferred = $client->writeDeferredControlQueue[$key];
+                unset($client->writeControlQueue[$key], $client->writeDeferredControlQueue[$key]);
                 while (\strlen($client->writeBuffer) < 65536 && $client->writeControlQueue) {
-                    $client->writeBuffer .= array_shift($client->writeControlQueue);
-                    array_shift($client->writeDeferredControlQueue)->succeed($client->writeDeferred);
+                    $key = key($client->writeControlQueue);
+                    $client->writeBuffer .= $client->writeControlQueue[$key];
+                    $client->writeDeferredControlQueue[$key]->succeed($client->writeDeferred);
+                    unset($client->writeControlQueue[$key], $client->writeDeferredControlQueue[$key]);
                 }
                 while (\strlen($client->writeBuffer) < 65536 && $client->writeDataQueue) {
-                    $client->writeBuffer .= array_shift($client->writeDataQueue);
-                    array_shift($client->writeDeferredDataQueue)->succeed($client->writeDeferred);
+                    $key = key($client->writeDataQueue);
+                    $client->writeBuffer .= $client->writeDataQueue[$key];
+                    $client->writeDeferredDataQueue[$key]->succeed($client->writeDeferred);
+                    unset($client->writeDataQueue[$key], $client->writeDeferredDataQueue[$key]);
                 }
 
             } elseif ($client->closedAt) {
@@ -505,13 +511,17 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $client->writeWatcher = null;
                 $client->writeBuffer = "";
             } elseif ($client->writeDataQueue) {
-                $client->writeBuffer = array_shift($client->writeDataQueue);
+                $key = key($client->writeDataQueue);
+                $client->writeBuffer = $client->writeDataQueue[$key];
                 $client->lastDataSentAt = $this->now;
                 $client->lastSentAt = $this->now;
-                $client->writeDeferred = array_shift($client->writeDeferredDataQueue);
+                $client->writeDeferred = $client->writeDeferredDataQueue[$key];
+                unset($client->writeDataQueue[$key], $client->writeDeferredDataQueue[$key]);
                 while (\strlen($client->writeBuffer) < 65536 && $client->writeDataQueue) {
-                    $client->writeBuffer .= array_shift($client->writeDataQueue);
-                    array_shift($client->writeDeferredDataQueue)->succeed($client->writeDeferred);
+                    $key = key($client->writeDataQueue);
+                    $client->writeBuffer .= $client->writeDataQueue[$key];
+                    $client->writeDeferredDataQueue[$key]->succeed($client->writeDeferred);
+                    unset($client->writeDataQueue[$key], $client->writeDeferredDataQueue[$key]);
                 }
             } else {
                 $client->writeBuffer = "";
@@ -807,23 +817,25 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         $dataArr = [];
 
         $buffer = yield;
+        $offset = 0;
         $bufferSize = \strlen($buffer);
         $frames = 0;
 
         while (1) {
-            $frameBytesRecd = 0;
-            $payload = '';
-
-            while ($bufferSize < 2) {
-                $buffer .= yield $frames;
-                $bufferSize = \strlen($buffer);
-                $frames = 0;
+            if ($bufferSize < 2) {
+                $buffer = substr($buffer, $offset);
+                $offset = 0;
+                do {
+                    $buffer .= yield $frames;
+                    $bufferSize = \strlen($buffer);
+                    $frames = 0;
+                } while ($bufferSize < 2);
             }
 
-            $firstByte = ord($buffer);
-            $secondByte = ord($buffer[1]);
+            $firstByte = ord($buffer[$offset]);
+            $secondByte = ord($buffer[$offset + 1]);
 
-            $buffer = substr($buffer, 2);
+            $offset += 2;
             $bufferSize -= 2;
 
             $fin = (bool)($firstByte & 0b10000000);
@@ -839,24 +851,32 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             }
 
             if ($frameLength === 0x7E) {
-                while ($bufferSize < 2) {
-                    $buffer .= yield $frames;
-                    $bufferSize = \strlen($buffer);
-                    $frames = 0;
+                if ($bufferSize < 2) {
+                    $buffer = substr($buffer, $offset);
+                    $offset = 0;
+                    do {
+                        $buffer .= yield $frames;
+                        $bufferSize = \strlen($buffer);
+                        $frames = 0;
+                    } while ($bufferSize < 2);
                 }
 
-                $frameLength = unpack('n', $buffer[0] . $buffer[1])[1];
-                $buffer = substr($buffer, 2);
+                $frameLength = unpack('n', $buffer[$offset] . $buffer[$offset + 1])[1];
+                $offset += 2;
                 $bufferSize -= 2;
             } elseif ($frameLength === 0x7F) {
-                while ($bufferSize < 8) {
-                    $buffer .= yield $frames;
-                    $bufferSize = \strlen($buffer);
-                    $frames = 0;
+                if ($bufferSize < 8) {
+                    $buffer = substr($buffer, $offset);
+                    $offset = 0;
+                    do {
+                        $buffer .= yield $frames;
+                        $bufferSize = \strlen($buffer);
+                        $frames = 0;
+                    } while ($bufferSize < 8);
                 }
 
-                $lengthLong32Pair = unpack('N2', substr($buffer, 0, 8));
-                $buffer = substr($buffer, 8);
+                $lengthLong32Pair = unpack('N2', substr($buffer, $offset, 8));
+                $offset += 8;
                 $bufferSize -= 8;
 
                 if (PHP_INT_MAX === 0x7fffffff) {
@@ -914,79 +934,97 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
             }
 
             if ($isMasked) {
-                while ($bufferSize < 4) {
-                    $buffer .= yield $frames;
-                    $bufferSize = \strlen($buffer);
-                    $frames = 0;
+                if ($bufferSize < 4) {
+                    $buffer = substr($buffer, $offset);
+                    $offset = 0;
+                    do {
+                        $buffer .= yield $frames;
+                        $bufferSize = \strlen($buffer);
+                        $frames = 0;
+                    } while ($bufferSize < 4);
                 }
 
-                $maskingKey = substr($buffer, 0, 4);
-                $buffer = substr($buffer, 4);
+                $maskingKey = substr($buffer, $offset, 4);
+                $offset += 4;
                 $bufferSize -= 4;
             }
 
-            while (1) {
-                if ($bufferSize + $frameBytesRecd >= $frameLength) {
-                    $dataLen = $frameLength - $frameBytesRecd;
-                } else {
-                    $dataLen = $bufferSize;
-                }
-
+            if ($bufferSize >= $frameLength) {
                 if (!$isControlFrame) {
-                    $dataMsgBytesRecd += $dataLen;
+                    $dataMsgBytesRecd += $frameLength;
                 }
 
-                $payload .= substr($buffer, 0, $dataLen);
-                $frameBytesRecd += $dataLen;
-
-                $buffer = substr($buffer, $dataLen);
-                $bufferSize -= $dataLen;
-
-                if ($frameBytesRecd == $frameLength) {
-                    break;
+                $payload = substr($buffer, $offset, $frameLength);
+                $offset += $frameLength;
+                $bufferSize -= $frameLength;
+            } else {
+                if (!$isControlFrame) {
+                    $dataMsgBytesRecd += $bufferSize;
                 }
+                $frameBytesRecd = $bufferSize;
 
-                // if we want to validate UTF8, we must *not* send incremental mid-frame updates because the message might be broken in the middle of an utf-8 sequence
-                // also, control frames always are <= 125 bytes, so we never will need this as per https://tools.ietf.org/html/rfc6455#section-5.5
-                if (!$isControlFrame && $dataMsgBytesRecd >= $nextEmit) {
-                    if ($isMasked) {
-                        $payload ^= str_repeat($maskingKey, ($frameBytesRecd + 3) >> 2);
-                        // Shift the mask so that the next data where the mask is used on has correct offset.
-                        $maskingKey = substr($maskingKey . $maskingKey, $frameBytesRecd % 4, 4);
-                    }
+                $payload = substr($buffer, $offset);
 
-                    if ($dataArr) {
-                        $dataArr[] = $payload;
-                        $payload = implode($dataArr);
-                        $dataArr = [];
-                    }
-
-                    if ($doUtf8Validation) {
-                        $string = $payload;
-                        for ($i = 0; !preg_match('//u', $payload) && $i < 8; $i++) {
-                            $payload = substr($payload, 0, -1);
-                        }
-                        if ($i == 8) {
-                            $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
-                            $errorMsg = 'Invalid TEXT data; UTF-8 required';
-                            break;
+                do {
+                    // if we want to validate UTF8, we must *not* send incremental mid-frame updates because the message might be broken in the middle of an utf-8 sequence
+                    // also, control frames always are <= 125 bytes, so we never will need this as per https://tools.ietf.org/html/rfc6455#section-5.5
+                    if (!$isControlFrame && $dataMsgBytesRecd >= $nextEmit) {
+                        if ($isMasked) {
+                            $payload ^= str_repeat($maskingKey, ($frameBytesRecd + 3) >> 2);
+                            // Shift the mask so that the next data where the mask is used on has correct offset.
+                            $maskingKey = substr($maskingKey . $maskingKey, $frameBytesRecd % 4, 4);
                         }
 
-                        $emitCallback([self::DATA, $payload, false], $callbackData);
-                        $payload = $i > 0 ? substr($string, -$i) : '';
+                        if ($dataArr) {
+                            $dataArr[] = $payload;
+                            $payload = implode($dataArr);
+                            $dataArr = [];
+                        }
+
+                        if ($doUtf8Validation) {
+                            $string = $payload;
+                            /* @TODO: check how many bits are set to 1 instead of multiple (slow) preg_match()es and substr()s */
+                            for ($i = 0; !preg_match('//u', $payload) && $i < 8; $i++) {
+                                $payload = substr($payload, 0, -1);
+                            }
+                            if ($i == 8) {
+                                $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
+                                $errorMsg = 'Invalid TEXT data; UTF-8 required';
+                                break 2;
+                            }
+
+                            $emitCallback([self::DATA, $payload, false], $callbackData);
+                            $payload = $i > 0 ? substr($string, -$i) : '';
+                        } else {
+                            $emitCallback([self::DATA, $payload, false], $callbackData);
+                            $payload = '';
+                        }
+
+                        $frameLength -= $frameBytesRecd;
+                        $nextEmit = $dataMsgBytesRecd + $emitThreshold;
+                        $frameBytesRecd = 0;
+                    }
+
+                    $buffer = yield $frames;
+                    $bufferSize = \strlen($buffer);
+                    $frames = 0;
+
+                    if ($bufferSize + $frameBytesRecd >= $frameLength) {
+                        $dataLen = $frameLength - $frameBytesRecd;
                     } else {
-                        $emitCallback([self::DATA, $payload, false], $callbackData);
-                        $payload = '';
+                        $dataLen = $bufferSize;
                     }
 
-                    $frameLength -= $frameBytesRecd;
-                    $nextEmit = $dataMsgBytesRecd + $emitThreshold;
-                    $frameBytesRecd = 0;
-                }
+                    if (!$isControlFrame) {
+                        $dataMsgBytesRecd += $dataLen;
+                    }
 
-                $buffer .= yield $frames;
-                $bufferSize = \strlen($buffer);
-                $frames = 0;
+                    $payload .= substr($buffer, 0, $dataLen);
+                    $frameBytesRecd += $dataLen;
+                } while ($frameBytesRecd != $frameLength);
+
+                $offset = $dataLen;
+                $bufferSize -= $dataLen;
             }
 
             if ($isMasked) {

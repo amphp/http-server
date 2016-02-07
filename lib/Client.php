@@ -30,7 +30,7 @@ class Client {
 
     public $options;
     public $httpDriver;
-    public $exporter; // Requires Client object as first argument
+    public $exporter; // Requires Client object as first argument // @TODO cyclic reference to Server object
 
     public $bodyPromisors = [];
 

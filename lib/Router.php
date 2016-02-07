@@ -285,7 +285,7 @@ class Router implements Bootable, Middleware, ServerObserver {
 
     public function boot(Server $server, Logger $logger) {
         $server->attach($this);
-        $this->bootLoader = function(Bootable $bootable) use ($server, $logger) {
+        $this->bootLoader = static function(Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
             if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
                 throw new \InvalidArgumentException("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Middleware and/or be callable');
@@ -300,7 +300,7 @@ class Router implements Bootable, Middleware, ServerObserver {
         $booted = [];
 
         if ($actions === self::CANONICAL_REDIRECT) {
-            $actions = [function (Request $request, Response $response) {
+            $actions = [static function (Request $request, Response $response) {
                 $uri = $request->getUri();
                 if (stripos($uri, "?")) {
                     list($path, $query) = explode("?", $uri, 2);
@@ -346,7 +346,7 @@ class Router implements Bootable, Middleware, ServerObserver {
             }
         }
 
-        return [function(Request $request, Response $response, array $args) use ($applications) {
+        return [static function(Request $request, Response $response, array $args) use ($applications) {
             foreach ($applications as $application) {
                 $result = $application($request, $response, $args);
                 if ($result instanceof \Generator) {
