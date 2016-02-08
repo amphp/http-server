@@ -319,5 +319,6 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
             \Amp\stop();
         });
         \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
     }
 }

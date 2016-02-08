@@ -60,7 +60,8 @@ class BootstrapperTest extends \PHPUnit_Framework_TestCase {
         };
 
         $server = wait(resolve($bootstrapper->boot($logger, $console)));
-
+        \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
 
         $info = $server->__debugInfo();
         if (Host::separateIPv4Binding()) {

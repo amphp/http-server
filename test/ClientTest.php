@@ -76,6 +76,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
 
             \Amp\stop();
             \Amp\reactor(\Amp\driver());
+            \Amp\File\filesystem(\Amp\File\driver());
         });
     }
 
@@ -140,6 +141,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             yield $deferred->promise();
             \Amp\stop();
             \Amp\reactor(\Amp\driver());
+            \Amp\File\filesystem(\Amp\File\driver());
         });
     }
 }

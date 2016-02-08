@@ -33,7 +33,7 @@
     "require": {
         "php": ">=7.0.0-dev",
         "amphp/amp": "^1",
-        "amphp/file": "dev-master",
+        "amphp/file": "^0.1.1",
         "amphp/socket": "^0.9",
         "league/climate": "^3",
         "nikic/fast-route": "^0.4",

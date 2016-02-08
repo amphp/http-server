@@ -121,6 +121,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             yield $endpoint->update($server);
         });
         \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     /**
@@ -149,6 +150,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             \Amp\stop();
         });
         \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function provideParsedData() {
@@ -205,6 +207,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             \Amp\stop();
         });
         \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function provideErrorEvent() {
@@ -324,6 +327,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             \Amp\stop();
         });
         \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function testIORead() {
@@ -337,6 +341,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             \Amp\stop();
         });
         \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function testMultiWrite() {
@@ -368,6 +373,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             \Amp\stop();
         });
         \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function testFragmentation() {
@@ -384,6 +390,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             \Amp\stop();
         });
         \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function testSinglePong() {
@@ -396,5 +403,6 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             \Amp\stop();
         });
         \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
     }
 }
