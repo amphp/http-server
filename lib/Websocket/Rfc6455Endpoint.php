@@ -509,6 +509,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 @stream_socket_shutdown($socket, STREAM_SHUT_WR);
                 \Amp\cancel($watcherId);
                 $client->writeWatcher = null;
+                $client->writeDeferred = null;
                 $client->writeBuffer = "";
             } elseif ($client->writeDataQueue) {
                 $key = key($client->writeDataQueue);
@@ -524,6 +525,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                     unset($client->writeDataQueue[$key], $client->writeDeferredDataQueue[$key]);
                 }
             } else {
+                $client->writeDeferred = null;
                 $client->writeBuffer = "";
                 \Amp\disable($watcherId);
             }
@@ -564,7 +566,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         $w .= $msg;
 
         if ($client->writeBuffer != "") {
-            if (\strlen($client->writeBuffer) < 65536) {
+            if (\strlen($client->writeBuffer) < 65536 && !$client->writeDataQueue && !$client->writeControlQueue) {
                 $client->writeBuffer .= $w;
                 $deferred = $client->writeDeferred;
             } elseif ($frameInfo["opcode"] >= 0x8) {
