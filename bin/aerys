@@ -1,6 +1,11 @@
 #!/usr/bin/env php
 <?php
 
+if (PHP_MAJOR_VERSION < 7) {
+    echo "Aerys must be run with at least PHP 7.\nUsed PHP version: ".phpversion()."\n";
+    die(1);
+}
+
 $help = <<<EOT
       ____ _ ___   _____ __  __ _____
      / __ `// _ \ / ___// / / // ___/
@@ -19,7 +24,7 @@ $help = <<<EOT
     Example Usage:
     aerys --help
     aerys --color off --log info
-    aerys --config /path/to/app/config.php --w 4
+    aerys --config /path/to/app/config.php -w 4
     aerys --remote 23456 --log warning
 
 
@@ -87,5 +92,5 @@ Amp\run(function() use ($console) {
         ? new Aerys\DebugProcess($logger)
         : new Aerys\WatcherProcess($logger)
     ;
-    yield from $process->start($console);
+    yield \Amp\resolve($process->start($console));
 });
