@@ -31,7 +31,7 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "php": ">=7.0.0-dev",
+        "php": ">=7.0.0",
         "amphp/amp": "^1",
         "amphp/file": "^0.1.1",
         "amphp/socket": "^0.9",

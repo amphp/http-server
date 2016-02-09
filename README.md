@@ -41,7 +41,11 @@ $ php bin/aerys -c demo.php
 Simply execute the aerys binary (with php7) to start a server listening on `http://localhost/` using
 the default configuration file (packaged with the repo).
 
-Add a `-d` switch to see some debug output like the routes called etc.
+Add a `-d` switch to see some debug output like the routes called etc.:
+
+```bash
+$ php bin/aerys -d -c demo.php
+```
 
 ## Config File
 

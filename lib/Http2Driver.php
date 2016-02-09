@@ -248,7 +248,6 @@ class Http2Driver implements HttpDriver {
             $this->writeFrame($client, $headers, self::HEADERS, self::END_HEADERS, $id);
         }
 
-        $bufferSize = 0;
         $msgs = "";
 
         while (($msgPart = yield) !== null) {

@@ -563,7 +563,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
         $w .= $msg;
 
-        \Amp\enable($client->writeWatcher);
         if ($client->writeBuffer != "") {
             if (\strlen($client->writeBuffer) < 65536) {
                 $client->writeBuffer .= $w;
@@ -576,6 +575,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
                 $deferred = $client->writeDeferredDataQueue[] = new Deferred;
             }
         } else {
+            \Amp\enable($client->writeWatcher);
             $client->writeBuffer = $w;
             $deferred = $client->writeDeferred = new Deferred;
         }
