@@ -33,7 +33,6 @@ class Router implements Bootable, Middleware, ServerObserver {
      * @param string $key
      * @param mixed $value
      * @throws \DomainException on unknown option key
-     * @retur void
      */
     public function setOption(string $key, $value) {
         switch ($key) {
@@ -58,7 +57,6 @@ class Router implements Bootable, Middleware, ServerObserver {
      *
      * @param \Aerys\Request $request
      * @param \Aerys\Response $response
-     * @return mixed
      */
     public function __invoke(Request $request, Response $response) {
         if (!$preRoute = $request->getLocalVar("aerys.routed")) {
@@ -79,6 +77,7 @@ class Router implements Bootable, Middleware, ServerObserver {
 
     /**
      * Execute router middleware functionality
+     * @param InternalRequest $ireq
      */
     public function do(InternalRequest $ireq) {
         $toMatch = $ireq->uriPath;
@@ -218,8 +217,7 @@ class Router implements Bootable, Middleware, ServerObserver {
      * directly.
      *
      * @param string $method
-     * @param string $uri
-     * @param callable|\Aerys\Middleware|\Aerys\Bootable $actions
+     * @param array $args
      * @return self
      */
     public function __call(string $method, array $args): Router {
@@ -247,7 +245,7 @@ class Router implements Bootable, Middleware, ServerObserver {
      *
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
-     * @param callable|\Aerys\Middleware|\Aerys\Bootable $actions The action(s) to invoke upon matching this route
+     * @param Bootable|Middleware|callable ...$actions The action(s) to invoke upon matching this route
      * @throws \DomainException on invalid empty parameters
      * @return self
      */

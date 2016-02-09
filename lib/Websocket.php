@@ -17,8 +17,7 @@ interface Websocket {
      * the server is allowed to start. Additionally, this method returns a
      * Promise the server will not start until that promise resolves.
      *
-     * @param \Aerys\Endpoint $endpoint
-     * @return mixed
+     * @param \Aerys\Websocket\Endpoint $endpoint
      */
     public function onStart(Websocket\Endpoint $endpoint);
 
@@ -34,7 +33,6 @@ interface Websocket {
      *
      * @param \Aerys\Request $request The HTTP request that instigated the handshake
      * @param \Aerys\Response $response Used to set headers and/or reject the handshake
-     * @return mixed
      */
     public function onHandshake(Request $request, Response $response);
 
@@ -43,7 +41,6 @@ interface Websocket {
      *
      * @param int $clientId A unique (to the current process) identifier for this client
      * @param mixed $handshakeData The return value from onHandshake() for this client
-     * @return mixed
      */
     public function onOpen(int $clientId, $handshakeData);
 
@@ -52,7 +49,6 @@ interface Websocket {
      *
      * @param int $clientId A unique (to the current process) identifier for this client
      * @param \Aerys\Websocket\Message $msg A stream of data received from the client
-     * @return mixed
      */
     public function onData(int $clientId, Websocket\Message $msg);
 
@@ -62,7 +58,6 @@ interface Websocket {
      * @param int $clientId A unique (to the current process) identifier for this client
      * @param int $code The websocket code describing the close
      * @param string $reason The reason for the close (may be empty)
-     * @return mixed
      */
     public function onClose(int $clientId, int $code, string $reason);
 
@@ -78,8 +73,6 @@ interface Websocket {
      * If this method is a Generator it will be resolved as a coroutine before the server
      * is allowed to fully shutdown. Additionally, if this method returns a Promise the
      * server will not shutdown until that promise resolves.
-     *
-     * @return mixed
      */
     public function onStop();
 }

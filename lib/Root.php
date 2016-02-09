@@ -38,9 +38,8 @@ class Root implements ServerObserver {
     private $bufferedFileMaxSize = 524288;
 
     /**
-     * @param string $root
-     * @param \Amp\File\Driver $filesystem
-     * @param \Amp\Reactor $reactor
+     * @param string $root Document root
+     * @param \Amp\File\Driver $filesystem Optional filesystem driver
      * @throws \DomainException On invalid root path
      */
     public function __construct(string $root, file\Driver $filesystem = null) {
@@ -72,9 +71,6 @@ class Root implements ServerObserver {
 
     /**
      * Respond to HTTP requests for filesystem resources
-     *
-     * @param \Aerys\Request $request
-     * @return mixed
      */
     public function __invoke(Request $request, Response $response) {
         $uri = $request->getLocalVar("aerys.sendfile") ?: $request->getUri();
@@ -591,7 +587,6 @@ class Root implements ServerObserver {
      * @param string $option The option key (case-insensitve)
      * @param mixed $value The option value to assign
      * @throws \DomainException On unrecognized option key
-     * @return void
      */
     public function setOption($option, $value) {
         switch ($option) {
@@ -763,9 +758,6 @@ class Root implements ServerObserver {
 
     /**
      * Receive notifications from the server when it starts/stops
-     *
-     * @param Server $server
-     * @return \Amp\Promise
      */
     public function update(Server $server): amp\Promise {
         switch ($server->state()) {
