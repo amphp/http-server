@@ -17,7 +17,7 @@ interface Websocket {
      * the server is allowed to start. Additionally, this method returns a
      * Promise the server will not start until that promise resolves.
      *
-     * @param \Aerys\Endpoint $endpoint
+     * @param \Aerys\Websocket\Endpoint $endpoint
      * @return mixed
      */
     public function onStart(Websocket\Endpoint $endpoint);

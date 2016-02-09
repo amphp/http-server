@@ -74,6 +74,7 @@ class Root implements ServerObserver {
      * Respond to HTTP requests for filesystem resources
      *
      * @param \Aerys\Request $request
+     * @param \Aerys\Response $response
      * @return mixed
      */
     public function __invoke(Request $request, Response $response) {
