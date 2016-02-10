@@ -16,7 +16,7 @@ $help = <<<EOT
     -c, --config      Define a custom server config path
     -d, --debug       Start the server in debug mode
     -h, --help        Display the help screen
-    -l, --log         Set the minimum log output level (default: warning (info in debug mode))
+    -l, --log         Set the minimum log output level (default: warning (debug in debug mode))
     -r, --restart     Restart a running Aerys server with that config
     -w, --workers     Manually specify worker count (default: CPU core count)
         --color       Use ANSI codes in output (auto|on|off default: auto)
@@ -55,7 +55,7 @@ $console->addArgs([
         "prefix"       => "l",
         "longPrefix"   => "log",
         "description"  => "Set the minimum log output level",
-        "defaultValue" => "info",
+        "defaultValue" => "warning",
     ],
     "workers" => [
         "prefix"       => "w",
