@@ -36,6 +36,11 @@ class Body extends PromiseStream implements Promise {
     private $string;
 
     public function __construct(Promise $promise) {
+        $promise->watch(function($data) {
+            foreach ($this->watchers as list($func, $cbData)) {
+                $func($data, $cbData);
+            }
+        });
         parent::__construct($promise);
         $when = function ($e, $bool) use (&$continue) {
             $continue = $bool;
@@ -61,11 +66,7 @@ class Body extends PromiseStream implements Promise {
             foreach ($this->whens as list($when, $data)) {
                 $when(null, $string, $data);
             }
-        });
-        $promise->watch(function($data) {
-            foreach ($this->watchers as list($func, $cbData)) {
-                $func($data, $cbData);
-            }
+            $this->whens = $this->watchers = [];
         });
     }
 
@@ -79,7 +80,9 @@ class Body extends PromiseStream implements Promise {
     }
 
     public function watch(callable $func, $data = null) {
-        $this->watchers[] = [$func, $data];
+        if (!isset($this->string)) {
+            $this->watchers[] = [$func, $data];
+        }
         return $this;
     }
 }
