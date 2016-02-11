@@ -585,7 +585,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
     function testHttp2Upgrade() {
         $ireq = new InternalRequest;
         $ireq->protocol = "1.1";
-        $ireq->headers = ["upgrade" => ["h2c"], "http2-settings" => [base64_encode("somesettings")], "host" => ["foo.bar"]];
+        $ireq->headers = ["upgrade" => ["h2c"], "http2-settings" => [strtr(base64_encode("somesettings"), "+/", "-_")], "host" => ["foo.bar"]];
         $ireq->responseWriter = (function() use (&$headers) {
             $headers = yield;
         })();

@@ -27,7 +27,7 @@ class Http1Driver implements HttpDriver {
             $ireq->headers["upgrade"][0] === "h2c" &&
             $ireq->protocol === "1.1" &&
             isset($ireq->headers["http2-settings"][0]) &&
-            false !== $h2cSettings = base64_decode(strtr("-_", "+/", $ireq->headers["http2-settings"][0]), true)
+            false !== $h2cSettings = base64_decode(strtr($ireq->headers["http2-settings"][0], "-_", "+/"), true)
         ) {
             // Send upgrading response
             $ireq->responseWriter->send([
