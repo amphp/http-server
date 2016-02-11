@@ -6,6 +6,7 @@ namespace Aerys;
 // @TODO add ServerObserver for properly sending GOAWAY frames
 // @TODO maybe display a real HTML error page for artificial limits exceeded
 use Amp\Deferred;
+use Amp\Failure;
 
 class Http2Driver implements HttpDriver {
     const NOFLAG = "\x00";
