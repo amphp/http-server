@@ -56,7 +56,7 @@ class Vhost {
             $this->addInterface($interface);
         }
         $this->application = $application;
-        $this->filters = $filters;
+        $this->filters = array_values($filters);
         $this->httpDriver = $driver;
 
         if (self::hasAlpnSupport()) {

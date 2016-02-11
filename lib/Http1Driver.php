@@ -27,7 +27,7 @@ class Http1Driver implements HttpDriver {
             $ireq->headers["upgrade"][0] === "h2c" &&
             $ireq->protocol === "1.1" &&
             isset($ireq->headers["http2-settings"][0]) &&
-            false !== $h2cSettings = base64_decode($ireq->headers["http2-settings"][0])
+            false !== $h2cSettings = base64_decode(strtr("-_", "+/", $ireq->headers["http2-settings"][0]), true)
         ) {
             // Send upgrading response
             $ireq->responseWriter->send([
@@ -74,7 +74,7 @@ class Http1Driver implements HttpDriver {
             '\Aerys\genericResponseFilter',
         ];
         if ($userFilters = $ireq->vhost->getFilters()) {
-            $filters = array_merge($filters, array_values($userFilters));
+            $filters = array_merge($filters, $userFilters);
         }
         if ($ireq->client->options->deflateEnable) {
             $filters[] = '\Aerys\deflateResponseFilter';

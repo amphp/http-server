@@ -67,7 +67,7 @@ class Http2Driver implements HttpDriver {
             '\Aerys\genericResponseFilter',
         ];
         if ($userFilters = $ireq->vhost->getFilters()) {
-            $filters = array_merge($filters, array_values($userFilters));
+            $filters = array_merge($filters, $userFilters);
         }
         if ($ireq->client->options->deflateEnable) {
             $filters[] = '\Aerys\deflateResponseFilter';
