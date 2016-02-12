@@ -41,10 +41,9 @@ class Http1Driver implements HttpDriver {
             // internal upgrade
             $client = $ireq->client;
             $client->httpDriver = $this->http2;
-            $client->requestParser = $client->httpDriver->parser($client);
+            $client->requestParser = $client->httpDriver->parser($client, $h2cSettings);
 
-            $h2cSettingsFrame = substr(pack("N", \strlen($h2cSettings)), 1, 3) . Http2Driver::SETTINGS . Http2Driver::NOFLAG . "\0\0\0\0$h2cSettings";
-            $client->requestParser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$h2cSettingsFrame");
+            $client->requestParser->valid(); // start generator
 
             $ireq->responseWriter = $client->httpDriver->writer($ireq);
             $ireq->streamId = 1;

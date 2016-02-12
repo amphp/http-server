@@ -600,7 +600,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
             public function filters(InternalRequest $ireq): array { return []; }
             public function writer(InternalRequest $ireq): \Generator { yield; }
 
-            public $received;
+            public $received = "";
             public function parser(Client $client): \Generator {
                 while (1) {
                     $this->received .= yield;
@@ -619,7 +619,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
             "connection" => ["Upgrade"],
             "upgrade" => ["h2c"]
         ], $headers);
-        $this->assertEquals("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\0\0\xc" . Http2Driver::SETTINGS . Http2Driver::NOFLAG . "\0\0\0\0somesettings", $http2->received);
+        $this->assertEquals("", $http2->received);
     }
 
     function testNativeHttp2() {

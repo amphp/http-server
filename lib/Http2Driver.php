@@ -372,7 +372,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack(
         ($this->write)($client, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
 
-    public function parser(Client $client): \Generator {
+    public function parser(Client $client, $settings = ""): \Generator {
         $maxHeaderSize = $client->options->maxHeaderSize;
         $maxBodySize = $client->options->maxBodySize;
         $maxStreams = $client->options->maxConcurrentStreams;
@@ -386,6 +386,46 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
         $headers = [];
         $bodyLens = [];
         $table = new HPack;
+
+        $setSetting = function($buffer) use ($client, $table) {
+            $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value"] >= 0
+            assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]}): {$unpacked["value"]}\n");
+
+            switch ($unpacked["setting"]) {
+                case self::MAX_HEADER_LIST_SIZE:
+                    if ($unpacked["value"] >= 4096) {
+                        return self::PROTOCOL_ERROR; // @TODO correct error??
+                    }
+                    $table->table_resize($unpacked["value"]);
+                    break;
+
+                case self::INITIAL_WINDOW_SIZE:
+                    if ($unpacked["value"] >= 1 << 31) {
+                        return self::FLOW_CONTROL_ERROR;
+                    }
+                    $client->initialWindowSize = $unpacked["value"];
+                    break;
+
+                case self::ENABLE_PUSH:
+                    if ($unpacked["value"] & ~1) {
+                        return self::PROTOCOL_ERROR;
+                    }
+                    $client->allowsPush = (bool) $unpacked["value"];
+                    break;
+            }
+        };
+        if ($settings != "") {
+            if (\strlen($settings) % 6 != 0) {
+                $error = self::FRAME_SIZE_ERROR;
+                goto connection_error;
+            }
+            do {
+                if ($error = $setSetting($settings)) {
+                    goto connection_error;
+                }
+                $settings = substr($settings, 6);
+            } while ($settings != "");
+        }
 
         $buffer = yield;
 
@@ -425,13 +465,13 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                 case self::DATA:
                     if ($id === 0) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     if (!isset($client->bodyPromisors[$id])) {
                         if (isset($headers[$id])) {
                             $error = self::PROTOCOL_ERROR;
-                            break 2;
+                            goto connection_error;
                         } else {
                             $error = self::STREAM_CLOSED;
                             while (\strlen($buffer) < $length) {
@@ -452,7 +492,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
 
                         if ($padding > $length) {
                             $error = self::PROTOCOL_ERROR;
-                            break 2;
+                            goto connection_error;
                         }
                     } else {
                         $padding = 0;
@@ -460,7 +500,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
 
                     if ($length > (1 << 14)) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     if (($bodyLens[$id] ?? 0) + $length > $maxBodySize) {
@@ -497,12 +537,12 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                 case self::HEADERS:
                     if (isset($headers[$id])) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     if ($client->remainingKeepAlives-- == 0) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     if (($flags & self::PADDED) !== "\0") {
@@ -536,7 +576,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
 
                     if ($padding >= $length) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     if ($length > $maxHeaderSize) {
@@ -577,7 +617,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
 
                     if ($id === 0) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     while (\strlen($buffer) < 5) {
@@ -594,7 +634,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                     }
                     if ($dependency == 0) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
                     $weight = $buffer[4];
                     */
@@ -606,12 +646,12 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "PRIORITY: - \n");
                 case self::RST_STREAM:
                     if ($length != 4) {
                         $error = self::FRAME_SIZE_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     if ($id === 0) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     while (\strlen($buffer) < 4) {
@@ -633,13 +673,13 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                 case self::SETTINGS:
                     if ($id !== 0) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     if (($flags & self::ACK) !== "\0") {
                         if ($length) {
                             $error = self::PROTOCOL_ERROR;
-                            break 2;
+                            goto connection_error;
                         }
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
@@ -647,7 +687,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                         continue 2;
                     } elseif ($length % 6 != 0) {
                         $error = self::FRAME_SIZE_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     while ($length > 0) {
@@ -655,33 +695,8 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                             $buffer .= yield;
                         }
 
-                        $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value"] >= 0
-assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]}): {$unpacked["value"]}\n");
-
-                        switch ($unpacked["setting"]) {
-                            case self::MAX_HEADER_LIST_SIZE:
-                                if ($unpacked["value"] >= 4096) {
-                                    $error = self::PROTOCOL_ERROR; // @TODO correct error??
-                                    break 4;
-                                }
-                                $table->table_resize($unpacked["value"]);
-                                break;
-
-                            case self::INITIAL_WINDOW_SIZE:
-                                if ($unpacked["value"] >= 1 << 31) {
-                                    $error = self::FLOW_CONTROL_ERROR;
-                                    break 4;
-                                }
-                                $client->initialWindowSize = $unpacked["value"];
-                                break;
-
-                            case self::ENABLE_PUSH:
-                                if ($unpacked["value"] & ~1) {
-                                    $error = self::PROTOCOL_ERROR;
-                                    break 4;
-                                }
-                                $client->allowsPush = (bool) $unpacked["value"];
-                                break;
+                        if ($error = $setSetting($buffer)) {
+                            goto connection_error;
                         }
 
                         $buffer = \substr($buffer, 6);
@@ -696,12 +711,12 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
                 case self::PING:
                     if ($length != 8) {
                         $error = self::FRAME_SIZE_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     if ($id !== 0) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     while (\strlen($buffer) < 8) {
@@ -723,7 +738,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
                 case self::GOAWAY:
                     if ($id !== 0) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     $lastId = \unpack("N", $buffer)[1];
@@ -761,7 +776,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
                         if ($id) {
                             goto stream_error;
                         } else {
-                            break 2;
+                            goto connection_error;
                         }
                     }
 
@@ -792,7 +807,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
                 case self::CONTINUATION:
                     if (!isset($headers[$id])) {
                         $error = self::PROTOCOL_ERROR;
-                        break 2;
+                        goto connection_error;
                     }
 
                     while (\strlen($buffer) < $length) {
@@ -811,9 +826,9 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
                     continue 2;
 
                 default:
-                    print "BAD TYPE: ".ord($type)."\n";
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "BAD TYPE: ".ord($type)."\n");
                     $error = self::PROTOCOL_ERROR;
-                    break 2;
+                    goto connection_error;
             }
 
 parse_headers:
@@ -859,6 +874,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "Stream ERROR: $error\n");
             continue;
         }
 
+connection_error:
         $client->shouldClose = true;
         $this->writeFrame($client, pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
