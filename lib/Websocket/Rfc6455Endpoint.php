@@ -102,7 +102,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         $this->$option = $value;
     }
 
-    public function __invoke(Request $request, Response $response) {
+    public function __invoke(Request $request, Response $response, ...$args) {
         if ($request->getMethod() !== "GET") {
             $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
             $response->setHeader("Allow", "GET");
@@ -182,7 +182,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
 
         $handshaker = new Handshake($response, $acceptKey);
 
-        $onHandshakeResult = $this->application->onHandshake($request, $handshaker);
+        $onHandshakeResult = $this->application->onHandshake($request, $handshaker, ...$args);
         if ($onHandshakeResult instanceof \Generator) {
             $onHandshakeResult = yield from $onHandshakeResult;
         }
