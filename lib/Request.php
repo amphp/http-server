@@ -94,13 +94,6 @@ interface Request {
     public function getCookie(string $name);
 
     /**
-     * Retrieve the raw HTTP start-line and headers used to initiate this request
-     *
-     * @return string
-     */
-    public function getTrace(): string;
-
-    /**
      * Retrieve a variable from the request's mutable local storage
      *
      * Each request has its own mutable local storage to which application

@@ -682,6 +682,18 @@ class Server {
         return $ireq;
     }
 
+    private function setTrace(InternalRequest $ireq) {
+        if (\is_string($ireq->trace)) {
+            $ireq->locals['aerys.trace'] = $ireq->trace;
+        } else {
+            $trace = "{$ireq->method} {$ireq->uri} {$ireq->protocol}\r\n";
+            foreach ($ireq->trace as list($header, $value)) {
+                $trace .= "$header: $value\r\n";
+            }
+            $ireq->locals['aerys.trace'] = $trace;
+        }
+    }
+
     private function respond(InternalRequest $ireq) {
         if ($ireq->preAppResponder) {
             $application = $ireq->preAppResponder;
@@ -691,6 +703,7 @@ class Server {
             $application = [$this, "sendPreAppMethodNotAllowedResponse"];
         } elseif ($ireq->method === "TRACE") {
             $application = [$this, "sendPreAppTraceResponse"];
+            $this->setTrace($ireq);
         } elseif ($ireq->method === "OPTIONS" && $ireq->uriRaw === "*") {
             $application = [$this, "sendPreAppOptionsResponse"];
         } else {
@@ -730,7 +743,7 @@ class Server {
     private function sendPreAppTraceResponse(Request $request, Response $response) {
         $response->setStatus(HTTP_STATUS["OK"]);
         $response->setHeader("Content-Type", "message/http");
-        $response->end($request->getTrace());
+        $response->end($request->getLocalVar('aerys.trace'));
     }
 
     private function sendPreAppOptionsResponse(Request $request, Response $response) {

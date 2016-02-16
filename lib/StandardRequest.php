@@ -91,13 +91,6 @@ class StandardRequest implements Request {
     /**
      * {@inheritdoc}
      */
-    public function getTrace(): string {
-        return $this->internalRequest->trace;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
     public function getLocalVar(string $key) {
         return $this->internalRequest->locals[$key] ?? null;
     }
