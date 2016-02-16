@@ -660,7 +660,7 @@ class Server {
         if (stripos($uri, "http://") === 0 || stripos($uri, "https://") === 0) {
             extract(parse_url($uri), EXTR_PREFIX_ALL, "uri");
             $ireq->uriHost = $uri_host;
-            $ireq->uriPort = $uri_port ?? 80;
+            $ireq->uriPort = isset($uri_port) ? (int)$uri_port : 80;
             $ireq->uriPath = $uri_path;
             $ireq->uriQuery = $uri_query ?? "";
             $ireq->uri = isset($uri_query) ? "{$uri_path}?{$uri_query}" : $uri_path;
