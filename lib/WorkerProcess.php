@@ -21,8 +21,11 @@ class WorkerProcess extends Process {
             if (!$this->server) {
                 // ensure a clean reactor for clean shutdown
                 $reactor = \Amp\reactor();
+                $filesystem = \Amp\File\filesystem();
                 \Amp\reactor(\Amp\driver());
+                \Amp\File\filesystem(\Amp\File\driver());
                 \Amp\wait((new CommandClient((string) $console->getArg("config")))->stop());
+                \Amp\File\filesystem($filesystem);
                 \Amp\reactor($reactor);
             }
         });

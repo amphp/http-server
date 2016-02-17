@@ -44,7 +44,7 @@ class CommandClient {
 
     private function writer(string $watcherId, $socket) {
         $bytes = @fwrite($socket, $this->buf);
-        if ($bytes === false) {
+        if ($bytes == 0) {
             if (!is_resource($socket) || @feof($socket)) {
                 \Amp\cancel($this->writeWatcher);
                 $this->sock = $this->writeWatcher = null;
