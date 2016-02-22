@@ -301,9 +301,9 @@ class WatcherProcess extends Process {
         \stream_set_blocking($ipcServer, false);
         \Amp\onReadable($ipcServer, function(...$args) { $this->accept(...$args); });
 
-        $socketAddress = \stream_socket_get_name($ipcServer, $wantPeer = false);
+        $resolvedSocketAddress = \stream_socket_get_name($ipcServer, $wantPeer = false);
 
-        return "{$socketTransport}://{$socketAddress}";
+        return "{$socketTransport}://{$resolvedSocketAddress}";
     }
 
     private function accept($watcherId, $ipcServer) {
