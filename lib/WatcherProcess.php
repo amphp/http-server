@@ -282,18 +282,28 @@ class WatcherProcess extends Process {
     }
 
     private function bindIpcServer() {
-        if (!$ipcServer = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
-            throw new \RuntimeException(sprintf(
-                "Failed binding socket server on tcp://127.0.0.1:*: [%d] %s",
+        $socketAddress = "127.0.0.1:*";
+        $socketTransport = "tcp";
+
+        if (in_array("unix", \stream_get_transports(), true)) {
+            $socketAddress = \tempnam(\sys_get_temp_dir(), "aerys-ipc-") . ".sock";
+            $socketTransport = "unix";
+        }
+
+        if (!$ipcServer = @\stream_socket_server("{$socketTransport}://{$socketAddress}", $errno, $errstr)) {
+            throw new \RuntimeException(\sprintf(
+                "Failed binding socket server on {$socketTransport}://{$socketAddress}: [%d] %s",
                 $errno,
                 $errstr
             ));
         }
 
-        stream_set_blocking($ipcServer, false);
+        \stream_set_blocking($ipcServer, false);
         \Amp\onReadable($ipcServer, function(...$args) { $this->accept(...$args); });
 
-        return stream_socket_get_name($ipcServer, $wantPeer = false);
+        $socketAddress = \stream_socket_get_name($ipcServer, $wantPeer = false);
+
+        return "{$socketTransport}://{$socketAddress}";
     }
 
     private function accept($watcherId, $ipcServer) {

@@ -30,7 +30,7 @@ $console->addArgs([
 ]);
 
 $ipcUri = $console->getArg("ipc");
-$ipcUri = @inet_pton($ipcUri) ? "tcp://{$ipcUri}" : $ipcUri;
+
 if (!$ipcSock = @stream_socket_client($ipcUri)) {
     die("Failed initializing IPC connection");
 }
