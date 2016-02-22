@@ -8,18 +8,29 @@ use Aerys\CommandClient;
 class CommandClientTest extends \PHPUnit_Framework_TestCase {
     public function testSendRestart() {
         \Amp\run(function () {
-            if (!$commandServer = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
+            $path = CommandClient::socketPath(Bootstrapper::selectConfigFile(__FILE__));
+            $unix = in_array("unix", \stream_get_transports(), true);
+
+            if ($unix) {
+                $socketAddr = "unix://$path.sock";
+            } else {
+                $socketAddr = "tcp://127.0.0.1:*";
+            }
+
+            if (!$commandServer = stream_socket_server($socketAddr, $errno, $errstr)) {
+                var_dump($commandServer);
                 $this->markTestSkipped(sprintf(
-                    "Failed binding socket server on tcp://127.0.0.1:*: [%d] %s",
+                    "Failed binding socket server on $socketAddr: [%d] %s",
                     $errno,
                     $errstr
                 ));
                 return;
             }
-
+            
             try {
-                $path = CommandClient::socketPath(Bootstrapper::selectConfigFile(__FILE__));
-                file_put_contents($path, stream_socket_get_name($commandServer, $wantPeer = false));
+                if (!$unix) {
+                    file_put_contents($path, stream_socket_get_name($commandServer, $wantPeer = false));
+                }
 
                 $client = new CommandClient(__FILE__);
 
@@ -41,7 +52,12 @@ class CommandClientTest extends \PHPUnit_Framework_TestCase {
                 $response = json_decode(substr($data, 4), true);
                 $this->assertEquals(["action" => "restart"], $response);
             } finally {
-                @unlink($path);
+                if ($unix) {
+                    fclose($commandServer);
+                    @unlink("$path.sock");
+                } else {
+                    @unlink($path);
+                }
             }
         });
     }

@@ -17,7 +17,8 @@ class CommandClient {
     }
 
     public static function socketPath(string $config) {
-        return sys_get_temp_dir()."/aerys_".sha1(Bootstrapper::selectConfigFile($config)).".tmp";
+        // that base64_encode instead of the standard hex representation of sha1 is necessary to avoid overly long paths for unix domain sockets
+        return sys_get_temp_dir()."/aerys_".strtr(base64_encode(sha1(Bootstrapper::selectConfigFile($config), true)), "+/", "-_").".tmp";
     }
 
     private function send($msg): \Amp\Promise {
@@ -32,7 +33,14 @@ class CommandClient {
     }
 
     private function establish() {
-        \Amp\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect')->when(function ($e, $sock) {
+        $unix = in_array("unix", \stream_get_transports(), true);
+        if ($unix) {
+            $promise = \Amp\Socket\connect("unix://$this->path.sock");
+        } else {
+            $promise = \Amp\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect');
+        }
+        
+        $promise->when(function ($e, $sock) {
             if ($e) {
                 $this->failAll();
                 return;
