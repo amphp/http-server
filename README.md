@@ -1,9 +1,15 @@
-# Aerys [![Build Status](https://travis-ci.org/amphp/aerys.svg?branch=master)](https://travis-ci.org/amphp/aerys)
+# aerys
 
-A non-blocking HTTP/1.1 application, websocket and static file server written in PHP.
+[![Build Status](https://travis-ci.org/amphp/aerys.svg?branch=master)](https://travis-ci.org/amphp/aerys)
+[![Dependency Status](https://www.versioneye.com/user/projects/56cc2d7918b2710403dfee93/badge.svg)](https://www.versioneye.com/user/projects/56cc2d7918b2710403dfee93)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/amphp/aerys/blob/master/LICENSE)
+[![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/amphp/aerys.svg)](http://isitmaintained.com/project/amphp/aerys "Average time to resolve an issue")
 
-Though Aerys has been iterated on for quite a while there no official tagged releases (yet).
-APIs are still subject to change and you may run into rogue ~~bugs~~ features. We love PRs, though :)
+`amphp/aerys` is a non-blocking HTTP/1.1 and HTTP/2 application, websocket and static file server written in PHP based on the [`amp`](https://github.com/amphp/amp) concurrency framework.
+
+Aerys has currently a few 0.x tags.
+APIs are still subject to very small changes and you may run into rogue ~~bugs~~ features.
+We love PRs, though :-)
 
 ## Selected Built-in Features ...
 
