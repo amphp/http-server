@@ -455,7 +455,7 @@ class Server {
     private function onResponseDataDone(Client $client) {
         if ($client->shouldClose) {
             $this->close($client);
-        } else {
+        } elseif (!$client->isDead) {
             $client->pendingResponses--;
             $this->renewKeepAliveTimeout($client);
         }
