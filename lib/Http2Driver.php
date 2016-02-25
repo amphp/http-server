@@ -259,7 +259,7 @@ class Http2Driver implements HttpDriver {
                 $msgs = "";
             }
 
-            if ($client->isDead) {
+            if ($client->isDead & Client::CLOSED_WR) {
                 if (!$client->bufferPromisor) {
                     $client->bufferPromisor = new Deferred;
                     $client->bufferPromisor->fail(new ClientException);
@@ -272,7 +272,7 @@ class Http2Driver implements HttpDriver {
 
         $this->writeData($client, $msgs, $id, true);
 
-        if ($client->isDead && !$client->bufferPromisor) {
+        if (($client->isDead & Client::CLOSED_WR) && !$client->bufferPromisor) {
             $client->bufferPromisor = new Failure(new ClientException);
         }
 

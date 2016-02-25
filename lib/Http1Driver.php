@@ -124,7 +124,7 @@ class Http1Driver implements HttpDriver {
                 ($this->responseWriter)($client);
                 $msgs = "";
 
-                if ($client->isDead) {
+                if ($client->isDead & Client::CLOSED_WR) {
                     if (!$client->bufferPromisor) {
                         $client->bufferPromisor = new Deferred;
                         $client->bufferPromisor->fail(new ClientException);
@@ -146,18 +146,22 @@ class Http1Driver implements HttpDriver {
         } while (($msgPart = yield) !== null);
 
         $client->writeBuffer .= $msgs;
+        
+        // parserEmitLock check is required to prevent recursive continutation of the parser
+        if ($client->requestParser && !$client->parserEmitLock) {
+            $client->requestParser->send('');
+        }
+        $client->parserEmitLock = false;
+
         ($this->responseWriter)($client, $final = true);
 
-        if ($client->isDead) {
+        if ($client->isDead & Client::CLOSED_WR) {
             if (!$client->bufferPromisor) {
                 $client->bufferPromisor = new Deferred;
                 $client->bufferPromisor->fail(new ClientException);
             }
-        } else {
-            if ($client->requestParser && !$client->parserEmitLock) {
-                $client->requestParser->send('');
-            }
-            $client->parserEmitLock = false;
+        } elseif (($client->isDead & Client::CLOSED_RD) && $client->bodyPromisors) {
+            array_pop($client->bodyPromisors)->fail(new ClientException); // just one element with Http1Driver
         }
     }
 
@@ -191,15 +195,17 @@ class Http1Driver implements HttpDriver {
             ];
 
             if ($client->parserEmitLock) {
+                $client->parserEmitLock = false;
                 do {
                     if (\strlen($buffer) > $maxHeaderSize + $maxBodySize) {
                         \Amp\disable($client->readWatcher);
-                        $client->parserEmitLock = false;
                     }
 
                     $buffer .= yield;
                 } while ($client->parserEmitLock);
-                \Amp\enable($client->readWatcher);
+                if (!($client->isDead & Client::CLOSED_RD)) {
+                    \Amp\enable($client->readWatcher);
+                }
             }
 
             $client->parserEmitLock = true;

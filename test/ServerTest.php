@@ -15,6 +15,8 @@ use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Socket as sock;
 
+// @TODO test communication on half-closed streams (both ways) [also with yield message] (also with HTTP/1 pipelining...)
+
 class ServerTest extends \PHPUnit_Framework_TestCase {
     function tryRequest($emit, $responder, $middlewares = []) {
         $gen = $this->tryIterativeRequest($responder, $middlewares);
@@ -360,21 +362,34 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
         \Amp\run(function() {
             $deferred = new \Amp\Deferred;
             list($address) = yield from $this->startServer(function (Client $client, $write) use ($deferred) {
-                $this->assertTrue($client->isEncrypted);
-                $this->assertNotTrue($client->isDead);
-
-                do {
-                    $dump = ($dump ?? "") . yield;
-                } while (strlen($dump) <= 65537);
-                $this->assertEquals("1a", substr($dump, -2));
-                $client->writeBuffer = "b";
-                $write($client, true);
-
                 try {
+                    $this->assertTrue($client->isEncrypted);
+                    $this->assertEquals(0, $client->isDead);
+
+                    do {
+                        $dump = ($dump ?? "") . yield;
+                    } while (strlen($dump) <= 65537);
+                    $this->assertEquals("1a", substr($dump, -2));
+                    $client->writeBuffer = "b";
+                    $client->pendingResponses = 1;
+                    $write($client, true);
                     yield;
+                } catch (\Throwable $e) {
+                    $deferred->fail($e);
                 } finally {
-                    $this->assertTrue($client->isDead);
-                    $deferred->succeed();
+                    if (isset($e)) {
+                        return;
+                    }
+                    \Amp\immediately(function() use ($client, $deferred) {
+                        try {
+                            $this->assertEquals(Client::CLOSED_RDWR, $client->isDead);
+                        } catch (\Throwable $e) {
+                            $deferred->fail($e);
+                        }
+                        if (empty($e)) {
+                            $deferred->succeed();
+                        }
+                    });
                 }
             }, true);
 
@@ -384,6 +399,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             yield $client->write("a");
             $this->assertEquals("b", yield $client->read(1));
             $client->close();
+
             yield $deferred->promise();
             \Amp\stop();
             \Amp\reactor(\Amp\driver());

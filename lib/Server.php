@@ -453,10 +453,9 @@ class Server {
     }
 
     private function onResponseDataDone(Client $client) {
-        if ($client->shouldClose) {
+        if ($client->shouldClose || (--$client->pendingResponses == 0 && $client->isDead == Client::CLOSED_RD)) {
             $this->close($client);
-        } elseif (!$client->isDead) {
-            $client->pendingResponses--;
+        } elseif (!($client->isDead & Client::CLOSED_RD)) {
             $this->renewKeepAliveTimeout($client);
         }
     }
@@ -465,10 +464,20 @@ class Server {
         $bytesWritten = @\fwrite($socket, $client->writeBuffer);
         if ($bytesWritten === false) {
             if (!\is_resource($socket) || @\feof($socket)) {
-                $client->isDead = true;
-                $this->close($client);
+                if ($client->isDead == Client::CLOSED_RD) {
+                    $this->close($client);
+                } else {
+                    $client->isDead = Client::CLOSED_WR;
+                    $client->writeWatcher = null;
+                    \Amp\cancel($watcherId);
+                }
             }
         } else {
+            $client->bufferSize -= $bytesWritten;
+            if ($client->bufferPromisor && $client->bufferSize <= $client->options->softStreamCap) {
+                $client->bufferPromisor->succeed();
+                $client->bufferPromisor = null;
+            }
             if ($bytesWritten === \strlen($client->writeBuffer)) {
                 $client->writeBuffer = "";
                 \Amp\disable($watcherId);
@@ -478,11 +487,6 @@ class Server {
             } else {
                 $client->writeBuffer = \substr($client->writeBuffer, $bytesWritten);
                 \Amp\enable($watcherId);
-            }
-            $client->bufferSize -= $bytesWritten;
-            if ($client->bufferPromisor && $client->bufferSize <= $client->options->softStreamCap) {
-                $client->bufferPromisor->succeed();
-                $client->bufferPromisor = null;
             }
         }
     }
@@ -495,6 +499,7 @@ class Server {
                 if ($client->pendingResponses > \count($client->bodyPromisors)) {
                     $this->clearKeepAliveTimeout($client); // renewed when response ends
                 } else {
+                    // timeouts are only active while Client is doing nothing (not sending nor receving) and no pending writes, hence we can just fully close here
                     $this->close($client);
                 }
             } else {
@@ -522,8 +527,20 @@ class Server {
         $data = @\fread($socket, $this->options->ioGranularity);
         if ($data == "") {
             if (!\is_resource($socket) || @\feof($socket)) {
-                $client->isDead = true;
-                $this->close($client);
+                if ($client->isDead == Client::CLOSED_WR || $client->pendingResponses == 0) {
+                    $this->close($client);
+                } else {
+                    $client->isDead = Client::CLOSED_RD;
+                    \Amp\cancel($watcherId);
+                    $client->readWatcher = null;
+                    if ($client->bodyPromisors) {
+                        $ex = new ClientException;
+                        foreach ($client->bodyPromisors as $promisor) {
+                            $promisor->fail($ex);
+                        }
+                        $client->bodyPromisors = [];
+                    }
+                }
             }
             return;
         }
@@ -793,7 +810,7 @@ class Server {
 
     private function onCoroutineAppResolve($error, $result, $ireq) {
         if (empty($error)) {
-            if ($ireq->client->isExported || $ireq->client->isDead) {
+            if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
                 return;
             } elseif ($ireq->response->state() & Response::STARTED) {
                 $ireq->response->end();
@@ -814,7 +831,7 @@ class Server {
     private function onApplicationError(\Throwable $error, InternalRequest $ireq) {
         $this->logger->error($error);
 
-        if ($ireq->client->isDead || $ireq->client->isExported) {
+        if (($ireq->client->isDead & Client::CLOSED_WR) || $ireq->client->isExported) {
             // Responder actions may catch an initial ClientException and continue
             // doing further work. If an error arises at this point our only option
             // is to log the error (which we just did above).
@@ -875,10 +892,10 @@ class Server {
 
     private function close(Client $client) {
         $this->clear($client);
-        if (!$client->isDead) {
-            @fclose($client->socket);
-            $client->isDead = true;
-        }
+        assert($client->isDead != Client::CLOSED_RDWR);
+        @fclose($client->socket);
+        $client->isDead = Client::CLOSED_RDWR;
+
         $this->clientCount--;
         $net = @\inet_pton($client->clientAddr);
         if (isset($net[4])) {
@@ -912,7 +929,7 @@ class Server {
     }
 
     private function export(Client $client): \Closure {
-        $client->isDead = true;
+        $client->isDead = Client::CLOSED_RDWR;
         $client->isExported = true;
         $this->clear($client);
 
