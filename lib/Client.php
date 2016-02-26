@@ -38,7 +38,7 @@ class Client {
 
     public $bodyPromisors = [];
 
-    public $parserEmitLock;
+    public $parserEmitLock = false;
 
     public $allowsPush = true;
     public $window = 65536;

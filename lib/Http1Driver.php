@@ -146,12 +146,11 @@ class Http1Driver implements HttpDriver {
         } while (($msgPart = yield) !== null);
 
         $client->writeBuffer .= $msgs;
-        
-        // parserEmitLock check is required to prevent recursive continutation of the parser
-        if ($client->requestParser && !$client->parserEmitLock) {
+
+        // parserEmitLock check is required to prevent recursive continuation of the parser
+        if ($client->requestParser && $client->parserEmitLock && !$client->shouldClose) {
             $client->requestParser->send('');
         }
-        $client->parserEmitLock = false;
 
         ($this->responseWriter)($client, $final = true);
 
@@ -194,21 +193,24 @@ class Http1Driver implements HttpDriver {
                 "body" => "",
             ];
 
-            if ($client->parserEmitLock) {
-                $client->parserEmitLock = false;
+            if ($client->pendingResponses) {
+                $client->parserEmitLock = true;
+
                 do {
                     if (\strlen($buffer) > $maxHeaderSize + $maxBodySize) {
                         \Amp\disable($client->readWatcher);
+                        $buffer .= yield;
+                        if (!($client->isDead & Client::CLOSED_RD)) {
+                            \Amp\enable($client->readWatcher);
+                        }
+                        break;
                     }
 
                     $buffer .= yield;
-                } while ($client->parserEmitLock);
-                if (!($client->isDead & Client::CLOSED_RD)) {
-                    \Amp\enable($client->readWatcher);
-                }
-            }
+                } while ($client->pendingResponses);
 
-            $client->parserEmitLock = true;
+                $client->parserEmitLock = false;
+            }
 
             while (1) {
                 $buffer = \ltrim($buffer, "\r\n");
