@@ -95,16 +95,20 @@ class WatcherProcess extends Process {
 
         $unix = in_array("unix", \stream_get_transports(), true);
         if ($unix) {
-            $socketAddress = "unix://$path.sock";
+            $path .= ".sock";
+            $socketAddress = "unix://$path";
         } else {
-            if (yield \Amp\file\exists($path)) {
-                if (is_resource(@stream_socket_client(yield \Amp\file\get($path)))) {
-                    throw new \RuntimeException("Aerys is already running, can't start it again");
-                }
-            }
             $socketAddress = "tcp://127.0.0.1:*";
         }
-        
+
+        if (yield \Amp\file\exists($path)) {
+            if (is_resource(@stream_socket_client($unix ? $socketAddress : yield \Amp\file\get($path)))) {
+                throw new \RuntimeException("Aerys is already running, can't start it again");
+            } elseif ($unix) {
+                yield \Amp\file\unlink($path);
+            }
+        }
+
         if (!$commandServer = @stream_socket_server($socketAddress, $errno, $errstr)) {
             throw new \RuntimeException(sprintf(
                 "Failed binding socket server on $socketAddress: [%d] %s",
@@ -116,14 +120,10 @@ class WatcherProcess extends Process {
         stream_set_blocking($commandServer, false);
         \Amp\onReadable($commandServer, function(...$args) { $this->acceptCommand(...$args); });
 
-        if ($unix) {
-            register_shutdown_function(function () use ($path) {
-                @\unlink("$path.sock");
-            });
-        } else {
-            register_shutdown_function(function () use ($path) {
-                @\unlink($path);
-            });
+        register_shutdown_function(function () use ($path) {
+            @\unlink($path);
+        });
+        if (!$unix) {
             yield \Amp\file\put($path, stream_socket_get_name($commandServer, $wantPeer = false));
         }
     }
