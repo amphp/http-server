@@ -149,7 +149,7 @@ class Http1Driver implements HttpDriver {
 
         // parserEmitLock check is required to prevent recursive continuation of the parser
         if ($client->requestParser && $client->parserEmitLock && !$client->shouldClose) {
-            $client->requestParser->send('');
+            $client->requestParser->send(false);
         }
 
         ($this->responseWriter)($client, $final = true);
@@ -161,6 +161,14 @@ class Http1Driver implements HttpDriver {
             }
         } elseif (($client->isDead & Client::CLOSED_RD) && $client->bodyPromisors) {
             array_pop($client->bodyPromisors)->fail(new ClientException); // just one element with Http1Driver
+        }
+    }
+
+    public function upgradeBodySize(InternalRequest $ireq) {
+        $client = $ireq->client;
+        if ($client->bodyPromisors) {
+            \Amp\enable($client->readWatcher);
+            $client->requestParser->send($ireq->maxBodySize);
         }
     }
 
@@ -295,10 +303,7 @@ class Http1Driver implements HttpDriver {
                 // @TODO validate that the bytes in matched headers match the raw input. If not there is a syntax error.
             }
 
-            if ($contentLength > $maxBodySize) {
-                $error = "Bad request: entity too large";
-                break;
-            } elseif ($method == "HEAD" || $method == "TRACE" || $method == "OPTIONS" || $contentLength === 0) {
+            if ($method == "HEAD" || $method == "TRACE" || $method == "OPTIONS" || $contentLength === 0) {
                 // No body allowed for these messages
                 $hasBody = false;
             } else {
@@ -314,6 +319,7 @@ class Http1Driver implements HttpDriver {
             $body = "";
 
             if ($isChunked) {
+                $bodySize = 0;
                 while (1) {
                     while (false === ($lineEndPos = \strpos($buffer, "\r\n"))) {
                         $buffer .= yield;
@@ -383,45 +389,74 @@ class Http1Driver implements HttpDriver {
                         }
 
                         break; // finished ($is_chunked loop)
-                    } elseif ($chunkLenRemaining > $maxBodySize) {
-                        $error = "Bad Request: excessive chunk size";
-                        break 2;
-                    } else {
-                        $bodyBufferSize = 0;
-
-                        while (1) {
-                            $bufferLen = \strlen($buffer);
-                            // These first two (extreme) edge cases prevent errors where the packet boundary ends after
-                            // the \r and before the \n at the end of a chunk.
-                            if ($bufferLen === $chunkLenRemaining || $bufferLen === $chunkLenRemaining + 1) {
-                                $buffer .= yield;
-                                continue;
-                            } elseif ($bufferLen >= $chunkLenRemaining + 2) {
-                                $body .= substr($buffer, 0, $chunkLenRemaining);
-                                $buffer = substr($buffer, $chunkLenRemaining + 2);
-                                $bodyBufferSize += $chunkLenRemaining;
-                            } else {
-                                $body .= $buffer;
-                                $bodyBufferSize += $bufferLen;
-                                $chunkLenRemaining -= $bufferLen;
+                    } elseif ($bodySize + $chunkLenRemaining > $maxBodySize) {
+                        \Amp\disable($client->readWatcher);
+                        do {
+                            if (!$client->pendingResponses) {
+                                return;
                             }
 
-                            if ($bodyBufferSize >= $bodyEmitSize) {
-                                ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
-                                $body = '';
-                                $bodyBufferSize = 0;
+                            $yield = yield;
+                            if ($yield === false) {
+                                $client->shouldClose = true;
                             }
+                        } while ($yield < $chunkLenRemaining);
+                        \Amp\enable($client->readWatcher);
+                        $maxBodySize = $yield;
+                    }
 
-                            if ($bufferLen >= $chunkLenRemaining + 2) {
-                                $chunkLenRemaining = null;
-                                continue 2; // next chunk ($is_chunked loop)
-                            } else {
-                                $buffer = yield;
-                            }
+                    $bodyBufferSize = 0;
+
+                    while (1) {
+                        $bufferLen = \strlen($buffer);
+                        // These first two (extreme) edge cases prevent errors where the packet boundary ends after
+                        // the \r and before the \n at the end of a chunk.
+                        if ($bufferLen === $chunkLenRemaining || $bufferLen === $chunkLenRemaining + 1) {
+                            $buffer .= yield;
+                            continue;
+                        } elseif ($bufferLen >= $chunkLenRemaining + 2) {
+                            $body .= substr($buffer, 0, $chunkLenRemaining);
+                            $buffer = substr($buffer, $chunkLenRemaining + 2);
+                            $bodyBufferSize += $chunkLenRemaining;
+                        } else {
+                            $body .= $buffer;
+                            $bodyBufferSize += $bufferLen;
+                            $chunkLenRemaining -= $bufferLen;
+                        }
+
+                        if ($bodyBufferSize >= $bodyEmitSize) {
+                            ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
+                            $body = '';
+                            $bodySize += $bodyBufferSize;
+                            $bodyBufferSize = 0;
+                        }
+
+                        if ($bufferLen >= $chunkLenRemaining + 2) {
+                            $chunkLenRemaining = null;
+                            continue 2; // next chunk ($is_chunked loop)
+                        } else {
+                            $buffer = yield;
                         }
                     }
                 }
+
+                $maxBodySize = $client->options->maxBodySize;
             } else {
+                if ($contentLength > $maxBodySize) {
+                    \Amp\disable($client->readWatcher);
+                    do {
+                        if (!$client->pendingResponses) {
+                            return;
+                        }
+
+                        $yield = yield;
+                        if ($yield === false) {
+                            $client->shouldClose = true;
+                        }
+                    } while ($yield < $contentLength);
+                    \Amp\enable($client->readWatcher);
+                }
+
                 $bufferDataSize = \strlen($buffer);
 
                 while ($bufferDataSize < $contentLength) {

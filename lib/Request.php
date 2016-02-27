@@ -70,10 +70,11 @@ interface Request {
      * Retrieve the streaming request entity body
      *
      * @TODO add documentation for how the body object is used
+     * @param int $bodySize maximum body size
      *
      * @return \Aerys\Body
      */
-    public function getBody(): Body;
+    public function getBody(int $bodySize = -1): Body;
 
     /**
      * Retrieve an associative array of query string parameters/values

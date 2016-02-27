@@ -281,6 +281,8 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                         "body" => "",
                     ], null], $this->client);
                 }
+
+                public function upgradeBodySize(InternalRequest $ireq) {}
             });
             $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
             $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));

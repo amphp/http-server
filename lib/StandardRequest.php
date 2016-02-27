@@ -5,6 +5,7 @@ namespace Aerys;
 class StandardRequest implements Request {
     private $internalRequest;
     private $queryVars;
+    private $fetchedBody = false;
 
     /**
      * @param \Aerys\InternalRequest $internalRequest
@@ -58,8 +59,15 @@ class StandardRequest implements Request {
     /**
      * {@inheritdoc}
      */
-    public function getBody(): Body {
-        return $this->internalRequest->body;
+    public function getBody(int $bodySize = -1): Body {
+        $ireq = $this->internalRequest;
+        if ($bodySize > -1) {
+            if ($bodySize > $ireq->maxBodySize ?? $ireq->client->options->maxBodySize) {
+                $ireq->maxBodySize = $bodySize;
+                $ireq->client->httpDriver->upgradeBodySize($this->internalRequest);
+            }
+        }
+        return $ireq->body;
     }
 
     /**
