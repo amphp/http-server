@@ -117,12 +117,16 @@ class Host {
      * Define TLS encryption settings for this host
      *
      * @param string $certificate A string path pointing to your SSL/TLS certificate
+     * @param string|null $key A string path pointing to your SSL/TLS key file (null if the certificate file is containing the key already)
      * @param array $options An optional array mapping additional SSL/TLS settings
      * @return self
      */
-    public function encrypt(string $certificate, array $options = []): Host {
+    public function encrypt(string $certificate, string $key = null, array $options = []): Host {
         unset($options["SNI_server_certs"]);
         $options["local_cert"] = $certificate;
+        if (isset($key)) {
+            $options["local_pk"] = $key;
+        }
         $this->crypto = $options;
 
         return $this;
