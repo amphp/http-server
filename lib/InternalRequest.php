@@ -25,7 +25,7 @@ class InternalRequest {
     public $isServerStopping;
     /** @var integer */
     public $streamId;
-    /** @var string|array */
+    /** @var string|array literal trace for HTTP/1, for HTTP/2 an array of [name, value] arrays in the original order */
     public $trace;
     /** @var string */
     public $protocol;
@@ -35,6 +35,8 @@ class InternalRequest {
     public $headers;
     /** @var Body */
     public $body;
+    /** @var int */
+    public $maxBodySize;
     /** @var string */
     public $uri;
     /** @var string */

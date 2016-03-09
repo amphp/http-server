@@ -372,6 +372,15 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack(
         ($this->write)($client, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
 
+    public function upgradeBodySize(InternalRequest $ireq) {
+        $client = $ireq->client;
+        $id = $ireq->streamId;
+        if (isset($client->bodyPromisors[$id])) {
+            $this->writeFrame($client, pack("N", $client->streamWindow[$id] - $ireq->maxBodySize), self::WINDOW_UPDATE, self::NOFLAG, $id);
+            $client->streamWindow[$id] = $ireq->maxBodySize;
+        }
+    }
+
     public function parser(Client $client, $settings = ""): \Generator {
         $maxHeaderSize = $client->options->maxHeaderSize;
         $maxBodySize = $client->options->maxBodySize;
@@ -503,14 +512,9 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         goto connection_error;
                     }
 
-                    if (($bodyLens[$id] ?? 0) + $length > $maxBodySize) {
-                        $error = self::ENHANCE_YOUR_CALM;
-                        while ($length) {
-                            $buffer = yield;
-                            $length -= \strlen($buffer);
-                        }
-                        $buffer = substr($buffer, \strlen($buffer) + $length);
-                        goto stream_error;
+                    if (($remaining = $bodyLens[$id] + $length - $client->streamWindow[$id] ?? $maxBodySize) > 0) {
+                            $error = self::FLOW_CONTROL_ERROR;
+                            goto connection_error;
                     }
 
                     while (\strlen($buffer) < $length) {
@@ -518,11 +522,11 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                     }
 
                     if (($flags & self::END_STREAM) !== "\0") {
-                        $bodyLens[$id] = $length;
-                        $type = HttpDriver::ENTITY_RESULT;
-                    } else {
-                        unset($bodyLens[$id]);
+                        unset($bodyLens[$id], $client->streamWindow[$id]);
                         $type = HttpDriver::ENTITY_PART;
+                    } else {
+                        $bodyLens[$id] += $length;
+                        $type = HttpDriver::ENTITY_RESULT;
                     }
 
                     $body = \substr($buffer, 0, $length - $padding);
@@ -531,6 +535,10 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                         ($this->emit)([$type, ["id" => $id, "protocol" => "2.0", "body" => $body], null], $client);
                     }
                     $buffer = \substr($buffer, $length);
+
+                    if ($remaining == 0 && ($flags & self::END_STREAM) !== "\0" && $length) {
+                        ($this->emit)([HttpDriver::SIZE_WARNING, ["id" => $id], null], $client);
+                    }
 
                     continue 2;
 
@@ -761,6 +769,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer, 0, $length)."\n");
                     $client->shouldClose = true;
+                    \Amp\disable($client->readWatcher);
                     while (1) {
                         yield;
                     }
@@ -863,13 +872,14 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(".(\strlen($packed) - $pa
                 ($this->emit)([HttpDriver::RESULT, $parseResult, null], $client);
             } else {
                 ($this->emit)([HttpDriver::ENTITY_HEADERS, $parseResult, null], $client);
+                $bodyLens[$id] = 0;
             }
             continue;
 
 stream_error:
             $this->writeFrame($client, pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "Stream ERROR: $error\n");
-            unset($headers[$id], $bodyLens[$id]);
+            unset($headers[$id], $bodyLens[$id], $client->streamWindow[$id]);
             $client->remainingKeepAlives++;
             continue;
         }
@@ -879,6 +889,7 @@ connection_error:
         $this->writeFrame($client, pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
 
+        \Amp\disable($client->readWatcher);
         while (1) {
             yield;
         }

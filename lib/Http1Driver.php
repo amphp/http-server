@@ -47,6 +47,7 @@ class Http1Driver implements HttpDriver {
 
             $ireq->responseWriter = $client->httpDriver->writer($ireq);
             $ireq->streamId = 1;
+            $client->streamWindow = [];
             $client->streamWindow[$ireq->streamId] = $client->window;
             $client->streamWindowBuffer[$ireq->streamId] = "";
             $ireq->protocol = "2.0";
@@ -149,7 +150,7 @@ class Http1Driver implements HttpDriver {
 
         // parserEmitLock check is required to prevent recursive continuation of the parser
         if ($client->requestParser && $client->parserEmitLock && !$client->shouldClose) {
-            $client->requestParser->send('');
+            $client->requestParser->send(false);
         }
 
         ($this->responseWriter)($client, $final = true);
@@ -164,9 +165,18 @@ class Http1Driver implements HttpDriver {
         }
     }
 
+    public function upgradeBodySize(InternalRequest $ireq) {
+        $client = $ireq->client;
+        if ($client->bodyPromisors) {
+            $client->streamWindow = $ireq->maxBodySize;
+            if ($client->parserEmitLock) {
+                $client->requestParser->send("");
+            }
+        }
+    }
+
     public function parser(Client $client): \Generator {
         $maxHeaderSize = $client->options->maxHeaderSize;
-        $maxBodySize = $client->options->maxBodySize;
         $bodyEmitSize = $client->options->ioGranularity;
 
         $buffer = "";
@@ -174,7 +184,8 @@ class Http1Driver implements HttpDriver {
         do {
             // break potential references
             unset($traceBuffer, $protocol, $method, $uri, $headers);
-
+            $client->streamWindow = $client->options->maxBodySize;
+                
             $traceBuffer = null;
             $headers = [];
             $contentLength = null;
@@ -197,7 +208,7 @@ class Http1Driver implements HttpDriver {
                 $client->parserEmitLock = true;
 
                 do {
-                    if (\strlen($buffer) > $maxHeaderSize + $maxBodySize) {
+                    if (\strlen($buffer) > $maxHeaderSize + $client->streamWindow) {
                         \Amp\disable($client->readWatcher);
                         $buffer .= yield;
                         if (!($client->isDead & Client::CLOSED_RD)) {
@@ -295,10 +306,7 @@ class Http1Driver implements HttpDriver {
                 // @TODO validate that the bytes in matched headers match the raw input. If not there is a syntax error.
             }
 
-            if ($contentLength > $maxBodySize) {
-                $error = "Bad request: entity too large";
-                break;
-            } elseif ($method == "HEAD" || $method == "TRACE" || $method == "OPTIONS" || $contentLength === 0) {
+            if ($method == "HEAD" || $method == "TRACE" || $method == "OPTIONS" || $contentLength === 0) {
                 // No body allowed for these messages
                 $hasBody = false;
             } else {
@@ -314,6 +322,7 @@ class Http1Driver implements HttpDriver {
             $body = "";
 
             if ($isChunked) {
+                $bodySize = 0;
                 while (1) {
                     while (false === ($lineEndPos = \strpos($buffer, "\r\n"))) {
                         $buffer .= yield;
@@ -383,69 +392,138 @@ class Http1Driver implements HttpDriver {
                         }
 
                         break; // finished ($is_chunked loop)
-                    } elseif ($chunkLenRemaining > $maxBodySize) {
-                        $error = "Bad Request: excessive chunk size";
-                        break 2;
-                    } else {
-                        $bodyBufferSize = 0;
+                    } elseif ($bodySize + $chunkLenRemaining > $client->streamWindow) {
+                        do {
+                            $remaining = $client->streamWindow - $bodySize;
+                            $chunkLenRemaining -= $remaining - \strlen($body);
+                            $body .= $buffer;
+                            $bodyBufferSize = \strlen($body);
 
-                        while (1) {
-                            $bufferLen = \strlen($buffer);
-                            // These first two (extreme) edge cases prevent errors where the packet boundary ends after
-                            // the \r and before the \n at the end of a chunk.
-                            if ($bufferLen === $chunkLenRemaining || $bufferLen === $chunkLenRemaining + 1) {
-                                $buffer .= yield;
+                            while ($bodyBufferSize < $remaining) {
+                                if ($bodyBufferSize >= $bodyEmitSize) {
+                                    ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
+                                    $body = '';
+                                    $bodySize += $bodyBufferSize;
+                                    $remaining -= $bodyBufferSize;
+                                }
+                                $body .= yield;
+                                $bodyBufferSize = \strlen($body);
+                            }
+                            if ($remaining) {
+                                ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($body, 0, $remaining)], null], $client);
+                                $buffer = substr($body, $remaining);
+                                $body = "";
+                                $bodySize += $remaining;
+                            }
+
+                            if (!$client->pendingResponses) {
+                                return;
+                            }
+
+                            if ($bodySize != $client->streamWindow) {
                                 continue;
-                            } elseif ($bufferLen >= $chunkLenRemaining + 2) {
-                                $body .= substr($buffer, 0, $chunkLenRemaining);
-                                $buffer = substr($buffer, $chunkLenRemaining + 2);
-                                $bodyBufferSize += $chunkLenRemaining;
-                            } else {
-                                $body .= $buffer;
-                                $bodyBufferSize += $bufferLen;
-                                $chunkLenRemaining -= $bufferLen;
                             }
+                            
+                            ($this->parseEmitter)([HttpDriver::SIZE_WARNING, ["id" => 0], null], $client);
+                            $client->parserEmitLock = true;
+                            \Amp\disable($client->readWatcher);
+                            $yield = yield;
+                            if ($yield === false) {
+                                $client->shouldClose = true;
+                                while (1) {
+                                    yield;
+                                }
+                            }
+                            \Amp\enable($client->readWatcher);
+                            $client->parserEmitLock = false;
+                        } while ($client->streamWindow < $bodySize + $chunkLenRemaining);
+                    }
+                                         
+                    $bodyBufferSize = 0;
 
-                            if ($bodyBufferSize >= $bodyEmitSize) {
-                                ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
-                                $body = '';
-                                $bodyBufferSize = 0;
-                            }
+                    while (1) {
+                        $bufferLen = \strlen($buffer);
+                        // These first two (extreme) edge cases prevent errors where the packet boundary ends after
+                        // the \r and before the \n at the end of a chunk.
+                        if ($bufferLen === $chunkLenRemaining || $bufferLen === $chunkLenRemaining + 1) {
+                            $buffer .= yield;
+                            continue;
+                        } elseif ($bufferLen >= $chunkLenRemaining + 2) {
+                            $body .= substr($buffer, 0, $chunkLenRemaining);
+                            $buffer = substr($buffer, $chunkLenRemaining + 2);
+                            $bodyBufferSize += $chunkLenRemaining;
+                        } else {
+                            $body .= $buffer;
+                            $bodyBufferSize += $bufferLen;
+                            $chunkLenRemaining -= $bufferLen;
+                        }
 
-                            if ($bufferLen >= $chunkLenRemaining + 2) {
-                                $chunkLenRemaining = null;
-                                continue 2; // next chunk ($is_chunked loop)
-                            } else {
-                                $buffer = yield;
-                            }
+                        if ($bodyBufferSize >= $bodyEmitSize) {
+                            ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
+                            $body = '';
+                            $bodySize += $bodyBufferSize;
+                            $bodyBufferSize = 0;
+                        }
+
+                        if ($bufferLen >= $chunkLenRemaining + 2) {
+                            $chunkLenRemaining = null;
+                            continue 2; // next chunk ($is_chunked loop)
+                        } else {
+                            $buffer = yield;
                         }
                     }
                 }
+                
+                if ($body != "") {
+                    ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
+                }
             } else {
-                $bufferDataSize = \strlen($buffer);
+                $bodySize = 0;
+                while (true) {
+                    $bound = \min($contentLength, $client->streamWindow);
+                    $bodyBufferSize = \strlen($buffer);
 
-                while ($bufferDataSize < $contentLength) {
-                    if ($bufferDataSize >= $bodyEmitSize) {
-                        ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $buffer], null], $client);
-                        $buffer = "";
-                        $contentLength -= $bufferDataSize;
+                    while ($bodySize + $bodyBufferSize < $bound) {
+                        if ($bodyBufferSize >= $bodyEmitSize) {
+                            ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $buffer], null], $client);
+                            $buffer = '';
+                            $bodySize += $bodyBufferSize;
+                        }
+                        $buffer .= yield;
+                        $bodyBufferSize = \strlen($buffer);
                     }
-                    $buffer .= yield;
-                    $bufferDataSize = \strlen($buffer);
+                    $remaining = $bound - $bodySize;
+                    if ($remaining) {
+                        ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($buffer, 0, $remaining)], null], $client);
+                        $buffer = substr($buffer, $remaining);
+                        $bodySize = $bound;
+                    }
+
+
+                    if ($client->streamWindow < $contentLength) {
+                        if (!$client->pendingResponses) {
+                            return;
+                        }
+                        ($this->parseEmitter)([HttpDriver::SIZE_WARNING, ["id" => 0], null], $client);
+                        $client->parserEmitLock = true;
+                        \Amp\disable($client->readWatcher);
+                        $yield = yield;
+                        if ($yield === false) {
+                            $client->shouldClose = true;
+                            while (1) {
+                                yield;
+                            }
+                        }
+                        \Amp\enable($client->readWatcher);
+                        $client->parserEmitLock = false;
+                    } else {
+                        break;
+                    }
                 }
 
-                if ($bufferDataSize === $contentLength) {
-                    $body = $buffer;
-                    $buffer = "";
-                } else {
-                    $body = substr($buffer, 0, $contentLength);
-                    $buffer = (string) \substr($buffer, $contentLength);
-                }
             }
 
-            if ($body != "") {
-                ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
-            }
+            $client->streamWindow = $client->options->maxBodySize;
 
             ($this->parseEmitter)([HttpDriver::ENTITY_RESULT, $parseResult, null], $client);
         } while (true);

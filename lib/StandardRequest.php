@@ -5,6 +5,7 @@ namespace Aerys;
 class StandardRequest implements Request {
     private $internalRequest;
     private $queryVars;
+    private $body;
 
     /**
      * @param \Aerys\InternalRequest $internalRequest
@@ -58,23 +59,65 @@ class StandardRequest implements Request {
     /**
      * {@inheritdoc}
      */
-    public function getBody(): Body {
-        return $this->internalRequest->body;
+    public function getBody(int $bodySize = -1): Body {
+        $ireq = $this->internalRequest;
+        if ($bodySize > -1) {
+            if ($bodySize > ($ireq->maxBodySize ?? $ireq->client->options->maxBodySize)) {
+                $ireq->maxBodySize = $bodySize;
+                $ireq->client->httpDriver->upgradeBodySize($this->internalRequest);
+            }
+        }
+        
+        if ($ireq->body != $this->body) {
+            $this->body = $ireq->body->when(function ($e, $data) {
+                if ($e instanceof ClientSizeException) {
+                    $ireq = $this->internalRequest;
+                    $bodyPromisor = $ireq->client->bodyPromisors[$ireq->streamId];
+                    $ireq->body = new Body($bodyPromisor);
+                    $bodyPromisor->update($data);
+                }
+            });
+        }
+        return $ireq->body;
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getQueryVars(): array {
-        if (isset($this->queryVars)) {
-            return $this->queryVars;
-        }
+    public function getVar(string $name) {
+        return ($this->queryVars ?? $this->queryVars = $this->parseQueryVars())[$name][0] ?? null;
+    }
 
+    /**
+     * {@inheritdoc}
+     */
+    public function getVarArray(string $name): array {
+        return ($this->queryVars ?? $this->queryVars = $this->parseQueryVars())[$name] ?? [];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getAllVars(): array {
+        return $this->queryVars ?? $this->queryVars = $this->parseQueryVars();
+    }
+    
+    private function parseQueryVars() {
         if (empty($this->internalRequest->uriQuery)) {
             return $this->queryVars = [];
         }
 
-        parse_str($this->internalRequest->uriQuery, $this->queryVars);
+        $pairs = explode("&", $this->internalRequest->uriQuery);
+        if (count($pairs) > $this->internalRequest->client->options->maxInputVars) {
+            throw new ClientSizeException;
+        }
+        
+        $this->queryVars = [];
+        foreach ($pairs as $pair) {
+            $pair = explode("=", $pair, 2);
+            // maxFieldLen should not be important here ... if it ever is, create an issue...
+            $this->queryVars[rawurldecode($pair[0])][] = rawurldecode($pair[1] ?? "");
+        }
 
         return $this->queryVars;
     }
@@ -116,4 +159,12 @@ class StandardRequest implements Request {
             "crypto_info" => $client->cryptoInfo,
         ];
     }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getOption(string $option) {
+        return $this->internalRequest->client->options->{$option};
+    }
+
 }

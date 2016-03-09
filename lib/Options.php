@@ -7,7 +7,7 @@ use Amp\Struct;
 class Options {
     use Struct;
 
-    private $debug = false;
+    private $debug = true;
     private $user = null;
     private $maxConnections = 1000;
     private $connectionsPerIP = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
@@ -19,14 +19,17 @@ class Options {
     private $disableKeepAlive = false;
     private $socketBacklogSize = 128;
     private $normalizeMethodCase = true;
-    private $maxBodySize = 131072;
-    private $maxHeaderSize = 32768;
-    private $ioGranularity = 32768; // recommended: at least 16 KB
-    private $softStreamCap = 131072; // should be multiple of outputBufferSize
     private $maxConcurrentStreams = 20;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
     private $deflateEnable;
     private $configPath = null;
+    
+    private $maxFieldLen = 16384; // this must be strictly less than maxBodySize
+    private $maxInputVars = 200;
+    private $maxBodySize = 131072;
+    private $maxHeaderSize = 32768;
+    private $ioGranularity = 32768; // recommended: at least 16 KB
+    private $softStreamCap = 131072; // should be multiple of outputBufferSize
 
     //@link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits
     private $deflateMinimumLength = 860; // can be vhost
@@ -161,6 +164,27 @@ class Options {
     private function setNormalizeMethodCase(bool $flag) {
         $this->normalizeMethodCase = $flag;
     }
+
+    private function setMaxInputVars(int $bytes) {
+        if ($bytes < 0) {
+            throw new \DomainException(
+                "Max input vars must be a positive integer"
+            );
+        }
+
+        $this->maxInputVars = $bytes;
+    }
+
+    private function setMaxFieldLen(int $bytes) {
+        if ($bytes <= 0) {
+            throw new \DomainException(
+                "Max field length must be greater than zero bytes"
+            );
+        }
+
+        $this->maxFieldLen = $bytes;
+    }
+
 
     private function setMaxBodySize(int $bytes) {
         if ($bytes < 0) {

@@ -44,7 +44,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) {
                 $this->assertEquals("GET", $req->getMethod());
                 $this->assertEquals("/uri", explode("?", $req->getUri())[0]);
-                $this->assertEquals(["foo" => "bar", "baz" => ["1", "2", "qux" => "3"]], $req->getQueryVars());
+                $this->assertEquals(["foo" => ["bar"], "baz" => ["1", "2"]], $req->getAllVars());
                 $this->assertEquals(["header"], $req->getHeaderArray("custom"));
                 $this->assertEquals("value", $req->getCookie("test"));
 
@@ -63,7 +63,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
             $port = parse_url($address, PHP_URL_PORT);
             $promise = $client->request((new \Amp\Artax\Request)
-                ->setUri("https://localhost:$port/uri?foo=bar&baz[]=1&baz[]=2&baz[qux]=3")
+                ->setUri("https://localhost:$port/uri?foo=bar&baz=1&baz=2")
                 ->setMethod("GET")
                 ->setHeader("custom", "header")
             );
@@ -86,7 +86,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) use ($deferred, &$server) {
                 $this->assertEquals("POST", $req->getMethod());
                 $this->assertEquals("/", $req->getUri());
-                $this->assertEquals([], $req->getQueryVars());
+                $this->assertEquals([], $req->getAllVars());
                 $this->assertEquals("body", yield $req->getBody());
 
                 try {

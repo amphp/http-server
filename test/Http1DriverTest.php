@@ -469,19 +469,6 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         // 2 -------------------------------------------------------------------------------------->
 
         $msg =
-            "POST /someurl.html HTTP/1.0\r\n" .
-            "Host: localhost\r\n" .
-            "Content-Length: 43\r\n" .
-            "\r\nThis should error because it's too long ..."
-        ;
-        $errCode = 400;
-        $errMsg = "Bad request: entity too large";
-        $opts = ["maxBodySize" => 1];
-        $return[] = [$msg, $errCode, $errMsg, $opts];
-
-        // 3 -------------------------------------------------------------------------------------->
-
-        $msg =
             "GET /someurl.html HTTP/1.0\r\n" .
             "Host: localhost\r\n" .
             "X-My-Header: " . str_repeat("x", 1024) . "r\n" .
@@ -492,7 +479,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $opts = ["maxHeaderSize" => 128];
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
-        // 4 -------------------------------------------------------------------------------------->
+        // 3 -------------------------------------------------------------------------------------->
 
         $msg =
             "GET /someurl.html HTTP/1.0\r\n" .
@@ -506,7 +493,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $opts = [];
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
-        // 5 -------------------------------------------------------------------------------------->
+        // 4 -------------------------------------------------------------------------------------->
 
         $msg =
             "GET /someurl.html HTTP/1.0\r\n" .
@@ -519,7 +506,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $opts = [];
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
-        // 6 -------------------------------------------------------------------------------------->
+        // 5 -------------------------------------------------------------------------------------->
 
         /* //@TODO Messages with invalid CTL chars in their headers should fail
         $msg =
@@ -539,6 +526,82 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         // x -------------------------------------------------------------------------------------->
 
         return $return;
+    }
+
+    function testUpgradeBodySizeContentLength() {
+        $invoked = 0;
+        $parseResult = null;
+        $body = "";
+        $client = new Client;
+
+        $emitCallback = function($emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
+            $client->pendingResponses = 1;
+            $invoked++;
+            list($resultCode, $parseResult, $errorStruct) = $emitStruct;
+            $this->assertNull($errorStruct);
+            if ($resultCode != HttpDriver::SIZE_WARNING) {
+                $body .= $parseResult["body"];
+            }
+        };
+
+        $client->options = new Options;
+        $client->options->maxBodySize = 4;
+        $driver = new Http1Driver;
+        $driver->setup($emitCallback, function(){});
+        $parser = $driver->parser($client);
+        $ireq = new InternalRequest;
+        $ireq->client = $client;
+        $client->bodyPromisors = ["set"];
+        $client->requestParser = $parser;
+        $payload = "abcdefghijklmnopqrstuvwxyz";
+        $data = "POST / HTTP/1.1\r\nHost:localhost\r\nContent-Length: 26\r\n\r\n$payload";
+        $parser->send($data);
+        
+        $this->assertEquals(4, \strlen($body));
+        $ireq->maxBodySize = 10;
+        $driver->upgradeBodySize($ireq);
+        $this->assertEquals(10, \strlen($body));
+        $ireq->maxBodySize = 26;
+        $driver->upgradeBodySize($ireq);
+        $this->assertSame($payload, $body);
+    }
+
+    function testUpgradeBodySizeStream() {
+        $invoked = 0;
+        $parseResult = null;
+        $body = "";
+        $client = new Client;
+
+        $emitCallback = function($emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
+            $client->pendingResponses = 1;
+            $invoked++;
+            list($resultCode, $parseResult, $errorStruct) = $emitStruct;
+            $this->assertNull($errorStruct);
+            if ($resultCode != HttpDriver::SIZE_WARNING) {
+                $body .= $parseResult["body"];
+            }
+        };
+
+        $client->options = new Options;
+        $client->options->maxBodySize = 4;
+        $driver = new Http1Driver;
+        $driver->setup($emitCallback, function(){});
+        $parser = $driver->parser($client);
+        $ireq = new InternalRequest;
+        $ireq->client = $client;
+        $client->bodyPromisors = ["set"];
+        $client->requestParser = $parser;
+        $payload = "2\r\nab\r\n3\r\ncde\r\n5\r\nfghij\r\n10\r\nklmnopqrstuvwxyz\r\n0\r\n\r\n";
+        $data = "POST / HTTP/1.1\r\nHost:localhost\r\nTransfer-Encoding: chunked\r\n\r\n$payload";
+        $parser->send($data);
+
+        $this->assertEquals(4, \strlen($body));
+        $ireq->maxBodySize = 10;
+        $driver->upgradeBodySize($ireq);
+        $this->assertEquals(10, \strlen($body));
+        $ireq->maxBodySize = 26;
+        $driver->upgradeBodySize($ireq);
+        $this->assertSame("abcdefghijklmnopqrstuvwxyz", $body);
     }
 
     function verifyWrite($input, $status, $headers, $data) {
@@ -597,6 +660,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $driver = new Http1Driver;
         $http2 = new class implements HttpDriver {
             public function setup(callable $parseEmitter, callable $responseWriter) {}
+            public function upgradeBodySize(InternalRequest $ireq) {}
             public function filters(InternalRequest $ireq): array { return []; }
             public function writer(InternalRequest $ireq): \Generator { yield; }
 
@@ -606,7 +670,6 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
                     $this->received .= yield;
                 }
             }
-
         };
         (function() use ($http2) {
             $this->http2 = $http2;
@@ -626,6 +689,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $driver = new Http1Driver;
         $http2 = new class implements HttpDriver {
             public function setup(callable $parseEmitter, callable $responseWriter) {}
+            public function upgradeBodySize(InternalRequest $ireq) {}
             public function filters(InternalRequest $ireq): array { return []; }
             public function writer(InternalRequest $ireq): \Generator { yield; }
 

@@ -59,6 +59,8 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
                 } while ($part !== null);
             }
 
+            public function upgradeBodySize(InternalRequest $ireq) { }
+
             public function parser(Client $client): \Generator {
                 $this->test->fail("We shouldn't be invoked the parser with no actual clients");
             }
@@ -314,6 +316,8 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             public function parser(Client $client): \Generator {
                 yield from ($this->parser)($client, $this->write);
             }
+
+            public function upgradeBodySize(InternalRequest $ireq) {}
         };
 
         $vhosts = new class($tls, $address, $this, $driver) extends VhostContainer {

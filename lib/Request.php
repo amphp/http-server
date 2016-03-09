@@ -67,23 +67,40 @@ interface Request {
     public function getAllHeaders(): array;
 
     /**
-     * Retrieve the streaming request entity body
+     * Retrieve the streaming request entity body.
+     * Note that the returned Body instance may change between calls, the contents not
+     * explicitly fetched through its valid() / consume() API, will be moved to the new
+     * instance though. No need to buffer and concatenate manually in this case.
      *
      * @TODO add documentation for how the body object is used
+     * @param int $bodySize maximum body size
      *
      * @return \Aerys\Body
      */
-    public function getBody(): Body;
+    public function getBody(int $bodySize = -1): Body;
 
     /**
-     * Retrieve an associative array of query string parameters/values
+     * Retrieve one query string value of that name
      *
-     * This method's result is equivalent to the $_GET superglobal in
-     * traditional PHP web SAPI applications.
+     * @param string $name
+     * @return string|null
+     */
+    public function getVar(string $name);
+
+    /**
+     * Retrieve a array of query string values
+     *
+     * @param string $name
+     * @return array
+     */
+    public function getVarArray(string $name): array;
+
+    /**
+     * Retrieve an associative array of an array of query string values
      *
      * @return array
      */
-    public function getQueryVars(): array;
+    public function getAllVars(): array;
 
     /**
      * Retrieve a cookie
@@ -136,4 +153,12 @@ interface Request {
      * @return array
      */
     public function getConnectionInfo(): array;
+
+    /**
+     * Retrieve a server option value
+     *
+     * @param string $option The option to retrieve
+     * @throws \DomainException on unknown option
+     */
+    public function getOption(string $option);
 }

@@ -18,18 +18,18 @@ class ParsedBody {
      * @param string $name
      * @return string|null
      */
-    public function getString(string $name) {
-        return \is_string($this->fields[$name] ?? null) ? $this->fields[$name] : null;
+    public function get(string $name) {
+        return $this->fields[$name][0] ?? null;
     }
 
     /**
      * Fetch an array parameter (or null if it doesn't exist)
      *
      * @param string $name
-     * @return array|null
+     * @return array
      */
-    public function getArray(string $name) {
-        return \is_array($this->fields[$name] ?? null) ? $this->fields[$name] : null;
+    public function getArray(string $name): array {
+        return $this->fields[$name] ?? [];
     }
 
     /**
@@ -53,7 +53,7 @@ class ParsedBody {
     }
 
     /**
-     * returns two associative fields and metadata arrays (like for extended abstractions...)
+     * returns two associative fields and metadata arrays (like for extended abstractions or debug)
      *
      * @return array
      */
