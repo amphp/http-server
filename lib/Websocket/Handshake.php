@@ -64,23 +64,6 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function send(string $body): Response {
-        if ($this->status === 101) {
-            throw new \DomainException(
-                "Cannot send(); entity body content disallowed for Switching Protocols Response"
-            );
-        }
-        if (!$this->isStarted) {
-            $this->handshake();
-        }
-        $this->isStarted = true;
-        $this->response->send($body);
-        return $this;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
     public function stream(string $partialBodyChunk): \Amp\Promise {
         if ($this->status === 101) {
             throw new \DomainException(

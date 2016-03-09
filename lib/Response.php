@@ -57,19 +57,6 @@ interface Response {
     public function setCookie(string $name, string $value, array $flags = []): Response;
 
     /**
-     * Send the specified response entity body
-     *
-     * This method effectively ends the response and will always outperform
-     * the Response::stream() approach if the response body isn't so large
-     * that buffering it all at once is problematic.
-     *
-     * Note: Headers are sent when Response::send() is called.
-     *
-     * @param string $body The full response entity body
-     */
-    public function send(string $body);
-
-    /**
      * Incrementally stream parts of the response entity body
      *
      * This method may be repeatedly called to stream the response body.

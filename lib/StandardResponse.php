@@ -143,27 +143,6 @@ class StandardResponse implements Response {
     }
 
     /**
-     * Send the specified response entity body
-     *
-     * @param string $body The full response entity body
-     * @throws \LogicException If response output already started
-     * @throws \Aerys\ClientException If the client has already disconnected
-     */
-    public function send(string $body) {
-        if ($this->state & self::ENDED) {
-            throw new \LogicException(
-                "Cannot send: response already sent"
-            );
-        } elseif ($this->state & self::STREAMING) {
-            throw new \LogicException(
-                "Cannot send: response already streaming"
-            );
-        } else {
-            $this->end($body);
-        }
-    }
-
-    /**
      * Stream partial entity body data
      *
      * If response output has not yet started headers will also be sent
