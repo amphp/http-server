@@ -116,7 +116,7 @@ class StandardRequest implements Request {
         foreach ($pairs as $pair) {
             $pair = explode("=", $pair, 2);
             // maxFieldLen should not be important here ... if it ever is, create an issue...
-            $this->queryVars[urldecode($pair[0])][] = urldecode($pair[1] ?? "");
+            $this->queryVars[rawurldecode($pair[0])][] = rawurldecode($pair[1] ?? "");
         }
 
         return $this->queryVars;

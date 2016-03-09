@@ -47,6 +47,7 @@ class Http1Driver implements HttpDriver {
 
             $ireq->responseWriter = $client->httpDriver->writer($ireq);
             $ireq->streamId = 1;
+            $client->streamWindow = [];
             $client->streamWindow[$ireq->streamId] = $client->window;
             $client->streamWindowBuffer[$ireq->streamId] = "";
             $ireq->protocol = "2.0";
