@@ -167,14 +167,15 @@ class Http1Driver implements HttpDriver {
     public function upgradeBodySize(InternalRequest $ireq) {
         $client = $ireq->client;
         if ($client->bodyPromisors) {
-            // TODO URGS - FATAL CYCLE!!!
-            $client->requestParser->send($ireq->maxBodySize);
+            $client->streamWindow = $ireq->maxBodySize;
+            if ($client->parserEmitLock) {
+                $client->requestParser->send("");
+            }
         }
     }
 
     public function parser(Client $client): \Generator {
         $maxHeaderSize = $client->options->maxHeaderSize;
-        $maxBodySize = $client->options->maxBodySize;
         $bodyEmitSize = $client->options->ioGranularity;
 
         $buffer = "";
@@ -182,7 +183,8 @@ class Http1Driver implements HttpDriver {
         do {
             // break potential references
             unset($traceBuffer, $protocol, $method, $uri, $headers);
-
+            $client->streamWindow = $client->options->maxBodySize;
+                
             $traceBuffer = null;
             $headers = [];
             $contentLength = null;
@@ -205,7 +207,7 @@ class Http1Driver implements HttpDriver {
                 $client->parserEmitLock = true;
 
                 do {
-                    if (\strlen($buffer) > $maxHeaderSize + $maxBodySize) {
+                    if (\strlen($buffer) > $maxHeaderSize + $client->streamWindow) {
                         \Amp\disable($client->readWatcher);
                         $buffer .= yield;
                         if (!($client->isDead & Client::CLOSED_RD)) {
@@ -389,9 +391,9 @@ class Http1Driver implements HttpDriver {
                         }
 
                         break; // finished ($is_chunked loop)
-                    } elseif ($bodySize + $chunkLenRemaining > $maxBodySize) {
+                    } elseif ($bodySize + $chunkLenRemaining > $client->streamWindow) {
                         do {
-                            $remaining = $maxBodySize - $bodySize;
+                            $remaining = $client->streamWindow - $bodySize;
                             $chunkLenRemaining -= $remaining - \strlen($body);
                             $body .= $buffer;
                             $bodyBufferSize = \strlen($body);
@@ -417,14 +419,23 @@ class Http1Driver implements HttpDriver {
                                 return;
                             }
 
+                            if ($bodySize != $client->streamWindow) {
+                                continue;
+                            }
+                            
                             ($this->parseEmitter)([HttpDriver::SIZE_WARNING, ["id" => 0], null], $client);
+                            $client->parserEmitLock = true;
                             \Amp\disable($client->readWatcher);
-                            $maxBodySize = yield;
-                            if ($maxBodySize === false) {
+                            $yield = yield;
+                            if ($yield === false) {
                                 $client->shouldClose = true;
+                                while (1) {
+                                    yield;
+                                }
                             }
                             \Amp\enable($client->readWatcher);
-                        } while ($maxBodySize < $bodySize + $chunkLenRemaining);
+                            $client->parserEmitLock = false;
+                        } while ($client->streamWindow < $bodySize + $chunkLenRemaining);
                     }
                                          
                     $bodyBufferSize = 0;
@@ -468,7 +479,7 @@ class Http1Driver implements HttpDriver {
             } else {
                 $bodySize = 0;
                 while (true) {
-                    $bound = \min($contentLength, $maxBodySize);
+                    $bound = \min($contentLength, $client->streamWindow);
                     $bodyBufferSize = \strlen($buffer);
 
                     while ($bodySize + $bodyBufferSize < $bound) {
@@ -488,17 +499,22 @@ class Http1Driver implements HttpDriver {
                     }
 
 
-                    if ($maxBodySize < $contentLength) {
+                    if ($client->streamWindow < $contentLength) {
                         if (!$client->pendingResponses) {
                             return;
                         }
-                        \Amp\disable($client->readWatcher);
                         ($this->parseEmitter)([HttpDriver::SIZE_WARNING, ["id" => 0], null], $client);
-                        $maxBodySize = yield;
-                        if ($maxBodySize === false) {
+                        $client->parserEmitLock = true;
+                        \Amp\disable($client->readWatcher);
+                        $yield = yield;
+                        if ($yield === false) {
                             $client->shouldClose = true;
+                            while (1) {
+                                yield;
+                            }
                         }
                         \Amp\enable($client->readWatcher);
+                        $client->parserEmitLock = false;
                     } else {
                         break;
                     }
@@ -506,7 +522,7 @@ class Http1Driver implements HttpDriver {
 
             }
 
-            $maxBodySize = $client->options->maxBodySize;
+            $client->streamWindow = $client->options->maxBodySize;
 
             ($this->parseEmitter)([HttpDriver::ENTITY_RESULT, $parseResult, null], $client);
         } while (true);
