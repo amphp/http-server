@@ -539,7 +539,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
             $invoked++;
             list($resultCode, $parseResult, $errorStruct) = $emitStruct;
             $this->assertNull($errorStruct);
-            $body .= $parseResult["body"];
+            if ($resultCode != HttpDriver::SIZE_WARNING) {
+                $body .= $parseResult["body"];
+            }
         };
 
         $client->options = new Options;
@@ -555,10 +557,10 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $data = "POST / HTTP/1.1\r\nHost:localhost\r\nContent-Length: 26\r\n\r\n$payload";
         $parser->send($data);
         
-        $this->assertLessThanOrEqual(4, \strlen($body));
+        $this->assertEquals(4, \strlen($body));
         $ireq->maxBodySize = 10;
         $driver->upgradeBodySize($ireq);
-        $this->assertLessThanOrEqual(10, \strlen($body));
+        $this->assertEquals(10, \strlen($body));
         $ireq->maxBodySize = 26;
         $driver->upgradeBodySize($ireq);
         $this->assertSame($payload, $body);
@@ -575,7 +577,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
             $invoked++;
             list($resultCode, $parseResult, $errorStruct) = $emitStruct;
             $this->assertNull($errorStruct);
-            $body .= $parseResult["body"];
+            if ($resultCode != HttpDriver::SIZE_WARNING) {
+                $body .= $parseResult["body"];
+            }
         };
 
         $client->options = new Options;
@@ -591,10 +595,10 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $data = "POST / HTTP/1.1\r\nHost:localhost\r\nTransfer-Encoding: chunked\r\n\r\n$payload";
         $parser->send($data);
 
-        $this->assertLessThanOrEqual(4, \strlen($body));
+        $this->assertEquals(4, \strlen($body));
         $ireq->maxBodySize = 10;
         $driver->upgradeBodySize($ireq);
-        $this->assertLessThanOrEqual(10, \strlen($body));
+        $this->assertEquals(10, \strlen($body));
         $ireq->maxBodySize = 26;
         $driver->upgradeBodySize($ireq);
         $this->assertSame("abcdefghijklmnopqrstuvwxyz", $body);

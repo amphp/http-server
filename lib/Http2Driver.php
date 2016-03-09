@@ -512,9 +512,9 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         goto connection_error;
                     }
 
-                    if ($bodyLens[$id] + $length > $client->streamWindow[$id] ?? $maxBodySize) {
-                        $error = self::FLOW_CONTROL_ERROR;
-                        goto connection_error;
+                    if (($remaining = $bodyLens[$id] + $length - $client->streamWindow[$id] ?? $maxBodySize) > 0) {
+                            $error = self::FLOW_CONTROL_ERROR;
+                            goto connection_error;
                     }
 
                     while (\strlen($buffer) < $length) {
@@ -535,6 +535,10 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                         ($this->emit)([$type, ["id" => $id, "protocol" => "2.0", "body" => $body], null], $client);
                     }
                     $buffer = \substr($buffer, $length);
+
+                    if ($remaining == 0 && ($flags & self::END_STREAM) !== "\0" && $length) {
+                        ($this->emit)([HttpDriver::SIZE_WARNING, ["id" => $id], null], $client);
+                    }
 
                     continue 2;
 

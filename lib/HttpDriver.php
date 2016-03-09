@@ -8,6 +8,7 @@ interface HttpDriver {
     const ENTITY_HEADERS = 3;
     const ENTITY_PART = 4;
     const ENTITY_RESULT = 5;
+    const SIZE_WARNING = 6;
 
     const BAD_VERSION = 1;
 

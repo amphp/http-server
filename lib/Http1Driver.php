@@ -167,7 +167,7 @@ class Http1Driver implements HttpDriver {
     public function upgradeBodySize(InternalRequest $ireq) {
         $client = $ireq->client;
         if ($client->bodyPromisors) {
-            \Amp\enable($client->readWatcher);
+            // TODO URGS - FATAL CYCLE!!!
             $client->requestParser->send($ireq->maxBodySize);
         }
     }
@@ -390,21 +390,43 @@ class Http1Driver implements HttpDriver {
 
                         break; // finished ($is_chunked loop)
                     } elseif ($bodySize + $chunkLenRemaining > $maxBodySize) {
-                        \Amp\disable($client->readWatcher);
                         do {
+                            $remaining = $maxBodySize - $bodySize;
+                            $chunkLenRemaining -= $remaining - \strlen($body);
+                            $body .= $buffer;
+                            $bodyBufferSize = \strlen($body);
+
+                            while ($bodyBufferSize < $remaining) {
+                                if ($bodyBufferSize >= $bodyEmitSize) {
+                                    ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
+                                    $body = '';
+                                    $bodySize += $bodyBufferSize;
+                                    $remaining -= $bodyBufferSize;
+                                }
+                                $body .= yield;
+                                $bodyBufferSize = \strlen($body);
+                            }
+                            if ($remaining) {
+                                ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($body, 0, $remaining)], null], $client);
+                                $buffer = substr($body, $remaining);
+                                $body = "";
+                                $bodySize += $remaining;
+                            }
+
                             if (!$client->pendingResponses) {
                                 return;
                             }
 
-                            $yield = yield;
-                            if ($yield === false) {
+                            ($this->parseEmitter)([HttpDriver::SIZE_WARNING, ["id" => 0], null], $client);
+                            \Amp\disable($client->readWatcher);
+                            $maxBodySize = yield;
+                            if ($maxBodySize === false) {
                                 $client->shouldClose = true;
                             }
-                        } while ($yield < $chunkLenRemaining);
-                        \Amp\enable($client->readWatcher);
-                        $maxBodySize = $yield;
+                            \Amp\enable($client->readWatcher);
+                        } while ($maxBodySize < $bodySize + $chunkLenRemaining);
                     }
-
+                                         
                     $bodyBufferSize = 0;
 
                     while (1) {
@@ -439,48 +461,52 @@ class Http1Driver implements HttpDriver {
                         }
                     }
                 }
-
-                $maxBodySize = $client->options->maxBodySize;
+                
+                if ($body != "") {
+                    ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
+                }
             } else {
-                if ($contentLength > $maxBodySize) {
-                    \Amp\disable($client->readWatcher);
-                    do {
+                $bodySize = 0;
+                while (true) {
+                    $bound = \min($contentLength, $maxBodySize);
+                    $bodyBufferSize = \strlen($buffer);
+
+                    while ($bodySize + $bodyBufferSize < $bound) {
+                        if ($bodyBufferSize >= $bodyEmitSize) {
+                            ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $buffer], null], $client);
+                            $buffer = '';
+                            $bodySize += $bodyBufferSize;
+                        }
+                        $buffer .= yield;
+                        $bodyBufferSize = \strlen($buffer);
+                    }
+                    $remaining = $bound - $bodySize;
+                    if ($remaining) {
+                        ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($buffer, 0, $remaining)], null], $client);
+                        $buffer = substr($buffer, $remaining);
+                        $bodySize = $bound;
+                    }
+
+
+                    if ($maxBodySize < $contentLength) {
                         if (!$client->pendingResponses) {
                             return;
                         }
-
-                        $yield = yield;
-                        if ($yield === false) {
+                        \Amp\disable($client->readWatcher);
+                        ($this->parseEmitter)([HttpDriver::SIZE_WARNING, ["id" => 0], null], $client);
+                        $maxBodySize = yield;
+                        if ($maxBodySize === false) {
                             $client->shouldClose = true;
                         }
-                    } while ($yield < $contentLength);
-                    \Amp\enable($client->readWatcher);
-                }
-
-                $bufferDataSize = \strlen($buffer);
-
-                while ($bufferDataSize < $contentLength) {
-                    if ($bufferDataSize >= $bodyEmitSize) {
-                        ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $buffer], null], $client);
-                        $buffer = "";
-                        $contentLength -= $bufferDataSize;
+                        \Amp\enable($client->readWatcher);
+                    } else {
+                        break;
                     }
-                    $buffer .= yield;
-                    $bufferDataSize = \strlen($buffer);
                 }
 
-                if ($bufferDataSize === $contentLength) {
-                    $body = $buffer;
-                    $buffer = "";
-                } else {
-                    $body = substr($buffer, 0, $contentLength);
-                    $buffer = (string) \substr($buffer, $contentLength);
-                }
             }
 
-            if ($body != "") {
-                ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
-            }
+            $maxBodySize = $client->options->maxBodySize;
 
             ($this->parseEmitter)([HttpDriver::ENTITY_RESULT, $parseResult, null], $client);
         } while (true);

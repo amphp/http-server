@@ -95,102 +95,14 @@ function root(string $docroot, array $options = []): Bootable {
  * Try parsing a the Request's body with either x-www-form-urlencoded or multipart/form-data
  *
  * @param Request $req
- * @return \Amp\Promise<\Aerys\ParsedBody>
+ * @return BodyParser (returns a ParsedBody instance when yielded)
  */
-function parseBody(Request $req) {
-    $type = $req->getHeader("content-type");
-
-    if ($type === null || $type === "application/x-www-form-urlencoded") {
-        return \Amp\pipe($req->getBody(), function ($data) {
-            parse_str($data, $fields);
-            return new ParsedBody($fields);
-        });
-    }
-
-    if (!preg_match('#^\s*multipart/(?:form-data|mixed)(?:\s*;\s*boundary\s*=\s*("?)([^"]*)\1)?$#', $type, $m)) {
-        return new \Amp\Success(new ParsedBody([]));
-    }
-
-    $boundary = $m[2];
-    return \Amp\pipe($req->getBody(), function ($data) use ($boundary) {
-        $fields = $metadata = [];
-
-        // RFC 7578, RFC 2046 Section 5.1.1
-        if (strncmp($data, "--$boundary\r\n", \strlen($boundary) + 4) !== 0) {
-            return new ParsedBody([]);
-        }
-
-        $exp = explode("\r\n--$boundary\r\n", $data);
-        $exp[0] = substr($exp[0], \strlen($boundary) + 4);
-        $exp[count($exp) - 1] = substr(end($exp), 0, -\strlen($boundary) - 8);
-
-        foreach ($exp as $entry) {
-            list($rawheaders, $text) = explode("\r\n\r\n", $entry, 2);
-            $headers = [];
-
-            foreach (explode("\r\n", $rawheaders) as $header) {
-                $split = explode(":", $header, 2);
-                if (!isset($split[1])) {
-                    return new ParsedBody([]);
-                }
-                $headers[strtolower($split[0])] = trim($split[1]);
-            }
-
-            if (!preg_match('#^\s*form-data(?:\s*;\s*(?:name\s*=\s*"([^"]+)"|filename\s*=\s*"([^"]+)"))+\s*$#', $headers["content-disposition"] ?? "", $m) || !isset($m[1])) {
-                return new ParsedBody([]);
-            }
-            $name = $m[1];
-            if (false !== $start = strpos($name, "[")) {
-                $split_name = explode("][", substr($name, $start + 1, -1));
-                array_unshift($split_name, substr($name, 0, $start));
-            }
-
-            // Ignore Content-Transfer-Encoding as deprecated and hence we won't support it
-
-            if (isset($m[2]) || isset($headers["content-type"])) {
-                if (isset($split_name)) {
-                    $ref = &$metadata;
-                    foreach ($split_name as $name) {
-                        if ($ref !== null && !\is_array($ref)) {
-                            continue 2;
-                        }
-                        if ($name == "") {
-                            $ref = &$ref[];
-                        } else {
-                            $ref = &$ref[$name];
-                        }
-                    }
-                } else {
-                    $ref = &$metadata[$name];
-                }
-
-                if (isset($m[2])) {
-                    $ref = ["filename" => $m[2], "mime" => $headers["content-type"] ?? "application/octet-stream"];
-                } else {
-                    $ref["mime"] = $headers["content-type"];
-                }
-            }
-
-            if (isset($split_name)) {
-                $ref = &$fields;
-                foreach ($split_name as $name) {
-                    if ($ref !== null && !\is_array($ref)) {
-                        continue 2;
-                    }
-                    if ($name == "") {
-                        $ref = &$ref[];
-                    } else {
-                        $ref = &$ref[$name];
-                    }
-                }
-            } else {
-                $ref = &$fields[$name];
-            }
-            $ref = $text;
-        }
-
-        return new ParsedBody($fields, $metadata);
-    });
+function parseBody(Request $req, $size = 0) {
+    return new BodyParser($req, [
+        "input_vars" => $req->getOption("maxInputVars"),
+        "field_len" => $req->getOption("maxFieldLen"),
+        "size" => $size <= 0 ? $req->getOption("maxBodySize") : $size,
+    ]);
 }
 
 /**

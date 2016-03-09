@@ -23,17 +23,19 @@ use Amp\Promise;
  * Streaming Example:
  *
  *     $responder = function(Request $request, Response $response) {
- *          $body = "";
- *          foreach ($request->getBody()->stream() as $bodyPart) {
- *              $body .= yield $bodyPart;
+ *          $payload = "";
+ *          $body = $request->getBody()
+ *          while (yield $body->valid()) {
+ *              $payload .= $body->consume();
  *          }
- *          $response->send("Echoing back the request body: {$body}");
+ *          $response->send("Echoing back the request body: {$payload}");
  *     };
  */
 class Body extends PromiseStream implements Promise {
     private $whens = [];
     private $watchers = [];
     private $string;
+    private $error;
 
     public function __construct(Promise $promise) {
         $promise->watch(function($data) {
@@ -41,7 +43,7 @@ class Body extends PromiseStream implements Promise {
                 $func($data, $cbData);
             }
         });
-        parent::__construct($promise);
+        parent::__construct($promise); // DO NOT MOVE - preserve order in which things happen
         $when = function ($e, $bool) use (&$continue) {
             $continue = $bool;
         };
@@ -51,6 +53,9 @@ class Body extends PromiseStream implements Promise {
                 $string[] = $this->consume();
                 $this->valid()->when($when);
             }
+            $this->valid()->when(function ($ex) use (&$e) {
+                $e = $ex;
+            });
 
             if (isset($string)) {
                 if (isset($string[1])) {
@@ -58,21 +63,36 @@ class Body extends PromiseStream implements Promise {
                 } else {
                     $string = $string[0];
                 }
+
+                // way to restart, so that even after the success, the valid() / consume() API will still work
+                if (!$e) {
+                    $result = $this->consume(); // consume the final result
+                }
+                $deferred = new \Amp\Deferred;
+                parent::__construct($deferred->promise());
+                $deferred->update($string);
+                if ($e) {
+                    $deferred->fail($e);
+                } else {
+                    $deferred->succeed($result);
+                }
             } else {
                 $string = "";
             }
             $this->string = $string;
+            $this->error = $e;
 
             foreach ($this->whens as list($when, $data)) {
-                $when(null, $string, $data);
+                $when($e, $string, $data);
             }
             $this->whens = $this->watchers = [];
+
         });
     }
 
     public function when(callable $func, $data = null) {
         if (isset($this->string)) {
-            $func(null, $this->string, $data);
+            $func($this->error, $this->string, $data);
         } else {
             $this->whens[] = [$func, $data];
         }

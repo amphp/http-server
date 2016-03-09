@@ -78,7 +78,6 @@ class Server {
      *
      * @param string $option The option to retrieve
      * @throws \DomainException on unknown option
-     * @return mixed
      */
     public function getOption(string $option) {
         return $this->options->{$option};
@@ -549,7 +548,7 @@ class Server {
         $client->requestParser->send($data);
     }
 
-    private function onParseEmit(array $parseStruct, $client) {
+    private function onParseEmit(array $parseStruct, Client $client) {
         list($eventType, $parseResult, $errorStruct) = $parseStruct;
         switch ($eventType) {
             case HttpDriver::RESULT:
@@ -563,6 +562,9 @@ class Server {
                 break;
             case HttpDriver::ENTITY_RESULT:
                 $this->onParsedMessageWithEntity($client, $parseResult);
+                break;
+            case HttpDriver::SIZE_WARNING:
+                $this->onEntitySizeWarning($client, $parseResult);
                 break;
             case HttpDriver::ERROR:
                 $this->onParseError($client, $parseResult, $errorStruct);
@@ -599,6 +601,13 @@ class Server {
         // @TODO Update trailer headers if present
 
         // Don't respond() because we always start the response when headers arrive
+    }
+
+    private function onEntitySizeWarning(Client $client, array $parseResult) {
+        $id = $parseResult["id"];
+        $promisor = $client->bodyPromisors[$id];
+        $client->bodyPromisors[$id] = new Deferred;
+        $promisor->fail(new ClientSizeException);
     }
 
     private function onParseError(Client $client, array $parseResult, string $error) {
@@ -770,10 +779,10 @@ class Server {
     }
 
     private function tryApplication(InternalRequest $ireq, callable $application) {
-        try {
-            $response = $this->initializeResponse($ireq);
-            $request = new StandardRequest($ireq);
+        $response = $this->initializeResponse($ireq);
+        $request = new StandardRequest($ireq);
 
+        try {
             $out = ($application)($request, $response);
             if ($out instanceof \Generator) {
                 $promise = resolve($out);
@@ -782,6 +791,15 @@ class Server {
                 $response->end();
             } else {
                 $status = HTTP_STATUS["NOT_FOUND"];
+                $body = makeGenericBody($status, [
+                    "sub_heading" => "Requested: {$ireq->uri}",
+                ]);
+                $response->setStatus($status);
+                $response->end($body);
+            }
+        } catch (ClientSizeException $error) {
+            if (!($response->state() & Response::STARTED)) {
+                $status = HTTP_STATUS["REQUEST_ENTITY_TOO_LARGE"];
                 $body = makeGenericBody($status, [
                     "sub_heading" => "Requested: {$ireq->uri}",
                 ]);
