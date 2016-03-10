@@ -67,10 +67,10 @@ class HostTest extends \PHPUnit_Framework_TestCase {
 
     /**
      * @expectedException \DomainException
-     * @expectedExceptionMessage Invalid redirect URI; Host redirect must not contain a path component
+     * @expectedExceptionMessage Invalid redirect URI; Host redirect must not contain a query or fragment component
      */
     function testBadRedirectPath() {
-        $this->getHost()->redirect("http://localhost/path");
+        $this->getHost()->redirect("http://localhost/?foo");
     }
 
     /**

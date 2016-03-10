@@ -135,7 +135,7 @@ class Host {
     /**
      * Redirect all requests that aren't serviced by an action callable
      *
-     * NOTE: the redirect URI must match the format "scheme://hostname.tld" (with optional port).
+     * NOTE: the redirect URI must match the format "scheme://hostname.tld" (with optional port and path).
      *
      * The following example redirects all unencrypted requests to the equivalent
      * encrypted resource:
@@ -151,7 +151,7 @@ class Host {
      * @return self
      */
     public function redirect(string $absoluteUri, int $redirectCode = 307): Host {
-        if (!$url = @parse_url(strtolower($absoluteUri))) {
+        if (!$url = @parse_url($absoluteUri)) {
             throw new \DomainException(
                 "Invalid redirect URI"
             );
@@ -161,14 +161,13 @@ class Host {
                 "Invalid redirect URI; \"http\" or \"https\" scheme required"
             );
         }
-        if (isset($url["path"]) && $url["path"] !== "/") {
+        if (isset($url["query"]) || isset($url["fragment"])) {
             throw new \DomainException(
-                "Invalid redirect URI; Host redirect must not contain a path component"
+                "Invalid redirect URI; Host redirect must not contain a query or fragment component"
             );
         }
 
-        $port = empty($url["port"]) ? "" : ":{$url['port']}";
-        $redirectUri = sprintf("%s://%s%s", $url["scheme"], $url["host"], $port);
+        $redirectUri = rtrim($absoluteUri, "/") . "/";
 
         if ($redirectCode < 300 || $redirectCode > 399) {
             throw new \DomainException(
@@ -178,7 +177,7 @@ class Host {
 
         $this->redirect = static function(Request $req, Response $res) use ($redirectUri, $redirectCode) {
             $res->setStatus($redirectCode);
-            $res->setHeader("location", $redirectUri . $req->getUri());
+            $res->setHeader("location", $redirectUri . \ltrim($req->getUri(), "/"));
             $res->end();
         };
 
