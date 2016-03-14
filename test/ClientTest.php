@@ -44,7 +44,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) {
                 $this->assertEquals("GET", $req->getMethod());
                 $this->assertEquals("/uri", explode("?", $req->getUri())[0]);
-                $this->assertEquals(["foo" => ["bar"], "baz" => ["1", "2"]], $req->getAllVars());
+                $this->assertEquals(["foo" => ["bar"], "baz" => ["1", "2"]], $req->getAllParams());
                 $this->assertEquals(["header"], $req->getHeaderArray("custom"));
                 $this->assertEquals("value", $req->getCookie("test"));
 
@@ -86,7 +86,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) use ($deferred, &$server) {
                 $this->assertEquals("POST", $req->getMethod());
                 $this->assertEquals("/", $req->getUri());
-                $this->assertEquals([], $req->getAllVars());
+                $this->assertEquals([], $req->getAllParams());
                 $this->assertEquals("body", yield $req->getBody());
 
                 try {
