@@ -4,7 +4,7 @@ namespace Aerys;
 
 class StandardRequest implements Request {
     private $internalRequest;
-    private $queryVars;
+    private $queryParams;
     private $body;
 
     /**
@@ -84,27 +84,27 @@ class StandardRequest implements Request {
     /**
      * {@inheritdoc}
      */
-    public function getVar(string $name) {
-        return ($this->queryVars ?? $this->queryVars = $this->parseQueryVars())[$name][0] ?? null;
+    public function getParam(string $name) {
+        return ($this->queryParams ?? $this->queryParams = $this->parseParams())[$name][0] ?? null;
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getVarArray(string $name): array {
-        return ($this->queryVars ?? $this->queryVars = $this->parseQueryVars())[$name] ?? [];
+    public function getParamArray(string $name): array {
+        return ($this->queryParams ?? $this->queryParams = $this->parseParams())[$name] ?? [];
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getAllVars(): array {
-        return $this->queryVars ?? $this->queryVars = $this->parseQueryVars();
+    public function getAllParams(): array {
+        return $this->queryParams ?? $this->queryParams = $this->parseParams();
     }
     
-    private function parseQueryVars() {
+    private function parseParams() {
         if (empty($this->internalRequest->uriQuery)) {
-            return $this->queryVars = [];
+            return $this->queryParams = [];
         }
 
         $pairs = explode("&", $this->internalRequest->uriQuery);
@@ -112,14 +112,14 @@ class StandardRequest implements Request {
             throw new ClientSizeException;
         }
         
-        $this->queryVars = [];
+        $this->queryParams = [];
         foreach ($pairs as $pair) {
             $pair = explode("=", $pair, 2);
             // maxFieldLen should not be important here ... if it ever is, create an issue...
-            $this->queryVars[rawurldecode($pair[0])][] = rawurldecode($pair[1] ?? "");
+            $this->queryParams[rawurldecode($pair[0])][] = rawurldecode($pair[1] ?? "");
         }
 
-        return $this->queryVars;
+        return $this->queryParams;
     }
 
     /**

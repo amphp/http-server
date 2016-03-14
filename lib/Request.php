@@ -85,7 +85,7 @@ interface Request {
      * @param string $name
      * @return string|null
      */
-    public function getVar(string $name);
+    public function getParam(string $name);
 
     /**
      * Retrieve a array of query string values
@@ -93,14 +93,14 @@ interface Request {
      * @param string $name
      * @return array
      */
-    public function getVarArray(string $name): array;
+    public function getParamArray(string $name): array;
 
     /**
      * Retrieve an associative array of an array of query string values
      *
      * @return array
      */
-    public function getAllVars(): array;
+    public function getAllParams(): array;
 
     /**
      * Retrieve a cookie
