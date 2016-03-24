@@ -548,7 +548,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                         goto connection_error;
                     }
 
-                    if ($client->remainingKeepAlives-- == 0) {
+                    if ($client->remainingKeepAlives-- <= 0) {
                         $error = self::PROTOCOL_ERROR;
                         goto connection_error;
                     }

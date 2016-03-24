@@ -120,7 +120,7 @@ class VhostContainer implements \Countable {
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.6.1.1
      */
     public function selectHost(InternalRequest $ireq) {
-        if (stripos($ireq->uriRaw, "http://") === 0 || stripos($ireq->uriRaw, "https://") === 0) {
+        if (isset($ireq->uriHost)) {
             return $this->selectHostByAbsoluteUri($ireq);
         } elseif (empty($ireq->headers["host"])) {
             return null;

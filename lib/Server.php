@@ -386,6 +386,8 @@ class Server {
             foreach ($this->clients as $client) {
                 if (empty($client->requestCycles)) {
                     $this->close($client);
+                } else {
+                    $client->remainingKeepAlives = PHP_INT_MIN;
                 }
             }
         }
@@ -405,7 +407,7 @@ class Server {
         $client->socket = $socket;
         $client->options = $this->options;
         $client->exporter = $this->exporter;
-        $client->remainingKeepAlives = $this->options->maxKeepAliveRequests ?: null;
+        $client->remainingKeepAlives = $this->options->maxKeepAliveRequests ?: PHP_INT_MAX;
 
         $client->clientAddr = $ip;
         $client->clientPort = $port;
@@ -621,7 +623,9 @@ class Server {
         }
 
         $ireq = $this->initializeRequest($client, $parseResult);
-        $ireq->preAppResponder = static function(Request $request, Response $response) use ($parseResult, $error) {
+
+        $client->pendingResponses++;
+        $this->tryApplication($ireq, static function(Request $request, Response $response) use ($parseResult, $error) {
             if ($error === HttpDriver::BAD_VERSION) {
                 $status = HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"];
                 $error = "Unsupported version {$parseResult['protocol']}";
@@ -634,9 +638,7 @@ class Server {
             $response->setStatus($status);
             $response->setHeader("Connection", "close");
             $response->end($body);
-        };
-
-        $this->respond($ireq);
+        });
     }
 
     private function initializeRequest(Client $client, array $parseResult): InternalRequest {
@@ -665,7 +667,6 @@ class Server {
 
         $ireq = new InternalRequest;
         $ireq->client = $client;
-        $ireq->isServerStopping = (bool) $this->stopPromisor;
         $ireq->time = $this->ticker->currentTime;
         $ireq->httpDate = $this->ticker->currentHttpDate;
         $ireq->locals = [];
@@ -684,26 +685,22 @@ class Server {
 
         $ireq->uriRaw = $uri;
         if (stripos($uri, "http://") === 0 || stripos($uri, "https://") === 0) {
-            extract(parse_url($uri), EXTR_PREFIX_ALL, "uri");
-            $ireq->uriHost = $uri_host;
-            $ireq->uriPort = isset($uri_port) ? (int)$uri_port : 80;
-            $ireq->uriPath = $uri_path;
-            $ireq->uriQuery = $uri_query ?? "";
-            $ireq->uri = isset($uri_query) ? "{$uri_path}?{$uri_query}" : $uri_path;
+            $uri = parse_url($uri);
+            $ireq->uriHost = $uri["host"];
+            $ireq->uriPort = isset($uri["port"]) ? (int) $uri["port"] : 80;
+            $ireq->uriPath = $uri["path"];
+            $ireq->uriQuery = $uri["query"] ?? "";
+            $ireq->uri = isset($uri_query) ? "{$uri['path']}?{$uri['query']}" : $uri['path'];
         } elseif ($qPos = strpos($uri, '?')) {
             $ireq->uriQuery = substr($uri, $qPos + 1);
             $ireq->uriPath = substr($uri, 0, $qPos);
             $ireq->uri = "{$ireq->uriPath}?{$ireq->uriQuery}";
         } else {
             $ireq->uri = $ireq->uriPath = $uri;
+            $ireq->uriQuery = "";
         }
 
-        if (!$vhost = $this->vhosts->selectHost($ireq)) {
-            $vhost = $this->vhosts->getDefaultHost();
-            $ireq->preAppResponder = [$this, "sendPreAppInvalidHostResponse"];
-        }
-
-        $ireq->vhost = $vhost;
+        $ireq->vhost = $this->vhosts->selectHost($ireq);
 
         return $ireq;
     }
@@ -721,8 +718,9 @@ class Server {
     }
 
     private function respond(InternalRequest $ireq) {
-        if ($ireq->preAppResponder) {
-            $application = $ireq->preAppResponder;
+        if (!isset($ireq->vhost)) {
+            $application = [$this, "sendPreAppInvalidHostResponse"];
+            $ireq->vhost = $this->vhosts->getDefaultHost();
         } elseif ($this->stopPromisor) {
             $application = [$this, "sendPreAppServiceUnavailableResponse"];
         } elseif (!in_array($ireq->method, $this->options->allowedMethods)) {
@@ -786,7 +784,7 @@ class Server {
             $out = ($application)($request, $response);
             if ($out instanceof \Generator) {
                 $promise = resolve($out);
-                $promise->when($this->onCoroutineAppResolve, $ireq);
+                $promise->when($this->onCoroutineAppResolve, [$ireq, $response]);
             } elseif ($response->state() & Response::STARTED) {
                 $response->end();
             } else {
@@ -809,7 +807,7 @@ class Server {
         } catch (ClientException $error) {
             // Do nothing -- responder actions aren't required to catch this
         } catch (\Throwable $error) {
-            $this->onApplicationError($error, $ireq);
+            $this->onApplicationError($error, $ireq, $response);
         }
     }
 
@@ -823,30 +821,31 @@ class Server {
         $filter->current(); // initialize filters
         $codec = responseCodec($filter, $ireq);
 
-        return $ireq->response = new StandardResponse($codec, $ireq->client);
+        return new StandardResponse($codec, $ireq->client);
     }
 
-    private function onCoroutineAppResolve($error, $result, $ireq) {
+    private function onCoroutineAppResolve($error, $result, $info) {
+        list($ireq, $response) = $info;
         if (empty($error)) {
             if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
                 return;
-            } elseif ($ireq->response->state() & Response::STARTED) {
-                $ireq->response->end();
+            } elseif ($response->state() & Response::STARTED) {
+                $response->end();
             } else {
                 $status = HTTP_STATUS["NOT_FOUND"];
                 $body = makeGenericBody($status, [
                     "sub_heading" => "Requested: {$ireq->uri}",
                 ]);
-                $ireq->response->setStatus($status);
-                $ireq->response->end($body);
+                $response->setStatus($status);
+                $response->end($body);
             }
         } elseif (!$error instanceof ClientException) {
             // Ignore uncaught ClientException -- applications aren't required to catch this
-            $this->onApplicationError($error, $ireq);
+            $this->onApplicationError($error, $ireq, $response);
         }
     }
 
-    private function onApplicationError(\Throwable $error, InternalRequest $ireq) {
+    private function onApplicationError(\Throwable $error, InternalRequest $ireq, Response $response) {
         $this->logger->error($error);
 
         if (($ireq->client->isDead & Client::CLOSED_WR) || $ireq->client->isExported) {
@@ -854,10 +853,10 @@ class Server {
             // doing further work. If an error arises at this point our only option
             // is to log the error (which we just did above).
             return;
-        } elseif (isset($ireq->response) && $ireq->response->state() & Response::STARTED) {
+        } elseif ($response->state() & Response::STARTED) {
             $this->close($ireq->client);
         } elseif (empty($ireq->filterErrorFlag)) {
-            $this->tryErrorResponse($error, $ireq);
+            $this->tryErrorResponse($error, $ireq, $response);
         } else {
             $this->tryFilterErrorResponse($error, $ireq);
         }
@@ -874,8 +873,8 @@ class Server {
         while ($ireq->filterErrorFlag) {
             try {
                 $ireq->filterErrorFlag = false;
-                $this->initializeResponse($ireq);
-                $this->tryErrorResponse($error, $ireq);
+                $response = $this->initializeResponse($ireq);
+                $this->tryErrorResponse($error, $ireq, $response);
             } catch (ClientException $error) {
                 return;
             } catch (\Throwable $error) {
@@ -885,7 +884,7 @@ class Server {
         }
     }
 
-    private function tryErrorResponse(\Throwable $error, InternalRequest $ireq) {
+    private function tryErrorResponse(\Throwable $error, InternalRequest $ireq, Response $response) {
         try {
             $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
             $msg = ($this->options->debug) ? "<pre>{$error}</pre>" : "<p>Something went wrong ...</p>";
@@ -893,9 +892,9 @@ class Server {
                 "sub_heading" =>"Requested: {$ireq->uri}",
                 "msg" => $msg,
             ]);
-            $ireq->response->setStatus(HTTP_STATUS["INTERNAL_SERVER_ERROR"]);
-            $ireq->response->setHeader("Connection", "close");
-            $ireq->response->end($body);
+            $response->setStatus(HTTP_STATUS["INTERNAL_SERVER_ERROR"]);
+            $response->setHeader("Connection", "close");
+            $response->end($body);
         } catch (ClientException $error) {
             return;
         } catch (\Throwable $error) {

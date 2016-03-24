@@ -11,18 +11,12 @@ class InternalRequest {
     public $client;
     /** @var Vhost */
     public $vhost;
-    /** @var callable|null */
-    public $preAppResponder;
-    /** @var Response */
-    public $response;
     /** @var \Generator */
     public $responseWriter;
     /** @var array */
     public $badFilterKeys = [];
     /** @var boolean */
     public $filterErrorFlag;
-    /** @var boolean */
-    public $isServerStopping;
     /** @var integer */
     public $streamId;
     /** @var string|array literal trace for HTTP/1, for HTTP/2 an array of [name, value] arrays in the original order */

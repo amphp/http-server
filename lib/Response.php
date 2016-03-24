@@ -47,11 +47,12 @@ interface Response {
     public function setHeader(string $field, string $value): Response;
 
     /**
-     *
+     * Provides an easy API to set cookie headers
+     * Those who prefer using addHeader() may do so.
      *
      * @param string $name
      * @param string $value
-     * @param array $flags
+     * @param array $flags Shall be an array of keys/values as per https://tools.ietf.org/html/rfc6265#section-5.2.1
      * @return self
      */
     public function setCookie(string $name, string $value, array $flags = []): Response;
@@ -61,7 +62,7 @@ interface Response {
      *
      * This method may be repeatedly called to stream the response body.
      * Applications that can afford to buffer an entire response in memory or
-     * can wait for all body data to generate may use Response::send() to output
+     * can wait for all body data to generate may use Response::end() to output
      * the entire response in a single call.
      *
      * Note: Headers are sent upon the first invocation of Response::stream().
@@ -75,7 +76,7 @@ interface Response {
      * Request that buffered stream data be flushed to the client
      *
      * This method only makes sense when streaming output via Response::stream().
-     * Invoking it before calling stream() or after send()/end() is a logic error.
+     * Invoking it before calling stream() or after end() is a logic error.
      */
     public function flush();
 

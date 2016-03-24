@@ -585,9 +585,9 @@ class Http1Driver implements HttpDriver {
         }
 
         $remainingKeepAlives = $ireq->client->remainingKeepAlives;
-        if ($shouldClose || $ireq->isServerStopping || $remainingKeepAlives === 0) {
+        if ($shouldClose || $remainingKeepAlives <= 0) {
             $headers["connection"] = ["close"];
-        } elseif (isset($remainingKeepAlives)) {
+        } elseif ($remainingKeepAlives < PHP_INT_MAX) {
             $keepAlive = "timeout={$options->keepAliveTimeout}, max={$remainingKeepAlives}";
             $headers["keep-alive"] = [$keepAlive];
         } else {
