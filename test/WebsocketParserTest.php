@@ -247,6 +247,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                 public function __construct($test, $client) {
                     $this->test = $test;
                     $this->client = $client;
+                    $this->client->serverPort = 80;
                     $this->client->httpDriver = $this;
                 }
 

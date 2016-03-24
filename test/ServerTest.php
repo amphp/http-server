@@ -38,6 +38,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             public function __construct($test) {
                 $this->test = $test;
                 $this->client = new Client;
+                $this->client->serverPort = 80;
                 $this->client->httpDriver = $this;
             }
 

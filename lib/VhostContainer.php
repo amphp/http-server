@@ -112,7 +112,7 @@ class VhostContainer implements \Countable {
     }
 
     /**
-     * Select a virtual host match for the specified request according to RFC 2616 criteria
+     * Select a virtual host match for the specified request according to RFC 7230 criteria
      *
      * @param \Aerys\InternalRequest $ireq
      * @return Vhost|null Returns a Vhost object and boolean TRUE if a valid host selected, FALSE otherwise
@@ -121,11 +121,9 @@ class VhostContainer implements \Countable {
      */
     public function selectHost(InternalRequest $ireq) {
         if (isset($ireq->uriHost)) {
-            return $this->selectHostByAbsoluteUri($ireq);
-        } elseif (empty($ireq->headers["host"])) {
-            return null;
+            return $this->selectHostByAuthority($ireq);
         } else {
-            return $this->selectHostByAuthority($ireq, $ireq->headers["host"][0]);
+            return null;
         }
 
         // If null is returned a stream must return 400 for HTTP/1.1 requests and use the default
@@ -149,34 +147,10 @@ class VhostContainer implements \Countable {
         }
     }
 
-    /**
-     * @TODO How to handle absolute URIs for forward proxy use-cases? The best way to do this is
-     *       probably to set a "proxy mode" flag on the collection and disallow more than a single
-     *       virtual host when in this mode.
-     */
-    private function selectHostByAbsoluteUri(InternalRequest $ireq) {
-        $port = $ireq->uriPort ?? ($ireq->client->isEncrypted ? 443 : 80);
-        $vhostId = "{$ireq->uriHost}:{$port}";
-
-        return $this->selectHostByAuthority($ireq, $vhostId);
-    }
-
-    private function selectHostByAuthority(InternalRequest $ireq, string $explicitHostId) {
-        if ($portStartPos = strrpos($explicitHostId, "]")) {
-            $ipComparison = substr($explicitHostId, 1, $portStartPos - 1);
-            $port = substr($explicitHostId, $portStartPos + 2);
-            $port = ($port === FALSE) ? ($ireq->client->isEncrypted ? "443" : "80") : $port;
-        } elseif ($portStartPos = strrpos($explicitHostId, ":")) {
-            $ipComparison = substr($explicitHostId, 0, $portStartPos);
-            $port = substr($explicitHostId, $portStartPos + 1);
-        } else {
-            $port = $ireq->client->isEncrypted ? "443" : "80";
-            $ipComparison = $explicitHostId;
-            $explicitHostId .= ":{$port}";
-        }
-
-        $wildcardHost = "0.0.0.0:{$port}";
-        $ipv6WildcardHost = "[::]:{$port}";
+    private function selectHostByAuthority(InternalRequest $ireq) {
+        $explicitHostId = "{$ireq->uriHost}:{$ireq->uriPort}";
+        $wildcardHost = "0.0.0.0:{$ireq->uriPort}";
+        $ipv6WildcardHost = "[::]:{$ireq->uriPort}";
 
         if (isset($this->vhosts[$explicitHostId])) {
             $vhost = $this->vhosts[$explicitHostId];
@@ -185,11 +159,19 @@ class VhostContainer implements \Countable {
         } elseif (isset($this->vhosts[$ipv6WildcardHost])) {
             $vhost = $this->vhosts[$ipv6WildcardHost];
         } elseif ($this->cachedVhostCount !== 1) {
-            $vhost = null;
-        } elseif (!@inet_pton($ipComparison)) {
-            $vhost = null;
-        } elseif (!(($vhost = $this->getDefaultHost()) && $vhost->getPorts($ipComparison))) {
-            $vhost = null;
+            return null;
+        } else {
+            $ipComparison = $ireq->uriHost;
+
+            if (!@inet_pton($ipComparison)) {
+                $ipComparison = substr($ipComparison, 1, -1); // IPv6 braces
+                if (!@inet_pton($ipComparison)) {
+                    return null;
+                }
+            }
+            if (!(($vhost = $this->getDefaultHost()) && in_array($ireq->uriPort, $vhost->getPorts($ipComparison)))) {
+                return null;
+            }
         }
 
         // IMPORTANT: Wildcard IP hosts without names that are running both encrypted and plaintext
@@ -197,8 +179,8 @@ class VhostContainer implements \Countable {
         // displaying unencrypted data as a result of carefully crafted Host headers. This is an
         // extreme edge case but it's potentially exploitable without this check.
         // DO NOT REMOVE THIS UNLESS YOU'RE SURE YOU KNOW WHAT YOU'RE DOING.
-        if ($vhost && $vhost->isEncrypted() != $ireq->client->isEncrypted) {
-            $vhost = null;
+        if ($vhost->isEncrypted() != $ireq->client->isEncrypted) {
+            return null;
         }
 
         return $vhost;

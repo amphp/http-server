@@ -19,9 +19,11 @@ class VhostTest extends \PHPUnit_Framework_TestCase {
 
         $ireq = new InternalRequest;
         $ireq->client = new Client;
-        $ireq->headers["host"][0] = "localhost";
-        $this->assertEquals($localvhost, $vhosts->selectHost($ireq));
-        $ireq->headers["host"][0] = "[::]:80";
+        $ireq->uriHost = "[::1]";
+        $ireq->uriPort = 8080;
+        $this->assertEquals(null, $vhosts->selectHost($ireq));
+        $ireq->uriHost = "127.0.0.1";
+        $ireq->uriPort = 80;
         $this->assertEquals($vhost, $vhosts->selectHost($ireq));
 
         $ireq->uriRaw = "http://localhost/";

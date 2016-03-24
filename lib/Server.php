@@ -687,17 +687,27 @@ class Server {
         if (stripos($uri, "http://") === 0 || stripos($uri, "https://") === 0) {
             $uri = parse_url($uri);
             $ireq->uriHost = $uri["host"];
-            $ireq->uriPort = isset($uri["port"]) ? (int) $uri["port"] : 80;
+            $ireq->uriPort = isset($uri["port"]) ? (int) $uri["port"] : $client->serverPort;
             $ireq->uriPath = $uri["path"];
             $ireq->uriQuery = $uri["query"] ?? "";
             $ireq->uri = isset($uri_query) ? "{$uri['path']}?{$uri['query']}" : $uri['path'];
-        } elseif ($qPos = strpos($uri, '?')) {
-            $ireq->uriQuery = substr($uri, $qPos + 1);
-            $ireq->uriPath = substr($uri, 0, $qPos);
-            $ireq->uri = "{$ireq->uriPath}?{$ireq->uriQuery}";
         } else {
-            $ireq->uri = $ireq->uriPath = $uri;
-            $ireq->uriQuery = "";
+            if ($qPos = strpos($uri, '?')) {
+                $ireq->uriQuery = substr($uri, $qPos + 1);
+                $ireq->uriPath = substr($uri, 0, $qPos);
+                $ireq->uri = "{$ireq->uriPath}?{$ireq->uriQuery}";
+            } else {
+                $ireq->uri = $ireq->uriPath = $uri;
+                $ireq->uriQuery = "";
+            }
+            $host = $ireq->headers["host"][0] ?? "";
+            if (($colon = strrpos($host, ":")) !== false) {
+                $ireq->uriHost = substr($host, 0, $colon);
+                $ireq->uriPort = (int) substr($host, $colon + 1);
+            } else {
+                $ireq->uriHost = $host;
+                $ireq->uriPort = $client->serverPort;
+            }
         }
 
         return $ireq;
