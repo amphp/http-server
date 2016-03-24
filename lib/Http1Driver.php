@@ -120,7 +120,7 @@ class Http1Driver implements HttpDriver {
         do {
             $msgs .= $msgPart;
 
-            if ($msgPart === false || \strlen($msgs) > $client->options->outputBufferSize) {
+            if ($msgPart === false || \strlen($msgs) >= $client->options->outputBufferSize) {
                 $client->writeBuffer .= $msgs;
                 ($this->responseWriter)($client);
                 $msgs = "";
@@ -230,7 +230,7 @@ class Http1Driver implements HttpDriver {
                     $startLineAndHeaders = \substr($buffer, 0, $headerPos + 2);
                     $buffer = (string) \substr($buffer, $headerPos + 4);
                     break;
-                } elseif ($maxHeaderSize > 0 && strlen($buffer) > $maxHeaderSize) {
+                } elseif (\strlen($buffer) > $maxHeaderSize) {
                     $error = "Bad Request: header size violation";
                     break 2;
                 }

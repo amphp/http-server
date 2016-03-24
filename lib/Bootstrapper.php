@@ -50,8 +50,8 @@ class Bootstrapper {
                 "Invalid AERYS_OPTIONS constant: expected array, got " . gettype(AERYS_OPTIONS)
             );
         }
-        if ($console->isArgDefined("debug")) {
-            $options["debug"] = true;
+        if (!array_key_exists("debug", $options)) {
+            $options["debug"] = $console->isArgDefined("debug");
         }
 
         $options["configPath"] = $configFile;

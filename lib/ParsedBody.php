@@ -23,7 +23,7 @@ class ParsedBody {
     }
 
     /**
-     * Fetch an array parameter (or null if it doesn't exist)
+     * Fetch an array parameter (or empty array if it doesn't exist)
      *
      * @param string $name
      * @return array
@@ -34,13 +34,23 @@ class ParsedBody {
 
     /**
      * Contains an array("filename" => $name, "mime" => $mimetype)
-     * In case a filename is provided, mime is always set
+     * Elements may be missing, but in case a filename is provided, mime is always set
+     *
+     * @param string $name
+     * @return array|null
+     */
+    public function getMetadata(string $name) {
+        return $this->metadata[$name][0] ?? null;
+    }
+
+    /**
+     * Fetch an array of metadata
      *
      * @param string $name
      * @return array
      */
-    public function getMetadata(string $name) {
-        return $this->metadata[$name] ?? null;
+    public function getMetadataArray(string $name): array {
+        return $this->metadata[$name] ?? [];
     }
 
     /**

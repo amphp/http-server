@@ -254,7 +254,7 @@ class Http2Driver implements HttpDriver {
         while (($msgPart = yield) !== null) {
             $msgs .= $msgPart;
 
-            if ($msgPart === false || \strlen($msgs) > $client->options->outputBufferSize) {
+            if ($msgPart === false || \strlen($msgs) >= $client->options->outputBufferSize) {
                 $this->writeData($client, $msgs, $id, false);
                 $msgs = "";
             }

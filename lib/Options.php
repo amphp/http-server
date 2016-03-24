@@ -7,7 +7,7 @@ use Amp\Struct;
 class Options {
     use Struct;
 
-    private $debug = true;
+    private $debug;
     private $user = null;
     private $maxConnections = 1000;
     private $connectionsPerIP = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
@@ -93,6 +93,12 @@ class Options {
     }
 
     private function setDebug(bool $flag) {
+        if ($this->debug !== null) {
+            throw new \LogicException(
+                "Debug mode can't be altered at run-time"
+            );
+        }
+
         $this->debug = $flag;
     }
 
@@ -270,7 +276,7 @@ class Options {
     private function setDeflateEnable(bool $flag) {
         if ($flag && !\extension_loaded("zlib")) {
             throw new \DomainException(
-                "Cannot enable deflate negotiation: ext/zlib required"
+                "Cannot enable deflate negotiation: zlib module required"
             );
         }
 
@@ -288,9 +294,9 @@ class Options {
     }
 
     private function setDeflateBufferSize(int $bytes) {
-        if ($bytes < 0) {
+        if ($bytes <= 0) {
             throw new \DomainException(
-                "Deflate buffer size must be greater than or equal to zero bytes"
+                "Deflate buffer size must be greater than zero bytes"
             );
         }
 
@@ -308,9 +314,9 @@ class Options {
     }
 
     private function setOutputBufferSize(int $bytes) {
-        if ($bytes < 0) {
+        if ($bytes <= 0) {
             throw new \DomainException(
-                "Output buffer size must be greater than or equal to zero bytes"
+                "Output buffer size must be greater than zero bytes"
             );
         }
 
