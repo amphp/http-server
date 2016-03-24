@@ -254,8 +254,8 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                     $this->emit = $emit;
                 }
 
-                public function filters(InternalRequest $ireq): array {
-                    return $ireq->vhost->getFilters();
+                public function filters(InternalRequest $ireq, array $filters): array {
+                    return $filters;
                 }
 
                 public function writer(InternalRequest $ireq): \Generator {

@@ -9,8 +9,6 @@ class InternalRequest {
 
     /** @var Client */
     public $client;
-    /** @var Vhost */
-    public $vhost;
     /** @var \Generator */
     public $responseWriter;
     /** @var array */

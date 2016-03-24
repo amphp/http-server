@@ -13,7 +13,7 @@ interface HttpDriver {
     const BAD_VERSION = 1;
 
     public function setup(callable $parseEmitter, callable $responseWriter);
-    public function filters(InternalRequest $ireq): array;
+    public function filters(InternalRequest $ireq, array $userFilters): array;
     public function writer(InternalRequest $ireq): \Generator;
     /** Note that you *can* rely on keep-alive timeout terminating the Body with a ClientException. No need to manually handle that here. */
     public function upgradeBodySize(InternalRequest $ireq);

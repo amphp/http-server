@@ -700,8 +700,6 @@ class Server {
             $ireq->uriQuery = "";
         }
 
-        $ireq->vhost = $this->vhosts->selectHost($ireq);
-
         return $ireq;
     }
 
@@ -718,24 +716,22 @@ class Server {
     }
 
     private function respond(InternalRequest $ireq) {
-        if (!isset($ireq->vhost)) {
-            $application = [$this, "sendPreAppInvalidHostResponse"];
-            $ireq->vhost = $this->vhosts->getDefaultHost();
-        } elseif ($this->stopPromisor) {
-            $application = [$this, "sendPreAppServiceUnavailableResponse"];
-        } elseif (!in_array($ireq->method, $this->options->allowedMethods)) {
-            $application = [$this, "sendPreAppMethodNotAllowedResponse"];
-        } elseif ($ireq->method === "TRACE") {
-            $application = [$this, "sendPreAppTraceResponse"];
-            $this->setTrace($ireq);
-        } elseif ($ireq->method === "OPTIONS" && $ireq->uriRaw === "*") {
-            $application = [$this, "sendPreAppOptionsResponse"];
-        } else {
-            $application = $ireq->vhost->getApplication();
-        }
-
         $ireq->client->pendingResponses++;
-        $this->tryApplication($ireq, $application);
+
+        if ($this->stopPromisor) {
+            $this->tryApplication($ireq, [$this, "sendPreAppServiceUnavailableResponse"], []);
+        } elseif (!in_array($ireq->method, $this->options->allowedMethods)) {
+            $this->tryApplication($ireq, [$this, "sendPreAppMethodNotAllowedResponse"], []);
+        } elseif (!$vhost = $this->vhosts->selectHost($ireq)) {
+            $this->tryApplication($ireq, [$this, "sendPreAppInvalidHostResponse"], []);
+        } elseif ($ireq->method === "TRACE") {
+            $this->setTrace($ireq);
+            $this->tryApplication($ireq, [$this, "sendPreAppTraceResponse"], []);
+        } elseif ($ireq->method === "OPTIONS" && $ireq->uriRaw === "*") {
+            $this->tryApplication($ireq, [$this, "sendPreAppOptionsResponse"], []);
+        } else {
+            $this->tryApplication($ireq, $vhost->getApplication(), $vhost->getFilters());
+        }
     }
 
     private function sendPreAppServiceUnavailableResponse(Request $request, Response $response) {
@@ -776,15 +772,15 @@ class Server {
         $response->end(null);
     }
 
-    private function tryApplication(InternalRequest $ireq, callable $application) {
-        $response = $this->initializeResponse($ireq);
+    private function tryApplication(InternalRequest $ireq, callable $application, array $filters) {
+        $response = $this->initializeResponse($ireq, $filters);
         $request = new StandardRequest($ireq);
 
         try {
             $out = ($application)($request, $response);
             if ($out instanceof \Generator) {
                 $promise = resolve($out);
-                $promise->when($this->onCoroutineAppResolve, [$ireq, $response]);
+                $promise->when($this->onCoroutineAppResolve, [$ireq, $response, $filters]);
             } elseif ($response->state() & Response::STARTED) {
                 $response->end();
             } else {
@@ -807,13 +803,13 @@ class Server {
         } catch (ClientException $error) {
             // Do nothing -- responder actions aren't required to catch this
         } catch (\Throwable $error) {
-            $this->onApplicationError($error, $ireq, $response);
+            $this->onApplicationError($error, $ireq, $response, $filters);
         }
     }
 
-    private function initializeResponse(InternalRequest $ireq): Response {
+    private function initializeResponse(InternalRequest $ireq, array $filters): Response {
         $ireq->responseWriter = $ireq->client->httpDriver->writer($ireq);
-        $filters = $ireq->client->httpDriver->filters($ireq);
+        $filters = $ireq->client->httpDriver->filters($ireq, $filters);
         if ($ireq->badFilterKeys) {
             $filters = array_diff_key($filters, array_flip($ireq->badFilterKeys));
         }
@@ -825,7 +821,7 @@ class Server {
     }
 
     private function onCoroutineAppResolve($error, $result, $info) {
-        list($ireq, $response) = $info;
+        list($ireq, $response, $filters) = $info;
         if (empty($error)) {
             if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
                 return;
@@ -841,11 +837,11 @@ class Server {
             }
         } elseif (!$error instanceof ClientException) {
             // Ignore uncaught ClientException -- applications aren't required to catch this
-            $this->onApplicationError($error, $ireq, $response);
+            $this->onApplicationError($error, $ireq, $response, $filters);
         }
     }
 
-    private function onApplicationError(\Throwable $error, InternalRequest $ireq, Response $response) {
+    private function onApplicationError(\Throwable $error, InternalRequest $ireq, Response $response, array $filters) {
         $this->logger->error($error);
 
         if (($ireq->client->isDead & Client::CLOSED_WR) || $ireq->client->isExported) {
@@ -856,9 +852,9 @@ class Server {
         } elseif ($response->state() & Response::STARTED) {
             $this->close($ireq->client);
         } elseif (empty($ireq->filterErrorFlag)) {
-            $this->tryErrorResponse($error, $ireq, $response);
+            $this->tryErrorResponse($error, $ireq, $response, $filters);
         } else {
-            $this->tryFilterErrorResponse($error, $ireq);
+            $this->tryFilterErrorResponse($error, $ireq, $filters);
         }
     }
 
@@ -869,12 +865,12 @@ class Server {
      * filters. To handle the scenario where multiple filters error we need to continue looping
      * until $ireq->filterErrorFlag no longer reports as true.
      */
-    private function tryFilterErrorResponse(\Throwable $error, InternalRequest $ireq) {
+    private function tryFilterErrorResponse(\Throwable $error, InternalRequest $ireq, array $filters) {
         while ($ireq->filterErrorFlag) {
             try {
                 $ireq->filterErrorFlag = false;
-                $response = $this->initializeResponse($ireq);
-                $this->tryErrorResponse($error, $ireq, $response);
+                $response = $this->initializeResponse($ireq, $filters);
+                $this->tryErrorResponse($error, $ireq, $response, $filters);
             } catch (ClientException $error) {
                 return;
             } catch (\Throwable $error) {
@@ -884,7 +880,7 @@ class Server {
         }
     }
 
-    private function tryErrorResponse(\Throwable $error, InternalRequest $ireq, Response $response) {
+    private function tryErrorResponse(\Throwable $error, InternalRequest $ireq, Response $response, array $filters) {
         try {
             $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
             $msg = ($this->options->debug) ? "<pre>{$error}</pre>" : "<p>Something went wrong ...</p>";
@@ -899,7 +895,7 @@ class Server {
             return;
         } catch (\Throwable $error) {
             if ($ireq->filterErrorFlag) {
-                $this->tryFilterErrorResponse($error, $ireq);
+                $this->tryFilterErrorResponse($error, $ireq, $filters);
             } else {
                 $this->logger->error($error);
                 $this->close($ireq->client);

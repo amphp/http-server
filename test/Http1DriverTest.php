@@ -631,9 +631,8 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $ireq->protocol = "1.1";
         $ireq->responseWriter = $driver->writer($ireq);
         $ireq->httpDate = "date";
-        $ireq->vhost = new class { function getFilters() { return []; }}; // good enough for here...
         $ireq->method = "GET";
-        $writer = \Aerys\responseCodec(\Aerys\responseFilter($driver->filters($ireq), $ireq), $ireq);
+        $writer = \Aerys\responseCodec(\Aerys\responseFilter($driver->filters($ireq, []), $ireq), $ireq);
         $writer->send($rawHeaders);
         foreach (str_split($data) as $c) {
             $writer->send($c);
@@ -662,7 +661,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $http2 = new class implements HttpDriver {
             public function setup(callable $parseEmitter, callable $responseWriter) {}
             public function upgradeBodySize(InternalRequest $ireq) {}
-            public function filters(InternalRequest $ireq): array { return []; }
+            public function filters(InternalRequest $ireq, array $filters): array { return $filters; }
             public function writer(InternalRequest $ireq): \Generator { yield; }
 
             public $received = "";
@@ -675,7 +674,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         (function() use ($http2) {
             $this->http2 = $http2;
         })->call($driver);
-        $driver->filters($ireq);
+        $driver->filters($ireq, []);
 
         $this->assertEquals([
             ":status" => \Aerys\HTTP_STATUS["SWITCHING_PROTOCOLS"],
@@ -691,7 +690,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $http2 = new class implements HttpDriver {
             public function setup(callable $parseEmitter, callable $responseWriter) {}
             public function upgradeBodySize(InternalRequest $ireq) {}
-            public function filters(InternalRequest $ireq): array { return []; }
+            public function filters(InternalRequest $ireq, array $filters): array { return $filters; }
             public function writer(InternalRequest $ireq): \Generator { yield; }
 
             public $received;

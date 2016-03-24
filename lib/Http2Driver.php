@@ -61,12 +61,12 @@ class Http2Driver implements HttpDriver {
         $this->write = $write;
     }
 
-    public function filters(InternalRequest $ireq): array {
+    public function filters(InternalRequest $ireq, array $userFilters): array {
         $filters = [
             [$this, "responseInitFilter"],
             '\Aerys\genericResponseFilter',
         ];
-        if ($userFilters = $ireq->vhost->getFilters()) {
+        if ($userFilters) {
             $filters = array_merge($filters, $userFilters);
         }
         if ($ireq->client->options->deflateEnable) {

@@ -21,7 +21,7 @@ class Http1Driver implements HttpDriver {
         $this->http2->setup($parseEmitter, $responseWriter);
     }
 
-    public function filters(InternalRequest $ireq): array {
+    public function filters(InternalRequest $ireq, array $userFilters): array {
         // We need this in filters to be able to return HTTP/2.0 filters; if we allow HTTP/1.1 filters to be returned, we have lost
         if (isset($ireq->headers["upgrade"][0]) &&
             $ireq->headers["upgrade"][0] === "h2c" &&
@@ -66,14 +66,14 @@ class Http1Driver implements HttpDriver {
             unset($ireq->headers["host"]);
             */
 
-            return $client->httpDriver->filters($ireq);
+            return $client->httpDriver->filters($ireq, $userFilters);
         }
 
         $filters = [
             [$this, "responseInitFilter"],
             '\Aerys\genericResponseFilter',
         ];
-        if ($userFilters = $ireq->vhost->getFilters()) {
+        if ($userFilters) {
             $filters = array_merge($filters, $userFilters);
         }
         if ($ireq->client->options->deflateEnable) {
