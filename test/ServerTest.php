@@ -67,7 +67,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             }
 
             public function emit($emit) {
-                ($this->emit)($emit, $this->client);
+                ($this->emit)($this->client, ...$emit);
             }
         });
         $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));

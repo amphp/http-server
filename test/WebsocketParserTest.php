@@ -272,7 +272,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                 }
 
                 public function emit() {
-                    ($this->emit)([HttpDriver::RESULT, [
+                    ($this->emit)($this->client, HttpDriver::RESULT, [
                         "id" => 0,
                         "protocol" => "1.1",
                         "method" => "GET",
@@ -280,7 +280,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                         "headers" => ["host" => ["localhost"], "sec-websocket-key" => ["x3JJHMbDL1EzLkh9GBhXDw=="], "sec-websocket-version" => ["13"], "upgrade" => ["websocket"], "connection" => ["keep-alive, upgrade"]],
                         "trace" => [["host", "localhost"], /* irrelevant ... */],
                         "body" => "",
-                    ], null], $this->client);
+                    ]);
                 }
 
                 public function upgradeBodySize(InternalRequest $ireq) {}

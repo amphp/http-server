@@ -21,9 +21,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $parseResult = null;
         $errorMsg = null;
 
-        $emitCallback = function($emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
+        $emitCallback = function(...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
             $invoked++;
-            list($resultCode, $parseResult, $errorMsg) = $emitStruct;
+            list(, $resultCode, $parseResult, $errorMsg) = $emitStruct;
         };
 
         $client = new Client;
@@ -50,9 +50,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $parseResult = null;
         $errorMsg = null;
 
-        $emitCallback = function($emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
+        $emitCallback = function(...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
             $invoked++;
-            list($resultCode, $parseResult, $errorMsg) = $emitStruct;
+            list(, $resultCode, $parseResult, $errorMsg) = $emitStruct;
         };
 
         $client = new Client;
@@ -84,9 +84,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $parseResult = null;
         $body = "";
 
-        $emitCallback = function($emitStruct) use (&$invoked, &$parseResult, &$body) {
+        $emitCallback = function(...$emitStruct) use (&$invoked, &$parseResult, &$body) {
             $invoked++;
-            list($resultCode, $parseResult, $errorStruct) = $emitStruct;
+            list(, $resultCode, $parseResult, $errorStruct) = $emitStruct;
             $this->assertNull($errorStruct);
             $body .= $parseResult["body"];
         };
@@ -115,9 +115,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $parseResult = null;
         $body = "";
 
-        $emitCallback = function($emitStruct) use (&$invoked, &$parseResult, &$body) {
+        $emitCallback = function(...$emitStruct) use (&$invoked, &$parseResult, &$body) {
             $invoked++;
-            list($resultCode, $parseResult, $errorStruct) = $emitStruct;
+            list(, $resultCode, $parseResult, $errorStruct) = $emitStruct;
             $this->assertNull($errorStruct);
             $body .= $parseResult["body"];
         };
@@ -155,9 +155,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $invoked = 0;
         $body = "";
 
-        $emitCallback = function($emitStruct) use (&$invoked, &$body) {
+        $emitCallback = function(...$emitStruct) use (&$invoked, &$body) {
             $invoked++;
-            $body .= $emitStruct[1]["body"];
+            $body .= $emitStruct[2]["body"];
         };
 
         $client = new Client;
@@ -178,9 +178,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
     function testStreamingBodyParseEmit() {
         $body = "";
         $invoked = 0;
-        $emitCallback = function($emitStruct) use (&$invoked, &$body) {
+        $emitCallback = function(...$emitStruct) use (&$invoked, &$body) {
             $invoked++;
-            list($parseCode, $parseResultArr) = $emitStruct;
+            list(, $parseCode, $parseResultArr) = $emitStruct;
             switch($invoked) {
                 case 1:
                     $this->assertSame(HttpDriver::ENTITY_HEADERS, $parseCode);
@@ -198,7 +198,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
                     $this->assertSame(HttpDriver::ENTITY_RESULT, $parseCode);
                     break;
             }
-            $body .= $emitStruct[1]["body"];
+            $body .= $emitStruct[2]["body"];
         };
 
         $client = new Client;
@@ -241,9 +241,9 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $expectedBody = "woot!test";
         $invoked = 0;
         $body = "";
-        $emitCallback = function($emitStruct) use (&$invoked, &$body) {
+        $emitCallback = function(...$emitStruct) use (&$invoked, &$body) {
             $invoked++;
-            $body .= $emitStruct[1]["body"];
+            $body .= $emitStruct[2]["body"];
         };
 
         $client = new Client;
@@ -534,10 +534,10 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $body = "";
         $client = new Client;
 
-        $emitCallback = function($emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
+        $emitCallback = function(...$emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
             $client->pendingResponses = 1;
             $invoked++;
-            list($resultCode, $parseResult, $errorStruct) = $emitStruct;
+            list(, $resultCode, $parseResult, $errorStruct) = $emitStruct;
             $this->assertNull($errorStruct);
             if ($resultCode != HttpDriver::SIZE_WARNING) {
                 $body .= $parseResult["body"];
@@ -572,10 +572,10 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $body = "";
         $client = new Client;
 
-        $emitCallback = function($emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
+        $emitCallback = function(...$emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
             $client->pendingResponses = 1;
             $invoked++;
-            list($resultCode, $parseResult, $errorStruct) = $emitStruct;
+            list(, $resultCode, $parseResult, $errorStruct) = $emitStruct;
             $this->assertNull($errorStruct);
             if ($resultCode != HttpDriver::SIZE_WARNING) {
                 $body .= $parseResult["body"];

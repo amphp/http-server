@@ -50,8 +50,8 @@ class Http2DriverTest extends \PHPUnit_Framework_TestCase {
             }
         };
 
-        $emitCallback = function($emitStruct) use (&$client, &$invoked, &$parseResult, &$body) {
-            list($resultCode, $tmpResult, $errorStruct) = $emitStruct;
+        $emitCallback = function(...$emitStruct) use (&$client, &$invoked, &$parseResult, &$body) {
+            list(, $resultCode, $tmpResult, $errorStruct) = $emitStruct;
             if (!$invoked++) {
                 $parseResult = $tmpResult;
             }
