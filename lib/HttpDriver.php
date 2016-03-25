@@ -15,7 +15,7 @@ interface HttpDriver {
     public function setup(callable $parseEmitter, callable $responseWriter);
     public function filters(InternalRequest $ireq, array $userFilters): array;
     public function writer(InternalRequest $ireq): \Generator;
-    /** Note that you *can* rely on keep-alive timeout terminating the Body with a ClientException. No need to manually handle that here. */
     public function upgradeBodySize(InternalRequest $ireq);
+    /** Note that you *can* rely on keep-alive timeout terminating the Body with a ClientException, when no further data comes in. No need to manually handle that here. */
     public function parser(Client $client): \Generator;
 }

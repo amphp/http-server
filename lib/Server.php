@@ -689,7 +689,7 @@ class Server {
             $ireq->uriPort = isset($uri["port"]) ? (int) $uri["port"] : $client->serverPort;
             $ireq->uriPath = $uri["path"];
             $ireq->uriQuery = $uri["query"] ?? "";
-            $ireq->uri = isset($uri_query) ? "{$uri['path']}?{$uri['query']}" : $uri['path'];
+            $ireq->uri = isset($uri["query"]) ? "{$uri['path']}?{$uri['query']}" : $uri["path"];
         } else {
             if ($qPos = strpos($uri, '?')) {
                 $ireq->uriQuery = substr($uri, $qPos + 1);
