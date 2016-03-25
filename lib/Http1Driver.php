@@ -315,11 +315,11 @@ class Http1Driver implements HttpDriver {
             }
 
             if (!$hasBody) {
-                ($this->parseEmitter)([HttpDriver::RESULT, $parseResult, null], $client);
+                ($this->parseEmitter)($client, HttpDriver::RESULT, $parseResult, null);
                 continue;
             }
 
-            ($this->parseEmitter)([HttpDriver::ENTITY_HEADERS, $parseResult, null], $client);
+            ($this->parseEmitter)($client, HttpDriver::ENTITY_HEADERS, $parseResult, null);
             $body = "";
 
             if ($isChunked) {
@@ -402,7 +402,7 @@ class Http1Driver implements HttpDriver {
 
                             while ($bodyBufferSize < $remaining) {
                                 if ($bodyBufferSize >= $bodyEmitSize) {
-                                    ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
+                                    ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null);
                                     $body = '';
                                     $bodySize += $bodyBufferSize;
                                     $remaining -= $bodyBufferSize;
@@ -411,7 +411,7 @@ class Http1Driver implements HttpDriver {
                                 $bodyBufferSize = \strlen($body);
                             }
                             if ($remaining) {
-                                ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($body, 0, $remaining)], null], $client);
+                                ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($body, 0, $remaining)], null);
                                 $buffer = substr($body, $remaining);
                                 $body = "";
                                 $bodySize += $remaining;
@@ -425,7 +425,7 @@ class Http1Driver implements HttpDriver {
                                 continue;
                             }
                             
-                            ($this->parseEmitter)([HttpDriver::SIZE_WARNING, ["id" => 0], null], $client);
+                            ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
                             $client->parserEmitLock = true;
                             \Amp\disable($client->readWatcher);
                             $yield = yield;
@@ -460,7 +460,7 @@ class Http1Driver implements HttpDriver {
                         }
 
                         if ($bodyBufferSize >= $bodyEmitSize) {
-                            ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
+                            ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null);
                             $body = '';
                             $bodySize += $bodyBufferSize;
                             $bodyBufferSize = 0;
@@ -476,7 +476,7 @@ class Http1Driver implements HttpDriver {
                 }
                 
                 if ($body != "") {
-                    ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null], $client);
+                    ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null);
                 }
             } else {
                 $bodySize = 0;
@@ -486,7 +486,7 @@ class Http1Driver implements HttpDriver {
 
                     while ($bodySize + $bodyBufferSize < $bound) {
                         if ($bodyBufferSize >= $bodyEmitSize) {
-                            ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => $buffer], null], $client);
+                            ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $buffer], null);
                             $buffer = '';
                             $bodySize += $bodyBufferSize;
                         }
@@ -495,7 +495,7 @@ class Http1Driver implements HttpDriver {
                     }
                     $remaining = $bound - $bodySize;
                     if ($remaining) {
-                        ($this->parseEmitter)([HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($buffer, 0, $remaining)], null], $client);
+                        ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($buffer, 0, $remaining)], null);
                         $buffer = substr($buffer, $remaining);
                         $bodySize = $bound;
                     }
@@ -505,7 +505,7 @@ class Http1Driver implements HttpDriver {
                         if (!$client->pendingResponses) {
                             return;
                         }
-                        ($this->parseEmitter)([HttpDriver::SIZE_WARNING, ["id" => 0], null], $client);
+                        ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
                         $client->parserEmitLock = true;
                         \Amp\disable($client->readWatcher);
                         $yield = yield;
@@ -526,12 +526,12 @@ class Http1Driver implements HttpDriver {
 
             $client->streamWindow = $client->options->maxBodySize;
 
-            ($this->parseEmitter)([HttpDriver::ENTITY_RESULT, $parseResult, null], $client);
+            ($this->parseEmitter)($client, HttpDriver::ENTITY_RESULT, $parseResult, null);
         } while (true);
 
         // An error occurred...
         // stop parsing here ...
-        ($this->parseEmitter)([HttpDriver::ERROR, $parseResult, $error], $client);
+        ($this->parseEmitter)($client, HttpDriver::ERROR, $parseResult, $error);
         while (1) {
             yield;
         }

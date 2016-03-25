@@ -550,8 +550,7 @@ class Server {
         $client->requestParser->send($data);
     }
 
-    private function onParseEmit(array $parseStruct, Client $client) {
-        list($eventType, $parseResult, $errorStruct) = $parseStruct;
+    private function onParseEmit(Client $client, $eventType, $parseResult, $errorStruct = null) {
         switch ($eventType) {
             case HttpDriver::RESULT:
                 $this->onParsedMessageWithoutEntity($client, $parseResult);

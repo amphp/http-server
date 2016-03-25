@@ -222,7 +222,7 @@ class Http2Driver implements HttpDriver {
             $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::END_HEADERS, $ireq->streamId);
         }
 
-        ($this->emit)([HttpDriver::RESULT, $parseResult, null], $client);
+        ($this->emit)($client, HttpDriver::RESULT, $parseResult, null);
     }
 
     public function writer(InternalRequest $ireq): \Generator {
@@ -445,7 +445,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
         if (\strncmp($buffer, $preface, \strlen($preface)) !== 0) {
             $start = \strpos($buffer, "HTTP/") + 5;
             if ($start < \strlen($buffer)) {
-                ($this->emit)([HttpDriver::ERROR, ["protocol" => \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start)], HttpDriver::BAD_VERSION], $client);
+                ($this->emit)($client, HttpDriver::ERROR, ["protocol" => \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start)], HttpDriver::BAD_VERSION);
             }
             while (1) {
                 yield;
@@ -532,12 +532,12 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                     $body = \substr($buffer, 0, $length - $padding);
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                     if ($body != "") {
-                        ($this->emit)([$type, ["id" => $id, "protocol" => "2.0", "body" => $body], null], $client);
+                        ($this->emit)($client, $type, ["id" => $id, "protocol" => "2.0", "body" => $body], null);
                     }
                     $buffer = \substr($buffer, $length);
 
                     if ($remaining == 0 && ($flags & self::END_STREAM) !== "\0" && $length) {
-                        ($this->emit)([HttpDriver::SIZE_WARNING, ["id" => $id], null], $client);
+                        ($this->emit)($client, HttpDriver::SIZE_WARNING, ["id" => $id], null);
                     }
 
                     continue 2;
@@ -764,7 +764,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                     }
 
                     if ($error !== 0) {
-                        // ($this->emit)([HttpDriver::ERROR, ["body" => substr($buffer, 0, $length)], $error], $client);
+                        // ($this->emit)($client, HttpDriver::ERROR, ["body" => substr($buffer, 0, $length)], $error);
                     }
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer, 0, $length)."\n");
@@ -869,9 +869,9 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(".(\strlen($packed) - $pa
             $client->streamWindowBuffer[$id] = "";
 
             if ($streamEnd) {
-                ($this->emit)([HttpDriver::RESULT, $parseResult, null], $client);
+                ($this->emit)($client, HttpDriver::RESULT, $parseResult, null);
             } else {
-                ($this->emit)([HttpDriver::ENTITY_HEADERS, $parseResult, null], $client);
+                ($this->emit)($client, HttpDriver::ENTITY_HEADERS, $parseResult, null);
                 $bodyLens[$id] = 0;
             }
             continue;
