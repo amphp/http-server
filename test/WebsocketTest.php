@@ -60,7 +60,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function initEndpoint($ws, $timeoutTest = false) {
         $ireq = new InternalRequest();
         $ireq->client = $client = new Client;
-        list($sock, $client->socket) = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        list($sock, $client->socket) = stream_socket_pair(\stripos(PHP_OS, "win") === 0 ? STREAM_PF_INET : STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
         stream_set_blocking($client->socket, false);
         $server = new class extends Server {
             public $state;

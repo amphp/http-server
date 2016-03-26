@@ -276,7 +276,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     function testPreconditionFailure() {
         $root = new \Aerys\Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
-        $diskPath = realpath(self::fixturePath()."/index.htm");
+        $diskPath = realpath(self::fixturePath())."/index.htm";
         $request = $this->getMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
@@ -300,7 +300,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     function testPreconditionNotModified() {
         $root = new \Aerys\Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
-        $diskPath = realpath(self::fixturePath()."/index.htm");
+        $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
         $request = $this->getMock('Aerys\Request');
         $request->expects($this->once())
@@ -333,7 +333,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     function testPreconditionRangeFail() {
         $root = new \Aerys\Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
-        $diskPath = realpath(self::fixturePath()."/index.htm");
+        $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
         $request = $this->getMock('Aerys\Request');
         $request->expects($this->once())
@@ -360,7 +360,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     function testBadRange() {
         $root = new \Aerys\Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
-        $diskPath = realpath(self::fixturePath()."/index.htm");
+        $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
         $request = $this->getMock('Aerys\Request');
         $request->expects($this->once())
@@ -393,7 +393,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     function testValidRange($range, $cb) {
         $root = new \Aerys\Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
-        $diskPath = realpath(self::fixturePath()."/index.htm");
+        $diskPath = realpath(self::fixturePath())."/index.htm";
         $request = $this->getMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
