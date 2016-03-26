@@ -36,7 +36,7 @@
         "amphp/file": "^0.1.1",
         "amphp/socket": "^0.9",
         "league/climate": "^3",
-        "nikic/fast-route": "^0.4",
+        "nikic/fast-route": "^0.8",
         "psr/log": "^1"
     },
     "require-dev": {

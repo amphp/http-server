@@ -16,8 +16,6 @@ use Amp\{
 };
 
 class Router implements Bootable, Middleware, ServerObserver {
-    const CANONICAL_REDIRECT = 0;
-
     private $state = Server::STOPPED;
     private $bootLoader;
     private $routeDispatcher;
@@ -156,21 +154,17 @@ class Router implements Bootable, Middleware, ServerObserver {
             );
         }
 
-        /* never overload the canonicalRedirector */
         if ($action instanceof self) {
             /* merge routes in for better performance */
             foreach ($action->routes as $route) {
-                if ($route[2] !== self::CANONICAL_REDIRECT) {
-                    $route[2] = array_merge($this->actions, $route[2]);
-                }
+                $route[2] = array_merge($this->actions, $route[2]);
                 $this->routes[] = $route;
+                $this->actions = array_merge($this->actions, $action->actions);
             }
         } else {
             $this->actions[] = $action;
             foreach ($this->routes as &$route) {
-                if ($route[2] !== self::CANONICAL_REDIRECT) {
-                    $route[2][] = $action;
-                }
+                $route[2][] = $action;
             }
         }
 
@@ -178,7 +172,7 @@ class Router implements Bootable, Middleware, ServerObserver {
     }
 
     /**
-     * Prefix all the routes with a given prefix
+     * Prefix all the (already defined) routes with a given prefix
      *
      * @param string $prefix
      * @return self
@@ -190,6 +184,9 @@ class Router implements Bootable, Middleware, ServerObserver {
             foreach ($this->routes as &$route) {
                 $route[1] = "/$prefix$route[1]";
             }
+
+            $this->routes[] = ["*", "/$prefix/{path:.*}", $this->actions];
+            $this->actions = [];
         }
 
         return $this;
@@ -273,7 +270,20 @@ class Router implements Bootable, Middleware, ServerObserver {
             $canonicalUri = substr($uri, 0, -2);
             $redirectUri = substr($uri, 0, -1);
             $this->routes[] = [$method, $canonicalUri, $actions];
-            $this->routes[] = [$method, $redirectUri, self::CANONICAL_REDIRECT];
+            $this->routes[] = [$method, $redirectUri, [static function (Request $request, Response $response) {
+                $uri = $request->getUri();
+                if (stripos($uri, "?")) {
+                    list($path, $query) = explode("?", $uri, 2);
+                    $path = rtrim($path, "/");
+                    $redirectTo = "{$path}?{$query}";
+                } else {
+                    $redirectTo = $path = substr($uri, 0, -1);
+                }
+                $response->setStatus(HTTP_STATUS["FOUND"]);
+                $response->setHeader("Location", $redirectTo);
+                $response->setHeader("Content-Type", "text/plain; charset=utf-8");
+                $response->end("Canonical resource URI: {$path}");
+            }]];
         } else {
             $this->routes[] = [$method, $uri, $actions];
         }
@@ -297,24 +307,6 @@ class Router implements Bootable, Middleware, ServerObserver {
         $applications = [];
         $booted = [];
 
-        if ($actions === self::CANONICAL_REDIRECT) {
-            $actions = [static function (Request $request, Response $response) {
-                $uri = $request->getUri();
-                if (stripos($uri, "?")) {
-                    list($path, $query) = explode("?", $uri, 2);
-                    $path = rtrim($path, "/");
-                    $redirectTo = "{$path}?{$query}";
-                } else {
-                    $redirectTo = $path = substr($uri, 0, -1);
-                }
-                $response->setStatus(HTTP_STATUS["FOUND"]);
-                $response->setHeader("Location", $redirectTo);
-                $response->setHeader("Content-Type", "text/plain; charset=utf-8");
-                $response->end("Canonical resource URI: {$path}");
-            }];
-        }
-
-
         foreach ($actions as $key => $action) {
             if ($action instanceof Bootable) {
                 /* don't ever boot a Bootable twice */
@@ -336,9 +328,8 @@ class Router implements Bootable, Middleware, ServerObserver {
 
         if (empty($applications[1])) {
             if (empty($applications[0])) {
-                throw new \DomainException(
-                    "Each route must have at least one callable"
-                );
+                // in order to specify only middlewares (in combination with e.g. a fallback handler)
+                return [function() {}, $middlewares];
             } else {
                 return [$applications[0], $middlewares];
             }
