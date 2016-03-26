@@ -65,32 +65,6 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         ];
     }
 
-    /**
-     * @dataProvider provideRelativePathsAboveRoot
-     */
-    function testForbiddenResponseOnRelativePathAboveRoot($relativePath) {
-        $filesystem = $this->getMock('Amp\File\Driver');
-        $root = new \Aerys\Root(self::fixturePath(), $filesystem);
-        $request = $this->getMock("Aerys\\Request");
-        $request->expects($this->once())
-            ->method("getUri")
-            ->will($this->returnValue($relativePath))
-        ;
-        $response = $this->getMock("Aerys\\Response");
-        $response->expects($this->once())
-            ->method("setStatus")
-            ->with(\Aerys\HTTP_STATUS["FORBIDDEN"])
-        ;
-        $root->__invoke($request, $response);
-    }
-
-    function provideRelativePathsAboveRoot() {
-        return [
-            ["/../../../index.htm"],
-            ["/dir/../../"],
-        ];
-    }
-
     function testBasicFileResponse() {
         $root = new \Aerys\Root(self::fixturePath());
         $server = new class extends Server {
@@ -134,6 +108,35 @@ class RootTest extends \PHPUnit_Framework_TestCase {
 
         // Return so we can test cached responses in the next case
         return $root;
+    }
+
+    /**
+     * @depends testBasicFileResponse
+     * @dataProvider provideRelativePathsAboveRoot
+     */
+    function testForbiddenResponseOnRelativePathAboveRoot($relativePath, $root) {
+        $request = $this->getMock("Aerys\\Request");
+        $request->expects($this->once())
+            ->method("getUri")
+            ->will($this->returnValue($relativePath))
+        ;
+        $request->expects($this->any())
+            ->method("getMethod")
+            ->will($this->returnValue("GET"))
+        ;
+        $response = $this->getMock("Aerys\\Response");
+        $response->expects($this->once())
+            ->method("end")
+            ->with("test") // <-- the contents of the /index.htm fixture file
+        ;
+        $root->__invoke($request, $response);
+    }
+
+    function provideRelativePathsAboveRoot() {
+        return [
+            ["/../../../index.htm"],
+            ["/dir/../../"],
+        ];
     }
 
     /**

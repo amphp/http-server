@@ -97,7 +97,7 @@ function root(string $docroot, array $options = []): Bootable {
  * @param Request $req
  * @return BodyParser (returns a ParsedBody instance when yielded)
  */
-function parseBody(Request $req, $size = 0) {
+function parseBody(Request $req, $size = 0): BodyParser {
     return new BodyParser($req, [
         "input_vars" => $req->getOption("maxInputVars"),
         "field_len" => $req->getOption("maxFieldLen"),

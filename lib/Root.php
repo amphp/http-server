@@ -74,26 +74,16 @@ class Root implements ServerObserver {
      */
     public function __invoke(Request $request, Response $response) {
         $uri = $request->getLocalVar("aerys.sendfile") ?: $request->getUri();
-        $path = ($qPos = \stripos($uri, "?")) ? \substr($uri, 0, $qPos) : $uri;
-        $path = $reqPath = \str_replace("\\", "/", $path);
-        $path = $this->root . $path;
+        $path = ($qPos = \strpos($uri, "?")) ? \substr($uri, 0, $qPos) : $uri;
+        $path = \str_replace("\\", "/", $path);
         $path = self::removeDotPathSegments($path);
-
-        // IMPORTANT!
-        // Protect against dot segment path traversal above the document root by
-        // verifying that the path actually resides in the document root.
-        if (\strpos($path, $this->root) !== 0) {
-            $response->setStatus(HTTP_STATUS["FORBIDDEN"]);
-            $response->setHeader("Aerys-Generic-Response", "enable");
-            $response->end();
-        }
 
         // We specifically break the lookup generator out into its own method
         // so that we can potentially avoid forcing the server to resolve a
         // coroutine when the file is already cached.
-        return ($fileInfo = $this->fetchCachedStat($reqPath, $request))
+        return ($fileInfo = $this->fetchCachedStat($path, $request))
             ? $this->respond($fileInfo, $request, $response)
-            : $this->respondWithLookup($path, $reqPath, $request, $response);
+            : $this->respondWithLookup($this->root . $path, $path, $request, $response);
     }
 
     /**
