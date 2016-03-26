@@ -114,7 +114,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
      * @depends testBasicFileResponse
      * @dataProvider provideRelativePathsAboveRoot
      */
-    function testForbiddenResponseOnRelativePathAboveRoot($relativePath, $root) {
+    function testPathsOnRelativePathAboveRoot($relativePath, $root) {
         $request = $this->getMock("Aerys\\Request");
         $request->expects($this->once())
             ->method("getUri")
@@ -139,6 +139,34 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         ];
     }
 
+    /**
+     * @depends testBasicFileResponse
+     * @dataProvider provideUnavailablePathsAboveRoot
+     */
+    function testUnavailablePathsOnRelativePathAboveRoot($relativePath, $root) {
+        $request = $this->getMock("Aerys\\Request");
+        $request->expects($this->once())
+            ->method("getUri")
+            ->will($this->returnValue($relativePath))
+        ;
+        $request->expects($this->any())
+            ->method("getMethod")
+            ->will($this->returnValue("GET"))
+        ;
+        $response = $this->getMock("Aerys\\Response");
+        $response->expects($this->never())
+            ->method("end")
+        ;
+        $root->__invoke($request, $response);
+    }
+
+    function provideUnavailablePathsAboveRoot() {
+        return [
+            ["/../aerys_root_test_fixture/index.htm"],
+            ["/aerys_root_test_fixture/../../aerys_root_test_fixture"],
+        ];
+    }
+    
     /**
      * @depends testBasicFileResponse
      */
