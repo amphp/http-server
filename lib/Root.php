@@ -75,6 +75,7 @@ class Root implements ServerObserver {
     public function __invoke(Request $request, Response $response) {
         $uri = $request->getLocalVar("aerys.sendfile") ?: $request->getUri();
         $path = ($qPos = \strpos($uri, "?")) ? \substr($uri, 0, $qPos) : $uri;
+        // IMPORTANT! Do NOT remove this. If this is left in, we'll be able to use /path\..\../outsideDocRoot defeating the removeDotPathSegments() function! (on Windows at least)
         $path = \str_replace("\\", "/", $path);
         $path = self::removeDotPathSegments($path);
 
