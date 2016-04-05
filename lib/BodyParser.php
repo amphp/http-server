@@ -44,9 +44,10 @@ class BodyParser implements Promise {
         $this->maxFieldLen = $options["field_len"] ?? 16384;
         $this->maxInputVars = $options["input_vars"] ?? 200;
 
-        if ($type !== null && $type !== "application/x-www-form-urlencoded") {
+        if ($type !== null && strncmp($type, "application/x-www-form-urlencoded", \strlen("application/x-www-form-urlencoded"))) {
             if (!preg_match('#^\s*multipart/(?:form-data|mixed)(?:\s*;\s*boundary\s*=\s*("?)([^"]*)\1)?$#', $type, $m)) {
                 $this->req = null;
+                $this->parsing = true;
                 $this->result = new ParsedBody([]);
                 return;
             }
