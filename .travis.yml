@@ -6,6 +6,12 @@ php:
   - 7.0
   - nightly
 
+matrix:
+ allow_failures:
+  - php: nightly
+ fast_finish: true
+
+
 install:
   - composer self-update
   - composer require satooshi/php-coveralls:dev-master
