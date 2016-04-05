@@ -354,7 +354,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                     $this->endpoint->close($clientId);
                 }
             });
-            $endpoint->onParse([Rfc6455Endpoint::DATA, true, "start..."], $client);
+            $endpoint->onParse([Rfc6455Endpoint::DATA, "start...", true], $client);
             $endpoint->onParse([Rfc6455Endpoint::CONTROL, "pingpong", Rfc6455Endpoint::OP_PING], $client);
             stream_set_blocking($sock, false);
             $data = "";
