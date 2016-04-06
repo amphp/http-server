@@ -78,7 +78,7 @@ class Router implements Bootable, Middleware, ServerObserver {
      * @param InternalRequest $ireq
      */
     public function do(InternalRequest $ireq) {
-        $toMatch = $ireq->uriPath;
+        $toMatch = "{$ireq->method}\0{$ireq->uriPath}";
 
         if (isset($this->cache[$toMatch])) {
             list($args, $routeArgs) = $cache = $this->cache[$toMatch];
