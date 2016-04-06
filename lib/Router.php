@@ -99,6 +99,7 @@ class Router implements Bootable, Middleware, ServerObserver {
                     throw $e->getPrevious();
                 }
             }
+            return;
         }
 
         $match = $this->routeDispatcher->dispatch($ireq->method, $ireq->uriPath);
