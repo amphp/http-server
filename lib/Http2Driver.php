@@ -512,7 +512,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         goto connection_error;
                     }
 
-                    if (($remaining = $bodyLens[$id] + $length - $client->streamWindow[$id] ?? $maxBodySize) > 0) {
+                    if (($remaining = $bodyLens[$id] + $length - ($client->streamWindow[$id] ?? $maxBodySize)) > 0) {
                             $error = self::FLOW_CONTROL_ERROR;
                             goto connection_error;
                     }
