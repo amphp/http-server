@@ -101,7 +101,7 @@ class Router implements Bootable, Middleware, ServerObserver {
             }
         }
 
-        $match = $this->routeDispatcher->dispatch($ireq->method, $toMatch);
+        $match = $this->routeDispatcher->dispatch($ireq->method, $ireq->uriPath);
 
         switch ($match[0]) {
             case Dispatcher::FOUND:
