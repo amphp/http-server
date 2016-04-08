@@ -43,7 +43,7 @@
         "amphp/artax": "^2",
         "fabpot/php-cs-fixer": "^1.9",
         "http2jp/hpack-test-case": "1.0",
-        "phpunit/phpunit": "~5.2.12"
+        "phpunit/phpunit": "^5.2"
     },
     "autoload": {
         "psr-4": {

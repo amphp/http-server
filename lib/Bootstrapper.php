@@ -56,6 +56,21 @@ class Bootstrapper {
 
         $options["configPath"] = $configFile;
 
+        return $this->init($logger, $options);
+    }
+
+    /**
+     * Initializes the server directly without config file inclusion
+     *
+     * @param Logger $logger
+     * @param array $options Aerys options array
+     * @return Server
+     */
+    public function init(Logger $logger, array $options = []): Server {
+        if (!array_key_exists("debug", $options)) {
+            $options["debug"] = false;
+        }
+
         $options = $this->generateOptionsObjFromArray($options);
         $vhosts = new VhostContainer(new Http1Driver);
         $ticker = new Ticker($logger);
