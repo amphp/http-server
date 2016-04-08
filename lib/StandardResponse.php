@@ -244,12 +244,17 @@ class StandardResponse implements Response {
         foreach ($this->cookies as $name => list($value, $flags)) {
             $cookie = "$name=$value";
 
+            $flags = array_change_key_case($flags, CASE_LOWER);
             foreach ($flags as $name => $value) {
                 if (\is_int($name)) {
                     $cookie .= "; $value";
                 } else {
                     $cookie .= "; $name=$value";
                 }
+            }
+
+            if (isset($flags["max-age"]) && !isset($flags["expires"])) {
+                $cookie .= "; expires=".date("r", time() + $flags["max-age"]);
             }
 
             $this->headers["set-cookie"][] = $cookie;

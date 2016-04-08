@@ -52,7 +52,7 @@ interface Response {
      *
      * @param string $name
      * @param string $value
-     * @param array $flags Shall be an array of keys/values as per https://tools.ietf.org/html/rfc6265#section-5.2.1
+     * @param array $flags Shall be an array of key => value pairs and/or unkeyed values as per https://tools.ietf.org/html/rfc6265#section-5.2.1
      * @return self
      */
     public function setCookie(string $name, string $value, array $flags = []): Response;
