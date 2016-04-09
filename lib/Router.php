@@ -160,7 +160,6 @@ class Router implements Bootable, Middleware, ServerObserver {
             foreach ($action->routes as $route) {
                 $route[2] = array_merge($this->actions, $route[2]);
                 $this->routes[] = $route;
-                $this->actions = array_merge($this->actions, $action->actions);
             }
         } else {
             $this->actions[] = $action;
@@ -186,7 +185,6 @@ class Router implements Bootable, Middleware, ServerObserver {
                 $route[1] = "/$prefix$route[1]";
             }
 
-            $this->routes[] = ["*", "/$prefix/{path:.*}", $this->actions];
             $this->actions = [];
         }
 
