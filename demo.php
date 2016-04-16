@@ -17,14 +17,14 @@ const AERYS_OPTIONS = [
 
 $router = router()
     ->get("/", function(Request $req, Response $res) {
-        $res->send("<html><body><h1>Hello, world.</h1></body></html>");
+        $res->end("<html><body><h1>Hello, world.</h1></body></html>");
     })
     ->get("/router/{myarg}", function(Request $req, Response $res, array $routeArgs) {
         $body = "<html><body><h1>Route Args at param 3</h1>".print_r($routeArgs, true)."</body></html>";
-        $res->send($body);
+        $res->end($body);
     })
     ->post("/", function(Request $req, Response $res) {
-        $res->send("<html><body><h1>Hello, world (POST).</h1></body></html>");
+        $res->end("<html><body><h1>Hello, world (POST).</h1></body></html>");
     })
     ->get("error1", function(Request $req, Response $res) {
         // ^ the router normalizes the leading forward slash in your URIs
@@ -35,7 +35,7 @@ $router = router()
     })
     ->get("/directory/?", function(Request $req, Response $res) {
         // The trailing "/?" in the URI allows this route to match /directory OR /directory/
-        $res->send("<html><body><h1>Dual directory match</h1></body></html>");
+        $res->end("<html><body><h1>Dual directory match</h1></body></html>");
     })
     ->get("/long-poll", function(Request $req, Response $res) {
         while (true) {
@@ -45,14 +45,14 @@ $router = router()
     })
     ->post("/body1", function(Request $req, Response $res) {
         $body = yield $req->getBody();
-        $res->send("<html><body><h1>Buffer Body Echo:</h1><pre>{$body}</pre></body></html>");
+        $res->end("<html><body><h1>Buffer Body Echo:</h1><pre>{$body}</pre></body></html>");
     })
     ->post("/body2", function(Request $req, Response $res) {
         $body = "";
         foreach ($req->getBody()->stream() as $bodyPart) {
             $body .= yield $bodyPart;
         }
-        $res->send("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
+        $res->end("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
     })
     ->get("/favicon.ico", function(Request $req, Response $res) {
         $res->setStatus(404);
@@ -75,7 +75,7 @@ $websocket = websocket(new class implements Aerys\Websocket {
 
     public function onData(int $clientId, Websocket\Message $msg) {
         // broadcast to all connected clients
-        $this->endpoint->send(null, yield $msg);
+        $this->endpoint->end(null, yield $msg);
     }
 
     public function onClose(int $clientId, int $code, string $reason) { }
@@ -89,7 +89,7 @@ $root = root($docrootPath = __DIR__);
 
 // If no static files match fallback to this
 $fallback = function(Request $req, Response $res) {
-    $res->send("<html><body><h1>Fallback \o/</h1></body></html>");
+    $res->end("<html><body><h1>Fallback \o/</h1></body></html>");
 };
 
 (new Host)->expose("*", 1337)->use($router)->use($root)->use($fallback);
