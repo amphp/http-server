@@ -28,7 +28,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
         $port = parse_url($address, PHP_URL_PORT);
 
         $vhosts = new VhostContainer(new Http2Driver);
-        $vhost = new Vhost("localhost", [["127.0.0.1", $port]], $handler, $filters, new Http1Driver);
+        $vhost = new Vhost("localhost", [["127.0.0.1", $port]], $handler, $filters, [], new Http1Driver);
         $vhost->setCrypto(["local_cert" => __DIR__."/server.pem", "crypto_method" => "tls"]);
         $vhosts->use($vhost);
 

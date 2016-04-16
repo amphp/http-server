@@ -7,7 +7,7 @@ use Amp\{
     function any
 };
 
-class VhostContainer implements \Countable {
+class VhostContainer implements \Countable, Monitor {
     private $vhosts = [];
     private $cachedVhostCount = 0;
     private $defaultHost;
@@ -240,5 +240,9 @@ class VhostContainer implements \Countable {
             "vhosts" => $this->vhosts,
             "defaultHost" => $this->defaultHost,
         ];
+    }
+    
+    public function monitor(): array {
+        return array_map(function ($vhost) { return $vhost->monitor(); }, $this->vhosts);
     }
 }

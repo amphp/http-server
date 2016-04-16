@@ -5,7 +5,7 @@ namespace Aerys;
 use Amp\{ Struct, Promise, Success, Failure, Deferred };
 use function Amp\{ resolve, timeout, any, all, makeGeneratorError };
 
-class Server {
+class Server implements Monitor {
     use Struct;
 
     const STOPPED  = 0;
@@ -1032,6 +1032,17 @@ class Server {
             "clients" => $this->clients,
             "keepAliveTimeouts" => $this->keepAliveTimeouts,
             "stopPromise" => $this->stopPromisor ? $this->stopPromisor->promise() : null,
+        ];
+    }
+
+    public function monitor(): array {
+        return [
+            "state" => $this->state,
+            "bindings" => $this->vhosts->getBindableAddresses(),
+            "clients" => count($this->clients),
+            "IPs" => count($this->clientsPerIP),
+            "pendingInputs" => count($this->keepAliveTimeouts),
+            "hosts" => $this->vhosts->monitor(),
         ];
     }
 }

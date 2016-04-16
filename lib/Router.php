@@ -15,12 +15,13 @@ use Amp\{
     function any
 };
 
-class Router implements Bootable, Middleware, ServerObserver {
+class Router implements Bootable, Middleware, Monitor, ServerObserver {
     private $state = Server::STOPPED;
     private $bootLoader;
     private $routeDispatcher;
     private $routes = [];
     private $actions = [];
+    private $monitors = [];
     private $cache = [];
     private $cacheEntryCount = 0;
     private $maxCacheEntries = 512;
@@ -145,11 +146,11 @@ class Router implements Bootable, Middleware, ServerObserver {
      * Import a router or attach a callable, Middleware or Bootable.
      * Router imports do *not* import the options
      *
-     * @param callable|\Aerys\Middleware|\Aerys\Bootable $action
+     * @param callable|Middleware|Bootable|Monitor $action
      * @return self
      */
     public function use($action) {
-        if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable)) {
+        if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable || $action instanceof Monitor)) {
             throw new \InvalidArgumentException(
                 __METHOD__ . " requires a callable action or Middleware instance"
             );
@@ -241,7 +242,7 @@ class Router implements Bootable, Middleware, ServerObserver {
      *
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
-     * @param Bootable|Middleware|callable ...$actions The action(s) to invoke upon matching this route
+     * @param Bootable|Middleware|Monitor|callable ...$actions The action(s) to invoke upon matching this route
      * @throws \DomainException on invalid empty parameters
      * @return self
      */
@@ -305,6 +306,7 @@ class Router implements Bootable, Middleware, ServerObserver {
         $middlewares = [];
         $applications = [];
         $booted = [];
+        $monitors = [];
 
         foreach ($actions as $key => $action) {
             if ($action instanceof Bootable) {
@@ -314,11 +316,22 @@ class Router implements Bootable, Middleware, ServerObserver {
                     $booted[$hash] = ($this->bootLoader)($action);
                 }
                 $action = $booted[$hash];
+            } elseif (is_array($action) && $action[0] instanceof Bootable) {
+                /* don't ever boot a Bootable twice */
+                $hash = spl_object_hash($action[0]);
+                if (!array_key_exists($hash, $booted)) {
+                    $booted[$hash] = ($this->bootLoader)($action[0]);
+                }
             }
             if ($action instanceof Middleware) {
                 $middlewares[] = [$action, "do"];
             } elseif (is_array($action) && $action[0] instanceof Middleware) {
                 $middlewares[] = [$action[0], "do"];
+            }
+            if ($action instanceof Monitor) {
+                $monitors[get_class($action)][] = $action;
+            } elseif (is_array($action) && $action[0] instanceof Monitor) {
+                $monitors[get_class($action[0])][] = $action[0];
             }
             if (is_callable($action)) {
                 $applications[] = $action;
@@ -328,23 +341,26 @@ class Router implements Bootable, Middleware, ServerObserver {
         if (empty($applications[1])) {
             if (empty($applications[0])) {
                 // in order to specify only middlewares (in combination with e.g. a fallback handler)
-                return [function() {}, $middlewares];
+                return [[function() {}, $middlewares], $monitors];
             } else {
-                return [$applications[0], $middlewares];
+                return [[$applications[0], $middlewares], $monitors];
             }
         }
 
-        return [static function(Request $request, Response $response, array $args) use ($applications) {
-            foreach ($applications as $application) {
-                $result = $application($request, $response, $args);
-                if ($result instanceof \Generator) {
-                    yield from $result;
+        return [
+            [static function(Request $request, Response $response, array $args) use ($applications) {
+                foreach ($applications as $application) {
+                    $result = $application($request, $response, $args);
+                    if ($result instanceof \Generator) {
+                        yield from $result;
+                    }
+                    if ($response->state() & Response::STARTED) {
+                        return;
+                    }
                 }
-                if ($response->state() & Response::STARTED) {
-                    return;
-                }
-            }
-        }, $middlewares];
+            }, $middlewares],
+            $monitors
+        ];
     }
 
     /**
@@ -380,7 +396,9 @@ class Router implements Bootable, Middleware, ServerObserver {
         $allowedMethods = [];
         foreach ($this->routes as list($method, $uri, $actions)) {
             $allowedMethods[] = $method;
-            $rc->addRoute($method, $uri, $this->bootRouteTarget($actions));
+            list($app, $monitors) = $this->bootRouteTarget($actions);
+            $rc->addRoute($method, $uri, $app);
+            $this->monitors[$method][$uri] = $monitors;
         }
         $originalMethods = $server->getOption("allowedMethods");
         if ($server->getOption("normalizeMethodCase")) {
@@ -389,5 +407,17 @@ class Router implements Bootable, Middleware, ServerObserver {
         $allowedMethods = array_merge($allowedMethods, $originalMethods);
         $allowedMethods = array_unique($allowedMethods);
         $server->setOption("allowedMethods", $allowedMethods);
+    }
+
+    public function monitor(): array {
+        $results = [];
+        foreach ($this->monitors as $method => $routeMonitors) {
+            foreach ($routeMonitors as $route => $classMonitors) {
+                foreach ($classMonitors as $class => $monitors) {
+                    $results[$method][$route][$class] = array_map(function ($monitor) { return $monitor->monitor(); }, $monitors);
+                }
+            }
+        }
+        return $results;
     }
 }

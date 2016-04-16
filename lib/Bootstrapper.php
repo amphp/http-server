@@ -143,17 +143,24 @@ class Bootstrapper {
 
             $middlewares = [];
             $applications = [];
+            $monitors = [];
 
             foreach ($actions as $key => $action) {
                 if ($action instanceof Bootable) {
                     $action = $bootLoader($action);
+                } elseif (is_array($action) && $action[0] instanceof Bootable) {
+                    $bootLoader($action[0]);
                 }
                 if ($action instanceof Middleware) {
                     $middlewares[] = [$action, "do"];
                 } elseif (is_array($action) && $action[0] instanceof Middleware) {
                     $middlewares[] = [$action[0], "do"];
                 }
-
+                if ($action instanceof Monitor) {
+                    $monitors[get_class($action)][] = $action;
+                } elseif (is_array($action) && $action[0] instanceof Monitor) {
+                    $monitors[get_class($action[0])][] = $action[0];
+                }
                 if (is_callable($action)) {
                     $applications[] = $action;
                 }
@@ -214,7 +221,7 @@ class Bootstrapper {
                 });
             }
 
-            $vhost = new Vhost($name, $interfaces, $application, $middlewares, $hostExport["httpdriver"]);
+            $vhost = new Vhost($name, $interfaces, $application, $middlewares, $monitors, $hostExport["httpdriver"]);
             if ($crypto = $hostExport["crypto"]) {
                 $vhost->setCrypto($crypto);
             }

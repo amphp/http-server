@@ -18,6 +18,7 @@ use Aerys\{
     InternalRequest,
     Logger,
     Middleware,
+    Monitor,
     NullBody,
     Options,
     Request,
@@ -28,7 +29,7 @@ use Aerys\{
     const HTTP_STATUS
 };
 
-class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
+class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     private $logger;
     private $application;
     private $proxy;
@@ -1087,5 +1088,12 @@ class Rfc6455Endpoint implements Endpoint, Middleware, ServerObserver {
         while (1) {
             yield 0;
         }
+    }
+
+    public function monitor(): array {
+        return [
+            "handler" => [get_class($this->application), $this->application instanceof Monitor ? $this->application->monitor() : null],
+            "clients" => array_map(function ($client) { return $this->getInfo($client->id); }, $this->clients),
+        ];
     }
 }

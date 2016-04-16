@@ -2,13 +2,14 @@
 
 namespace Aerys;
 
-class Vhost {
+class Vhost implements Monitor {
     private $application;
     private $interfaces;
     private $addressMap;
     private $name;
     private $ids;
     private $filters = [];
+    private $monitors = [];
     private $httpDriver;
     private $tlsContextArr = [];
     private $tlsDefaults = [
@@ -45,7 +46,7 @@ class Vhost {
     ];
 
     /** @Note Vhosts do not allow wildcards, only separate 0.0.0.0 and :: */
-    public function __construct(string $name, array $interfaces, callable $application, array $filters, HttpDriver $driver = null) {
+    public function __construct(string $name, array $interfaces, callable $application, array $filters, array $monitors = [], HttpDriver $driver = null) {
         $this->name = strtolower($name);
         if (!$interfaces) {
             throw new \InvalidArgumentException(
@@ -57,6 +58,7 @@ class Vhost {
         }
         $this->application = $application;
         $this->filters = array_values($filters);
+        $this->monitors = $monitors;
         $this->httpDriver = $driver;
 
         if (self::hasAlpnSupport()) {
@@ -373,6 +375,19 @@ class Vhost {
             "name" => $this->name,
             "tls" => $this->tlsContextArr,
             "application" => $appType,
+        ];
+    }
+
+    public function monitor(): array {
+        $handlers = [];
+        foreach ($this->monitors as $class => $monitors) {
+            $handlers[$class] = array_map(function ($montior) { return $montior->monitor(); }, $monitors);
+        }
+        return [
+            "interfaces" => $this->interfaces,
+            "name" => $this->name,
+            "tls" => $this->tlsContextArr,
+            "handlers" => $handlers,
         ];
     }
 }
