@@ -558,13 +558,13 @@ class Http1Driver implements HttpDriver {
 
         if ($contentLength === "@") {
             $hasContent = false;
-            $shouldClose = ($ireq->protocol === "1.0");
+            $shouldClose = $ireq->protocol === "1.0";
             if (($status >= 200 && $status != 204 && $status != 304)) {
                 $headers["content-length"] = ["0"];
             }
         } elseif ($contentLength !== "*") {
             $hasContent = true;
-            $shouldClose = false;
+            $shouldClose = $ireq->protocol === "1.0";
             $headers["content-length"] = [$contentLength];
             unset($headers["transfer-encoding"]);
         } elseif ($ireq->protocol === "1.1") {
