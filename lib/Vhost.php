@@ -167,7 +167,7 @@ class Vhost implements Monitor {
         }
 
         $packedAddress = inet_pton($address); // if this yields a warning, there's something else buggy, but no @ missing.
-        $wildcard = \strlen($packedAddress) === 4 ? "0.0.0.0" : "::";
+        $wildcard = \strlen($packedAddress) === 4 ? "\0\0\0\0" : "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
         if (!isset($this->addressMap[$wildcard])) {
             return $this->addressMap[$packedAddress] ?? [];
         } elseif (!isset($this->addressMap[$packedAddress])) {
