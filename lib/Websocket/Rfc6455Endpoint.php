@@ -20,7 +20,6 @@ use Aerys\{
     Middleware,
     Monitor,
     NullBody,
-    Options,
     Request,
     Response,
     Server,
@@ -28,6 +27,8 @@ use Aerys\{
     Websocket,
     const HTTP_STATUS
 };
+
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     private $logger;
@@ -67,7 +68,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     const DATA = 2;
     const ERROR = 3;
 
-    public function __construct(Logger $logger, Websocket $application) {
+    public function __construct(PsrLogger $logger, Websocket $application) {
         $this->logger = $logger;
         $this->application = $application;
         $this->now = time();

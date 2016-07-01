@@ -2,12 +2,14 @@
 
 namespace Aerys;
 
+use Psr\Log\LoggerInterface as PsrLogger;
+
 class DebugProcess extends Process {
     private $logger;
     private $bootstrapper;
     private $server;
 
-    public function __construct(Logger $logger, Bootstrapper $bootstrapper = null) {
+    public function __construct(PsrLogger $logger, Bootstrapper $bootstrapper = null) {
         parent::__construct($logger);
         $this->logger = $logger;
         $this->bootstrapper = $bootstrapper ?: new Bootstrapper;

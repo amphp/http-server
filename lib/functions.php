@@ -2,6 +2,7 @@
 
 namespace Aerys;
 
+use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\makeGeneratorError;
 
 /**
@@ -34,7 +35,7 @@ function websocket($app, array $options = []): Bootable {
             $this->app = $app;
             $this->options = $options;
         }
-        public function boot(Server $server, Logger $logger) {
+        public function boot(Server $server, PsrLogger $logger) {
             $app = ($this->app instanceof Bootable)
                 ? $this->app->boot($server, $logger)
                 : $this->app;
@@ -73,7 +74,7 @@ function root(string $docroot, array $options = []): Bootable {
             $this->docroot = $docroot;
             $this->options = $options;
         }
-        public function boot(Server $server, Logger $logger) {
+        public function boot(Server $server, PsrLogger $logger) {
             $root = new Root($this->docroot);
             $options = $this->options;
             $defaultMimeFile = __DIR__ ."/../etc/mime";
