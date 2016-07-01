@@ -16,6 +16,7 @@ use Aerys\VhostContainer;
 use Aerys\Websocket;
 use Aerys\Websocket\Code;
 use Aerys\Websocket\Rfc6455Endpoint;
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
     static function compile($opcode, $fin, $msg = "", $rsv = 0b000) {
@@ -224,8 +225,8 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Cannot boot websocket handler; Aerys\Websocket required, boolean provided
      */
     function testBadWebsocketClass() {
-        \Aerys\websocket(new class implements Bootable { public function boot(Server $server, Logger $logger) { return false; } })
-            ->boot(new class extends Server { function __construct() { } }, new class extends Logger { protected function output(string $message) { } });
+        \Aerys\websocket(new class implements Bootable { public function boot(Server $server, PsrLogger $logger) { return false; } })
+            ->boot(new class extends Server { function __construct() { } }, new class extends \Aerys\Logger { protected function output(string $message) { } });
     }
 
     function testUpgrading() {
