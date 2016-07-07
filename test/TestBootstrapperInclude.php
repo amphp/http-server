@@ -17,7 +17,7 @@ class OurMiddleware implements \Aerys\Middleware {
 (new Aerys\Host)->encrypt(__DIR__."/server.pem");
 
 $host = (new Aerys\Host)->expose("127.0.0.1", 80)->name("example.com")->use(new class implements \Aerys\Bootable {
-    function boot(\Aerys\Server $server, \Aerys\Logger $logger) {
+    function boot(\Aerys\Server $server, \Psr\Log\LoggerInterface $logger) {
         return new OurMiddleware;
     }
 });

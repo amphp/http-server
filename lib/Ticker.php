@@ -7,6 +7,7 @@ use Amp\{
     Success,
     Struct
 };
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class Ticker implements ServerObserver {
     use Struct;
@@ -18,7 +19,7 @@ class Ticker implements ServerObserver {
     public $currentTime;
     public $currentHttpDate;
 
-    public function __construct(Logger $logger) {
+    public function __construct(PsrLogger $logger) {
         $this->logger = $logger;
     }
 

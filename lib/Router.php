@@ -15,6 +15,8 @@ use Amp\{
     function any
 };
 
+use Psr\Log\LoggerInterface as PsrLogger;
+
 class Router implements Bootable, Middleware, Monitor, ServerObserver {
     private $state = Server::STOPPED;
     private $bootLoader;
@@ -291,7 +293,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         return $this;
     }
 
-    public function boot(Server $server, Logger $logger) {
+    public function boot(Server $server, PsrLogger $logger) {
         $server->attach($this);
         $this->bootLoader = static function(Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);

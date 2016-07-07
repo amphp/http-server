@@ -7,6 +7,7 @@ use Amp\{
     function coroutine,
     function resolve
 };
+use Psr\Log\LoggerInterface as PsrLogger;
 
 abstract class Process {
     const STOPPED = 0;
@@ -20,7 +21,7 @@ abstract class Process {
     abstract protected function doStart(Console $console): \Generator;
     abstract protected function doStop(): \Generator;
 
-    public function __construct(Logger $logger) {
+    public function __construct(PsrLogger $logger) {
         $this->logger = $logger;
     }
 
