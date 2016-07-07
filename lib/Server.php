@@ -4,6 +4,7 @@ namespace Aerys;
 
 use Amp\{ Struct, Promise, Success, Failure, Deferred };
 use function Amp\{ resolve, timeout, any, all, makeGeneratorError };
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class Server implements Monitor {
     use Struct;
@@ -44,7 +45,7 @@ class Server implements Monitor {
     private $onCoroutineAppResolve;
     private $onResponseDataDone;
 
-    public function __construct(Options $options, VhostContainer $vhosts, Logger $logger, Ticker $ticker) {
+    public function __construct(Options $options, VhostContainer $vhosts, PsrLogger $logger, Ticker $ticker) {
         $this->options = $options;
         $this->vhosts = $vhosts;
         $this->logger = $logger;

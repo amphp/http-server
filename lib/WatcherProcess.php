@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Amp\{ Deferred, Success };
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class WatcherProcess extends Process {
     private $logger;
@@ -18,7 +19,7 @@ class WatcherProcess extends Process {
     private $defunctProcessCount = 0;
     private $expectedFailures = 0;
 
-    public function __construct(Logger $logger) {
+    public function __construct(PsrLogger $logger) {
         parent::__construct($logger);
         $this->logger = $logger;
         $this->procGarbageWatcher = \Amp\repeat(function() {

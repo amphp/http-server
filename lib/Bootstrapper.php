@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Amp\{ Promise, Success, function any };
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class Bootstrapper {
     private $hostAggregator;
@@ -14,11 +15,11 @@ class Bootstrapper {
     /**
      * Bootstrap a server from command line options
      *
-     * @param \Aerys\Logger $logger
+     * @param PsrLogger $logger
      * @param \Aerys\Console $console
      * @return \Generator
      */
-    public function boot(Logger $logger, Console $console): \Generator {
+    public function boot(PsrLogger $logger, Console $console): \Generator {
         $configFile = self::selectConfigFile((string) $console->getArg("config"));
         $logger->info("Using config file found at $configFile");
 
@@ -62,11 +63,11 @@ class Bootstrapper {
     /**
      * Initializes the server directly without config file inclusion
      *
-     * @param Logger $logger
+     * @param PsrLogger $logger
      * @param array $options Aerys options array
      * @return Server
      */
-    public function init(Logger $logger, array $options = []): Server {
+    public function init(PsrLogger $logger, array $options = []): Server {
         if (!array_key_exists("debug", $options)) {
             $options["debug"] = false;
         }
@@ -184,7 +185,7 @@ class Bootstrapper {
                         $this->applications = $applications;
                     }
 
-                    public function boot(Server $server, Logger $logger) {
+                    public function boot(Server $server, PsrLogger $logger) {
                         $server->attach($this);
                     }
 

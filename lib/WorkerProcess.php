@@ -2,13 +2,15 @@
 
 namespace Aerys;
 
+use Psr\Log\LoggerInterface as PsrLogger;
+
 class WorkerProcess extends Process {
     private $logger;
     private $ipcSock;
     private $bootstrapper;
     private $server;
 
-    public function __construct(Logger $logger, $ipcSock, Bootstrapper $bootstrapper = null) {
+    public function __construct(PsrLogger $logger, $ipcSock, Bootstrapper $bootstrapper = null) {
         parent::__construct($logger);
         $this->logger = $logger;
         $this->ipcSock = $ipcSock;
