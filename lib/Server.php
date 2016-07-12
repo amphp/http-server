@@ -494,18 +494,21 @@ class Server implements Monitor {
     }
 
     private function timeoutKeepAlives(int $now) {
+        $timeouts = [];
         foreach ($this->keepAliveTimeouts as $id => $expiresAt) {
             if ($now > $expiresAt) {
-                $client = $this->clients[$id];
-                // do not close in case some longer response is taking longer, but do in case bodyPromisors aren't fulfilled
-                if ($client->pendingResponses > \count($client->bodyPromisors)) {
-                    $this->clearKeepAliveTimeout($client); // renewed when response ends
-                } else {
-                    // timeouts are only active while Client is doing nothing (not sending nor receving) and no pending writes, hence we can just fully close here
-                    $this->close($client);
-                }
+                $timeouts[] = $this->clients[$id];
             } else {
                 break;
+            }
+        }
+        foreach ($timeouts as $client) {
+            // do not close in case some longer response is taking longer, but do in case bodyPromisors aren't fulfilled
+            if ($client->pendingResponses > \count($client->bodyPromisors)) {
+                $this->clearKeepAliveTimeout($client);
+            } else {
+                // timeouts are only active while Client is doing nothing (not sending nor receving) and no pending writes, hence we can just fully close here
+                $this->close($client);
             }
         }
     }
