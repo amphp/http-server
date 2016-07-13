@@ -665,7 +665,7 @@ class Root implements ServerObserver {
                 "Failed loading mime associations from file {$mimeFile}"
             );
         }
-        if (!preg_match_all("#\s*([a-z0-9]+)\s+([a-z0-9\-]+/[a-z0-9\-]+)#i", $mimeStr, $matches)) {
+        if (!preg_match_all("#\s*([a-z0-9]+)\s+([a-z0-9\-]+/[a-z0-9\-]+(?:\+[a-z0-9\-]+)?)#i", $mimeStr, $matches)) {
             throw new \RuntimeException(
                 "No mime associations found in file: {$mimeFile}"
             );
