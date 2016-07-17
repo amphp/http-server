@@ -51,10 +51,13 @@ class Bootstrapper {
                 "Invalid AERYS_OPTIONS constant: expected array, got " . gettype(AERYS_OPTIONS)
             );
         }
-        if (!array_key_exists("debug", $options)) {
-            $options["debug"] = $console->isArgDefined("debug");
+        if (array_key_exists("debug", $options)) {
+            throw new \DomainException(
+                'AERYS_OPTIONS constant contains "debug" key; "debug" option is read-only and only settable to true via the -d command line option'
+            );
         }
 
+        $options["debug"] = $console->isArgDefined("debug");
         $options["configPath"] = $configFile;
 
         return $this->init($logger, $options);
