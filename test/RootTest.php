@@ -4,6 +4,7 @@ namespace Aerys\Test;
 
 use Aerys\Client;
 use Aerys\Response;
+use Aerys\Root;
 use Aerys\Server;
 use Aerys\ServerObserver;
 use Aerys\StandardResponse;
@@ -34,6 +35,11 @@ class RootTest extends \PHPUnit_Framework_TestCase {
                 "Failed creating temporary test fixture file"
             );
         }
+        if (!\file_put_contents($fixtureDir . "/svg.svg", "<svg></svg>")) {
+            throw new \RuntimeException(
+                "Failed creating temporary test fixture file"
+            );
+        }
     }
 
     static function tearDownAfterClass() {
@@ -44,7 +50,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         if (\stripos(\PHP_OS, "win") === 0) {
             \system('rd /Q /S "' . $fixtureDir . '"');
         } else {
-            \system('/bin/rm -rf ' . \escapeshellarg($fixtureDir));
+            \system('/usr/bin/env rm -rf ' . \escapeshellarg($fixtureDir));
         }
     }
 
@@ -55,7 +61,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
      */
     function testConstructorThrowsOnInvalidDocRoot($badPath) {
         $filesystem = $this->getMock('Amp\File\Driver');
-        $root = new \Aerys\Root($badPath, $filesystem);
+        $root = new Root($badPath, $filesystem);
     }
 
     function provideBadDocRoots() {
@@ -66,7 +72,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testBasicFileResponse() {
-        $root = new \Aerys\Root(self::fixturePath());
+        $root = new Root(self::fixturePath());
         $server = new class extends Server {
             function __construct() {}
             function attach(ServerObserver $obj){}
@@ -78,7 +84,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         foreach ([
             ["/", "test"],
             ["/index.htm", "test"],
-            ["/dir/../dir//..//././index.htm", "test"]
+            ["/dir/../dir//..//././index.htm", "test"],
         ] as list($path, $contents)) {
             $request = $this->getMock('Aerys\Request');
             $request->expects($this->once())
@@ -256,7 +262,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testOptionsHeader() {
-        $root = new \Aerys\Root(self::fixturePath());
+        $root = new Root(self::fixturePath());
         $request = $this->getMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
@@ -274,7 +280,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testPreconditionFailure() {
-        $root = new \Aerys\Root(self::fixturePath());
+        $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $request = $this->getMock('Aerys\Request');
@@ -298,7 +304,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testPreconditionNotModified() {
-        $root = new \Aerys\Root(self::fixturePath());
+        $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
@@ -331,7 +337,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testPreconditionRangeFail() {
-        $root = new \Aerys\Root(self::fixturePath());
+        $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
@@ -358,7 +364,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testBadRange() {
-        $root = new \Aerys\Root(self::fixturePath());
+        $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
@@ -391,7 +397,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider provideValidRanges
      */
     function testValidRange($range, $cb) {
-        $root = new \Aerys\Root(self::fixturePath());
+        $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $request = $this->getMock('Aerys\Request');
@@ -447,5 +453,35 @@ PART;
                 $this->assertEquals("--$boundary--", $body);
             }],
         ];
+    }
+
+    /**
+     * @depends testBasicFileResponse
+     */
+    function testMimetypeParsing($root) {
+        $request = $this->getMock("Aerys\\Request");
+        $request->expects($this->once())
+            ->method("getUri")
+            ->will($this->returnValue("/svg.svg"))
+        ;
+        $request->expects($this->any())
+            ->method("getMethod")
+            ->will($this->returnValue("GET"))
+        ;
+        $response = $this->getMock("Aerys\\Response");
+        $response->expects($this->once())
+            ->method("end")
+            ->with("<svg></svg>") // <-- the contents of the /svg.svg fixture file
+        ;
+        $response->expects($this->atLeastOnce())
+            ->method("setHeader")
+            ->will($this->returnCallback(function ($header, $value) use ($response, &$wasCalled): Response {
+                if ($header === "Content-Type") {
+                    $this->assertEquals("image/svg+xml", $value);
+                    $wasCalled = true;
+                }
+                return $response;
+            }));
+        \Amp\wait(\Amp\resolve($root->__invoke($request, $response)));
     }
 }
