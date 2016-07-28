@@ -72,7 +72,7 @@ abstract class Logger implements PsrLogger {
     }
 
     private function format($level, $message, array $context = []) {
-        $time = @date("H:i:s", $context["time"] ?? time());
+        $time = @date("Y-m-d H:i:s", $context["time"] ?? time());
         $level = isset(self::LEVELS[$level]) ? $level : "unknown";
         $level = $this->ansify ? $this->ansify($level) : $level;
 
