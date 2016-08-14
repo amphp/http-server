@@ -72,9 +72,9 @@ class StandardRequest implements Request {
             $this->body = $ireq->body->when(function ($e, $data) {
                 if ($e instanceof ClientSizeException) {
                     $ireq = $this->internalRequest;
-                    $bodyPromisor = $ireq->client->bodyPromisors[$ireq->streamId];
-                    $ireq->body = new Body($bodyPromisor);
-                    $bodyPromisor->update($data);
+                    $bodyDeferred = $ireq->client->bodyDeferreds[$ireq->streamId];
+                    $ireq->body = new Body($bodyDeferred);
+                    $bodyDeferred->emit($data);
                 }
             });
         }

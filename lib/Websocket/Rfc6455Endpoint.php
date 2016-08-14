@@ -3,14 +3,13 @@
 namespace Aerys\Websocket;
 
 use Amp\{
+    Coroutine,
     Deferred,
+    Postponed,
     Failure,
-    Promise,
     Success,
     function all,
-    function any,
-    function reactor,
-    function resolve
+    function any
 };
 
 use Aerys\{
@@ -28,6 +27,7 @@ use Aerys\{
     const HTTP_STATUS
 };
 
+use Interop\Async\Awaitable;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
@@ -204,7 +204,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             $yield = yield $yield;
         }
 
-        \Amp\immediately([$this, "reapClient"], ["cb_data" => $ireq]);
+        \Amp\defer([$this, "reapClient"], $ireq);
     }
 
     public function reapClient($watcherId, InternalRequest $ireq) {
@@ -225,19 +225,16 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             "text_only" => $this->textOnly,
             "threshold" => $this->autoFrameSize,
         ]);
-        $client->readWatcher = \Amp\onReadable($socket, [$this, "onReadable"], $options = [
-            "enable" => true,
-            "cb_data" => $client,
-        ]);
-        $client->writeWatcher = \Amp\onWritable($socket, [$this, "onWritable"], $options = [
-            "enable" => $client->writeBuffer != "",
-            "cb_data" => $client,
-        ]);
+        $client->readWatcher = \Amp\onReadable($socket, [$this, "onReadable"], $client);
+        $client->writeWatcher = \Amp\onWritable($socket, [$this, "onWritable"], $client);
+        if ($client->writeBuffer != "") {
+            \Amp\disable($client->writeWatcher);
+        }
 
         $this->clients[$client->id] = $client;
         $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
 
-        resolve($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]));
+        new Coroutine($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]));
 
         return $client;
     }
@@ -245,7 +242,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     /**
      * Any subgenerator delegations here can safely use `yield from` because this
      * generator is invoked from the main import() function which is wrapped in a
-     * resolve() at the HTTP server layer.
+     * Coroutine at the HTTP server layer.
      */
     private function tryAppOnOpen(int $clientId, $onHandshakeResult): \Generator {
         try {
@@ -274,16 +271,16 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         }
 
         $this->closeTimeouts[$client->id] = $this->now + $this->closePeriod;
-        $promise = $this->sendCloseFrame($client, $code, $reason);
+        $awaitable = $this->sendCloseFrame($client, $code, $reason);
         yield from $this->tryAppOnClose($client->id, $code, $reason);
-        return $promise;
+        return $awaitable;
         // Don't unload the client here, it will be unloaded upon timeout
     }
 
-    private function sendCloseFrame(Rfc6455Client $client, $code, $msg): Promise {
-        $promise = $this->compile($client, pack('n', $code) . $msg, self::OP_CLOSE);
+    private function sendCloseFrame(Rfc6455Client $client, $code, $msg): Awaitable {
+        $awaitable = $this->compile($client, pack('n', $code) . $msg, self::OP_CLOSE);
         $client->closedAt = $this->now;
-        return $promise;
+        return $awaitable;
     }
 
     private function tryAppOnClose(int $clientId, $code, $reason): \Generator {
@@ -311,8 +308,8 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         unset($this->clients[$client->id]);
 
         // fail not yet terminated message streams; they *must not* be failed before client is removed
-        if ($client->msgPromisor) {
-            $client->msgPromisor->fail(new ClientException);
+        if ($client->msgDeferred) {
+            $client->msgDeferred->fail(new ClientException);
         }
 
         if ($client->writeBuffer != "") {
@@ -364,7 +361,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                     @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
                     \Amp\cancel($client->readWatcher);
                     $client->readWatcher = null;
-                    resolve($this->doClose($client, $code, $reason));
+                    new Coroutine($this->doClose($client, $code, $reason));
                 }
                 break;
 
@@ -388,16 +385,16 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
 
         list($data, $terminated) = $parseResult;
 
-        if (!$client->msgPromisor) {
-            $client->msgPromisor = new Deferred;
-            $msg = new Message($client->msgPromisor->promise());
-            resolve($this->tryAppOnData($client, $msg));
+        if (!$client->msgDeferred) {
+            $client->msgDeferred = new Postponed;
+            $msg = new Message($client->msgDeferred->getObservable());
+            new Coroutine($this->tryAppOnData($client, $msg));
         }
 
-        $client->msgPromisor->update($data);
+        $client->msgDeferred->emit($data);
         if ($terminated) {
-            $client->msgPromisor->succeed();
-            $client->msgPromisor = null;
+            $client->msgDeferred->resolve();
+            $client->msgDeferred = null;
         }
 
         $client->messagesRead += $terminated;
@@ -431,7 +428,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             }
 
             if (!$client->closedAt) {
-                resolve($this->doClose($client, $code, $msg));
+                new Coroutine($this->doClose($client, $code, $msg));
             }
         }
     }
@@ -463,7 +460,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 $client->closedAt = $this->now;
                 $code = Code::ABNORMAL_CLOSE;
                 $reason = "Client closed underlying TCP connection";
-                resolve($this->tryAppOnClose($client->id, $code, $reason));
+                new Coroutine($this->tryAppOnClose($client->id, $code, $reason));
             } else {
                 unset($this->closeTimeouts[$client->id]);
             }
@@ -481,13 +478,13 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         } elseif ($bytes == 0 && $client->closedAt && (!is_resource($socket) || @feof($socket))) {
             // usually read watcher cares about aborted TCP connections, but when
             // $client->closedAt is true, it might be the case that read watcher
-            // is already cancelled and we need to ensure that our writing promise
+            // is already cancelled and we need to ensure that our writing Awaitable
             // is fulfilled in unloadClient() with a failure
             unset($this->closeTimeouts[$client->id]);
             $this->unloadClient($client);
         } else {
             $client->framesSent++;
-            $client->writeDeferred->succeed();
+            $client->writeDeferred->resolve();
             if ($client->writeControlQueue) {
                 $key = key($client->writeControlQueue);
                 $client->writeBuffer = $client->writeControlQueue[$key];
@@ -497,13 +494,13 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 while (\strlen($client->writeBuffer) < 65536 && $client->writeControlQueue) {
                     $key = key($client->writeControlQueue);
                     $client->writeBuffer .= $client->writeControlQueue[$key];
-                    $client->writeDeferredControlQueue[$key]->succeed($client->writeDeferred);
+                    $client->writeDeferredControlQueue[$key]->resolve($client->writeDeferred);
                     unset($client->writeControlQueue[$key], $client->writeDeferredControlQueue[$key]);
                 }
                 while (\strlen($client->writeBuffer) < 65536 && $client->writeDataQueue) {
                     $key = key($client->writeDataQueue);
                     $client->writeBuffer .= $client->writeDataQueue[$key];
-                    $client->writeDeferredDataQueue[$key]->succeed($client->writeDeferred);
+                    $client->writeDeferredDataQueue[$key]->resolve($client->writeDeferred);
                     unset($client->writeDataQueue[$key], $client->writeDeferredDataQueue[$key]);
                 }
 
@@ -523,7 +520,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 while (\strlen($client->writeBuffer) < 65536 && $client->writeDataQueue) {
                     $key = key($client->writeDataQueue);
                     $client->writeBuffer .= $client->writeDataQueue[$key];
-                    $client->writeDeferredDataQueue[$key]->succeed($client->writeDeferred);
+                    $client->writeDeferredDataQueue[$key]->resolve($client->writeDeferred);
                     unset($client->writeDataQueue[$key], $client->writeDeferredDataQueue[$key]);
                 }
             } else {
@@ -534,7 +531,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         }
     }
 
-    private function compile(Rfc6455Client $client, string $msg, int $opcode, bool $fin = true): Promise {
+    private function compile(Rfc6455Client $client, string $msg, int $opcode, bool $fin = true): Awaitable {
         $frameInfo = ["msg" => $msg, "rsv" => 0b000, "fin" => $fin, "opcode" => $opcode];
 
         // @TODO filter mechanism …?! (e.g. gzip)
@@ -547,7 +544,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         return $this->write($client, $frameInfo);
     }
 
-    private function write(Rfc6455Client $client, $frameInfo): Promise {
+    private function write(Rfc6455Client $client, $frameInfo): Awaitable {
         if ($client->closedAt) {
             return new Failure(new ClientException);
         }
@@ -584,7 +581,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             $deferred = $client->writeDeferred = new Deferred;
         }
 
-        return $deferred->promise();
+        return $deferred->getAwaitable();
     }
 
     // just a dummy builder ... no need to really use it
@@ -604,17 +601,17 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         }
     }
 
-    public function send(/* int|array|null */ $clientId, string $data, bool $binary = false): Promise {
+    public function send(/* int|array|null */ $clientId, string $data, bool $binary = false): Awaitable {
         if ($clientId === null) {
             $clientId = array_keys($this->clients);
         }
 
         if (\is_array($clientId)) {
-            $promises = [];
+            $awaitables = [];
             foreach ($clientId as $id) {
-                $promises[] = $this->send($id, $data, $binary);
+                $awaitables[] = $this->send($id, $data, $binary);
             }
-            return all($promises);
+            return all($awaitables);
         }
 
         if ($client = $this->clients[$clientId] ?? null) {
@@ -639,13 +636,13 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         return new Success;
     }
 
-    public function sendBinary($clientId, string $data): Promise {
+    public function sendBinary($clientId, string $data): Awaitable {
         return $this->send($clientId, $data, true);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
         if (isset($this->clients[$clientId])) {
-            resolve($this->doClose($this->clients[$clientId], $code, $reason));
+            new Coroutine($this->doClose($this->clients[$clientId], $code, $reason));
         }
     }
 
@@ -675,31 +672,31 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         return array_keys($this->clients);
     }
 
-    public function update(Server $server): Promise {
+    public function update(Server $server): Awaitable {
         switch ($this->state = $server->state()) {
             case Server::STARTING:
                 $result = $this->application->onStart($this->proxy);
                 if ($result instanceof \Generator) {
-                    return resolve($result);
+                    return new Coroutine($result);
                 }
                 break;
 
             case Server::STARTED:
                 $f = (new \ReflectionClass($this))->getMethod("timeout")->getClosure($this);
-                $this->timeoutWatcher = \Amp\repeat($f, 1000);
+                $this->timeoutWatcher = \Amp\repeat(1000, $f);
                 break;
 
             case Server::STOPPING:
                 $result = $this->application->onStop();
                 if ($result instanceof \Generator) {
-                    $promise = resolve($result);
-                } elseif ($result instanceof Promise) {
-                    $promise = $result;
+                    $awaitable = new Coroutine($result);
+                } elseif ($result instanceof Awaitable) {
+                    $awaitable = $result;
                 } else {
-                    $promise = new Success;
+                    $awaitable = new Success;
                 }
 
-                $promise->when(function () {
+                $awaitable->when(function () {
                     $code = Code::GOING_AWAY;
                     $reason = "Server shutting down!";
 
@@ -711,10 +708,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 \Amp\cancel($this->timeoutWatcher);
                 $this->timeoutWatcher = null;
 
-                return $promise;
+                return $awaitable;
 
             case Server::STOPPED:
-                $promises = [];
+                $awaitables = [];
 
                 // we are not going to wait for a proper self::OP_CLOSE answer (because else we'd need to timeout for 3 seconds, not worth it), but we will ensure to at least *have written* it
                 foreach ($this->clients as $client) {
@@ -724,24 +721,24 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
 
                     $result = $this->doClose($client, $code, $reason);
                     if ($result instanceof \Generator) {
-                        $promise[] = resolve($result);
+                        $awaitable[] = new Coroutine($result);
                     }
 
                     if (!empty($client->writeDeferredControlQueue)) {
-                        $promise = end($client->writeDeferredControlQueue)->promise();
-                        if ($promise) {
-                            $promises[] = $promise;
+                        $awaitable = end($client->writeDeferredControlQueue)->getAwaitable();
+                        if ($awaitable) {
+                            $awaitables[] = $awaitable;
                         }
                     }
                 }
-                $promise = any($promises);
-                $promise->when(function () {
+                $awaitable = any($awaitables);
+                $awaitable->when(function () {
                     foreach ($this->clients as $client) {
                         $this->unloadClient($client);
                     }
                 });
 
-                return $promise;
+                return $awaitable;
         }
 
         return new Success;

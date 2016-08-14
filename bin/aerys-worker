@@ -49,6 +49,6 @@ ob_start(function($output) use ($logger) {
 
 $process = new Aerys\WorkerProcess($logger, $ipcSock);
 
-Amp\run(function() use ($process, $console) {
+Amp\execute(function() use ($process, $console) {
     yield from $process->start($console);
 });

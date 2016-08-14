@@ -16,7 +16,7 @@ use Aerys\StandardResponse;
 use Aerys\Websocket;
 use Aerys\Websocket\Rfc6455Endpoint;
 use const Aerys\HTTP_STATUS;
-use Amp\Deferred;
+use Amp\{ Deferred, Postponed };
 
 class NullWebsocket implements Websocket {
     public $test;
@@ -101,8 +101,10 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
     function waitOnRead($sock) {
         $deferred = new Deferred;
-        $watcher = \Amp\onReadable($sock, [$deferred, "succeed"]);
-        return $deferred->promise()->when(function() use ($watcher) { \Amp\cancel($watcher); });
+        $watcher = \Amp\onReadable($sock, [$deferred, "resolve"]);
+        $awaitable = $deferred->getAwaitable();
+        $awaitable->when(function() use ($watcher) { \Amp\cancel($watcher); });
+        return $awaitable;
     }
 
     function triggerTimeout(Rfc6455Endpoint $endpoint) {
@@ -112,7 +114,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testFullSequence() {
-        \Amp\run(function() {
+        \Amp\execute(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             $server->allowKill = true;
             $server->state = Server::STOPPING;
@@ -120,15 +122,13 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             $server->state = Server::STOPPED;
             yield $endpoint->update($server);
         });
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     /**
      * @dataProvider provideParsedData
      */
     function testParseData($data, $func) {
-        \Amp\run(function() use ($data, $func) {
+        \Amp\execute(function() use ($data, $func) {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this, $func) extends NullWebsocket {
                 public $func;
                 public $gen;
@@ -149,8 +149,6 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
             \Amp\stop();
         });
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function provideParsedData() {
@@ -183,8 +181,8 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider provideErrorEvent
      */
     function testAppError($method, $call) {
-        \Amp\run(function() use ($method, $call) {
-            $ws = $this->getMock('Aerys\Websocket');
+        \Amp\execute(function() use ($method, $call) {
+            $ws = $this->createMock('Aerys\Websocket');
             $ws->expects($this->once())
                 ->method($method)
                 ->willReturnCallback(function() {
@@ -206,8 +204,6 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             $this->assertSocket([[Rfc6455Endpoint::OP_CLOSE]], stream_get_contents($sock));
             \Amp\stop();
         });
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function provideErrorEvent() {
@@ -224,7 +220,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
      */
     function testHandshake($ireq, $expected) {
         $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
-        $ws = $this->getMock('Aerys\Websocket');
+        $ws = $this->createMock('Aerys\Websocket');
         $ws->expects($expected[":status"] === 101 ? $this->once() : $this->never())
             ->method("onHandshake");
         $endpoint = new Rfc6455Endpoint($logger, $ws);
@@ -272,7 +268,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
 
         $_ireq = clone $ireq;
-        $_ireq->body = new Body((new Deferred)->promise());
+        $_ireq->body = new Body((new Postponed)->getObservable());
         $return[] = [$_ireq, [":status" => HTTP_STATUS["BAD_REQUEST"]]];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->
@@ -305,7 +301,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testIOClose() {
-        \Amp\run(function() {
+        \Amp\execute(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 function onData(int $clientId, Websocket\Message $msg) {
                     try {
@@ -322,16 +318,17 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             $endpoint->onParse([Rfc6455Endpoint::DATA, "foo", false], $client);
             fclose($sock);
             $server->allowKill = true;
-            yield;yield; // to have it read and closed...
+            // to have it read and closed...
+            $deferred = new \Amp\Deferred;
+            \Amp\defer(function() use ($deferred) { \Amp\defer([$deferred, "resolve"]); });
+            yield $deferred->getAwaitable();
 
             \Amp\stop();
         });
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function testIORead() {
-        \Amp\run(function () {
+        \Amp\execute(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             fwrite($sock, WebsocketParserTest::compile(Rfc6455Endpoint::OP_PING, true, "foo"));
             yield $this->waitOnRead($sock);
@@ -340,12 +337,10 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
             \Amp\stop();
         });
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function testMultiWrite() {
-        \Amp\run(function() {
+        \Amp\execute(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 function onData(int $clientId, Websocket\Message $msg) {
                     $this->endpoint->send(null, "foo".str_repeat("*", 65528 /* fill buffer */));
@@ -372,12 +367,10 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
             \Amp\stop();
         });
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function testFragmentation() {
-        \Amp\run(function () {
+        \Amp\execute(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             $endpoint->sendBinary(null, str_repeat("*", 131046))->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->allowKill = true; });
             $data = "";
@@ -389,12 +382,10 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
             \Amp\stop();
         });
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function testSinglePong() {
-        \Amp\run(function () {
+        \Amp\execute(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             $client->pingCount = 2;
             $endpoint->onParse([Rfc6455Endpoint::CONTROL, "1", Rfc6455Endpoint::OP_PONG], $client);
@@ -402,7 +393,5 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
             \Amp\stop();
         });
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
     }
 }

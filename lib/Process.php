@@ -2,11 +2,8 @@
 
 namespace Aerys;
 
-use Amp\{
-    UvReactor,
-    function coroutine,
-    function resolve
-};
+use function Amp\coroutine;
+use Interop\Async\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 abstract class Process {
@@ -50,7 +47,7 @@ abstract class Process {
             // Once we make it this far we no longer want to terminate
             // the process in the event of an uncaught exception inside
             // the event reactor -- log it instead.
-            \Amp\onError([$this->logger, "critical"]);
+            Loop::setErrorHandler([$this->logger, "critical"]);
         } catch (\Throwable $uncaught) {
             $this->exitCode = 1;
             $this->logger->critical($uncaught);
@@ -90,11 +87,12 @@ abstract class Process {
 
         $onSignal = coroutine([$this, "stop"]);
 
-        if (\Amp\reactor() instanceof UvReactor) {
-            \Amp\onSignal(\UV::SIGINT, $onSignal, ["keep_alive" => false]);
-            \Amp\onSignal(\UV::SIGTERM, $onSignal, ["keep_alive" => false]);
+        $loop = Loop::get()->getHandle();
+        if (is_resource($loop) && get_resource_type($loop) == "uv_loop") {
+            \Amp\unreference(\Amp\onSignal(\UV::SIGINT, $onSignal));
+            \Amp\unreference(\Amp\onSignal(\UV::SIGTERM, $onSignal));
         } elseif (extension_loaded("pcntl")) {
-            \Amp\repeat("pcntl_signal_dispatch", 1000, ["keep_alive" => false]);
+            \Amp\unreference(\Amp\repeat(1000, "pcntl_signal_dispatch"));
             pcntl_signal(\SIGINT, $onSignal);
             pcntl_signal(\SIGTERM, $onSignal);
         }
@@ -131,7 +129,7 @@ abstract class Process {
     }
 
     private function registerErrorHandler() {
-        set_error_handler(coroutine(function($errno, $msg, $file, $line) {
+        set_error_handler(function($errno, $msg, $file, $line) {
             if (!(error_reporting() & $errno)) {
                 return;
             }
@@ -164,7 +162,7 @@ abstract class Process {
                     $this->logger->warning($msg);
                     break;
             }
-        }));
+        });
     }
 
     /**

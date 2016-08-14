@@ -260,9 +260,9 @@ class Http2Driver implements HttpDriver {
             }
 
             if ($client->isDead & Client::CLOSED_WR) {
-                if (!$client->bufferPromisor) {
-                    $client->bufferPromisor = new Deferred;
-                    $client->bufferPromisor->fail(new ClientException);
+                if (!$client->bufferDeferred) {
+                    $client->bufferDeferred = new Deferred;
+                    $client->bufferDeferred->fail(new ClientException);
                 }
                 while (true) {
                     yield;
@@ -272,13 +272,13 @@ class Http2Driver implements HttpDriver {
 
         $this->writeData($client, $msgs, $id, true);
 
-        if (($client->isDead & Client::CLOSED_WR) && !$client->bufferPromisor) {
-            $client->bufferPromisor = new Failure(new ClientException);
+        if (($client->isDead & Client::CLOSED_WR) && !$client->bufferDeferred) {
+            $client->bufferDeferred = new Failure(new ClientException);
         }
 
-        if ($client->bufferPromisor) {
+        if ($client->bufferDeferred) {
             $keepAlives = &$client->remainingKeepAlives; // avoid cyclic reference
-            $client->bufferPromisor->when(static function() use (&$keepAlives) {
+            $client->bufferDeferred->when(static function() use (&$keepAlives) {
                 $keepAlives++;
             });
         } else {
@@ -296,7 +296,7 @@ class Http2Driver implements HttpDriver {
             }
             $client->bufferSize += $len;
             if ($client->bufferSize > $client->options->softStreamCap) {
-                $client->bufferPromisor = new Deferred;
+                $client->bufferDeferred = new Deferred;
             }
             $this->tryDataSend($client, $stream);
         } else {
@@ -367,7 +367,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack(
         $client->writeBuffer .= $new;
         $client->bufferSize += \strlen($new);
         if ($client->bufferSize > $client->options->softStreamCap) {
-            $client->bufferPromisor = new Deferred;
+            $client->bufferDeferred = new Deferred;
         }
         ($this->write)($client, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
@@ -375,7 +375,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack(
     public function upgradeBodySize(InternalRequest $ireq) {
         $client = $ireq->client;
         $id = $ireq->streamId;
-        if (isset($client->bodyPromisors[$id])) {
+        if (isset($client->bodyDeferreds[$id])) {
             $this->writeFrame($client, pack("N", $client->streamWindow[$id] - $ireq->maxBodySize), self::WINDOW_UPDATE, self::NOFLAG, $id);
             $client->streamWindow[$id] = $ireq->maxBodySize;
         }
@@ -477,7 +477,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         goto connection_error;
                     }
 
-                    if (!isset($client->bodyPromisors[$id])) {
+                    if (!isset($client->bodyDeferreds[$id])) {
                         if (isset($headers[$id])) {
                             $error = self::PROTOCOL_ERROR;
                             goto connection_error;
@@ -669,9 +669,9 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "PRIORITY: - \n");
                     $error = \unpack("N", $buffer)[1];
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
-                    if (isset($client->bodyPromisors[$id])) {
-                        $client->bodyPromisors[$id]->fail(new ClientException);
-                        unset($client->bodyPromisors[$id]);
+                    if (isset($client->bodyDeferreds[$id])) {
+                        $client->bodyDeferreds[$id]->fail(new ClientException);
+                        unset($client->bodyDeferreds[$id]);
                     }
                     unset($headers[$id], $bodyLens[$id], $client->streamWindow[$id], $client->streamEnd[$id], $client->streamWindowBuffer[$id]);
 

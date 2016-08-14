@@ -551,7 +551,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $parser = $driver->parser($client);
         $ireq = new InternalRequest;
         $ireq->client = $client;
-        $client->bodyPromisors = ["set"];
+        $client->bodyDeferreds = ["set"];
         $client->requestParser = $parser;
         $payload = "abcdefghijklmnopqrstuvwxyz";
         $data = "POST / HTTP/1.1\r\nHost:localhost\r\nContent-Length: 26\r\n\r\n$payload";
@@ -589,7 +589,7 @@ class Http1DriverTest extends \PHPUnit_Framework_TestCase {
         $parser = $driver->parser($client);
         $ireq = new InternalRequest;
         $ireq->client = $client;
-        $client->bodyPromisors = ["set"];
+        $client->bodyDeferreds = ["set"];
         $client->requestParser = $parser;
         $payload = "2\r\nab\r\n3\r\ncde\r\n5\r\nfghij\r\n10\r\nklmnopqrstuvwxyz\r\n0\r\n\r\n";
         $data = "POST / HTTP/1.1\r\nHost:localhost\r\nTransfer-Encoding: chunked\r\n\r\n$payload";

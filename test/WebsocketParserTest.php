@@ -164,13 +164,13 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
         $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, "Hello, world!") . $this->compile(Rfc6455Endpoint::OP_TEXT, true, "uhm, no!");
         $return[] = [$input, [[Rfc6455Endpoint::ERROR, Code::PROTOCOL_ERROR]]];
 
-        // 31 ---- utf-8 validation must succeed for large utf-8 msgs ----------------------------->
+        // 31 ---- utf-8 validation must resolve for large utf-8 msgs ----------------------------->
 
         $data = "H".str_repeat("ö", 32770);
         $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, substr($data, 0, 32769)) . $this->compile(Rfc6455Endpoint::OP_CONT, true, substr($data, 32769));
         $return[] = [$input, [[Rfc6455Endpoint::DATA, $data]]];
 
-        // 32 ---- utf-8 validation must succeed for interrupted utf-8 across frame boundary ------>
+        // 32 ---- utf-8 validation must resolve for interrupted utf-8 across frame boundary ------>
 
         $data = "H".str_repeat("ö", 32770);
         $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, substr($data, 0, 32768)) . $this->compile(Rfc6455Endpoint::OP_CONT, true, substr($data, 32768));
@@ -230,7 +230,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testUpgrading() {
-        \Amp\run(function() use (&$sock) {
+        \Amp\execute(function() use (&$sock) {
             $client = new Client;
             $client->exporter = function() use (&$exported) {
                 $exported = true;
@@ -290,7 +290,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
             $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
             $driver->setup((new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server), "strlen");
 
-            $ws = $this->getMock(Websocket::class);
+            $ws = $this->createMock(Websocket::class);
             $ws->expects($this->exactly(1))
                 ->method("onHandshake")
                 ->will($this->returnValue((function() { if (0) { yield; } return "foo"; })()));
@@ -316,13 +316,14 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals(["HSmrc0sMlYUkAGmm5OPpG2HaGWk="], $headers["sec-websocket-accept"]);
             $this->assertEquals("", $driver->body);
 
-            yield; // run immediate
+            // run defer
+            $deferred = new \Amp\Deferred;
+            \Amp\defer([$deferred, "resolve"]);
+            yield $deferred->getAwaitable();
 
             $this->assertTrue($exported);
 
             \Amp\stop();
         });
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
     }
 }

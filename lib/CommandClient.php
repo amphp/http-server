@@ -4,7 +4,7 @@ namespace Aerys;
 
 class CommandClient {
     private $buf;
-    private $promisors = [];
+    private $deferreds = [];
     private $path;
     private $sock;
     private $writer;
@@ -21,7 +21,7 @@ class CommandClient {
         return sys_get_temp_dir()."/aerys_".strtr(base64_encode(sha1(Bootstrapper::selectConfigFile($config), true)), "+/", "-_").".tmp";
     }
 
-    private function send($msg): \Amp\Promise {
+    private function send($msg): \Interop\Async\Awaitable {
         if (!$this->sock) {
             $this->establish();
         } elseif (!$this->writeWatcher) {
@@ -29,18 +29,18 @@ class CommandClient {
         }
         $msg = json_encode($msg);
         $this->buf .= pack("N", \strlen($msg)) . $msg;
-        return ($this->promisors[\strlen($this->buf)] = new \Amp\Deferred)->promise();
+        return ($this->deferreds[\strlen($this->buf)] = new \Amp\Deferred)->getAwaitable();
     }
 
     private function establish() {
         $unix = in_array("unix", \stream_get_transports(), true);
         if ($unix) {
-            $promise = \Amp\Socket\connect("unix://$this->path.sock");
+            $awaitable = \Amp\Socket\connect("unix://$this->path.sock");
         } else {
-            $promise = \Amp\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect');
+            $awaitable = \Amp\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect');
         }
         
-        $promise->when(function ($e, $sock) {
+        $awaitable->when(function ($e, $sock) {
             if ($e) {
                 $this->failAll();
                 return;
@@ -66,12 +66,12 @@ class CommandClient {
             $this->writeWatcher = null;
         }
         $this->written += $bytes;
-        foreach ($this->promisors as $end => $deferred) {
+        foreach ($this->deferreds as $end => $deferred) {
             if ($end > $this->written) {
                 break;
             }
-            $deferred->succeed();
-            unset($this->promisors[$end]);
+            $deferred->resolve();
+            unset($this->deferreds[$end]);
         }
     }
 
@@ -81,18 +81,18 @@ class CommandClient {
         }
         $this->sock = $this->writeWatcher = null;
 
-        $promisors = $this->promisors;
-        $this->promisors = [];
-        foreach ($promisors as $deferred) {
+        $deferreds = $this->deferreds;
+        $this->deferreds = [];
+        foreach ($deferreds as $deferred) {
             $deferred->fail(new \Exception("Couldn't write command, server failed."));
         }
     }
 
-    public function restart(): \Amp\Promise {
+    public function restart(): \Interop\Async\Awaitable {
         return $this->send(["action" => "restart"]);
     }
 
-    public function stop(): \Amp\Promise {
+    public function stop(): \Interop\Async\Awaitable {
         return $this->send(["action" => "stop"]);
     }
 

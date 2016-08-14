@@ -32,15 +32,17 @@
     "prefer-stable": true,
     "require": {
         "php": ">=7.0.0",
-        "amphp/amp": "^1",
-        "amphp/file": "^0.1.1",
-        "amphp/socket": "^0.9",
+        "amphp/amp": "dev-master as 2.0",
+        "amphp/file": "dev-amp_v2",
+        "amphp/socket": "dev-amp_v2",
+        "async-interop/event-loop-implementation": "dev-master",
         "league/climate": "^3",
         "nikic/fast-route": "^1",
         "psr/log": "^1"
     },
     "require-dev": {
-        "amphp/artax": "^2",
+        "amphp/artax": "dev-amp_v2",
+        "amphp/loop": "dev-master",
         "fabpot/php-cs-fixer": "^1.9",
         "http2jp/hpack-test-case": "1.0",
         "phpunit/phpunit": "^5.2"

@@ -10,7 +10,7 @@ use Aerys\InternalRequest;
 use Aerys\Logger;
 use Aerys\StandardRequest;
 use Aerys\StandardResponse;
-use function Amp\resolve;
+use Amp\Coroutine;
 use function Amp\wait;
 
 class BootstrapperTest extends \PHPUnit_Framework_TestCase {
@@ -29,7 +29,7 @@ class BootstrapperTest extends \PHPUnit_Framework_TestCase {
             }
         };
 
-        wait(resolve($bootstrapper->boot($logger, new Console)));
+        wait(new Coroutine($bootstrapper->boot($logger, new Console)));
     }
 
     public function testBootstrap() {
@@ -59,9 +59,7 @@ class BootstrapperTest extends \PHPUnit_Framework_TestCase {
             }
         };
 
-        $server = wait(resolve($bootstrapper->boot($logger, $console)));
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
+        $server = wait(new Coroutine($bootstrapper->boot($logger, $console)));
 
         $info = $server->__debugInfo();
         if (Host::separateIPv4Binding()) {

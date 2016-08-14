@@ -134,8 +134,8 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             [HttpDriver::ENTITY_PART, ["id" => 2, "protocol" => "2.0", "body" => "BAZ!"], null],
             [HttpDriver::ENTITY_RESULT, ["id" => 2, "protocol" => "2.0"], null],
         ], function (Request $req, Response $res) {
-            while (yield $req->getBody()->valid()) {
-                $res->stream($req->getBody()->consume());
+            while (yield $req->getBody()->next()) {
+                $res->stream($req->getBody()->getCurrent());
             }
             $res->end();
         }, [function (InternalRequest $ireq) {
@@ -281,8 +281,8 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
 
         // with coroutine
         $deferred = new \Amp\Deferred;
-        $result = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) use ($deferred) { yield $deferred->promise(); });
-        $deferred->succeed();
+        $result = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) use ($deferred) { yield $deferred->getAwaitable(); });
+        $deferred->resolve();
         $this->assertEquals(\Aerys\HTTP_STATUS["NOT_FOUND"], $result[0][":status"]);
     }
 
@@ -339,7 +339,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testUnencryptedIO() {
-        \Amp\run(function() {
+        \Amp\execute(function() {
             list($address, $server) = yield from $this->startServer(function (Client $client, $write) {
                 $this->assertFalse($client->isEncrypted);
 
@@ -351,20 +351,21 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
                 $write($client, true);
             }, false);
 
-            $client = new sock\Client(yield sock\connect($address));
+            $client = new sock\Socket(yield sock\connect($address));
             yield $client->write("a");
-            yield; // give readWatcher a chance
+            // give readWatcher a chance
+            $deferred = new \Amp\Deferred;
+            \Amp\defer(function() use ($deferred) { \Amp\defer([$deferred, "resolve"]); });
+            yield $deferred->getAwaitable();
             yield $client->write("b");
             $this->assertEquals("cd", yield $client->read(2));
             yield $server->stop();
             \Amp\stop();
-            \Amp\reactor(\Amp\driver());
-            \Amp\File\filesystem(\Amp\File\driver());
         });
     }
 
     function testEncryptedIO() {
-        \Amp\run(function() {
+        \Amp\execute(function() {
             $deferred = new \Amp\Deferred;
             list($address) = yield from $this->startServer(function (Client $client, $write) use ($deferred) {
                 try {
@@ -385,30 +386,28 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
                     if (isset($e)) {
                         return;
                     }
-                    \Amp\immediately(function() use ($client, $deferred) {
+                    \Amp\defer(function() use ($client, $deferred) {
                         try {
                             $this->assertEquals(Client::CLOSED_RDWR, $client->isDead);
                         } catch (\Throwable $e) {
                             $deferred->fail($e);
                         }
                         if (empty($e)) {
-                            $deferred->succeed();
+                            $deferred->resolve();
                         }
                     });
                 }
             }, true);
 
             // lowest possible
-            $client = new sock\Client(yield sock\cryptoConnect($address, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]));
+            $client = new sock\Socket(yield sock\cryptoConnect($address, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]));
             yield $client->write(str_repeat("1", 65537)); // larger than one TCP frame
             yield $client->write("a");
             $this->assertEquals("b", yield $client->read(1));
             $client->close();
 
-            yield $deferred->promise();
+            yield $deferred->getAwaitable();
             \Amp\stop();
-            \Amp\reactor(\Amp\driver());
-            \Amp\File\filesystem(\Amp\File\driver());
         });
     }
 }

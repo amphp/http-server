@@ -57,7 +57,7 @@ class Http2DriverTest extends \PHPUnit_Framework_TestCase {
             }
             $this->assertNull($errorStruct);
             $body .= $tmpResult["body"];
-            $client->bodyPromisors[$tmpResult["id"]] = true; // is used to verify whether headers were sent
+            $client->bodyDeferreds[$tmpResult["id"]] = true; // is used to verify whether headers were sent
         };
         $driver->setup($emitCallback, function(){});
 

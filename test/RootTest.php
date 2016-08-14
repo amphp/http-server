@@ -60,7 +60,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
      * @expectedExceptionMessage Document root requires a readable directory
      */
     function testConstructorThrowsOnInvalidDocRoot($badPath) {
-        $filesystem = $this->getMock('Amp\File\Driver');
+        $filesystem = $this->createMock('Amp\File\Driver');
         $root = new Root($badPath, $filesystem);
     }
 
@@ -86,14 +86,14 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ["/index.htm", "test"],
             ["/dir/../dir//..//././index.htm", "test"],
         ] as list($path, $contents)) {
-            $request = $this->getMock('Aerys\Request');
+            $request = $this->createMock('Aerys\Request');
             $request->expects($this->once())
                 ->method("getUri")
                 ->will($this->returnValue($path));
             $request->expects($this->any())
                 ->method("getMethod")
                 ->will($this->returnValue("GET"));
-            $response = $this->getMock('Aerys\Response');
+            $response = $this->createMock('Aerys\Response');
             $response->expects($this->once())
                 ->method("end")
                 ->with($contents);
@@ -107,8 +107,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
                     return $response;
                 }));
             $generator = $root->__invoke($request, $response);
-            $promise = \Amp\resolve($generator);
-            \Amp\wait($promise);
+            $awaitable = new \Amp\Coroutine($generator);
+            \Amp\wait($awaitable);
             $this->assertTrue($wasCalled);
         }
 
@@ -121,7 +121,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider provideRelativePathsAboveRoot
      */
     function testPathsOnRelativePathAboveRoot($relativePath, $root) {
-        $request = $this->getMock("Aerys\\Request");
+        $request = $this->createMock("Aerys\\Request");
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue($relativePath))
@@ -130,7 +130,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"))
         ;
-        $response = $this->getMock("Aerys\\Response");
+        $response = $this->createMock("Aerys\\Response");
         $response->expects($this->once())
             ->method("end")
             ->with("test") // <-- the contents of the /index.htm fixture file
@@ -150,7 +150,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider provideUnavailablePathsAboveRoot
      */
     function testUnavailablePathsOnRelativePathAboveRoot($relativePath, $root) {
-        $request = $this->getMock("Aerys\\Request");
+        $request = $this->createMock("Aerys\\Request");
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue($relativePath))
@@ -159,7 +159,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"))
         ;
-        $response = $this->getMock("Aerys\\Response");
+        $response = $this->createMock("Aerys\\Response");
         $response->expects($this->never())
             ->method("end")
         ;
@@ -177,7 +177,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
      * @depends testBasicFileResponse
      */
     function testCachedResponse($root) {
-        $request = $this->getMock('Aerys\Request');
+        $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue("/index.htm"))
@@ -186,7 +186,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"))
         ;
-        $response = $this->getMock('Aerys\Response');
+        $response = $this->createMock('Aerys\Response');
         $response->expects($this->once())
             ->method("end")
             ->with("test") // <-- the contents of the /index.htm fixture file
@@ -207,7 +207,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         };
         $root->update($server);
 
-        $request = $this->getMock('Aerys\Request');
+        $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue("/index.htm"))
@@ -220,14 +220,14 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"))
         ;
-        $response = $this->getMock('Aerys\Response');
+        $response = $this->createMock('Aerys\Response');
         $response->expects($this->once())
             ->method("end")
             ->with("test") // <-- the contents of the /index.htm fixture file
         ;
         $generator = $root->__invoke($request, $response);
-        $promise = \Amp\resolve($generator);
-        \Amp\wait($promise);
+        $awaitable = new \Amp\Coroutine($generator);
+        \Amp\wait($awaitable);
 
         return $root;
     }
@@ -236,7 +236,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
      * @depends testDebugModeIgnoresCacheIfCacheControlHeaderIndicatesToDoSo
      */
     function testDebugModeIgnoresCacheIfPragmaHeaderIndicatesToDoSo($root) {
-        $request = $this->getMock('Aerys\Request');
+        $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue("/index.htm"))
@@ -249,41 +249,41 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"))
         ;
-        $response = $this->getMock('Aerys\Response');
+        $response = $this->createMock('Aerys\Response');
         $response->expects($this->once())
             ->method("end")
             ->with("test") // <-- the contents of the /index.htm fixture file
         ;
         $generator = $root->__invoke($request, $response);
-        $promise = \Amp\resolve($generator);
-        \Amp\wait($promise);
+        $awaitable = new \Amp\Coroutine($generator);
+        \Amp\wait($awaitable);
 
         return $root;
     }
 
     function testOptionsHeader() {
         $root = new Root(self::fixturePath());
-        $request = $this->getMock('Aerys\Request');
+        $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue("/"));
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("OPTIONS"));
-        $response = $this->getMock('Aerys\Response');
+        $response = $this->createMock('Aerys\Response');
         $response->expects($this->exactly(3))
             ->method("setHeader")
             ->withConsecutive(["Allow", "GET, HEAD, OPTIONS"], ["Accept-Ranges", "bytes"]);
         $generator = $root->__invoke($request, $response);
-        $promise = \Amp\resolve($generator);
-        \Amp\wait($promise);
+        $awaitable = new \Amp\Coroutine($generator);
+        \Amp\wait($awaitable);
     }
 
     function testPreconditionFailure() {
         $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
-        $request = $this->getMock('Aerys\Request');
+        $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue("/index.htm"));
@@ -294,13 +294,13 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
-        $response = $this->getMock('Aerys\Response');
+        $response = $this->createMock('Aerys\Response');
         $response->expects($this->exactly(1))
             ->method("setStatus")
             ->with(\Aerys\HTTP_STATUS["PRECONDITION_FAILED"]);
         $generator = $root->__invoke($request, $response);
-        $promise = \Amp\resolve($generator);
-        \Amp\wait($promise);
+        $awaitable = new \Amp\Coroutine($generator);
+        \Amp\wait($awaitable);
     }
 
     function testPreconditionNotModified() {
@@ -308,7 +308,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
-        $request = $this->getMock('Aerys\Request');
+        $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue("/index.htm"));
@@ -321,7 +321,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
-        $response = $this->getMock('Aerys\Response');
+        $response = $this->createMock('Aerys\Response');
         $response->expects($this->exactly(1))
             ->method("setStatus")
             ->with(\Aerys\HTTP_STATUS["NOT_MODIFIED"]);
@@ -332,8 +332,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
                 ["Etag", $etag]
             );
         $generator = $root->__invoke($request, $response);
-        $promise = \Amp\resolve($generator);
-        \Amp\wait($promise);
+        $awaitable = new \Amp\Coroutine($generator);
+        \Amp\wait($awaitable);
     }
 
     function testPreconditionRangeFail() {
@@ -341,7 +341,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
-        $request = $this->getMock('Aerys\Request');
+        $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue("/index.htm"));
@@ -353,14 +353,14 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
-        $response = $this->getMock('Aerys\Response');
+        $response = $this->createMock('Aerys\Response');
         $response->expects($this->once())
             ->method("end")
             ->with("test") // <-- the contents of the /index.htm fixture file
         ;
         $generator = $root->__invoke($request, $response);
-        $promise = \Amp\resolve($generator);
-        \Amp\wait($promise);
+        $awaitable = new \Amp\Coroutine($generator);
+        \Amp\wait($awaitable);
     }
 
     function testBadRange() {
@@ -368,7 +368,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
-        $request = $this->getMock('Aerys\Request');
+        $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue("/index.htm"));
@@ -381,7 +381,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
-        $response = $this->getMock('Aerys\Response');
+        $response = $this->createMock('Aerys\Response');
         $response->expects($this->exactly(1))
             ->method("setStatus")
             ->with(\Aerys\HTTP_STATUS["REQUESTED_RANGE_NOT_SATISFIABLE"]);
@@ -389,8 +389,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->method("setHeader")
             ->with("Content-Range", "*/4");
         $generator = $root->__invoke($request, $response);
-        $promise = \Amp\resolve($generator);
-        \Amp\wait($promise);
+        $awaitable = new \Amp\Coroutine($generator);
+        \Amp\wait($awaitable);
     }
 
     /**
@@ -400,7 +400,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
-        $request = $this->getMock('Aerys\Request');
+        $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue("/index.htm"));
@@ -413,7 +413,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
-        // fuck it, I won't use getMock() here, that's horrible, at least for something where the sum of requests counts and not the individual ones...
+        // fuck it, I won't use createMock() here, that's horrible, at least for something where the sum of requests counts and not the individual ones...
         $generator = $root->__invoke($request, $res = new StandardResponse((function () use (&$headers, &$body, &$part) {
             $headers = yield;
             while (($part = yield) !== null) {
@@ -421,8 +421,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             }
         })(), new Client));
         $this->assertNull($part);
-        $promise = \Amp\resolve($generator);
-        \Amp\wait($promise);
+        $awaitable = new \Amp\Coroutine($generator);
+        \Amp\wait($awaitable);
         $this->assertEquals(\Aerys\HTTP_STATUS["PARTIAL_CONTENT"], $headers[":status"]);
         $cb($headers, $body);
     }
@@ -459,7 +459,7 @@ PART;
      * @depends testBasicFileResponse
      */
     function testMimetypeParsing($root) {
-        $request = $this->getMock("Aerys\\Request");
+        $request = $this->createMock("Aerys\\Request");
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue("/svg.svg"))
@@ -468,7 +468,7 @@ PART;
             ->method("getMethod")
             ->will($this->returnValue("GET"))
         ;
-        $response = $this->getMock("Aerys\\Response");
+        $response = $this->createMock("Aerys\\Response");
         $response->expects($this->once())
             ->method("end")
             ->with("<svg></svg>") // <-- the contents of the /svg.svg fixture file
@@ -482,6 +482,6 @@ PART;
                 }
                 return $response;
             }));
-        \Amp\wait(\Amp\resolve($root->__invoke($request, $response)));
+        \Amp\wait(new \Amp\Coroutine($root->__invoke($request, $response)));
     }
 }

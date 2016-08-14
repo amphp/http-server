@@ -64,7 +64,7 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function stream(string $partialBodyChunk): \Amp\Promise {
+    public function stream(string $partialBodyChunk): \Interop\Async\Awaitable {
         if ($this->status === 101) {
             throw new \DomainException(
                 "Cannot stream(); entity body content disallowed for Switching Protocols Response"

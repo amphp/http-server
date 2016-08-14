@@ -2,11 +2,14 @@
 
 namespace Aerys;
 
+use Amp\Coroutine;
 use Amp\Deferred;
-use Amp\Promise;
+use Amp\Observable;
+use Amp\Postponed;
+use Amp\Subscriber;
 use Amp\Success;
 
-class BodyParser implements Promise {
+class BodyParser implements Observable {
     private $req;
     private $body;
     private $boundary = null;
@@ -16,7 +19,7 @@ class BodyParser implements Promise {
     private $error = null;
     private $result = null;
 
-    private $bodyPromisors = [];
+    private $bodyDeferreds = [];
     private $bodies = [];
     private $parsing = false;
 
@@ -55,9 +58,12 @@ class BodyParser implements Promise {
             $this->boundary = $m[2];
         }
 
-        $this->body->when(function ($e, $data) {
-            $this->req = null;
-            \Amp\immediately(function() use ($e, $data) {
+        \Amp\defer(function() {
+            if ($this->parsing === true) {
+                new Coroutine($this->initIncremental());
+            }
+            $this->body->when(function ($e, $data) {
+                $this->req = null;
                 if ($e) {
                     if ($e instanceof ClientSizeException) {
                         $e = new ClientException("", 0, $e);
@@ -68,21 +74,20 @@ class BodyParser implements Promise {
                 }
 
                 if (!$this->parsing) {
-                    $this->parsing = true;
+                    $this->parsing = 2;
                     foreach ($this->result->getNames() as $field) {
                         foreach ($this->result->getArray($field) as $_) {
-                            foreach ($this->watchers as list($cb, $cbData)) {
-                                $cb($field, $cbData);
+                            foreach ($this->watchers as $cb) {
+                                $cb($field);
                             }
                         }
                     }
                 }
-                $this->parsing = true;
-                
-                foreach ($this->whens as list($cb, $cbData)) {
-                    $cb($this->error, $this->result, $cbData);
+
+                foreach ($this->whens as $cb) {
+                    $cb($this->error, $this->result);
                 }
-                
+
                 $this->whens = $this->watchers = [];
             });
         });
@@ -161,29 +166,30 @@ class BodyParser implements Promise {
         }
     }
 
-    public function when(callable $cb, $cbData = null) {
+    public function when(callable $cb) {
         if ($this->req || !$this->parsing) {
-            $this->whens[] = [$cb, $cbData];
+            $this->whens[] = $cb;
         } else {
-            $cb($this->error, $this->result, $cbData);
+            $cb($this->error, $this->result);
         }
         
         return $this;
     }
 
-    public function watch(callable $cb, $cbData = null) {
+    public function subscribe(callable $cb): Subscriber {
         if ($this->req) {
-            $this->watchers[] = [$cb, $cbData];
+            $this->watchers[] = $cb;
 
             if (!$this->parsing) {
                 $this->parsing = true;
-                \Amp\immediately(function() { return $this->initIncremental(); });
+                \Amp\defer(function() { return $this->initIncremental(); });
             }
         } elseif (!$this->parsing) {
-            $this->watchers[] = [$cb, $cbData];
+            $this->watchers[] = $cb;
         }
-        
-        return $this;
+
+        end($this->watchers);
+        return new Subscriber(key($this->watchers), function($key) { unset($this->watchers[$key]); });
     }
 
     /**
@@ -207,11 +213,11 @@ class BodyParser implements Promise {
             }
             if (!$this->parsing) {
                 $this->parsing = true;
-                \Amp\immediately(function() { return $this->initIncremental(); });
+                \Amp\defer(function() { return $this->initIncremental(); });
             }
             if (empty($this->bodies[$name])) {
-                $this->bodyPromisors[$name][] = [$body = new Deferred, $metadata = new Deferred];
-                return new FieldBody($body->promise(), $metadata->promise());
+                $this->bodyDeferreds[$name][] = [$body = new Postponed, $metadata = new Deferred];
+                return new FieldBody($body->getObservable(), $metadata->getAwaitable());
             }
         } elseif (empty($this->bodies[$name])) {
             return new FieldBody(new Success, new Success([]));
@@ -236,20 +242,20 @@ class BodyParser implements Promise {
             return null;
         }
         
-        if (isset($this->bodyPromisors[$field])) {
-            $key = key($this->bodyPromisors[$field]);
-            list($dataPromisor, $metadataPromisor) = $this->bodyPromisors[$field][$key];
-            $metadataPromisor->succeed($metadata);
-            unset($this->bodyPromisors[$field]);
+        if (isset($this->bodyDeferreds[$field])) {
+            $key = key($this->bodyDeferreds[$field]);
+            list($dataPostponed, $metadataDeferred) = $this->bodyDeferreds[$field][$key];
+            $metadataDeferred->resolve($metadata);
+            unset($this->bodyDeferreds[$field]);
         } else {
-            $dataPromisor = new Deferred;
-            $this->bodies[$field][] = new FieldBody($dataPromisor->promise(), new Success($metadata));
+            $dataPostponed = new Postponed;
+            $this->bodies[$field][] = new FieldBody($dataPostponed->getObservable(), new Success($metadata));
         }
         
-        foreach ($this->watchers as list($cb, $cbData)) {
-            $cb($field, $cbData);
+        foreach ($this->watchers as $cb) {
+            $cb($field);
         }
-        return $dataPromisor;
+        return $dataPostponed;
     }
 
     private function updateFieldSize($field, $data) {
@@ -271,31 +277,36 @@ class BodyParser implements Promise {
 
     private function fail($e = null) {
         $this->error = $e ?? $e = new ClientSizeException;
-        foreach ($this->bodyPromisors as list($promisor, $metadata)) {
-            $promisor->fail($e);
+        foreach ($this->bodyDeferreds as list($deferred, $metadata)) {
+            $deferred->fail($e);
             $metadata->fail($e);
         }
-        $this->bodyPromisors = [];
+        $this->bodyDeferreds = [];
         $this->req = null;
 
-        foreach ($this->whens as list($cb, $cbData)) {
-            $cb($e, null, $cbData);
+        foreach ($this->whens as $cb) {
+            $cb($e, null);
         }
 
         $this->whens = $this->watchers = [];
     }
 
-    // this should be inside an immediate (not direct resolve) to give user a chance to install watch() handlers
+    // this should be inside a defer (not direct Coroutine) to give user a chance to install watch() handlers
     private function initIncremental() {
+        if ($this->parsing !== true) {
+            return;
+        }
+        $this->parsing = 2;
+
         $buf = "";
         if ($this->boundary) {
             // RFC 7578, RFC 2046 Section 5.1.1
             $sep = "--$this->boundary";
             while (\strlen($buf) < \strlen($sep) + 4) {
-                if (!yield $this->body->valid()) {
+                if (!yield $this->body->next()) {
                     return $this->fail(new ClientException);
                 }
-                $buf .= $this->body->consume();
+                $buf .= $this->body->getCurrent();
             }
             $off = \strlen($sep);
             if (strncmp($buf, $sep, $off)) {
@@ -308,11 +319,11 @@ class BodyParser implements Promise {
                 $off += 2;
                 
                 while (($end = strpos($buf, "\r\n\r\n", $off)) === false) {
-                    if (!yield $this->body->valid()) {
+                    if (!yield $this->body->next()) {
                         return $this->fail(new ClientException);
                     }
                     $off = \strlen($buf);
-                    $buf .= $this->body->consume();
+                    $buf .= $this->body->getCurrent();
                 }
 
                 $headers = [];
@@ -339,71 +350,71 @@ class BodyParser implements Promise {
                 } else {
                     $metadata = [];
                 }
-                $dataPromisor = $this->initField($field, $metadata);
+                $dataPostponed = $this->initField($field, $metadata);
 
                 $buf = substr($buf, $end + 4);
                 $off = 0;
                 
                 while (($end = strpos($buf, $sep, $off)) === false) {
-                    if (!yield $this->body->valid()) {
+                    if (!yield $this->body->next()) {
                         $e = new ClientException;
-                        $dataPromisor->fail($e);
+                        $dataPostponed->fail($e);
                         return $this->fail($e);
                     }
                     
-                    $buf .= $this->body->consume();
+                    $buf .= $this->body->getCurrent();
                     if (\strlen($buf) > \strlen($sep)) {
                         $off = \strlen($buf) - \strlen($sep);
                         $data = substr($buf, 0, $off);
                         if ($this->updateFieldSize($field, $data)) {
-                            $dataPromisor->fail(new ClientSizeException);
+                            $dataPostponed->fail(new ClientSizeException);
                             return;
                         }
-                        $dataPromisor->update($data);
+                        $dataPostponed->emit($data);
                         $buf = substr($buf, $off);
                     }
                 }
 
                 $data = substr($buf, 0, $end);
                 if ($this->updateFieldSize($field, $data)) {
-                    $dataPromisor->fail(new ClientSizeException);
+                    $dataPostponed->fail(new ClientSizeException);
                     return;
                 }
-                $dataPromisor->update($data);
-                $dataPromisor->succeed();
+                $dataPostponed->emit($data);
+                $dataPostponed->resolve();
                 $off = $end + \strlen($sep);
 
                 while (\strlen($buf) < 4) {
-                    if (!yield $this->body->valid()) {
+                    if (!yield $this->body->next()) {
                         return $this->fail(new ClientException);
                     }
-                    $buf .= $this->body->consume();
+                    $buf .= $this->body->getCurrent();
                 }
             }
         } else {
             $field = null;
-            while (yield $this->body->valid()) {
-                $new = $this->body->consume();
+            while (yield $this->body->next()) {
+                $new = $this->body->getCurrent();
 
                 if ($new[0] === "&") {
                     if ($field !== null) {
                         if ($noData || $buf != "") {
                             $data = urldecode($buf);
                             if ($this->updateFieldSize($field, $data)) {
-                                $dataPromisor->fail(new ClientSizeException);
+                                $dataPostponed->fail(new ClientSizeException);
                                 return;
                             }
-                            $dataPromisor->update($data);
+                            $dataPostponed->emit($data);
                             $buf = "";
                         }
                         $field = null;
-                        $dataPromisor->succeed();
+                        $dataPostponed->resolve();
                     } elseif ($buf != "") {
-                        if (!$dataPromisor = $this->initField(urldecode($buf))) {
+                        if (!$dataPostponed = $this->initField(urldecode($buf))) {
                             return;
                         }
-                        $dataPromisor->update("");
-                        $dataPromisor->succeed();
+                        $dataPostponed->emit("");
+                        $dataPostponed->resolve();
                         $buf = "";
                     }
                 }
@@ -412,11 +423,11 @@ class BodyParser implements Promise {
                 if ($field !== null && ($new = strtok("&")) !== false) {
                     $data = urldecode($buf);
                     if ($this->updateFieldSize($field, $data)) {
-                        $dataPromisor->fail(new ClientSizeException);
+                        $dataPostponed->fail(new ClientSizeException);
                         return;
                     }
-                    $dataPromisor->update($data);
-                    $dataPromisor->succeed();
+                    $dataPostponed->emit($data);
+                    $dataPostponed->resolve();
 
                     $buf = $new;
                     $field = null;
@@ -425,16 +436,16 @@ class BodyParser implements Promise {
                 while (($next = strtok("&")) !== false) {
                     $pair = explode("=", $buf, 2);
                     $key = urldecode($pair[0]);
-                    if (!$dataPromisor = $this->initField($key)) {
+                    if (!$dataPostponed = $this->initField($key)) {
                         return;
                     }
                     $data = urldecode($pair[1] ?? "");
                     if ($this->updateFieldSize($key, $data)) {
-                        $dataPromisor->fail(new ClientSizeException);
+                        $dataPostponed->fail(new ClientSizeException);
                         return;
                     }
-                    $dataPromisor->update($data);
-                    $dataPromisor->succeed();
+                    $dataPostponed->emit($data);
+                    $dataPostponed->resolve();
 
                     $buf = $next;
                 }
@@ -442,7 +453,7 @@ class BodyParser implements Promise {
                 if ($field === null) {
                     if (($new = strstr($buf, "=", true)) !== false) {
                         $field = urldecode($new);
-                        if (!$dataPromisor = $this->initField($field)) {
+                        if (!$dataPostponed = $this->initField($field)) {
                             return;
                         }
                         $buf = substr($buf, \strlen($new) + 1);
@@ -458,16 +469,16 @@ class BodyParser implements Promise {
                             if ($this->updateFieldSize($field, $data)) {
                                 return;
                             }
-                            $dataPromisor->update(urldecode(substr($buf, 0, $percent)));
+                            $dataPostponed->emit(urldecode(substr($buf, 0, $percent)));
                             $buf = substr($buf, $percent);
                         }
                     } else {
                         $data = urldecode($buf);
                         if ($this->updateFieldSize($field, $data)) {
-                            $dataPromisor->fail(new ClientSizeException);
+                            $dataPostponed->fail(new ClientSizeException);
                             return;
                         }
-                        $dataPromisor->update($data);
+                        $dataPostponed->emit($data);
                         $buf = "";
                     }
                     $noData = false;
@@ -480,24 +491,24 @@ class BodyParser implements Promise {
                     if ($this->updateFieldSize($field, $data)) {
                         return;
                     }
-                    $dataPromisor->update($data);
+                    $dataPostponed->emit($data);
                 }
-                $dataPromisor->succeed();
+                $dataPostponed->resolve();
                 $field = null;
             } elseif ($buf) {
                 $field = urldecode($buf);
-                if (!$dataPromisor = $this->initField($field)) {
+                if (!$dataPostponed = $this->initField($field)) {
                     return;
                 }
-                $dataPromisor->update("");
-                $dataPromisor->succeed();
+                $dataPostponed->emit("");
+                $dataPostponed->resolve();
             }
         }
 
-        foreach ($this->bodyPromisors as $fieldArray) {
-            foreach ($fieldArray as list($promisor, $metadata)) {
-                $promisor->succeed();
-                $metadata->succeed([]);
+        foreach ($this->bodyDeferreds as $fieldArray) {
+            foreach ($fieldArray as list($deferred, $metadata)) {
+                $deferred->resolve();
+                $metadata->resolve([]);
             }
         }
     }

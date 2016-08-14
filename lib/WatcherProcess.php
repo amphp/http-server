@@ -14,17 +14,18 @@ class WatcherProcess extends Process {
     private $processes;
     private $ipcClients = [];
     private $procGarbageWatcher;
-    private $stopPromisor;
-    private $spawnPromisors = [];
+    private $stopDeferred;
+    private $spawnDeferreds = [];
     private $defunctProcessCount = 0;
     private $expectedFailures = 0;
 
     public function __construct(PsrLogger $logger) {
         parent::__construct($logger);
         $this->logger = $logger;
-        $this->procGarbageWatcher = \Amp\repeat(function() {
+        $this->procGarbageWatcher = \Amp\repeat(100, function() {
             $this->collectProcessGarbage();
-        }, 100, ["enable" => false]);
+        });
+        \Amp\disable($this->procGarbageWatcher);
     }
 
     private function collectProcessGarbage() {
@@ -40,7 +41,7 @@ class WatcherProcess extends Process {
                 $this->expectedFailures--;
                 continue;
             }
-            if (!$this->stopPromisor) {
+            if (!$this->stopDeferred) {
                 $this->spawn();
             }
         }
@@ -50,12 +51,12 @@ class WatcherProcess extends Process {
             \Amp\disable($this->procGarbageWatcher);
         }
 
-        if ($this->stopPromisor && empty($this->processes)) {
+        if ($this->stopDeferred && empty($this->processes)) {
             \Amp\cancel($this->procGarbageWatcher);
-            if ($this->stopPromisor !== true) {
-                \Amp\immediately([$this->stopPromisor, "succeed"]);
+            if ($this->stopDeferred !== true) {
+                \Amp\defer([$this->stopDeferred, "succeed"]);
             }
-            $this->stopPromisor = true;
+            $this->stopDeferred = true;
         }
     }
 
@@ -66,18 +67,18 @@ class WatcherProcess extends Process {
 
         $this->recommendAssertionSetting();
         $this->recommendLogLevel($console);
-        $this->stopPromisor = null;
+        $this->stopDeferred = null;
         $this->console = $console;
         $this->workerCount = $this->determineWorkerCount($console);
         $this->ipcServerUri = $this->bindIpcServer();
         $this->workerCommand = $this->generateWorkerCommand($console);
         yield from $this->bindCommandServer((string) $console->getArg("config"));
 
-        $promises = [];
+        $awaitables = [];
         for ($i = 0; $i < $this->workerCount; $i++) {
-            $promises[] = $this->spawn();
+            $awaitables[] = $this->spawn();
         }
-        yield \Amp\any($promises);
+        yield \Amp\any($awaitables);
     }
 
     private function checkCommands(Console $console) {
@@ -178,7 +179,7 @@ class WatcherProcess extends Process {
                         break;
 
                     case "stop":
-                        \Amp\resolve($this->stop())->when('Amp\stop');
+                        (new \Amp\Coroutine($this->stop()))->when('Amp\stop');
                         break;
                 }
             } while (1);
@@ -325,7 +326,7 @@ class WatcherProcess extends Process {
         }
 
 
-        if ($this->stopPromisor) {
+        if ($this->stopDeferred) {
             @\fwrite($ipcClient, "\n");
         }
 
@@ -337,8 +338,8 @@ class WatcherProcess extends Process {
         $this->ipcClients[$readWatcherId] = $ipcClient;
         $parser->send($readWatcherId);
 
-        assert(!empty($this->spawnPromisors));
-        array_shift($this->spawnPromisors)->succeed();
+        assert(!empty($this->spawnDeferreds));
+        array_shift($this->spawnDeferreds)->resolve();
     }
 
     private function parser($ipcClient): \Generator {
@@ -433,7 +434,7 @@ class WatcherProcess extends Process {
         }
         $this->processes[] = $procHandle;
 
-        return ($this->spawnPromisors[] = new Deferred)->promise();
+        return ($this->spawnDeferreds[] = new Deferred)->getAwaitable();
     }
 
     protected function restart() {
@@ -448,14 +449,14 @@ class WatcherProcess extends Process {
     }
 
     protected function doStop(): \Generator {
-        if (!$this->stopPromisor) {
-            $this->stopPromisor = new Deferred;
+        if (!$this->stopDeferred) {
+            $this->stopDeferred = new Deferred;
             foreach ($this->ipcClients as $ipcClient) {
                 @\fwrite($ipcClient, "\n");
             }
         }
 
-        yield $this->stopPromisor === true ? new Success : $this->stopPromisor->promise();
+        yield $this->stopDeferred === true ? new Success : $this->stopDeferred->getAwaitable();
 
     }
 }

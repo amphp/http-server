@@ -13,17 +13,17 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider requestBodies
      */
     function testDecoding($header, $data, $fields, $metadata) {
-        $deferred = new \Amp\Deferred;
+        $postponed = new \Amp\Postponed;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($deferred->promise());
+        $ireq->body = new Body($postponed->getObservable());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
-        $deferred->update($data);
-        $deferred->succeed();
+        $postponed->emit($data);
+        $postponed->resolve();
 
-        \Amp\run(function() use ($ireq, &$result) {
+        \Amp\execute(function() use ($ireq, &$result) {
             yield \Aerys\parseBody(new StandardRequest($ireq))->when(function ($e, $parsedBody) use (&$result) {
                 $result = $parsedBody->getAll();
             });
@@ -37,26 +37,29 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider requestBodies
      */
     function testImmediateWatch($header, $data, $fields, $metadata) {
-        $deferred = new \Amp\Deferred;
+        $postponed = new \Amp\Postponed;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($deferred->promise());
+        $ireq->body = new Body($postponed->getObservable());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
-        $deferred->update($data);
-        $deferred->succeed();
+        $postponed->emit($data);
+        $postponed->resolve();
 
-        \Amp\run(function() use ($ireq, $fields, $metadata) {
+        \Amp\execute(function() use ($ireq, $fields, $metadata) {
             $fieldlist = $fields;
 
-            yield \Aerys\parseBody(new StandardRequest($ireq))->watch(function ($data) use (&$fieldlist) {
+            $body = \Aerys\parseBody(new StandardRequest($ireq));
+            $body->subscribe(function ($data) use (&$fieldlist) {
                 $this->assertArrayHasKey($data, $fieldlist);
                 array_pop($fieldlist[$data]);
-            })->when(function ($e, $parsedBody) use (&$result) {
+            });
+            $body->when(function ($e, $parsedBody) use (&$result) {
                 $result = $parsedBody->getAll();
                 $this->assertNull($e);
             });
+            yield $body;
 
             $this->assertEquals(count($fieldlist), count($fieldlist, true));
             $this->assertEquals($fields, $result["fields"]);
@@ -68,29 +71,32 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider requestBodies
      */
     function testIncrementalWatch($header, $data, $fields, $metadata) {
-        $deferred = new \Amp\Deferred;
+        $postponed = new \Amp\Postponed;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($deferred->promise());
+        $ireq->body = new Body($postponed->getObservable());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
-        \Amp\run(function() use ($deferred, $data, $ireq, $fields, $metadata) {
+        \Amp\execute(function() use ($postponed, $data, $ireq, $fields, $metadata) {
             $fieldlist = $fields;
             
-            \Amp\immediately(function() use ($deferred, $data) {
-                $deferred->update($data);
-                $deferred->succeed();
+            \Amp\defer(function() use ($postponed, $data) {
+                $postponed->emit($data);
+                $postponed->resolve();
             });
 
-            yield \Aerys\parseBody(new StandardRequest($ireq))->watch(function ($data) use (&$fieldlist) {
+            $body = \Aerys\parseBody(new StandardRequest($ireq));
+            $body->subscribe(function ($data) use (&$fieldlist) {
                 $this->assertArrayHasKey($data, $fieldlist);
                 array_pop($fieldlist[$data]);
-            })->when(function ($e, $parsedBody) use (&$result) {
+            });
+            $body->when(function ($e, $parsedBody) use (&$result) {
                 $this->assertNull($e);
                 $result = $parsedBody->getAll();
             });
-            
+            yield $body;
+
             $this->assertEquals(count($fieldlist), count($fieldlist, true));
             $this->assertEquals($fields, $result["fields"]);
             $this->assertEquals($metadata, $result["metadata"]);
@@ -101,10 +107,10 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $header = null;
         $data = "a=ba%66g&&&be=c&d=f%6&gh&j";
         
-        $deferred = new \Amp\Deferred;
+        $postponed = new \Amp\Postponed;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($deferred->promise());
+        $ireq->body = new Body($postponed->getObservable());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
@@ -117,12 +123,12 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $j = $body->stream("j");
 
 
-        \Amp\run(function() use ($a, $b, $be, $d, $gh, $j, $data, $deferred) {
-            \Amp\immediately(function() use ($data, $deferred) {
+        \Amp\execute(function() use ($a, $b, $be, $d, $gh, $j, $data, $postponed) {
+            \Amp\defer(function() use ($data, $postponed) {
                 for ($i = 0; $i < \strlen($data); $i++) {
-                    $deferred->update($data[$i]);
+                    $postponed->emit($data[$i]);
                 }
-                $deferred->succeed();
+                $postponed->resolve();
             });
             $this->assertEquals("bafg", yield $a);
             $this->assertEquals("", yield $b); // not existing

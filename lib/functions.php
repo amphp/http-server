@@ -2,8 +2,8 @@
 
 namespace Aerys;
 
+use Amp\InvalidYieldError;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\makeGeneratorError;
 
 /**
  * Create a router for use in a Host instance
@@ -172,15 +172,15 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
                         if ($filter->valid()) {
                             if ($key > $hadHeaders) {
                                 if ($send === null) {
-                                    throw new \DomainException(makeGeneratorError(
+                                    throw new InvalidYieldError(
                                         $filter,
                                         "Filter error; header array required from END (null) signal"
-                                    ));
+                                    );
                                 } elseif ($send === false) {
-                                    throw new \DomainException(makeGeneratorError(
+                                    throw new InvalidYieldError(
                                         $filter,
                                         "Filter error; header array required from FLUSH (false) signal"
-                                    ));
+                                    );
                                 }
                             }
                         } else {
@@ -193,18 +193,18 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
                                     $toSend[] = $yielded;
                                 } elseif ($send === null || $send === false) {
                                     $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                                    throw new \DomainException(makeGeneratorError(
+                                    throw new InvalidYieldError(
                                         $filter,
                                         "Filter error; header array required but {$type} returned"
-                                    ));
+                                    );
                                 } else {
                                     // this is always an error because the two-stage filter
                                     // process means any filter receiving non-header data
                                     // must participate in both stages
-                                    throw new \DomainException(makeGeneratorError(
+                                    throw new InvalidYieldError(
                                         $filter,
                                         "Filter error; cannot detach without yielding/returning headers"
-                                    ));
+                                    );
                                 }
                             } elseif (\is_string($yielded)) {
                                 if ($toSend && \is_string(\end($toSend))) {
@@ -214,10 +214,10 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
                                 }
                             } elseif ($yielded !== null && $yielded !== false) {
                                 $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                                throw new \DomainException(makeGeneratorError(
+                                throw new InvalidYieldError(
                                     $filter,
                                     "Filter error; string entity data required but {$type} returned"
-                                ));
+                                );
                             }
 
                             $toSend = $toSend ? array_merge($toSend, $sendArray) : $sendArray;
@@ -238,10 +238,10 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
                         }
                     } else {
                         $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
-                        throw new \DomainException(makeGeneratorError(
+                        throw new InvalidYieldError(
                             $filter,
                             "Filter error; " . ($key > $hadHeaders ? "header array" : "string entity data") . " required but {$type} yielded"
-                        ));
+                        );
                     }
                 } while ($sendArray);
 
@@ -508,7 +508,7 @@ function deflateResponseFilter(InternalRequest $ireq): \Generator {
  * @return \Generator
  */
 function nullBodyResponseFilter(InternalRequest $ireq): \Generator {
-    // Receive headers and immediately send them back.
+    // Receive headers and defer send them back.
     yield yield;
     // Yield null (need more data) for all subsequent body data
     while (yield !== null);

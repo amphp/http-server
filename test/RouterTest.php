@@ -3,10 +3,9 @@
 namespace Aerys\Test;
 
 use Amp\ {
-    Promise,
+    Coroutine,
     Success,
-    function wait,
-    function resolve
+    function wait
 };
 
 use Aerys\{
@@ -20,6 +19,8 @@ use Aerys\{
     StandardRequest,
     StandardResponse
 };
+
+use Interop\Async\Awaitable;
 
 class RouterTest extends \PHPUnit_Framework_TestCase {
     function mockServer($state) {
@@ -47,7 +48,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
             function setHeader(string $field, string $value): Response { $this->headers[strtolower($field)] = $value; return $this; }
             function setCookie(string $field, string $value, array $flags = []): Response { return $this; }
             function send(string $body) { $this->state = self::ENDED; }
-            function stream(string $partialBodyChunk): Promise { return new Success; }
+            function stream(string $partialBodyChunk): Awaitable { return new Success; }
             function flush() { }
             function end(string $finalBodyChunk = null) { }
             function push(string $url, array $headers = null): Response { return $this; }
@@ -106,7 +107,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $multiAction = $router($request, $response);
 
         if ($multiAction) {
-            wait(resolve($multiAction));
+            wait(new Coroutine($multiAction));
         }
 
         $this->assertEquals(\Aerys\HTTP_STATUS["FOUND"], $response->status);
@@ -124,7 +125,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $multiAction = $router($request, $response);
 
         if ($multiAction) {
-            wait(resolve($multiAction));
+            wait(new Coroutine($multiAction));
         }
 
         $this->assertEquals(\Aerys\Response::ENDED, $response->state());
@@ -155,7 +156,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $this->assertFalse($router->do($ireq)->valid());
         $multiAction = $router($request, $response);
 
-        wait(resolve($multiAction));
+        wait(new Coroutine($multiAction));
 
         $this->assertSame(3, $i);
         $this->assertSame(["name" => "daniel", "age" => "32"], $ireq->locals["aerys.routeArgs"]);

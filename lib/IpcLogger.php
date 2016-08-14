@@ -3,7 +3,7 @@
 namespace Aerys;
 
 use Amp\{
-    Promise,
+    Awaitable,
     Success,
     Deferred
 };

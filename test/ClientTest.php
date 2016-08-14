@@ -39,7 +39,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testTrivialHttpRequest() {
-        \Amp\run(function() {
+        \Amp\execute(function() {
             $deferred = new \Amp\Deferred;
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) {
                 $this->assertEquals("GET", $req->getMethod());
@@ -53,7 +53,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
 
                 $res->stream("data");
                 yield $res->stream(str_repeat("*", 100000));
-                yield $res->flush();
+                $res->flush();
                 $res->end("data");
             });
 
@@ -62,26 +62,24 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             $client = new Client($cookies);
             $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
             $port = parse_url($address, PHP_URL_PORT);
-            $promise = $client->request((new \Amp\Artax\Request)
+            $awaitable = $client->request((new \Amp\Artax\Request)
                 ->setUri("https://localhost:$port/uri?foo=bar&baz=1&baz=2")
                 ->setMethod("GET")
                 ->setHeader("custom", "header")
             );
 
-            $res = yield $promise;
+            $res = yield $awaitable;
             $this->assertEquals(200, $res->getStatus());
             $this->assertEquals(["header"], $res->getHeader("custom"));
             $this->assertEquals("data".str_repeat("*", 100000)."data", $res->getBody());
             $this->assertEquals("with value", $cookies->get("localhost", "/", "cookie")[0]->getValue());
 
             \Amp\stop();
-            \Amp\reactor(\Amp\driver());
-            \Amp\File\filesystem(\Amp\File\driver());
         });
     }
 
     function testClientDisconnect() {
-        \Amp\run(function() {
+        \Amp\execute(function() {
             $deferred = new \Amp\Deferred;
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) use ($deferred, &$server) {
                 $this->assertEquals("POST", $req->getMethod());
@@ -91,11 +89,11 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
 
                 try {
                     $res->stream("data");
-                    yield $res->flush();
+                    $res->flush();
                     yield $res->stream(str_repeat("_", $server->getOption("outputBufferSize") + 1));
                     $this->fail("Should not be reached");
                 } catch (ClientException $e) {
-                    $deferred->succeed();
+                    $deferred->resolve();
                 } catch (\Throwable $e) {
                     $deferred->fail($e);
                 }
@@ -119,29 +117,27 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
 
             $client = new Client;
             $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
-            $promise = $client->request((new \Amp\Artax\Request)
+            $awaitable = $client->request((new \Amp\Artax\Request)
                 ->setUri("https://$address/")
                 ->setMethod("POST")
                 ->setBody("body")
             );
 
             $body = "";
-            $promise->watch(function($update) use (&$body) {
+            $awaitable->subscribe(function($update) use (&$body) {
                 list($type, $data) = $update;
                 if ($type == Notify::RESPONSE_BODY_DATA) {
                     $body .= $data;
                 }
             });
             try {
-                yield $promise;
+                yield $awaitable;
             } catch (SocketException $e) { }
             $this->assertTrue(isset($e));
             $this->assertEquals("data", $body);
 
-            yield $deferred->promise();
+            yield $deferred->getAwaitable();
             \Amp\stop();
-            \Amp\reactor(\Amp\driver());
-            \Amp\File\filesystem(\Amp\File\driver());
         });
     }
 }

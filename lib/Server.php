@@ -2,9 +2,12 @@
 
 namespace Aerys;
 
-use Amp\{ Struct, Promise, Success, Failure, Deferred };
-use function Amp\{ resolve, timeout, any, all, makeGeneratorError };
+use Amp\{
+    Coroutine, Struct, Success, Failure, Postponed, Deferred
+};
+use function Amp\{ timeout, any, all, makeGeneratorError };
 use Psr\Log\LoggerInterface as PsrLogger;
+use Interop\Async\Awaitable;
 
 class Server implements Monitor {
     use Struct;
@@ -34,7 +37,7 @@ class Server implements Monitor {
     private $clientsPerIP = [];
     private $keepAliveTimeouts = [];
     private $nullBody;
-    private $stopPromisor;
+    private $stopDeferred;
 
     // private callables that we pass to external code //
     private $exporter;
@@ -42,7 +45,6 @@ class Server implements Monitor {
     private $negotiateCrypto;
     private $onReadable;
     private $onWritable;
-    private $onCoroutineAppResolve;
     private $onResponseDataDone;
 
     public function __construct(Options $options, VhostContainer $vhosts, PsrLogger $logger, Ticker $ticker) {
@@ -61,7 +63,6 @@ class Server implements Monitor {
         $this->negotiateCrypto = $this->makePrivateCallable("negotiateCrypto");
         $this->onReadable = $this->makePrivateCallable("onReadable");
         $this->onWritable = $this->makePrivateCallable("onWritable");
-        $this->onCoroutineAppResolve = $this->makePrivateCallable("onCoroutineAppResolve");
         $this->onResponseDataDone = $this->makePrivateCallable("onResponseDataDone");
     }
 
@@ -120,18 +121,19 @@ class Server implements Monitor {
     /**
      * Notify observers of a server state change
      *
-     * Resolves to an indexed any() promise combinator array.
+     * Resolves to an indexed any() Awaitable combinator array.
      *
-     * @return \Amp\Promise
+     * @return Awaitable
      */
-    private function notify(): Promise {
-        $promises = [];
+    private function notify(): Awaitable {
+        $awaitables = [];
         foreach ($this->observers as $observer) {
-            $promises[] = $observer->update($this);
+            $awaitables[] = $observer->update($this);
         }
 
-        return any($promises)->when(function($error, $result) {
-            // $error is always empty because an any() combinator promise never fails.
+        $awaitable = any($awaitables);
+        $awaitable->when(function($error, $result) {
+            // $error is always empty because an any() combinator Awaitable never fails.
             // Instead we check the error array at index zero in the two-item any() $result
             // and log as needed.
             list($observerErrors) = $result;
@@ -139,14 +141,15 @@ class Server implements Monitor {
                 $this->logger->error($error);
             }
         });
+        return $awaitable;
     }
 
     /**
      * Start the server
      *
-     * @return \Amp\Promise
+     * @return Awaitable
      */
-    public function start(): Promise {
+    public function start(): Awaitable {
         try {
             if ($this->state == self::STOPPED) {
                 if ($this->vhosts->count() === 0) {
@@ -154,7 +157,7 @@ class Server implements Monitor {
                         "Cannot start: no virtual hosts registered in composed VhostContainer"
                     ));
                 }
-                return resolve($this->doStart());
+                return new Coroutine($this->doStart());
             } else {
                 return new Failure(new \LogicException(
                     "Cannot start server: already ".self::STATES[$this->state]
@@ -230,7 +233,7 @@ class Server implements Monitor {
 
         return $this->notify()->when(function($e, $notifyResult) {
             if ($hadErrors = $e || $notifyResult[0]) {
-                resolve($this->doStop())->when(function($e) {
+                (new Coroutine($this->doStop()))->when(function($e) {
                     throw new \RuntimeException(
                         "Server::STARTED observer initialization failure", 0, $e
                     );
@@ -305,9 +308,7 @@ class Server implements Monitor {
         $contextOptions = \stream_context_get_options($client);
         if (isset($contextOptions["ssl"])) {
             $clientId = (int) $client;
-            $watcherId = \Amp\onReadable($client, $this->negotiateCrypto, $options = [
-                "cb_data" => [$ip, $port],
-            ]);
+            $watcherId = \Amp\onReadable($client, $this->negotiateCrypto, [$ip, $port]);
             $this->pendingTlsStreams[$clientId] = [$watcherId, $client];
         } else {
             $this->importClient($client, $ip, $port);
@@ -351,13 +352,13 @@ class Server implements Monitor {
     /**
      * Stop the server
      *
-     * @return \Amp\Promise
+     * @return Awaitable
      */
-    public function stop(): Promise {
+    public function stop(): Awaitable {
         switch ($this->state) {
             case self::STARTED:
-                $stopPromise = resolve($this->doStop());
-                return timeout($stopPromise, $this->options->shutdownTimeout);
+                $stopAwaitable = new Coroutine($this->doStop());
+                return timeout($stopAwaitable, $this->options->shutdownTimeout);
             case self::STOPPED:
                 return new Success;
             default:
@@ -380,9 +381,9 @@ class Server implements Monitor {
             $this->failCryptoNegotiation($socket, key($this->clientsPerIP) /* doesn't matter after stop */);
         }
 
-        $this->stopPromisor = new Deferred;
+        $this->stopDeferred = new Deferred;
         if (empty($this->clients)) {
-            $this->stopPromisor->succeed();
+            $this->stopDeferred->resolve();
         } else {
             foreach ($this->clients as $client) {
                 if (empty($client->requestCycles)) {
@@ -393,11 +394,11 @@ class Server implements Monitor {
             }
         }
 
-        yield all([$this->stopPromisor->promise(), $this->notify()]);
+        yield all([$this->stopDeferred->getAwaitable(), $this->notify()]);
 
         assert($this->logDebug("stopped"));
         $this->state = self::STOPPED;
-        $this->stopPromisor = null;
+        $this->stopDeferred = null;
 
         yield $this->notify();
     }
@@ -422,14 +423,8 @@ class Server implements Monitor {
         $client->cryptoInfo = $meta["crypto"] ?? [];
         $client->isEncrypted = (bool) $client->cryptoInfo;
 
-        $client->readWatcher = \Amp\onReadable($socket, $this->onReadable, $options = [
-            "enable" => true,
-            "cb_data" => $client,
-        ]);
-        $client->writeWatcher = \Amp\onWritable($socket, $this->onWritable, $options = [
-            "enable" => false,
-            "cb_data" => $client,
-        ]);
+        $client->readWatcher = \Amp\onReadable($socket, $this->onReadable, $client);
+        $client->writeWatcher = \Amp\onWritable($socket, $this->onWritable, $client);
 
         $this->clients[$client->id] = $client;
 
@@ -476,9 +471,9 @@ class Server implements Monitor {
             }
         } else {
             $client->bufferSize -= $bytesWritten;
-            if ($client->bufferPromisor && $client->bufferSize <= $client->options->softStreamCap) {
-                $client->bufferPromisor->succeed();
-                $client->bufferPromisor = null;
+            if ($client->bufferDeferred && $client->bufferSize <= $client->options->softStreamCap) {
+                $client->bufferDeferred->resolve();
+                $client->bufferDeferred = null;
             }
             if ($bytesWritten === \strlen($client->writeBuffer)) {
                 $client->writeBuffer = "";
@@ -503,8 +498,8 @@ class Server implements Monitor {
             }
         }
         foreach ($timeouts as $client) {
-            // do not close in case some longer response is taking longer, but do in case bodyPromisors aren't fulfilled
-            if ($client->pendingResponses > \count($client->bodyPromisors)) {
+            // do not close in case some longer response is taking longer, but do in case bodyDeferreds aren't fulfilled
+            if ($client->pendingResponses > \count($client->bodyDeferreds)) {
                 $this->clearKeepAliveTimeout($client);
             } else {
                 // timeouts are only active while Client is doing nothing (not sending nor receving) and no pending writes, hence we can just fully close here
@@ -538,12 +533,12 @@ class Server implements Monitor {
                     $client->isDead = Client::CLOSED_RD;
                     \Amp\cancel($watcherId);
                     $client->readWatcher = null;
-                    if ($client->bodyPromisors) {
+                    if ($client->bodyDeferreds) {
                         $ex = new ClientException;
-                        foreach ($client->bodyPromisors as $promisor) {
-                            $promisor->fail($ex);
+                        foreach ($client->bodyDeferreds as $deferred) {
+                            $deferred->fail($ex);
                         }
-                        $client->bodyPromisors = [];
+                        $client->bodyDeferreds = [];
                     }
                 }
             }
@@ -587,22 +582,22 @@ class Server implements Monitor {
 
     private function onParsedEntityPart(Client $client, array $parseResult) {
         $id = $parseResult["id"];
-        $client->bodyPromisors[$id]->update($parseResult["body"]);
+        $client->bodyDeferreds[$id]->emit($parseResult["body"]);
     }
 
     private function onParsedEntityHeaders(Client $client, array $parseResult) {
         $ireq = $this->initializeRequest($client, $parseResult);
         $id = $parseResult["id"];
-        $client->bodyPromisors[$id] = $bodyPromisor = new Deferred;
-        $ireq->body = new Body($bodyPromisor->promise());
+        $client->bodyDeferreds[$id] = $bodyDeferred = new Postponed;
+        $ireq->body = new Body($bodyDeferred->getObservable());
 
         $this->respond($ireq);
     }
 
     private function onParsedMessageWithEntity(Client $client, array $parseResult) {
         $id = $parseResult["id"];
-        $client->bodyPromisors[$id]->succeed();
-        unset($client->bodyPromisors[$id]);
+        $client->bodyDeferreds[$id]->resolve();
+        unset($client->bodyDeferreds[$id]);
         // @TODO Update trailer headers if present
 
         // Don't respond() because we always start the response when headers arrive
@@ -610,15 +605,15 @@ class Server implements Monitor {
 
     private function onEntitySizeWarning(Client $client, array $parseResult) {
         $id = $parseResult["id"];
-        $promisor = $client->bodyPromisors[$id];
-        $client->bodyPromisors[$id] = new Deferred;
-        $promisor->fail(new ClientSizeException);
+        $deferred = $client->bodyDeferreds[$id];
+        $client->bodyDeferreds[$id] = new Postponed;
+        $deferred->fail(new ClientSizeException);
     }
 
     private function onParseError(Client $client, array $parseResult, string $error) {
         $this->clearKeepAliveTimeout($client);
 
-        if ($client->bodyPromisors) {
+        if ($client->bodyDeferreds) {
             $client->writeBuffer .= "\n\n$error";
             $client->shouldClose = true;
             $this->writeResponse($client, true);
@@ -731,7 +726,7 @@ class Server implements Monitor {
     private function respond(InternalRequest $ireq) {
         $ireq->client->pendingResponses++;
 
-        if ($this->stopPromisor) {
+        if ($this->stopDeferred) {
             $this->tryApplication($ireq, [$this, "sendPreAppServiceUnavailableResponse"], []);
         } elseif (!in_array($ireq->method, $this->options->allowedMethods)) {
             $this->tryApplication($ireq, [$this, "sendPreAppMethodNotAllowedResponse"], []);
@@ -792,8 +787,26 @@ class Server implements Monitor {
         try {
             $out = ($application)($request, $response);
             if ($out instanceof \Generator) {
-                $promise = resolve($out);
-                $promise->when($this->onCoroutineAppResolve, [$ireq, $response, $filters]);
+                $awaitable = new Coroutine($out);
+                $awaitable->when(function() use ($ireq, $response, $filters) {
+                    if (empty($error)) {
+                        if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
+                            return;
+                        } elseif ($response->state() & Response::STARTED) {
+                            $response->end();
+                        } else {
+                            $status = HTTP_STATUS["NOT_FOUND"];
+                            $body = makeGenericBody($status, [
+                                "sub_heading" => "Requested: {$ireq->uri}",
+                            ]);
+                            $response->setStatus($status);
+                            $response->end($body);
+                        }
+                    } elseif (!$error instanceof ClientException) {
+                        // Ignore uncaught ClientException -- applications aren't required to catch this
+                        $this->onApplicationError($error, $ireq, $response, $filters);
+                    }
+                });
             } elseif ($response->state() & Response::STARTED) {
                 $response->end();
             } else {
@@ -831,27 +844,6 @@ class Server implements Monitor {
         $codec = responseCodec($filter, $ireq);
 
         return new StandardResponse($codec, $ireq->client);
-    }
-
-    private function onCoroutineAppResolve($error, $result, $info) {
-        list($ireq, $response, $filters) = $info;
-        if (empty($error)) {
-            if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
-                return;
-            } elseif ($response->state() & Response::STARTED) {
-                $response->end();
-            } else {
-                $status = HTTP_STATUS["NOT_FOUND"];
-                $body = makeGenericBody($status, [
-                    "sub_heading" => "Requested: {$ireq->uri}",
-                ]);
-                $response->setStatus($status);
-                $response->end($body);
-            }
-        } elseif (!$error instanceof ClientException) {
-            // Ignore uncaught ClientException -- applications aren't required to catch this
-            $this->onApplicationError($error, $ireq, $response, $filters);
-        }
     }
 
     private function onApplicationError(\Throwable $error, InternalRequest $ireq, Response $response, array $filters) {
@@ -929,15 +921,15 @@ class Server implements Monitor {
         }
         $this->clientsPerIP[$net]--;
         assert($this->logDebug("close {$client->clientAddr}:{$client->clientPort}"));
-        if ($client->bodyPromisors) {
+        if ($client->bodyDeferreds) {
             $ex = new ClientException;
-            foreach ($client->bodyPromisors as $promisor) {
-                $promisor->fail($ex);
+            foreach ($client->bodyDeferreds as $deferred) {
+                $deferred->fail($ex);
             }
         }
-        if ($client->bufferPromisor) {
+        if ($client->bufferDeferred) {
             $ex = $ex ?? new ClientException;
-            $client->bufferPromisor->fail($ex);
+            $client->bufferDeferred->fail($ex);
         }
 
     }
@@ -949,8 +941,8 @@ class Server implements Monitor {
         \Amp\cancel($client->writeWatcher);
         $this->clearKeepAliveTimeout($client);
         unset($this->clients[$client->id]);
-        if ($this->stopPromisor && empty($this->clients)) {
-            $this->stopPromisor->succeed();
+        if ($this->stopDeferred && empty($this->clients)) {
+            $this->stopDeferred->resolve();
         }
     }
 
@@ -1035,7 +1027,7 @@ class Server implements Monitor {
             "pendingTlsStreams" => $this->pendingTlsStreams,
             "clients" => $this->clients,
             "keepAliveTimeouts" => $this->keepAliveTimeouts,
-            "stopPromise" => $this->stopPromisor ? $this->stopPromisor->promise() : null,
+            "stopAwaitable" => $this->stopDeferred ? $this->stopDeferred->getAwaitable() : null,
         ];
     }
 

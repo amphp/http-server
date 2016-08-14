@@ -2,8 +2,10 @@
 
 namespace Aerys;
 
-use Amp\PromiseStream;
-use Amp\Promise;
+use Amp\Observable;
+use Amp\Observer;
+use Amp\Postponed;
+use Amp\Subscriber;
 
 /**
  * An API allowing responders to buffer or stream request entity bodies
@@ -25,35 +27,36 @@ use Amp\Promise;
  *     $responder = function(Request $request, Response $response) {
  *          $payload = "";
  *          $body = $request->getBody()
- *          while (yield $body->valid()) {
- *              $payload .= $body->consume();
+ *          while (yield $body->next()) {
+ *              $payload .= $body->getCurrent();
  *          }
  *          $response->send("Echoing back the request body: {$payload}");
  *     };
  */
-class Body extends PromiseStream implements Promise {
+class Body extends Observer implements Observable {
     private $whens = [];
     private $watchers = [];
     private $string;
     private $error;
 
-    public function __construct(Promise $promise) {
-        $promise->watch(function($data) {
-            foreach ($this->watchers as list($func, $cbData)) {
-                $func($data, $cbData);
+    public function __construct(Observable $observable) {
+        $observable->subscribe(function($data) {
+            foreach ($this->watchers as $func) {
+                $func($data);
             }
         });
-        parent::__construct($promise); // DO NOT MOVE - preserve order in which things happen
-        $when = function ($e, $bool) use (&$continue) {
+        parent::__construct($observable); // DO NOT MOVE - preserve order in which things happen
+        $when = static function ($e, $bool) use (&$continue) {
             $continue = $bool;
         };
-        $promise->when(function() use (&$continue, $when) {
-            $this->valid()->when($when);
+        $observable->when(function($e, $result) use (&$continue, $when) {
+            $this->next()->when($when);
             while ($continue) {
-                $string[] = $this->consume();
-                $this->valid()->when($when);
+                $string[] = $this->getCurrent();
+                $this->next()->when($when);
             }
-            $this->valid()->when(function ($ex) use (&$e) {
+
+            $this->next()->when(function ($ex) use (&$e) {
                 $e = $ex;
             });
 
@@ -64,17 +67,14 @@ class Body extends PromiseStream implements Promise {
                     $string = $string[0];
                 }
 
-                // way to restart, so that even after the success, the valid() / consume() API will still work
-                if (!$e) {
-                    $result = $this->consume(); // consume the final result
-                }
-                $deferred = new \Amp\Deferred;
-                parent::__construct($deferred->promise());
-                $deferred->update($string);
+                // way to restart, so that even after the success, the next() / getCurrent() API will still work
+                $postponed = new Postponed;
+                parent::__construct($postponed->getObservable());
+                $postponed->emit($string);
                 if ($e) {
-                    $deferred->fail($e);
+                    $postponed->fail($e);
                 } else {
-                    $deferred->succeed($result);
+                    $postponed->resolve($result);
                 }
             } else {
                 $string = "";
@@ -82,27 +82,29 @@ class Body extends PromiseStream implements Promise {
             $this->string = $string;
             $this->error = $e;
 
-            foreach ($this->whens as list($when, $data)) {
-                $when($e, $string, $data);
+            foreach ($this->whens as $when) {
+                $when($e, $string);
             }
             $this->whens = $this->watchers = [];
 
         });
     }
 
-    public function when(callable $func, $data = null) {
+    public function when(callable $func) {
         if (isset($this->string)) {
-            $func($this->error, $this->string, $data);
+            $func($this->error, $this->string);
         } else {
-            $this->whens[] = [$func, $data];
+            $this->whens[] = $func;
         }
         return $this;
     }
 
-    public function watch(callable $func, $data = null) {
+    public function subscribe(callable $func): Subscriber {
         if (!isset($this->string)) {
-            $this->watchers[] = [$func, $data];
+            $this->watchers[] = $func;
+            end($this->watchers);
+            return new Subscriber(key($this->watchers), function($key) { unset($this->watchers[$key]); });
         }
-        return $this;
+        return new Subscriber(null, static function(){});
     }
 }

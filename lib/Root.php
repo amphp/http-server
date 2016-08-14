@@ -52,7 +52,7 @@ class Root implements ServerObserver {
         $this->root = \rtrim(\realpath($root), "/");
         $this->filesystem = $filesystem ?: file\filesystem();
         $this->multipartBoundary = \uniqid("", true);
-        $this->cacheWatcher = amp\repeat(function() {
+        $this->cacheWatcher = amp\repeat(1000, function() {
             $this->now = $now = time();
             foreach ($this->cacheTimeouts as $path => $timeout) {
                 if ($now <= $timeout) {
@@ -66,7 +66,8 @@ class Root implements ServerObserver {
                 $this->bufferedFileCount -= isset($fileInfo->buffer);
                 $this->cacheEntryCount--;
             }
-        }, 1000, $options = ["enable" => false]);
+        });
+        \Amp\disable($this->cacheWatcher);
     }
 
     /**
@@ -546,7 +547,7 @@ class Root implements ServerObserver {
 
     private function sendSingleRange(file\Handle $handle, Response $response, int $startPos, int $endPos): \Generator {
         $bytesRemaining = $endPos - $startPos + 1;
-        yield $handle->seek($startPos);
+        $handle->seek($startPos);
         while ($bytesRemaining) {
             $toBuffer = ($bytesRemaining > 8192) ? 8192 : $bytesRemaining;
             $chunk = yield $handle->read($toBuffer);
@@ -750,7 +751,7 @@ class Root implements ServerObserver {
     /**
      * Receive notifications from the server when it starts/stops
      */
-    public function update(Server $server): amp\Promise {
+    public function update(Server $server): \Interop\Async\Awaitable {
         switch ($server->state()) {
             case Server::STARTING:
                 $this->loadMimeFileTypes(__DIR__."/../etc/mime");

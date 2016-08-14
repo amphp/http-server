@@ -7,7 +7,7 @@ use Aerys\CommandClient;
 
 class CommandClientTest extends \PHPUnit_Framework_TestCase {
     public function testSendRestart() {
-        \Amp\run(function () {
+        \Amp\execute(function () {
             $path = CommandClient::socketPath(Bootstrapper::selectConfigFile(__FILE__));
             $unix = in_array("unix", \stream_get_transports(), true);
 
@@ -42,7 +42,10 @@ class CommandClientTest extends \PHPUnit_Framework_TestCase {
 
                 yield $client->restart();
 
-                yield; // implicit immediate to not have $client in the backtrace so that gc_collect_cyles() will really collect it
+                // delay until next tick to not have $client in the backtrace so that gc_collect_cyles() will really collect it
+                $deferred = new \Amp\Deferred;
+                \Amp\defer([$deferred, "resolve"]);
+                yield $deferred->getAwaitable();
                 unset($client); // force freeing of client and the socket
                 gc_collect_cycles();
 

@@ -9,12 +9,12 @@ use FastRoute\{
 };
 
 use Amp\{
-    Promise,
     Success,
     Failure,
     function any
 };
 
+use Interop\Async\Awaitable;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Router implements Bootable, Middleware, Monitor, ServerObserver {
@@ -372,9 +372,9 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
      * ready to start (Server::STARTING).
      *
      * @param Server $server
-     * @return \Amp\Promise
+     * @return Awaitable
      */
-    public function update(Server $server): Promise {
+    public function update(Server $server): Awaitable {
         switch ($this->state = $server->state()) {
             case Server::STOPPED:
                 $this->routeDispatcher = null;

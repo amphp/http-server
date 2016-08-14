@@ -3,5 +3,5 @@
 namespace Aerys;
 
 interface ServerObserver {
-    public function update(Server $server): \Amp\Promise;
+    public function update(Server $server): \Interop\Async\Awaitable;
 }

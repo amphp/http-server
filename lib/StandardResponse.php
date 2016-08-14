@@ -150,9 +150,9 @@ class StandardResponse implements Response {
      *
      * @param string $partialBody
      * @throws \LogicException If response output already complete
-     * @return \Amp\Promise to be succeeded whenever local buffers aren't full
+     * @return \Interop\Async\Awaitable to be succeeded whenever local buffers aren't full
      */
-    public function stream(string $partialBody): \Amp\Promise {
+    public function stream(string $partialBody): \Interop\Async\Awaitable {
         if ($this->state & self::ENDED) {
             throw new \LogicException(
                 "Cannot stream: response already sent"
@@ -173,7 +173,7 @@ class StandardResponse implements Response {
         // it throws we can handle InternalFilterException appropriately in the server.
         $this->state = self::STREAMING|self::STARTED;
 
-        return $this->client->bufferPromisor ? $this->client->bufferPromisor->promise() : new \Amp\Success;
+        return $this->client->bufferDeferred ? $this->client->bufferDeferred->getAwaitable() : new \Amp\Success;
     }
 
     /**
@@ -269,7 +269,7 @@ class StandardResponse implements Response {
     public function push(string $url, array $headers = null): Response {
         if ($this->state & self::STARTED) {
             throw new \LogicException(
-                "Cannot add push promise; output already started"
+                "Cannot add push Awaitable; output already started"
             );
         }
 

@@ -24,7 +24,7 @@ class Client {
 
     public $writeBuffer;
     public $bufferSize = 0;
-    public $bufferPromisor;
+    public $bufferDeferred;
     public $onWriteDrain;
     public $shouldClose;
     public $isDead = 0;
@@ -36,7 +36,7 @@ class Client {
     public $httpDriver;
     public $exporter; // Requires Client object as first argument // @TODO cyclic reference to Server object
 
-    public $bodyPromisors = [];
+    public $bodyDeferreds = [];
 
     public $parserEmitLock = false;
 

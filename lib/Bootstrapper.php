@@ -2,7 +2,8 @@
 
 namespace Aerys;
 
-use Amp\{ Promise, Success, function any };
+use Amp\{ Success, function any };
+use Interop\Async\Awaitable;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Bootstrapper {
@@ -23,7 +24,7 @@ class Bootstrapper {
         $configFile = self::selectConfigFile((string) $console->getArg("config"));
         $logger->info("Using config file found at $configFile");
 
-        // may return Promise or Generator for async I/O inside config file
+        // may return Awaitable or Generator for async I/O inside config file
         $returnValue = include $configFile;
 
         if (!$returnValue) {
@@ -38,7 +39,7 @@ class Bootstrapper {
 
         if ($returnValue instanceof \Generator) {
             yield from $returnValue;
-        } elseif ($returnValue instanceof Promise) {
+        } elseif ($returnValue instanceof Awaitable) {
             yield $returnValue;
         }
 
@@ -192,7 +193,7 @@ class Bootstrapper {
                         $server->attach($this);
                     }
 
-                    public function update(Server $server): Promise {
+                    public function update(Server $server): Awaitable {
                         if ($server->state() === Server::STOPPING) {
                             $this->isStopping = true;
                         }

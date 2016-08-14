@@ -126,9 +126,9 @@ class Http1Driver implements HttpDriver {
                 $msgs = "";
 
                 if ($client->isDead & Client::CLOSED_WR) {
-                    if (!$client->bufferPromisor) {
-                        $client->bufferPromisor = new Deferred;
-                        $client->bufferPromisor->fail(new ClientException);
+                    if (!$client->bufferDeferred) {
+                        $client->bufferDeferred = new Deferred;
+                        $client->bufferDeferred->fail(new ClientException);
                     }
                     while (true) {
                         yield;
@@ -136,12 +136,12 @@ class Http1Driver implements HttpDriver {
                 }
 
                 $client->bufferSize = \strlen($client->writeBuffer);
-                if ($client->bufferPromisor) {
+                if ($client->bufferDeferred) {
                     if ($client->bufferSize <= $client->options->softStreamCap) {
-                        $client->bufferPromisor->succeed();
+                        $client->bufferDeferred->resolve();
                     }
                 } elseif ($client->bufferSize > $client->options->softStreamCap) {
-                    $client->bufferPromisor = new Deferred;
+                    $client->bufferDeferred = new Deferred;
                 }
             }
         } while (($msgPart = yield) !== null);
@@ -156,18 +156,18 @@ class Http1Driver implements HttpDriver {
         ($this->responseWriter)($client, $final = true);
 
         if ($client->isDead & Client::CLOSED_WR) {
-            if (!$client->bufferPromisor) {
-                $client->bufferPromisor = new Deferred;
-                $client->bufferPromisor->fail(new ClientException);
+            if (!$client->bufferDeferred) {
+                $client->bufferDeferred = new Deferred;
+                $client->bufferDeferred->fail(new ClientException);
             }
-        } elseif (($client->isDead & Client::CLOSED_RD) && $client->bodyPromisors) {
-            array_pop($client->bodyPromisors)->fail(new ClientException); // just one element with Http1Driver
+        } elseif (($client->isDead & Client::CLOSED_RD) && $client->bodyDeferreds) {
+            array_pop($client->bodyDeferreds)->fail(new ClientException); // just one element with Http1Driver
         }
     }
 
     public function upgradeBodySize(InternalRequest $ireq) {
         $client = $ireq->client;
-        if ($client->bodyPromisors) {
+        if ($client->bodyDeferreds) {
             $client->streamWindow = $ireq->maxBodySize;
             if ($client->parserEmitLock) {
                 $client->requestParser->send("");
@@ -209,7 +209,9 @@ class Http1Driver implements HttpDriver {
 
                 do {
                     if (\strlen($buffer) > $maxHeaderSize + $client->streamWindow) {
-                        \Amp\disable($client->readWatcher);
+                        if ($client->readWatcher) {
+                            \Amp\disable($client->readWatcher);
+                        }
                         $buffer .= yield;
                         if (!($client->isDead & Client::CLOSED_RD)) {
                             \Amp\enable($client->readWatcher);
@@ -427,7 +429,9 @@ class Http1Driver implements HttpDriver {
                             
                             ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
                             $client->parserEmitLock = true;
-                            \Amp\disable($client->readWatcher);
+                            if ($client->readWatcher) {
+                                \Amp\disable($client->readWatcher);
+                            }
                             $yield = yield;
                             if ($yield === false) {
                                 $client->shouldClose = true;
@@ -435,7 +439,9 @@ class Http1Driver implements HttpDriver {
                                     yield;
                                 }
                             }
-                            \Amp\enable($client->readWatcher);
+                            if ($client->readWatcher) {
+                                \Amp\enable($client->readWatcher);
+                            }
                             $client->parserEmitLock = false;
                         } while ($client->streamWindow < $bodySize + $chunkLenRemaining);
                     }
@@ -507,7 +513,9 @@ class Http1Driver implements HttpDriver {
                         }
                         ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
                         $client->parserEmitLock = true;
-                        \Amp\disable($client->readWatcher);
+                        if ($client->readWatcher) {
+                            \Amp\disable($client->readWatcher);
+                        }
                         $yield = yield;
                         if ($yield === false) {
                             $client->shouldClose = true;
@@ -515,7 +523,9 @@ class Http1Driver implements HttpDriver {
                                 yield;
                             }
                         }
-                        \Amp\enable($client->readWatcher);
+                        if ($client->readWatcher) {
+                            \Amp\enable($client->readWatcher);
+                        }
                         $client->parserEmitLock = false;
                     } else {
                         break;

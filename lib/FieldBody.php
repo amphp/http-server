@@ -2,23 +2,18 @@
 
 namespace Aerys;
 
-use Amp\Promise;
+use Amp\Observable;
+use Interop\Async\Awaitable;
 
 class FieldBody extends Body {
     private $metadata;
-    private $valid;
-    
-    public function __construct(Promise $promise, Promise $metadata) {
-        parent::__construct($promise);
+
+    public function __construct(Observable $observable, Awaitable $metadata) {
+        parent::__construct($observable);
         $this->metadata = $metadata;
-        $this->valid = $this->valid();
     }
     
-    public function defined(): Promise {
-        return $this->valid;
-    }
-    
-    public function getMetadata(): Promise {
+    public function getMetadata(): Awaitable {
         return $this->metadata;
     }
 }

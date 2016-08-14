@@ -62,7 +62,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
             $this->fail("Expected filter exception was not thrown");
         } catch (FilterException $e) {
             $e = $e->getPrevious();
-            $this->assertInstanceOf("DomainException", $e);
+            $this->assertInstanceOf('Amp\InvalidYieldError', $e);
             if (0 !== strpos($e->getMessage(), "Filter error; header array required but integer yielded")) {
                 $this->fail("Filter exception message differed from expected");
             }
@@ -81,7 +81,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
             $this->fail("Expected filter exception was not thrown");
         } catch (FilterException $e) {
             $e = $e->getPrevious();
-            $this->assertInstanceOf("DomainException", $e);
+            $this->assertInstanceOf('Amp\InvalidYieldError', $e);
             if (0 !== strpos($e->getMessage(), "Filter error; header array required from FLUSH (false) signal")) {
                 $this->fail("Filter exception message differed from expected");
             }
@@ -100,7 +100,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
             $this->fail("Expected filter exception was not thrown");
         } catch (FilterException $e) {
             $e = $e->getPrevious();
-            $this->assertInstanceOf("DomainException", $e);
+            $this->assertInstanceOf('Amp\InvalidYieldError', $e);
             if (0 !== strpos($e->getMessage(), "Filter error; header array required from END (null) signal")) {
                 $this->fail("Filter exception message differed from expected");
             }
@@ -122,7 +122,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
             $this->fail("Expected filter exception was not thrown");
         } catch (FilterException $e) {
             $e = $e->getPrevious();
-            $this->assertInstanceOf("DomainException", $e);
+            $this->assertInstanceOf('Amp\InvalidYieldError', $e);
             if (0 !== strpos($e->getMessage(), "Filter error; cannot detach without yielding/returning headers")) {
                 $this->fail("Filter exception message differed from expected");
             }
@@ -257,7 +257,7 @@ class responseFilterTest extends \PHPUnit_Framework_TestCase {
             $this->fail("Expected filter exception was not thrown");
         } catch (FilterException $e) {
             $e = $e->getPrevious();
-            $this->assertInstanceOf("DomainException", $e);
+            $this->assertInstanceOf('Amp\InvalidYieldError', $e);
             if (0 !== strpos($e->getMessage(), "Filter error; header array required but integer yielded")) {
                 $this->fail("Filter exception message differed from expected");
             }

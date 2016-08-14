@@ -15,7 +15,7 @@ interface Websocket {
      *
      * If this method is a Generator it will be resolved as a coroutine before
      * the server is allowed to start. Additionally, this method returns a
-     * Promise the server will not start until that promise resolves.
+     * Awaitable the server will not start until that Awaitable resolves.
      *
      * @param \Aerys\Websocket\Endpoint $endpoint
      */
@@ -71,8 +71,8 @@ interface Websocket {
      * There is no need to call Endpoint::close() manually in this method.
      *
      * If this method is a Generator it will be resolved as a coroutine before the server
-     * is allowed to fully shutdown. Additionally, if this method returns a Promise the
-     * server will not shutdown until that promise resolves.
+     * is allowed to fully shutdown. Additionally, if this method returns a Awaitable the
+     * server will not shutdown until that Awaitable resolves.
      */
     public function onStop();
 }

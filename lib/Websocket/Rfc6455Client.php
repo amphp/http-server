@@ -14,7 +14,7 @@ class Rfc6455Client {
     public $builder = [];
     public $readWatcher;
     public $writeWatcher;
-    public $msgPromisor;
+    public $msgDeferred;
 
     public $pingCount = 0;
     public $pongCount = 0;
