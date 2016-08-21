@@ -386,6 +386,9 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack(
         $maxBodySize = $client->options->maxBodySize;
         $maxStreams = $client->options->maxConcurrentStreams;
         // $bodyEmitSize = $client->options->ioGranularity; // redundant because data frames, which is 16 KB
+        $maxFramesPerSecond = $client->options->maxFramesPerSecond;
+        $lastReset = 0;
+        $framesLastSecond = 0;
 
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
 
@@ -455,6 +458,27 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
         $client->remainingKeepAlives = $maxStreams;
 
         while (1) {
+            if (++$framesLastSecond > $maxFramesPerSecond / 2) {
+                $time = \time();
+                if ($lastReset == $time) {
+                    if ($framesLastSecond > $maxFramesPerSecond) {
+                        \Amp\disable($client->readWatcher); // aka tiny frame DoS prevention
+                        \Amp\delay(1000, static function ($watcher, $client) {
+                            if (!($client->isDead & Client::CLOSED_RD)) {
+                                \Amp\enable($client->readWatcher);
+                                $client->requestParser->next();
+                            }
+                        }, $client);
+                        yield;
+                        $framesLastSecond = 0;
+                    }
+                } else {
+                    $framesLastSecond = 0;
+                }
+                $lastReset = $time;
+            }
+
+
             while (\strlen($buffer) < 9) {
                 $buffer .= yield;
             }

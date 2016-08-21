@@ -15,7 +15,6 @@ use Amp\{
 use Aerys\{
     ClientException,
     InternalRequest,
-    Logger,
     Middleware,
     Monitor,
     NullBody,
@@ -451,7 +450,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             $client->framesLastSecond += $frames;
             if ($client->framesLastSecond > $this->maxFramesPerSecond / 2) {
                 if ($client->framesLastSecond > $this->maxFramesPerSecond * 1.5) {
-                    \Amp\disable($watcherId);
+                    \Amp\disable($watcherId); // aka tiny frame DoS prevention
                 }
                 $this->highFramesPerSecondClients[$client->id] = $client;
             }
