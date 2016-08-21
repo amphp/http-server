@@ -20,6 +20,7 @@ class Options {
     private $socketBacklogSize = 128;
     private $normalizeMethodCase = true;
     private $maxConcurrentStreams = 20;
+    private $maxFramesPerSecond = 60;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
     private $deflateEnable;
     private $configPath = null;
@@ -230,6 +231,16 @@ class Options {
         }
 
         $this->maxConcurrentStreams = $streams;
+    }
+
+    private function setMaxFramesPerSecond(int $frames) {
+        if ($frames <= 0) {
+            throw new \DomainException(
+                "Max number of HTTP/2 frames per second setting must be greater than zero"
+            );
+        }
+
+        $this->maxFramesPerSecond = $frames;
     }
 
     private function setIoGranularity(int $bytes) {
