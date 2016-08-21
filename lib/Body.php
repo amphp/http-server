@@ -5,7 +5,6 @@ namespace Aerys;
 use Amp\Observable;
 use Amp\Observer;
 use Amp\Postponed;
-use Amp\Subscriber;
 
 /**
  * An API allowing responders to buffer or stream request entity bodies
@@ -99,12 +98,9 @@ class Body extends Observer implements Observable {
         return $this;
     }
 
-    public function subscribe(callable $func): Subscriber {
+    public function subscribe(callable $func) {
         if (!isset($this->string)) {
             $this->watchers[] = $func;
-            end($this->watchers);
-            return new Subscriber(key($this->watchers), function($key) { unset($this->watchers[$key]); });
         }
-        return new Subscriber(null, static function(){});
     }
 }

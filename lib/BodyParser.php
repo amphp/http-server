@@ -6,7 +6,6 @@ use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Observable;
 use Amp\Postponed;
-use Amp\Subscriber;
 use Amp\Success;
 
 class BodyParser implements Observable {
@@ -176,7 +175,7 @@ class BodyParser implements Observable {
         return $this;
     }
 
-    public function subscribe(callable $cb): Subscriber {
+    public function subscribe(callable $cb) {
         if ($this->req) {
             $this->watchers[] = $cb;
 
@@ -187,9 +186,6 @@ class BodyParser implements Observable {
         } elseif (!$this->parsing) {
             $this->watchers[] = $cb;
         }
-
-        end($this->watchers);
-        return new Subscriber(key($this->watchers), function($key) { unset($this->watchers[$key]); });
     }
 
     /**
