@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 1);
 
 namespace Aerys;
 
@@ -22,7 +22,7 @@ class Client {
     public $readWatcher;
     public $writeWatcher;
 
-    public $writeBuffer;
+    public $writeBuffer = "";
     public $bufferSize = 0;
     public $bufferDeferred;
     public $onWriteDrain;

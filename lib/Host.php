@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 1);
 
 namespace Aerys;
 
@@ -140,7 +140,7 @@ class Host {
      * The following example redirects all unencrypted requests to the equivalent
      * encrypted resource:
      *
-     *      <?php
+     *      <?php declare(strict_types = 1);
      *      // Redirect http://mysite.com to https://mysite.com
      *      $host = new Aerys\Host;
      *      $host->setName("mysite.com");

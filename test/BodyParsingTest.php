@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 1);
 
 namespace Aerys\Test;
 
@@ -61,7 +61,7 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
             });
             yield $body;
 
-            $this->assertEquals(count($fieldlist), count($fieldlist, true));
+            $this->assertEquals(count($fieldlist), count($fieldlist, \COUNT_RECURSIVE));
             $this->assertEquals($fields, $result["fields"]);
             $this->assertEquals($metadata, $result["metadata"]);
         });
@@ -97,7 +97,7 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
             });
             yield $body;
 
-            $this->assertEquals(count($fieldlist), count($fieldlist, true));
+            $this->assertEquals(count($fieldlist), count($fieldlist, \COUNT_RECURSIVE));
             $this->assertEquals($fields, $result["fields"]);
             $this->assertEquals($metadata, $result["metadata"]);
         });

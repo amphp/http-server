@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 1);
 
 namespace Aerys;
 
@@ -256,7 +256,7 @@ class Http1Driver implements HttpDriver {
             }
 
             $protocol = \strtok(" ");
-            if (stripos($protocol, "HTTP/") !== 0) {
+            if (!is_string($protocol) || stripos($protocol, "HTTP/") !== 0) {
                 $error = "Bad Request: invalid request line";
                 break;
             }

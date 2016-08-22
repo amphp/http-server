@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 1);
 
 namespace Aerys\Websocket;
 
@@ -622,7 +622,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             if (\strlen($data) > 1.5 * $this->autoFrameSize) {
                 $len = \strlen($data);
                 $slices = ceil($len / $this->autoFrameSize);
-                $frames = str_split($data, ceil($len / $slices));
+                $frames = str_split($data, (int) ceil($len / $slices));
                 $data = array_pop($frames);
                 foreach ($frames as $frame) {
                     $this->compile($client, $frame, $opcode, false);

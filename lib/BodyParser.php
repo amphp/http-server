@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 1);
 
 namespace Aerys;
 
@@ -133,7 +133,7 @@ class BodyParser implements Observable {
                         $metadata[$name][count($fields[$name]) - 1]["mime"] = $headers["content-type"];
                     }
                 }
-
+    
                 return new ParsedBody($fields, $metadata);
 
             } else {
@@ -216,7 +216,9 @@ class BodyParser implements Observable {
                 return new FieldBody($body->getObservable(), $metadata->getAwaitable());
             }
         } elseif (empty($this->bodies[$name])) {
-            return new FieldBody(new Success, new Success([]));
+            $postponed = new Postponed;
+            $postponed->resolve();
+            return new FieldBody($postponed->getObservable(), new Success([]));
         }
         
         $key = key($this->bodies[$name]);

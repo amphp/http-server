@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 1);
 
 namespace Aerys;
 
@@ -59,7 +59,7 @@ class Ticker implements ServerObserver {
         // Date string generation is (relatively) expensive. Since we only need HTTP
         // dates at a granularity of one second we're better off to generate this
         // information once per second and cache it.
-        $now = (int) round(microtime(1));
+        $now = (int) round(microtime(true));
         $this->currentTime = $now;
         $this->currentHttpDate = gmdate("D, d M Y H:i:s", $now) . " GMT";
         foreach ($this->useCallbacks as $useCallback) {

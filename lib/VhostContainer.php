@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 1);
 
 namespace Aerys;
 
@@ -164,7 +164,7 @@ class VhostContainer implements \Countable, Monitor {
             $ipComparison = $ireq->uriHost;
 
             if (!@inet_pton($ipComparison)) {
-                $ipComparison = substr($ipComparison, 1, -1); // IPv6 braces
+                $ipComparison = (string) substr($ipComparison, 1, -1); // IPv6 braces
                 if (!@inet_pton($ipComparison)) {
                     return null;
                 }
