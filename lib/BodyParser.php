@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Amp\{ Coroutine, Deferred, Internal\Placeholder, Observable, Postponed, Success };
+use Interop\Async\Loop;
 
 class BodyParser implements Observable {
     use Placeholder;
@@ -71,7 +72,13 @@ class BodyParser implements Observable {
                         foreach ($result->getNames() as $field) {
                             foreach ($result->getArray($field) as $_) {
                                 foreach ($this->subscribers as $watcher) {
-                                    $watcher($field);
+                                    try {
+                                        $watcher($field);
+                                    } catch (\Throwable $e) {
+                                        Loop::defer(static function () use ($e) {
+                                            throw $e;
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -231,7 +238,13 @@ class BodyParser implements Observable {
         }
 
         foreach ($this->subscribers as $watcher) {
-            $watcher($field);
+            try {
+                $watcher($field);
+            } catch (\Throwable $e) {
+                Loop::defer(static function () use ($e) {
+                    throw $e;
+                });
+            }
         }
         
         return $dataPostponed;
