@@ -2,7 +2,8 @@
 
 namespace Aerys;
 
-use Amp\{ Internal\Producer, Observable, Observer, Postponed };
+use Amp\{ Coroutine, Internal\Producer, Observable, Observer, Postponed };
+use Interop\Async\Awaitable;
 
 /**
  * An API allowing responders to buffer or stream request entity bodies
@@ -32,7 +33,7 @@ use Amp\{ Internal\Producer, Observable, Observer, Postponed };
  */
 class Body extends Observer implements Observable {
     use Producer;
-
+    
     public function __construct(Observable $observable) {
         $observable->subscribe(function ($data) {
             return $this->emit($data);
@@ -40,33 +41,37 @@ class Body extends Observer implements Observable {
         
         parent::__construct($observable); // DO NOT MOVE - preserve order in which things happen
         
-        $observable->when(function($e, $result) {
+        $observable->when(function($e) {
             if ($e) {
                 $this->fail($e);
                 return;
             }
             
-            $when = static function ($e, $bool) use (&$continue) {
-                $continue = $bool;
-            };
-            $string = "";
-            $this->next()->when($when);
-            while ($continue) {
-                $string .= $this->getCurrent();
-                $this->next()->when($when);
-            }
+            $awaitable = new Coroutine($this->drain());
             
-            // way to restart, so that even after the success, the next() / getCurrent() API will still work
-            $postponed = new Postponed;
-            parent::__construct($postponed->getObservable());
-            $postponed->emit($string);
-            if ($e) {
-                $postponed->fail($e);
-            } else {
-                $postponed->resolve($result);
-            }
+            $awaitable->when(function ($e, $string) {
+                // way to restart, so that even after the success, the next() / getCurrent() API will still work
+                $postponed = new Postponed;
+                parent::__construct($postponed->getObservable());
+                
+                if ($e) {
+                    $postponed->fail($e);
+                    return;
+                }
+                
+                $postponed->emit($string);
+                $postponed->resolve();
+            });
             
-            $this->resolve($string);
+            $this->resolve($awaitable);
         });
+    }
+    
+    private function drain(): \Generator {
+        $string = "";
+        while (yield $this->next()) {
+            $string .= $this->getCurrent();
+        }
+        return $string;
     }
 }
