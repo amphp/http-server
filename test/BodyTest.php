@@ -74,7 +74,7 @@ class BodyTest extends \PHPUnit_Framework_TestCase {
         $postponed->emit("text");
         $postponed->fail(new ClientSizeException);
         $body->when(function ($e, $result) {
-            $this->assertEquals("texttext", $result);
+            $this->assertSame(null, $result);
             $this->assertInstanceOf(ClientSizeException::class, $e);
         });
         \Amp\execute(function() use ($body) {
