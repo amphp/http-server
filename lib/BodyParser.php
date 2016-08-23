@@ -2,12 +2,10 @@
 
 namespace Aerys;
 
-use Amp\{ Coroutine, Deferred, Internal\Producer, Observable, Postponed, Success };
+use Amp\{ Coroutine, Deferred, Internal\Placeholder, Observable, Postponed, Success };
 
 class BodyParser implements Observable {
-    use Producer {
-        subscribe as watch;
-    }
+    use Placeholder;
     
     private $req;
     private $body;
@@ -16,6 +14,8 @@ class BodyParser implements Observable {
     private $bodyDeferreds = [];
     private $bodies = [];
     private $parsing = false;
+
+    private $subscribers = [];
 
     private $size;
     private $totalSize;
@@ -70,12 +70,15 @@ class BodyParser implements Observable {
                         $this->parsing = 2;
                         foreach ($result->getNames() as $field) {
                             foreach ($result->getArray($field) as $_) {
-                                $this->emit($field);
+                                foreach ($this->subscribers as $watcher) {
+                                    $watcher($field);
+                                }
                             }
                         }
                     }
     
                     $this->resolve($result);
+                    $this->subscribers = [];
                 }
             });
         });
@@ -156,14 +159,14 @@ class BodyParser implements Observable {
     
     public function subscribe(callable $onNext) {
         if ($this->req) {
-            $this->watch($onNext);
+            $this->subscribers[] = $onNext;
 
             if (!$this->parsing) {
                 $this->parsing = true;
                 \Amp\defer(function() { return $this->initIncremental(); });
             }
         } elseif (!$this->parsing) {
-            $this->watch($onNext);
+            $this->subscribers[] = $onNext;
         }
     }
 
@@ -226,8 +229,10 @@ class BodyParser implements Observable {
             $dataPostponed = new Postponed;
             $this->bodies[$field][] = new FieldBody($dataPostponed->getObservable(), new Success($metadata));
         }
-        
-        $this->emit($field);
+
+        foreach ($this->subscribers as $watcher) {
+            $watcher($field);
+        }
         
         return $dataPostponed;
     }
