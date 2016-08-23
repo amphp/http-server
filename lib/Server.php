@@ -1001,6 +1001,10 @@ class Server implements Monitor {
      * a private method without exposing that method in the public API.
      */
     private function makePrivateCallable(string $method): \Closure {
+        if (PHP_VERSION_ID >= 70100) {
+            return \Closure::fromCallable([$this, $method]);
+        }
+        
         return (new \ReflectionClass($this))->getMethod($method)->getClosure($this);
     }
 
