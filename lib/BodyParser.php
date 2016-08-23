@@ -2,21 +2,16 @@
 
 namespace Aerys;
 
-use Amp\Coroutine;
-use Amp\Deferred;
-use Amp\Observable;
-use Amp\Postponed;
-use Amp\Success;
+use Amp\{ Coroutine, Deferred, Internal\Producer, Observable, Postponed, Success };
 
 class BodyParser implements Observable {
+    use Producer {
+        subscribe as watch;
+    }
+    
     private $req;
     private $body;
     private $boundary = null;
-
-    private $whens = [];
-    private $watchers = [];
-    private $error = null;
-    private $result = null;
 
     private $bodyDeferreds = [];
     private $bodies = [];
@@ -50,7 +45,7 @@ class BodyParser implements Observable {
             if (!preg_match('#^\s*multipart/(?:form-data|mixed)(?:\s*;\s*boundary\s*=\s*("?)([^"]*)\1)?$#', $type, $m)) {
                 $this->req = null;
                 $this->parsing = true;
-                $this->result = new ParsedBody([]);
+                $this->resolve(new ParsedBody([]));
                 return;
             }
 
@@ -67,27 +62,21 @@ class BodyParser implements Observable {
                     if ($e instanceof ClientSizeException) {
                         $e = new ClientException("", 0, $e);
                     }
-                    $this->error = $e;
+                    $this->error($e);
                 } else {
-                    $this->result = $this->end($data);
-                }
-
-                if (!$this->parsing) {
-                    $this->parsing = 2;
-                    foreach ($this->result->getNames() as $field) {
-                        foreach ($this->result->getArray($field) as $_) {
-                            foreach ($this->watchers as $cb) {
-                                $cb($field);
+                    $result = $this->end($data);
+    
+                    if (!$this->parsing) {
+                        $this->parsing = 2;
+                        foreach ($result->getNames() as $field) {
+                            foreach ($result->getArray($field) as $_) {
+                                $this->emit($field);
                             }
                         }
                     }
+    
+                    $this->resolve($result);
                 }
-
-                foreach ($this->whens as $cb) {
-                    $cb($this->error, $this->result);
-                }
-
-                $this->whens = $this->watchers = [];
             });
         });
     }
@@ -164,27 +153,17 @@ class BodyParser implements Observable {
             return new ParsedBody($fields, array_filter($metadata));
         }
     }
-
-    public function when(callable $cb) {
-        if ($this->req || !$this->parsing) {
-            $this->whens[] = $cb;
-        } else {
-            $cb($this->error, $this->result);
-        }
-        
-        return $this;
-    }
-
-    public function subscribe(callable $cb) {
+    
+    public function subscribe(callable $onNext) {
         if ($this->req) {
-            $this->watchers[] = $cb;
+            $this->watch($onNext);
 
             if (!$this->parsing) {
                 $this->parsing = true;
                 \Amp\defer(function() { return $this->initIncremental(); });
             }
         } elseif (!$this->parsing) {
-            $this->watchers[] = $cb;
+            $this->watch($onNext);
         }
     }
 
@@ -216,9 +195,7 @@ class BodyParser implements Observable {
                 return new FieldBody($body->getObservable(), $metadata->getAwaitable());
             }
         } elseif (empty($this->bodies[$name])) {
-            $postponed = new Postponed;
-            $postponed->resolve();
-            return new FieldBody($postponed->getObservable(), new Success([]));
+            return new FieldBody(new Success, new Success([]));
         }
         
         $key = key($this->bodies[$name]);
@@ -229,14 +206,14 @@ class BodyParser implements Observable {
 
     private function initField($field, $metadata = []) {
         if ($this->inputVarCount++ == $this->maxInputVars || \strlen($field) > $this->maxFieldLen) {
-            $this->fail();
+            $this->error();
             return null;
         }
 
         $this->curSizes[$field] = 0;
         $this->usedSize += \strlen($field);
         if ($this->usedSize > $this->size) {
-            $this->fail();
+            $this->error();
             return null;
         }
         
@@ -250,9 +227,8 @@ class BodyParser implements Observable {
             $this->bodies[$field][] = new FieldBody($dataPostponed->getObservable(), new Success($metadata));
         }
         
-        foreach ($this->watchers as $cb) {
-            $cb($field);
-        }
+        $this->emit($field);
+        
         return $dataPostponed;
     }
 
@@ -260,21 +236,21 @@ class BodyParser implements Observable {
         $this->curSizes[$field] += \strlen($data);
         if (isset($this->sizes[$field])) {
             if ($this->curSizes[$field] > $this->sizes[$field]) {
-                $this->fail();
+                $this->error();
                 return true;
             }
         } else {
             $this->usedSize += \strlen($data);
             if ($this->usedSize > $this->size) {
-                $this->fail();
+                $this->error();
                 return true;
             }
         }
         return false;
     }
 
-    private function fail($e = null) {
-        $this->error = $e ?? $e = new ClientSizeException;
+    private function error(\Throwable $e = null) {
+        $e = $e ?? new ClientSizeException;
         foreach ($this->bodyDeferreds as list($deferred, $metadata)) {
             $deferred->fail($e);
             $metadata->fail($e);
@@ -282,11 +258,7 @@ class BodyParser implements Observable {
         $this->bodyDeferreds = [];
         $this->req = null;
 
-        foreach ($this->whens as $cb) {
-            $cb($e, null);
-        }
-
-        $this->whens = $this->watchers = [];
+        $this->fail($e);
     }
 
     // this should be inside a defer (not direct Coroutine) to give user a chance to install watch() handlers
@@ -302,13 +274,15 @@ class BodyParser implements Observable {
             $sep = "--$this->boundary";
             while (\strlen($buf) < \strlen($sep) + 4) {
                 if (!yield $this->body->next()) {
-                    return $this->fail(new ClientException);
+                    $this->error(new ClientException);
+                    return;
                 }
                 $buf .= $this->body->getCurrent();
             }
             $off = \strlen($sep);
             if (strncmp($buf, $sep, $off)) {
-                return $this->fail(new ClientException);
+                $this->error(new ClientException);
+                return;
             }
 
             $sep = "\r\n$sep";
@@ -318,7 +292,8 @@ class BodyParser implements Observable {
                 
                 while (($end = strpos($buf, "\r\n\r\n", $off)) === false) {
                     if (!yield $this->body->next()) {
-                        return $this->fail(new ClientException);
+                        $this->error(new ClientException);
+                        return;
                     }
                     $off = \strlen($buf);
                     $buf .= $this->body->getCurrent();
@@ -329,13 +304,15 @@ class BodyParser implements Observable {
                 foreach (explode("\r\n", substr($buf, $off, $end - $off)) as $header) {
                     $split = explode(":", $header, 2);
                     if (!isset($split[1])) {
-                        return $this->fail(new ClientException);
+                        $this->error(new ClientException);
+                        return;
                     }
                     $headers[strtolower($split[0])] = trim($split[1]);
                 }
 
                 if (!preg_match('#^\s*form-data(?:\s*;\s*(?:name\s*=\s*"([^"]+)"|filename\s*=\s*"([^"]+)"))+\s*$#', $headers["content-disposition"] ?? "", $m) || !isset($m[1])) {
-                    return $this->fail(new ClientException);
+                    $this->error(new ClientException);
+                    return;
                 }
                 $field = $m[1];
 
@@ -357,7 +334,8 @@ class BodyParser implements Observable {
                     if (!yield $this->body->next()) {
                         $e = new ClientException;
                         $dataPostponed->fail($e);
-                        return $this->fail($e);
+                        $this->error($e);
+                        return;
                     }
                     
                     $buf .= $this->body->getCurrent();
@@ -384,7 +362,8 @@ class BodyParser implements Observable {
 
                 while (\strlen($buf) < 4) {
                     if (!yield $this->body->next()) {
-                        return $this->fail(new ClientException);
+                        $this->error(new ClientException);
+                        return;
                     }
                     $buf .= $this->body->getCurrent();
                 }
@@ -457,11 +436,12 @@ class BodyParser implements Observable {
                         $buf = substr($buf, \strlen($new) + 1);
                         $noData = true;
                     } elseif (\strlen($buf) > $this->maxFieldLen) {
-                        return $this->fail();
+                        $this->error();
+                        return;
                     }
                 }
 
-                if ($field !== null && $buf != "" && (\strlen($buf > 2) || $buf[0] !== "%")) {
+                if ($field !== null && $buf != "" && (\strlen($buf) > 2 || $buf[0] !== "%")) {
                     if (\strlen($buf) > 1 ? false !== $percent = strrpos($buf, "%", -2) : !($percent = $buf[0] !== "%")) {
                         if ($percent) {
                             if ($this->updateFieldSize($field, $data)) {

@@ -24,9 +24,8 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $postponed->resolve();
 
         \Amp\execute(function() use ($ireq, &$result) {
-            yield \Aerys\parseBody(new StandardRequest($ireq))->when(function ($e, $parsedBody) use (&$result) {
-                $result = $parsedBody->getAll();
-            });
+            $parsedBody = yield \Aerys\parseBody(new StandardRequest($ireq));
+            $result = $parsedBody->getAll();
         });
 
         $this->assertEquals($fields, $result["fields"]);
