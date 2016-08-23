@@ -2,8 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{ Coroutine, Internal\Producer, Observable, Observer, Postponed };
-use Interop\Async\Awaitable;
+use Amp\{ Internal\Producer, Observable, Observer, Postponed };
 
 /**
  * An API allowing responders to buffer or stream request entity bodies
@@ -35,9 +34,13 @@ class Body extends Observer implements Observable {
     use Producer;
     
     public function __construct(Observable $observable) {
-        $observable->subscribe(function ($data) {
-            return $this->emit($data);
-        });
+        if (PHP_VERSION_ID >= 70100) {
+            $observable->subscribe(\Closure::fromCallable([$this, 'emit']));
+        } else {
+            $observable->subscribe(function ($value) {
+                return $this->emit($value);
+            });
+        }
         
         parent::__construct($observable); // DO NOT MOVE - preserve order in which things happen
         
@@ -47,31 +50,15 @@ class Body extends Observer implements Observable {
                 return;
             }
             
-            $awaitable = new Coroutine($this->drain());
+            $result = \implode($this->drain());
             
-            $awaitable->when(function ($e, $string) {
-                // way to restart, so that even after the success, the next() / getCurrent() API will still work
-                $postponed = new Postponed;
-                parent::__construct($postponed->getObservable());
-                
-                if ($e) {
-                    $postponed->fail($e);
-                    return;
-                }
-                
-                $postponed->emit($string);
-                $postponed->resolve();
-            });
+            // way to restart, so that even after the success, the next() / getCurrent() API will still work
+            $postponed = new Postponed;
+            parent::__construct($postponed->getObservable());
+            $postponed->emit($result);
+            $postponed->resolve();
             
-            $this->resolve($awaitable);
+            $this->resolve($result);
         });
-    }
-    
-    private function drain(): \Generator {
-        $string = "";
-        while (yield $this->next()) {
-            $string .= $this->getCurrent();
-        }
-        return $string;
     }
 }
