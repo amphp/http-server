@@ -2,11 +2,12 @@
 
 namespace Aerys;
 
-use Amp\{ Coroutine, Deferred, Internal\Placeholder, Observable, Postponed, Success };
-use Interop\Async\Loop;
+use Amp\{ Coroutine, Deferred, Internal\Producer, Observable, Postponed, Success };
 
 class BodyParser implements Observable {
-    use Placeholder;
+    use Producer {
+        subscribe as watch;
+    }
     
     private $req;
     private $body;
@@ -15,8 +16,6 @@ class BodyParser implements Observable {
     private $bodyDeferreds = [];
     private $bodies = [];
     private $parsing = false;
-
-    private $subscribers = [];
 
     private $size;
     private $totalSize;
@@ -73,21 +72,12 @@ class BodyParser implements Observable {
                         $this->parsing = 2;
                         foreach ($result->getNames() as $field) {
                             foreach ($result->getArray($field) as $_) {
-                                foreach ($this->subscribers as $watcher) {
-                                    try {
-                                        $watcher($field);
-                                    } catch (\Throwable $e) {
-                                        Loop::defer(static function () use ($e) {
-                                            throw $e;
-                                        });
-                                    }
-                                }
+                                $this->emit($field);
                             }
                         }
                     }
     
                     $this->resolve($result);
-                    $this->subscribers = [];
                 }
             });
             return $awaitable;
@@ -169,14 +159,14 @@ class BodyParser implements Observable {
     
     public function subscribe(callable $onNext) {
         if ($this->req) {
-            $this->subscribers[] = $onNext;
+            $this->watch($onNext);
 
             if (!$this->parsing) {
                 $this->parsing = true;
                 \Amp\defer(function() { return $this->initIncremental(); });
             }
         } elseif (!$this->parsing) {
-            $this->subscribers[] = $onNext;
+            $this->watch($onNext);
         }
     }
 
@@ -239,16 +229,8 @@ class BodyParser implements Observable {
             $dataPostponed = new Postponed;
             $this->bodies[$field][] = new FieldBody($dataPostponed->getObservable(), new Success($metadata));
         }
-
-        foreach ($this->subscribers as $watcher) {
-            try {
-                $watcher($field);
-            } catch (\Throwable $e) {
-                Loop::defer(static function () use ($e) {
-                    throw $e;
-                });
-            }
-        }
+        
+        $this->emit($field);
         
         return $dataPostponed;
     }
