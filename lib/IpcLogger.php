@@ -26,9 +26,8 @@ class IpcLogger extends Logger {
         $onWritable = $this->makePrivateCallable("onWritable");
         $this->ipcSock = $ipcSock;
         stream_set_blocking($ipcSock, false);
-        $this->writeWatcherId = \Amp\onWritable($ipcSock, $onWritable, [
-            "enable" => false,
-        ]);
+        $this->writeWatcherId = \Amp\onWritable($ipcSock, $onWritable);
+        \Amp\disable($this->writeWatcherId);
     }
 
     private function makePrivateCallable(string $method): \Closure {

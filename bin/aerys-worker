@@ -35,20 +35,20 @@ if (!$ipcSock = @stream_socket_client($ipcUri)) {
     die("Failed initializing IPC connection");
 }
 
-$logger = new Aerys\IpcLogger($console, $ipcSock);
+Amp\execute(function() use ($ipcSock, $console) {
+    $logger = new Aerys\IpcLogger($console, $ipcSock);
 
-ob_start(function($output) use ($logger) {
-    static $linebuf = "";
-    $linebuf .= $output;
+    ob_start(function($output) use ($logger) {
+        static $linebuf = "";
+        $linebuf .= $output;
 
-    if (($end = strrpos($linebuf, "\n")) !== false) {
-        $logger->warning("Data written to STDOUT in worker (PID: ".getmypid()."):\n".substr($linebuf, 0, $end));
-        $linebuf = substr($linebuf, $end + 1);
-    }
-}, 1, PHP_OUTPUT_HANDLER_CLEANABLE | PHP_OUTPUT_HANDLER_FLUSHABLE);
+        if (($end = strrpos($linebuf, "\n")) !== false) {
+            $logger->warning("Data written to STDOUT in worker (PID: ".getmypid()."):\n".substr($linebuf, 0, $end));
+            $linebuf = substr($linebuf, $end + 1);
+        }
+    }, 1, PHP_OUTPUT_HANDLER_CLEANABLE | PHP_OUTPUT_HANDLER_FLUSHABLE);
 
-$process = new Aerys\WorkerProcess($logger, $ipcSock);
+    $process = new Aerys\WorkerProcess($logger, $ipcSock);
 
-Amp\execute(function() use ($process, $console) {
     yield from $process->start($console);
 });
