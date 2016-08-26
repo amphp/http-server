@@ -55,7 +55,9 @@ class BodyParser implements Observable {
 
         \Amp\defer(function() {
             if ($this->parsing === true) {
-                new Coroutine($this->initIncremental());
+                $awaitable = new Coroutine($this->initIncremental());
+            } else {
+                $awaitable = null;
             }
             $this->body->when(function ($e, $data) {
                 $this->req = null;
@@ -88,6 +90,7 @@ class BodyParser implements Observable {
                     $this->subscribers = [];
                 }
             });
+            return $awaitable;
         });
     }
 
@@ -279,7 +282,7 @@ class BodyParser implements Observable {
         $this->fail($e);
     }
 
-    // this should be inside a defer (not direct Coroutine) to give user a chance to install watch() handlers
+    // this should be inside a defer (not direct Coroutine) to give user a chance to install subscribe() handlers
     private function initIncremental() {
         if ($this->parsing !== true) {
             return;
