@@ -91,9 +91,9 @@ class HPack {
 
     // (micro-)optimized decode
     private static function huffman_lookup_init() {
+        gc_disable();
         $encodingAccess = [];
         $terminals = [];
-        gc_disable();
 
         foreach (self::HUFFMAN_CODE as $chr => $bits) {
             $len = self::HUFFMAN_CODE_LENGTHS[$chr];
@@ -101,7 +101,7 @@ class HPack {
                 $offlen = $len + $bit;
                 $next = &$encodingAccess[$bit];
                 for ($byte = (int)(($offlen - 1) / 8); $byte > 0; $byte--) {
-                    $cur = str_pad(decbin(($bits >> ($byte * 8 - (0x30 - $offlen) % 8)) & 0xFF), 8, "0", STR_PAD_LEFT);
+                    $cur = \str_pad(\decbin(($bits >> ($byte * 8 - (0x30 - $offlen) % 8)) & 0xFF), 8, "0", STR_PAD_LEFT);
                     if (isset($next[$cur]) && $next[$cur][0] != $encodingAccess[0]) {
                         $next = &$next[$cur][0];
                     } else {
@@ -110,8 +110,8 @@ class HPack {
                         $tmp[$cur] = [&$next, null];
                     }
                 }
-                $key = str_pad(decbin($bits & ((1 << ((($offlen - 1) % 8) + 1)) - 1)), ((($offlen - 1) % 8) + 1), "0", STR_PAD_LEFT);
-                $next[$key] = [null, $chr > 0xFF ? "" : chr($chr)];
+                $key = \str_pad(\decbin($bits & ((1 << ((($offlen - 1) % 8) + 1)) - 1)), ((($offlen - 1) % 8) + 1), "0", STR_PAD_LEFT);
+                $next[$key] = [null, $chr > 0xFF ? "" : \chr($chr)];
                 if ($offlen % 8) {
                     $terminals[$offlen % 8][] = [$key, &$next];
                 } else {
@@ -127,7 +127,7 @@ class HPack {
                 $next = &$terminal[1];
                 if ($next[$key][0] === null) {
                     foreach ($encodingAccess[$off] as $chr => &$cur) {
-                        $next[($memoize[$key] ?? $memoize[$key] = str_pad($key, 8, "0", STR_PAD_RIGHT)) | $chr] = [&$cur[0], $next[$key][1] != "" ? $next[$key][1] . $cur[1] : ""];
+                        $next[($memoize[$key] ?? $memoize[$key] = \str_pad($key, 8, "0", STR_PAD_RIGHT)) | $chr] = [&$cur[0], $next[$key][1] != "" ? $next[$key][1] . $cur[1] : ""];
                     }
 
                     unset($next[$key]);
@@ -136,19 +136,19 @@ class HPack {
         }
 
         $memoize = [];
-        ($fn = function (&$arr) use (&$fn, &$encodingAccess, &$memoize) {
-            ksort($arr, SORT_STRING); // this line is really not performant...
-            foreach ($arr as $k => $v) {
-                $arr[$memoize[$k] ?? $memoize[$k] = chr(bindec($k))] = $v;
-                unset($arr[$k]);
-            }
-            foreach ($arr as $k => $v) {
-                if (\strlen(key($v[0])) == 8) { // prevent infinite recursion
-                    $fn($v[0]);
+        for ($off = 7; $off > 0; $off--) {
+            foreach ($terminals[$off] as &$terminal) {
+                $next = &$terminal[1];
+                foreach ($next as $k => $v) {
+                    if (\strlen($k) != 1) {
+                        $next[$memoize[$k] ?? $memoize[$k] = \chr(\bindec($k))] = $v;
+                        unset($next[$k]);
+                    }
                 }
             }
-        })($encodingAccess[0]);
+        }
 
+        unset($tmp, $cur, $next, $terminals, $terminal);
         gc_enable();
         gc_collect_cycles();
         return $encodingAccess[0];
