@@ -54,7 +54,7 @@ class WatcherProcess extends Process {
         if ($this->stopDeferred && empty($this->processes)) {
             \Amp\cancel($this->procGarbageWatcher);
             if ($this->stopDeferred !== true) {
-                \Amp\defer([$this->stopDeferred, "succeed"]);
+                \Amp\defer([$this->stopDeferred, "resolve"]);
             }
             $this->stopDeferred = true;
         }

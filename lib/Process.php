@@ -2,7 +2,6 @@
 
 namespace Aerys;
 
-use function Amp\coroutine;
 use Interop\Async\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
@@ -46,8 +45,8 @@ abstract class Process {
 
             // Once we make it this far we no longer want to terminate
             // the process in the event of an uncaught exception inside
-            // the event reactor -- log it instead.
-            Loop::setErrorHandler([$this->logger, "critical"]);
+            // the event loop -- log it instead.
+            \Amp\setErrorHandler([$this->logger, "critical"]);
         } catch (\Throwable $uncaught) {
             $this->exitCode = 1;
             $this->logger->critical($uncaught);
@@ -85,16 +84,15 @@ abstract class Process {
             return;
         }
 
-        $onSignal = coroutine([$this, "stop"]);
+        $onSignal = [$this, "stop"];
 
         $loop = Loop::get()->getHandle();
         if (is_resource($loop) && get_resource_type($loop) == "uv_loop") {
             \Amp\unreference(\Amp\onSignal(\UV::SIGINT, $onSignal));
             \Amp\unreference(\Amp\onSignal(\UV::SIGTERM, $onSignal));
         } elseif (extension_loaded("pcntl")) {
-            \Amp\unreference(\Amp\repeat(1000, "pcntl_signal_dispatch"));
-            pcntl_signal(\SIGINT, $onSignal);
-            pcntl_signal(\SIGTERM, $onSignal);
+            \Amp\unreference(\Amp\onSignal(\SIGINT, $onSignal));
+            \Amp\unreference(\Amp\onSignal(\SIGTERM, $onSignal));
         }
     }
 
@@ -121,7 +119,7 @@ abstract class Process {
             $this->exitCode = 1;
             $msg = "{$err["message"]} in {$err["file"]} on line {$err["line"]}";
             // FIXME: Fatal error: Uncaught LogicException: Cannot run() recursively; event reactor already active
-            \Amp\run(function() use ($msg) {
+            \Amp\execute(function() use ($msg) {
                 $this->logger->critical($msg);
                 yield from $this->stop();
             });
