@@ -54,9 +54,7 @@ class BodyParser implements Observable {
 
         \Amp\defer(function() {
             if ($this->parsing === true) {
-                $awaitable = new Coroutine($this->initIncremental());
-            } else {
-                $awaitable = null;
+                \Amp\rethrow(new Coroutine($this->initIncremental()));
             }
             $this->body->when(function ($e, $data) {
                 $this->req = null;
@@ -80,7 +78,6 @@ class BodyParser implements Observable {
                     $this->resolve($result);
                 }
             });
-            return $awaitable;
         });
     }
 
