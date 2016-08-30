@@ -3,14 +3,7 @@
 namespace Aerys;
 
 final class NullBody extends Body {
-    public function __construct() { /* override */ }
-
-    public function when(callable $func, $data = null) {
-        $func(null, "", $data);
-        return $this;
+    public function __construct() {
+        parent::__construct(new \Amp\Success);
     }
-
-    public function subscribe(callable $func) { }
-    
-    public function __destruct() { /* override */ }
 }
