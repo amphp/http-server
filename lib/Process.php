@@ -2,6 +2,7 @@
 
 namespace Aerys;
 
+use Amp\Coroutine;
 use Interop\Async\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
@@ -118,11 +119,10 @@ abstract class Process {
 
             $this->exitCode = 1;
             $msg = "{$err["message"]} in {$err["file"]} on line {$err["line"]}";
-            // FIXME: Fatal error: Uncaught LogicException: Cannot run() recursively; event reactor already active
             \Amp\execute(function() use ($msg) {
                 $this->logger->critical($msg);
                 yield from $this->stop();
-            });
+            }, Loop::get());
         });
     }
 
