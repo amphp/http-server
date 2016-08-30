@@ -3,6 +3,7 @@
 namespace Aerys\Websocket;
 
 use Amp\{
+    CallableMaker,
     Coroutine,
     Deferred,
     Postponed,
@@ -30,6 +31,8 @@ use Interop\Async\Awaitable;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
+    use CallableMaker;
+    
     private $logger;
     private $application;
     private $proxy;
@@ -681,8 +684,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 break;
 
             case Server::STARTED:
-                $f = (new \ReflectionClass($this))->getMethod("timeout")->getClosure($this);
-                $this->timeoutWatcher = \Amp\repeat(1000, $f);
+                $this->timeoutWatcher = \Amp\repeat(1000, $this->callableFromInstanceMethod("timeout"));
                 break;
 
             case Server::STOPPING:

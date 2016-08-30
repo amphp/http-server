@@ -3,14 +3,14 @@
 namespace Aerys;
 
 use Amp\{
-    Coroutine, Struct, Success, Failure, Postponed, Deferred
+    CallableMaker, Coroutine, Struct, Success, Failure, Postponed, Deferred
 };
-use function Amp\{ timeout, any, all, makeGeneratorError };
+use function Amp\{ timeout, any, all };
 use Psr\Log\LoggerInterface as PsrLogger;
 use Interop\Async\Awaitable;
 
 class Server implements Monitor {
-    use Struct;
+    use CallableMaker, Struct;
 
     const STOPPED  = 0;
     const STARTING = 1;
@@ -54,16 +54,16 @@ class Server implements Monitor {
         $this->ticker = $ticker;
         $this->observers = new \SplObjectStorage;
         $this->observers->attach($ticker);
-        $this->ticker->use($this->makePrivateCallable("timeoutKeepAlives"));
+        $this->ticker->use($this->callableFromInstanceMethod("timeoutKeepAlives"));
         $this->nullBody = new NullBody;
 
         // private callables that we pass to external code //
-        $this->exporter = $this->makePrivateCallable("export");
-        $this->onAcceptable = $this->makePrivateCallable("onAcceptable");
-        $this->negotiateCrypto = $this->makePrivateCallable("negotiateCrypto");
-        $this->onReadable = $this->makePrivateCallable("onReadable");
-        $this->onWritable = $this->makePrivateCallable("onWritable");
-        $this->onResponseDataDone = $this->makePrivateCallable("onResponseDataDone");
+        $this->exporter = $this->callableFromInstanceMethod("export");
+        $this->onAcceptable = $this->callableFromInstanceMethod("onAcceptable");
+        $this->negotiateCrypto = $this->callableFromInstanceMethod("negotiateCrypto");
+        $this->onReadable = $this->callableFromInstanceMethod("onReadable");
+        $this->onWritable = $this->callableFromInstanceMethod("onWritable");
+        $this->onResponseDataDone = $this->callableFromInstanceMethod("onResponseDataDone");
     }
 
     /**
@@ -171,8 +171,8 @@ class Server implements Monitor {
     private function doStart(): \Generator {
         assert($this->logDebug("starting"));
 
-        $emitter = $this->makePrivateCallable("onParseEmit");
-        $writer = $this->makePrivateCallable("writeResponse");
+        $emitter = $this->callableFromInstanceMethod("onParseEmit");
+        $writer = $this->callableFromInstanceMethod("writeResponse");
         $this->vhosts->setupHttpDrivers($emitter, $writer);
 
         $addrCtxMap = $this->generateBindableAddressContextMap();
@@ -993,19 +993,6 @@ class Server implements Monitor {
                 throw new \RuntimeException("Switching to user '{$user}' failed, probably because of missing privileges.'");
             }
         }
-    }
-
-    /**
-     * We frequently have to pass callables to outside code (like amp).
-     * Use this method to generate a "publicly callable" closure from
-     * a private method without exposing that method in the public API.
-     */
-    private function makePrivateCallable(string $method): \Closure {
-        if (PHP_VERSION_ID >= 70100) {
-            return \Closure::fromCallable([$this, $method]);
-        }
-        
-        return (new \ReflectionClass($this))->getMethod($method)->getClosure($this);
     }
 
     /**

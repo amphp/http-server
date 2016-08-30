@@ -3,6 +3,8 @@
 namespace Aerys;
 
 class CommandClient {
+    use \Amp\CallableMaker;
+    
     private $buf;
     private $deferreds = [];
     private $path;
@@ -13,7 +15,7 @@ class CommandClient {
 
     public function __construct(string $config) {
         $this->path = self::socketPath($config);
-        $this->writer = (new \ReflectionClass($this))->getMethod("writer")->getClosure($this);
+        $this->writer = $this->callableFromInstanceMethod("writer");
     }
 
     public static function socketPath(string $config) {

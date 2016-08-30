@@ -2,7 +2,9 @@
 
 namespace Aerys;
 
-use Amp\{ Internal\Producer, Observable, Observer, Postponed };
+use Amp\{
+    CallableMaker, Internal\Producer, Observable, Observer, Postponed
+};
 
 /**
  * An API allowing responders to buffer or stream request entity bodies
@@ -31,16 +33,10 @@ use Amp\{ Internal\Producer, Observable, Observer, Postponed };
  *     };
  */
 class Body extends Observer implements Observable {
-    use Producer;
+    use CallableMaker, Producer;
     
     public function __construct(Observable $observable) {
-        if (PHP_VERSION_ID >= 70100) {
-            $observable->subscribe(\Closure::fromCallable([$this, 'emit']));
-        } else {
-            $observable->subscribe(function ($value) {
-                return $this->emit($value);
-            });
-        }
+        $observable->subscribe($this->callableFromInstanceMethod("emit"));
         
         parent::__construct($observable); // DO NOT MOVE - preserve order in which things happen
         

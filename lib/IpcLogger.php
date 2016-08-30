@@ -2,13 +2,9 @@
 
 namespace Aerys;
 
-use Amp\{
-    Awaitable,
-    Success,
-    Deferred
-};
-
 class IpcLogger extends Logger {
+    use \Amp\CallableMaker;
+    
     private $ipcSock;
     private $writeWatcherId;
     private $writeQueue = [];
@@ -23,15 +19,11 @@ class IpcLogger extends Logger {
         $level = isset(self::LEVELS[$level]) ? self::LEVELS[$level] : $level;
         $this->setOutputLevel($level);
 
-        $onWritable = $this->makePrivateCallable("onWritable");
+        $onWritable = $this->callableFromInstanceMethod("onWritable");
         $this->ipcSock = $ipcSock;
         stream_set_blocking($ipcSock, false);
         $this->writeWatcherId = \Amp\onWritable($ipcSock, $onWritable);
         \Amp\disable($this->writeWatcherId);
-    }
-
-    private function makePrivateCallable(string $method): \Closure {
-        return (new \ReflectionClass($this))->getMethod($method)->getClosure($this);
     }
 
     protected function output(string $message) {
