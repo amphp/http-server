@@ -76,6 +76,16 @@ abstract class Logger implements PsrLogger {
         $level = isset(self::LEVELS[$level]) ? $level : "unknown";
         $level = $this->ansify ? $this->ansify($level) : $level;
 
+        foreach ($context as $key => $replacement) {
+            // avoid invalid casts to string
+            if (!is_array($replacement) && (!is_object($replacement) || method_exists($replacement, '__toString'))) {
+                $replacements["{{$key}}"] = $replacement;
+            }
+        }
+        if (isset($replacements)) {
+            $message = strtr($message, $replacements);
+        }
+
         return "[{$time}] {$level} {$message}";
     }
 
