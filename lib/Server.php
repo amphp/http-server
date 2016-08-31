@@ -691,16 +691,16 @@ class Server implements Monitor {
             $uri = parse_url($uri);
             $ireq->uriHost = $uri["host"];
             $ireq->uriPort = isset($uri["port"]) ? (int) $uri["port"] : $client->serverPort;
-            $ireq->uriPath = $uri["path"];
+            $ireq->uriPath = \rawurldecode($uri["path"]);
             $ireq->uriQuery = $uri["query"] ?? "";
-            $ireq->uri = isset($uri["query"]) ? "{$uri['path']}?{$uri['query']}" : $uri["path"];
+            $ireq->uri = isset($uri["query"]) ? "{$ireq->uriPath}?{$uri['query']}" : $ireq->uriPath;
         } else {
             if ($qPos = strpos($uri, '?')) {
                 $ireq->uriQuery = substr($uri, $qPos + 1);
-                $ireq->uriPath = substr($uri, 0, $qPos);
+                $ireq->uriPath = \rawurldecode(substr($uri, 0, $qPos));
                 $ireq->uri = "{$ireq->uriPath}?{$ireq->uriQuery}";
             } else {
-                $ireq->uri = $ireq->uriPath = $uri;
+                $ireq->uri = $ireq->uriPath = \rawurldecode($uri);
                 $ireq->uriQuery = "";
             }
             $host = $ireq->headers["host"][0] ?? "";
