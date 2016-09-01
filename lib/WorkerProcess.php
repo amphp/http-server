@@ -42,11 +42,15 @@ class WorkerProcess extends Process {
         if ($this->server) {
             yield $this->server->stop();
         }
-        $this->logger->flush();
+        if (\method_exists($this->logger, "flush")) {
+            $this->logger->flush();
+        }
     }
 
     protected function exit() {
-        $this->logger->flush();
+        if (\method_exists($this->logger, "flush")) {
+            $this->logger->flush();
+        }
         parent::exit();
     }
 }
