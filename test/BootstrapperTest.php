@@ -15,7 +15,7 @@ use function Amp\wait;
 
 class BootstrapperTest extends \PHPUnit_Framework_TestCase {
     /**
-     * @expectedException \DomainException
+     * @expectedException \Error
      * @expectedExceptionMessage No config file found, specify one via the -c switch on command line
      */
     public function testThrowsWithoutConfig() {

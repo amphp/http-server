@@ -28,7 +28,7 @@ class Bootstrapper {
         $returnValue = include $configFile;
 
         if (!$returnValue) {
-            throw new \DomainException(
+            throw new \Error(
                 "Config file inclusion failure: {$configFile}"
             );
         }
@@ -48,12 +48,12 @@ class Bootstrapper {
         } elseif (is_array(AERYS_OPTIONS)) {
             $options = AERYS_OPTIONS;
         } else {
-            throw new \DomainException(
+            throw new \Error(
                 "Invalid AERYS_OPTIONS constant: expected array, got " . gettype(AERYS_OPTIONS)
             );
         }
         if (array_key_exists("debug", $options)) {
-            throw new \DomainException(
+            throw new \Error(
                 'AERYS_OPTIONS constant contains "debug" key; "debug" option is read-only and only settable to true via the -d command line option'
             );
         }
@@ -84,7 +84,7 @@ class Bootstrapper {
         $bootLoader = static function(Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
             if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
-                throw new \InvalidArgumentException("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Middleware and/or be callable, got ' . gettype($booted) . ".");
+                throw new \Error("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Middleware and/or be callable, got ' . gettype($booted) . ".");
             }
             return $booted ?? $bootable;
         };
@@ -99,7 +99,7 @@ class Bootstrapper {
 
     public static function selectConfigFile(string $configFile): string {
         if ($configFile == "") {
-            throw new \DomainException(
+            throw new \Error(
                 "No config file found, specify one via the -c switch on command line"
             );
         }
@@ -115,7 +115,7 @@ class Bootstrapper {
             }
             return $optionsObj->debug ? $optionsObj : $this->generatePublicOptionsStruct($optionsObj);
         } catch (\Throwable $e) {
-            throw new \DomainException(
+            throw new \Error(
                 "Failed assigning options from config file", 0, $e
             );
         }
@@ -233,7 +233,7 @@ class Bootstrapper {
 
             return $vhost;
         } catch (\Throwable $previousException) {
-            throw new \DomainException(
+            throw new \Error(
                 "Failed building Vhost instance",
                 $code = 0,
                 $previousException

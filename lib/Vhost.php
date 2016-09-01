@@ -49,7 +49,7 @@ class Vhost implements Monitor {
     public function __construct(string $name, array $interfaces, callable $application, array $filters, array $monitors = [], HttpDriver $driver = null) {
         $this->name = strtolower($name);
         if (!$interfaces) {
-            throw new \InvalidArgumentException(
+            throw new \Error(
                 "At least one interface must be passed, an empty interfaces array is not allowed"
             );
         }
@@ -85,13 +85,13 @@ class Vhost implements Monitor {
         list($address, $port) = $interface;
 
         if ($port < 1 || $port > 65535) {
-            throw new \InvalidArgumentException(
+            throw new \Error(
                 "Invalid host port: {$port}; integer in the range [1-65535] required"
             );
         }
 
         if (!$packedAddress = @inet_pton($address)) {
-            throw new \InvalidArgumentException(
+            throw new \Error(
                 "IPv4 or IPv6 address required: {$address}"
             );
         }
@@ -208,7 +208,7 @@ class Vhost implements Monitor {
      */
     public function setCrypto(array $tls) {
         if (!extension_loaded('openssl')) {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot assign crypto settings in host `{$this}`; ext/openssl required"
             );
         }
@@ -298,7 +298,7 @@ class Vhost implements Monitor {
         } elseif (is_array($cryptoMethod)) {
             $cryptoMethodArray = array_map("strtolower", $cryptoMethod);
         } else {
-            throw new \DomainException(
+            throw new \Error(
                 sprintf('Invalid crypto method type: %s. String or array required', gettype($cryptoMethod))
             );
         }
@@ -311,7 +311,7 @@ class Vhost implements Monitor {
         }
 
         if (empty($bitmask)) {
-            throw new \DomainException(
+            throw new \Error(
                 'Invalid crypto method value: no valid methods found'
             );
         }

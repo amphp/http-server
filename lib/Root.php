@@ -40,12 +40,12 @@ class Root implements ServerObserver {
     /**
      * @param string $root Document root
      * @param \Amp\File\Driver $filesystem Optional filesystem driver
-     * @throws \DomainException On invalid root path
+     * @throws \Error On invalid root path
      */
     public function __construct(string $root, file\Driver $filesystem = null) {
         $root = \str_replace("\\", "/", $root);
         if (!(\is_readable($root) && \is_dir($root))) {
-            throw new \DomainException(
+            throw new \Error(
                 "Document root requires a readable directory"
             );
         }
@@ -578,7 +578,7 @@ class Root implements ServerObserver {
      *
      * @param string $option The option key (case-insensitve)
      * @param mixed $value The option value to assign
-     * @throws \DomainException On unrecognized option key
+     * @throws \Error On unrecognized option key
      */
     public function setOption($option, $value) {
         switch ($option) {
@@ -622,7 +622,7 @@ class Root implements ServerObserver {
                 $this->setBufferedFileMaxSize($value);
                 break;
             default:
-                throw new \DomainException(
+                throw new \Error(
                     "Unknown root option: {$option}"
                 );
         }
@@ -632,14 +632,14 @@ class Root implements ServerObserver {
         if (is_string($indexes)) {
             $indexes = array_map("trim", explode(" ", $indexes));
         } elseif (!is_array($indexes)) {
-            throw new \DomainException(sprintf(
+            throw new \Error(sprintf(
                 "Array or string required for root index names: %s provided",
                 gettype($indexes)
             ));
         } else {
             foreach ($indexes as $index) {
                 if (!is_string($index)) {
-                    throw new \DomainException(sprintf(
+                    throw new \Error(sprintf(
                         "Array of string index filenames required: %s provided",
                         gettype($index)
                     ));
@@ -688,7 +688,7 @@ class Root implements ServerObserver {
 
     private function setDefaultMimeType(string $mimeType) {
         if (empty($mimeType)) {
-            throw new \InvalidArgumentException(
+            throw new \Error(
                 'Default mime type expects a non-empty string'
             );
         }
@@ -698,7 +698,7 @@ class Root implements ServerObserver {
 
     private function setDefaultTextCharset(string $charset) {
         if (empty($charset)) {
-            throw new \InvalidArgumentException(
+            throw new \Error(
                 'Default charset expects a non-empty string'
             );
         }
@@ -714,7 +714,7 @@ class Root implements ServerObserver {
         if ($multiplier > 0.00 && $multiplier < 1.0) {
             $this->aggressiveCacheMultiplier = $multiplier;
         } else {
-            throw new \InvalidArgumentException(
+            throw new \Error(
                 "Aggressive cache multiplier expects a float < 1; {$multiplier} specified"
             );
         }

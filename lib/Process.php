@@ -31,7 +31,7 @@ abstract class Process {
     public function start(Console $console): \Generator {
         try {
             if ($this->state) {
-                throw new \LogicException(
+                throw new \Error(
                     "A process may only be started once"
                 );
             }

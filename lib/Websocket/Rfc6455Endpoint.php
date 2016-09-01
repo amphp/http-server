@@ -81,7 +81,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         switch ($option) {
             case "maxBytesPerMinute":
                 if (8192 > $value) {
-                    throw new \DomainException("$option must be at least 8192 bytes");
+                    throw new \Error("$option must be at least 8192 bytes");
                 }
             case "autoFrameSize":
             case "maxFrameSize":
@@ -91,17 +91,17 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             case "closePeriod":
             case "queuedPingLimit":
                 if (0 <= $value = filter_var($value, FILTER_VALIDATE_INT)) {
-                    throw new \DomainException("$option must be a positive integer greater than 0");
+                    throw new \Error("$option must be a positive integer greater than 0");
                 }
                 break;
             case "validateUtf8":
             case "textOnly":
                 if (null === $value = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)) {
-                    throw new \DomainException("$option must be a boolean value");
+                    throw new \Error("$option must be a boolean value");
                 }
                 break;
             default:
-                throw new \DomainException("Unknown option $option");
+                throw new \Error("Unknown option $option");
         }
         $this->$option = $value;
     }

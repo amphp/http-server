@@ -15,7 +15,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \DomainException
+     * @expectedException \Error
      * @expectedExceptionMessage Invalid port number; integer in the range 1..65535 required
      */
     function testThrowsWithBadPort() {
@@ -23,7 +23,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \DomainException
+     * @expectedException \Error
      * @expectedExceptionMessage Invalid IP address
      */
     function testThrowsWithBadInterface() {
@@ -41,7 +41,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \InvalidArgumentException
+     * @expectedException \Error
      * @expectedExceptionMessage Aerys\Host::use requires a callable action or Bootable or Middleware or HttpDriver instance
      */
     function testBadUse() {
@@ -49,7 +49,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \DomainException
+     * @expectedException \Error
      * @expectedExceptionMessage Invalid redirect URI
      */
     function testBadRedirectUrl() {
@@ -57,7 +57,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \DomainException
+     * @expectedException \Error
      * @expectedExceptionMessage Invalid redirect URI; "http" or "https" scheme required
      */
     function testBadRedirectScheme() {
@@ -66,7 +66,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
 
 
     /**
-     * @expectedException \DomainException
+     * @expectedException \Error
      * @expectedExceptionMessage Invalid redirect URI; Host redirect must not contain a query or fragment component
      */
     function testBadRedirectPath() {
@@ -74,7 +74,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \DomainException
+     * @expectedException \Error
      * @expectedExceptionMessage Invalid redirect code; code in the range 300..399 required
      */
     function testBadRedirectCode() {
@@ -82,7 +82,7 @@ class HostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Impossible to define two HttpDriver instances for one same Host; an instance of Aerys\Http1Driver has already been defined as driver
      */
     function testDriverRedefine() {

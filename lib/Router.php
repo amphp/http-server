@@ -33,7 +33,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
      *
      * @param string $key
      * @param mixed $value
-     * @throws \DomainException on unknown option key
+     * @throws \Error on unknown option key
      */
     public function setOption(string $key, $value) {
         switch ($key) {
@@ -47,7 +47,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
                 $this->maxCacheEntries = ($value < 1) ? 0 : $value;
                 break;
             default:
-                throw new \DomainException(
+                throw new \Error(
                     "Unknown Router option: {$key}"
                 );
         }
@@ -153,7 +153,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
      */
     public function use($action) {
         if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable || $action instanceof Monitor)) {
-            throw new \InvalidArgumentException(
+            throw new \Error(
                 __METHOD__ . " requires a callable action or Middleware instance"
             );
         }
@@ -245,22 +245,22 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
      * @param Bootable|Middleware|Monitor|callable ...$actions The action(s) to invoke upon matching this route
-     * @throws \DomainException on invalid empty parameters
+     * @throws \Error on invalid empty parameters
      * @return self
      */
     public function route(string $method, string $uri, ...$actions): Router {
         if ($this->state !== Server::STOPPED) {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot add routes once the server has started"
             );
         }
         if ($method === "") {
-            throw new \DomainException(
+            throw new \Error(
                 __METHOD__ . " requires a non-empty string HTTP method at Argument 1"
             );
         }
         if (empty($actions)) {
-            throw new \DomainException(
+            throw new \Error(
                 __METHOD__ . " requires at least one callable route action or middleware at Argument 3"
             );
         }
@@ -298,7 +298,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         $this->bootLoader = static function(Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
             if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
-                throw new \InvalidArgumentException("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Middleware and/or be callable');
+                throw new \Error("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Middleware and/or be callable');
             }
             return $booted ?? $bootable;
         };
@@ -381,7 +381,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
                 break;
             case Server::STARTING:
                 if (empty($this->routes)) {
-                    return new Failure(new \DomainException(
+                    return new Failure(new \Error(
                         "Router start failure: no routes registered"
                     ));
                 }

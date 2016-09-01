@@ -33,7 +33,7 @@ class VhostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot register encrypted host `localhost`; unencrypted host `*` registered on conflicting port `127.0.0.1:80`
      */
     function testCryptoResolutionFailure() {
@@ -60,7 +60,7 @@ class VhostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \InvalidArgumentException
+     * @expectedException \Error
      * @expectedExceptionMessage At least one interface must be passed, an empty interfaces array is not allowed
      */
     function testNoInterfaces() {
@@ -68,7 +68,7 @@ class VhostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \InvalidArgumentException
+     * @expectedException \Error
      * @expectedExceptionMessage Invalid host port: 0; integer in the range [1-65535] required
      */
     function testBadPort() {
@@ -76,7 +76,7 @@ class VhostTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \InvalidArgumentException
+     * @expectedException \Error
      * @expectedExceptionMessage IPv4 or IPv6 address required: rd.lo.wr.ey
      */
     function testBadInterface() {

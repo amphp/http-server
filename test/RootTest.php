@@ -56,7 +56,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
 
     /**
      * @dataProvider provideBadDocRoots
-     * @expectedException \DomainException
+     * @expectedException \Error
      * @expectedExceptionMessage Document root requires a readable directory
      */
     function testConstructorThrowsOnInvalidDocRoot($badPath) {

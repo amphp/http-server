@@ -28,7 +28,7 @@ class Handshake implements Response {
      */
     public function setStatus(int $code): Response {
         if (!($code === 101 || $code >= 300)) {
-            throw new \DomainException(
+            throw new \Error(
                 "Invalid websocket handshake status ({$code}); 101 or 300-599 required"
             );
         }
@@ -66,7 +66,7 @@ class Handshake implements Response {
      */
     public function stream(string $partialBodyChunk): \Interop\Async\Awaitable {
         if ($this->status === 101) {
-            throw new \DomainException(
+            throw new \Error(
                 "Cannot stream(); entity body content disallowed for Switching Protocols Response"
             );
         }
@@ -82,7 +82,7 @@ class Handshake implements Response {
      */
     public function flush() {
         if ($this->status === 101) {
-            throw new \DomainException(
+            throw new \Error(
                 "Cannot flush(); entity body content disallowed for Switching Protocols Response"
             );
         }
@@ -98,7 +98,7 @@ class Handshake implements Response {
      */
     public function end(string $finalBodyChunk = null) {
         if ($this->status === 101 && isset($finalBodyChunk)) {
-            throw new \DomainException(
+            throw new \Error(
                 "Cannot end() with body data; entity body content disallowed for Switching Protocols Response"
             );
         }

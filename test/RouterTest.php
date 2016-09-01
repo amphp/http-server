@@ -57,7 +57,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException DomainException
+     * @expectedException \Error
      * @expectedExceptionMessage Aerys\Router::route requires a non-empty string HTTP method at Argument 1
      */
     function testRouteThrowsOnEmptyMethodString() {
@@ -66,7 +66,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException DomainException
+     * @expectedException \Error
      * @expectedExceptionMessage Aerys\Router::route requires at least one callable route action or middleware at Argument 3
      */
     function testRouteThrowsOnEmptyActionsArray() {
@@ -82,7 +82,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $i = 0;
         $result->when(function($e, $r) use (&$i) {
             $i++;
-            $this->assertInstanceOf("DomainException", $e);
+            $this->assertInstanceOf("Error", $e);
             $this->assertSame("Router start failure: no routes registered", $e->getMessage());
         });
         $this->assertSame($i, 1);

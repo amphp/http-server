@@ -51,7 +51,7 @@ class Options {
      *
      * @param string $property
      * @return mixed Returns the value of the requested property
-     * @throws \DomainException If an unknown property is requested
+     * @throws \Error If an unknown property is requested
      */
     public function __get(string $property) {
         if (\property_exists($this, $property)) {
@@ -59,7 +59,7 @@ class Options {
         } else {
             // Use \Amp\Struct::generateStructPropertyError() to get a nice message
             // with a possible suggestion for the correct name
-            throw new \DomainException(
+            throw new \Error(
                 $this->generateStructPropertyError($property)
             );
         }
@@ -70,13 +70,13 @@ class Options {
      *
      * @param string $property
      * @param mixed $value
-     * @throws \DomainException If an unknown property is requested
+     * @throws \Error If an unknown property is requested
      */
     public function __set(string $property, $value) {
         if (!\property_exists($this, $property)) {
             // Use \Amp\Struct::generateStructPropertyError() to get a nice message
             // with a possible suggestion for the correct name
-            throw new \DomainException(
+            throw new \Error(
                 $this->generateStructPropertyError($property)
             );
         }
@@ -95,7 +95,7 @@ class Options {
 
     private function setDebug(bool $flag) {
         if ($this->debug !== null) {
-            throw new \LogicException(
+            throw new \Error(
                 "Debug mode can't be altered at run-time"
             );
         }
@@ -110,7 +110,7 @@ class Options {
 
     private function setMaxConnections(int $count) {
         if ($count < 1) {
-            throw new \DomainException(
+            throw new \Error(
                 "Max connections setting must be greater than or equal to one"
             );
         }
@@ -120,7 +120,7 @@ class Options {
 
     private function setConnectionsPerIP(int $count) {
         if ($count < 1) {
-            throw new \DomainException(
+            throw new \Error(
                 "Connections per IP maximum must be greater than or equal to one"
             );
         }
@@ -134,7 +134,7 @@ class Options {
 
     private function setKeepAliveTimeout(int $seconds) {
         if ($seconds < 1) {
-            throw new \DomainException(
+            throw new \Error(
                 "Keep alive timeout setting must be greater than or equal to one second"
             );
         }
@@ -160,7 +160,7 @@ class Options {
 
     private function setSocketBacklogSize(int $backlog) {
         if ($backlog < 16) {
-            throw new \DomainException(
+            throw new \Error(
                 "Socket backlog size setting must be greater than or equal to 16"
             );
         }
@@ -174,7 +174,7 @@ class Options {
 
     private function setMaxInputVars(int $bytes) {
         if ($bytes < 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Max input vars must be a positive integer"
             );
         }
@@ -184,7 +184,7 @@ class Options {
 
     private function setMaxFieldLen(int $bytes) {
         if ($bytes <= 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Max field length must be greater than zero bytes"
             );
         }
@@ -195,7 +195,7 @@ class Options {
 
     private function setMaxBodySize(int $bytes) {
         if ($bytes < 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Max body size setting must be greater than or equal to zero"
             );
         }
@@ -205,7 +205,7 @@ class Options {
 
     private function setMaxHeaderSize(int $bytes) {
         if ($bytes <= 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Max header size setting must be greater than zero"
             );
         }
@@ -215,7 +215,7 @@ class Options {
 
     private function setSoftStreamCap(int $bytes) {
         if ($bytes < 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Soft stream cap setting must be greater than or equal to zero"
             );
         }
@@ -225,7 +225,7 @@ class Options {
 
     private function setMaxConcurrentStreams(int $streams) {
         if ($streams <= 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Max number of concurrent streams setting must be greater than zero"
             );
         }
@@ -235,7 +235,7 @@ class Options {
 
     private function setMaxFramesPerSecond(int $frames) {
         if ($frames <= 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Max number of HTTP/2 frames per second setting must be greater than zero"
             );
         }
@@ -245,7 +245,7 @@ class Options {
 
     private function setIoGranularity(int $bytes) {
         if ($bytes <= 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "IO granularity setting must be greater than zero"
             );
         }
@@ -256,7 +256,7 @@ class Options {
     private function setAllowedMethods(array $allowedMethods) {
         foreach ($allowedMethods as $key => $method) {
             if (!\is_string($method)) {
-                throw new \DomainException(
+                throw new \Error(
                     \sprintf(
                         "Invalid type at key %s of allowed methods array: %s",
                         $key,
@@ -265,18 +265,18 @@ class Options {
                 );
             }
             if ($method === "") {
-                throw new \DomainException(
+                throw new \Error(
                     "Invalid empty HTTP method at key {$key} of allowed methods array"
                 );
             }
         }
         if (!\in_array("GET", $allowedMethods)) {
-            throw new \DomainException(
+            throw new \Error(
                 "Servers must support GET as an allowed HTTP method"
             );
         }
         if (!\in_array("HEAD", $allowedMethods)) {
-            throw new \DomainException(
+            throw new \Error(
                 "Servers must support HEAD as an allowed HTTP method"
             );
         }
@@ -286,7 +286,7 @@ class Options {
 
     private function setDeflateEnable(bool $flag) {
         if ($flag && !\extension_loaded("zlib")) {
-            throw new \DomainException(
+            throw new \Error(
                 "Cannot enable deflate negotiation: zlib module required"
             );
         }
@@ -296,7 +296,7 @@ class Options {
 
     private function setDeflateMinimumLength(int $bytes) {
         if ($bytes < 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Deflate minimum length must be greater than or equal to zero bytes"
             );
         }
@@ -306,7 +306,7 @@ class Options {
 
     private function setDeflateBufferSize(int $bytes) {
         if ($bytes <= 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Deflate buffer size must be greater than zero bytes"
             );
         }
@@ -316,7 +316,7 @@ class Options {
 
     private function setChunkBufferSize(int $bytes) {
         if ($bytes <= 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Chunk buffer size must be greater than zero bytes"
             );
         }
@@ -326,7 +326,7 @@ class Options {
 
     private function setOutputBufferSize(int $bytes) {
         if ($bytes <= 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Output buffer size must be greater than zero bytes"
             );
         }
@@ -336,7 +336,7 @@ class Options {
 
     private function setShutdownTimeout(int $milliseconds) {
         if ($milliseconds < 0) {
-            throw new \DomainException(
+            throw new \Error(
                 "Shutdown timeout size must be greater than or equal to zero"
             );
         }
@@ -346,7 +346,7 @@ class Options {
 
     private function setConfigPath(string $config) {
         if ($this->configPath !== null) {
-            throw new \LogicException(
+            throw new \Error(
                 "Config path can't be altered at run-time"
             );
         }

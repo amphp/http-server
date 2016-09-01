@@ -79,7 +79,7 @@ class Server implements Monitor {
      * Retrieve a server option value
      *
      * @param string $option The option to retrieve
-     * @throws \DomainException on unknown option
+     * @throws \Error on unknown option
      */
     public function getOption(string $option) {
         return $this->options->{$option};
@@ -90,7 +90,7 @@ class Server implements Monitor {
      *
      * @param string $option The option to retrieve
      * @param mixed $newValue
-     * @throws \DomainException on unknown option
+     * @throws \Error on unknown option
      * @return void
      */
     public function setOption(string $option, $newValue) {
@@ -153,13 +153,13 @@ class Server implements Monitor {
         try {
             if ($this->state == self::STOPPED) {
                 if ($this->vhosts->count() === 0) {
-                    return new Failure(new \LogicException(
+                    return new Failure(new \Error(
                         "Cannot start: no virtual hosts registered in composed VhostContainer"
                     ));
                 }
                 return new Coroutine($this->doStart());
             } else {
-                return new Failure(new \LogicException(
+                return new Failure(new \Error(
                     "Cannot start server: already ".self::STATES[$this->state]
                 ));
             }
@@ -198,7 +198,7 @@ class Server implements Monitor {
                     private $_initialized = false;
 
                     public function __get(string $prop) {
-                        throw new \DomainException(
+                        throw new \Error(
                             $this->generateStructPropertyError($prop)
                         );
                     }
@@ -362,7 +362,7 @@ class Server implements Monitor {
             case self::STOPPED:
                 return new Success;
             default:
-                return new Failure(new \LogicException(
+                return new Failure(new \Error(
                     "Cannot stop server: currently ".self::STATES[$this->state]
                 ));
         }

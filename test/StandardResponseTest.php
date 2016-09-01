@@ -7,7 +7,7 @@ use Aerys\{ Client, Filter, InternalRequest, Response, StandardResponse, functio
 class StandardResponseTest extends \PHPUnit_Framework_TestCase {
 
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot set status code; output already started
      */
     public function testSetStatusErrorsIfResponseAlreadyStarted() {
@@ -17,7 +17,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot set reason phrase; output already started
      */
     public function testSetReasonErrorsIfResponseAlreadyStarted() {
@@ -27,7 +27,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot add header; output already started
      */
     public function testAddHeaderErrorsIfResponseAlreadyStarted() {
@@ -37,7 +37,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot set header; output already started
      */
     public function testSetHeaderErrorsIfResponseAlreadyStarted() {
@@ -66,7 +66,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot stream: response already sent
      */
     public function testSendThrowsIfResponseAlreadyComplete() {
@@ -76,7 +76,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot stream: response already sent
      */
     public function testStreamThrowsIfResponseAlreadySent() {
@@ -86,7 +86,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot stream: response already sent
      */
     public function testStreamThrowsIfResponseAlreadyEnded() {
@@ -116,7 +116,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
     }
     
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot flush: response already sent
      */
     public function testFlushThrowsIfResponseAlreadySent() {
@@ -126,7 +126,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
     }
     
     /**
-     * @expectedException \LogicException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot flush: response output not started
      */
     public function testFlushThrowsIfResponseOutputNotStarted() {

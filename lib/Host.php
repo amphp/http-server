@@ -40,7 +40,7 @@ class Host {
      */
     public function expose(string $address, int $port): Host {
         if ($port < 1 || $port > 65535) {
-            throw new \DomainException(
+            throw new \Error(
                 "Invalid port number; integer in the range 1..65535 required"
             );
         }
@@ -54,7 +54,7 @@ class Host {
         }
 
         if (!@inet_pton($address)) {
-            throw new \DomainException(
+            throw new \Error(
                 "Invalid IP address"
             );
         }
@@ -85,7 +85,7 @@ class Host {
      * Host actions are invoked to service requests in the order in which they are added.
      *
      * @param callable|Middleware|Bootable|Monitor $action
-     * @throws \InvalidArgumentException on invalid $action parameter
+     * @throws \Error on invalid $action parameter
      * @return self
      */
     public function use($action): Host {
@@ -93,7 +93,7 @@ class Host {
         $isDriver = $action instanceof HttpDriver;
 
         if (!$isAction && !$isDriver) {
-            throw new \InvalidArgumentException(
+            throw new \Error(
                 __METHOD__ . " requires a callable action or Bootable or Middleware or HttpDriver instance"
             );
         }
@@ -103,7 +103,7 @@ class Host {
         }
         if ($isDriver) {
             if ($this->httpDriver) {
-                throw new \LogicException(
+                throw new \Error(
                     "Impossible to define two HttpDriver instances for one same Host; an instance of " . get_class($this->httpDriver) . " has already been defined as driver"
                 );
             }
@@ -152,17 +152,17 @@ class Host {
      */
     public function redirect(string $absoluteUri, int $redirectCode = 307): Host {
         if (!$url = @parse_url($absoluteUri)) {
-            throw new \DomainException(
+            throw new \Error(
                 "Invalid redirect URI"
             );
         }
         if (empty($url["scheme"]) || ($url["scheme"] !== "http" && $url["scheme"] !== "https")) {
-            throw new \DomainException(
+            throw new \Error(
                 "Invalid redirect URI; \"http\" or \"https\" scheme required"
             );
         }
         if (isset($url["query"]) || isset($url["fragment"])) {
-            throw new \DomainException(
+            throw new \Error(
                 "Invalid redirect URI; Host redirect must not contain a query or fragment component"
             );
         }
@@ -170,7 +170,7 @@ class Host {
         $redirectUri = rtrim($absoluteUri, "/") . "/";
 
         if ($redirectCode < 300 || $redirectCode > 399) {
-            throw new \DomainException(
+            throw new \Error(
                 "Invalid redirect code; code in the range 300..399 required"
             );
         }

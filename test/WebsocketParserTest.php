@@ -221,7 +221,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @expectedException \InvalidArgumentException
+     * @expectedException \Error
      * @expectedExceptionMessage Cannot boot websocket handler; Aerys\Websocket required, boolean provided
      */
     function testBadWebsocketClass() {

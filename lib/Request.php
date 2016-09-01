@@ -158,7 +158,7 @@ interface Request {
      * Retrieve a server option value
      *
      * @param string $option The option to retrieve
-     * @throws \DomainException on unknown option
+     * @throws \Error on unknown option
      */
     public function getOption(string $option);
 }

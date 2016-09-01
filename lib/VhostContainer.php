@@ -44,7 +44,7 @@ class VhostContainer implements \Countable, Monitor {
             }
             foreach ($old->getInterfaces() as list($address, $port)) {
                 if (in_array($port, $new->getPorts($address))) {
-                    throw new \LogicException(
+                    throw new \Error(
                         sprintf(
                             "Cannot register encrypted host `%s`; unencrypted " .
                             "host `%s` registered on conflicting port `%s`",
@@ -63,14 +63,14 @@ class VhostContainer implements \Countable, Monitor {
         foreach ($vhost->getInterfaces() as list($address, $port)) {
             $generic = $this->httpDrivers[$port][\strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"] ?? $driver;
             if (($this->httpDrivers[$port][$address] ?? $generic) !== $driver) {
-                throw new \LogicException(
+                throw new \Error(
                     "Cannot use two different HttpDriver instances on an equivalent address-port pair"
                 );
             }
             if ($address == "0.0.0.0" || $address == "::") {
                 foreach ($this->httpDrivers[$port] ?? [] as $oldAddr => $oldDriver) {
                     if ($oldDriver !== $driver && (\strlen(inet_pton($address)) === 4) == ($address == "0.0.0.0")) {
-                        throw new \LogicException(
+                        throw new \Error(
                             "Cannot use two different HttpDriver instances on an equivalent address-port pair"
                         );
                     }
@@ -88,7 +88,7 @@ class VhostContainer implements \Countable, Monitor {
 
     public function setupHttpDrivers(...$args) {
         if ($this->setupHttpDrivers) {
-            throw new \LogicException("Can setup http drivers only once");
+            throw new \Error("Can setup http drivers only once");
         }
         $this->setupArgs = $args;
         foreach ($this->httpDrivers as $drivers) {
@@ -141,7 +141,7 @@ class VhostContainer implements \Countable, Monitor {
         } elseif ($this->cachedVhostCount) {
             return current($this->vhosts);
         } else {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot retrieve default host; no Vhost instances added to the group"
             );
         }

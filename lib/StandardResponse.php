@@ -23,12 +23,12 @@ class StandardResponse implements Response {
 
     /**
      * {@inheritDoc}
-     * @throws \LogicException If output already started
+     * @throws \Error If output already started
      * @return self
      */
     public function setStatus(int $code): Response {
         if ($this->state & self::STARTED) {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot set status code; output already started"
             );
         }
@@ -40,12 +40,12 @@ class StandardResponse implements Response {
 
     /**
      * {@inheritDoc}
-     * @throws \LogicException If output already started
+     * @throws \Error If output already started
      * @return self
      */
     public function setReason(string $phrase): Response {
         if ($this->state & self::STARTED) {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot set reason phrase; output already started"
             );
         }
@@ -66,12 +66,12 @@ class StandardResponse implements Response {
 
     /**
      * {@inheritDoc}
-     * @throws \LogicException If output already started
+     * @throws \Error If output already started
      * @return self
      */
     public function addHeader(string $field, string $value): Response {
         if ($this->state & self::STARTED) {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot add header; output already started"
             );
         }
@@ -108,12 +108,12 @@ class StandardResponse implements Response {
 
     /**
      * {@inheritDoc}
-     * @throws \LogicException If output already started
+     * @throws \Error If output already started
      * @return self
      */
     public function setHeader(string $field, string $value): Response {
         if ($this->state & self::STARTED) {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot set header; output already started"
             );
         }
@@ -126,12 +126,12 @@ class StandardResponse implements Response {
 
     /**
      * {@inheritDoc}
-     * @throws \LogicException If output already started
+     * @throws \Error If output already started
      * @return self
      */
     public function setCookie(string $name, string $value, array $flags = []): Response {
         if ($this->state & self::STARTED) {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot set header; output already started"
             );
         }
@@ -149,12 +149,12 @@ class StandardResponse implements Response {
      * when this method is invoked.
      *
      * @param string $partialBody
-     * @throws \LogicException If response output already complete
+     * @throws \Error If response output already complete
      * @return \Interop\Async\Awaitable to be succeeded whenever local buffers aren't full
      */
     public function stream(string $partialBody): \Interop\Async\Awaitable {
         if ($this->state & self::ENDED) {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot stream: response already sent"
             );
         }
@@ -182,17 +182,17 @@ class StandardResponse implements Response {
      * This method only makes sense when streaming output via Response::stream().
      * Invoking it before calling stream() or after send()/end() is a logic error.
      *
-     * @throws \LogicException If invoked before stream() or after send()/end()
+     * @throws \Error If invoked before stream() or after send()/end()
      */
     public function flush() {
         if ($this->state & self::ENDED) {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot flush: response already sent"
             );
         } elseif ($this->state & self::STARTED) {
             $this->codec->send(false);
         } else {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot flush: response output not started"
             );
         }
@@ -214,7 +214,7 @@ class StandardResponse implements Response {
     public function end(string $finalBody = null) {
         if ($this->state & self::ENDED) {
             if (isset($finalBody)) {
-                throw new \LogicException(
+                throw new \Error(
                     "Cannot send body data: response output already ended"
                 );
             }
@@ -263,12 +263,12 @@ class StandardResponse implements Response {
 
     /**
      * {@inheritDoc}
-     * @throws \LogicException If output already started
+     * @throws \Error If output already started
      * @return self
      */
     public function push(string $url, array $headers = null): Response {
         if ($this->state & self::STARTED) {
-            throw new \LogicException(
+            throw new \Error(
                 "Cannot add push Awaitable; output already started"
             );
         }
