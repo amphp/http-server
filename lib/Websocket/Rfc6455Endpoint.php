@@ -10,7 +10,8 @@ use Amp\{
     Failure,
     Success,
     function all,
-    function any
+    function any,
+    function rethrow
 };
 
 use Aerys\{
@@ -236,7 +237,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         $this->clients[$client->id] = $client;
         $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
 
-        new Coroutine($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"]));
+        rethrow(new Coroutine($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"])));
 
         return $client;
     }
@@ -363,7 +364,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                     @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
                     \Amp\cancel($client->readWatcher);
                     $client->readWatcher = null;
-                    new Coroutine($this->doClose($client, $code, $reason));
+                    rethrow(new Coroutine($this->doClose($client, $code, $reason)));
                 }
                 break;
 
@@ -390,7 +391,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         if (!$client->msgDeferred) {
             $client->msgDeferred = new Postponed;
             $msg = new Message($client->msgDeferred->getObservable());
-            new Coroutine($this->tryAppOnData($client, $msg));
+            rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
         }
 
         $client->msgDeferred->emit($data);
@@ -430,7 +431,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             }
 
             if (!$client->closedAt) {
-                new Coroutine($this->doClose($client, $code, $msg));
+                rethrow(new Coroutine($this->doClose($client, $code, $msg)));
             }
         }
     }
@@ -462,7 +463,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 $client->closedAt = $this->now;
                 $code = Code::ABNORMAL_CLOSE;
                 $reason = "Client closed underlying TCP connection";
-                new Coroutine($this->tryAppOnClose($client->id, $code, $reason));
+                rethrow(new Coroutine($this->tryAppOnClose($client->id, $code, $reason)));
             } else {
                 unset($this->closeTimeouts[$client->id]);
             }
@@ -644,7 +645,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
         if (isset($this->clients[$clientId])) {
-            new Coroutine($this->doClose($this->clients[$clientId], $code, $reason));
+            rethrow(new Coroutine($this->doClose($this->clients[$clientId], $code, $reason)));
         }
     }
 
@@ -751,7 +752,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             $reason = 'Exceeded unanswered PING limit';
             $this->doClose($client, $code, $reason);
         } else {
-            $this->compile($client, $client->pingCount++, self::OP_PING);
+            $this->compile($client, (string) $client->pingCount++, self::OP_PING);
         }
     }
 
