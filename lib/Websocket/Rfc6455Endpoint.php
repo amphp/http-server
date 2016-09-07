@@ -273,10 +273,14 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             return;
         }
 
-        $this->closeTimeouts[$client->id] = $this->now + $this->closePeriod;
-        $awaitable = $this->sendCloseFrame($client, $code, $reason);
-        yield from $this->tryAppOnClose($client->id, $code, $reason);
-        return $awaitable;
+        try {
+            $this->closeTimeouts[$client->id] = $this->now + $this->closePeriod;
+            $awaitable = $this->sendCloseFrame($client, $code, $reason);
+            yield from $this->tryAppOnClose($client->id, $code, $reason);
+            return yield $awaitable;
+        } catch (ClientException $e) {
+            // Ignore client failures.
+        }
         // Don't unload the client here, it will be unloaded upon timeout
     }
 
