@@ -69,7 +69,8 @@ class StandardRequest implements Request {
         }
         
         if ($ireq->body != $this->body) {
-            $this->body = $ireq->body->when(function ($e, $data) {
+            $this->body = $ireq->body;
+            $ireq->body->when(function ($e, $data) {
                 if ($e instanceof ClientSizeException) {
                     $ireq = $this->internalRequest;
                     $bodyDeferred = $ireq->client->bodyDeferreds[$ireq->streamId];

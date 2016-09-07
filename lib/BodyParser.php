@@ -6,7 +6,7 @@ use Amp\{ Coroutine, Deferred, Internal\Producer, Observable, Postponed, Success
 
 class BodyParser implements Observable {
     use Producer {
-        subscribe as watch;
+        subscribe as private watch;
     }
     
     private $req;
