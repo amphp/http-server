@@ -896,7 +896,7 @@ class Server implements Monitor {
     private function tryErrorResponse(\Throwable $error, InternalRequest $ireq, Response $response, array $filters) {
         try {
             $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
-            $msg = ($this->options->debug) ? "<pre>{$error}</pre>" : "<p>Something went wrong ...</p>";
+            $msg = ($this->options->debug) ? "<pre>" . htmlspecialchars($error) . "</pre>" : "<p>Something went wrong ...</p>";
             $body = makeGenericBody($status, [
                 "sub_heading" =>"Requested: {$ireq->uri}",
                 "msg" => $msg,
