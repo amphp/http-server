@@ -268,6 +268,12 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         $actions = array_merge($this->actions, $actions);
 
         $uri = "/" . ltrim($uri, "/");
+        
+        // Special-case, otherwise we redirect just to the same URI again
+        if ($uri === "/?") {
+            $uri = "/";
+        }
+        
         if (substr($uri, -2) === "/?") {
             $canonicalUri = substr($uri, 0, -2);
             $redirectUri = substr($uri, 0, -1);
