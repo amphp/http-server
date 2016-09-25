@@ -164,12 +164,11 @@ class HPack {
 
             if ($chr != null) {
                 $out[$off++] = $chr;
-                if (\strlen($chr) !== 2) {
-                    continue;
-                } else {
+                if (isset($chr[1])) {
                     $out[$off++] = $chr[1];
                     continue;
                 }
+                continue;
             }
             if ($chr === "") {
                 return null;
