@@ -476,10 +476,6 @@ class Server implements Monitor {
             }
         } else {
             $client->bufferSize -= $bytesWritten;
-            if ($client->bufferPromisor && $client->bufferSize <= $client->options->softStreamCap) {
-                $client->bufferPromisor->succeed();
-                $client->bufferPromisor = null;
-            }
             if ($bytesWritten === \strlen($client->writeBuffer)) {
                 $client->writeBuffer = "";
                 \Amp\disable($watcherId);
@@ -489,6 +485,11 @@ class Server implements Monitor {
             } else {
                 $client->writeBuffer = \substr($client->writeBuffer, $bytesWritten);
                 \Amp\enable($watcherId);
+            }
+            if ($client->bufferPromisor && $client->bufferSize <= $client->options->softStreamCap) {
+                $promisor = $client->bufferPromisor;
+                $client->bufferPromisor = null;
+                $promisor->succeed();
             }
         }
     }
