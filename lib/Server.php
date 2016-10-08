@@ -471,10 +471,6 @@ class Server implements Monitor {
             }
         } else {
             $client->bufferSize -= $bytesWritten;
-            if ($client->bufferDeferred && $client->bufferSize <= $client->options->softStreamCap) {
-                $client->bufferDeferred->resolve();
-                $client->bufferDeferred = null;
-            }
             if ($bytesWritten === \strlen($client->writeBuffer)) {
                 $client->writeBuffer = "";
                 \Amp\disable($watcherId);
@@ -484,6 +480,11 @@ class Server implements Monitor {
             } else {
                 $client->writeBuffer = \substr($client->writeBuffer, $bytesWritten);
                 \Amp\enable($watcherId);
+            }
+            if ($client->bufferDeferred && $client->bufferSize <= $client->options->softStreamCap) {
+                $deferred = $client->bufferDeferred;
+                $client->bufferDeferred = null;
+                $deferred->succeed();
             }
         }
     }
@@ -888,7 +889,7 @@ class Server implements Monitor {
     private function tryErrorResponse(\Throwable $error, InternalRequest $ireq, Response $response, array $filters) {
         try {
             $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
-            $msg = ($this->options->debug) ? "<pre>{$error}</pre>" : "<p>Something went wrong ...</p>";
+            $msg = ($this->options->debug) ? "<pre>" . htmlspecialchars($error) . "</pre>" : "<p>Something went wrong ...</p>";
             $body = makeGenericBody($status, [
                 "sub_heading" =>"Requested: {$ireq->uri}",
                 "msg" => $msg,

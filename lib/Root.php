@@ -379,7 +379,7 @@ class Root implements ServerObserver {
         }
 
         $ifRange = $request->getHeader("If-Range");
-        if (!($ifRange || $request->getHeader("Range"))) {
+        if ($ifRange === null || !$request->getHeader("Range")) {
             return self::PRECOND_OK;
         }
 
