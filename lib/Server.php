@@ -642,7 +642,7 @@ class Server implements Monitor {
             $response->setStatus($status);
             $response->setHeader("Connection", "close");
             $response->end($body);
-        });
+        }, []);
     }
 
     private function initializeRequest(Client $client, array $parseResult): InternalRequest {
