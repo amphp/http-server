@@ -967,13 +967,16 @@ class Server implements Monitor {
             $net = substr($net, 0, 7 /* /56 block */);
         }
 
-        return function () use ($net, $client) {
+        $clientAddr = $client->clientAddr;
+        $clientPort = $client->clientPort;
+
+        return function () use ($net, $clientAddr, $clientPort) {
             $this->clientCount--;
             $this->clientsPerIP[$net]--;
             \assert($this->clientCount >= 0);
             \assert($this->clientsPerIP[$net] >= 0);
 
-            \assert($this->logDebug("close {$client->clientAddr}:{$client->clientPort}"));
+            \assert($this->logDebug("close {$clientAddr}:{$clientPort}"));
         };
     }
 
