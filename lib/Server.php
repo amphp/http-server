@@ -968,14 +968,14 @@ class Server implements Monitor {
         }
         $clientCount = &$this->clientCount;
         $clientsPerIP = &$this->clientsPerIP[$net];
-        $closer = static function() use ($clientCount, $clientsPerIP) {
+        $closer = static function() use (&$clientCount, &$clientsPerIP) {
             $clientCount--;
             $clientsPerIP--;
         };
-        assert((function() use (&$closer, $client, $clientCount, $clientsPerIP) {
+        assert((function() use (&$closer, $client, &$clientCount, &$clientsPerIP) {
             $logger = $this->logger;
             $message = "close {$client->clientAddr}:{$client->clientPort}";
-            $closer = static function() use ($clientCount, $clientsPerIP, $logger, $message) {
+            $closer = static function() use (&$clientCount, &$clientsPerIP, $logger, $message) {
                 $clientCount--;
                 $clientsPerIP--;
                 assert($clientCount >= 0);
