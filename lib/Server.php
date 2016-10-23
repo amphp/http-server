@@ -979,7 +979,7 @@ class Server implements Monitor {
                 $clientCount--;
                 $clientsPerIP--;
                 assert($clientCount >= 0);
-                assert($clientsPerIP[$net] >= 0);
+                assert($clientsPerIP >= 0);
                 $logger->log(Logger::DEBUG, $message);
             };
         })());
