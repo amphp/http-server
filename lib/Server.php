@@ -972,10 +972,10 @@ class Server implements Monitor {
             $clientCount--;
             $clientsPerIP--;
         };
-        assert((function() use (&$closer, $client, &$clientCount, &$clientsPerIP) {
+        assert($closer = (function() use ($client, &$clientCount, &$clientsPerIP) {
             $logger = $this->logger;
             $message = "close {$client->clientAddr}:{$client->clientPort}";
-            $closer = static function() use (&$clientCount, &$clientsPerIP, $logger, $message) {
+            return static function() use (&$clientCount, &$clientsPerIP, $logger, $message) {
                 $clientCount--;
                 $clientsPerIP--;
                 assert($clientCount >= 0);
