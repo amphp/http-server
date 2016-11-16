@@ -28,7 +28,7 @@ class DebugProcess extends Process {
                 "or disable debug mode (-d) to hide this warning."
             );
         } else {
-            ini_set("zend.assertions", 1);
+            ini_set("zend.assertions", "1");
         }
 
         $server = yield from $this->bootstrapper->boot($this->logger, $console);

@@ -789,7 +789,7 @@ class Server implements Monitor {
             $out = ($application)($request, $response);
             if ($out instanceof \Generator) {
                 $awaitable = new Coroutine($out);
-                $awaitable->when(function() use ($ireq, $response, $filters) {
+                $awaitable->when(function($error) use ($ireq, $response, $filters) {
                     if (empty($error)) {
                         if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
                             return;
