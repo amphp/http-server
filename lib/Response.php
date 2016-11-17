@@ -68,9 +68,9 @@ interface Response {
      * Note: Headers are sent upon the first invocation of Response::stream().
      *
      * @param string $partialBodyChunk A portion of the response entity body
-     * @return \Interop\Async\Awaitable to be succeeded whenever local buffers aren't full
+     * @return \Interop\Async\Promise to be succeeded whenever local buffers aren't full
      */
-    public function stream(string $partialBodyChunk): \Interop\Async\Awaitable;
+    public function stream(string $partialBodyChunk): \Interop\Async\Promise;
 
     /**
      * Request that buffered stream data be flushed to the client

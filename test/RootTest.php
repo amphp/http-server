@@ -107,8 +107,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
                     return $response;
                 }));
             $generator = $root->__invoke($request, $response);
-            $awaitable = new \Amp\Coroutine($generator);
-            \Amp\wait($awaitable);
+            $promise = new \Amp\Coroutine($generator);
+            \Amp\wait($promise);
             $this->assertTrue($wasCalled);
         }
 
@@ -226,8 +226,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->with("test") // <-- the contents of the /index.htm fixture file
         ;
         $generator = $root->__invoke($request, $response);
-        $awaitable = new \Amp\Coroutine($generator);
-        \Amp\wait($awaitable);
+        $promise = new \Amp\Coroutine($generator);
+        \Amp\wait($promise);
 
         return $root;
     }
@@ -255,8 +255,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->with("test") // <-- the contents of the /index.htm fixture file
         ;
         $generator = $root->__invoke($request, $response);
-        $awaitable = new \Amp\Coroutine($generator);
-        \Amp\wait($awaitable);
+        $promise = new \Amp\Coroutine($generator);
+        \Amp\wait($promise);
 
         return $root;
     }
@@ -275,8 +275,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->method("setHeader")
             ->withConsecutive(["Allow", "GET, HEAD, OPTIONS"], ["Accept-Ranges", "bytes"]);
         $generator = $root->__invoke($request, $response);
-        $awaitable = new \Amp\Coroutine($generator);
-        \Amp\wait($awaitable);
+        $promise = new \Amp\Coroutine($generator);
+        \Amp\wait($promise);
     }
 
     function testPreconditionFailure() {
@@ -299,8 +299,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->method("setStatus")
             ->with(\Aerys\HTTP_STATUS["PRECONDITION_FAILED"]);
         $generator = $root->__invoke($request, $response);
-        $awaitable = new \Amp\Coroutine($generator);
-        \Amp\wait($awaitable);
+        $promise = new \Amp\Coroutine($generator);
+        \Amp\wait($promise);
     }
 
     function testPreconditionNotModified() {
@@ -332,8 +332,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
                 ["Etag", $etag]
             );
         $generator = $root->__invoke($request, $response);
-        $awaitable = new \Amp\Coroutine($generator);
-        \Amp\wait($awaitable);
+        $promise = new \Amp\Coroutine($generator);
+        \Amp\wait($promise);
     }
 
     function testPreconditionRangeFail() {
@@ -359,8 +359,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->with("test") // <-- the contents of the /index.htm fixture file
         ;
         $generator = $root->__invoke($request, $response);
-        $awaitable = new \Amp\Coroutine($generator);
-        \Amp\wait($awaitable);
+        $promise = new \Amp\Coroutine($generator);
+        \Amp\wait($promise);
     }
 
     function testBadRange() {
@@ -389,8 +389,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->method("setHeader")
             ->with("Content-Range", "*/4");
         $generator = $root->__invoke($request, $response);
-        $awaitable = new \Amp\Coroutine($generator);
-        \Amp\wait($awaitable);
+        $promise = new \Amp\Coroutine($generator);
+        \Amp\wait($promise);
     }
 
     /**
@@ -421,8 +421,8 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             }
         })(), new Client));
         $this->assertNull($part);
-        $awaitable = new \Amp\Coroutine($generator);
-        \Amp\wait($awaitable);
+        $promise = new \Amp\Coroutine($generator);
+        \Amp\wait($promise);
         $this->assertEquals(\Aerys\HTTP_STATUS["PARTIAL_CONTENT"], $headers[":status"]);
         $cb($headers, $body);
     }

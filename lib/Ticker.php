@@ -6,7 +6,7 @@ use Amp\{
     Success,
     Struct
 };
-use Interop\Async\Awaitable;
+use Interop\Async\Promise;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Ticker implements ServerObserver {
@@ -23,7 +23,7 @@ class Ticker implements ServerObserver {
         $this->logger = $logger;
     }
 
-    public function update(Server $server): Awaitable {
+    public function update(Server $server): Promise {
         switch ($server->state()) {
             case Server::STARTED:
                 $this->watcherId = \Amp\repeat(1000, [$this, "updateTime"]);

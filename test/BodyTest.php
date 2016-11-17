@@ -9,7 +9,7 @@ use Aerys\Body;
 class BodyTest extends \PHPUnit_Framework_TestCase {
     public function testPromiseImplementation() {
         $postponed = new Postponed;
-        $body = new Body($postponed->getObservable());
+        $body = new Body($postponed->observe());
 
         $body->when(function ($e, $result) use (&$when) {
             $this->assertNull($e);
@@ -22,7 +22,7 @@ class BodyTest extends \PHPUnit_Framework_TestCase {
 
     public function testStream() {
         $postponed = new Postponed;
-        $body = new Body($postponed->getObservable());
+        $body = new Body($postponed->observe());
 
         $body->subscribe(function ($data) {
             $this->assertEquals("text", $data);
@@ -40,7 +40,7 @@ class BodyTest extends \PHPUnit_Framework_TestCase {
 
     public function testFinishedStream() {
         $postponed = new Postponed;
-        $body = new Body($postponed->getObservable());
+        $body = new Body($postponed->observe());
 
         $body->subscribe(function ($data) {
             $this->assertEquals("text", $data);
@@ -64,7 +64,7 @@ class BodyTest extends \PHPUnit_Framework_TestCase {
     
     public function testFailedFinishedStream() {
         $postponed = new Postponed;
-        $body = new Body($postponed->getObservable());
+        $body = new Body($postponed->observe());
 
         $body->subscribe(function ($data) {
             $this->assertEquals("text", $data);

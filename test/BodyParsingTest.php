@@ -16,7 +16,7 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $postponed = new \Amp\Postponed;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($postponed->getObservable());
+        $ireq->body = new Body($postponed->observe());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
@@ -39,7 +39,7 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $postponed = new \Amp\Postponed;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($postponed->getObservable());
+        $ireq->body = new Body($postponed->observe());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
@@ -73,7 +73,7 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $postponed = new \Amp\Postponed;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($postponed->getObservable());
+        $ireq->body = new Body($postponed->observe());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
@@ -109,7 +109,7 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $postponed = new \Amp\Postponed;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($postponed->getObservable());
+        $ireq->body = new Body($postponed->observe());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 

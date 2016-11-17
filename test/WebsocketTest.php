@@ -102,9 +102,9 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function waitOnRead($sock) {
         $deferred = new Deferred;
         $watcher = \Amp\onReadable($sock, [$deferred, "resolve"]);
-        $awaitable = $deferred->getAwaitable();
-        $awaitable->when(function() use ($watcher) { \Amp\cancel($watcher); });
-        return $awaitable;
+        $promise = $deferred->promise();
+        $promise->when(function() use ($watcher) { \Amp\cancel($watcher); });
+        return $promise;
     }
 
     function triggerTimeout(Rfc6455Endpoint $endpoint) {
@@ -268,7 +268,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
 
         $_ireq = clone $ireq;
-        $_ireq->body = new Body((new Postponed)->getObservable());
+        $_ireq->body = new Body((new Postponed)->observe());
         $return[] = [$_ireq, [":status" => HTTP_STATUS["BAD_REQUEST"]]];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->
@@ -321,7 +321,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             // to have it read and closed...
             $deferred = new \Amp\Deferred;
             \Amp\defer(function() use ($deferred) { \Amp\defer([$deferred, "resolve"]); });
-            yield $deferred->getAwaitable();
+            yield $deferred->promise();
 
             \Amp\stop();
         });

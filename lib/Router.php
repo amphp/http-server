@@ -14,7 +14,7 @@ use Amp\{
     function any
 };
 
-use Interop\Async\Awaitable;
+use Interop\Async\Promise;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Router implements Bootable, Middleware, Monitor, ServerObserver {
@@ -378,9 +378,9 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
      * ready to start (Server::STARTING).
      *
      * @param Server $server
-     * @return Awaitable
+     * @return Promise
      */
-    public function update(Server $server): Awaitable {
+    public function update(Server $server): Promise {
         switch ($this->state = $server->state()) {
             case Server::STOPPED:
                 $this->routeDispatcher = null;

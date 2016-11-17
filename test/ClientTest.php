@@ -62,13 +62,13 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             $client = new Client($cookies);
             $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
             $port = parse_url($address, PHP_URL_PORT);
-            $awaitable = $client->request((new \Amp\Artax\Request)
+            $promise = $client->request((new \Amp\Artax\Request)
                 ->setUri("https://localhost:$port/uri?foo=bar&baz=1&baz=2")
                 ->setMethod("GET")
                 ->setHeader("custom", "header")
             );
 
-            $res = yield $awaitable;
+            $res = yield $promise;
             $this->assertEquals(200, $res->getStatus());
             $this->assertEquals(["header"], $res->getHeader("custom"));
             $this->assertEquals("data".str_repeat("*", 100000)."data", $res->getBody());
@@ -117,26 +117,26 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
 
             $client = new Client;
             $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
-            $awaitable = $client->request((new \Amp\Artax\Request)
+            $promise = $client->request((new \Amp\Artax\Request)
                 ->setUri("https://$address/")
                 ->setMethod("POST")
                 ->setBody("body")
             );
 
             $body = "";
-            $awaitable->subscribe(function($update) use (&$body) {
+            $promise->subscribe(function($update) use (&$body) {
                 list($type, $data) = $update;
                 if ($type == Notify::RESPONSE_BODY_DATA) {
                     $body .= $data;
                 }
             });
             try {
-                yield $awaitable;
+                yield $promise;
             } catch (SocketException $e) { }
             $this->assertTrue(isset($e));
             $this->assertEquals("data", $body);
 
-            yield $deferred->getAwaitable();
+            yield $deferred->promise();
             \Amp\stop();
         });
     }

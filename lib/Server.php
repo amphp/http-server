@@ -7,7 +7,7 @@ use Amp\{
 };
 use function Amp\{ timeout, any, all };
 use Psr\Log\LoggerInterface as PsrLogger;
-use Interop\Async\Awaitable;
+use Interop\Async\Promise;
 
 class Server implements Monitor {
     use CallableMaker, Struct;
@@ -121,19 +121,19 @@ class Server implements Monitor {
     /**
      * Notify observers of a server state change
      *
-     * Resolves to an indexed any() Awaitable combinator array.
+     * Resolves to an indexed any() Promise combinator array.
      *
-     * @return Awaitable
+     * @return Promise
      */
-    private function notify(): Awaitable {
-        $awaitables = [];
+    private function notify(): Promise {
+        $promises = [];
         foreach ($this->observers as $observer) {
-            $awaitables[] = $observer->update($this);
+            $promises[] = $observer->update($this);
         }
 
-        $awaitable = any($awaitables);
-        $awaitable->when(function($error, $result) {
-            // $error is always empty because an any() combinator Awaitable never fails.
+        $promise = any($promises);
+        $promise->when(function($error, $result) {
+            // $error is always empty because an any() combinator Promise never fails.
             // Instead we check the error array at index zero in the two-item any() $result
             // and log as needed.
             list($observerErrors) = $result;
@@ -141,15 +141,15 @@ class Server implements Monitor {
                 $this->logger->error($error);
             }
         });
-        return $awaitable;
+        return $promise;
     }
 
     /**
      * Start the server
      *
-     * @return Awaitable
+     * @return Promise
      */
-    public function start(): Awaitable {
+    public function start(): Promise {
         try {
             if ($this->state == self::STOPPED) {
                 if ($this->vhosts->count() === 0) {
@@ -352,13 +352,13 @@ class Server implements Monitor {
     /**
      * Stop the server
      *
-     * @return Awaitable
+     * @return Promise
      */
-    public function stop(): Awaitable {
+    public function stop(): Promise {
         switch ($this->state) {
             case self::STARTED:
-                $stopAwaitable = new Coroutine($this->doStop());
-                return timeout($stopAwaitable, $this->options->shutdownTimeout);
+                $stopPromise = new Coroutine($this->doStop());
+                return timeout($stopPromise, $this->options->shutdownTimeout);
             case self::STOPPED:
                 return new Success;
             default:
@@ -394,7 +394,7 @@ class Server implements Monitor {
             }
         }
 
-        yield all([$this->stopDeferred->getAwaitable(), $this->notify()]);
+        yield all([$this->stopDeferred->promise(), $this->notify()]);
 
         assert($this->logDebug("stopped"));
         $this->state = self::STOPPED;
@@ -590,7 +590,7 @@ class Server implements Monitor {
         $ireq = $this->initializeRequest($client, $parseResult);
         $id = $parseResult["id"];
         $client->bodyDeferreds[$id] = $bodyDeferred = new Postponed;
-        $ireq->body = new Body($bodyDeferred->getObservable());
+        $ireq->body = new Body($bodyDeferred->observe());
 
         $this->respond($ireq);
     }
@@ -788,8 +788,8 @@ class Server implements Monitor {
         try {
             $out = ($application)($request, $response);
             if ($out instanceof \Generator) {
-                $awaitable = new Coroutine($out);
-                $awaitable->when(function($error) use ($ireq, $response, $filters) {
+                $promise = new Coroutine($out);
+                $promise->when(function($error) use ($ireq, $response, $filters) {
                     if (empty($error)) {
                         if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
                             return;
@@ -1019,7 +1019,7 @@ class Server implements Monitor {
             "pendingTlsStreams" => $this->pendingTlsStreams,
             "clients" => $this->clients,
             "keepAliveTimeouts" => $this->keepAliveTimeouts,
-            "stopAwaitable" => $this->stopDeferred ? $this->stopDeferred->getAwaitable() : null,
+            "stopPromise" => $this->stopDeferred ? $this->stopDeferred->promise() : null,
         ];
     }
 

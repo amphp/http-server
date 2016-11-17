@@ -3,7 +3,7 @@
 namespace Aerys;
 
 use Amp\{
-    Awaitable,
+    Promise,
     function any
 };
 
