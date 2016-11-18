@@ -637,7 +637,7 @@ class Server implements Monitor {
             $response->setStatus($status);
             $response->setHeader("Connection", "close");
             $response->end($body);
-        });
+        }, []);
     }
 
     private function initializeRequest(Client $client, array $parseResult): InternalRequest {
@@ -958,12 +958,24 @@ class Server implements Monitor {
         if (isset($net[4])) {
             $net = substr($net, 0, 7 /* /56 block */);
         }
-        return function() use ($net) {
-            $this->clientCount--;
-            $this->clientsPerIP[$net]--;
-            \assert($this->clientCount >= 0);
-            \assert($this->clientsPerIP[$net] >= 0);
+        $clientCount = &$this->clientCount;
+        $clientsPerIP = &$this->clientsPerIP[$net];
+        $closer = static function() use (&$clientCount, &$clientsPerIP) {
+            $clientCount--;
+            $clientsPerIP--;
         };
+        assert($closer = (function() use ($client, &$clientCount, &$clientsPerIP) {
+            $logger = $this->logger;
+            $message = "close {$client->clientAddr}:{$client->clientPort}";
+            return static function() use (&$clientCount, &$clientsPerIP, $logger, $message) {
+                $clientCount--;
+                $clientsPerIP--;
+                assert($clientCount >= 0);
+                assert($clientsPerIP >= 0);
+                $logger->log(Logger::DEBUG, $message);
+            };
+        })());
+        return $closer;
     }
 
     private function dropPrivileges() {
