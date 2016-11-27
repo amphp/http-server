@@ -13,16 +13,16 @@ class Console {
     private $climate;
     private $hasParsedArgs;
 
-    public function __construct(CLImate $climate = null) {
-        $this->climate = $climate ?: new CLImate;
+    public function __construct(CLImate $climate) {
+        $this->climate = $climate;
     }
 
     public function output(string $msg) {
         return $this->climate->out($msg);
     }
 
-    public function addArgs(array $args) {
-        return $this->climate->arguments->add($args);
+    public function forceAnsiOn() {
+        $this->climate->forceAnsiOn();
     }
 
     public function isArgDefined(string $arg) {
@@ -31,10 +31,6 @@ class Console {
         }
 
         return $this->climate->arguments->defined($arg);
-    }
-
-    public function forceAnsiOn() {
-        $this->climate->forceAnsiOn();
     }
 
     public function getArg(string $arg) {
