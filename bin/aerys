@@ -37,8 +37,9 @@ if (function_exists("cli_set_process_title")) {
 
 error_reporting(E_ALL);
 require __DIR__ . "/../autoload.php";
-$console = new Aerys\Console;
-$console->addArgs([
+
+$climate = new League\CLImate\CLImate;
+$climate->arguments->add([
     "debug" => [
         "prefix"       => "d",
         "longPrefix"   => "debug",
@@ -81,6 +82,8 @@ $console->addArgs([
         "noValue"      => true,
     ]
 ]);
+
+$console = new Aerys\Console($climate);
 if ($console->isArgDefined("help")) {
     echo $help;
     exit(0);

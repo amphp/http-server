@@ -12,6 +12,7 @@ use Aerys\StandardRequest;
 use Aerys\StandardResponse;
 use function Amp\resolve;
 use function Amp\wait;
+use League\CLImate\CLImate;
 
 class BootstrapperTest extends \PHPUnit_Framework_TestCase {
     /**
@@ -29,7 +30,7 @@ class BootstrapperTest extends \PHPUnit_Framework_TestCase {
             }
         };
 
-        wait(resolve($bootstrapper->boot($logger, new Console)));
+        wait(resolve($bootstrapper->boot($logger, new Console(new CLImate))));
     }
 
     public function testBootstrap() {
@@ -47,8 +48,7 @@ class BootstrapperTest extends \PHPUnit_Framework_TestCase {
             ];
             private $test;
             public function __construct($test) { $this->test = $test; }
-            public function output(string $msg) { $this->test->fail("Shoudln't be reached here"); }
-            public function addArgs(array $args) { $this->test->fail("Shoudln't be reached here"); }
+            public function output(string $msg) { $this->test->fail("Shouldn't be reached here"); }
             public function forceAnsiOn() { }
             public function isArgDefined(string $arg) {
                 return isset(self::ARGS[$arg]);

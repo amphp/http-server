@@ -10,8 +10,8 @@ if (function_exists("pcntl_signal")) {
     pcntl_signal(SIGPIPE, SIG_IGN);
 }
 
-$console = new Aerys\Console;
-$console->addArgs([
+$climate = new League\CLImate\CLImate;
+$climate->arguments->add([
     "ipc" => [
         "prefix"       => "i",
     ],
@@ -28,6 +28,8 @@ $console->addArgs([
         "prefix"       => "c",
     ],
 ]);
+
+$console = new Aerys\Console($climate);
 
 $ipcUri = $console->getArg("ipc");
 
