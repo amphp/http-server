@@ -20,7 +20,7 @@ use Aerys\{
     StandardResponse
 };
 
-use Interop\Async\Awaitable;
+use Interop\Async\Promise;
 
 class RouterTest extends \PHPUnit_Framework_TestCase {
     function mockServer($state) {
@@ -48,7 +48,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
             function setHeader(string $field, string $value): Response { $this->headers[strtolower($field)] = $value; return $this; }
             function setCookie(string $field, string $value, array $flags = []): Response { return $this; }
             function send(string $body) { $this->state = self::ENDED; }
-            function stream(string $partialBodyChunk): Awaitable { return new Success; }
+            function stream(string $partialBodyChunk): Promise { return new Success; }
             function flush() { }
             function end(string $finalBodyChunk = null) { }
             function push(string $url, array $headers = null): Response { return $this; }

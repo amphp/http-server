@@ -23,7 +23,7 @@ class CommandClient {
         return sys_get_temp_dir()."/aerys_".strtr(base64_encode(sha1(Bootstrapper::selectConfigFile($config), true)), "+/", "-_").".tmp";
     }
 
-    private function send($msg): \Interop\Async\Awaitable {
+    private function send($msg): \Interop\Async\Promise {
         if (!$this->sock) {
             $this->establish();
         } elseif (!$this->writeWatcher) {
@@ -31,18 +31,18 @@ class CommandClient {
         }
         $msg = json_encode($msg);
         $this->buf .= pack("N", \strlen($msg)) . $msg;
-        return ($this->deferreds[\strlen($this->buf)] = new \Amp\Deferred)->getAwaitable();
+        return ($this->deferreds[\strlen($this->buf)] = new \Amp\Deferred)->promise();
     }
 
     private function establish() {
         $unix = in_array("unix", \stream_get_transports(), true);
         if ($unix) {
-            $awaitable = \Amp\Socket\connect("unix://$this->path.sock");
+            $promise = \Amp\Socket\connect("unix://$this->path.sock");
         } else {
-            $awaitable = \Amp\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect');
+            $promise = \Amp\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect');
         }
         
-        $awaitable->when(function ($e, $sock) {
+        $promise->when(function ($e, $sock) {
             if ($e) {
                 $this->failAll();
                 return;
@@ -90,11 +90,11 @@ class CommandClient {
         }
     }
 
-    public function restart(): \Interop\Async\Awaitable {
+    public function restart(): \Interop\Async\Promise {
         return $this->send(["action" => "restart"]);
     }
 
-    public function stop(): \Interop\Async\Awaitable {
+    public function stop(): \Interop\Async\Promise {
         return $this->send(["action" => "stop"]);
     }
 

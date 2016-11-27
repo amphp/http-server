@@ -50,7 +50,7 @@ class Body extends Observer implements Observable {
             
             // way to restart, so that even after the success, the next() / getCurrent() API will still work
             $postponed = new Postponed;
-            parent::__construct($postponed->getObservable());
+            parent::__construct($postponed->observe());
             $postponed->emit($result);
             $postponed->resolve();
             

@@ -751,7 +751,7 @@ class Root implements ServerObserver {
     /**
      * Receive notifications from the server when it starts/stops
      */
-    public function update(Server $server): \Interop\Async\Awaitable {
+    public function update(Server $server): \Interop\Async\Promise {
         switch ($server->state()) {
             case Server::STARTING:
                 $this->loadMimeFileTypes(__DIR__."/../etc/mime");

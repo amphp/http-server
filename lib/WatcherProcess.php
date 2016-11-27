@@ -74,11 +74,11 @@ class WatcherProcess extends Process {
         $this->workerCommand = $this->generateWorkerCommand($console);
         yield from $this->bindCommandServer((string) $console->getArg("config"));
 
-        $awaitables = [];
+        $promises = [];
         for ($i = 0; $i < $this->workerCount; $i++) {
-            $awaitables[] = $this->spawn();
+            $promises[] = $this->spawn();
         }
-        yield \Amp\any($awaitables);
+        yield \Amp\any($promises);
     }
 
     private function checkCommands(Console $console) {
@@ -434,7 +434,7 @@ class WatcherProcess extends Process {
         }
         $this->processes[] = $procHandle;
 
-        return ($this->spawnDeferreds[] = new Deferred)->getAwaitable();
+        return ($this->spawnDeferreds[] = new Deferred)->promise();
     }
 
     protected function restart() {
@@ -456,7 +456,7 @@ class WatcherProcess extends Process {
             }
         }
 
-        yield $this->stopDeferred === true ? new Success : $this->stopDeferred->getAwaitable();
+        yield $this->stopDeferred === true ? new Success : $this->stopDeferred->promise();
 
     }
 }

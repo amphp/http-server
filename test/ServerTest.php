@@ -281,7 +281,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
 
         // with coroutine
         $deferred = new \Amp\Deferred;
-        $result = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) use ($deferred) { yield $deferred->getAwaitable(); });
+        $result = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) use ($deferred) { yield $deferred->promise(); });
         $deferred->resolve();
         $this->assertEquals(\Aerys\HTTP_STATUS["NOT_FOUND"], $result[0][":status"]);
     }
@@ -356,7 +356,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             // give readWatcher a chance
             $deferred = new \Amp\Deferred;
             \Amp\defer(function() use ($deferred) { \Amp\defer([$deferred, "resolve"]); });
-            yield $deferred->getAwaitable();
+            yield $deferred->promise();
             yield $client->write("b");
             $this->assertEquals("cd", yield $client->read(2));
             yield $server->stop();
@@ -406,7 +406,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals("b", yield $client->read(1));
             $client->close();
 
-            yield $deferred->getAwaitable();
+            yield $deferred->promise();
             \Amp\stop();
         });
     }

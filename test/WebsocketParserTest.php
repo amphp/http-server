@@ -319,7 +319,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
             // run defer
             $deferred = new \Amp\Deferred;
             \Amp\defer([$deferred, "resolve"]);
-            yield $deferred->getAwaitable();
+            yield $deferred->promise();
 
             $this->assertTrue($exported);
 

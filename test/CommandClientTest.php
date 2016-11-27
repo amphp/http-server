@@ -45,7 +45,7 @@ class CommandClientTest extends \PHPUnit_Framework_TestCase {
                 // delay until next tick to not have $client in the backtrace so that gc_collect_cyles() will really collect it
                 $deferred = new \Amp\Deferred;
                 \Amp\defer([$deferred, "resolve"]);
-                yield $deferred->getAwaitable();
+                yield $deferred->promise();
                 unset($client); // force freeing of client and the socket
                 gc_collect_cycles();
 

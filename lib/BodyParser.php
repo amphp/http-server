@@ -192,7 +192,7 @@ class BodyParser implements Observable {
             }
             if (empty($this->bodies[$name])) {
                 $this->bodyDeferreds[$name][] = [$body = new Postponed, $metadata = new Deferred];
-                return new FieldBody($body->getObservable(), $metadata->getAwaitable());
+                return new FieldBody($body->observe(), $metadata->promise());
             }
         } elseif (empty($this->bodies[$name])) {
             return new FieldBody(new Success, new Success([]));
@@ -224,7 +224,7 @@ class BodyParser implements Observable {
             unset($this->bodyDeferreds[$field]);
         } else {
             $dataPostponed = new Postponed;
-            $this->bodies[$field][] = new FieldBody($dataPostponed->getObservable(), new Success($metadata));
+            $this->bodies[$field][] = new FieldBody($dataPostponed->observe(), new Success($metadata));
         }
         
         $this->emit($field);

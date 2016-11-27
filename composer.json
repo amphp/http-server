@@ -43,7 +43,7 @@
     "require-dev": {
         "amphp/artax": "dev-amp_v2",
         "amphp/loop": "dev-master",
-        "fabpot/php-cs-fixer": "^1.9",
+        "friendsofphp/php-cs-fixer": "~1.9",
         "http2jp/hpack-test-case": "1.0",
         "phpunit/phpunit": "^5.2"
     },

@@ -2,7 +2,7 @@
 
 namespace Aerys\Websocket;
 
-use Interop\Async\Awaitable;
+use Interop\Async\Promise;
 
 class Rfc6455EndpointProxy implements Endpoint {
     private $endpoint;
@@ -11,11 +11,11 @@ class Rfc6455EndpointProxy implements Endpoint {
         $this->endpoint = $endpoint;
     }
 
-    public function send($clientId, string $data): Awaitable {
+    public function send($clientId, string $data): Promise {
         return $this->endpoint->send($clientId, $data);
     }
 
-    public function sendBinary($clientId, string $data): Awaitable {
+    public function sendBinary($clientId, string $data): Promise {
         return $this->endpoint->send($clientId, $data, $binary = true);
     }
 
