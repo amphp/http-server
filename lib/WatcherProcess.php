@@ -436,7 +436,7 @@ class WatcherProcess extends Process {
         return ($this->spawnPromisors[] = new Deferred)->promise();
     }
 
-    protected function restart() {
+    public function restart() {
         $spawn = count($this->ipcClients);
         for ($i = 0; $i < $spawn; $i++) {
             $this->spawn()->when(function() {
