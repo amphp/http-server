@@ -273,7 +273,7 @@ class WatcherProcess extends Process {
                 $cmd = "wmic cpu get NumberOfCores";
                 break;
             case "linux":
-                $cmd = "cat /proc/cpuinfo | grep processor | wc -l";
+                $cmd = "nproc";
                 break;
             case "freebsd":
                 $cmd = "sysctl -a | grep 'hw.ncpu' | cut -d ':' -f2";
