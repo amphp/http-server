@@ -7,6 +7,8 @@ use Amp\Struct;
 class Options {
     use Struct;
 
+    const MAX_DEFLATE_ENABLE_CACHE_SIZE = 1024;
+
     private $debug;
     private $user = null;
     private $maxConnections = 1000;
@@ -23,6 +25,7 @@ class Options {
     private $maxFramesPerSecond = 60;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
     private $deflateEnable;
+    private $deflateContentTypes = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
     private $configPath = null;
     
     private $maxFieldLen = 16384; // this must be strictly less than maxBodySize
@@ -40,10 +43,16 @@ class Options {
 
     private $shutdownTimeout = 3000; // milliseconds
 
+    private $_dynamicCache;
+
     private $_initialized = false;
 
     public function __construct() {
         $this->deflateEnable = \extension_loaded("zlib");
+
+        $this->_dynamicCache = new class {
+            public $deflateContentTypes = [];
+        };
     }
 
     /**
@@ -292,6 +301,16 @@ class Options {
         }
 
         $this->deflateEnable = $flag;
+    }
+
+    private function setDeflateContentTypes(string $regex) {
+        if (!$regex || preg_match($regex, "") === false) {
+            throw new \DomainException(
+                "Deflate content types must be a valid regex"
+            );
+        }
+
+        $this->deflateContentTypes = $regex;
     }
 
     private function setDeflateMinimumLength(int $bytes) {
