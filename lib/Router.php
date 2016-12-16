@@ -242,13 +242,13 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
      * the trailing slash. Temporary redirects are used to redirect to the canonical URI
      * (with a trailing slash) to avoid search engine duplicate content penalties.
      *
-     * @param array $method The HTTP method verb for which this route applies
+     * @param string|array $methods The HTTP methods verb or array of verbs for which this route applies
      * @param string $uri The string URI
      * @param Bootable|Middleware|Monitor|callable ...$actions The action(s) to invoke upon matching this route
      * @throws \DomainException on invalid empty parameters
      * @return self
      */
-    public function route($methods, string $uri, ...$actions): Router {
+    public function route(mixed $methods, string $uri, ...$actions): Router {
         if ($this->state !== Server::STOPPED) {
             throw new \LogicException(
                 "Cannot add routes once the server has started"
@@ -266,7 +266,6 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         }
 
         $actions = array_merge($this->actions, $actions);
-        $methods = is_array($methods) ? $methods : [$methods];
 
         $uri = "/" . ltrim($uri, "/");
 
@@ -292,12 +291,12 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
                 $response->setHeader("Content-Type", "text/plain; charset=utf-8");
                 $response->end("Canonical resource URI: {$path}");
             };
-            foreach ($methods as $method) {
+            foreach ((array) $methods as $method) {
                 $this->routes[] = [$method, $canonicalUri, $actions];
                 $this->routes[] = [$method, $redirectUri, [$canonizer]];
             }
         } else {
-            foreach ($methods as $method) {
+            foreach ((array) $methods as $method) {
                 $this->routes[] = [$method, $uri, $actions];
             }
         }
