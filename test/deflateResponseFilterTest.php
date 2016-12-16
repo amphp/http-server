@@ -13,6 +13,7 @@ class deflateResponseFilterTest extends \PHPUnit_Framework_TestCase {
         $ireq = new InternalRequest;
         $ireq->client = new Client;
         $ireq->client->options = new Options;
+        $ireq->client->options->deflateContentTypes = "#^text/.*$#";
 
         $try = function ($header, $data) use ($ireq) {
             $deflate = \Aerys\deflateResponseFilter($ireq);
@@ -55,6 +56,7 @@ class deflateResponseFilterTest extends \PHPUnit_Framework_TestCase {
         $ireq->headers["accept-encoding"][0] = "gzip";
         $try([], $longData);
         $try(["content-type" => ["application/x-octet-stream"]], $longData);
+        $try(["content-type" => ["application/x-octet-stream"]], $longData); // test cache
         $try(["content-type" => ["text/html"]], $shortData);
         $try(["content-type" => ["text/html"], "content-length" => [20]], $shortData);
     }
@@ -65,7 +67,7 @@ class deflateResponseFilterTest extends \PHPUnit_Framework_TestCase {
             $ireq->client = new Client;
             $ireq->client->options = new Options;
             $ireq->headers["accept-encoding"] = ["compress", "identity, gzip"];
-            $header += ["content-type" => ["text/html"], ":status" => 200];
+            $header += ["content-type" => ["text/html; charset=UTF-8"], ":status" => 200];
 
             $filter = \Aerys\responseFilter(['Aerys\deflateResponseFilter'], $ireq);
             $newHeader = $filter->send($header);
