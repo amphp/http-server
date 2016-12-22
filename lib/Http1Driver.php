@@ -261,9 +261,9 @@ class Http1Driver implements HttpDriver {
 
             $protocol = \substr($protocol, 5);
 
-            if ($protocol != "1.1" && $protocol != "1.0") {
+            if ($protocol !== "1.1" && $protocol !== "1.0") {
                 // @TODO eventually add an option to disable HTTP/2.0 support???
-                if ($protocol == "2.0") {
+                if ($protocol === "2.0") {
                     $client->httpDriver = $this->http2;
                     $client->streamWindow = [];
                     $client->requestParser = $client->httpDriver->parser($client);
