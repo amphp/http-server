@@ -276,7 +276,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         $promise = $this->sendCloseFrame($client, $code, $reason);
         yield from $this->tryAppOnClose($client->id, $code, $reason);
         return $promise;
-        // Don't unload the client here, it will be unloaded upon timeout
+        // Don't unload the client here, it will be unloaded upon timeout or last data written if closed by client or OP_CLOSE received by client
     }
 
     private function sendCloseFrame(Rfc6455Client $client, $code, $msg): Promise {
@@ -507,11 +507,16 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 }
 
             } elseif ($client->closedAt) {
-                @stream_socket_shutdown($socket, STREAM_SHUT_WR);
-                \Amp\cancel($watcherId);
-                $client->writeWatcher = null;
-                $client->writeDeferred = null;
                 $client->writeBuffer = "";
+                $client->writeDeferred = null;
+                if ($client->readWatcher) { // readWatcher exists == we are still waiting for an OP_CLOSE frame
+                    @stream_socket_shutdown($socket, STREAM_SHUT_WR);
+                    \Amp\cancel($watcherId);
+                    $client->writeWatcher = null;
+                } else {
+                    unset($this->closeTimeouts[$client->id]);
+                    $this->unloadClient($client);
+                }
             } elseif ($client->writeDataQueue) {
                 $key = key($client->writeDataQueue);
                 $client->writeBuffer = $client->writeDataQueue[$key];
