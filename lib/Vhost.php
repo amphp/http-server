@@ -242,7 +242,7 @@ class Vhost implements Monitor {
         }
 
         $names = $this->parseNamesFromTlsCertArray($cert);
-        if (!in_array($this->name, $names)) {
+        if ($this->name != "" && !in_array($this->name, $names)) {
             trigger_error(
                 "TLS certificate `{$certBase}` has no CN or SAN name match for host `{$this}`; " .
                 "web browsers will not trust the validity of your certificate :(",
