@@ -45,7 +45,7 @@ class Options {
 
     private $_dynamicCache;
 
-    private $_initialized = false;
+    private $__initialized = false;
 
     public function __construct() {
         $this->deflateEnable = \extension_loaded("zlib");
@@ -90,7 +90,7 @@ class Options {
             );
         }
 
-        if ($this->_initialized) {
+        if ($this->__initialized) {
             throw new \RuntimeException("Cannot alter options after initialization");
         }
 
