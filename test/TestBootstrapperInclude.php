@@ -1,4 +1,4 @@
-<?php declare(strict_types = 1);
+<?php
 
 const AERYS_OPTIONS = [
     "shutdownTimeout" => 5000
