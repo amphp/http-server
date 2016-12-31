@@ -89,11 +89,11 @@ if ($console->isArgDefined("help")) {
     exit(0);
 }
 
-Amp\execute(function() use ($console) {
+Interop\Async\Loop::execute(Amp\wrap(function () use ($console) {
     $logger = new Aerys\ConsoleLogger($console);
     $process = ($console->isArgDefined("debug") || PHP_SAPI === "phpdbg")
         ? new Aerys\DebugProcess($logger)
         : new Aerys\WatcherProcess($logger)
     ;
     yield from $process->start($console);
-});
+}));

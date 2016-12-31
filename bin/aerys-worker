@@ -37,7 +37,7 @@ if (!$ipcSock = @stream_socket_client($ipcUri)) {
     die("Failed initializing IPC connection");
 }
 
-Amp\execute(function() use ($ipcSock, $console) {
+Interop\Async\Loop::execute(Amp\wrap(function () use ($ipcSock, $console) {
     $logger = new Aerys\IpcLogger($console, $ipcSock);
 
     ob_start(function($output) use ($logger) {
@@ -53,4 +53,4 @@ Amp\execute(function() use ($ipcSock, $console) {
     $process = new Aerys\WorkerProcess($logger, $ipcSock);
 
     yield from $process->start($console);
-});
+}));
