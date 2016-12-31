@@ -14,6 +14,7 @@ use Aerys\Ticker;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Socket as sock;
+use Interop\Async\Loop;
 
 // @TODO test communication on half-closed streams (both ways) [also with yield message] (also with HTTP/1 pipelining...)
 
@@ -134,7 +135,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             [HttpDriver::ENTITY_PART, ["id" => 2, "protocol" => "2.0", "body" => "BAZ!"], null],
             [HttpDriver::ENTITY_RESULT, ["id" => 2, "protocol" => "2.0"], null],
         ], function (Request $req, Response $res) {
-            while (yield $req->getBody()->next()) {
+            while (yield $req->getBody()->advance()) {
                 $res->stream($req->getBody()->getCurrent());
             }
             $res->end();
@@ -339,7 +340,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testUnencryptedIO() {
-        \Amp\execute(function() {
+        Loop::execute(\Amp\wrap(function() {
             list($address, $server) = yield from $this->startServer(function (Client $client, $write) {
                 $this->assertFalse($client->isEncrypted);
 
@@ -355,17 +356,17 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             yield $client->write("a");
             // give readWatcher a chance
             $deferred = new \Amp\Deferred;
-            \Amp\defer(function() use ($deferred) { \Amp\defer([$deferred, "resolve"]); });
+            Loop::defer(function() use ($deferred) { Loop::defer([$deferred, "resolve"]); });
             yield $deferred->promise();
             yield $client->write("b");
             $this->assertEquals("cd", yield $client->read(2));
             yield $server->stop();
-            \Amp\stop();
-        });
+            Loop::stop();
+        }));
     }
 
     function testEncryptedIO() {
-        \Amp\execute(function() {
+        Loop::execute(\Amp\wrap(function() {
             $deferred = new \Amp\Deferred;
             list($address) = yield from $this->startServer(function (Client $client, $write) use ($deferred) {
                 try {
@@ -386,7 +387,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
                     if (isset($e)) {
                         return;
                     }
-                    \Amp\defer(function() use ($client, $deferred) {
+                    Loop::defer(function() use ($client, $deferred) {
                         try {
                             $this->assertEquals(Client::CLOSED_RDWR, $client->isDead);
                         } catch (\Throwable $e) {
@@ -407,7 +408,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             $client->close();
 
             yield $deferred->promise();
-            \Amp\stop();
-        });
+            Loop::stop();
+        }));
     }
 }

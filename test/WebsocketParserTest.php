@@ -16,6 +16,7 @@ use Aerys\VhostContainer;
 use Aerys\Websocket;
 use Aerys\Websocket\Code;
 use Aerys\Websocket\Rfc6455Endpoint;
+use Interop\Async\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
@@ -230,7 +231,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testUpgrading() {
-        \Amp\execute(function() use (&$sock) {
+        Loop::execute(function() use (&$sock) {
             $client = new Client;
             $client->exporter = function() use (&$exported) {
                 $exported = true;
@@ -318,12 +319,12 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
 
             // run defer
             $deferred = new \Amp\Deferred;
-            \Amp\defer([$deferred, "resolve"]);
+            Loop::defer([$deferred, "resolve"]);
             yield $deferred->promise();
 
             $this->assertTrue($exported);
 
-            \Amp\stop();
+            Loop::stop();
         });
     }
 }

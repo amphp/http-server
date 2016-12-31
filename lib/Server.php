@@ -2,12 +2,10 @@
 
 namespace Aerys;
 
-use Amp\{
-    CallableMaker, Coroutine, Struct, Success, Failure, Postponed, Deferred
-};
+use Amp\{ CallableMaker, Coroutine, Struct, Success, Failure, Postponed, Deferred };
 use function Amp\{ timeout, any, all };
+use Interop\Async\{ Loop, Promise };
 use Psr\Log\LoggerInterface as PsrLogger;
-use Interop\Async\Promise;
 
 class Server implements Monitor {
     use CallableMaker, Struct;
@@ -227,7 +225,7 @@ class Server implements Monitor {
         assert($this->logDebug("started"));
 
         foreach ($this->boundServers as $serverName => $server) {
-            $this->acceptWatcherIds[$serverName] = \Amp\onReadable($server, $this->onAcceptable);
+            $this->acceptWatcherIds[$serverName] = Loop::onReadable($server, $this->onAcceptable);
             $this->logger->info("Listening on {$serverName}");
         }
 
@@ -308,7 +306,7 @@ class Server implements Monitor {
         $contextOptions = \stream_context_get_options($client);
         if (isset($contextOptions["ssl"])) {
             $clientId = (int) $client;
-            $watcherId = \Amp\onReadable($client, $this->negotiateCrypto, [$ip, $port]);
+            $watcherId = Loop::onReadable($client, $this->negotiateCrypto, [$ip, $port]);
             $this->pendingTlsStreams[$clientId] = [$watcherId, $client];
         } else {
             $this->importClient($client, $ip, $port);
@@ -319,7 +317,7 @@ class Server implements Monitor {
         list($ip, $port) = $peer;
         if ($handshake = @\stream_socket_enable_crypto($socket, true)) {
             $socketId = (int)$socket;
-            \Amp\cancel($watcherId);
+            Loop::cancel($watcherId);
             unset($this->pendingTlsStreams[$socketId]);
             assert((function () use ($socket, $ip, $port) {
                 $meta = stream_get_meta_data($socket)["crypto"];
@@ -344,7 +342,7 @@ class Server implements Monitor {
 
         $socketId = (int) $socket;
         list($watcherId) = $this->pendingTlsStreams[$socketId];
-        \Amp\cancel($watcherId);
+        Loop::cancel($watcherId);
         unset($this->pendingTlsStreams[$socketId]);
         @fclose($socket);
     }
@@ -373,7 +371,7 @@ class Server implements Monitor {
         $this->state = self::STOPPING;
 
         foreach ($this->acceptWatcherIds as $watcherId) {
-            \Amp\cancel($watcherId);
+            Loop::cancel($watcherId);
         }
         $this->boundServers = [];
         $this->acceptWatcherIds = [];
@@ -423,8 +421,8 @@ class Server implements Monitor {
         $client->cryptoInfo = $meta["crypto"] ?? [];
         $client->isEncrypted = (bool) $client->cryptoInfo;
 
-        $client->readWatcher = \Amp\onReadable($socket, $this->onReadable, $client);
-        $client->writeWatcher = \Amp\onWritable($socket, $this->onWritable, $client);
+        $client->readWatcher = Loop::onReadable($socket, $this->onReadable, $client);
+        $client->writeWatcher = Loop::onWritable($socket, $this->onWritable, $client);
 
         $this->clients[$client->id] = $client;
 
@@ -466,20 +464,20 @@ class Server implements Monitor {
                 } else {
                     $client->isDead = Client::CLOSED_WR;
                     $client->writeWatcher = null;
-                    \Amp\cancel($watcherId);
+                    Loop::cancel($watcherId);
                 }
             }
         } else {
             $client->bufferSize -= $bytesWritten;
             if ($bytesWritten === \strlen($client->writeBuffer)) {
                 $client->writeBuffer = "";
-                \Amp\disable($watcherId);
+                Loop::disable($watcherId);
                 if ($client->onWriteDrain) {
                     ($client->onWriteDrain)($client);
                 }
             } else {
                 $client->writeBuffer = \substr($client->writeBuffer, $bytesWritten);
-                \Amp\enable($watcherId);
+                Loop::enable($watcherId);
             }
             if ($client->bufferDeferred && $client->bufferSize <= $client->options->softStreamCap) {
                 $deferred = $client->bufferDeferred;
@@ -532,7 +530,7 @@ class Server implements Monitor {
                     $this->close($client);
                 } else {
                     $client->isDead = Client::CLOSED_RD;
-                    \Amp\cancel($watcherId);
+                    Loop::cancel($watcherId);
                     $client->readWatcher = null;
                     if ($client->bodyDeferreds) {
                         $ex = new ClientException;
@@ -938,8 +936,8 @@ class Server implements Monitor {
     private function clear(Client $client) {
         $client->requestParser = null; // break cyclic reference
         $client->onWriteDrain = null;
-        \Amp\cancel($client->readWatcher);
-        \Amp\cancel($client->writeWatcher);
+        Loop::cancel($client->readWatcher);
+        Loop::cancel($client->writeWatcher);
         $this->clearKeepAliveTimeout($client);
         unset($this->clients[$client->id]);
         if ($this->stopDeferred && empty($this->clients)) {

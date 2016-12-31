@@ -2,10 +2,13 @@
 
 namespace Aerys;
 
-use Amp\{ Deferred, Success };
+use Amp\{ CallableMaker, Deferred, Failure, Success };
+use Interop\Async\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WatcherProcess extends Process {
+    use CallableMaker;
+    
     private $logger;
     private $console;
     private $workerCount;
@@ -22,10 +25,8 @@ class WatcherProcess extends Process {
     public function __construct(PsrLogger $logger) {
         parent::__construct($logger);
         $this->logger = $logger;
-        $this->procGarbageWatcher = \Amp\repeat(100, function() {
-            $this->collectProcessGarbage();
-        });
-        \Amp\disable($this->procGarbageWatcher);
+        $this->procGarbageWatcher = Loop::repeat(100, $this->callableFromInstanceMethod("collectProcessGarbage"));
+        Loop::disable($this->procGarbageWatcher);
     }
 
     private function collectProcessGarbage() {
@@ -48,13 +49,13 @@ class WatcherProcess extends Process {
 
         // If we've reaped all known dead processes we can stop checking
         if (empty($this->defunctProcessCount)) {
-            \Amp\disable($this->procGarbageWatcher);
+            Loop::disable($this->procGarbageWatcher);
         }
 
         if ($this->stopDeferred && empty($this->processes)) {
-            \Amp\cancel($this->procGarbageWatcher);
+            Loop::cancel($this->procGarbageWatcher);
             if ($this->stopDeferred !== true) {
-                \Amp\defer([$this->stopDeferred, "resolve"]);
+                Loop::defer([$this->stopDeferred, "resolve"]);
             }
             $this->stopDeferred = true;
         }
@@ -120,7 +121,7 @@ class WatcherProcess extends Process {
         }
 
         stream_set_blocking($commandServer, false);
-        \Amp\onReadable($commandServer, function(...$args) { $this->acceptCommand(...$args); });
+        Loop::onReadable($commandServer, $this->callableFromInstanceMethod("acceptCommand"));
 
         register_shutdown_function(function () use ($path) {
             @\unlink($path);
@@ -136,7 +137,7 @@ class WatcherProcess extends Process {
         }
         stream_set_blocking($client, false);
         $parser = $this->commandParser($client);
-        $readWatcherId = \Amp\onReadable($client, function() use ($parser) { $parser->next(); });
+        $readWatcherId = Loop::onReadable($client, function() use ($parser) { $parser->next(); });
         $parser->send($readWatcherId);
     }
 
@@ -149,7 +150,7 @@ class WatcherProcess extends Process {
             yield;
             $data = @fread($client, 8192);
             if ($data == "" && (!is_resource($client) || @feof($client))) {
-                \Amp\cancel($readWatcherId);
+                Loop::cancel($readWatcherId);
                 return;
             }
 
@@ -313,7 +314,7 @@ class WatcherProcess extends Process {
         }
 
         \stream_set_blocking($ipcServer, false);
-        \Amp\onReadable($ipcServer, function(...$args) { $this->accept(...$args); });
+        Loop::onReadable($ipcServer, $this->callableFromInstanceMethod("accept"));
 
         $resolvedSocketAddress = \stream_socket_get_name($ipcServer, $wantPeer = false);
 
@@ -332,7 +333,7 @@ class WatcherProcess extends Process {
 
         stream_set_blocking($ipcClient, false);
         $parser = $this->parser($ipcClient);
-        $readWatcherId = \Amp\onReadable($ipcClient, function () use ($parser) {
+        $readWatcherId = Loop::onReadable($ipcClient, function () use ($parser) {
             $parser->next();
         });
         $this->ipcClients[$readWatcherId] = $ipcClient;
@@ -379,11 +380,11 @@ class WatcherProcess extends Process {
     }
 
     private function onDeadIpcClient(string $readWatcherId, $ipcClient) {
-        \Amp\cancel($readWatcherId);
+        Loop::cancel($readWatcherId);
         @fclose($ipcClient);
         unset($this->ipcClients[$readWatcherId]);
         $this->defunctProcessCount++;
-        \Amp\enable($this->procGarbageWatcher);
+        Loop::enable($this->procGarbageWatcher);
     }
 
     private function generateWorkerCommand(Console $console): string {

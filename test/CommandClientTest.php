@@ -4,10 +4,11 @@ namespace Aerys\Test;
 
 use Aerys\Bootstrapper;
 use Aerys\CommandClient;
+use Interop\Async\Loop;
 
 class CommandClientTest extends \PHPUnit_Framework_TestCase {
     public function testSendRestart() {
-        \Amp\execute(function () {
+        Loop::execute(\Amp\wrap(function () {
             $path = CommandClient::socketPath(Bootstrapper::selectConfigFile(__FILE__));
             $unix = in_array("unix", \stream_get_transports(), true);
 
@@ -34,9 +35,9 @@ class CommandClientTest extends \PHPUnit_Framework_TestCase {
 
                 $client = new CommandClient(__FILE__);
 
-                \Amp\onReadable($commandServer, function ($watcher, $commandServer) use (&$clientSocket) {
+                Loop::onReadable($commandServer, function ($watcher, $commandServer) use (&$clientSocket) {
                     if ($clientSocket = stream_socket_accept($commandServer, $timeout = 0)) {
-                        \Amp\cancel($watcher);
+                        Loop::cancel($watcher);
                     }
                 });
 
@@ -44,7 +45,7 @@ class CommandClientTest extends \PHPUnit_Framework_TestCase {
 
                 // delay until next tick to not have $client in the backtrace so that gc_collect_cyles() will really collect it
                 $deferred = new \Amp\Deferred;
-                \Amp\defer([$deferred, "resolve"]);
+                Loop::defer([$deferred, "resolve"]);
                 yield $deferred->promise();
                 unset($client); // force freeing of client and the socket
                 gc_collect_cycles();
@@ -62,6 +63,6 @@ class CommandClientTest extends \PHPUnit_Framework_TestCase {
                     @unlink($path);
                 }
             }
-        });
+        }));
     }
 }

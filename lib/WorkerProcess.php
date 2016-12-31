@@ -23,7 +23,7 @@ class WorkerProcess extends Process {
         register_shutdown_function(function() use ($console) {
             if (!$this->server) {
                 // ensure a clean reactor for clean shutdown
-                \Amp\execute(function() use ($console) {
+                Loop::execute(function() use ($console) {
                     yield ((new CommandClient((string) $console->getArg("config")))->stop());
                 });
             }
@@ -32,10 +32,10 @@ class WorkerProcess extends Process {
         $server = yield from $this->bootstrapper->boot($this->logger, $console);
         yield $server->start();
         $this->server = $server;
-        \Amp\onReadable($this->ipcSock, function($watcherId) {
-            \Amp\cancel($watcherId);
+        Loop::onReadable($this->ipcSock, \Amp\wrap(function($watcherId) {
+            Loop::cancel($watcherId);
             yield from $this->stop();
-        });
+        }));
     }
 
     protected function doStop(): \Generator {

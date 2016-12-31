@@ -35,7 +35,6 @@
         "amphp/amp": "dev-master as 2.0",
         "amphp/file": "dev-amp_v2",
         "amphp/socket": "dev-amp_v2",
-        "async-interop/event-loop-implementation": "^0.3",
         "league/climate": "^3",
         "nikic/fast-route": "^1",
         "psr/log": "^1"

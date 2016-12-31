@@ -17,6 +17,7 @@ use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Artax\Notify;
 use Amp\Artax\SocketException;
+use Interop\Async\Loop;
 
 class ClientTest extends \PHPUnit_Framework_TestCase {
     function startServer($handler, $filters = []) {
@@ -39,7 +40,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testTrivialHttpRequest() {
-        \Amp\execute(function() {
+        Loop::execute(\Amp\wrap(function() {
             $deferred = new \Amp\Deferred;
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) {
                 $this->assertEquals("GET", $req->getMethod());
@@ -74,12 +75,12 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals("data".str_repeat("*", 100000)."data", $res->getBody());
             $this->assertEquals("with value", $cookies->get("localhost", "/", "cookie")[0]->getValue());
 
-            \Amp\stop();
-        });
+            Loop::stop();
+        }));
     }
 
     function testClientDisconnect() {
-        \Amp\execute(function() {
+        Loop::execute(\Amp\wrap(function() {
             $deferred = new \Amp\Deferred;
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) use ($deferred, &$server) {
                 $this->assertEquals("POST", $req->getMethod());
@@ -137,7 +138,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals("data", $body);
 
             yield $deferred->promise();
-            \Amp\stop();
-        });
+            Loop::stop();
+        }));
     }
 }

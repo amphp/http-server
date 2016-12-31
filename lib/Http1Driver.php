@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Amp\Deferred;
+use Interop\Async\Loop;
 
 class Http1Driver implements HttpDriver {
     const HEADER_REGEX = "(
@@ -210,11 +211,11 @@ class Http1Driver implements HttpDriver {
                 do {
                     if (\strlen($buffer) > $maxHeaderSize + $client->streamWindow) {
                         if ($client->readWatcher) {
-                            \Amp\disable($client->readWatcher);
+                            Loop::disable($client->readWatcher);
                         }
                         $buffer .= yield;
                         if (!($client->isDead & Client::CLOSED_RD)) {
-                            \Amp\enable($client->readWatcher);
+                            Loop::enable($client->readWatcher);
                         }
                         break;
                     }
@@ -430,7 +431,7 @@ class Http1Driver implements HttpDriver {
                             ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
                             $client->parserEmitLock = true;
                             if ($client->readWatcher) {
-                                \Amp\disable($client->readWatcher);
+                                Loop::disable($client->readWatcher);
                             }
                             $yield = yield;
                             if ($yield === false) {
@@ -440,7 +441,7 @@ class Http1Driver implements HttpDriver {
                                 }
                             }
                             if ($client->readWatcher) {
-                                \Amp\enable($client->readWatcher);
+                                Loop::enable($client->readWatcher);
                             }
                             $client->parserEmitLock = false;
                         } while ($client->streamWindow < $bodySize + $chunkLenRemaining);
@@ -514,7 +515,7 @@ class Http1Driver implements HttpDriver {
                         ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
                         $client->parserEmitLock = true;
                         if ($client->readWatcher) {
-                            \Amp\disable($client->readWatcher);
+                            Loop::disable($client->readWatcher);
                         }
                         $yield = yield;
                         if ($yield === false) {
@@ -524,7 +525,7 @@ class Http1Driver implements HttpDriver {
                             }
                         }
                         if ($client->readWatcher) {
-                            \Amp\enable($client->readWatcher);
+                            Loop::enable($client->readWatcher);
                         }
                         $client->parserEmitLock = false;
                     } else {

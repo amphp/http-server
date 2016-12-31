@@ -2,6 +2,8 @@
 
 namespace Aerys;
 
+use Interop\Async\Loop;
+
 class CommandClient {
     use \Amp\CallableMaker;
     
@@ -27,7 +29,7 @@ class CommandClient {
         if (!$this->sock) {
             $this->establish();
         } elseif (!$this->writeWatcher) {
-            $this->writeWatcher = \Amp\onWritable($this->sock, $this->writer);
+            $this->writeWatcher = Loop::onWritable($this->sock, $this->writer);
         }
         $msg = json_encode($msg);
         $this->buf .= pack("N", \strlen($msg)) . $msg;
@@ -48,7 +50,7 @@ class CommandClient {
                 return;
             }
             $this->sock = $sock;
-            $this->writeWatcher = \Amp\onWritable($sock, $this->writer);
+            $this->writeWatcher = Loop::onWritable($sock, $this->writer);
         });
     }
 
@@ -56,7 +58,7 @@ class CommandClient {
         $bytes = @fwrite($socket, $this->buf);
         if ($bytes == 0) {
             if (!is_resource($socket) || @feof($socket)) {
-                \Amp\cancel($this->writeWatcher);
+                Loop::cancel($this->writeWatcher);
                 $this->sock = $this->writeWatcher = null;
                 $this->establish();
             }
@@ -64,7 +66,7 @@ class CommandClient {
         }
 
         if ($bytes === \strlen($this->buf)) {
-            \Amp\cancel($watcherId);
+            Loop::cancel($watcherId);
             $this->writeWatcher = null;
         }
         $this->written += $bytes;
@@ -79,7 +81,7 @@ class CommandClient {
 
     private function failAll() {
         if ($this->writeWatcher !== null) {
-            \Amp\cancel($this->writeWatcher);
+            Loop::cancel($this->writeWatcher);
         }
         $this->sock = $this->writeWatcher = null;
 

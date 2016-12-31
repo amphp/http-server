@@ -2,6 +2,8 @@
 
 namespace Aerys;
 
+use Interop\Async\Loop;
+
 class IpcLogger extends Logger {
     use \Amp\CallableMaker;
     
@@ -22,15 +24,15 @@ class IpcLogger extends Logger {
         $onWritable = $this->callableFromInstanceMethod("onWritable");
         $this->ipcSock = $ipcSock;
         stream_set_blocking($ipcSock, false);
-        $this->writeWatcherId = \Amp\onWritable($ipcSock, $onWritable);
-        \Amp\disable($this->writeWatcherId);
+        $this->writeWatcherId = Loop::onWritable($ipcSock, $onWritable);
+        Loop::disable($this->writeWatcherId);
     }
 
     protected function output(string $message) {
         if (empty($this->isDead)) {
             $this->writeQueue[] = pack("N", \strlen($message));
             $this->writeQueue[] = $message;
-            \Amp\enable($this->writeWatcherId);
+            Loop::enable($this->writeWatcherId);
         }
     }
 
@@ -63,14 +65,14 @@ class IpcLogger extends Logger {
 
         $this->writeBuffer = "";
 
-        \Amp\disable($this->writeWatcherId);
+        Loop::disable($this->writeWatcherId);
     }
 
     private function onDeadIpcSock() {
         $this->isDead = true;
         $this->writeBuffer = "";
         $this->writeQueue = [];
-        \Amp\cancel($this->writeWatcherId);
+        Loop::cancel($this->writeWatcherId);
     }
 
     public function flush() { // BLOCKING

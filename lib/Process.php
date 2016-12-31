@@ -2,7 +2,6 @@
 
 namespace Aerys;
 
-use Amp\Coroutine;
 use Interop\Async\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
@@ -47,7 +46,7 @@ abstract class Process {
             // Once we make it this far we no longer want to terminate
             // the process in the event of an uncaught exception inside
             // the event loop -- log it instead.
-            \Amp\setErrorHandler([$this->logger, "critical"]);
+            Loop::setErrorHandler([$this->logger, "critical"]);
         } catch (\Throwable $uncaught) {
             $this->exitCode = 1;
             $this->logger->critical($uncaught);
@@ -85,15 +84,15 @@ abstract class Process {
             return;
         }
 
-        $onSignal = [$this, "stop"];
+        $onSignal = \Amp\wrap([$this, "stop"]);
 
         $loop = Loop::get()->getHandle();
         if (is_resource($loop) && get_resource_type($loop) == "uv_loop") {
-            \Amp\unreference(\Amp\onSignal(\UV::SIGINT, $onSignal));
-            \Amp\unreference(\Amp\onSignal(\UV::SIGTERM, $onSignal));
+            Loop::unreference(Loop::onSignal(\UV::SIGINT, $onSignal));
+            Loop::unreference(Loop::onSignal(\UV::SIGTERM, $onSignal));
         } elseif (extension_loaded("pcntl")) {
-            \Amp\unreference(\Amp\onSignal(\SIGINT, $onSignal));
-            \Amp\unreference(\Amp\onSignal(\SIGTERM, $onSignal));
+            Loop::unreference(Loop::onSignal(\SIGINT, $onSignal));
+            Loop::unreference(Loop::onSignal(\SIGTERM, $onSignal));
         }
     }
 

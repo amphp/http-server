@@ -5,6 +5,7 @@ namespace Aerys\Test;
 use Aerys\ClientSizeException;
 use Amp\Postponed;
 use Aerys\Body;
+use Interop\Async\Loop;
 
 class BodyTest extends \PHPUnit_Framework_TestCase {
     public function testPromiseImplementation() {
@@ -53,13 +54,13 @@ class BodyTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals("texttext", $result);
             $this->assertNull($e);
         });
-        \Amp\execute(function() use ($body) {
+        Loop::execute(\Amp\wrap(function() use ($body) {
             $payload = "";
-            while (yield $body->next()) {
+            while (yield $body->advance()) {
                 $payload .= $body->getCurrent();
             }
             $this->assertEquals("texttext", $payload);
-        });
+        }));
     }
     
     public function testFailedFinishedStream() {
@@ -77,16 +78,16 @@ class BodyTest extends \PHPUnit_Framework_TestCase {
             $this->assertSame(null, $result);
             $this->assertInstanceOf(ClientSizeException::class, $e);
         });
-        \Amp\execute(function() use ($body) {
+        Loop::execute(\Amp\wrap(function() use ($body) {
             $payload = "";
             try {
-                while (yield $body->next()) {
+                while (yield $body->advance()) {
                     $payload .= $body->getCurrent();
                 }
             } catch (ClientSizeException $e) {}
 
             $this->assertInstanceOf(ClientSizeException::class, $e);
             $this->assertEquals("texttext", $payload);
-        });
+        }));
     }
 }

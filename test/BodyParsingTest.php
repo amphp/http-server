@@ -7,6 +7,7 @@ use Aerys\Client;
 use Aerys\InternalRequest;
 use Aerys\Options;
 use Aerys\StandardRequest;
+use Interop\Async\Loop;
 
 class BodyParsingTest extends \PHPUnit_Framework_TestCase {
     /**
@@ -23,10 +24,10 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $postponed->emit($data);
         $postponed->resolve();
 
-        \Amp\execute(function() use ($ireq, &$result) {
+        Loop::execute(\Amp\wrap(function() use ($ireq, &$result) {
             $parsedBody = yield \Aerys\parseBody(new StandardRequest($ireq));
             $result = $parsedBody->getAll();
-        });
+        }));
 
         $this->assertEquals($fields, $result["fields"]);
         $this->assertEquals($metadata, $result["metadata"]);
@@ -46,7 +47,7 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $postponed->emit($data);
         $postponed->resolve();
 
-        \Amp\execute(function() use ($ireq, $fields, $metadata) {
+        Loop::execute(\Amp\wrap(function() use ($ireq, $fields, $metadata) {
             $fieldlist = $fields;
 
             $body = \Aerys\parseBody(new StandardRequest($ireq));
@@ -63,7 +64,7 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals(count($fieldlist), count($fieldlist, \COUNT_RECURSIVE));
             $this->assertEquals($fields, $result["fields"]);
             $this->assertEquals($metadata, $result["metadata"]);
-        });
+        }));
     }
 
     /**
@@ -77,10 +78,10 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
-        \Amp\execute(function() use ($postponed, $data, $ireq, $fields, $metadata) {
+        Loop::execute(\Amp\wrap(function() use ($postponed, $data, $ireq, $fields, $metadata) {
             $fieldlist = $fields;
             
-            \Amp\defer(function() use ($postponed, $data) {
+            Loop::defer(function() use ($postponed, $data) {
                 $postponed->emit($data);
                 $postponed->resolve();
             });
@@ -99,7 +100,7 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals(count($fieldlist), count($fieldlist, \COUNT_RECURSIVE));
             $this->assertEquals($fields, $result["fields"]);
             $this->assertEquals($metadata, $result["metadata"]);
-        });
+        }));
     }
 
     function testNew() {
@@ -122,20 +123,20 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $j = $body->stream("j");
 
 
-        \Amp\execute(function() use ($a, $b, $be, $d, $gh, $j, $data, $postponed) {
-            \Amp\defer(function() use ($data, $postponed) {
+        Loop::execute(\Amp\wrap(function() use ($a, $b, $be, $d, $gh, $j, $data, $postponed) {
+            Loop::defer(\Amp\wrap(function() use ($data, $postponed) {
                 for ($i = 0; $i < \strlen($data); $i++) {
                     $postponed->emit($data[$i]);
                 }
                 $postponed->resolve();
-            });
+            }));
             $this->assertEquals("bafg", yield $a);
             $this->assertEquals("", yield $b); // not existing
             $this->assertEquals("c", yield $be);
             $this->assertEquals("f%6", yield $d);
             $this->assertEquals("", yield $gh);
             $this->assertEquals("", yield $j);
-        });
+        }));
         $body->when(function($e) { print $e; });
     }
 

@@ -4,6 +4,7 @@ namespace Aerys;
 
 use Amp as amp;
 use Amp\File as file;
+use Interop\Async\Loop;
 
 class Root implements ServerObserver {
     const PRECOND_NOT_MODIFIED = 1;
@@ -52,7 +53,7 @@ class Root implements ServerObserver {
         $this->root = \rtrim(\realpath($root), "/");
         $this->filesystem = $filesystem ?: file\filesystem();
         $this->multipartBoundary = \uniqid("", true);
-        $this->cacheWatcher = amp\repeat(1000, function() {
+        $this->cacheWatcher = Loop::repeat(1000, function() {
             $this->now = $now = time();
             foreach ($this->cacheTimeouts as $path => $timeout) {
                 if ($now <= $timeout) {
@@ -67,7 +68,7 @@ class Root implements ServerObserver {
                 $this->cacheEntryCount--;
             }
         });
-        \Amp\disable($this->cacheWatcher);
+        Loop::disable($this->cacheWatcher);
     }
 
     /**
@@ -758,10 +759,10 @@ class Root implements ServerObserver {
                 break;
             case Server::STARTED:
                 $this->debug = $server->getOption("debug");
-                amp\enable($this->cacheWatcher);
+                Loop::enable($this->cacheWatcher);
                 break;
             case Server::STOPPED:
-                amp\disable($this->cacheWatcher);
+                Loop::disable($this->cacheWatcher);
                 $this->cache = [];
                 $this->cacheTimeouts = [];
                 $this->cacheEntryCount = 0;
@@ -769,6 +770,6 @@ class Root implements ServerObserver {
                 break;
         }
 
-        return new amp\Success;
+        return new \Amp\Success;
     }
 }

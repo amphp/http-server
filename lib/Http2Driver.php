@@ -7,6 +7,7 @@ namespace Aerys;
 // @TODO maybe display a real HTML error page for artificial limits exceeded
 use Amp\Deferred;
 use Amp\Failure;
+use Interop\Async\Loop;
 
 class Http2Driver implements HttpDriver {
     const NOFLAG = "\x00";
@@ -462,10 +463,10 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
                 $time = \time();
                 if ($lastReset == $time) {
                     if ($framesLastSecond > $maxFramesPerSecond) {
-                        \Amp\disable($client->readWatcher); // aka tiny frame DoS prevention
-                        \Amp\delay(1000, static function ($watcher, $client) {
+                        Loop::disable($client->readWatcher); // aka tiny frame DoS prevention
+                        Loop::delay(1000, static function ($watcher, $client) {
                             if (!($client->isDead & Client::CLOSED_RD)) {
-                                \Amp\enable($client->readWatcher);
+                                Loop::enable($client->readWatcher);
                                 $client->requestParser->next();
                             }
                         }, $client);
@@ -793,7 +794,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer, 0, $length)."\n");
                     $client->shouldClose = true;
-                    \Amp\disable($client->readWatcher);
+                    Loop::disable($client->readWatcher);
                     while (1) {
                         yield;
                     }
@@ -913,7 +914,7 @@ connection_error:
         $this->writeFrame($client, pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
 
-        \Amp\disable($client->readWatcher);
+        Loop::disable($client->readWatcher);
         while (1) {
             yield;
         }

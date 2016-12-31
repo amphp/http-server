@@ -13,7 +13,6 @@ use Amp\{
     function any,
     function rethrow
 };
-
 use Aerys\{
     ClientException,
     InternalRequest,
@@ -27,6 +26,7 @@ use Aerys\{
     Websocket,
     const HTTP_STATUS
 };
+use Interop\Async\Loop;
 
 use Interop\Async\Promise;
 use Psr\Log\LoggerInterface as PsrLogger;
@@ -207,7 +207,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             $yield = yield $yield;
         }
 
-        \Amp\defer([$this, "reapClient"], $ireq);
+        Loop::defer([$this, "reapClient"], $ireq);
     }
 
     public function reapClient($watcherId, InternalRequest $ireq) {
@@ -228,10 +228,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             "text_only" => $this->textOnly,
             "threshold" => $this->autoFrameSize,
         ]);
-        $client->readWatcher = \Amp\onReadable($socket, [$this, "onReadable"], $client);
-        $client->writeWatcher = \Amp\onWritable($socket, [$this, "onWritable"], $client);
+        $client->readWatcher = Loop::onReadable($socket, [$this, "onReadable"], $client);
+        $client->writeWatcher = Loop::onWritable($socket, [$this, "onWritable"], $client);
         if ($client->writeBuffer != "") {
-            \Amp\disable($client->writeWatcher);
+            Loop::disable($client->writeWatcher);
         }
 
         $this->clients[$client->id] = $client;
@@ -304,10 +304,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     private function unloadClient(Rfc6455Client $client) {
         $client->parser = null;
         if ($client->readWatcher) {
-            \Amp\cancel($client->readWatcher);
+            Loop::cancel($client->readWatcher);
         }
         if ($client->writeWatcher) {
-            \Amp\cancel($client->writeWatcher);
+            Loop::cancel($client->writeWatcher);
         }
 
         unset($this->heartbeatTimeouts[$client->id]);
@@ -366,7 +366,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                     $reason = substr($data, 2);
 
                     @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
-                    \Amp\cancel($client->readWatcher);
+                    Loop::cancel($client->readWatcher);
                     $client->readWatcher = null;
                     rethrow(new Coroutine($this->doClose($client, $code, $reason)));
                 }
@@ -430,7 +430,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         if ($code) {
             if ($client->closedAt || $code == Code::PROTOCOL_ERROR) {
                 @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
-                \Amp\cancel($client->readWatcher);
+                Loop::cancel($client->readWatcher);
                 $client->readWatcher = null;
             }
 
@@ -450,7 +450,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             if ($client->capacity < $this->maxBytesPerMinute / 2) {
                 $this->lowCapacityClients[$client->id] = $client;
                 if ($client->capacity <= 0) {
-                    \Amp\disable($watcherId);
+                    Loop::disable($watcherId);
                 }
             }
             $frames = $client->parser->send($data);
@@ -458,7 +458,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             $client->framesLastSecond += $frames;
             if ($client->framesLastSecond > $this->maxFramesPerSecond / 2) {
                 if ($client->framesLastSecond > $this->maxFramesPerSecond * 1.5) {
-                    \Amp\disable($watcherId); // aka tiny frame DoS prevention
+                    Loop::disable($watcherId); // aka tiny frame DoS prevention
                 }
                 $this->highFramesPerSecondClients[$client->id] = $client;
             }
@@ -513,7 +513,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
 
             } elseif ($client->closedAt) {
                 @stream_socket_shutdown($socket, STREAM_SHUT_WR);
-                \Amp\cancel($watcherId);
+                Loop::cancel($watcherId);
                 $client->writeWatcher = null;
                 $client->writeDeferred = null;
                 $client->writeBuffer = "";
@@ -533,7 +533,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             } else {
                 $client->writeDeferred = null;
                 $client->writeBuffer = "";
-                \Amp\disable($watcherId);
+                Loop::disable($watcherId);
             }
         }
     }
@@ -583,7 +583,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 $deferred = $client->writeDeferredDataQueue[] = new Deferred;
             }
         } else {
-            \Amp\enable($client->writeWatcher);
+            Loop::enable($client->writeWatcher);
             $client->writeBuffer = $w;
             $deferred = $client->writeDeferred = new Deferred;
         }
@@ -689,7 +689,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 break;
 
             case Server::STARTED:
-                $this->timeoutWatcher = \Amp\repeat(1000, $this->callableFromInstanceMethod("timeout"));
+                $this->timeoutWatcher = Loop::repeat(1000, $this->callableFromInstanceMethod("timeout"));
                 break;
 
             case Server::STOPPING:
@@ -711,7 +711,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                     }
                 });
 
-                \Amp\cancel($this->timeoutWatcher);
+                Loop::cancel($this->timeoutWatcher);
                 $this->timeoutWatcher = null;
 
                 return $promise;
@@ -789,7 +789,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 unset($this->lowCapacityClients[$id]);
             }
             if ($client->capacity > 8192 && !isset($this->highFramesPerSecondClients[$id])) {
-                \Amp\enable($client->readWatcher);
+                Loop::enable($client->readWatcher);
             }
         }
 
@@ -798,7 +798,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             if ($client->framesLastSecond < $this->maxFramesPerSecond) {
                 unset($this->highFramesPerSecondClients[$id]);
                 if ($client->capacity > 8192) {
-                    \Amp\enable($client->readWatcher);
+                    Loop::enable($client->readWatcher);
                 }
             }
         }

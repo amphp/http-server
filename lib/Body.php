@@ -2,9 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{
-    CallableMaker, Internal\Producer, Observable, Observer, Postponed
-};
+use Amp\{ CallableMaker, Internal\Producer, Observable, Observer, Postponed };
 
 /**
  * An API allowing responders to buffer or stream request entity bodies
@@ -48,7 +46,7 @@ class Body extends Observer implements Observable {
             
             $result = \implode($this->drain());
             
-            // way to restart, so that even after the success, the next() / getCurrent() API will still work
+            // way to restart, so that even after the success, the advance() / getCurrent() API will still work
             $postponed = new Postponed;
             parent::__construct($postponed->observe());
             $postponed->emit($result);

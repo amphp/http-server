@@ -2,11 +2,8 @@
 
 namespace Aerys;
 
-use Amp\{
-    Success,
-    Struct
-};
-use Interop\Async\Promise;
+use Amp\{ Success, Struct };
+use Interop\Async\{ Loop, Promise };
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Ticker implements ServerObserver {
@@ -26,11 +23,11 @@ class Ticker implements ServerObserver {
     public function update(Server $server): Promise {
         switch ($server->state()) {
             case Server::STARTED:
-                $this->watcherId = \Amp\repeat(1000, [$this, "updateTime"]);
+                $this->watcherId = Loop::repeat(1000, [$this, "updateTime"]);
                 $this->updateTime();
                 break;
             case Server::STOPPED:
-                \Amp\cancel($this->watcherId);
+                Loop::cancel($this->watcherId);
                 $this->watcherId = null;
                 break;
         }

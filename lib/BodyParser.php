@@ -2,9 +2,11 @@
 
 namespace Aerys;
 
-use Amp\{ Coroutine, Deferred, Internal\Producer, Observable, Postponed, Success };
+use Amp\{ CallableMaker, Coroutine, Deferred, Internal\Producer, Observable, Postponed, Success };
+use Interop\Async\Loop;
 
 class BodyParser implements Observable {
+    use CallableMaker;
     use Producer {
         subscribe as private watch;
     }
@@ -26,6 +28,7 @@ class BodyParser implements Observable {
     private $maxFieldLen; // prevent buffering of arbitrary long names and fail instead
     private $maxInputVars; // prevent requests from creating arbitrary many fields causing lot of processing time
     private $inputVarCount = 0;
+    private $initIncremental;
 
     /**
      * @param Request $req
@@ -51,8 +54,10 @@ class BodyParser implements Observable {
 
             $this->boundary = $m[2];
         }
+        
+        $this->initIncremental = \Amp\wrap($this->callableFromInstanceMethod('initIncremental'));
 
-        \Amp\defer(function() {
+        Loop::defer(function() {
             if ($this->parsing === true) {
                 \Amp\rethrow(new Coroutine($this->initIncremental()));
             }
@@ -160,7 +165,7 @@ class BodyParser implements Observable {
 
             if (!$this->parsing) {
                 $this->parsing = true;
-                \Amp\defer(function() { return $this->initIncremental(); });
+                Loop::defer($this->initIncremental);
             }
         } elseif (!$this->parsing) {
             $this->watch($onNext);
@@ -188,7 +193,7 @@ class BodyParser implements Observable {
             }
             if (!$this->parsing) {
                 $this->parsing = true;
-                \Amp\defer(function() { return $this->initIncremental(); });
+                Loop::defer($this->initIncremental);
             }
             if (empty($this->bodies[$name])) {
                 $this->bodyDeferreds[$name][] = [$body = new Postponed, $metadata = new Deferred];
@@ -273,7 +278,7 @@ class BodyParser implements Observable {
             // RFC 7578, RFC 2046 Section 5.1.1
             $sep = "--$this->boundary";
             while (\strlen($buf) < \strlen($sep) + 4) {
-                if (!yield $this->body->next()) {
+                if (!yield $this->body->advance()) {
                     $this->error(new ClientException);
                     return;
                 }
@@ -291,7 +296,7 @@ class BodyParser implements Observable {
                 $off += 2;
                 
                 while (($end = strpos($buf, "\r\n\r\n", $off)) === false) {
-                    if (!yield $this->body->next()) {
+                    if (!yield $this->body->advance()) {
                         $this->error(new ClientException);
                         return;
                     }
@@ -331,7 +336,7 @@ class BodyParser implements Observable {
                 $off = 0;
                 
                 while (($end = strpos($buf, $sep, $off)) === false) {
-                    if (!yield $this->body->next()) {
+                    if (!yield $this->body->advance()) {
                         $e = new ClientException;
                         $dataPostponed->fail($e);
                         $this->error($e);
@@ -361,7 +366,7 @@ class BodyParser implements Observable {
                 $off = $end + \strlen($sep);
 
                 while (\strlen($buf) < 4) {
-                    if (!yield $this->body->next()) {
+                    if (!yield $this->body->advance()) {
                         $this->error(new ClientException);
                         return;
                     }
@@ -370,7 +375,7 @@ class BodyParser implements Observable {
             }
         } else {
             $field = null;
-            while (yield $this->body->next()) {
+            while (yield $this->body->advance()) {
                 $new = $this->body->getCurrent();
 
                 if ($new[0] === "&") {
