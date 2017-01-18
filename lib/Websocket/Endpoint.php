@@ -2,7 +2,7 @@
 
 namespace Aerys\Websocket;
 
-use Interop\Async\Promise;
+use AsyncInterop\Promise;
 
 interface Endpoint {
     public function send(/* int|null|array */ $clientId, string $data): Promise;

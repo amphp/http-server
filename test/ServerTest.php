@@ -14,7 +14,7 @@ use Aerys\Ticker;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Socket as sock;
-use Interop\Async\Loop;
+use AsyncInterop\Loop;
 
 // @TODO test communication on half-closed streams (both ways) [also with yield message] (also with HTTP/1 pipelining...)
 

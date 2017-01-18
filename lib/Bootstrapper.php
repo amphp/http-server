@@ -2,8 +2,8 @@
 
 namespace Aerys;
 
-use Amp\{ Success, function any };
-use Interop\Async\Promise;
+use Amp\Success;
+use AsyncInterop\Promise;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Bootstrapper {

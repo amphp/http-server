@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Interop\Async\Loop;
+use AsyncInterop\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 abstract class Process {

@@ -6,8 +6,9 @@ use Amp\{
     CallableMaker,
     Coroutine,
     Deferred,
-    Postponed,
+    Emitter,
     Failure,
+    Message,
     Success,
     function all,
     function any,
@@ -26,9 +27,7 @@ use Aerys\{
     Websocket,
     const HTTP_STATUS
 };
-use Interop\Async\Loop;
-
-use Interop\Async\Promise;
+use AsyncInterop\{ Loop, Promise };
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
@@ -104,7 +103,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             default:
                 throw new \Error("Unknown option $option");
         }
-        $this->$option = $value;
+        $this->{$option} = $value;
     }
 
     public function __invoke(Request $request, Response $response, ...$args) {
@@ -393,8 +392,8 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         list($data, $terminated) = $parseResult;
 
         if (!$client->msgDeferred) {
-            $client->msgDeferred = new Postponed;
-            $msg = new Message($client->msgDeferred->observe());
+            $client->msgDeferred = new Emitter;
+            $msg = new Message($client->msgDeferred->stream());
             rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
         }
 

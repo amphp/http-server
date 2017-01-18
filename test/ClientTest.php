@@ -17,7 +17,7 @@ use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Artax\Notify;
 use Amp\Artax\SocketException;
-use Interop\Async\Loop;
+use AsyncInterop\Loop;
 
 class ClientTest extends \PHPUnit_Framework_TestCase {
     function startServer($handler, $filters = []) {
@@ -125,7 +125,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             );
 
             $body = "";
-            $promise->subscribe(function($update) use (&$body) {
+            $promise->listen(function($update) use (&$body) {
                 list($type, $data) = $update;
                 if ($type == Notify::RESPONSE_BODY_DATA) {
                     $body .= $data;

@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Interop\Async\Loop;
+use AsyncInterop\Loop;
 
 class CommandClient {
     use \Amp\CallableMaker;
@@ -25,7 +25,7 @@ class CommandClient {
         return sys_get_temp_dir()."/aerys_".strtr(base64_encode(sha1(Bootstrapper::selectConfigFile($config), true)), "+/", "-_").".tmp";
     }
 
-    private function send($msg): \Interop\Async\Promise {
+    private function send($msg): \AsyncInterop\Promise {
         if (!$this->sock) {
             $this->establish();
         } elseif (!$this->writeWatcher) {
@@ -92,11 +92,11 @@ class CommandClient {
         }
     }
 
-    public function restart(): \Interop\Async\Promise {
+    public function restart(): \AsyncInterop\Promise {
         return $this->send(["action" => "restart"]);
     }
 
-    public function stop(): \Interop\Async\Promise {
+    public function stop(): \AsyncInterop\Promise {
         return $this->send(["action" => "stop"]);
     }
 

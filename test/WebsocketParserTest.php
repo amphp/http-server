@@ -16,7 +16,7 @@ use Aerys\VhostContainer;
 use Aerys\Websocket;
 use Aerys\Websocket\Code;
 use Aerys\Websocket\Rfc6455Endpoint;
-use Interop\Async\Loop;
+use AsyncInterop\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WebsocketParserTest extends \PHPUnit_Framework_TestCase {

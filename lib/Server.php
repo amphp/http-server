@@ -2,13 +2,13 @@
 
 namespace Aerys;
 
-use Amp\{ CallableMaker, Coroutine, Struct, Success, Failure, Postponed, Deferred };
+use Amp\{ CallableMaker, Coroutine, Message, Success, Failure, Emitter, Deferred };
 use function Amp\{ timeout, any, all };
-use Interop\Async\{ Loop, Promise };
+use AsyncInterop\{ Loop, Promise };
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Server implements Monitor {
-    use CallableMaker, Struct;
+    use CallableMaker;
 
     const STOPPED  = 0;
     const STARTING = 1;
@@ -587,8 +587,8 @@ class Server implements Monitor {
     private function onParsedEntityHeaders(Client $client, array $parseResult) {
         $ireq = $this->initializeRequest($client, $parseResult);
         $id = $parseResult["id"];
-        $client->bodyDeferreds[$id] = $bodyDeferred = new Postponed;
-        $ireq->body = new Body($bodyDeferred->observe());
+        $client->bodyDeferreds[$id] = $bodyDeferred = new Emitter;
+        $ireq->body = new Message($bodyDeferred->stream());
 
         $this->respond($ireq);
     }
@@ -605,7 +605,7 @@ class Server implements Monitor {
     private function onEntitySizeWarning(Client $client, array $parseResult) {
         $id = $parseResult["id"];
         $deferred = $client->bodyDeferreds[$id];
-        $client->bodyDeferreds[$id] = new Postponed;
+        $client->bodyDeferreds[$id] = new Emitter;
         $deferred->fail(new ClientSizeException);
     }
 

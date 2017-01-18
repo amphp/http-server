@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Interop\Async\Loop;
+use AsyncInterop\Loop;
 
 class IpcLogger extends Logger {
     use \Amp\CallableMaker;

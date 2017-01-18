@@ -14,7 +14,7 @@ use Amp\{
     function any
 };
 
-use Interop\Async\Promise;
+use AsyncInterop\Promise;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Router implements Bootable, Middleware, Monitor, ServerObserver {

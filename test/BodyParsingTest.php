@@ -2,27 +2,27 @@
 
 namespace Aerys\Test;
 
-use Aerys\Body;
 use Aerys\Client;
 use Aerys\InternalRequest;
 use Aerys\Options;
 use Aerys\StandardRequest;
-use Interop\Async\Loop;
+use Amp\Message;
+use AsyncInterop\Loop;
 
 class BodyParsingTest extends \PHPUnit_Framework_TestCase {
     /**
      * @dataProvider requestBodies
      */
     function testDecoding($header, $data, $fields, $metadata) {
-        $postponed = new \Amp\Postponed;
+        $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($postponed->observe());
+        $ireq->body = new Message($emitter->stream());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
-        $postponed->emit($data);
-        $postponed->resolve();
+        $emitter->emit($data);
+        $emitter->resolve();
 
         Loop::execute(\Amp\wrap(function() use ($ireq, &$result) {
             $parsedBody = yield \Aerys\parseBody(new StandardRequest($ireq));
@@ -37,21 +37,22 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider requestBodies
      */
     function testImmediateWatch($header, $data, $fields, $metadata) {
-        $postponed = new \Amp\Postponed;
+        $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($postponed->observe());
+        $ireq->body = new Message($emitter->stream());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
-        $postponed->emit($data);
-        $postponed->resolve();
+        $emitter->emit($data);
+        $emitter->resolve();
 
         Loop::execute(\Amp\wrap(function() use ($ireq, $fields, $metadata) {
             $fieldlist = $fields;
 
             $body = \Aerys\parseBody(new StandardRequest($ireq));
-            $body->subscribe(function ($data) use (&$fieldlist) {
+
+            $body->listen(function ($data) use (&$fieldlist) {
                 $this->assertArrayHasKey($data, $fieldlist);
                 array_pop($fieldlist[$data]);
             });
@@ -71,23 +72,23 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider requestBodies
      */
     function testIncrementalWatch($header, $data, $fields, $metadata) {
-        $postponed = new \Amp\Postponed;
+        $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($postponed->observe());
+        $ireq->body = new Message($emitter->stream());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
-        Loop::execute(\Amp\wrap(function() use ($postponed, $data, $ireq, $fields, $metadata) {
+        Loop::execute(\Amp\wrap(function() use ($emitter, $data, $ireq, $fields, $metadata) {
             $fieldlist = $fields;
             
-            Loop::defer(function() use ($postponed, $data) {
-                $postponed->emit($data);
-                $postponed->resolve();
+            Loop::defer(function() use ($emitter, $data) {
+                $emitter->emit($data);
+                $emitter->resolve();
             });
 
             $body = \Aerys\parseBody(new StandardRequest($ireq));
-            $body->subscribe(function ($data) use (&$fieldlist) {
+            $body->listen(function ($data) use (&$fieldlist) {
                 $this->assertArrayHasKey($data, $fieldlist);
                 array_pop($fieldlist[$data]);
             });
@@ -107,10 +108,10 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $header = null;
         $data = "a=ba%66g&&&be=c&d=f%6&gh&j";
         
-        $postponed = new \Amp\Postponed;
+        $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($postponed->observe());
+        $ireq->body = new Message($emitter->stream());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
@@ -123,12 +124,12 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
         $j = $body->stream("j");
 
 
-        Loop::execute(\Amp\wrap(function() use ($a, $b, $be, $d, $gh, $j, $data, $postponed) {
-            Loop::defer(\Amp\wrap(function() use ($data, $postponed) {
+        Loop::execute(\Amp\wrap(function() use ($a, $b, $be, $d, $gh, $j, $data, $emitter) {
+            Loop::defer(\Amp\wrap(function() use ($data, $emitter) {
                 for ($i = 0; $i < \strlen($data); $i++) {
-                    $postponed->emit($data[$i]);
+                    $emitter->emit($data[$i]);
                 }
-                $postponed->resolve();
+                $emitter->resolve();
             }));
             $this->assertEquals("bafg", yield $a);
             $this->assertEquals("", yield $b); // not existing

@@ -15,8 +15,8 @@ class NullBodyTest extends \PHPUnit_Framework_TestCase {
             $invoked = true;
             $result = $r;
         });
-        $body->subscribe(function() {
-            $this->assertTrue(false);
+        $body->advance()->when(function($e, $emitted) {
+            $this->assertFalse($emitted);
         });
         $this->assertTrue($invoked);
         $this->assertSame("", $result);

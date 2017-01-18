@@ -2,7 +2,7 @@
 
 namespace Aerys\Websocket;
 
-use Interop\Async\Promise;
+use AsyncInterop\Promise;
 
 class Rfc6455EndpointProxy implements Endpoint {
     private $endpoint;

@@ -2,22 +2,23 @@
 
 namespace Aerys\Test;
 
-use Aerys\Body;
-use Aerys\Client;
-use Aerys\ClientException;
-use Aerys\InternalRequest;
-use Aerys\Logger;
-use Aerys\NullBody;
-use Aerys\Request;
-use Aerys\Response;
-use Aerys\Server;
-use Aerys\StandardRequest;
-use Aerys\StandardResponse;
-use Aerys\Websocket;
-use Aerys\Websocket\Rfc6455Endpoint;
-use const Aerys\HTTP_STATUS;
-use Amp\{ Deferred, Postponed };
-use Interop\Async\Loop;
+use Aerys\{
+    Client,
+    ClientException,
+    InternalRequest,
+    Logger,
+    NullBody,
+    Request,
+    Response,
+    Server,
+    StandardRequest,
+    StandardResponse,
+    Websocket,
+    Websocket\Rfc6455Endpoint,
+    const HTTP_STATUS
+};
+use Amp\{ Deferred, Emitter, Message };
+use AsyncInterop\Loop;
 
 class NullWebsocket implements Websocket {
     public $test;
@@ -26,7 +27,7 @@ class NullWebsocket implements Websocket {
     public function onStart(Websocket\Endpoint $endpoint) { $this->endpoint = $endpoint; }
     public function onHandshake(Request $request, Response $response) { }
     public function onOpen(int $clientId, $handshakeData) { }
-    public function onData(int $clientId, Websocket\Message $msg) { }
+    public function onData(int $clientId, Message $msg) { }
     public function onClose(int $clientId, int $code, string $reason) { }
     public function onStop() { }
 }
@@ -134,7 +135,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 public $func;
                 public $gen;
                 function __construct($test, $func) { parent::__construct($test); $this->func = $func; }
-                function onData(int $clientId, Websocket\Message $msg) {
+                function onData(int $clientId, Message $msg) {
                     $this->gen = ($this->func)($clientId, $msg);
                     if ($this->gen instanceof \Generator) {
                         yield from $this->gen;
@@ -269,7 +270,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
 
         $_ireq = clone $ireq;
-        $_ireq->body = new Body((new Postponed)->observe());
+        $_ireq->body = new Message((new Emitter)->stream());
         $return[] = [$_ireq, [":status" => HTTP_STATUS["BAD_REQUEST"]]];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->
@@ -304,7 +305,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testIOClose() {
         Loop::execute(\Amp\wrap(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
-                function onData(int $clientId, Websocket\Message $msg) {
+                function onData(int $clientId, Message $msg) {
                     try {
                         yield $msg;
                     } catch (\Throwable $e) {
@@ -343,7 +344,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testMultiWrite() {
         Loop::execute(\Amp\wrap(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
-                function onData(int $clientId, Websocket\Message $msg) {
+                function onData(int $clientId, Message $msg) {
                     $this->endpoint->send(null, "foo".str_repeat("*", 65528 /* fill buffer */));
                     $this->endpoint->send($clientId, "bar");
                     yield $this->endpoint->send([$clientId], "baz");

@@ -2,14 +2,14 @@
 
 namespace Aerys;
 
-use Amp\Observable;
-use Interop\Async\Promise;
+use Amp\{ Message, Stream };
+use AsyncInterop\Promise;
 
-class FieldBody extends Body {
+class FieldBody extends Message {
     private $metadata;
 
-    public function __construct(Observable $observable, Promise $metadata) {
-        parent::__construct($observable);
+    public function __construct(Stream $stream, Promise $metadata) {
+        parent::__construct($stream);
         $this->metadata = $metadata;
     }
     

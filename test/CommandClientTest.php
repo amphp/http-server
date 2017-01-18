@@ -4,7 +4,7 @@ namespace Aerys\Test;
 
 use Aerys\Bootstrapper;
 use Aerys\CommandClient;
-use Interop\Async\Loop;
+use AsyncInterop\Loop;
 
 class CommandClientTest extends \PHPUnit_Framework_TestCase {
     public function testSendRestart() {

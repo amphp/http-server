@@ -20,7 +20,7 @@ use Aerys\{
     StandardResponse
 };
 
-use Interop\Async\Promise;
+use AsyncInterop\Promise;
 
 class RouterTest extends \PHPUnit_Framework_TestCase {
     function mockServer($state) {

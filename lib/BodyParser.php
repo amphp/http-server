@@ -2,17 +2,21 @@
 
 namespace Aerys;
 
-use Amp\{ CallableMaker, Coroutine, Deferred, Internal\Producer, Observable, Postponed, Success };
-use Interop\Async\Loop;
+use Amp\{ CallableMaker, Coroutine, Deferred, Emitter, Internal\Producer, Stream, Success };
+use AsyncInterop\Loop;
 
-class BodyParser implements Observable {
+class BodyParser implements Stream {
     use CallableMaker;
     use Producer {
-        subscribe as private watch;
+        listen as private watch;
     }
-    
+
+    /** @var \Aerys\Request */
     private $req;
+
+    /** @var \Amp\Message */
     private $body;
+
     private $boundary = null;
 
     private $bodyDeferreds = [];
@@ -159,7 +163,7 @@ class BodyParser implements Observable {
         }
     }
     
-    public function subscribe(callable $onNext) {
+    public function listen(callable $onNext) {
         if ($this->req) {
             $this->watch($onNext);
 
@@ -196,8 +200,8 @@ class BodyParser implements Observable {
                 Loop::defer($this->initIncremental);
             }
             if (empty($this->bodies[$name])) {
-                $this->bodyDeferreds[$name][] = [$body = new Postponed, $metadata = new Deferred];
-                return new FieldBody($body->observe(), $metadata->promise());
+                $this->bodyDeferreds[$name][] = [$body = new Emitter, $metadata = new Deferred];
+                return new FieldBody($body->stream(), $metadata->promise());
             }
         } elseif (empty($this->bodies[$name])) {
             return new FieldBody(new Success, new Success([]));
@@ -224,17 +228,17 @@ class BodyParser implements Observable {
         
         if (isset($this->bodyDeferreds[$field])) {
             $key = key($this->bodyDeferreds[$field]);
-            list($dataPostponed, $metadataDeferred) = $this->bodyDeferreds[$field][$key];
+            list($dataEmitter, $metadataDeferred) = $this->bodyDeferreds[$field][$key];
             $metadataDeferred->resolve($metadata);
             unset($this->bodyDeferreds[$field]);
         } else {
-            $dataPostponed = new Postponed;
-            $this->bodies[$field][] = new FieldBody($dataPostponed->observe(), new Success($metadata));
+            $dataEmitter = new Emitter;
+            $this->bodies[$field][] = new FieldBody($dataEmitter->stream(), new Success($metadata));
         }
         
         $this->emit($field);
         
-        return $dataPostponed;
+        return $dataEmitter;
     }
 
     private function updateFieldSize($field, $data) {
@@ -266,7 +270,7 @@ class BodyParser implements Observable {
         $this->fail($e);
     }
 
-    // this should be inside a defer (not direct Coroutine) to give user a chance to install subscribe() handlers
+    // this should be inside a defer (not direct Coroutine) to give user a chance to install listen() handlers
     private function initIncremental() {
         if ($this->parsing !== true) {
             return;
@@ -330,7 +334,7 @@ class BodyParser implements Observable {
                 } else {
                     $metadata = [];
                 }
-                $dataPostponed = $this->initField($field, $metadata);
+                $dataEmitter = $this->initField($field, $metadata);
 
                 $buf = substr($buf, $end + 4);
                 $off = 0;
@@ -338,7 +342,7 @@ class BodyParser implements Observable {
                 while (($end = strpos($buf, $sep, $off)) === false) {
                     if (!yield $this->body->advance()) {
                         $e = new ClientException;
-                        $dataPostponed->fail($e);
+                        $dataEmitter->fail($e);
                         $this->error($e);
                         return;
                     }
@@ -348,21 +352,21 @@ class BodyParser implements Observable {
                         $off = \strlen($buf) - \strlen($sep);
                         $data = substr($buf, 0, $off);
                         if ($this->updateFieldSize($field, $data)) {
-                            $dataPostponed->fail(new ClientSizeException);
+                            $dataEmitter->fail(new ClientSizeException);
                             return;
                         }
-                        $dataPostponed->emit($data);
+                        $dataEmitter->emit($data);
                         $buf = substr($buf, $off);
                     }
                 }
 
                 $data = substr($buf, 0, $end);
                 if ($this->updateFieldSize($field, $data)) {
-                    $dataPostponed->fail(new ClientSizeException);
+                    $dataEmitter->fail(new ClientSizeException);
                     return;
                 }
-                $dataPostponed->emit($data);
-                $dataPostponed->resolve();
+                $dataEmitter->emit($data);
+                $dataEmitter->resolve();
                 $off = $end + \strlen($sep);
 
                 while (\strlen($buf) < 4) {
@@ -383,20 +387,20 @@ class BodyParser implements Observable {
                         if ($noData || $buf != "") {
                             $data = urldecode($buf);
                             if ($this->updateFieldSize($field, $data)) {
-                                $dataPostponed->fail(new ClientSizeException);
+                                $dataEmitter->fail(new ClientSizeException);
                                 return;
                             }
-                            $dataPostponed->emit($data);
+                            $dataEmitter->emit($data);
                             $buf = "";
                         }
                         $field = null;
-                        $dataPostponed->resolve();
+                        $dataEmitter->resolve();
                     } elseif ($buf != "") {
-                        if (!$dataPostponed = $this->initField(urldecode($buf))) {
+                        if (!$dataEmitter = $this->initField(urldecode($buf))) {
                             return;
                         }
-                        $dataPostponed->emit("");
-                        $dataPostponed->resolve();
+                        $dataEmitter->emit("");
+                        $dataEmitter->resolve();
                         $buf = "";
                     }
                 }
@@ -405,11 +409,11 @@ class BodyParser implements Observable {
                 if ($field !== null && ($new = strtok("&")) !== false) {
                     $data = urldecode($buf);
                     if ($this->updateFieldSize($field, $data)) {
-                        $dataPostponed->fail(new ClientSizeException);
+                        $dataEmitter->fail(new ClientSizeException);
                         return;
                     }
-                    $dataPostponed->emit($data);
-                    $dataPostponed->resolve();
+                    $dataEmitter->emit($data);
+                    $dataEmitter->resolve();
 
                     $buf = $new;
                     $field = null;
@@ -418,16 +422,16 @@ class BodyParser implements Observable {
                 while (($next = strtok("&")) !== false) {
                     $pair = explode("=", $buf, 2);
                     $key = urldecode($pair[0]);
-                    if (!$dataPostponed = $this->initField($key)) {
+                    if (!$dataEmitter = $this->initField($key)) {
                         return;
                     }
                     $data = urldecode($pair[1] ?? "");
                     if ($this->updateFieldSize($key, $data)) {
-                        $dataPostponed->fail(new ClientSizeException);
+                        $dataEmitter->fail(new ClientSizeException);
                         return;
                     }
-                    $dataPostponed->emit($data);
-                    $dataPostponed->resolve();
+                    $dataEmitter->emit($data);
+                    $dataEmitter->resolve();
 
                     $buf = $next;
                 }
@@ -435,7 +439,7 @@ class BodyParser implements Observable {
                 if ($field === null) {
                     if (($new = strstr($buf, "=", true)) !== false) {
                         $field = urldecode($new);
-                        if (!$dataPostponed = $this->initField($field)) {
+                        if (!$dataEmitter = $this->initField($field)) {
                             return;
                         }
                         $buf = substr($buf, \strlen($new) + 1);
@@ -452,16 +456,16 @@ class BodyParser implements Observable {
                             if ($this->updateFieldSize($field, $data)) {
                                 return;
                             }
-                            $dataPostponed->emit(urldecode(substr($buf, 0, $percent)));
+                            $dataEmitter->emit(urldecode(substr($buf, 0, $percent)));
                             $buf = substr($buf, $percent);
                         }
                     } else {
                         $data = urldecode($buf);
                         if ($this->updateFieldSize($field, $data)) {
-                            $dataPostponed->fail(new ClientSizeException);
+                            $dataEmitter->fail(new ClientSizeException);
                             return;
                         }
-                        $dataPostponed->emit($data);
+                        $dataEmitter->emit($data);
                         $buf = "";
                     }
                     $noData = false;
@@ -474,17 +478,17 @@ class BodyParser implements Observable {
                     if ($this->updateFieldSize($field, $data)) {
                         return;
                     }
-                    $dataPostponed->emit($data);
+                    $dataEmitter->emit($data);
                 }
-                $dataPostponed->resolve();
+                $dataEmitter->resolve();
                 $field = null;
             } elseif ($buf) {
                 $field = urldecode($buf);
-                if (!$dataPostponed = $this->initField($field)) {
+                if (!$dataEmitter = $this->initField($field)) {
                     return;
                 }
-                $dataPostponed->emit("");
-                $dataPostponed->resolve();
+                $dataEmitter->emit("");
+                $dataEmitter->resolve();
             }
         }
 

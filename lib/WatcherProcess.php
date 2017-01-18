@@ -3,7 +3,7 @@
 namespace Aerys;
 
 use Amp\{ CallableMaker, Deferred, Failure, Success };
-use Interop\Async\Loop;
+use AsyncInterop\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WatcherProcess extends Process {
