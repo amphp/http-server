@@ -118,10 +118,10 @@ abstract class Process {
 
             $this->exitCode = 1;
             $msg = "{$err["message"]} in {$err["file"]} on line {$err["line"]}";
-            \Amp\execute(function() use ($msg) {
+            Loop::execute(\Amp\wrap(function() use ($msg) {
                 $this->logger->critical($msg);
                 yield from $this->stop();
-            }, Loop::get());
+            }), Loop::get());
         });
     }
 
