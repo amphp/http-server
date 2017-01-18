@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{ CallableMaker, Coroutine, Deferred, Emitter, Internal\Producer, Stream, Success };
+use Amp\{ CallableMaker, Deferred, Emitter, Internal\Producer, Stream, Success };
 use AsyncInterop\Loop;
 
 class BodyParser implements Stream {
@@ -21,7 +21,9 @@ class BodyParser implements Stream {
 
     private $bodyDeferreds = [];
     private $bodies = [];
-    private $parsing = false;
+
+    /** @var int */
+    private $parsing = 0;
 
     private $size;
     private $totalSize;
@@ -51,46 +53,48 @@ class BodyParser implements Stream {
         if ($type !== null && strncmp($type, "application/x-www-form-urlencoded", \strlen("application/x-www-form-urlencoded"))) {
             if (!preg_match('#^\s*multipart/(?:form-data|mixed)(?:\s*;\s*boundary\s*=\s*("?)([^"]*)\1)?$#', $type, $m)) {
                 $this->req = null;
-                $this->parsing = true;
+                $this->parsing = 1;
                 $this->resolve(new ParsedBody([]));
                 return;
             }
 
             $this->boundary = $m[2];
         }
-        
+
         $this->initIncremental = \Amp\wrap($this->callableFromInstanceMethod('initIncremental'));
 
-        Loop::defer(function() {
-            if ($this->parsing === true) {
-                \Amp\rethrow(new Coroutine($this->initIncremental()));
+        Loop::defer(\Amp\wrap(function() {
+            if ($this->parsing === 1) {
+                yield from $this->initIncremental();
             }
-            $this->body->when(function ($e, $data) {
-                $this->req = null;
-                if ($e) {
-                    if ($e instanceof ClientSizeException) {
-                        $e = new ClientException("", 0, $e);
-                    }
-                    $this->error($e);
-                } else {
-                    $result = $this->end($data);
-    
-                    if (!$this->parsing) {
-                        $this->parsing = 2;
-                        foreach ($result->getNames() as $field) {
-                            foreach ($result->getArray($field) as $_) {
-                                $this->emit($field);
-                            }
+
+            try {
+                $data = yield $this->body;
+
+                $result = $this->end($data);
+
+                if (!$this->parsing) {
+                    $this->parsing = 2;
+                    foreach ($result->getNames() as $field) {
+                        foreach ($result->getArray($field) as $_) {
+                            $this->emit($field);
                         }
                     }
-    
-                    $this->resolve($result);
                 }
-            });
-        });
+
+                $this->resolve($result);
+            } catch (\Throwable $exception) {
+                if ($exception instanceof ClientSizeException) {
+                    $exception = new ClientException("", 0, $e);
+                }
+                $this->error($exception);
+            } finally {
+                $this->req = null;
+            }
+        }));
     }
 
-    private function end($data) {
+    private function end($data): ParsedBody {
         if (!$this->bodies && $data != "") {
             // if we end up here, we haven't parsed anything at all yet, so do a quick parse
             if ($this->boundary !== null) {
@@ -131,7 +135,7 @@ class BodyParser implements Stream {
                         $metadata[$name][count($fields[$name]) - 1]["mime"] = $headers["content-type"];
                     }
                 }
-    
+
                 return new ParsedBody($fields, $metadata);
 
             } else {
@@ -158,17 +162,17 @@ class BodyParser implements Stream {
                 }
                 $metadata[$key] = array_filter($metadata[$key]);
             }
-            
+
             return new ParsedBody($fields, array_filter($metadata));
         }
     }
-    
+
     public function listen(callable $onNext) {
         if ($this->req) {
             $this->watch($onNext);
 
             if (!$this->parsing) {
-                $this->parsing = true;
+                $this->parsing = 1;
                 Loop::defer($this->initIncremental);
             }
         } elseif (!$this->parsing) {
@@ -196,7 +200,7 @@ class BodyParser implements Stream {
                 $this->body = $this->req->getBody($this->totalSize += $size);
             }
             if (!$this->parsing) {
-                $this->parsing = true;
+                $this->parsing = 1;
                 Loop::defer($this->initIncremental);
             }
             if (empty($this->bodies[$name])) {
@@ -272,7 +276,7 @@ class BodyParser implements Stream {
 
     // this should be inside a defer (not direct Coroutine) to give user a chance to install listen() handlers
     private function initIncremental() {
-        if ($this->parsing !== true) {
+        if ($this->parsing !== 1) {
             return;
         }
         $this->parsing = 2;
