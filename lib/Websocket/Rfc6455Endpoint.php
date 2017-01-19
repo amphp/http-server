@@ -209,7 +209,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         Loop::defer([$this, "reapClient"], $ireq);
     }
 
-    public function reapClient($watcherId, InternalRequest $ireq) {
+    public function reapClient(string $watcherId, InternalRequest $ireq) {
         $client = new Rfc6455Client;
         $client->capacity = $this->maxBytesPerMinute;
         $client->connectedAt = $this->now;
@@ -219,8 +219,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         $client->writeBuffer = $ireq->client->writeBuffer;
         $client->serverRefClearer = ($ireq->client->exporter)($ireq->client);
 
-        $client->parser = $this->parser([$this, "onParse"], $options = [
-            "cb_data" => $client,
+        $client->parser = self::parser($this, $client, $options = [
             "max_msg_size" => $this->maxMsgSize,
             "max_frame_size" => $this->maxFrameSize,
             "validate_utf8" => $this->validateUtf8,
@@ -328,29 +327,11 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         }
     }
 
-    public function onParse(array $parseResult, Rfc6455Client $client) {
-        switch (array_shift($parseResult)) {
-            case self::CONTROL:
-                $this->onParsedControlFrame($client, $parseResult);
-                break;
-            case self::DATA:
-                $this->onParsedData($client, $parseResult);
-                break;
-            case self::ERROR:
-                $this->onParsedError($client, $parseResult);
-                break;
-            default:
-                assert(false, "Unknown Rfc6455Parser result code");
-        }
-    }
-
-    private function onParsedControlFrame(Rfc6455Client $client, array $parseResult) {
+    public function onParsedControlFrame(Rfc6455Client $client, int $opcode, string $data) {
         // something went that wrong that we had to shutdown our readWatcher... if parser has anything left, we don't care!
         if (!$client->readWatcher) {
             return;
         }
-
-        list($data, $opcode) = $parseResult;
 
         switch ($opcode) {
             case self::OP_CLOSE:
@@ -382,18 +363,16 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         }
     }
 
-    private function onParsedData(Rfc6455Client $client, array $parseResult) {
+    public function onParsedData(Rfc6455Client $client, string $data, bool $binary, bool $terminated) {
         if ($client->closedAt || $this->state === Server::STOPPING) {
             return;
         }
 
         $client->lastDataReadAt = $this->now;
 
-        list($data, $terminated) = $parseResult;
-
         if (!$client->msgDeferred) {
             $client->msgDeferred = new Emitter;
-            $msg = new Message($client->msgDeferred->stream());
+            $msg = new Message($client->msgDeferred->stream(), $binary);
             rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
         }
 
@@ -401,9 +380,8 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         if ($terminated) {
             $client->msgDeferred->resolve();
             $client->msgDeferred = null;
+            ++$client->messagesRead;
         }
-
-        $client->messagesRead += $terminated;
     }
 
     private function tryAppOnData(Rfc6455Client $client, Message $msg): \Generator {
@@ -417,14 +395,12 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             yield from $this->onAppError($client->id, $e);
         }
     }
-
-    private function onParsedError(Rfc6455Client $client, array $parseResult) {
+    
+    public function onParsedError(Rfc6455Client $client, int $code, string $msg) {
         // something went that wrong that we had to shutdown our readWatcher... if parser has anything left, we don't care!
         if (!$client->readWatcher) {
             return;
         }
-
-        list($msg, $code) = $parseResult;
 
         if ($code) {
             if ($client->closedAt || $code == Code::PROTOCOL_ERROR) {
@@ -811,12 +787,12 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     /**
      * A stateful generator websocket frame parser
      *
-     * @param callable $emitCallback A callback to receive parser event emissions
+     * @param \Aerys\Websocket\Rfc6455Endpoint $endpoint Endpoint to receive parser event emissions
+     * @param \Aerys\Websocket\Rfc6455Client $client Client associated with event emissions.
      * @param array $options Optional parser settings
      * @return \Generator
      */
-    static public function parser(callable $emitCallback, array $options = []): \Generator {
-        $callbackData = $options["cb_data"] ?? null;
+    public static function parser(self $endpoint, Rfc6455Client $client, array $options = []): \Generator {
         $emitThreshold = $options["threshold"] ?? 32768;
         $maxFrameSize = $options["max_frame_size"] ?? PHP_INT_MAX;
         $maxMsgSize = $options["max_msg_size"] ?? PHP_INT_MAX;
@@ -1004,10 +980,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                                 break 2;
                             }
 
-                            $emitCallback([self::DATA, $payload, false], $callbackData);
+                            $endpoint->onParsedData($client, $payload, $opcode === self::OP_BIN, false);
                             $payload = $i > 0 ? substr($string, -$i) : '';
                         } else {
-                            $emitCallback([self::DATA, $payload, false], $callbackData);
+                            $endpoint->onParsedData($client, $payload, $opcode === self::OP_BIN, false);
                             $payload = '';
                         }
 
@@ -1046,7 +1022,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
 
             if ($fin || $dataMsgBytesRecd >= $emitThreshold) {
                 if ($isControlFrame) {
-                    $emit = [self::CONTROL, $payload, $opcode];
+                    $endpoint->onParsedControlFrame($client, $opcode, $payload);
                 } else {
                     if ($dataArr) {
                         $dataArr[] = $payload;
@@ -1073,15 +1049,13 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                         }
                     }
 
-                    $emit = [self::DATA, $payload, $fin];
-
                     if ($fin) {
                         $dataMsgBytesRecd = 0;
                     }
                     $nextEmit = $dataMsgBytesRecd + $emitThreshold;
+    
+                    $endpoint->onParsedData($client, $payload, $opcode === self::OP_BIN, $fin);
                 }
-
-                $emitCallback($emit, $callbackData);
             } else {
                 $dataArr[] = $payload;
             }
@@ -1091,11 +1065,8 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
 
         // An error occurred...
         // stop parsing here ...
-        $emitCallback([self::ERROR, $errorMsg, $code], $callbackData);
+        $endpoint->onParsedError($client, $code, $errorMsg);
         yield $frames;
-        while (1) {
-            yield 0;
-        }
     }
 
     public function monitor(): array {

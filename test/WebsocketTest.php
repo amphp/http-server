@@ -145,7 +145,8 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 }
             });
             foreach ($data as $datum) {
-                $endpoint->onParse($datum, $client);
+                list($payload, $terminated) = $datum;
+                $endpoint->onParsedData($client, $payload, false, $terminated);
             }
             $this->assertFalse($ws->gen->valid());
 
@@ -156,14 +157,14 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function provideParsedData() {
         return [
             [[
-                [Rfc6455Endpoint::DATA, "foo", true]
+                ["foo", true]
             ], function ($clientId, $msg) {
                 $this->assertEquals("foo", yield $msg);
             }],
             [[
-                [Rfc6455Endpoint::DATA, "foo", false],
-                [Rfc6455Endpoint::DATA, "bar", true],
-                [Rfc6455Endpoint::DATA, "baz", true]
+                ["foo", false],
+                ["bar", true],
+                ["baz", true]
             ], function ($clientId, $msg) {
                 static $call = 0;
                 if (++$call == 1) {
@@ -194,7 +195,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
             if ($call !== null) {
                 list($method, $args) = $call;
-                $endpoint->$method(...$args, ...[$client]); // WTF? ... Fatal error: cannot use positional argument after argument unpacking
+                $endpoint->$method($client, ...$args); // WTF? ... Fatal error: cannot use positional argument after argument unpacking
             }
 
             $server->allowKill = true;
@@ -211,9 +212,9 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function provideErrorEvent() {
         return [
             ["onOpen", null],
-            ["onData", ["onParse", [[Rfc6455Endpoint::DATA, "data", true]]]],
-            ["onClose", ["onParse", [[Rfc6455Endpoint::CONTROL, "\xFF\xFF", Rfc6455Endpoint::OP_CLOSE]]]],
-            ["onClose", ["onParse", [[Rfc6455Endpoint::ERROR, "", Websocket\Code::PROTOCOL_ERROR]]]]
+            ["onData", ["onParsedData", ["data", false, true]]],
+            ["onClose", ["onParsedControlFrame", [Rfc6455Endpoint::OP_CLOSE, "\xFF\xFF"]]],
+            ["onClose", ["onParsedError", [Websocket\Code::PROTOCOL_ERROR, ""]]]
         ];
     }
 
@@ -317,7 +318,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                     }
                 }
             });
-            $endpoint->onParse([Rfc6455Endpoint::DATA, "foo", false], $client);
+            $endpoint->onParsedData($client, "foo", false, false);
             fclose($sock);
             $server->allowKill = true;
             // to have it read and closed...
@@ -351,8 +352,8 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                     $this->endpoint->close($clientId);
                 }
             });
-            $endpoint->onParse([Rfc6455Endpoint::DATA, "start...", true], $client);
-            $endpoint->onParse([Rfc6455Endpoint::CONTROL, "pingpong", Rfc6455Endpoint::OP_PING], $client);
+            $endpoint->onParsedData($client, "start...", false, true);
+            $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_PING, "pingpong");
             stream_set_blocking($sock, false);
             $data = "";
             do {
@@ -390,7 +391,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         Loop::execute(\Amp\wrap(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             $client->pingCount = 2;
-            $endpoint->onParse([Rfc6455Endpoint::CONTROL, "1", Rfc6455Endpoint::OP_PONG], $client);
+            $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_PONG, "1");
             $this->assertEquals(1, $client->pongCount);
     
             Loop::stop();
