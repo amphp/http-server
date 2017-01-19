@@ -304,9 +304,11 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         return $return;
     }
 
-    function testIOClose() {
+    function testCloseFrame() {
         \Amp\run(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
+                public $closed = false;
+
                 function onData(int $clientId, Websocket\Message $msg) {
                     try {
                         yield $msg;
@@ -318,12 +320,50 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                         }
                     }
                 }
+
+                function onClose(int $clientId, int $code, string $reason) {
+                    $this->closed = $code;
+                }
+            });
+            $endpoint->onParse([Rfc6455Endpoint::DATA, "foo", false], $client);
+            $endpoint->onParse([Rfc6455Endpoint::CONTROL, pack("S", Websocket\Code::GOING_AWAY), Rfc6455Endpoint::OP_CLOSE], $client);
+            $server->allowKill = true;
+            yield;yield; // to have it read and closed...
+
+            $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
+            \Amp\stop();
+        });
+        \Amp\reactor(\Amp\driver());
+        \Amp\File\filesystem(\Amp\File\driver());
+    }
+
+    function testIOClose() {
+        \Amp\run(function() {
+            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
+                public $closed = false;
+
+                function onData(int $clientId, Websocket\Message $msg) {
+                    try {
+                        yield $msg;
+                    } catch (\Throwable $e) {
+                        $this->test->assertInstanceOf(ClientException::class, $e);
+                    } finally {
+                        if (!isset($e)) {
+                            $this->test->fail("Expected ClientException was not thrown");
+                        }
+                    }
+                }
+
+                function onClose(int $clientId, int $code, string $reason) {
+                    $this->closed = $code;
+                }
             });
             $endpoint->onParse([Rfc6455Endpoint::DATA, "foo", false], $client);
             fclose($sock);
             $server->allowKill = true;
             yield;yield; // to have it read and closed...
 
+            $this->assertEquals(Websocket\Code::ABNORMAL_CLOSE, $ws->closed);
             \Amp\stop();
         });
         \Amp\reactor(\Amp\driver());
