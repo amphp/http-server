@@ -66,18 +66,18 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         stream_set_blocking($client->socket, false);
         $server = new class extends Server {
             public $state;
-            public $allowKill = false;
+            public $requireClientFree = false;
             public function __construct() { }
             public function state(): int { return $this->state; }
         };
         $client->exporter = function ($_client) use ($client, $server) {
             $this->assertSame($client, $_client);
-            $dtor = new class { public $test; public $server; function __destruct() { if ($this->server->allowKill) $this->test->fail("Expected client to be killed, but 'decrementer' never called"); } };
+            $dtor = new class { public $test; public $server; function __destruct() { if ($this->server->requireClientFree) $this->test->fail("Expected client to be killed, but 'decrementer' never called"); } };
             $dtor->test = $this;
             $dtor->server = $server;
             return function() use ($dtor, $client) {
-                $this->assertTrue($dtor->server->allowKill);
-                $dtor->server->allowKill = false;
+                $this->assertTrue($dtor->server->requireClientFree);
+                $dtor->server->requireClientFree = false;
                 fclose($client->socket);
             };
         };
@@ -118,7 +118,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testFullSequence() {
         Loop::execute(\Amp\wrap(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $server->allowKill = true;
+            $server->requireClientFree = true;
             $server->state = Server::STOPPING;
             yield $endpoint->update($server);
             $server->state = Server::STOPPED;
@@ -198,7 +198,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 $endpoint->$method($client, ...$args); // WTF? ... Fatal error: cannot use positional argument after argument unpacking
             }
 
-            $server->allowKill = true;
+            $server->requireClientFree = true;
             if ($client->writeBuffer != "") {
                 $endpoint->onWritable($client->writeWatcher, $client->socket, $client);
             }
@@ -326,7 +326,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             });
             $endpoint->onParsedData($client, "foo", false, true);
             $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_CLOSE, pack("S", Websocket\Code::GOING_AWAY));
-            $server->allowKill = true;
+            $server->requireClientFree = true;
             yield; yield; // to have it read and closed...
 
             $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
@@ -413,7 +413,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testFragmentation() {
         Loop::execute(\Amp\wrap(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $endpoint->sendBinary(null, str_repeat("*", 131046))->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->allowKill = true; });
+            $endpoint->sendBinary(null, str_repeat("*", 131046))->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->requireClientFree = true; });
             $data = "";
             do {
                 yield $this->waitOnRead($sock); // to have it read and parsed...
