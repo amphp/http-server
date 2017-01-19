@@ -346,11 +346,11 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
     function testCloseWithStatus() {
         $this->runClose(function ($endpoint, $sock, $ws, $client) {
-            $endpoint->onParse([Rfc6455Endpoint::CONTROL, pack("S", Websocket\Code::GOING_AWAY), Rfc6455Endpoint::OP_CLOSE], $client);
+            $endpoint->onParse([Rfc6455Endpoint::CONTROL, pack("n", Websocket\Code::GOING_AWAY), Rfc6455Endpoint::OP_CLOSE], $client);
             yield;yield; // to have it read and closed...
 
             $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
-            $this->assertSocket([[Rfc6455Endpoint::OP_CLOSE, pack("S", Websocket\Code::GOING_AWAY)]], stream_get_contents($sock));
+            $this->assertSocket([[Rfc6455Endpoint::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY)]], stream_get_contents($sock));
         });
     }
 

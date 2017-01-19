@@ -364,7 +364,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                         $code = Code::NONE;
                         $reason = "";
                     } else {
-                        $code = current(unpack('S', substr($data, 0, 2)));
+                        $code = current(unpack('n', substr($data, 0, 2)));
                         $reason = substr($data, 2);
                     }
 
