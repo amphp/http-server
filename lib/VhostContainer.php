@@ -2,11 +2,6 @@
 
 namespace Aerys;
 
-use Amp\{
-    Promise,
-    function any
-};
-
 class VhostContainer implements \Countable, Monitor {
     private $vhosts = [];
     private $cachedVhostCount = 0;
@@ -30,6 +25,14 @@ class VhostContainer implements \Countable, Monitor {
         $vhost = clone $vhost; // do not allow change of state after use()
         $this->preventCryptoSocketConflict($vhost);
         foreach ($vhost->getIds() as $id) {
+            if (isset($this->vhosts[$id])) {
+                throw new \LogicException(
+                    $vhost->getName() == ""
+                        ? "Cannot have two default hosts on the same `$id` interface"
+                        : "Cannot have two hosts with the same `$id` name"
+                );
+            }
+
             $this->vhosts[$id] = $vhost;
         }
         $this->addHttpDriver($vhost);

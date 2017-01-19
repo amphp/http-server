@@ -364,13 +364,26 @@ function deflateResponseFilter(InternalRequest $ireq): \Generator {
         return $headers;
     }
 
-    // Require a text/* mime Content-Type
-    // @TODO Allow option to configure which mime prefixes/types may be compressed
-    if (stripos($headers["content-type"][0], "text/") !== 0) {
-        return $headers;
-    }
-
     $options = $ireq->client->options;
+
+    // Match and cache Content-Type
+    if (!$doDeflate = $options->_dynamicCache->deflateContentTypes[$headers["content-type"][0]] ?? null) {
+        if ($doDeflate === 0) {
+            return $headers;
+        }
+
+        if (count($options->_dynamicCache->deflateContentTypes) == Options::MAX_DEFLATE_ENABLE_CACHE_SIZE) {
+            unset($options->_dynamicCache->deflateContentTypes[key($options->_dynamicCache->deflateContentTypes)]);
+        }
+        
+        $contentType = $headers["content-type"][0];
+        $doDeflate = preg_match($options->deflateContentTypes, trim(strstr($contentType, ";", true) ?: $contentType));
+        $options->_dynamicCache->deflateContentTypes[$contentType] = $doDeflate;
+
+        if ($doDeflate === 0) {
+            return $headers;
+        }
+    }
 
     $minBodySize = $options->deflateMinimumLength;
     $contentLength = $headers["content-length"][0] ?? null;

@@ -113,7 +113,12 @@ class Bootstrapper {
             foreach ($optionsArray as $key => $value) {
                 $optionsObj->{$key} = $value;
             }
-            return $optionsObj->debug ? $optionsObj : $this->generatePublicOptionsStruct($optionsObj);
+            try {
+                if (@assert(false)) {
+                    return $this->generatePublicOptionsStruct($optionsObj);
+                }
+            } catch (\AssertionError $e) {}
+            return $optionsObj;
         } catch (\Throwable $e) {
             throw new \Error(
                 "Failed assigning options from config file", 0, $e
@@ -125,7 +130,7 @@ class Bootstrapper {
         $code = "return new class extends \\Aerys\\Options {\n";
         foreach ((new \ReflectionClass($options))->getProperties() as $property) {
             $name = $property->getName();
-            if ($name[0] !== "_") {
+            if ($name[0] !== "_" && $name[1] !== "_") {
                 $code .= "\tpublic \${$name};\n";
             }
         }

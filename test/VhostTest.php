@@ -82,4 +82,28 @@ class VhostTest extends \PHPUnit_Framework_TestCase {
     function testBadInterface() {
         new Vhost("", [["rd.lo.wr.ey", 1025]], function() {}, []);
     }
+
+    /**
+     * @expectedException \LogicException
+     * @expectedExceptionMessage Cannot have two hosts with the same `localhost:80` name
+     */
+    function testMultipleSameHosts() {
+        $vhosts = new VhostContainer($this->getMock('Aerys\HttpDriver'));
+        $vhost = new Vhost("localhost", [["::", 80], ["127.0.0.1", 80]], function(){}, []);
+        $vhosts->use($vhost);
+        $vhost = new Vhost("localhost", [["127.0.0.1", 80]], function(){}, []);
+        $vhosts->use($vhost);
+    }
+
+    /**
+     * @expectedException \LogicException
+     * @expectedExceptionMessage Cannot have two default hosts on the same `127.0.0.1:80` interface
+     */
+    function testMultipleSameDefaultHostsOnSameInterface() {
+        $vhosts = new VhostContainer($this->getMock('Aerys\HttpDriver'));
+        $vhost = new Vhost("", [["::", 80], ["127.0.0.1", 80]], function(){}, []);
+        $vhosts->use($vhost);
+        $vhost = new Vhost("", [["127.0.0.1", 80]], function(){}, []);
+        $vhosts->use($vhost);
+    }
 }

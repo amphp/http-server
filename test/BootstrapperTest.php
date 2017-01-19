@@ -63,9 +63,9 @@ class BootstrapperTest extends \PHPUnit_Framework_TestCase {
 
         $info = $server->__debugInfo();
         if (Host::separateIPv4Binding()) {
-            $this->assertEquals(["tcp://[::]:443", "tcp://0.0.0.0:443", "tcp://127.0.0.1:80"], $info["vhosts"]->getBindableAddresses());
+            $this->assertEquals(["tcp://[::]:443", "tcp://0.0.0.0:443", "tcp://127.0.0.1:80"], array_values($info["vhosts"]->getBindableAddresses()));
         } else {
-            $this->assertEquals(["tcp://[::]:443", "tcp://127.0.0.1:80"], $info["vhosts"]->getBindableAddresses());
+            $this->assertEquals(["tcp://[::]:443", "tcp://127.0.0.1:80"], array_values($info["vhosts"]->getBindableAddresses()));
         }
         $this->assertEquals(strtr($console::ARGS["config"], "\\", "/"), strtr($server->getOption("configPath"), "\\", "/"));
         $this->assertEquals(5000, $server->getOption("shutdownTimeout")); // custom option test

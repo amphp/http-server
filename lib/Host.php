@@ -4,7 +4,7 @@ namespace Aerys;
 
 class Host {
     private static $definitions = [];
-    private $name = "localhost";
+    private $name = "";
     private $interfaces = null;
     private $crypto = [];
     private $actions = [];

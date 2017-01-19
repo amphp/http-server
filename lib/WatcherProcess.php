@@ -275,7 +275,7 @@ class WatcherProcess extends Process {
                 $cmd = "wmic cpu get NumberOfCores";
                 break;
             case "linux":
-                $cmd = "cat /proc/cpuinfo | grep processor | wc -l";
+                $cmd = "nproc";
                 break;
             case "freebsd":
                 $cmd = "sysctl -a | grep 'hw.ncpu' | cut -d ':' -f2";
@@ -438,7 +438,7 @@ class WatcherProcess extends Process {
         return ($this->spawnDeferreds[] = new Deferred)->promise();
     }
 
-    protected function restart() {
+    public function restart() {
         $spawn = count($this->ipcClients);
         for ($i = 0; $i < $spawn; $i++) {
             $this->spawn()->when(function() {

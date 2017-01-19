@@ -187,37 +187,8 @@ class Server implements Monitor {
             );
         }
 
-        /* enable direct access for performance, but Options now shouldn't be changed as Server has been STARTED */
-        try {
-            if (@\assert(false)) {
-                $options = new class extends Options {
-                    use \Amp\Struct;
-
-                    private $_initialized = false;
-
-                    public function __get(string $prop) {
-                        throw new \Error(
-                            $this->generateStructPropertyError($prop)
-                        );
-                    }
-
-                    public function __set(string $prop, $val) {
-                        if ($this->_initialized) {
-                            throw new \RuntimeException("Cannot add options after server has STARTED.");
-                        }
-                        $this->$prop = $val;
-                    }
-                };
-                foreach ((new \ReflectionObject($this->options))->getProperties() as $property) {
-                    $name = $property->getName();
-                    $options->$name = $this->options->$name;
-                }
-                $this->options = $options;
-            }
-        } catch (\AssertionError $e) { }
-
-        // lock options
-        $this->options->_initialized = true;
+        /* Options now shouldn't be changed as Server has been STARTED - lock them */
+        $this->options->__initialized = true;
 
         $this->dropPrivileges();
 
