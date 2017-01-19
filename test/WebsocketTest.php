@@ -303,9 +303,11 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         return $return;
     }
 
-    function testIOClose() {
+    function testCloseFrame() {
         Loop::execute(\Amp\wrap(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
+                public $closed = false;
+
                 function onData(int $clientId, Websocket\Message $msg) {
                     try {
                         yield $msg;
@@ -317,6 +319,41 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                         }
                     }
                 }
+
+                function onClose(int $clientId, int $code, string $reason) {
+                    $this->closed = $code;
+                }
+            });
+            $endpoint->onParsedData($client, "foo", false, true);
+            $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_CLOSE, pack("S", Websocket\Code::GOING_AWAY));
+            $server->allowKill = true;
+            yield; yield; // to have it read and closed...
+
+            $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
+            Loop::stop();
+        }));
+    }
+
+    function testIOClose() {
+        Loop::execute(\Amp\wrap(function() {
+            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
+                public $closed = false;
+
+                function onData(int $clientId, Websocket\Message $msg) {
+                    try {
+                        yield $msg;
+                    } catch (\Throwable $e) {
+                        $this->test->assertInstanceOf(ClientException::class, $e);
+                    } finally {
+                        if (!isset($e)) {
+                            $this->test->fail("Expected ClientException was not thrown");
+                        }
+                    }
+                }
+
+                function onClose(int $clientId, int $code, string $reason) {
+                    $this->closed = $code;
+                }
             });
             $endpoint->onParsedData($client, "foo", false, false);
             fclose($sock);
@@ -326,6 +363,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             Loop::defer(function() use ($deferred) { Loop::defer([$deferred, "resolve"]); });
             yield $deferred->promise();
 
+            $this->assertEquals(Websocket\Code::ABNORMAL_CLOSE, $ws->closed);
             Loop::stop();
         }));
     }
