@@ -304,8 +304,8 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         return $return;
     }
 
-    function testCloseFrame() {
-        \Amp\run(function() {
+    function runClose($closeCb) {
+        \Amp\run(function() use ($closeCb) {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 public $closed = false;
 
@@ -326,48 +326,41 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 }
             });
             $endpoint->onParse([Rfc6455Endpoint::DATA, "foo", false], $client);
-            $endpoint->onParse([Rfc6455Endpoint::CONTROL, pack("S", Websocket\Code::GOING_AWAY), Rfc6455Endpoint::OP_CLOSE], $client);
             $server->requireClientFree = true;
-            yield;yield; // to have it read and closed...
-
-            $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
+            yield from $closeCb($endpoint, $sock, $ws, $client);
             \Amp\stop();
         });
         \Amp\reactor(\Amp\driver());
         \Amp\File\filesystem(\Amp\File\driver());
     }
 
+    function testCloseFrame() {
+        $this->runClose(function ($endpoint, $sock, $ws, $client) {
+            $endpoint->onParse([Rfc6455Endpoint::CONTROL, "", Rfc6455Endpoint::OP_CLOSE], $client);
+            yield;yield; // to have it read and closed...
+
+            $this->assertEquals(Websocket\Code::NONE, $ws->closed);
+            $this->assertSocket([[Rfc6455Endpoint::OP_CLOSE, ""]], stream_get_contents($sock));
+        });
+    }
+
+    function testCloseWithStatus() {
+        $this->runClose(function ($endpoint, $sock, $ws, $client) {
+            $endpoint->onParse([Rfc6455Endpoint::CONTROL, pack("S", Websocket\Code::GOING_AWAY), Rfc6455Endpoint::OP_CLOSE], $client);
+            yield;yield; // to have it read and closed...
+
+            $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
+            $this->assertSocket([[Rfc6455Endpoint::OP_CLOSE, pack("S", Websocket\Code::GOING_AWAY)]], stream_get_contents($sock));
+        });
+    }
+
     function testIOClose() {
-        \Amp\run(function() {
-            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
-                public $closed = false;
-
-                function onData(int $clientId, Websocket\Message $msg) {
-                    try {
-                        yield $msg;
-                    } catch (\Throwable $e) {
-                        $this->test->assertInstanceOf(ClientException::class, $e);
-                    } finally {
-                        if (!isset($e)) {
-                            $this->test->fail("Expected ClientException was not thrown");
-                        }
-                    }
-                }
-
-                function onClose(int $clientId, int $code, string $reason) {
-                    $this->closed = $code;
-                }
-            });
-            $endpoint->onParse([Rfc6455Endpoint::DATA, "foo", false], $client);
+        $this->runClose(function ($endpoint, $sock, $ws, $client) {
             fclose($sock);
-            $server->requireClientFree = true;
             yield;yield; // to have it read and closed...
 
             $this->assertEquals(Websocket\Code::ABNORMAL_CLOSE, $ws->closed);
-            \Amp\stop();
         });
-        \Amp\reactor(\Amp\driver());
-        \Amp\File\filesystem(\Amp\File\driver());
     }
 
     function testIORead() {

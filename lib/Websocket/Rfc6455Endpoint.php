@@ -285,7 +285,8 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     }
 
     private function sendCloseFrame(Rfc6455Client $client, $code, $msg): Promise {
-        $promise = $this->compile($client, pack('n', $code) . $msg, self::OP_CLOSE);
+        \assert($code !== Code::NONE || $msg == "");
+        $promise = $this->compile($client, $code !== Code::NONE ? pack('n', $code) . $msg : "", self::OP_CLOSE);
         $client->closedAt = $this->now;
         return $promise;
     }
@@ -360,10 +361,12 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                     $this->unloadClient($client);
                 } else {
                     if (\strlen($data) < 2) {
-                        return; // invalid close reason
+                        $code = Code::NONE;
+                        $reason = "";
+                    } else {
+                        $code = current(unpack('S', substr($data, 0, 2)));
+                        $reason = substr($data, 2);
                     }
-                    $code = current(unpack('S', substr($data, 0, 2)));
-                    $reason = substr($data, 2);
 
                     @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
                     \Amp\cancel($client->readWatcher);
