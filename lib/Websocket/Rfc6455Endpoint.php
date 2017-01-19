@@ -228,10 +228,15 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             "enable" => true,
             "cb_data" => $client,
         ]);
+        $hasBuffer = $client->writeBuffer != "";
         $client->writeWatcher = \Amp\onWritable($socket, [$this, "onWritable"], $options = [
-            "enable" => $client->writeBuffer != "",
+            "enable" => $hasBuffer,
             "cb_data" => $client,
         ]);
+        if ($hasBuffer) {
+            $client->writeDeferred = new Deferred; // dummy to prevent error
+            $client->framesSent = -1;
+        }
 
         $this->clients[$client->id] = $client;
         $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
