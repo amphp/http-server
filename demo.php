@@ -4,7 +4,6 @@
 if (!class_exists('Aerys\Process')) { if (PHP_MAJOR_VERSION < 7) { echo "To run aerys, you need to run it with PHP 7.\n"; } echo "This file is not supposed to be invoked directly. To run it, use `php bin/aerys -c demo.php`.\n"; die(1); } eval(file_get_contents(__FILE__, null, null, __COMPILER_HALT_OFFSET__)); __halt_compiler();
 // </ignore>
 
-use Amp\Message;
 use Aerys\{ Host, Request, Response, Router, Websocket, function root, function router, function websocket };
 
 /* --- Global server options -------------------------------------------------------------------- */
@@ -75,9 +74,9 @@ $websocket = websocket(new class implements Aerys\Websocket {
     public function onHandshake(Request $request, Response $response) { /* check origin header here */ }
     public function onOpen(int $clientId, $handshakeData) { }
 
-    public function onData(int $clientId, Message $msg) {
+    public function onData(int $clientId, Websocket\Message $msg) {
         // broadcast to all connected clients
-        $this->endpoint->end(null, yield $msg);
+        $this->endpoint->send(null, yield $msg);
     }
 
     public function onClose(int $clientId, int $code, string $reason) { }
