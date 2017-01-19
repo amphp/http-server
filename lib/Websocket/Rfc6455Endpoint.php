@@ -195,7 +195,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
 
     public function do(InternalRequest $ireq) {
         $headers = yield;
-        if ($headers[":status"] == 101) {
+        if ($headers[":status"] === 101) {
             $yield = yield $headers;
         } else {
             return $headers; // detach if we don't want to establish websocket connection
@@ -227,7 +227,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         ]);
         $client->readWatcher = Loop::onReadable($socket, [$this, "onReadable"], $client);
         $client->writeWatcher = Loop::onWritable($socket, [$this, "onWritable"], $client);
-        if ($client->writeBuffer != "") {
+        if ($client->writeBuffer !== "") {
+            $client->writeDeferred = new Deferred; // dummy to prevent error
+            $client->framesSent = -1;
+        } else {
             Loop::disable($client->writeWatcher);
         }
 
@@ -402,7 +405,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         }
 
         if ($code) {
-            if ($client->closedAt || $code == Code::PROTOCOL_ERROR) {
+            if ($client->closedAt || $code === Code::PROTOCOL_ERROR) {
                 @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
                 Loop::cancel($client->readWatcher);
                 $client->readWatcher = null;
@@ -417,7 +420,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     public function onReadable($watcherId, $socket, Rfc6455Client $client) {
         $data = @fread($socket, 8192);
 
-        if ($data != "") {
+        if ($data !== "") {
             $client->lastReadAt = $this->now;
             $client->bytesRead += \strlen($data);
             $client->capacity -= \strlen($data);
@@ -454,9 +457,9 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         $bytes = @fwrite($socket, $client->writeBuffer);
         $client->bytesSent += $bytes;
 
-        if ($bytes != \strlen($client->writeBuffer)) {
+        if ($bytes !== \strlen($client->writeBuffer)) {
             $client->writeBuffer = substr($client->writeBuffer, $bytes);
-        } elseif ($bytes == 0 && $client->closedAt && (!is_resource($socket) || @feof($socket))) {
+        } elseif ($bytes === 0 && $client->closedAt && (!is_resource($socket) || @feof($socket))) {
             // usually read watcher cares about aborted TCP connections, but when
             // $client->closedAt is true, it might be the case that read watcher
             // is already cancelled and we need to ensure that our writing Promise
@@ -550,7 +553,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
 
         $w .= $msg;
 
-        if ($client->writeBuffer != "") {
+        if ($client->writeBuffer !== "") {
             if (\strlen($client->writeBuffer) < 65536 && !$client->writeDataQueue && !$client->writeControlQueue) {
                 $client->writeBuffer .= $w;
                 $deferred = $client->writeDeferred;
@@ -582,7 +585,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                 $data[] = $yield;
             }
 
-            $msg = count($data) == 1 ? $data[0] : implode($data);
+            $msg = count($data) === 1 ? $data[0] : implode($data);
             $yield = yield $msg + $frameInfo;
         }
     }
@@ -973,7 +976,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                             for ($i = 0; !preg_match('//u', $payload) && $i < 8; $i++) {
                                 $payload = substr($payload, 0, -1);
                             }
-                            if ($i == 8) {
+                            if ($i === 8) {
                                 $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
                                 $errorMsg = 'Invalid TEXT data; UTF-8 required';
                                 break 2;
@@ -1007,7 +1010,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
 
                     $payload .= substr($buffer, 0, $dataLen);
                     $frameBytesRecd += $dataLen;
-                } while ($frameBytesRecd != $frameLength);
+                } while ($frameBytesRecd !== $frameLength);
 
                 $offset = $dataLen;
                 $bufferSize -= $dataLen;
@@ -1041,7 +1044,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
                                 $dataArr[] = substr($string, -$i);
                             }
                         }
-                        if ($i == 8) {
+                        if ($i === 8) {
                             $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
                             $errorMsg = 'Invalid TEXT data; UTF-8 required';
                             break;
