@@ -27,7 +27,7 @@ class NullWebsocket implements Websocket {
     public function onStart(Websocket\Endpoint $endpoint) { $this->endpoint = $endpoint; }
     public function onHandshake(Request $request, Response $response) { }
     public function onOpen(int $clientId, $handshakeData) { }
-    public function onData(int $clientId, Message $msg) { }
+    public function onData(int $clientId, Websocket\Message $msg) { }
     public function onClose(int $clientId, int $code, string $reason) { }
     public function onStop() { }
 }
@@ -135,7 +135,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 public $func;
                 public $gen;
                 function __construct($test, $func) { parent::__construct($test); $this->func = $func; }
-                function onData(int $clientId, Message $msg) {
+                function onData(int $clientId, Websocket\Message $msg) {
                     $this->gen = ($this->func)($clientId, $msg);
                     if ($this->gen instanceof \Generator) {
                         yield from $this->gen;
@@ -306,7 +306,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testIOClose() {
         Loop::execute(\Amp\wrap(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
-                function onData(int $clientId, Message $msg) {
+                function onData(int $clientId, Websocket\Message $msg) {
                     try {
                         yield $msg;
                     } catch (\Throwable $e) {
@@ -345,14 +345,14 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testMultiWrite() {
         Loop::execute(\Amp\wrap(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
-                function onData(int $clientId, Message $msg) {
+                function onData(int $clientId, Websocket\Message $msg) {
                     $this->endpoint->send(null, "foo".str_repeat("*", 65528 /* fill buffer */));
                     $this->endpoint->send($clientId, "bar");
                     yield $this->endpoint->send([$clientId], "baz");
                     $this->endpoint->close($clientId);
                 }
             });
-            $endpoint->onParsedData($client, "start...", false, true);
+            $endpoint->onParsedData($client, "start...", true, true);
             $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_PING, "pingpong");
             stream_set_blocking($sock, false);
             $data = "";

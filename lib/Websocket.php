@@ -2,8 +2,6 @@
 
 namespace Aerys;
 
-use Amp\Message;
-
 interface Websocket {
     /**
      * Invoked when starting the server
@@ -50,9 +48,9 @@ interface Websocket {
      * Invoked when data messages arrive from the client
      *
      * @param int $clientId A unique (to the current process) identifier for this client
-     * @param \Amp\Message $msg A stream of data received from the client
+     * @param \Aerys\Websocket\Message $msg A stream of data received from the client
      */
-    public function onData(int $clientId, Message $msg);
+    public function onData(int $clientId, Websocket\Message $msg);
 
     /**
      * Invoked when the close handshake completes

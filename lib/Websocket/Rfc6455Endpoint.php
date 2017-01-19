@@ -8,7 +8,6 @@ use Amp\{
     Deferred,
     Emitter,
     Failure,
-    Message,
     Success,
     function all,
     function any,
