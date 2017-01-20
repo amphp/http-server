@@ -17,7 +17,7 @@ use Aerys\{
     Websocket\Rfc6455Endpoint,
     const HTTP_STATUS
 };
-use Amp\{ Deferred, Emitter, Message };
+use Amp\{ Deferred, Emitter, Message, Pause };
 use AsyncInterop\Loop;
 
 class NullWebsocket implements Websocket {
@@ -303,69 +303,44 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         return $return;
     }
 
-    function testCloseFrame() {
-        Loop::execute(\Amp\wrap(function() {
+    function runClose(callable $closeCb) {
+        Loop::execute(\Amp\wrap(function() use ($closeCb) {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 public $closed = false;
-
-                function onData(int $clientId, Websocket\Message $msg) {
-                    try {
-                        yield $msg;
-                    } catch (\Throwable $e) {
-                        $this->test->assertInstanceOf(ClientException::class, $e);
-                    } finally {
-                        if (!isset($e)) {
-                            $this->test->fail("Expected ClientException was not thrown");
-                        }
-                    }
-                }
-
                 function onClose(int $clientId, int $code, string $reason) {
                     $this->closed = $code;
                 }
             });
-            $endpoint->onParsedData($client, "foo", false, true);
-            $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_CLOSE, pack("S", Websocket\Code::GOING_AWAY));
             $server->requireClientFree = true;
-            yield; yield; // to have it read and closed...
-
-            $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
+            yield from $closeCb($endpoint, $sock, $ws, $client);
             Loop::stop();
         }));
     }
 
+    function testCloseFrame() {
+        $this->runClose(function ($endpoint, $sock, $ws, $client) {
+            $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_CLOSE, "");
+            yield new Pause(10); // Time to read, write, and close.
+            $this->assertEquals(Websocket\Code::NONE, $ws->closed);
+            $this->assertSocket([[Rfc6455Endpoint::OP_CLOSE, ""]], stream_get_contents($sock));
+        });
+    }
+
+    function testCloseWithStatus() {
+        $this->runClose(function ($endpoint, $sock, $ws, $client) {
+            $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY));
+            yield new Pause(10); // Time to read, write, and close.
+            $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
+            $this->assertSocket([[Rfc6455Endpoint::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY)]], stream_get_contents($sock));
+        });
+    }
+
     function testIOClose() {
-        Loop::execute(\Amp\wrap(function() {
-            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
-                public $closed = false;
-
-                function onData(int $clientId, Websocket\Message $msg) {
-                    try {
-                        yield $msg;
-                    } catch (\Throwable $e) {
-                        $this->test->assertInstanceOf(ClientException::class, $e);
-                    } finally {
-                        if (!isset($e)) {
-                            $this->test->fail("Expected ClientException was not thrown");
-                        }
-                    }
-                }
-
-                function onClose(int $clientId, int $code, string $reason) {
-                    $this->closed = $code;
-                }
-            });
-            $endpoint->onParsedData($client, "foo", false, false);
+        $this->runClose(function ($endpoint, $sock, $ws, $client) {
             fclose($sock);
-            $server->allowKill = true;
-            // to have it read and closed...
-            $deferred = new \Amp\Deferred;
-            Loop::defer(function() use ($deferred) { Loop::defer([$deferred, "resolve"]); });
-            yield $deferred->promise();
-
+            yield new Pause(10); // Time to read, write, and close.
             $this->assertEquals(Websocket\Code::ABNORMAL_CLOSE, $ws->closed);
-            Loop::stop();
-        }));
+        });
     }
 
     function testIORead() {
