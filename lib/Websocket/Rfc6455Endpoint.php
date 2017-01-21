@@ -65,10 +65,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     const OP_PING  = 0x09;
     const OP_PONG  = 0x0A;
 
-    const CONTROL = 1;
-    const DATA = 2;
-    const ERROR = 3;
-
     public function __construct(PsrLogger $logger, Websocket $application) {
         $this->logger = $logger;
         $this->application = $application;
@@ -524,27 +520,20 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     }
 
     private function compile(Rfc6455Client $client, string $msg, int $opcode, bool $fin = true): Promise {
-        $frameInfo = ["msg" => $msg, "rsv" => 0b000, "fin" => $fin, "opcode" => $opcode];
+        $rsv = 0b000;
 
-        // @TODO filter mechanism …?! (e.g. gzip)
-        foreach ($client->builder as $gen) {
-            $gen->send($frameInfo);
-            $gen->send(null);
-            $frameInfo = $gen->current();
-        }
+        // @TODO Add filter mechanism (e.g. gzip)
 
-        return $this->write($client, $frameInfo);
+        return $this->write($client, $msg, $opcode, $rsv, $fin);
     }
 
-    private function write(Rfc6455Client $client, $frameInfo): Promise {
+    private function write(Rfc6455Client $client, string $msg, int $opcode, int $rsv, bool $fin): Promise {
         if ($client->closedAt) {
             return new Failure(new ClientException);
         }
 
-        $msg = $frameInfo["msg"];
         $len = \strlen($msg);
-
-        $w = chr(($frameInfo["fin"] << 7) | ($frameInfo["rsv"] << 4) | $frameInfo["opcode"]);
+        $w = chr(($fin << 7) | ($rsv << 4) | $opcode);
 
         if ($len > 0xFFFF) {
             $w .= "\x7F" . pack('J', $len);
@@ -560,7 +549,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             if (\strlen($client->writeBuffer) < 65536 && !$client->writeDataQueue && !$client->writeControlQueue) {
                 $client->writeBuffer .= $w;
                 $deferred = $client->writeDeferred;
-            } elseif ($frameInfo["opcode"] >= 0x8) {
+            } elseif ($opcode >= 0x8) {
                 $client->writeControlQueue[] = $w;
                 $deferred = $client->writeDeferredControlQueue[] = new Deferred;
             } else {
@@ -574,23 +563,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         }
 
         return $deferred->promise();
-    }
-
-    // just a dummy builder ... no need to really use it
-    private function defaultBuilder(Rfc6455Client $client) {
-        $yield = yield;
-        while (1) {
-            $data = [];
-            $frameInfo = $yield;
-            $data[] = $yield["msg"];
-
-            while (($yield = yield) !== null); {
-                $data[] = $yield;
-            }
-
-            $msg = count($data) === 1 ? $data[0] : implode($data);
-            $yield = yield $msg + $frameInfo;
-        }
     }
 
     public function send(/* int|array|null */ $clientId, string $data, bool $binary = false): Promise {

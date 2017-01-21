@@ -11,7 +11,6 @@ class Rfc6455Client {
     public $socket;
     public $serverRefClearer;
     public $parser;
-    public $builder = [];
     public $readWatcher;
     public $writeWatcher;
     public $msgDeferred;
