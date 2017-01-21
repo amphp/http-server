@@ -55,6 +55,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     private $queuedPingLimit = 3;
     private $maxFramesPerSecond = 100; // do not bother with setting it too low, fread(8192) may anyway include up to 2700 frames
 
+    private $reapClient;
+    private $onReadable;
+    private $onWritable;
+
     /* Frame control bits */
     const FIN      = 0b1;
     const RSV_NONE = 0b000;
@@ -70,6 +74,10 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         $this->application = $application;
         $this->now = time();
         $this->proxy = new Rfc6455EndpointProxy($this);
+
+        $this->reapClient = $this->callableFromInstanceMethod("reapClient");
+        $this->onReadable = $this->callableFromInstanceMethod("onReadable");
+        $this->onWritable = $this->callableFromInstanceMethod("onWritable");
     }
 
     public function setOption(string $option, $value) {
@@ -201,7 +209,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             $yield = yield $yield;
         }
 
-        Loop::defer([$this, "reapClient"], $ireq);
+        Loop::defer($this->reapClient, $ireq);
     }
 
     public function reapClient(string $watcherId, InternalRequest $ireq) {
@@ -221,8 +229,8 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
             "text_only" => $this->textOnly,
             "threshold" => $this->autoFrameSize,
         ]);
-        $client->readWatcher = Loop::onReadable($socket, [$this, "onReadable"], $client);
-        $client->writeWatcher = Loop::onWritable($socket, [$this, "onWritable"], $client);
+        $client->readWatcher = Loop::onReadable($socket, $this->onReadable, $client);
+        $client->writeWatcher = Loop::onWritable($socket, $this->onWritable, $client);
         if ($client->writeBuffer !== "") {
             $client->writeDeferred = new Deferred; // dummy to prevent error
             $client->framesSent = -1;
@@ -254,7 +262,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         }
     }
 
-    private function onAppError($clientId, \Throwable $e): \Generator {
+    private function onAppError(int $clientId, \Throwable $e): \Generator {
         $this->logger->error($e->__toString());
         $code = Code::UNEXPECTED_SERVER_ERROR;
         $reason = "Internal server error, aborting";
@@ -280,14 +288,14 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         // Don't unload the client here, it will be unloaded upon timeout or last data written if closed by client or OP_CLOSE received by client
     }
 
-    private function sendCloseFrame(Rfc6455Client $client, $code, $msg): Promise {
+    private function sendCloseFrame(Rfc6455Client $client, int $code, string $msg): Promise {
         \assert($code !== Code::NONE || $msg == "");
         $promise = $this->compile($client, $code !== Code::NONE ? pack('n', $code) . $msg : "", self::OP_CLOSE);
         $client->closedAt = $this->now;
         return $promise;
     }
 
-    private function tryAppOnClose(int $clientId, $code, $reason): \Generator {
+    private function tryAppOnClose(int $clientId, int $code, string $reason): \Generator {
         try {
             $onCloseResult = $this->application->onClose($clientId, $code, $reason);
             if ($onCloseResult instanceof \Generator) {
