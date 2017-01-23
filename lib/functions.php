@@ -35,7 +35,7 @@ function websocket($app, array $options = []): Bootable {
             $this->app = $app;
             $this->options = $options;
         }
-        public function boot(Server $server, PsrLogger $logger) {
+        public function boot(Server $server, PsrLogger $logger): callable {
             $app = ($this->app instanceof Bootable)
                 ? $this->app->boot($server, $logger)
                 : $this->app;
@@ -45,16 +45,16 @@ function websocket($app, array $options = []): Bootable {
                     "Cannot boot websocket handler; Aerys\\Websocket required, {$type} provided"
                 );
             }
-            $endpoint = new Websocket\Rfc6455Endpoint($logger, $app);
+            $gateway = new Websocket\Rfc6455Gateway($logger, $app);
             foreach ($this->options as $key => $value) {
-                $endpoint->setOption($key, $value);
+                $gateway->setOption($key, $value);
             }
             $this->app = null;
             $this->options = null;
 
-            $server->attach($endpoint);
+            $server->attach($gateway);
 
-            return [$endpoint, "__invoke"];
+            return $gateway;
         }
     };
 }
@@ -74,7 +74,7 @@ function root(string $docroot, array $options = []): Bootable {
             $this->docroot = $docroot;
             $this->options = $options;
         }
-        public function boot(Server $server, PsrLogger $logger) {
+        public function boot(Server $server, PsrLogger $logger): callable {
             $root = new Root($this->docroot);
             $options = $this->options;
             $defaultMimeFile = __DIR__ ."/../etc/mime";
@@ -87,7 +87,7 @@ function root(string $docroot, array $options = []): Bootable {
 
             $server->attach($root);
 
-            return [$root, "__invoke"];
+            return $root;
         }
     };
 }

@@ -5,29 +5,29 @@ namespace Aerys\Websocket;
 use AsyncInterop\Promise;
 
 class Rfc6455EndpointProxy implements Endpoint {
-    private $endpoint;
+    private $gateway;
 
-    public function __construct(Rfc6455Endpoint $endpoint) {
-        $this->endpoint = $endpoint;
+    public function __construct(Rfc6455Gateway $gateway) {
+        $this->gateway = $gateway;
     }
 
     public function send($clientId, string $data): Promise {
-        return $this->endpoint->send($clientId, $data);
+        return $this->gateway->send($clientId, $data, false);
     }
 
     public function sendBinary($clientId, string $data): Promise {
-        return $this->endpoint->send($clientId, $data, $binary = true);
+        return $this->gateway->send($clientId, $data, true);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
-        $this->endpoint->close($clientId, $code, $reason);
+        $this->gateway->close($clientId, $code, $reason);
     }
 
     public function getInfo(int $clientId): array {
-        return $this->endpoint->getInfo($clientId);
+        return $this->gateway->getInfo($clientId);
     }
 
     public function getClients(): array {
-        return $this->endpoint->getClients();
+        return $this->gateway->getClients();
     }
 }

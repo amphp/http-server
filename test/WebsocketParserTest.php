@@ -15,7 +15,7 @@ use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Aerys\Websocket;
 use Aerys\Websocket\Code;
-use Aerys\Websocket\Rfc6455Endpoint;
+use Aerys\Websocket\Rfc6455Gateway;
 use AsyncInterop\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
@@ -47,7 +47,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider provideParserData
      */
     function testParser($msg, array $message = null, array $control = null, array $error = null) {
-        $mock = $this->createMock(Rfc6455Endpoint::class);
+        $mock = $this->createMock(Rfc6455Gateway::class);
     
         $buffer = '';
         $mock->method("onParsedData")
@@ -56,7 +56,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
 
                 if ($terminated) {
                     list($payload, $code) = $message;
-                    $this->assertSame($code === Rfc6455Endpoint::OP_BIN, $binary);
+                    $this->assertSame($code === Rfc6455Gateway::OP_BIN, $binary);
                     $this->assertSame(\strlen($buffer), \strlen($payload));
                     $this->assertEquals($buffer, $payload);
                     $buffer = '';
@@ -81,7 +81,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
                 $executed = true;
             });
 
-        $parser = Rfc6455Endpoint::parser(
+        $parser = Rfc6455Gateway::parser(
             $mock,
             $this->createMock(Websocket\Rfc6455Client::class),
             ["emitThreshold" => 1 << 15, "validate_utf8" => true]
@@ -106,7 +106,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
 
         foreach ([0 /* 0-1 */, 125 /* 2-3 */, 126 /* 4-5 */, 127 /* 6-7 */, 128 /* 8-9 */, 65535 /* 10-11 */, 65536 /* 12-13 */] as $length) {
             $data = str_repeat("*", $length);
-            foreach ([Rfc6455Endpoint::OP_TEXT, Rfc6455Endpoint::OP_BIN] as $optype) {
+            foreach ([Rfc6455Gateway::OP_TEXT, Rfc6455Gateway::OP_BIN] as $optype) {
                 $input = $this->compile($optype, true, $data);
                 $return[] = [$input, [$data, $optype]];
             }
@@ -115,97 +115,97 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
         // 14-17 - basic control frame parsing ---------------------------------------------------->
 
         foreach (["" /* 14 */, "Hello world!" /* 15 */, "\x00\xff\xfe\xfd\xfc\xfb\x00\xff" /* 16 */, str_repeat("*", 125) /* 17 */] as $data) {
-            $input = $this->compile(Rfc6455Endpoint::OP_PING, true, $data);
-            $return[] = [$input, null, [$data, Rfc6455Endpoint::OP_PING]];
+            $input = $this->compile(Rfc6455Gateway::OP_PING, true, $data);
+            $return[] = [$input, null, [$data, Rfc6455Gateway::OP_PING]];
         }
 
         // 18 ---- error conditions: using a non-terminated frame with a control opcode ----------->
 
-        $input = $this->compile(Rfc6455Endpoint::OP_PING, false);
+        $input = $this->compile(Rfc6455Gateway::OP_PING, false);
         $return[] = [$input, null, null, ["Illegal control frame fragmentation", Code::PROTOCOL_ERROR]];
 
         // 19 ---- error conditions: using a standalone continuation frame with fin = true -------->
 
-        $input = $this->compile(Rfc6455Endpoint::OP_CONT, true);
+        $input = $this->compile(Rfc6455Gateway::OP_CONT, true);
         $return[] = [$input, null, null, ["Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY", Code::PROTOCOL_ERROR]];
 
         // 20 ---- error conditions: using a standalone continuation frame with fin = false ------->
 
-        $input = $this->compile(Rfc6455Endpoint::OP_CONT, false);
+        $input = $this->compile(Rfc6455Gateway::OP_CONT, false);
         $return[] = [$input, null, null, ["Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY", Code::PROTOCOL_ERROR]];
 
         // 21 ---- error conditions: using a continuation frame after a finished text frame ------->
 
-        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, true, "Hello, world!") . $this->compile(Rfc6455Endpoint::OP_CONT, true);
-        $return[] = [$input, ["Hello, world!", Rfc6455Endpoint::OP_TEXT], null, ["Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY", Code::PROTOCOL_ERROR]];
+        $input = $this->compile(Rfc6455Gateway::OP_TEXT, true, "Hello, world!") . $this->compile(Rfc6455Gateway::OP_CONT, true);
+        $return[] = [$input, ["Hello, world!", Rfc6455Gateway::OP_TEXT], null, ["Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY", Code::PROTOCOL_ERROR]];
 
         // 22-29 - continuation frame parsing ----------------------------------------------------->
 
         foreach ([[1, 0] /* 22-23 */, [126, 125] /* 24-25 */, [32767, 32769] /* 26-27 */, [32768, 32769] /* 28-29 */] as list($len1, $len2)) {
             // simple
-            $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, str_repeat("*", $len1)) . $this->compile(Rfc6455Endpoint::OP_CONT, true, str_repeat("*", $len2));
-            $return[] = [$input, [str_repeat("*", $len1 + $len2), Rfc6455Endpoint::OP_TEXT]];
+            $input = $this->compile(Rfc6455Gateway::OP_TEXT, false, str_repeat("*", $len1)) . $this->compile(Rfc6455Gateway::OP_CONT, true, str_repeat("*", $len2));
+            $return[] = [$input, [str_repeat("*", $len1 + $len2), Rfc6455Gateway::OP_TEXT]];
 
             // with interleaved control frame
-            $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, str_repeat("*", $len1)) . $this->compile(Rfc6455Endpoint::OP_PING, true, "foo") . $this->compile(Rfc6455Endpoint::OP_CONT, true, str_repeat("*", $len2));
-            $return[] = [$input, [str_repeat("*", $len1 + $len2), Rfc6455Endpoint::OP_TEXT], ["foo", Rfc6455Endpoint::OP_PING]];
+            $input = $this->compile(Rfc6455Gateway::OP_TEXT, false, str_repeat("*", $len1)) . $this->compile(Rfc6455Gateway::OP_PING, true, "foo") . $this->compile(Rfc6455Gateway::OP_CONT, true, str_repeat("*", $len2));
+            $return[] = [$input, [str_repeat("*", $len1 + $len2), Rfc6455Gateway::OP_TEXT], ["foo", Rfc6455Gateway::OP_PING]];
         }
 
         // 30 ---- error conditions: using a text frame after a not finished text frame ----------->
 
-        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, "Hello, world!") . $this->compile(Rfc6455Endpoint::OP_TEXT, true, "uhm, no!");
+        $input = $this->compile(Rfc6455Gateway::OP_TEXT, false, "Hello, world!") . $this->compile(Rfc6455Gateway::OP_TEXT, true, "uhm, no!");
         $return[] = [$input, null, null, ["Illegal data type opcode after unfinished previous data type frame; opcode MUST be CONTINUATION", Code::PROTOCOL_ERROR]];
 
         // 31 ---- utf-8 validation must resolve for large utf-8 msgs ----------------------------->
 
         $data = "H".str_repeat("ö", 32770);
-        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, substr($data, 0, 32769)) . $this->compile(Rfc6455Endpoint::OP_CONT, true, substr($data, 32769));
-        $return[] = [$input, [$data, Rfc6455Endpoint::OP_TEXT]];
+        $input = $this->compile(Rfc6455Gateway::OP_TEXT, false, substr($data, 0, 32769)) . $this->compile(Rfc6455Gateway::OP_CONT, true, substr($data, 32769));
+        $return[] = [$input, [$data, Rfc6455Gateway::OP_TEXT]];
 
         // 32 ---- utf-8 validation must resolve for interrupted utf-8 across frame boundary ------>
 
         $data = "H".str_repeat("ö", 32770);
-        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, substr($data, 0, 32768)) . $this->compile(Rfc6455Endpoint::OP_CONT, true, substr($data, 32768));
-        $return[] = [$input, [$data, Rfc6455Endpoint::OP_TEXT]];
+        $input = $this->compile(Rfc6455Gateway::OP_TEXT, false, substr($data, 0, 32768)) . $this->compile(Rfc6455Gateway::OP_CONT, true, substr($data, 32768));
+        $return[] = [$input, [$data, Rfc6455Gateway::OP_TEXT]];
 
         // 33 ---- utf-8 validation must fail for bad utf-8 data (single frame) ------------------->
 
-        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, true, substr(str_repeat("ö", 2), 1));
+        $input = $this->compile(Rfc6455Gateway::OP_TEXT, true, substr(str_repeat("ö", 2), 1));
         $return[] = [$input, null, null, ["Invalid TEXT data; UTF-8 required", Code::INCONSISTENT_FRAME_DATA_TYPE]];
 
         // 34 ---- utf-8 validation must fail for bad utf-8 data (multiple small frames) ---------->
 
         $data = "H".str_repeat("ö", 3);
-        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, substr($data, 0, 2)) . $this->compile(Rfc6455Endpoint::OP_CONT, true, substr($data, 3));
+        $input = $this->compile(Rfc6455Gateway::OP_TEXT, false, substr($data, 0, 2)) . $this->compile(Rfc6455Gateway::OP_CONT, true, substr($data, 3));
         $return[] = [$input, null, null, ["Invalid TEXT data; UTF-8 required", Code::INCONSISTENT_FRAME_DATA_TYPE]];
 
         // 35 ---- utf-8 validation must fail for bad utf-8 data (multiple big frames) ------------>
 
         $data = "H".str_repeat("ö", 40000);
-        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, substr($data, 0, 32767)) . $this->compile(Rfc6455Endpoint::OP_CONT, false, substr($data, 32768));
+        $input = $this->compile(Rfc6455Gateway::OP_TEXT, false, substr($data, 0, 32767)) . $this->compile(Rfc6455Gateway::OP_CONT, false, substr($data, 32768));
         $return[] = [$input, null, null, ["Invalid TEXT data; UTF-8 required", Code::INCONSISTENT_FRAME_DATA_TYPE]];
 
         // 36 ---- error conditions: using a too large payload with a control opcode -------------->
 
-        $input = $this->compile(Rfc6455Endpoint::OP_PING, true, str_repeat("*", 126));
+        $input = $this->compile(Rfc6455Gateway::OP_PING, true, str_repeat("*", 126));
         $return[] = [$input, null, null, ["Control frame payload must be of maximum 125 bytes or less", Code::PROTOCOL_ERROR]];
 
         // 37 ---- error conditions: unmasked data ------------------------------------------------>
 
-        $input = substr($this->compile(Rfc6455Endpoint::OP_PING, true, str_repeat("*", 125)), 0, -4) & ("\xFF\x7F" . str_repeat("\xFF", 0xFF));
+        $input = substr($this->compile(Rfc6455Gateway::OP_PING, true, str_repeat("*", 125)), 0, -4) & ("\xFF\x7F" . str_repeat("\xFF", 0xFF));
         $return[] = [$input, null, null, ["Payload mask required", Code::PROTOCOL_ERROR]];
 
         // 38 ---- error conditions: too large frame (> 2^63 bit) --------------------------------->
 
-        $input = $this->compile(Rfc6455Endpoint::OP_BIN, true, str_repeat("*", 65536)) | ("\x00\x00\x80" . str_repeat("\x00", 0xFF));
+        $input = $this->compile(Rfc6455Gateway::OP_BIN, true, str_repeat("*", 65536)) | ("\x00\x00\x80" . str_repeat("\x00", 0xFF));
         $return[] = [$input, null, null, ["Most significant bit of 64-bit length field set", Code::PROTOCOL_ERROR]];
 
 
         // 39 ---- utf-8 must be accepted for interrupted text with interleaved control frame ----->
 
         $data = "H".str_repeat("ö", 32770);
-        $input = $this->compile(Rfc6455Endpoint::OP_TEXT, false, substr($data, 0, 32768)) . $this->compile(Rfc6455Endpoint::OP_PING, true, "foo") . $this->compile(Rfc6455Endpoint::OP_CONT, true, substr($data, 32768));
-        $return[] = [$input, [$data, Rfc6455Endpoint::OP_TEXT], ["foo", Rfc6455Endpoint::OP_PING]];
+        $input = $this->compile(Rfc6455Gateway::OP_TEXT, false, substr($data, 0, 32768)) . $this->compile(Rfc6455Gateway::OP_PING, true, "foo") . $this->compile(Rfc6455Gateway::OP_CONT, true, substr($data, 32768));
+        $return[] = [$input, [$data, Rfc6455Gateway::OP_TEXT], ["foo", Rfc6455Gateway::OP_PING]];
 
         // x -------------------------------------------------------------------------------------->
 

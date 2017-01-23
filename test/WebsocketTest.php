@@ -14,7 +14,7 @@ use Aerys\{
     StandardRequest,
     StandardResponse,
     Websocket,
-    Websocket\Rfc6455Endpoint,
+    Websocket\Rfc6455Gateway,
     const HTTP_STATUS
 };
 use Amp\{ Deferred, Emitter, Message, Pause };
@@ -83,7 +83,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         };
 
         $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
-        $endpoint = new Rfc6455Endpoint($logger, $ws);
+        $endpoint = new Rfc6455Gateway($logger, $ws);
 
         if ($timeoutTest) {
             // okay, let's cheat a bit in order to properly test timeout...
@@ -109,7 +109,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         return $promise;
     }
 
-    function triggerTimeout(Rfc6455Endpoint $endpoint) {
+    function triggerTimeout(Rfc6455Gateway $endpoint) {
         (function() {
             $this->timeout();
         })->call($endpoint);
@@ -204,7 +204,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             }
             $this->triggerTimeout($endpoint);
 
-            $this->assertSocket([[Rfc6455Endpoint::OP_CLOSE]], stream_get_contents($sock));
+            $this->assertSocket([[Rfc6455Gateway::OP_CLOSE]], stream_get_contents($sock));
             Loop::stop();
         }));
     }
@@ -213,7 +213,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         return [
             ["onOpen", null],
             ["onData", ["onParsedData", ["data", false, true]]],
-            ["onClose", ["onParsedControlFrame", [Rfc6455Endpoint::OP_CLOSE, "\xFF\xFF"]]],
+            ["onClose", ["onParsedControlFrame", [Rfc6455Gateway::OP_CLOSE, "\xFF\xFF"]]],
             ["onClose", ["onParsedError", [Websocket\Code::PROTOCOL_ERROR, ""]]]
         ];
     }
@@ -226,7 +226,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         $ws = $this->createMock('Aerys\Websocket');
         $ws->expects($expected[":status"] === 101 ? $this->once() : $this->never())
             ->method("onHandshake");
-        $endpoint = new Rfc6455Endpoint($logger, $ws);
+        $endpoint = new Rfc6455Gateway($logger, $ws);
         $endpoint(new StandardRequest($ireq), new StandardResponse((function () use (&$headers, &$body) {
             $headers = yield;
             $body = yield;
@@ -319,19 +319,19 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
     function testCloseFrame() {
         $this->runClose(function ($endpoint, $sock, $ws, $client) {
-            $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_CLOSE, "");
+            $endpoint->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, "");
             yield new Pause(10); // Time to read, write, and close.
             $this->assertEquals(Websocket\Code::NONE, $ws->closed);
-            $this->assertSocket([[Rfc6455Endpoint::OP_CLOSE, ""]], stream_get_contents($sock));
+            $this->assertSocket([[Rfc6455Gateway::OP_CLOSE, ""]], stream_get_contents($sock));
         });
     }
 
     function testCloseWithStatus() {
         $this->runClose(function ($endpoint, $sock, $ws, $client) {
-            $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY));
+            $endpoint->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY));
             yield new Pause(10); // Time to read, write, and close.
             $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
-            $this->assertSocket([[Rfc6455Endpoint::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY)]], stream_get_contents($sock));
+            $this->assertSocket([[Rfc6455Gateway::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY)]], stream_get_contents($sock));
         });
     }
 
@@ -346,10 +346,10 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testIORead() {
         Loop::execute(\Amp\wrap(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            fwrite($sock, WebsocketParserTest::compile(Rfc6455Endpoint::OP_PING, true, "foo"));
+            fwrite($sock, WebsocketParserTest::compile(Rfc6455Gateway::OP_PING, true, "foo"));
             yield $this->waitOnRead($sock);
             fclose($client->socket);
-            $this->assertSocket([[Rfc6455Endpoint::OP_PONG, "foo"]], stream_get_contents($sock));
+            $this->assertSocket([[Rfc6455Gateway::OP_PONG, "foo"]], stream_get_contents($sock));
 
             Loop::stop();
         }));
@@ -366,7 +366,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 }
             });
             $endpoint->onParsedData($client, "start...", true, true);
-            $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_PING, "pingpong");
+            $endpoint->onParsedControlFrame($client, Rfc6455Gateway::OP_PING, "pingpong");
             stream_set_blocking($sock, false);
             $data = "";
             do {
@@ -374,11 +374,11 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 $data .= fread($sock, 1024);
             } while (!feof($sock));
             $this->assertSocket([
-                [Rfc6455Endpoint::OP_TEXT, "foo".str_repeat("*", 65528)],
-                [Rfc6455Endpoint::OP_TEXT, "bar"],
-                [Rfc6455Endpoint::OP_PONG, "pingpong"],
-                [Rfc6455Endpoint::OP_TEXT, "baz"],
-                [Rfc6455Endpoint::OP_CLOSE],
+                [Rfc6455Gateway::OP_TEXT, "foo".str_repeat("*", 65528)],
+                [Rfc6455Gateway::OP_TEXT, "bar"],
+                [Rfc6455Gateway::OP_PONG, "pingpong"],
+                [Rfc6455Gateway::OP_TEXT, "baz"],
+                [Rfc6455Gateway::OP_CLOSE],
             ], $data);
     
             Loop::stop();
@@ -388,13 +388,13 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testFragmentation() {
         Loop::execute(\Amp\wrap(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $endpoint->sendBinary(null, str_repeat("*", 131046))->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->requireClientFree = true; });
+            $endpoint->send(null, str_repeat("*", 131046), true)->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->requireClientFree = true; });
             $data = "";
             do {
                 yield $this->waitOnRead($sock); // to have it read and parsed...
                 $data .= $x = fread($sock, 8192);
             } while ($x != "" || !feof($sock));
-            $this->assertSocket([[Rfc6455Endpoint::OP_BIN, str_repeat("*", 65523)], [Rfc6455Endpoint::OP_CONT, str_repeat("*", 65523)]], $data);
+            $this->assertSocket([[Rfc6455Gateway::OP_BIN, str_repeat("*", 65523)], [Rfc6455Gateway::OP_CONT, str_repeat("*", 65523)]], $data);
     
             Loop::stop();
         }));
@@ -404,7 +404,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         Loop::execute(\Amp\wrap(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             $client->pingCount = 2;
-            $endpoint->onParsedControlFrame($client, Rfc6455Endpoint::OP_PONG, "1");
+            $endpoint->onParsedControlFrame($client, Rfc6455Gateway::OP_PONG, "1");
             $this->assertEquals(1, $client->pongCount);
     
             Loop::stop();

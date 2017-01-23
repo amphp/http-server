@@ -29,12 +29,12 @@ use Aerys\{
 use AsyncInterop\{ Loop, Promise };
 use Psr\Log\LoggerInterface as PsrLogger;
 
-class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
+class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     use CallableMaker;
     
     private $logger;
     private $application;
-    private $proxy;
+    private $endpoint;
     private $state;
     private $clients = [];
     private $lowCapacityClients = [];
@@ -73,7 +73,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         $this->logger = $logger;
         $this->application = $application;
         $this->now = time();
-        $this->proxy = new Rfc6455EndpointProxy($this);
+        $this->endpoint = new Rfc6455EndpointProxy($this);
 
         $this->reapClient = $this->callableFromInstanceMethod("reapClient");
         $this->onReadable = $this->callableFromInstanceMethod("onReadable");
@@ -274,7 +274,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     private function doClose(Rfc6455Client $client, int $code, string $reason): \Generator {
         // Only proceed if we haven't already begun the close handshake elsewhere
         if ($client->closedAt) {
-            return;
+            return 0;
         }
 
         try {
@@ -573,7 +573,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         return $deferred->promise();
     }
 
-    public function send(/* int|array|null */ $clientId, string $data, bool $binary = false): Promise {
+    public function send(/* int|array|null */ $clientId, string $data, bool $binary): Promise {
         if ($clientId === null) {
             $clientId = array_keys($this->clients);
         }
@@ -606,10 +606,6 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         }
 
         return new Success;
-    }
-
-    public function sendBinary($clientId, string $data): Promise {
-        return $this->send($clientId, $data, true);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
@@ -647,7 +643,7 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
     public function update(Server $server): Promise {
         switch ($this->state = $server->state()) {
             case Server::STARTING:
-                $result = $this->application->onStart($this->proxy);
+                $result = $this->application->onStart($this->endpoint);
                 if ($result instanceof \Generator) {
                     return new Coroutine($result);
                 }
