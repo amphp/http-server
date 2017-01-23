@@ -73,7 +73,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         $this->logger = $logger;
         $this->application = $application;
         $this->now = time();
-        $this->endpoint = new Rfc6455EndpointProxy($this);
+        $this->endpoint = new Rfc6455Endpoint($this);
 
         $this->reapClient = $this->callableFromInstanceMethod("reapClient");
         $this->onReadable = $this->callableFromInstanceMethod("onReadable");

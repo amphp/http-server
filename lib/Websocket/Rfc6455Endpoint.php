@@ -4,7 +4,7 @@ namespace Aerys\Websocket;
 
 use AsyncInterop\Promise;
 
-class Rfc6455EndpointProxy implements Endpoint {
+class Rfc6455Endpoint implements Endpoint {
     private $gateway;
 
     public function __construct(Rfc6455Gateway $gateway) {
