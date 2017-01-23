@@ -19,8 +19,8 @@ class Rfc6455Endpoint implements Endpoint {
         return $this->gateway->send($clientId, $data, true);
     }
 
-    public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
-        $this->gateway->close($clientId, $code, $reason);
+    public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = ""): Promise {
+        return $this->gateway->close($clientId, $code, $reason);
     }
 
     public function getInfo(int $clientId): array {
