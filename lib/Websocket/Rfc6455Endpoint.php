@@ -29,7 +29,7 @@ use Aerys\{
 
 use Psr\Log\LoggerInterface as PsrLogger;
 
-class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
+class Rfc6455Endpoint implements Middleware, Monitor, ServerObserver {
     private $logger;
     private $application;
     private $proxy;
@@ -616,43 +616,53 @@ class Rfc6455Endpoint implements Endpoint, Middleware, Monitor, ServerObserver {
         }
     }
 
-    public function send(/* int|array|null */ $clientId, string $data, bool $binary = false): Promise {
-        if ($clientId === null) {
-            $clientId = array_keys($this->clients);
+    public function send(string $data, bool $binary, int $clientId): Promise {
+        if (!isset($this->clients[$clientId])) {
+            return new Success;
         }
 
-        if (\is_array($clientId)) {
-            $promises = [];
-            foreach ($clientId as $id) {
-                $promises[] = $this->send($id, $data, $binary);
+        $client = $this->clients[$clientId];
+        $client->messagesSent++;
+        $opcode = $binary ? self::OP_BIN : self::OP_TEXT;
+        assert($binary || preg_match("//u", $data), "non-binary data needs to be UTF-8 compatible");
+
+        if (\strlen($data) > 1.5 * $this->autoFrameSize) {
+            $len = \strlen($data);
+            $slices = ceil($len / $this->autoFrameSize);
+            $frames = str_split($data, ceil($len / $slices));
+            $data = array_pop($frames);
+            foreach ($frames as $frame) {
+                $this->compile($client, $frame, $opcode, false);
+                $opcode = self::OP_CONT;
             }
-            return all($promises);
         }
-
-        if ($client = $this->clients[$clientId] ?? null) {
-            $client->messagesSent++;
-
-            $opcode = $binary ? self::OP_BIN : self::OP_TEXT;
-            assert($binary || preg_match("//u", $data), "non-binary data needs to be UTF-8 compatible");
-
-            if (\strlen($data) > 1.5 * $this->autoFrameSize) {
-                $len = \strlen($data);
-                $slices = ceil($len / $this->autoFrameSize);
-                $frames = str_split($data, ceil($len / $slices));
-                $data = array_pop($frames);
-                foreach ($frames as $frame) {
-                    $this->compile($client, $frame, $opcode, false);
-                    $opcode = self::OP_CONT;
-                }
-            }
-            return $this->compile($client, $data, $opcode);
-        }
-
-        return new Success;
+        return $this->compile($client, $data, $opcode);
     }
 
-    public function sendBinary($clientId, string $data): Promise {
-        return $this->send($clientId, $data, true);
+    public function broadcast(string $data, bool $binary, array $exceptIds = []): Promise {
+        $promises = [];
+        if (empty($exceptIds)) {
+            foreach ($this->clients as $id => $client) {
+                $promises[] = $this->send($data, $binary, $id);
+            }
+        } else {
+            $exceptIds = \array_flip($exceptIds);
+            foreach ($this->clients as $id => $client) {
+                if (isset($exceptIds[$id])) {
+                    continue;
+                }
+                $promises[] = $this->send($data, $binary, $id);
+            }
+        }
+        return all($promises);
+    }
+
+    public function multicast(string $data, bool $binary, array $clientIds): Promise {
+        $promises = [];
+        foreach ($clientIds as $id) {
+            $promises[] = $this->send($data, $binary, $id);
+        }
+        return all($promises);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {

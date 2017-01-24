@@ -75,7 +75,7 @@ $websocket = websocket(new class implements Aerys\Websocket {
 
     public function onData(int $clientId, Websocket\Message $msg) {
         // broadcast to all connected clients
-        $this->endpoint->send(null, yield $msg);
+        $this->endpoint->broadcast(yield $msg);
     }
 
     public function onClose(int $clientId, int $code, string $reason) { }
