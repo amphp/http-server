@@ -55,5 +55,9 @@ interface Endpoint {
      * ]
      */
     public function getInfo(int $clientId): array;
+    
+    /**
+     * @return int[] Array of client IDs.
+     */
     public function getClients(): array;
 }
