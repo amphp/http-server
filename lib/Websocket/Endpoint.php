@@ -19,11 +19,11 @@ interface Endpoint {
      * Broadcast a UTF-8 text message to all clients (except those given in the optional array).
      *
      * @param string $data Data to send.
-     * @param int[]|null $exceptIds List of IDs to exclude from the broadcast.
+     * @param int[] $exceptIds List of IDs to exclude from the broadcast.
      *
      * @return \AsyncInterop\Promise<int>
      */
-    public function broadcast(string $data, array $exceptIds = null): Promise;
+    public function broadcast(string $data, array $exceptIds = []): Promise;
 
     /**
      * Send a UTF-8 text message to a set of clients.
@@ -49,11 +49,11 @@ interface Endpoint {
      * Send a binary message to all clients (except those given in the optional array).
      *
      * @param string $data Data to send.
-     * @param int[]|null $exceptIds List of IDs to exclude from the broadcast.
+     * @param int[] $exceptIds List of IDs to exclude from the broadcast.
      *
      * @return \AsyncInterop\Promise<int>
      */
-    public function broadcastBinary(string $data, array $clientIds = null): Promise;
+    public function broadcastBinary(string $data, array $exceptIds = []): Promise;
 
     /**
      * Send a binary message to a set of clients.

@@ -573,15 +573,13 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         return $deferred->promise();
     }
 
-    public function send(int $clientId, string $data, bool $binary): Promise {
+    public function send(string $data, bool $binary, int $clientId): Promise {
         if (!isset($this->clients[$clientId])) {
             return new Success;
         }
 
         $client = $this->clients[$clientId];
-
         $client->messagesSent++;
-
         $opcode = $binary ? self::OP_BIN : self::OP_TEXT;
         assert($binary || preg_match("//u", $data), "non-binary data needs to be UTF-8 compatible");
 
@@ -598,31 +596,28 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         return $this->compile($client, $data, $opcode);
     }
 
-    public function broadcast(/* ?array */ $exceptIds, string $data, bool $binary): Promise {
-        if (empty($exceptIds)) {
-            $promises = [];
-            foreach (array_keys($this->clients) as $id) {
-                $promises[] = $this->send($id, $data, $binary);
-            }
-            return all($promises);
-        }
-
-        $clients = $this->clients;
-        foreach ($exceptIds as $id) {
-            unset($clients[$id]);
-        }
-
+    public function broadcast(string $data, bool $binary, array $exceptIds = []): Promise {
         $promises = [];
-        foreach ($clients as $id => $client) {
-            $promises[] = $this->send($id, $data, $binary);
+        if (empty($exceptIds)) {
+            foreach ($this->clients as $id => $client) {
+                $promises[] = $this->send($data, $binary, $id);
+            }
+        } else {
+            $exceptIds = \array_flip($exceptIds);
+            foreach ($this->clients as $id => $client) {
+                if (isset($exceptIds[$id])) {
+                    continue;
+                }
+                $promises[] = $this->send($data, $binary, $id);
+            }
         }
         return all($promises);
     }
 
-    public function multicast(array $clientIds, string $data, bool $binary): Promise {
+    public function multicast(string $data, bool $binary, array $clientIds): Promise {
         $promises = [];
         foreach ($clientIds as $id) {
-            $promises[] = $this->send($id, $data, $binary);
+            $promises[] = $this->send($data, $binary, $id);
         }
         return all($promises);
     }
