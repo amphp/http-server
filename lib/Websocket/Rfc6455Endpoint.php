@@ -27,11 +27,11 @@ class Rfc6455Endpoint implements Endpoint {
         return $this->gateway->broadcast($exceptIds, $data, true);
     }
 
-    public function multicast(string $data, array $clientIds = null): Promise {
+    public function multicast(string $data, array $clientIds): Promise {
         return $this->gateway->multicast($clientIds, $data, false);
     }
 
-    public function multicastBinary(string $data, array $clientIds = null): Promise {
+    public function multicastBinary(string $data, array $clientIds): Promise {
         return $this->gateway->multicast($clientIds, $data, true);
     }
 
