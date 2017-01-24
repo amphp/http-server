@@ -19,12 +19,20 @@ class Rfc6455Endpoint implements Endpoint {
         return $this->gateway->send($clientId, $data, true);
     }
 
-    public function broadcast(string $data, array $clientIds = null): Promise {
-        return $this->gateway->broadcast($clientIds, $data, false);
+    public function broadcast(string $data, array $exceptIds = null): Promise {
+        return $this->gateway->broadcast($exceptIds, $data, false);
     }
 
-    public function broadcastBinary(string $data, array $clientIds = null): Promise {
-        return $this->gateway->broadcast($clientIds, $data, true);
+    public function broadcastBinary(string $data, array $exceptIds = null): Promise {
+        return $this->gateway->broadcast($exceptIds, $data, true);
+    }
+
+    public function simulcast(string $data, array $clientIds = null): Promise {
+        return $this->gateway->simulcast($clientIds, $data, false);
+    }
+
+    public function simulcastBinary(string $data, array $clientIds = null): Promise {
+        return $this->gateway->simulcast($clientIds, $data, true);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = ""): Promise {

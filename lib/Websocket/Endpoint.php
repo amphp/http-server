@@ -16,14 +16,24 @@ interface Endpoint {
     public function send(string $data, int $clientId): Promise;
 
     /**
-     * Broadcast a UTF-8 text message to a set of clients.
+     * Broadcast a UTF-8 text message to all clients (except those given in the optional array).
      *
      * @param string $data Data to send.
-     * @param int[]|null $clientIds Array of client IDs or null for all clients.
+     * @param int[]|null $exceptIds List of IDs to exclude from the broadcast.
      *
      * @return \AsyncInterop\Promise<int>
      */
-    public function broadcast(string $data, array $clientIds = null): Promise;
+    public function broadcast(string $data, array $exceptIds = null): Promise;
+
+    /**
+     * Send a UTF-8 text message to a set of clients.
+     *
+     * @param string $data Data to send.
+     * @param int[]|null $clientIds Array of client IDs.
+     *
+     * @return \AsyncInterop\Promise<int>
+     */
+    public function simulcast(string $data, array $clientIds): Promise;
 
     /**
      * Send a binary message to the given client(s).
@@ -36,14 +46,24 @@ interface Endpoint {
     public function sendBinary(string $data, int $clientId): Promise;
 
     /**
-     * Send a binary message to a set of clients.
+     * Send a binary message to all clients (except those given in the optional array).
      *
      * @param string $data Data to send.
-     * @param int[]|null $clientIds Array of client IDs or null for all clients.
+     * @param int[]|null $exceptIds List of IDs to exclude from the broadcast.
      *
      * @return \AsyncInterop\Promise<int>
      */
     public function broadcastBinary(string $data, array $clientIds = null): Promise;
+
+    /**
+     * Send a binary message to a set of clients.
+     *
+     * @param string $data Data to send.
+     * @param int[]|null $clientIds Array of client IDs.
+     *
+     * @return \AsyncInterop\Promise<int>
+     */
+    public function simulcastBinary(string $data, array $clientIds): Promise;
 
     /**
      * Close the client connection with a code and UTF-8 string reason.

@@ -598,11 +598,28 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         return $this->compile($client, $data, $opcode);
     }
 
-    public function broadcast(/* ?array */ $clientIds, string $data, bool $binary): Promise {
-        if ($clientIds === null) {
-            $clientIds = array_keys($this->clients);
+    public function broadcast(/* ?array */ $exceptIds, string $data, bool $binary): Promise {
+        if (empty($exceptIds)) {
+            $promises = [];
+            foreach (array_keys($this->clients) as $id) {
+                $promises[] = $this->send($id, $data, $binary);
+            }
+            return all($promises);
         }
 
+        $clients = $this->clients;
+        foreach ($exceptIds as $id) {
+            unset($clients[$id]);
+        }
+
+        $promises = [];
+        foreach ($clients as $id => $client) {
+            $promises[] = $this->send($id, $data, $binary);
+        }
+        return all($promises);
+    }
+
+    public function simulcast(array $clientIds, string $data, bool $binary): Promise {
         $promises = [];
         foreach ($clientIds as $id) {
             $promises[] = $this->send($id, $data, $binary);

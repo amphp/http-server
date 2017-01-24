@@ -361,7 +361,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 function onData(int $clientId, Websocket\Message $msg) {
                     $this->endpoint->broadcast("foo".str_repeat("*", 65528 /* fill buffer */));
                     $this->endpoint->send("bar", $clientId);
-                    yield $this->endpoint->broadcast("baz", [$clientId]);
+                    yield $this->endpoint->simulcast("baz", [$clientId]);
                     $this->endpoint->close($clientId);
                 }
             });
