@@ -359,9 +359,9 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         Loop::execute(\Amp\wrap(function() {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 function onData(int $clientId, Websocket\Message $msg) {
-                    $this->endpoint->send(null, "foo".str_repeat("*", 65528 /* fill buffer */));
-                    $this->endpoint->send($clientId, "bar");
-                    yield $this->endpoint->send([$clientId], "baz");
+                    $this->endpoint->broadcast("foo".str_repeat("*", 65528 /* fill buffer */));
+                    $this->endpoint->send("bar", $clientId);
+                    yield $this->endpoint->broadcast("baz", [$clientId]);
                     $this->endpoint->close($clientId);
                 }
             });
@@ -388,7 +388,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testFragmentation() {
         Loop::execute(\Amp\wrap(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $endpoint->send(null, str_repeat("*", 131046), true)->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->requireClientFree = true; });
+            $endpoint->broadcast(null, str_repeat("*", 131046), true)->when(function() use ($sock, $server) { stream_socket_shutdown($sock, STREAM_SHUT_WR); $server->requireClientFree = true; });
             $data = "";
             do {
                 yield $this->waitOnRead($sock); // to have it read and parsed...

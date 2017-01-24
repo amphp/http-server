@@ -573,39 +573,41 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         return $deferred->promise();
     }
 
-    public function send(/* int|array|null */ $clientId, string $data, bool $binary): Promise {
-        if ($clientId === null) {
-            $clientId = array_keys($this->clients);
+    public function send(int $clientId, string $data, bool $binary): Promise {
+        if (!isset($this->clients[$clientId])) {
+            return new Success;
         }
 
-        if (\is_array($clientId)) {
-            $promises = [];
-            foreach ($clientId as $id) {
-                $promises[] = $this->send($id, $data, $binary);
+        $client = $this->clients[$clientId];
+
+        $client->messagesSent++;
+
+        $opcode = $binary ? self::OP_BIN : self::OP_TEXT;
+        assert($binary || preg_match("//u", $data), "non-binary data needs to be UTF-8 compatible");
+
+        if (\strlen($data) > 1.5 * $this->autoFrameSize) {
+            $len = \strlen($data);
+            $slices = ceil($len / $this->autoFrameSize);
+            $frames = str_split($data, (int) ceil($len / $slices));
+            $data = array_pop($frames);
+            foreach ($frames as $frame) {
+                $this->compile($client, $frame, $opcode, false);
+                $opcode = self::OP_CONT;
             }
-            return all($promises);
+        }
+        return $this->compile($client, $data, $opcode);
+    }
+
+    public function broadcast(/* ?array */ $clientIds, string $data, bool $binary): Promise {
+        if ($clientIds === null) {
+            $clientIds = array_keys($this->clients);
         }
 
-        if ($client = $this->clients[$clientId] ?? null) {
-            $client->messagesSent++;
-
-            $opcode = $binary ? self::OP_BIN : self::OP_TEXT;
-            assert($binary || preg_match("//u", $data), "non-binary data needs to be UTF-8 compatible");
-
-            if (\strlen($data) > 1.5 * $this->autoFrameSize) {
-                $len = \strlen($data);
-                $slices = ceil($len / $this->autoFrameSize);
-                $frames = str_split($data, (int) ceil($len / $slices));
-                $data = array_pop($frames);
-                foreach ($frames as $frame) {
-                    $this->compile($client, $frame, $opcode, false);
-                    $opcode = self::OP_CONT;
-                }
-            }
-            return $this->compile($client, $data, $opcode);
+        $promises = [];
+        foreach ($clientIds as $id) {
+            $promises[] = $this->send($id, $data, $binary);
         }
-
-        return new Success;
+        return all($promises);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = ""): Promise {
