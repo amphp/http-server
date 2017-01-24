@@ -27,12 +27,12 @@ class Rfc6455Endpoint implements Endpoint {
         return $this->gateway->broadcast($exceptIds, $data, true);
     }
 
-    public function simulcast(string $data, array $clientIds = null): Promise {
-        return $this->gateway->simulcast($clientIds, $data, false);
+    public function multicast(string $data, array $clientIds = null): Promise {
+        return $this->gateway->multicast($clientIds, $data, false);
     }
 
-    public function simulcastBinary(string $data, array $clientIds = null): Promise {
-        return $this->gateway->simulcast($clientIds, $data, true);
+    public function multicastBinary(string $data, array $clientIds = null): Promise {
+        return $this->gateway->multicast($clientIds, $data, true);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = ""): Promise {
