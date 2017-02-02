@@ -57,8 +57,7 @@ $router = router()
     })
     ->get("/favicon.ico", function(Request $req, Response $res) {
         $res->setStatus(404);
-        $res->setHeader("Aerys-Generic-Response", "enable");
-        $res->end();
+        $res->end(Aerys\makeGenericBody(404));
     })
     ->zanzibar("/zanzibar", function (Request $req, Response $res) {
         $res->end("<html><body><h1>ZANZIBAR!</h1></body></html>");

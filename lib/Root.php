@@ -310,12 +310,12 @@ class Root implements ServerObserver {
                 $response->setStatus(HTTP_STATUS["OK"]);
                 $response->setHeader("Allow", "GET, HEAD, OPTIONS");
                 $response->setHeader("Accept-Ranges", "bytes");
-                $response->setHeader("Aerys-Generic-Response", "enable");
+                $response->stream(makeGenericBody(HTTP_STATUS["OK"]));
                 return;
             default:
                 $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
                 $response->setHeader("Allow", "GET, HEAD, OPTIONS");
-                $response->setHeader("Aerys-Generic-Response", "enable");
+                $response->stream(makeGenericBody(HTTP_STATUS["METHOD_NOT_ALLOWED"]));
                 return;
         }
 

@@ -71,8 +71,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
             $allowedMethods = implode(",", $data);
             $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
             $response->setHeader("Allow", $allowedMethods);
-            $response->setHeader("Aerys-Generic-Response", "enable");
-            $response->end();
+            $response->end(makeGenericBody(HTTP_STATUS["METHOD_NOT_ALLOWED"]));
         }
     }
 

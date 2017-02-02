@@ -472,35 +472,6 @@ function nullBodyResponseFilter(InternalRequest $ireq): \Generator {
 }
 
 /**
- * Use a generic HTML response if the requisite header is assigned
- *
- * @param \Aerys\InternalRequest $ireq
- * @return \Generator
- */
-function genericResponseFilter(InternalRequest $ireq): \Generator {
-    $headers = yield;
-    if (empty($headers["aerys-generic-response"])) {
-        return $headers;
-    }
-
-    $body = makeGenericBody($headers[":status"], $options = [
-        "reason"      => $headers[":reason"],
-        "sub_heading" => "Requested: {$ireq->uri}",
-        "server"      => $ireq->client->options->sendServerToken ?? false,
-        "http_date"   => $ireq->httpDate,
-    ]);
-    $headers["content-length"] = [strlen($body)];
-    unset(
-        $headers["aerys-generic-response"],
-        $headers["transfer-encoding"]
-    );
-
-    yield $headers;
-
-    return $body;
-}
-
-/**
  * Create a generic HTML entity body
  *
  * @param int $status

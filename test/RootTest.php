@@ -271,7 +271,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->method("getMethod")
             ->will($this->returnValue("OPTIONS"));
         $response = $this->createMock('Aerys\Response');
-        $response->expects($this->exactly(3))
+        $response->expects($this->exactly(2))
             ->method("setHeader")
             ->withConsecutive(["Allow", "GET, HEAD, OPTIONS"], ["Accept-Ranges", "bytes"]);
         $generator = $root->__invoke($request, $response);

@@ -72,7 +72,6 @@ class Http1Driver implements HttpDriver {
 
         $filters = [
             [$this, "responseInitFilter"],
-            '\Aerys\genericResponseFilter',
         ];
         if ($userFilters) {
             $filters = array_merge($filters, $userFilters);

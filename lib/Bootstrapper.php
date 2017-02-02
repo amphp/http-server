@@ -218,8 +218,7 @@ class Bootstrapper {
                             if ($this->isStopping) {
                                 $response->setStatus(HTTP_STATUS["SERVICE_UNAVAILABLE"]);
                                 $response->setReason("Server shutting down");
-                                $response->setHeader("Aerys-Generic-Response", "enable");
-                                $response->end();
+                                $response->end(makeGenericBody(HTTP_STATUS["SERVICE_UNAVAILABLE"]));
                                 return;
                             }
                         }

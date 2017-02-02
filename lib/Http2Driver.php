@@ -64,7 +64,6 @@ class Http2Driver implements HttpDriver {
     public function filters(InternalRequest $ireq, array $userFilters): array {
         $filters = [
             [$this, "responseInitFilter"],
-            '\Aerys\genericResponseFilter',
         ];
         if ($userFilters) {
             $filters = array_merge($filters, $userFilters);

@@ -24,6 +24,7 @@ use Aerys\{
     Server,
     ServerObserver,
     Websocket,
+    function makeGenericBody,
     const HTTP_STATUS
 };
 use AsyncInterop\{ Loop, Promise };
@@ -113,15 +114,13 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         if ($request->getMethod() !== "GET") {
             $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
             $response->setHeader("Allow", "GET");
-            $response->setHeader("Aerys-Generic-Response", "enable");
-            $response->end();
+            $response->end(makeGenericBody(HTTP_STATUS["METHOD_NOT_ALLOWED"]));
             return;
         }
 
         if ($request->getProtocolVersion() !== "1.1") {
             $response->setStatus(HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]);
-            $response->setHeader("Aerys-Generic-Response", "enable");
-            $response->end();
+            $response->end(makeGenericBody(HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]));
             return;
         }
 
@@ -130,8 +129,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
             $response->setReason("Bad Request: Entity body disallowed for websocket endpoint");
             $response->setHeader("Connection", "close");
-            $response->setHeader("Aerys-Generic-Response", "enable");
-            $response->end();
+            $response->end(makeGenericBody(HTTP_STATUS["BAD_REQUEST"]));
             return;
         }
 
@@ -144,8 +142,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
         if (empty($hasUpgradeWebsocket)) {
             $response->setStatus(HTTP_STATUS["UPGRADE_REQUIRED"]);
-            $response->setHeader("Aerys-Generic-Response", "enable");
-            $response->end();
+            $response->end(makeGenericBody(HTTP_STATUS["UPGRADE_REQUIRED"]));
             return;
         }
 
@@ -164,16 +161,14 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $response->setStatus(HTTP_STATUS["UPGRADE_REQUIRED"]);
             $response->setReason("Bad Request: \"Connection: Upgrade\" header required");
             $response->setHeader("Upgrade", "websocket");
-            $response->setHeader("Aerys-Generic-Response", "enable");
-            $response->end();
+            $response->end(makeGenericBody(HTTP_STATUS["UPGRADE_REQUIRED"]));
             return;
         }
 
         if (!$acceptKey = $request->getHeader("Sec-Websocket-Key")) {
             $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
             $response->setReason("Bad Request: \"Sec-Websocket-Key\" header required");
-            $response->setHeader("Aerys-Generic-Response", "enable");
-            $response->end();
+            $response->end(makeGenericBody(HTTP_STATUS["BAD_REQUEST"]));
             return;
 
         }
@@ -182,8 +177,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
             $response->setReason("Bad Request: Requested Websocket version unavailable");
             $response->setHeader("Sec-WebSocket-Version", "13");
-            $response->setHeader("Aerys-Generic-Response", "enable");
-            $response->end();
+            $response->end(makeGenericBody(HTTP_STATUS["BAD_REQUEST"]));
             return;
         }
 
