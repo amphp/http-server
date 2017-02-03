@@ -186,6 +186,8 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         $onHandshakeResult = $this->application->onHandshake($request, $handshaker, ...$args);
         if ($onHandshakeResult instanceof \Generator) {
             $onHandshakeResult = yield from $onHandshakeResult;
+        } elseif ($onHandshakeResult instanceof Promise) {
+            $onHandshakeResult = yield $onHandshakeResult;
         }
         $request->setLocalVar("aerys.websocket", $onHandshakeResult);
         $handshaker->end();
@@ -249,7 +251,9 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         try {
             $onOpenResult = $this->application->onOpen($clientId, $onHandshakeResult);
             if ($onOpenResult instanceof \Generator) {
-                $onOpenResult = yield from $onOpenResult;
+                yield from $onOpenResult;
+            } elseif ($onOpenResult instanceof Promise) {
+                yield $onOpenResult;
             }
         } catch (\Throwable $e) {
             yield from $this->onAppError($clientId, $e);
@@ -293,7 +297,9 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         try {
             $onCloseResult = $this->application->onClose($clientId, $code, $reason);
             if ($onCloseResult instanceof \Generator) {
-                $onCloseResult = yield from $onCloseResult;
+                yield from $onCloseResult;
+            } elseif ($onCloseResult instanceof Promise) {
+                yield $onCloseResult;
             }
         } catch (\Throwable $e) {
             yield from $this->onAppError($clientId, $e);
@@ -389,9 +395,11 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
     private function tryAppOnData(Rfc6455Client $client, Message $msg): \Generator {
         try {
-            $gen = $this->application->onData($client->id, $msg);
-            if ($gen instanceof \Generator) {
-                yield from $gen;
+            $onDataResult = $this->application->onData($client->id, $msg);
+            if ($onDataResult instanceof \Generator) {
+                yield from $onDataResult;
+            } elseif ($onDataResult instanceof Promise) {
+                yield $onDataResult;
             }
         } catch (ClientException $e) {
         } catch (\Throwable $e) {
