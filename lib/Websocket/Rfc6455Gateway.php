@@ -1066,6 +1066,10 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         // stop parsing here ...
         $endpoint->onParsedError($client, $code, $errorMsg);
         yield $frames;
+        
+        while (1) {
+            yield 0;
+        }
     }
 
     public function monitor(): array {
