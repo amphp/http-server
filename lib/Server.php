@@ -435,7 +435,7 @@ class Server implements Monitor {
 
     private function onWritable(string $watcherId, $socket, Client $client) {
         $bytesWritten = @\fwrite($socket, $client->writeBuffer);
-        if (($bytesWritten === false || $bytesWritten === 0) && (!\is_resource($socket) || @\feof($socket))) {
+        if ($bytesWritten === false || ($bytesWritten === 0 && (!\is_resource($socket) || @\feof($socket)))) {
             if ($client->isDead == Client::CLOSED_RD) {
                 $this->close($client);
             } else {
