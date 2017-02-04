@@ -755,8 +755,10 @@ class Server implements Monitor {
         try {
             $out = ($application)($request, $response);
             if ($out instanceof \Generator) {
-                $promise = new Coroutine($out);
-                $promise->when(function($error) use ($ireq, $response, $filters) {
+                $out = new Coroutine($out);
+            }
+            if ($out instanceof Promise) {
+                $out->when(function($error) use ($ireq, $response, $filters) {
                     if (empty($error)) {
                         if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
                             return;
