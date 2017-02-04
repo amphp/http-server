@@ -426,17 +426,15 @@ class Server implements Monitor {
         }
     }
 
-    private function onWritable(string $watcherId, $socket, $client) {
+    private function onWritable(string $watcherId, $socket, Client $client) {
         $bytesWritten = @\fwrite($socket, $client->writeBuffer);
-        if ($bytesWritten === false) {
-            if (!\is_resource($socket) || @\feof($socket)) {
-                if ($client->isDead == Client::CLOSED_RD) {
-                    $this->close($client);
-                } else {
-                    $client->isDead = Client::CLOSED_WR;
-                    $client->writeWatcher = null;
-                    Loop::cancel($watcherId);
-                }
+        if (($bytesWritten === false || $bytesWritten === 0) && (!\is_resource($socket) || @\feof($socket))) {
+            if ($client->isDead == Client::CLOSED_RD) {
+                $this->close($client);
+            } else {
+                $client->isDead = Client::CLOSED_WR;
+                $client->writeWatcher = null;
+                \Amp\cancel($watcherId);
             }
         } else {
             $client->bufferSize -= $bytesWritten;
@@ -493,7 +491,7 @@ class Server implements Monitor {
         unset($this->keepAliveTimeouts[$client->id]);
     }
 
-    private function onReadable(string $watcherId, $socket, $client) {
+    private function onReadable(string $watcherId, $socket, Client $client) {
         $data = @\fread($socket, $this->options->ioGranularity);
         if ($data == "") {
             if (!\is_resource($socket) || @\feof($socket)) {
