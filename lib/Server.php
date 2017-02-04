@@ -394,6 +394,7 @@ class Server implements Monitor {
 
         $client->readWatcher = Loop::onReadable($socket, $this->onReadable, $client);
         $client->writeWatcher = Loop::onWritable($socket, $this->onWritable, $client);
+        Loop::disable($client->writeWatcher);
 
         $this->clients[$client->id] = $client;
 

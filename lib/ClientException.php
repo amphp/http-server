@@ -11,7 +11,7 @@ namespace Aerys;
  * ClientException indicates that the requesting client has (or will be) closed
  * the incoming data stream. [if thrown on a reading action]
  * It may still be connected and receive data on the outgoing stream.
- * [If thrown during a write action, the client is defer and completely
+ * [If thrown during a write action, the client is immediately and completely
  * disconnected.]
  *
  * Applications may optionally catch this exception in their callable actions

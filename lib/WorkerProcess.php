@@ -23,9 +23,9 @@ class WorkerProcess extends Process {
         register_shutdown_function(function() use ($console) {
             if (!$this->server) {
                 // ensure a clean reactor for clean shutdown
-                Loop::execute(function() use ($console) {
-                    yield ((new CommandClient((string) $console->getArg("config")))->stop());
-                });
+                Loop::execute(\Amp\wrap(function() use ($console) {
+                    yield (new CommandClient((string) $console->getArg("config")))->stop();
+                }));
             }
         });
 
