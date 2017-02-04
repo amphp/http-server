@@ -53,7 +53,7 @@ $console = new Aerys\Console($climate);
 
 $ipcUri = $console->getArg("ipc");
 
-if (!$ipcSock = @stream_socket_client($ipcUri)) {f
+if (!$ipcSock = @stream_socket_client($ipcUri)) {
     fwrite(STDERR, "Failed initializing IPC connection");
     exit(1);
 }
