@@ -434,7 +434,7 @@ class Server implements Monitor {
             } else {
                 $client->isDead = Client::CLOSED_WR;
                 $client->writeWatcher = null;
-                \Amp\cancel($watcherId);
+                Loop::cancel($watcherId);
             }
         } else {
             $client->bufferSize -= $bytesWritten;
@@ -451,7 +451,7 @@ class Server implements Monitor {
             if ($client->bufferDeferred && $client->bufferSize <= $client->options->softStreamCap) {
                 $deferred = $client->bufferDeferred;
                 $client->bufferDeferred = null;
-                $deferred->succeed();
+                $deferred->resolve();
             }
         }
     }
