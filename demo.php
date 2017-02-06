@@ -39,7 +39,8 @@ $router = router()
     })
     ->get("/long-poll", function(Request $req, Response $res) {
         while (true) {
-            $res->stream("hello!<br/>")->flush();
+            $res->stream("hello!<br/>");
+            $res->flush();
             yield new Amp\Pause(1000);
         }
     })
