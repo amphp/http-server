@@ -129,7 +129,7 @@ class Bootstrapper {
         $code = "return new class extends \\Aerys\\Options {\n";
         foreach ((new \ReflectionClass($options))->getProperties() as $property) {
             $name = $property->getName();
-            if ($name[0] !== "_" && $name[1] !== "_") {
+            if ($name[0] !== "_" || $name[1] !== "_") {
                 $code .= "\tpublic \${$name};\n";
             }
         }
