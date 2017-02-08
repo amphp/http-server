@@ -71,10 +71,8 @@ interface Endpoint {
      * @param int $clientId
      * @param int $code
      * @param string $reason
-     *
-     * @return Promise
      */
-    public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = ""): Promise;
+    public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "");
 
     /**
      * @param int $clientId

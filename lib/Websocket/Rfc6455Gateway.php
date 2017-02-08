@@ -624,12 +624,10 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         return all($promises);
     }
 
-    public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = ""): Promise {
+    public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
         if (isset($this->clients[$clientId])) {
-            return new Coroutine($this->doClose($this->clients[$clientId], $code, $reason));
+            rethrow(new Coroutine($this->doClose($this->clients[$clientId], $code, $reason)));
         }
-
-        return new Success;
     }
 
     public function getInfo(int $clientId): array {
