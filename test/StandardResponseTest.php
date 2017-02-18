@@ -58,7 +58,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
 
         $response = new StandardResponse($writer(), new Client);
         $response->end("test");
-        $expected = [":aerys-entity-length" => 4, ":reason" => null, ":status" => 200];
+        $expected = [":aerys-entity-length" => 4, ":reason" => "OK", ":status" => 200];
         $this->assertEquals($expected, $headers);
         $this->assertSame("test", $received);
         $this->assertTrue((bool) $response->state() && Response::STARTED);
@@ -94,7 +94,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
         $response->end();
         $response->stream("this should throw");
     }
-    
+
     public function testMultiStream() {
         $headers = [];
         $received = "";
@@ -110,11 +110,11 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
         $response->stream("bar\n");
         $response->stream("baz\n");
         $response->end("bat\n");
-        $expected = [":aerys-entity-length" => "*", ":reason" => null, ":status" => 200];
+        $expected = [":aerys-entity-length" => "*", ":reason" => "OK", ":status" => 200];
         $this->assertEquals($expected, $headers);
         $this->assertSame("foo\nbar\nbaz\nbat\n", $received);
     }
-    
+
     /**
      * @expectedException \LogicException
      * @expectedExceptionMessage Cannot flush: response already sent
@@ -124,7 +124,7 @@ class StandardResponseTest extends \PHPUnit_Framework_TestCase {
         $response->end();
         $response->flush();
     }
-    
+
     /**
      * @expectedException \LogicException
      * @expectedExceptionMessage Cannot flush: response output not started
