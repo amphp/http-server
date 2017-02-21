@@ -65,18 +65,19 @@ class BodyParser implements Promise {
                     $this->error = $e;
                 } else {
                     $this->result = $this->end($data);
-                }
 
-                if (!$this->parsing) {
-                    $this->parsing = true;
-                    foreach ($this->result->getNames() as $field) {
-                        foreach ($this->result->getArray($field) as $_) {
-                            foreach ($this->watchers as list($cb, $cbData)) {
-                                $cb($field, $cbData);
+                    if (!$this->parsing) {
+                        $this->parsing = true;
+                        foreach ($this->result->getNames() as $field) {
+                            foreach ($this->result->getArray($field) as $_) {
+                                foreach ($this->watchers as list($cb, $cbData)) {
+                                    $cb($field, $cbData);
+                                }
                             }
                         }
                     }
                 }
+
                 $this->parsing = true;
                 
                 foreach ($this->whens as list($cb, $cbData)) {
