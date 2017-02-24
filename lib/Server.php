@@ -901,15 +901,15 @@ class Server implements Monitor {
         assert($this->logDebug("close {$client->clientAddr}:{$client->clientPort}"));
         if ($client->bodyPromisors) {
             $ex = new ClientException;
-            foreach ($client->bodyPromisors as $promisor) {
+            foreach ($client->bodyPromisors as $key => $promisor) {
                 $promisor->fail($ex);
+                $client->bodyPromisors[$key] = new Deferred;
             }
         }
         if ($client->bufferPromisor) {
             $ex = $ex ?? new ClientException;
             $client->bufferPromisor->fail($ex);
         }
-
     }
 
     private function clear(Client $client) {
