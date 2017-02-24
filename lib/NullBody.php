@@ -2,9 +2,9 @@
 
 namespace Aerys;
 
-use Amp\{ Message, Success };
+use Amp\Success;
 
-final class NullBody extends Message {
+final class NullBody extends Body {
     public function __construct() {
         parent::__construct(new Success);
     }

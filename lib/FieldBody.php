@@ -2,10 +2,10 @@
 
 namespace Aerys;
 
-use Amp\{ Message, Stream };
+use Amp\Stream;
 use AsyncInterop\Promise;
 
-class FieldBody extends Message {
+class FieldBody extends Body {
     private $metadata;
 
     public function __construct(Stream $stream, Promise $metadata) {

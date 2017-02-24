@@ -558,7 +558,7 @@ class Server implements Monitor {
         $ireq = $this->initializeRequest($client, $parseResult);
         $id = $parseResult["id"];
         $client->bodyDeferreds[$id] = $bodyDeferred = new Emitter;
-        $ireq->body = new Message($bodyDeferred->stream());
+        $ireq->body = new Body($bodyDeferred->stream());
 
         $this->respond($ireq);
     }
