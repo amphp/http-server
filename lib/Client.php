@@ -36,7 +36,8 @@ class Client {
     public $httpDriver;
     public $exporter; // Requires Client object as first argument // @TODO cyclic reference to Server object
 
-    public $bodyDeferreds = [];
+    /** @var \Amp\Emitter[] */
+    public $bodyEmitters = [];
 
     public $parserEmitLock = false;
 

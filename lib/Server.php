@@ -467,8 +467,8 @@ class Server implements Monitor {
             }
         }
         foreach ($timeouts as $client) {
-            // do not close in case some longer response is taking longer, but do in case bodyDeferreds aren't fulfilled
-            if ($client->pendingResponses > \count($client->bodyDeferreds)) {
+            // do not close in case some longer response is taking longer, but do in case bodyEmitters aren't fulfilled
+            if ($client->pendingResponses > \count($client->bodyEmitters)) {
                 $this->clearKeepAliveTimeout($client);
             } else {
                 // timeouts are only active while Client is doing nothing (not sending nor receving) and no pending writes, hence we can just fully close here
@@ -502,12 +502,12 @@ class Server implements Monitor {
                     $client->isDead = Client::CLOSED_RD;
                     Loop::cancel($watcherId);
                     $client->readWatcher = null;
-                    if ($client->bodyDeferreds) {
+                    if ($client->bodyEmitters) {
                         $ex = new ClientException;
-                        foreach ($client->bodyDeferreds as $deferred) {
+                        foreach ($client->bodyEmitters as $deferred) {
                             $deferred->fail($ex);
                         }
-                        $client->bodyDeferreds = [];
+                        $client->bodyEmitters = [];
                     }
                 }
             }
@@ -551,22 +551,22 @@ class Server implements Monitor {
 
     private function onParsedEntityPart(Client $client, array $parseResult) {
         $id = $parseResult["id"];
-        $client->bodyDeferreds[$id]->emit($parseResult["body"]);
+        $client->bodyEmitters[$id]->emit($parseResult["body"]);
     }
 
     private function onParsedEntityHeaders(Client $client, array $parseResult) {
         $ireq = $this->initializeRequest($client, $parseResult);
         $id = $parseResult["id"];
-        $client->bodyDeferreds[$id] = $bodyDeferred = new Emitter;
-        $ireq->body = new Body($bodyDeferred->stream());
+        $client->bodyEmitters[$id] = $bodyEmitter = new Emitter;
+        $ireq->body = new Body($bodyEmitter->stream());
 
         $this->respond($ireq);
     }
 
     private function onParsedMessageWithEntity(Client $client, array $parseResult) {
         $id = $parseResult["id"];
-        $client->bodyDeferreds[$id]->resolve();
-        unset($client->bodyDeferreds[$id]);
+        $client->bodyEmitters[$id]->resolve();
+        unset($client->bodyEmitters[$id]);
         // @TODO Update trailer headers if present
 
         // Don't respond() because we always start the response when headers arrive
@@ -574,15 +574,15 @@ class Server implements Monitor {
 
     private function onEntitySizeWarning(Client $client, array $parseResult) {
         $id = $parseResult["id"];
-        $deferred = $client->bodyDeferreds[$id];
-        $client->bodyDeferreds[$id] = new Emitter;
+        $deferred = $client->bodyEmitters[$id];
+        $client->bodyEmitters[$id] = new Emitter;
         $deferred->fail(new ClientSizeException);
     }
 
     private function onParseError(Client $client, array $parseResult, string $error) {
         $this->clearKeepAliveTimeout($client);
 
-        if ($client->bodyDeferreds) {
+        if ($client->bodyEmitters) {
             $client->writeBuffer .= "\n\n$error";
             $client->shouldClose = true;
             $this->writeResponse($client, true);
@@ -892,9 +892,9 @@ class Server implements Monitor {
         }
         $this->clientsPerIP[$net]--;
         assert($this->logDebug("close {$client->clientAddr}:{$client->clientPort}"));
-        if ($client->bodyDeferreds) {
+        if ($client->bodyEmitters) {
             $ex = new ClientException;
-            foreach ($client->bodyDeferreds as $deferred) {
+            foreach ($client->bodyEmitters as $deferred) {
                 $deferred->fail($ex);
             }
         }
