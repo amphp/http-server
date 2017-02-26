@@ -5,16 +5,14 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/amphp/aerys/blob/master/LICENSE)
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/amphp/aerys.svg)](http://isitmaintained.com/project/amphp/aerys "Average time to resolve an issue")
 
-`amphp/aerys` is a non-blocking HTTP/1.1 and HTTP/2 application, websocket and static file server written in PHP based on the [`amp`](https://github.com/amphp/amp) concurrency framework.
+Aerys is a non-blocking HTTP/1.1 and HTTP/2 application, WebSocket and static file server written in PHP based on the [`amp`](https://github.com/amphp/amp) concurrency framework.
 
-Aerys has currently a few 0.x tags.
-APIs are still subject to very small changes and you may run into rogue ~~bugs~~ features.
-We love PRs, though :-)
+Aerys has currently a few 0.x tags. APIs are still subject to very small changes and you may run into rogue ~~bugs~~ features. We love PRs, though :-)
 
 ## Selected Built-in Features ...
 
 - Static file serving
-- Websockets
+- WebSockets
 - Dynamic app endpoint routing
 - Name-based virtual hosting
 - Full TLS support
@@ -29,28 +27,28 @@ We love PRs, though :-)
 ## Installation
 
 ```bash
-$ composer require amphp/aerys
+composer require amphp/aerys
 ```
 
 ## Documentation
 
-* [Official Documentation](http://amphp.org/docs/aerys/)
-* [Getting Started with Aerys](http://blog.kelunik.com/2015/10/21/getting-started-with-aerys.html)
-* [Getting Started with Aerys WebSockets](http://blog.kelunik.com/2015/10/20/getting-started-with-aerys-websockets.html)
+- [Official Documentation](http://amphp.org/docs/aerys/)
+- [Getting Started with Aerys](http://blog.kelunik.com/2015/10/21/getting-started-with-aerys.html)
+- [Getting Started with Aerys WebSockets](http://blog.kelunik.com/2015/10/20/getting-started-with-aerys-websockets.html)
 
 ## Running a Server
 
 ```bash
-$ php bin/aerys -c demo.php
+php bin/aerys -c demo.php
 ```
 
-Simply execute the aerys binary (with php7) to start a server listening on `http://localhost/` using
-the default configuration file (packaged with the repo).
+Simply execute the `aerys` binary (with PHP 7) to start a server listening on `http://localhost/` using
+the default configuration file (packaged with the repository).
 
 Add a `-d` switch to see some debug output like the routes called etc.:
 
 ```bash
-$ php bin/aerys -d -c demo.php
+php bin/aerys -d -c demo.php
 ```
 
 ## Config File
@@ -58,7 +56,7 @@ $ php bin/aerys -d -c demo.php
 Use the `-c, --config` switches to define the config file:
 
 ```bash
-$ php bin/aerys -c /path/to/my/config.php
+php bin/aerys -c /path/to/my/config.php
 ```
 
 Use the `-h, --help` switches for more instructions.
@@ -73,6 +71,10 @@ To start a static file server simply pass a root handler as part of your config 
     ->use(Aerys\root(__DIR__ . "/public"));
 ```
 
-## Example Host Configurations
+## Security
 
-@TODO
+If you discover any security related issues, please email bobwei9@hotmail.com or me@kelunik.com instead of using the issue tracker.
+
+## License
+
+The MIT License (MIT). Please see [LICENSE](./LICENSE) for more information.
