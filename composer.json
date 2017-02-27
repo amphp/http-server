@@ -36,14 +36,17 @@
         "amphp/file": "^0.1.1",
         "amphp/socket": "^0.9",
         "league/climate": "^3",
-        "nikic/fast-route": "^1",
         "psr/log": "^1"
+    },
+    "suggest": {
+        "nikic/fast-route": "To use embedded router"
     },
     "require-dev": {
         "amphp/artax": "^2",
         "fabpot/php-cs-fixer": "^1.9",
         "http2jp/hpack-test-case": "1.0",
-        "phpunit/phpunit": "^5.2"
+        "phpunit/phpunit": "^5.2",
+        "nikic/fast-route": "^1"
     },
     "autoload": {
         "psr-4": {
