@@ -504,10 +504,10 @@ class Server implements Monitor {
                     $client->readWatcher = null;
                     if ($client->bodyEmitters) {
                         $ex = new ClientException;
-                        foreach ($client->bodyEmitters as $deferred) {
-                            $deferred->fail($ex);
+                        foreach ($client->bodyEmitters as $key => $emitter) {
+                            $emitter->fail($ex);
+                            $client->bodyEmitters[$key] = new Emitter;
                         }
-                        $client->bodyEmitters = [];
                     }
                 }
             }
@@ -894,8 +894,9 @@ class Server implements Monitor {
         assert($this->logDebug("close {$client->clientAddr}:{$client->clientPort}"));
         if ($client->bodyEmitters) {
             $ex = new ClientException;
-            foreach ($client->bodyEmitters as $deferred) {
-                $deferred->fail($ex);
+            foreach ($client->bodyEmitters as $key => $emitter) {
+                $emitter->fail($ex);
+                $client->bodyEmitters[$key] = new Emitter;
             }
         }
         if ($client->bufferDeferred) {

@@ -8,7 +8,7 @@ class StandardResponse implements Response {
     private $state = self::NONE;
     private $headers = [
         ":status" => 200,
-        ":reason" => null
+        ":reason" => null,
     ];
     private $cookies = [];
 
@@ -163,6 +163,7 @@ class StandardResponse implements Response {
             $this->setCookies();
             // A * (as opposed to a numeric length) indicates "streaming entity content"
             $headers = $this->headers;
+            $headers[":reason"] = $headers[":reason"] ?? HTTP_REASON[$headers[":status"]] ?? "";
             $headers[":aerys-entity-length"] = "*";
             $this->codec->send($headers);
         }
@@ -226,6 +227,7 @@ class StandardResponse implements Response {
             // An @ (as opposed to a numeric length) indicates "no entity content"
             $entityValue = isset($finalBody) ? \strlen($finalBody) : "@";
             $headers = $this->headers;
+            $headers[":reason"] = $headers[":reason"] ?? HTTP_REASON[$headers[":status"]] ?? "";
             $headers[":aerys-entity-length"] = $entityValue;
             $this->codec->send($headers);
         }

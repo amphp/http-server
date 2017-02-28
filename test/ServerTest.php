@@ -114,7 +114,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             return $headers;
         }]);
 
-        $this->assertEquals([":status" => 200, ":reason" => null, "foo" => ["baz"], ":aerys-entity-length" => 7], $headers);
+        $this->assertEquals([":status" => 200, ":reason" => "OK", "foo" => ["baz"], ":aerys-entity-length" => 7], $headers);
         $this->assertEquals("message", $body);
     }
 
@@ -146,7 +146,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             return "BUZZ!";
         }]);
 
-        $this->assertEquals([":status" => 200, ":reason" => null, ":aerys-entity-length" => '*'], $headers);
+        $this->assertEquals([":status" => 200, ":reason" => "OK", ":aerys-entity-length" => '*'], $headers);
         $this->assertEquals("fooBarBUZZ!", $body);
     }
 
@@ -174,7 +174,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             return "Success!";
         }]);
 
-        $this->assertEquals([":status" => 200, ":reason" => null, ":aerys-entity-length" => '*'], $headers);
+        $this->assertEquals([":status" => 200, ":reason" => "OK", ":aerys-entity-length" => '*'], $headers);
         $this->assertEquals("Success!", $body);
     }
 
@@ -203,7 +203,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             return " is ";
         }]);
 
-        $this->assertEquals([":status" => 200, ":reason" => null, ":aerys-entity-length" => '*'], $headers);
+        $this->assertEquals([":status" => 200, ":reason" => "OK", ":aerys-entity-length" => '*'], $headers);
         $this->assertEquals("Weinand is 19!", $body);
     }
 
