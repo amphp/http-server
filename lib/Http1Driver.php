@@ -160,14 +160,14 @@ class Http1Driver implements HttpDriver {
                 $client->bufferDeferred = new Deferred;
                 $client->bufferDeferred->fail(new ClientException);
             }
-        } elseif (($client->isDead & Client::CLOSED_RD) && $client->bodyDeferreds) {
-            array_pop($client->bodyDeferreds)->fail(new ClientException); // just one element with Http1Driver
+        } elseif (($client->isDead & Client::CLOSED_RD) && $client->bodyEmitters) {
+            array_pop($client->bodyEmitters)->fail(new ClientException); // just one element with Http1Driver
         }
     }
 
     public function upgradeBodySize(InternalRequest $ireq) {
         $client = $ireq->client;
-        if ($client->bodyDeferreds) {
+        if ($client->bodyEmitters) {
             $client->streamWindow = $ireq->maxBodySize;
             if ($client->parserEmitLock) {
                 $client->requestParser->send("");

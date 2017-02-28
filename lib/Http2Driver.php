@@ -374,7 +374,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack(
     public function upgradeBodySize(InternalRequest $ireq) {
         $client = $ireq->client;
         $id = $ireq->streamId;
-        if (isset($client->bodyDeferreds[$id])) {
+        if (isset($client->bodyEmitters[$id])) {
             $this->writeFrame($client, pack("N", $client->streamWindow[$id] - $ireq->maxBodySize), self::WINDOW_UPDATE, self::NOFLAG, $id);
             $client->streamWindow[$id] = $ireq->maxBodySize;
         }
@@ -500,7 +500,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         goto connection_error;
                     }
 
-                    if (!isset($client->bodyDeferreds[$id])) {
+                    if (!isset($client->bodyEmitters[$id])) {
                         if (isset($headers[$id])) {
                             $error = self::PROTOCOL_ERROR;
                             goto connection_error;
@@ -692,9 +692,9 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "PRIORITY: - \n");
                     $error = \unpack("N", $buffer)[1];
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
-                    if (isset($client->bodyDeferreds[$id])) {
-                        $client->bodyDeferreds[$id]->fail(new ClientException);
-                        unset($client->bodyDeferreds[$id]);
+                    if (isset($client->bodyEmitters[$id])) {
+                        $client->bodyEmitters[$id]->fail(new ClientException);
+                        unset($client->bodyEmitters[$id]);
                     }
                     unset($headers[$id], $bodyLens[$id], $client->streamWindow[$id], $client->streamEnd[$id], $client->streamWindowBuffer[$id]);
 
