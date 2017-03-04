@@ -746,7 +746,7 @@ class Rfc6455Endpoint implements Middleware, Monitor, ServerObserver {
 
                     $result = $this->doClose($client, $code, $reason);
                     if ($result instanceof \Generator) {
-                        $promise[] = resolve($result);
+                        $promises[] = resolve($result);
                     }
 
                     if (!empty($client->writeDeferredControlQueue)) {
