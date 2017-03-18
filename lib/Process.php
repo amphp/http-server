@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use AsyncInterop\Loop;
+use Amp\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 abstract class Process {
@@ -118,10 +118,18 @@ abstract class Process {
 
             $this->exitCode = 1;
             $msg = "{$err["message"]} in {$err["file"]} on line {$err["line"]}";
-            Loop::execute(\Amp\wrap(function() use ($msg) {
-                $this->logger->critical($msg);
-                yield from $this->stop();
-            }), Loop::get());
+
+            $previous = Loop::get();
+
+            try {
+                Loop::set((new Loop\DriverFactory)->create());
+                Loop::run(function() use ($msg) {
+                    $this->logger->critical($msg);
+                    yield from $this->stop();
+                });
+            } finally {
+                Loop::set($previous);
+            }
         });
     }
 

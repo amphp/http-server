@@ -16,7 +16,7 @@ use Aerys\VhostContainer;
 use Aerys\Websocket;
 use Aerys\Websocket\Code;
 use Aerys\Websocket\Rfc6455Gateway;
-use AsyncInterop\Loop;
+use Amp\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
@@ -222,7 +222,7 @@ class WebsocketParserTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testUpgrading() {
-        Loop::execute(function() use (&$sock) {
+        Loop::run(function() use (&$sock) {
             $client = new Client;
             $client->exporter = function() use (&$exported) {
                 $exported = true;

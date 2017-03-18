@@ -4,8 +4,8 @@ namespace Aerys\Test;
 
 use Amp\ {
     Coroutine,
-    Success,
-    function wait
+    Promise,
+    Success
 };
 
 use Aerys\{
@@ -19,8 +19,6 @@ use Aerys\{
     StandardRequest,
     StandardResponse
 };
-
-use AsyncInterop\Promise;
 
 class RouterTest extends \PHPUnit_Framework_TestCase {
     function mockServer($state) {
@@ -107,7 +105,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $multiAction = $router($request, $response);
 
         if ($multiAction) {
-            wait(new Coroutine($multiAction));
+            Promise\wait(new Coroutine($multiAction));
         }
 
         $this->assertEquals(\Aerys\HTTP_STATUS["FOUND"], $response->status);
@@ -125,7 +123,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $multiAction = $router($request, $response);
 
         if ($multiAction) {
-            wait(new Coroutine($multiAction));
+            Promise\wait(new Coroutine($multiAction));
         }
 
         $this->assertEquals(\Aerys\Response::ENDED, $response->state());
@@ -156,7 +154,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $this->assertFalse($router->do($ireq)->valid());
         $multiAction = $router($request, $response);
 
-        wait(new Coroutine($multiAction));
+        Promise\wait(new Coroutine($multiAction));
 
         $this->assertSame(3, $i);
         $this->assertSame(["name" => "daniel", "age" => "32"], $ireq->locals["aerys.routeArgs"]);

@@ -14,7 +14,7 @@ use Aerys\Ticker;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Socket as sock;
-use AsyncInterop\Loop;
+use Amp\Loop;
 
 // @TODO test communication on half-closed streams (both ways) [also with yield message] (also with HTTP/1 pipelining...)
 
@@ -340,7 +340,7 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testUnencryptedIO() {
-        Loop::execute(\Amp\wrap(function() {
+        Loop::run(function() {
             list($address, $server) = yield from $this->startServer(function (Client $client, $write) {
                 $this->assertFalse($client->isEncrypted);
 
@@ -362,11 +362,11 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals("cd", yield $client->read(2));
             yield $server->stop();
             Loop::stop();
-        }));
+        });
     }
 
     function testEncryptedIO() {
-        Loop::execute(\Amp\wrap(function() {
+        Loop::run(function() {
             $deferred = new \Amp\Deferred;
             list($address) = yield from $this->startServer(function (Client $client, $write) use ($deferred) {
                 try {
@@ -409,6 +409,6 @@ class ServerTest extends \PHPUnit_Framework_TestCase {
 
             yield $deferred->promise();
             Loop::stop();
-        }));
+        });
     }
 }

@@ -4,11 +4,11 @@ namespace Aerys\Test;
 
 use Aerys\Bootstrapper;
 use Aerys\CommandClient;
-use AsyncInterop\Loop;
+use Amp\Loop;
 
 class CommandClientTest extends \PHPUnit_Framework_TestCase {
     public function testSendRestart() {
-        Loop::execute(\Amp\wrap(function () {
+        Loop::run(function () {
             $path = CommandClient::socketPath(Bootstrapper::selectConfigFile(__FILE__));
             $unix = in_array("unix", \stream_get_transports(), true);
 
@@ -63,6 +63,6 @@ class CommandClientTest extends \PHPUnit_Framework_TestCase {
                     @unlink($path);
                 }
             }
-        }));
+        });
     }
 }

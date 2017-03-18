@@ -4,7 +4,6 @@ namespace Aerys\Test;
 
 use Aerys\{
     Client,
-    ClientException,
     InternalRequest,
     Logger,
     NullBody,
@@ -17,8 +16,7 @@ use Aerys\{
     Websocket\Rfc6455Gateway,
     const HTTP_STATUS
 };
-use Amp\{ Deferred, Emitter, Message, Pause };
-use AsyncInterop\Loop;
+use Amp\{ Deferred, Emitter, Loop, Message, Pause };
 
 class NullWebsocket implements Websocket {
     public $test;
@@ -116,21 +114,21 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testFullSequence() {
-        Loop::execute(\Amp\wrap(function() {
+        Loop::run(function() {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             $server->requireClientFree = true;
             $server->state = Server::STOPPING;
             yield $gateway->update($server);
             $server->state = Server::STOPPED;
             yield $gateway->update($server);
-        }));
+        });
     }
 
     /**
      * @dataProvider provideParsedData
      */
     function testParseData($data, $func) {
-        Loop::execute(\Amp\wrap(function() use ($data, $func) {
+        Loop::run(function() use ($data, $func) {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this, $func) extends NullWebsocket {
                 public $func;
                 public $gen;
@@ -151,7 +149,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             $this->assertFalse($ws->gen->valid());
 
             Loop::stop();
-        }));
+        });
     }
 
     function provideParsedData() {
@@ -184,7 +182,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider provideErrorEvent
      */
     function testAppError($method, $call) {
-        Loop::execute(\Amp\wrap(function() use ($method, $call) {
+        Loop::run(function() use ($method, $call) {
             $ws = $this->createMock('Aerys\Websocket');
             $ws->expects($this->once())
                 ->method($method)
@@ -206,7 +204,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
 
             $this->assertSocket([[Rfc6455Gateway::OP_CLOSE]], stream_get_contents($sock));
             Loop::stop();
-        }));
+        });
     }
 
     function provideErrorEvent() {
@@ -304,7 +302,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     }
 
     function runClose(callable $closeCb) {
-        Loop::execute(\Amp\wrap(function() use ($closeCb) {
+        Loop::run(function() use ($closeCb) {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 public $closed = false;
                 function onClose(int $clientId, int $code, string $reason) {
@@ -314,7 +312,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             $server->requireClientFree = true;
             yield from $closeCb($gateway, $sock, $ws, $client);
             Loop::stop();
-        }));
+        });
     }
 
     function testCloseFrame() {
@@ -344,7 +342,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testIORead() {
-        Loop::execute(\Amp\wrap(function () {
+        Loop::run(function () {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             fwrite($sock, WebsocketParserTest::compile(Rfc6455Gateway::OP_PING, true, "foo"));
             yield $this->waitOnRead($sock);
@@ -352,11 +350,11 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             $this->assertSocket([[Rfc6455Gateway::OP_PONG, "foo"]], stream_get_contents($sock));
 
             Loop::stop();
-        }));
+        });
     }
 
     function testMultiWrite() {
-        Loop::execute(\Amp\wrap(function() {
+        Loop::run(function() {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 function onData(int $clientId, Websocket\Message $msg) {
                     $this->endpoint->broadcast("foo".str_repeat("*", 65528 /* fill buffer */));
@@ -382,11 +380,11 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             ], $data);
     
             Loop::stop();
-        }));
+        });
     }
 
     function testFragmentation() {
-        Loop::execute(\Amp\wrap(function () {
+        Loop::run(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             $endpoint->broadcast(str_repeat("*", 131046), true)->when(function() use ($sock, $server) {
                 stream_socket_shutdown($sock, STREAM_SHUT_WR);
@@ -400,17 +398,17 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             $this->assertSocket([[Rfc6455Gateway::OP_BIN, str_repeat("*", 65523)], [Rfc6455Gateway::OP_CONT, str_repeat("*", 65523)]], $data);
     
             Loop::stop();
-        }));
+        });
     }
 
     function testSinglePong() {
-        Loop::execute(\Amp\wrap(function () {
+        Loop::run(function () {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             $client->pingCount = 2;
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_PONG, "1");
             $this->assertEquals(1, $client->pongCount);
     
             Loop::stop();
-        }));
+        });
     }
 }

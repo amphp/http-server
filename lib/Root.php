@@ -4,7 +4,7 @@ namespace Aerys;
 
 use Amp as amp;
 use Amp\File as file;
-use AsyncInterop\Loop;
+use Amp\Loop;
 
 class Root implements ServerObserver {
     const PRECOND_NOT_MODIFIED = 1;
@@ -752,7 +752,7 @@ class Root implements ServerObserver {
     /**
      * Receive notifications from the server when it starts/stops
      */
-    public function update(Server $server): \AsyncInterop\Promise {
+    public function update(Server $server): \Amp\Promise {
         switch ($server->state()) {
             case Server::STARTING:
                 $this->loadMimeFileTypes(__DIR__."/../etc/mime");

@@ -108,7 +108,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
                 }));
             $generator = $root->__invoke($request, $response);
             $promise = new \Amp\Coroutine($generator);
-            \Amp\wait($promise);
+            \Amp\Promise\wait($promise);
             $this->assertTrue($wasCalled);
         }
 
@@ -227,7 +227,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         ;
         $generator = $root->__invoke($request, $response);
         $promise = new \Amp\Coroutine($generator);
-        \Amp\wait($promise);
+        \Amp\Promise\wait($promise);
 
         return $root;
     }
@@ -256,7 +256,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         ;
         $generator = $root->__invoke($request, $response);
         $promise = new \Amp\Coroutine($generator);
-        \Amp\wait($promise);
+        \Amp\Promise\wait($promise);
 
         return $root;
     }
@@ -276,7 +276,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->withConsecutive(["Allow", "GET, HEAD, OPTIONS"], ["Accept-Ranges", "bytes"]);
         $generator = $root->__invoke($request, $response);
         $promise = new \Amp\Coroutine($generator);
-        \Amp\wait($promise);
+        \Amp\Promise\wait($promise);
     }
 
     function testPreconditionFailure() {
@@ -300,7 +300,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->with(\Aerys\HTTP_STATUS["PRECONDITION_FAILED"]);
         $generator = $root->__invoke($request, $response);
         $promise = new \Amp\Coroutine($generator);
-        \Amp\wait($promise);
+        \Amp\Promise\wait($promise);
     }
 
     function testPreconditionNotModified() {
@@ -333,7 +333,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             );
         $generator = $root->__invoke($request, $response);
         $promise = new \Amp\Coroutine($generator);
-        \Amp\wait($promise);
+        \Amp\Promise\wait($promise);
     }
 
     function testPreconditionRangeFail() {
@@ -360,7 +360,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         ;
         $generator = $root->__invoke($request, $response);
         $promise = new \Amp\Coroutine($generator);
-        \Amp\wait($promise);
+        \Amp\Promise\wait($promise);
     }
 
     function testBadRange() {
@@ -390,7 +390,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
             ->with("Content-Range", "*/4");
         $generator = $root->__invoke($request, $response);
         $promise = new \Amp\Coroutine($generator);
-        \Amp\wait($promise);
+        \Amp\Promise\wait($promise);
     }
 
     /**
@@ -422,7 +422,7 @@ class RootTest extends \PHPUnit_Framework_TestCase {
         })(), new Client));
         $this->assertNull($part);
         $promise = new \Amp\Coroutine($generator);
-        \Amp\wait($promise);
+        \Amp\Promise\wait($promise);
         $this->assertEquals(\Aerys\HTTP_STATUS["PARTIAL_CONTENT"], $headers[":status"]);
         $cb($headers, $body);
     }
@@ -482,6 +482,6 @@ PART;
                 }
                 return $response;
             }));
-        \Amp\wait(new \Amp\Coroutine($root->__invoke($request, $response)));
+        \Amp\Promise\wait(new \Amp\Coroutine($root->__invoke($request, $response)));
     }
 }

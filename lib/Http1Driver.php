@@ -2,8 +2,7 @@
 
 namespace Aerys;
 
-use Amp\Deferred;
-use AsyncInterop\Loop;
+use Amp\{ Deferred, Loop };
 
 class Http1Driver implements HttpDriver {
     const HEADER_REGEX = "(

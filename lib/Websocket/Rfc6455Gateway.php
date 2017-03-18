@@ -8,11 +8,11 @@ use Amp\{
     Deferred,
     Emitter,
     Failure,
-    Success,
-    function all,
-    function any,
-    function rethrow
+    Loop,
+    Promise,
+    Success
 };
+
 use Aerys\{
     ClientException,
     InternalRequest,
@@ -27,7 +27,7 @@ use Aerys\{
     function makeGenericBody,
     const HTTP_STATUS
 };
-use AsyncInterop\{ Loop, Promise };
+
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
@@ -237,7 +237,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         $this->clients[$client->id] = $client;
         $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
 
-        rethrow(new Coroutine($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"])));
+        Promise\rethrow(new Coroutine($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"])));
 
         return $client;
     }
@@ -357,7 +357,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                     @stream_socket_shutdown($client->socket, STREAM_SHUT_RD);
                     Loop::cancel($client->readWatcher);
                     $client->readWatcher = null;
-                    rethrow(new Coroutine($this->doClose($client, $code, $reason)));
+                    Promise\rethrow(new Coroutine($this->doClose($client, $code, $reason)));
                 }
                 break;
 
@@ -382,7 +382,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         if (!$client->msgDeferred) {
             $client->msgDeferred = new Emitter;
             $msg = new Message($client->msgDeferred->stream(), $binary);
-            rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
+            Promise\rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
         }
 
         $client->msgDeferred->emit($data);
@@ -421,7 +421,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             }
 
             if (!$client->closedAt) {
-                rethrow(new Coroutine($this->doClose($client, $code, $msg)));
+                Promise\rethrow(new Coroutine($this->doClose($client, $code, $msg)));
             }
         }
     }
@@ -453,7 +453,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 $client->closedAt = $this->now;
                 $code = Code::ABNORMAL_CLOSE;
                 $reason = "Client closed underlying TCP connection";
-                rethrow(new Coroutine($this->tryAppOnClose($client->id, $code, $reason)));
+                Promise\rethrow(new Coroutine($this->tryAppOnClose($client->id, $code, $reason)));
             } else {
                 unset($this->closeTimeouts[$client->id]);
             }
@@ -613,7 +613,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 $promises[] = $this->send($data, $binary, $id);
             }
         }
-        return all($promises);
+        return Promise\all($promises);
     }
 
     public function multicast(string $data, bool $binary, array $clientIds): Promise {
@@ -621,12 +621,12 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         foreach ($clientIds as $id) {
             $promises[] = $this->send($data, $binary, $id);
         }
-        return all($promises);
+        return Promise\all($promises);
     }
 
     public function close(int $clientId, int $code = Code::NORMAL_CLOSE, string $reason = "") {
         if (isset($this->clients[$clientId])) {
-            rethrow(new Coroutine($this->doClose($this->clients[$clientId], $code, $reason)));
+            Promise\rethrow(new Coroutine($this->doClose($this->clients[$clientId], $code, $reason)));
         }
     }
 
@@ -714,7 +714,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                         }
                     }
                 }
-                $promise = any($promises);
+                $promise = Promise\any($promises);
                 $promise->when(function () {
                     foreach ($this->clients as $client) {
                         $this->unloadClient($client);

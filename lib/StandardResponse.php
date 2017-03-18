@@ -150,9 +150,9 @@ class StandardResponse implements Response {
      *
      * @param string $partialBody
      * @throws \Error If response output already complete
-     * @return \AsyncInterop\Promise to be succeeded whenever local buffers aren't full
+     * @return \Amp\Promise to be succeeded whenever local buffers aren't full
      */
-    public function stream(string $partialBody): \AsyncInterop\Promise {
+    public function stream(string $partialBody): \Amp\Promise {
         if ($this->state & self::ENDED) {
             throw new \Error(
                 "Cannot stream: response already sent"

@@ -2,7 +2,7 @@
 
 namespace Aerys\Websocket;
 
-use AsyncInterop\Promise;
+use Amp\Promise;
 
 class Rfc6455Endpoint implements Endpoint {
     private $gateway;

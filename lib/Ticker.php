@@ -2,8 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{ Success, Struct };
-use AsyncInterop\{ Loop, Promise };
+use Amp\{ Loop, Promise, Success, Struct };
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Ticker implements ServerObserver {

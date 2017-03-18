@@ -2,8 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{ CallableMaker, Deferred, Failure, Success };
-use AsyncInterop\Loop;
+use Amp\{ CallableMaker, Deferred, Failure, Loop, Success };
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WatcherProcess extends Process {
@@ -79,7 +78,7 @@ class WatcherProcess extends Process {
         for ($i = 0; $i < $this->workerCount; $i++) {
             $promises[] = $this->spawn();
         }
-        yield \Amp\any($promises);
+        yield \Amp\Promise\any($promises);
     }
 
     private function checkCommands(Console $console) {

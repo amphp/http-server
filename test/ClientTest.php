@@ -17,7 +17,7 @@ use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Artax\Notify;
 use Amp\Artax\SocketException;
-use AsyncInterop\Loop;
+use Amp\Loop;
 
 class ClientTest extends \PHPUnit_Framework_TestCase {
     function startServer($handler, $filters = []) {
@@ -40,7 +40,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
     }
 
     function testTrivialHttpRequest() {
-        Loop::execute(\Amp\wrap(function() {
+        Loop::run(function() {
             $deferred = new \Amp\Deferred;
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) {
                 $this->assertEquals("GET", $req->getMethod());
@@ -76,11 +76,11 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals("with value", $cookies->get("localhost", "/", "cookie")[0]->getValue());
 
             Loop::stop();
-        }));
+        });
     }
 
     function testClientDisconnect() {
-        Loop::execute(\Amp\wrap(function() {
+        Loop::run(function() {
             $deferred = new \Amp\Deferred;
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) use ($deferred, &$server) {
                 $this->assertEquals("POST", $req->getMethod());
@@ -139,6 +139,6 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
 
             yield $deferred->promise();
             Loop::stop();
-        }));
+        });
     }
 }

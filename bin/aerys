@@ -116,11 +116,11 @@ try {
     exit(1);
 }
 
-AsyncInterop\Loop::execute(Amp\wrap(function () use ($console) {
+Amp\Loop::run(function () use ($console) {
     $logger = new Aerys\ConsoleLogger($console);
     $process = ($console->isArgDefined("debug") || PHP_SAPI === "phpdbg")
         ? new Aerys\DebugProcess($logger)
         : new Aerys\WatcherProcess($logger)
     ;
     yield from $process->start($console);
-}));
+});

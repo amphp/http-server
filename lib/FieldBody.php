@@ -2,8 +2,7 @@
 
 namespace Aerys;
 
-use Amp\Stream;
-use AsyncInterop\Promise;
+use Amp\{ Promise, Stream };
 
 class FieldBody extends Body {
     private $metadata;

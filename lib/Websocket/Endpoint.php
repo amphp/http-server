@@ -2,7 +2,7 @@
 
 namespace Aerys\Websocket;
 
-use AsyncInterop\Promise;
+use Amp\Promise;
 
 interface Endpoint {
     /**
@@ -11,7 +11,7 @@ interface Endpoint {
      * @param string $data Data to send.
      * @param int $clientId
      *
-     * @return \AsyncInterop\Promise<int>
+     * @return \Amp\Promise<int>
      */
     public function send(string $data, int $clientId): Promise;
 
@@ -21,7 +21,7 @@ interface Endpoint {
      * @param string $data Data to send.
      * @param int[] $exceptIds List of IDs to exclude from the broadcast.
      *
-     * @return \AsyncInterop\Promise<int>
+     * @return \Amp\Promise<int>
      */
     public function broadcast(string $data, array $exceptIds = []): Promise;
 
@@ -31,7 +31,7 @@ interface Endpoint {
      * @param string $data Data to send.
      * @param int[]|null $clientIds Array of client IDs.
      *
-     * @return \AsyncInterop\Promise<int>
+     * @return \Amp\Promise<int>
      */
     public function multicast(string $data, array $clientIds): Promise;
 
@@ -41,7 +41,7 @@ interface Endpoint {
      * @param string $data Data to send.
      * @param int $clientId
      *
-     * @return \AsyncInterop\Promise<int>
+     * @return \Amp\Promise<int>
      */
     public function sendBinary(string $data, int $clientId): Promise;
 
@@ -51,7 +51,7 @@ interface Endpoint {
      * @param string $data Data to send.
      * @param int[] $exceptIds List of IDs to exclude from the broadcast.
      *
-     * @return \AsyncInterop\Promise<int>
+     * @return \Amp\Promise<int>
      */
     public function broadcastBinary(string $data, array $exceptIds = []): Promise;
 
@@ -61,7 +61,7 @@ interface Endpoint {
      * @param string $data Data to send.
      * @param int[]|null $clientIds Array of client IDs.
      *
-     * @return \AsyncInterop\Promise<int>
+     * @return \Amp\Promise<int>
      */
     public function multicastBinary(string $data, array $clientIds): Promise;
 

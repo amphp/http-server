@@ -2,8 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{ CallableMaker, Deferred, Emitter, Internal\Producer, Stream, Success };
-use AsyncInterop\Loop;
+use Amp\{ CallableMaker, Deferred, Emitter, Internal\Producer, Loop, Stream, Success };
 
 class BodyParser implements Stream {
     use CallableMaker;
@@ -63,7 +62,7 @@ class BodyParser implements Stream {
 
         $this->initIncremental = \Amp\wrap($this->callableFromInstanceMethod('initIncremental'));
 
-        Loop::defer(\Amp\wrap(function() {
+        Loop::defer(function() {
             if ($this->parsing === 1) {
                 yield from $this->initIncremental();
             }
@@ -91,7 +90,7 @@ class BodyParser implements Stream {
             } finally {
                 $this->req = null;
             }
-        }));
+        });
     }
 
     private function end($data): ParsedBody {

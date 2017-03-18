@@ -2,10 +2,9 @@
 
 namespace Aerys;
 
-use Amp\{ CallableMaker, Coroutine, Message, Success, Failure, Emitter, Deferred };
-use function Amp\{ timeout, any, all };
-use AsyncInterop\{ Loop, Promise };
+use Amp\{ CallableMaker, Coroutine, Deferred, Emitter, Failure, Loop, Promise, Success };
 use Psr\Log\LoggerInterface as PsrLogger;
+use function Amp\Promise\{ timeout, any, all };
 
 class Server implements Monitor {
     use CallableMaker;

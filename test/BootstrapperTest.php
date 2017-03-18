@@ -11,7 +11,7 @@ use Aerys\Logger;
 use Aerys\StandardRequest;
 use Aerys\StandardResponse;
 use Amp\Coroutine;
-use function Amp\wait;
+use function Amp\Promise\wait;
 use League\CLImate\CLImate;
 
 class BootstrapperTest extends \PHPUnit_Framework_TestCase {

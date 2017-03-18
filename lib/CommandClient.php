@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use AsyncInterop\Loop;
+use Amp\Loop;
 
 class CommandClient {
     use \Amp\CallableMaker;
@@ -25,7 +25,7 @@ class CommandClient {
         return sys_get_temp_dir()."/aerys_".strtr(base64_encode(sha1(Bootstrapper::selectConfigFile($config), true)), "+/", "-_").".tmp";
     }
 
-    private function send($msg): \AsyncInterop\Promise {
+    private function send($msg): \Amp\Promise {
         if (!$this->sock) {
             $this->establish();
         } elseif (!$this->writeWatcher) {
@@ -33,7 +33,7 @@ class CommandClient {
         }
         $msg = json_encode($msg);
         $this->buf .= pack("N", \strlen($msg)) . $msg;
-        return ($this->deferreds[\strlen($this->buf)] = new \Amp\Deferred)->promise();
+        return ($this->deferreds[] = new \Amp\Deferred)->promise();
     }
 
     private function establish() {
@@ -41,7 +41,7 @@ class CommandClient {
         if ($unix) {
             $promise = \Amp\Socket\connect("unix://$this->path.sock");
         } else {
-            $promise = \Amp\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect');
+            $promise = \Amp\Promise\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect');
         }
         
         $promise->when(function ($e, $sock) {
@@ -92,11 +92,11 @@ class CommandClient {
         }
     }
 
-    public function restart(): \AsyncInterop\Promise {
+    public function restart(): \Amp\Promise {
         return $this->send(["action" => "restart"]);
     }
 
-    public function stop(): \AsyncInterop\Promise {
+    public function stop(): \Amp\Promise {
         return $this->send(["action" => "stop"]);
     }
 
