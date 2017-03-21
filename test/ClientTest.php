@@ -18,8 +18,9 @@ use Aerys\VhostContainer;
 use Amp\Artax\Notify;
 use Amp\Artax\SocketException;
 use Amp\Loop;
+use PHPUnit\Framework\TestCase;
 
-class ClientTest extends \PHPUnit_Framework_TestCase {
+class ClientTest extends TestCase {
     function startServer($handler, $filters = []) {
         if (!$server = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
             $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");

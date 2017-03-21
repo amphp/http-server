@@ -17,6 +17,7 @@ use Aerys\{
     const HTTP_STATUS
 };
 use Amp\{ Deferred, Emitter, Loop, Message, Pause };
+use PHPUnit\Framework\TestCase;
 
 class NullWebsocket implements Websocket {
     public $test;
@@ -30,7 +31,7 @@ class NullWebsocket implements Websocket {
     public function onStop() { }
 }
 
-class WebsocketTest extends \PHPUnit_Framework_TestCase {
+class WebsocketTest extends TestCase {
     function assertSocket($expectations, $data) {
         while ($expected = array_shift($expectations)) {
             $op = $expected[0];
@@ -378,7 +379,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 [Rfc6455Gateway::OP_TEXT, "baz"],
                 [Rfc6455Gateway::OP_CLOSE],
             ], $data);
-    
+
             Loop::stop();
         });
     }
@@ -396,7 +397,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
                 $data .= $x = fread($sock, 8192);
             } while ($x != "" || !feof($sock));
             $this->assertSocket([[Rfc6455Gateway::OP_BIN, str_repeat("*", 65523)], [Rfc6455Gateway::OP_CONT, str_repeat("*", 65523)]], $data);
-    
+
             Loop::stop();
         });
     }
@@ -407,7 +408,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
             $client->pingCount = 2;
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_PONG, "1");
             $this->assertEquals(1, $client->pongCount);
-    
+
             Loop::stop();
         });
     }

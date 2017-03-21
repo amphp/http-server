@@ -5,8 +5,9 @@ namespace Aerys\Test;
 use Aerys\Bootstrapper;
 use Aerys\CommandClient;
 use Amp\Loop;
+use PHPUnit\Framework\TestCase;
 
-class CommandClientTest extends \PHPUnit_Framework_TestCase {
+class CommandClientTest extends TestCase {
     public function testSendRestart() {
         Loop::run(function () {
             $path = CommandClient::socketPath(Bootstrapper::selectConfigFile(__FILE__));

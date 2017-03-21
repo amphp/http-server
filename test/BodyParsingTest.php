@@ -8,8 +8,9 @@ use Aerys\Options;
 use Aerys\StandardRequest;
 use Amp\Message;
 use Amp\Loop;
+use PHPUnit\Framework\TestCase;
 
-class BodyParsingTest extends \PHPUnit_Framework_TestCase {
+class BodyParsingTest extends TestCase {
     /**
      * @dataProvider requestBodies
      */

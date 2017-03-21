@@ -8,8 +8,9 @@ use Aerys\Http1Driver;
 use Aerys\Http2Driver;
 use Aerys\StandardRequest;
 use Aerys\StandardResponse;
+use PHPUnit\Framework\TestCase;
 
-class HostTest extends \PHPUnit_Framework_TestCase {
+class HostTest extends TestCase {
     function getHost() { // we do not want to add to definitions, that's for the Bootstrapper test.
         return (new \ReflectionClass('Aerys\Host'))->newInstanceWithoutConstructor();
     }

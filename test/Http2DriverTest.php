@@ -7,8 +7,9 @@ use Aerys\HPack;
 use Aerys\Http2Driver;
 use Aerys\InternalRequest;
 use Aerys\Options;
+use PHPUnit\Framework\TestCase;
 
-class Http2DriverTest extends \PHPUnit_Framework_TestCase {
+class Http2DriverTest extends TestCase {
 
     function packFrame($data, $type, $flags, $stream = 0) {
         return substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;

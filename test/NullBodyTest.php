@@ -4,8 +4,9 @@ namespace Aerys\Test;
 
 use Amp\Success;
 use Aerys\NullBody;
+use PHPUnit\Framework\TestCase;
 
-class NullBodyTest extends \PHPUnit_Framework_TestCase {
+class NullBodyTest extends TestCase {
     public function testBufferReturnsFulfilledPromiseWithEmptyString() {
         $body = new NullBody;
         $invoked = false;

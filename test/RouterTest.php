@@ -19,8 +19,9 @@ use Aerys\{
     StandardRequest,
     StandardResponse
 };
+use PHPUnit\Framework\TestCase;
 
-class RouterTest extends \PHPUnit_Framework_TestCase {
+class RouterTest extends TestCase {
     function mockServer($state) {
         return new class($state) extends Server {
             private $state;

@@ -9,8 +9,9 @@ use Aerys\Server;
 use Aerys\ServerObserver;
 use Aerys\StandardResponse;
 use Amp\File as file;
+use PHPUnit\Framework\TestCase;
 
-class RootTest extends \PHPUnit_Framework_TestCase {
+class RootTest extends TestCase {
     private static function fixturePath() {
         return \sys_get_temp_dir() . "/aerys_root_test_fixture";
     }

@@ -13,8 +13,9 @@ use Aerys\StandardResponse;
 use Amp\Coroutine;
 use function Amp\Promise\wait;
 use League\CLImate\CLImate;
+use PHPUnit\Framework\TestCase;
 
-class BootstrapperTest extends \PHPUnit_Framework_TestCase {
+class BootstrapperTest extends TestCase {
     /**
      * @expectedException \Error
      * @expectedExceptionMessage No config file found, specify one via the -c switch on command line

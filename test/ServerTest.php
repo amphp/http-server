@@ -15,10 +15,11 @@ use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Socket as sock;
 use Amp\Loop;
+use PHPUnit\Framework\TestCase;
 
 // @TODO test communication on half-closed streams (both ways) [also with yield message] (also with HTTP/1 pipelining...)
 
-class ServerTest extends \PHPUnit_Framework_TestCase {
+class ServerTest extends TestCase {
     function tryRequest($emit, $responder, $middlewares = []) {
         $gen = $this->tryIterativeRequest($responder, $middlewares);
         foreach ($emit as $part) {

@@ -3,8 +3,9 @@
 namespace Aerys\Test;
 
 use Aerys\{ Client, Filter, InternalRequest, Response, StandardResponse, function responseFilter };
+use PHPUnit\Framework\TestCase;
 
-class StandardResponseTest extends \PHPUnit_Framework_TestCase {
+class StandardResponseTest extends TestCase {
 
     /**
      * @expectedException \Error

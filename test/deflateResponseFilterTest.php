@@ -5,8 +5,9 @@ namespace Aerys\Test;
 use Aerys\Client;
 use Aerys\InternalRequest;
 use Aerys\Options;
+use PHPUnit\Framework\TestCase;
 
-class deflateResponseFilterTest extends \PHPUnit_Framework_TestCase {
+class deflateResponseFilterTest extends TestCase {
     function testNoDeflate() {
         $longData = str_repeat("10", 1000);
         $shortData = str_repeat("10", 10);

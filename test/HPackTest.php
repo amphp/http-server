@@ -3,8 +3,9 @@
 namespace Aerys\Test;
 
 use Aerys\HPack;
+use PHPUnit\Framework\TestCase;
 
-class HPackTest extends \PHPUnit_Framework_TestCase {
+class HPackTest extends TestCase {
     /**
      * @dataProvider provideDecodeCases
      */

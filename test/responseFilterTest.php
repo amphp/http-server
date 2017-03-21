@@ -3,8 +3,9 @@
 namespace Aerys\Test;
 
 use Aerys\{ FilterException, InternalRequest, function responseFilter };
+use PHPUnit\Framework\TestCase;
 
-class responseFilterTest extends \PHPUnit_Framework_TestCase {
+class responseFilterTest extends TestCase {
     private function getFilter(array $filters, InternalRequest $ireq = null) {
         $ireq = $ireq ?: new InternalRequest;
         return responseFilter($filters, $ireq);

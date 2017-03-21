@@ -6,8 +6,9 @@ use Aerys\Client;
 use Aerys\InternalRequest;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
+use PHPUnit\Framework\TestCase;
 
-class VhostTest extends \PHPUnit_Framework_TestCase {
+class VhostTest extends TestCase {
     function testVhostSelection() {
         $vhosts = new VhostContainer($this->createMock('Aerys\HttpDriver'));
         $localvhost = new Vhost("localhost", [["127.0.0.1", 80], ["::", 8080]], function(){}, [function(){yield;}]);

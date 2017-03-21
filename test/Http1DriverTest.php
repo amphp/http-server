@@ -9,8 +9,9 @@ use Aerys\Http2Driver;
 use Aerys\InternalRequest;
 use Aerys\Options;
 use Amp\Artax\Parser;
+use PHPUnit\Framework\TestCase;
 
-class Http1DriverTest extends \PHPUnit_Framework_TestCase {
+class Http1DriverTest extends TestCase {
 
     /**
      * @dataProvider provideUnparsableRequests
