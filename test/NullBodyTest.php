@@ -10,12 +10,12 @@ class NullBodyTest extends \PHPUnit_Framework_TestCase {
         $body = new NullBody;
         $invoked = false;
         $result = null;
-        $body->when(function($e, $r) use (&$invoked, &$result) {
+        $body->onResolve(function($e, $r) use (&$invoked, &$result) {
             $this->assertNull($e);
             $invoked = true;
             $result = $r;
         });
-        $body->advance()->when(function($e, $emitted) {
+        $body->advance()->onResolve(function($e, $emitted) {
             $this->assertFalse($emitted);
         });
         $this->assertTrue($invoked);

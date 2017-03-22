@@ -179,7 +179,7 @@ class WatcherProcess extends Process {
                         break;
 
                     case "stop":
-                        (new \Amp\Coroutine($this->stop()))->when('Amp\stop');
+                        (new \Amp\Coroutine($this->stop()))->onResolve('Amp\stop');
                         break;
                 }
             } while (1);
@@ -440,7 +440,7 @@ class WatcherProcess extends Process {
     public function restart() {
         $spawn = count($this->ipcClients);
         for ($i = 0; $i < $spawn; $i++) {
-            $this->spawn()->when(function() {
+            $this->spawn()->onResolve(function() {
                 @\fwrite(current($this->ipcClients), "\n");
                 next($this->ipcClients);
             });

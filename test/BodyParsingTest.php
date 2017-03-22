@@ -52,11 +52,11 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
 
             $body = \Aerys\parseBody(new StandardRequest($ireq));
 
-            $body->listen(function ($data) use (&$fieldlist) {
+            $body->onEmit(function ($data) use (&$fieldlist) {
                 $this->assertArrayHasKey($data, $fieldlist);
                 array_pop($fieldlist[$data]);
             });
-            $body->when(function ($e, $parsedBody) use (&$result) {
+            $body->onResolve(function ($e, $parsedBody) use (&$result) {
                 $result = $parsedBody->getAll();
                 $this->assertNull($e);
             });
@@ -88,11 +88,11 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
             });
 
             $body = \Aerys\parseBody(new StandardRequest($ireq));
-            $body->listen(function ($data) use (&$fieldlist) {
+            $body->onEmit(function ($data) use (&$fieldlist) {
                 $this->assertArrayHasKey($data, $fieldlist);
                 array_pop($fieldlist[$data]);
             });
-            $body->when(function ($e, $parsedBody) use (&$result) {
+            $body->onResolve(function ($e, $parsedBody) use (&$result) {
                 $this->assertNull($e);
                 $result = $parsedBody->getAll();
             });
@@ -138,7 +138,7 @@ class BodyParsingTest extends \PHPUnit_Framework_TestCase {
             $this->assertEquals("", yield $gh);
             $this->assertEquals("", yield $j);
         });
-        $body->when(function($e) { print $e; });
+        $body->onResolve(function($e) { print $e; });
     }
 
     function requestBodies() {

@@ -7,7 +7,7 @@ use Amp\{ CallableMaker, Deferred, Emitter, Internal\Producer, Loop, Stream, Suc
 class BodyParser implements Stream {
     use CallableMaker;
     use Producer {
-        listen as private watch;
+        onEmit as private watch;
     }
 
     /** @var \Aerys\Request */
@@ -156,8 +156,8 @@ class BodyParser implements Stream {
 
             foreach ($this->bodies as $key => $bodies) {
                 foreach ($bodies as $body) {
-                    $body->when($when);
-                    $body->getMetadata()->when($metawhen);
+                    $body->onResolve($when);
+                    $body->getMetadata()->onResolve($metawhen);
                 }
                 $metadata[$key] = array_filter($metadata[$key]);
             }
@@ -166,16 +166,16 @@ class BodyParser implements Stream {
         }
     }
 
-    public function listen(callable $onNext) {
+    public function onEmit(callable $onEmit) {
         if ($this->req) {
-            $this->watch($onNext);
+            $this->watch($onEmit);
 
             if (!$this->parsing) {
                 $this->parsing = 1;
                 Loop::defer($this->initIncremental);
             }
         } elseif (!$this->parsing) {
-            $this->watch($onNext);
+            $this->watch($onEmit);
         }
     }
 

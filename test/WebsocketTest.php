@@ -103,7 +103,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
         $deferred = new Deferred;
         $watcher = Loop::onReadable($sock, [$deferred, "resolve"]);
         $promise = $deferred->promise();
-        $promise->when(function() use ($watcher) { Loop::cancel($watcher); });
+        $promise->onResolve(function() use ($watcher) { Loop::cancel($watcher); });
         return $promise;
     }
 
@@ -386,7 +386,7 @@ class WebsocketTest extends \PHPUnit_Framework_TestCase {
     function testFragmentation() {
         Loop::run(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $endpoint->broadcast(str_repeat("*", 131046), true)->when(function() use ($sock, $server) {
+            $endpoint->broadcast(str_repeat("*", 131046), true)->onResolve(function() use ($sock, $server) {
                 stream_socket_shutdown($sock, STREAM_SHUT_WR);
                 $server->requireClientFree = true;
             });

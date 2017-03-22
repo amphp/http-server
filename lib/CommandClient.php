@@ -44,7 +44,7 @@ class CommandClient {
             $promise = \Amp\Promise\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect');
         }
         
-        $promise->when(function ($e, $sock) {
+        $promise->onResolve(function ($e, $sock) {
             if ($e) {
                 $this->failAll();
                 return;

@@ -125,7 +125,7 @@ class ClientTest extends \PHPUnit_Framework_TestCase {
             );
 
             $body = "";
-            $promise->listen(function($update) use (&$body) {
+            $promise->onEmit(function($update) use (&$body) {
                 list($type, $data) = $update;
                 if ($type == Notify::RESPONSE_BODY_DATA) {
                     $body .= $data;

@@ -129,7 +129,7 @@ class Server implements Monitor {
         }
 
         $promise = any($promises);
-        $promise->when(function($error, $result) {
+        $promise->onResolve(function($error, $result) {
             // $error is always empty because an any() combinator Promise never fails.
             // Instead we check the error array at index zero in the two-item any() $result
             // and log as needed.
@@ -199,9 +199,9 @@ class Server implements Monitor {
             $this->logger->info("Listening on {$serverName}");
         }
 
-        return $this->notify()->when(function($e, $notifyResult) {
+        return $this->notify()->onResolve(function($e, $notifyResult) {
             if ($hadErrors = $e || $notifyResult[0]) {
-                (new Coroutine($this->doStop()))->when(function($e) {
+                (new Coroutine($this->doStop()))->onResolve(function($e) {
                     throw new \RuntimeException(
                         "Server::STARTED observer initialization failure", 0, $e
                     );
@@ -758,7 +758,7 @@ class Server implements Monitor {
                 $out = new Coroutine($out);
             }
             if ($out instanceof Promise) {
-                $out->when(function($error) use ($ireq, $response, $filters) {
+                $out->onResolve(function($error) use ($ireq, $response, $filters) {
                     if (empty($error)) {
                         if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
                             return;

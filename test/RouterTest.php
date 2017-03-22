@@ -78,7 +78,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase {
         $result = $router->update($mock);
         $this->assertInstanceOf("Amp\\Failure", $result);
         $i = 0;
-        $result->when(function($e, $r) use (&$i) {
+        $result->onResolve(function($e, $r) use (&$i) {
             $i++;
             $this->assertInstanceOf("Error", $e);
             $this->assertSame("Router start failure: no routes registered", $e->getMessage());

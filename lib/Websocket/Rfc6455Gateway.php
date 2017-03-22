@@ -679,7 +679,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                     $promise = new Success;
                 }
 
-                $promise->when(function () {
+                $promise->onResolve(function () {
                     $code = Code::GOING_AWAY;
                     $reason = "Server shutting down!";
 
@@ -715,7 +715,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                     }
                 }
                 $promise = Promise\any($promises);
-                $promise->when(function () {
+                $promise->onResolve(function () {
                     foreach ($this->clients as $client) {
                         $this->unloadClient($client);
                     }
