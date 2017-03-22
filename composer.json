@@ -40,6 +40,7 @@
         "psr/log": "^1"
     },
     "require-dev": {
+        "amphp/phpunit-util": "dev-master",
         "amphp/artax": "dev-amp_v2",
         "friendsofphp/php-cs-fixer": "~1.9",
         "http2jp/hpack-test-case": "1.0",
