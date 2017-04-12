@@ -287,7 +287,9 @@ class Server implements Monitor {
         list($ip, $port) = $peer;
         if ($handshake = @\stream_socket_enable_crypto($socket, true)) {
             $socketId = (int)$socket;
-            Loop::cancel($watcherId);
+            if($watcherId) {
+                Loop::cancel($watcherId);
+            }
             unset($this->pendingTlsStreams[$socketId]);
             assert((function () use ($socket, $ip, $port) {
                 $meta = stream_get_meta_data($socket)["crypto"];
@@ -312,7 +314,9 @@ class Server implements Monitor {
 
         $socketId = (int) $socket;
         list($watcherId) = $this->pendingTlsStreams[$socketId];
-        Loop::cancel($watcherId);
+        if($watcherId) {
+            Loop::cancel($watcherId);
+        }
         unset($this->pendingTlsStreams[$socketId]);
         @fclose($socket);
     }
@@ -341,7 +345,9 @@ class Server implements Monitor {
         $this->state = self::STOPPING;
 
         foreach ($this->acceptWatcherIds as $watcherId) {
-            Loop::cancel($watcherId);
+            if($watcherId) {
+                Loop::cancel($watcherId);
+            }
         }
         $this->boundServers = [];
         $this->acceptWatcherIds = [];
@@ -393,7 +399,9 @@ class Server implements Monitor {
 
         $client->readWatcher = Loop::onReadable($socket, $this->onReadable, $client);
         $client->writeWatcher = Loop::onWritable($socket, $this->onWritable, $client);
-        Loop::disable($client->writeWatcher);
+        if($client->writeWatcher) {
+            Loop::disable($client->writeWatcher);
+        }
 
         $this->clients[$client->id] = $client;
 
@@ -434,13 +442,17 @@ class Server implements Monitor {
             } else {
                 $client->isDead = Client::CLOSED_WR;
                 $client->writeWatcher = null;
-                Loop::cancel($watcherId);
+                if($watcherId) {
+                    Loop::cancel($watcherId);
+                }
             }
         } else {
             $client->bufferSize -= $bytesWritten;
             if ($bytesWritten === \strlen($client->writeBuffer)) {
                 $client->writeBuffer = "";
-                Loop::disable($watcherId);
+                if($watcherId) {
+                    Loop::disable($watcherId);
+                }
                 if ($client->onWriteDrain) {
                     ($client->onWriteDrain)($client);
                 }
@@ -499,7 +511,9 @@ class Server implements Monitor {
                     $this->close($client);
                 } else {
                     $client->isDead = Client::CLOSED_RD;
-                    Loop::cancel($watcherId);
+                    if($watcherId) {
+                        Loop::cancel($watcherId);
+                    }
                     $client->readWatcher = null;
                     if ($client->bodyEmitters) {
                         $ex = new ClientException;
@@ -908,8 +922,12 @@ class Server implements Monitor {
     private function clear(Client $client) {
         $client->requestParser = null; // break cyclic reference
         $client->onWriteDrain = null;
-        Loop::cancel($client->readWatcher);
-        Loop::cancel($client->writeWatcher);
+        if($client->readWatcher) {
+            Loop::cancel($client->readWatcher);
+        }
+        if($client->writeWatcher) {
+            Loop::cancel($client->writeWatcher);
+        }
         $this->clearKeepAliveTimeout($client);
         unset($this->clients[$client->id]);
         if ($this->stopDeferred && empty($this->clients)) {

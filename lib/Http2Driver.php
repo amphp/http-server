@@ -461,7 +461,10 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "INIT\n");
                 $time = \time();
                 if ($lastReset == $time) {
                     if ($framesLastSecond > $maxFramesPerSecond) {
-                        Loop::disable($client->readWatcher); // aka tiny frame DoS prevention
+                        if($client->readWatcher) {
+                            Loop::disable($client->readWatcher); // aka tiny frame DoS prevention
+                        }
+
                         Loop::delay(1000, static function ($watcher, $client) {
                             if (!($client->isDead & Client::CLOSED_RD)) {
                                 Loop::enable($client->readWatcher);
@@ -792,7 +795,9 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer, 0, $length)."\n");
                     $client->shouldClose = true;
-                    Loop::disable($client->readWatcher);
+                    if($client->readWatcher) {
+                        Loop::disable($client->readWatcher);
+                    }
                     while (1) {
                         yield;
                     }
@@ -911,8 +916,9 @@ connection_error:
         $client->shouldClose = true;
         $this->writeFrame($client, pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
-
-        Loop::disable($client->readWatcher);
+        if($client->readWatcher) {
+            Loop::disable($client->readWatcher);
+        }
         while (1) {
             yield;
         }

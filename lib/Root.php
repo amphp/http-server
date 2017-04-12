@@ -68,7 +68,9 @@ class Root implements ServerObserver {
                 $this->cacheEntryCount--;
             }
         });
-        Loop::disable($this->cacheWatcher);
+        if($this->cacheWatcher) {
+            Loop::disable($this->cacheWatcher);
+        }
     }
 
     /**
@@ -762,7 +764,9 @@ class Root implements ServerObserver {
                 Loop::enable($this->cacheWatcher);
                 break;
             case Server::STOPPED:
-                Loop::disable($this->cacheWatcher);
+                if($this->cacheWatcher) {
+                    Loop::disable($this->cacheWatcher);
+                }
                 $this->cache = [];
                 $this->cacheTimeouts = [];
                 $this->cacheEntryCount = 0;
