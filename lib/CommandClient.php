@@ -58,7 +58,7 @@ class CommandClient {
         $bytes = @fwrite($socket, $this->buf);
         if ($bytes == 0) {
             if (!is_resource($socket) || @feof($socket)) {
-                Loop::cancel($this->writeWatcher);
+                Loop::cancel($watcherId);
                 $this->sock = $this->writeWatcher = null;
                 $this->establish();
             }

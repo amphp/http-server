@@ -433,7 +433,6 @@ class Server implements Monitor {
                 $this->close($client);
             } else {
                 $client->isDead = Client::CLOSED_WR;
-                $client->writeWatcher = null;
                 Loop::cancel($watcherId);
             }
         } else {
@@ -500,7 +499,6 @@ class Server implements Monitor {
                 } else {
                     $client->isDead = Client::CLOSED_RD;
                     Loop::cancel($watcherId);
-                    $client->readWatcher = null;
                     if ($client->bodyEmitters) {
                         $ex = new ClientException;
                         foreach ($client->bodyEmitters as $key => $emitter) {

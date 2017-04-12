@@ -208,9 +208,7 @@ class Http1Driver implements HttpDriver {
 
                 do {
                     if (\strlen($buffer) > $maxHeaderSize + $client->streamWindow) {
-                        if ($client->readWatcher) {
-                            Loop::disable($client->readWatcher);
-                        }
+                        Loop::disable($client->readWatcher);
                         $buffer .= yield;
                         if (!($client->isDead & Client::CLOSED_RD)) {
                             Loop::enable($client->readWatcher);
@@ -428,9 +426,7 @@ class Http1Driver implements HttpDriver {
                             
                             ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
                             $client->parserEmitLock = true;
-                            if ($client->readWatcher) {
-                                Loop::disable($client->readWatcher);
-                            }
+                            Loop::disable($client->readWatcher);
                             $yield = yield;
                             if ($yield === false) {
                                 $client->shouldClose = true;
@@ -438,7 +434,7 @@ class Http1Driver implements HttpDriver {
                                     yield;
                                 }
                             }
-                            if ($client->readWatcher) {
+                            if (!($client->isDead & Client::CLOSED_RD)) {
                                 Loop::enable($client->readWatcher);
                             }
                             $client->parserEmitLock = false;
@@ -512,9 +508,7 @@ class Http1Driver implements HttpDriver {
                         }
                         ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
                         $client->parserEmitLock = true;
-                        if ($client->readWatcher) {
-                            Loop::disable($client->readWatcher);
-                        }
+                        Loop::disable($client->readWatcher);
                         $yield = yield;
                         if ($yield === false) {
                             $client->shouldClose = true;
@@ -522,7 +516,7 @@ class Http1Driver implements HttpDriver {
                                 yield;
                             }
                         }
-                        if ($client->readWatcher) {
+                        if ($client->isDead & Client::CLOSED_RD) {
                             Loop::enable($client->readWatcher);
                         }
                         $client->parserEmitLock = false;
