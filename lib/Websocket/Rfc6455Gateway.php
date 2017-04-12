@@ -231,7 +231,9 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $client->writeDeferred = new Deferred; // dummy to prevent error
             $client->framesSent = -1;
         } else {
-            Loop::disable($client->writeWatcher);
+            if($client->writeWatcher) {
+                Loop::disable($client->writeWatcher);
+            }
         }
 
         $this->clients[$client->id] = $client;
@@ -435,7 +437,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $client->capacity -= \strlen($data);
             if ($client->capacity < $this->maxBytesPerMinute / 2) {
                 $this->lowCapacityClients[$client->id] = $client;
-                if ($client->capacity <= 0) {
+                if ($client->capacity <= 0 && $watcherId) {
                     Loop::disable($watcherId);
                 }
             }
@@ -444,7 +446,9 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $client->framesLastSecond += $frames;
             if ($client->framesLastSecond > $this->maxFramesPerSecond / 2) {
                 if ($client->framesLastSecond > $this->maxFramesPerSecond * 1.5) {
-                    Loop::disable($watcherId); // aka tiny frame DoS prevention
+                    if($watcherId) {
+                        Loop::disable($watcherId); // aka tiny frame DoS prevention
+                    }
                 }
                 $this->highFramesPerSecondClients[$client->id] = $client;
             }
@@ -524,7 +528,9 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             } else {
                 $client->writeDeferred = null;
                 $client->writeBuffer = "";
-                Loop::disable($watcherId);
+                if($watcherId) {
+                    Loop::disable($watcherId);
+                }
             }
         }
     }

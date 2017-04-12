@@ -25,7 +25,9 @@ class IpcLogger extends Logger {
         $this->ipcSock = $ipcSock;
         stream_set_blocking($ipcSock, false);
         $this->writeWatcherId = Loop::onWritable($ipcSock, $onWritable);
-        Loop::disable($this->writeWatcherId);
+        if($this->writeWatcherId) {
+            Loop::disable($this->writeWatcherId);
+        }
     }
 
     protected function output(string $message) {
@@ -65,14 +67,18 @@ class IpcLogger extends Logger {
 
         $this->writeBuffer = "";
 
-        Loop::disable($this->writeWatcherId);
+        if($this->writeWatcherId) {
+            Loop::disable($this->writeWatcherId);
+        }
     }
 
     private function onDeadIpcSock() {
         $this->isDead = true;
         $this->writeBuffer = "";
         $this->writeQueue = [];
-        Loop::cancel($this->writeWatcherId);
+        if($this->writeWatcherId) {
+            Loop::cancel($this->writeWatcherId);
+        }
     }
 
     public function flush() { // BLOCKING

@@ -25,7 +25,9 @@ class WatcherProcess extends Process {
         parent::__construct($logger);
         $this->logger = $logger;
         $this->procGarbageWatcher = Loop::repeat(100, $this->callableFromInstanceMethod("collectProcessGarbage"));
-        Loop::disable($this->procGarbageWatcher);
+        if($this->procGarbageWatcher) {
+            Loop::disable($this->procGarbageWatcher);
+        }
     }
 
     private function collectProcessGarbage() {
@@ -48,11 +50,15 @@ class WatcherProcess extends Process {
 
         // If we've reaped all known dead processes we can stop checking
         if (empty($this->defunctProcessCount)) {
-            Loop::disable($this->procGarbageWatcher);
+            if($this->procGarbageWatcher) {
+                Loop::disable($this->procGarbageWatcher);
+            }
         }
 
         if ($this->stopDeferred && empty($this->processes)) {
-            Loop::cancel($this->procGarbageWatcher);
+            if($this->procGarbageWatcher) {
+                Loop::cancel($this->procGarbageWatcher);
+            }
             if ($this->stopDeferred !== true) {
                 Loop::defer([$this->stopDeferred, "resolve"]);
             }
@@ -149,7 +155,9 @@ class WatcherProcess extends Process {
             yield;
             $data = @fread($client, 8192);
             if ($data == "" && (!is_resource($client) || @feof($client))) {
-                Loop::cancel($readWatcherId);
+                if($readWatcherId) {
+                    Loop::cancel($readWatcherId);
+                }
                 return;
             }
 
@@ -379,7 +387,9 @@ class WatcherProcess extends Process {
     }
 
     private function onDeadIpcClient(string $readWatcherId, $ipcClient) {
-        Loop::cancel($readWatcherId);
+        if($readWatcherId) {
+            Loop::cancel($readWatcherId);
+        }
         @fclose($ipcClient);
         unset($this->ipcClients[$readWatcherId]);
         $this->defunctProcessCount++;

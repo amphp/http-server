@@ -26,7 +26,9 @@ class Ticker implements ServerObserver {
                 $this->updateTime();
                 break;
             case Server::STOPPED:
-                Loop::cancel($this->watcherId);
+                if($this->watcherId) {
+                    Loop::cancel($this->watcherId);
+                }
                 $this->watcherId = null;
                 break;
         }
