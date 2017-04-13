@@ -13,7 +13,7 @@ class BodyParser implements Stream {
     /** @var \Aerys\Request */
     private $req;
 
-    /** @var \Amp\Message */
+    /** @var \Aerys\Body */
     private $body;
 
     private $boundary = null;
@@ -285,11 +285,11 @@ class BodyParser implements Stream {
             // RFC 7578, RFC 2046 Section 5.1.1
             $sep = "--$this->boundary";
             while (\strlen($buf) < \strlen($sep) + 4) {
-                if (!yield $this->body->advance()) {
+                if (!yield $this->body->wait()) {
                     $this->error(new ClientException);
                     return;
                 }
-                $buf .= $this->body->getCurrent();
+                $buf .= $this->body->getChunk();
             }
             $off = \strlen($sep);
             if (strncmp($buf, $sep, $off)) {
@@ -303,12 +303,12 @@ class BodyParser implements Stream {
                 $off += 2;
                 
                 while (($end = strpos($buf, "\r\n\r\n", $off)) === false) {
-                    if (!yield $this->body->advance()) {
+                    if (!yield $this->body->wait()) {
                         $this->error(new ClientException);
                         return;
                     }
                     $off = \strlen($buf);
-                    $buf .= $this->body->getCurrent();
+                    $buf .= $this->body->getChunk();
                 }
 
                 $headers = [];
@@ -343,14 +343,14 @@ class BodyParser implements Stream {
                 $off = 0;
                 
                 while (($end = strpos($buf, $sep, $off)) === false) {
-                    if (!yield $this->body->advance()) {
+                    if (!yield $this->body->wait()) {
                         $e = new ClientException;
                         $dataEmitter->fail($e);
                         $this->error($e);
                         return;
                     }
                     
-                    $buf .= $this->body->getCurrent();
+                    $buf .= $this->body->getChunk();
                     if (\strlen($buf) > \strlen($sep)) {
                         $off = \strlen($buf) - \strlen($sep);
                         $data = substr($buf, 0, $off);
@@ -373,17 +373,17 @@ class BodyParser implements Stream {
                 $off = $end + \strlen($sep);
 
                 while (\strlen($buf) < 4) {
-                    if (!yield $this->body->advance()) {
+                    if (!yield $this->body->wait()) {
                         $this->error(new ClientException);
                         return;
                     }
-                    $buf .= $this->body->getCurrent();
+                    $buf .= $this->body->getChunk();
                 }
             }
         } else {
             $field = null;
-            while (yield $this->body->advance()) {
-                $new = $this->body->getCurrent();
+            while (yield $this->body->wait()) {
+                $new = $this->body->getChunk();
 
                 if ($new[0] === "&") {
                     if ($field !== null) {

@@ -2,4 +2,4 @@
 
 namespace Aerys;
 
-class Body extends \Amp\Message {}
+class Body extends \Amp\ByteStream\Message {}

@@ -3,6 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\{
+    Body,
     Client,
     InternalRequest,
     Logger,
@@ -270,7 +271,7 @@ class WebsocketTest extends TestCase {
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
 
         $_ireq = clone $ireq;
-        $_ireq->body = new Message((new Emitter)->stream());
+        $_ireq->body = new Body((new Emitter)->stream());
         $return[] = [$_ireq, [":status" => HTTP_STATUS["BAD_REQUEST"]]];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->

@@ -2,8 +2,6 @@
 
 namespace Aerys;
 
-use Amp\Message;
-
 interface Request {
     /**
      * Retrieve the HTTP method used to make this request
@@ -77,9 +75,9 @@ interface Request {
      * @TODO add documentation for how the body object is used
      * @param int $bodySize maximum body size
      *
-     * @return \Amp\Message
+     * @return \Aerys\Body
      */
-    public function getBody(int $bodySize = -1): Message;
+    public function getBody(int $bodySize = -1): Body;
 
     /**
      * Retrieve one query string value of that name

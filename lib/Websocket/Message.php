@@ -2,7 +2,7 @@
 
 namespace Aerys\Websocket;
 
-class Message extends \Amp\Message {
+class Message extends \Amp\ByteStream\Message {
     private $binary = false;
 
     public function __construct(\Amp\Stream $stream, bool $binary = false) {

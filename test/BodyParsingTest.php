@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\Body;
 use Aerys\Client;
 use Aerys\InternalRequest;
 use Aerys\Options;
@@ -18,7 +19,7 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Message($emitter->stream());
+        $ireq->body = new Body($emitter->stream());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
@@ -41,7 +42,7 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Message($emitter->stream());
+        $ireq->body = new Body($emitter->stream());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
@@ -76,7 +77,7 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Message($emitter->stream());
+        $ireq->body = new Body($emitter->stream());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
@@ -112,7 +113,7 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Message($emitter->stream());
+        $ireq->body = new Body($emitter->stream());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 

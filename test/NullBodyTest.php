@@ -16,7 +16,7 @@ class NullBodyTest extends TestCase {
             $invoked = true;
             $result = $r;
         });
-        $body->advance()->onResolve(function($e, $emitted) {
+        $body->wait()->onResolve(function($e, $emitted) {
             $this->assertFalse($emitted);
         });
         $this->assertTrue($invoked);

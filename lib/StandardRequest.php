@@ -2,8 +2,6 @@
 
 namespace Aerys;
 
-use Amp\Message;
-
 class StandardRequest implements Request {
     private $internalRequest;
     private $queryParams;
@@ -61,7 +59,7 @@ class StandardRequest implements Request {
     /**
      * {@inheritdoc}
      */
-    public function getBody(int $bodySize = -1): Message {
+    public function getBody(int $bodySize = -1): Body {
         $ireq = $this->internalRequest;
         if ($bodySize > -1) {
             if ($bodySize > ($ireq->maxBodySize ?? $ireq->client->options->maxBodySize)) {
