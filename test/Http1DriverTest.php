@@ -9,6 +9,7 @@ use Aerys\Http2Driver;
 use Aerys\InternalRequest;
 use Aerys\Options;
 use Amp\Artax\Parser;
+use Amp\Loop;
 use PHPUnit\Framework\TestCase;
 
 class Http1DriverTest extends TestCase {
@@ -547,6 +548,7 @@ class Http1DriverTest extends TestCase {
 
         $client->options = new Options;
         $client->options->maxBodySize = 4;
+        $client->readWatcher = Loop::defer(function(){}); // dummy watcher
         $driver = new Http1Driver;
         $driver->setup($emitCallback, function(){});
         $parser = $driver->parser($client);
@@ -585,6 +587,7 @@ class Http1DriverTest extends TestCase {
 
         $client->options = new Options;
         $client->options->maxBodySize = 4;
+        $client->readWatcher = Loop::defer(function(){}); // dummy watcher
         $driver = new Http1Driver;
         $driver->setup($emitCallback, function(){});
         $parser = $driver->parser($client);

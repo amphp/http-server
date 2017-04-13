@@ -353,7 +353,7 @@ class ServerTest extends TestCase {
                 $write($client, true);
             }, false);
 
-            $client = new sock\Socket(yield sock\connect($address));
+            $client = yield sock\connect($address);
             yield $client->write("a");
             // give readWatcher a chance
             $deferred = new \Amp\Deferred;
@@ -402,7 +402,7 @@ class ServerTest extends TestCase {
             }, true);
 
             // lowest possible
-            $client = new sock\Socket(yield sock\cryptoConnect($address, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]));
+            $client = yield sock\cryptoConnect($address, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
             yield $client->write(str_repeat("1", 65537)); // larger than one TCP frame
             yield $client->write("a");
             $this->assertEquals("b", yield $client->read(1));

@@ -39,9 +39,9 @@ class CommandClient {
     private function establish() {
         $unix = in_array("unix", \stream_get_transports(), true);
         if ($unix) {
-            $promise = \Amp\Socket\connect("unix://$this->path.sock");
+            $promise = \Amp\Socket\rawConnect("unix://$this->path.sock");
         } else {
-            $promise = \Amp\Promise\pipe(\Amp\file\get($this->path), 'Amp\Socket\connect');
+            $promise = \Amp\Promise\pipe(\Amp\file\get($this->path), 'Amp\Socket\rawConnect');
         }
         
         $promise->onResolve(function ($e, $sock) {

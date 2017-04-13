@@ -295,10 +295,8 @@ class WebsocketParserTest extends TestCase {
             $ws = \Aerys\websocket($ws);
 
             $responder = $ws->boot($server, $logger);
-            $middlewares = [];
-            if (is_array($responder) && $responder[0] instanceof Middleware) {
-                $middlewares[] = [$responder[0], "do"];
-            }
+            $this->assertInstanceOf(Middleware::class, $responder);
+            $middlewares = [[$responder, "do"]];
             $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));
 
             $driver->emit();
