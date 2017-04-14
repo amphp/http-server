@@ -285,7 +285,7 @@ class BodyParser implements Stream {
             // RFC 7578, RFC 2046 Section 5.1.1
             $sep = "--$this->boundary";
             while (\strlen($buf) < \strlen($sep) + 4) {
-                if (!yield $this->body->wait()) {
+                if (!yield $this->body->advance()) {
                     $this->error(new ClientException);
                     return;
                 }
@@ -303,7 +303,7 @@ class BodyParser implements Stream {
                 $off += 2;
                 
                 while (($end = strpos($buf, "\r\n\r\n", $off)) === false) {
-                    if (!yield $this->body->wait()) {
+                    if (!yield $this->body->advance()) {
                         $this->error(new ClientException);
                         return;
                     }
@@ -343,7 +343,7 @@ class BodyParser implements Stream {
                 $off = 0;
                 
                 while (($end = strpos($buf, $sep, $off)) === false) {
-                    if (!yield $this->body->wait()) {
+                    if (!yield $this->body->advance()) {
                         $e = new ClientException;
                         $dataEmitter->fail($e);
                         $this->error($e);
@@ -373,7 +373,7 @@ class BodyParser implements Stream {
                 $off = $end + \strlen($sep);
 
                 while (\strlen($buf) < 4) {
-                    if (!yield $this->body->wait()) {
+                    if (!yield $this->body->advance()) {
                         $this->error(new ClientException);
                         return;
                     }
@@ -382,7 +382,7 @@ class BodyParser implements Stream {
             }
         } else {
             $field = null;
-            while (yield $this->body->wait()) {
+            while (yield $this->body->advance()) {
                 $new = $this->body->getChunk();
 
                 if ($new[0] === "&") {
