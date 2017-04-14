@@ -53,8 +53,8 @@ class ClientTest extends TestCase {
                 $res->setCookie("cookie", "with value");
                 $res->setHeader("custom", "header");
 
-                $res->stream("data");
-                yield $res->stream(str_repeat("*", 100000));
+                $res->write("data");
+                yield $res->write(str_repeat("*", 100000));
                 $res->flush();
                 $res->end("data");
             });
@@ -90,9 +90,9 @@ class ClientTest extends TestCase {
                 $this->assertEquals("body", yield $req->getBody());
 
                 try {
-                    $res->stream("data");
+                    $res->write("data");
                     $res->flush();
-                    yield $res->stream(str_repeat("_", $server->getOption("outputBufferSize") + 1));
+                    yield $res->write(str_repeat("_", $server->getOption("outputBufferSize") + 1));
                     $this->fail("Should not be reached");
                 } catch (ClientException $e) {
                     $deferred->resolve();

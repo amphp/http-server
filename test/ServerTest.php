@@ -137,7 +137,7 @@ class ServerTest extends TestCase {
             [HttpDriver::ENTITY_RESULT, ["id" => 2, "protocol" => "2.0"], null],
         ], function (Request $req, Response $res) {
             while (yield $req->getBody()->wait()) {
-                $res->stream($req->getBody()->getChunk());
+                $res->write($req->getBody()->getChunk());
             }
             $res->end();
         }, [function (InternalRequest $ireq) {
@@ -163,8 +163,8 @@ class ServerTest extends TestCase {
 
         list($headers, $body) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) {
             $this->assertEquals("", yield $req->getBody());
-            $res->stream("fooBar");
-            $res->stream("BAZ!");
+            $res->write("fooBar");
+            $res->write("BAZ!");
             $res->end();
         }, [function (InternalRequest $ireq) {
             $headers = yield;
@@ -191,9 +191,9 @@ class ServerTest extends TestCase {
         ];
 
         list($headers, $body) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) {
-            $res->stream("Bob");
+            $res->write("Bob");
             $res->flush();
-            $res->stream(" ");
+            $res->write(" ");
             $res->end("19!");
         }, [function (InternalRequest $ireq) {
             $headers = yield;

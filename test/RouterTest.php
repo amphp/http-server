@@ -47,9 +47,9 @@ class RouterTest extends TestCase {
             function setHeader(string $field, string $value): Response { $this->headers[strtolower($field)] = $value; return $this; }
             function setCookie(string $field, string $value, array $flags = []): Response { return $this; }
             function send(string $body) { $this->state = self::ENDED; }
-            function stream(string $partialBodyChunk): Promise { return new Success; }
+            function write(string $partialBodyChunk): Promise { return new Success; }
             function flush() { }
-            function end(string $finalBodyChunk = null) { }
+            function end(string $finalBodyChunk = ""): Promise { return new Success; }
             function push(string $url, array $headers = null): Response { return $this; }
             function state(): int { return $this->state; }
         };

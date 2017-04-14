@@ -310,12 +310,12 @@ class Root implements ServerObserver {
                 $response->setStatus(HTTP_STATUS["OK"]);
                 $response->setHeader("Allow", "GET, HEAD, OPTIONS");
                 $response->setHeader("Accept-Ranges", "bytes");
-                $response->stream(makeGenericBody(HTTP_STATUS["OK"]));
+                $response->write(makeGenericBody(HTTP_STATUS["OK"]));
                 return;
             default:
                 $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
                 $response->setHeader("Allow", "GET, HEAD, OPTIONS");
-                $response->stream(makeGenericBody(HTTP_STATUS["METHOD_NOT_ALLOWED"]));
+                $response->write(makeGenericBody(HTTP_STATUS["METHOD_NOT_ALLOWED"]));
                 return;
         }
 
@@ -542,7 +542,7 @@ class Root implements ServerObserver {
     private function sendNonRange(file\Handle $handle, Response $response): \Generator {
         while (!$handle->eof()) {
             $chunk = yield $handle->read(8192);
-            yield $response->stream($chunk);
+            yield $response->write($chunk);
         }
     }
 
@@ -553,7 +553,7 @@ class Root implements ServerObserver {
             $toBuffer = ($bytesRemaining > 8192) ? 8192 : $bytesRemaining;
             $chunk = yield $handle->read($toBuffer);
             $bytesRemaining -= \strlen($chunk);
-            yield $response->stream($chunk);
+            yield $response->write($chunk);
         }
     }
 
@@ -567,11 +567,11 @@ class Root implements ServerObserver {
                 $endPos,
                 $fileInfo->size
             );
-            yield $response->stream($header);
+            yield $response->write($header);
             yield from $this->sendSingleRange($handle, $response, $startPos, $endPos);
-            $response->stream("\r\n");
+            $response->write("\r\n");
         }
-        $response->stream("--{$range->boundary}--");
+        $response->write("--{$range->boundary}--");
     }
 
     /**

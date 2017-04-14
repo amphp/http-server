@@ -743,7 +743,7 @@ class Server implements Monitor {
     private function sendPreAppOptionsResponse(Request $request, Response $response) {
         $response->setStatus(HTTP_STATUS["OK"]);
         $response->setHeader("Allow", implode(",", $this->options->allowedMethods));
-        $response->end(null);
+        $response->end();
     }
 
     private function tryApplication(InternalRequest $ireq, callable $application, array $filters) {

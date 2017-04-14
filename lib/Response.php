@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-interface Response {
+interface Response extends \Amp\ByteStream\WritableStream {
     const NONE      = 0b000;
     const STARTED   = 0b001;
     const STREAMING = 0b010;
@@ -65,18 +65,18 @@ interface Response {
      * can wait for all body data to generate may use Response::end() to output
      * the entire response in a single call.
      *
-     * Note: Headers are sent upon the first invocation of Response::stream().
+     * Note: Headers are sent upon the first invocation of Response::write().
      *
      * @param string $partialBodyChunk A portion of the response entity body
      * @return \Amp\Promise to be succeeded whenever local buffers aren't full
      */
-    public function stream(string $partialBodyChunk): \Amp\Promise;
+    public function write(string $partialBodyChunk): \Amp\Promise;
 
     /**
      * Request that buffered stream data be flushed to the client
      *
-     * This method only makes sense when streaming output via Response::stream().
-     * Invoking it before calling stream() or after end() is a logic error.
+     * This method only makes sense when streaming output via Response::write().
+     * Invoking it before calling write() or after end() is a logic error.
      */
     public function flush();
 
@@ -90,16 +90,17 @@ interface Response {
      * Passing the optional $finalBodyChunk parameter is a shortcut equivalent to
      * the following:
      *
-     *     $response->stream($finalBodyChunk);
+     *     $response->write($finalBodyChunk);
      *     $response->end();
      *
      * Note: Invoking Response::end() with a non-empty $finalBodyChunk parameter
-     * without having previously invoked Response::stream() is equivalent to calling
+     * without having previously invoked Response::write() is equivalent to calling
      * Response::send($finalBodyChunk).
      *
      * @param string $finalBodyChunk Optional final body data to send
+     * @return \Amp\Promise to be succeeded whenever local buffers aren't full
      */
-    public function end(string $finalBodyChunk = null);
+    public function end(string $finalBodyChunk = ""): \Amp\Promise;
 
     /**
      * Indicate resources which a client likely needs to fetch. (e.g. Link: preload or HTTP/2 Server Push)

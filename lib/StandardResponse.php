@@ -152,10 +152,10 @@ class StandardResponse implements Response {
      * @throws \Error If response output already complete
      * @return \Amp\Promise to be succeeded whenever local buffers aren't full
      */
-    public function stream(string $partialBody): \Amp\Promise {
+    public function write(string $partialBody): \Amp\Promise {
         if ($this->state & self::ENDED) {
             throw new \Error(
-                "Cannot stream: response already sent"
+                "Cannot write: response already sent"
             );
         }
 
@@ -172,7 +172,7 @@ class StandardResponse implements Response {
 
         // Don't update the state until *AFTER* the codec operation so that if
         // it throws we can handle InternalFilterException appropriately in the server.
-        $this->state = self::STREAMING|self::STARTED;
+        $this->state = self::STREAMING | self::STARTED;
 
         return $this->client->bufferDeferred ? $this->client->bufferDeferred->promise() : new \Amp\Success;
     }
@@ -180,10 +180,10 @@ class StandardResponse implements Response {
     /**
      * Request that any buffered data be flushed to the client
      *
-     * This method only makes sense when streaming output via Response::stream().
-     * Invoking it before calling stream() or after send()/end() is a logic error.
+     * This method only makes sense when streaming output via Response::write().
+     * Invoking it before calling write() or after write()/end() is a logic error.
      *
-     * @throws \Error If invoked before stream() or after send()/end()
+     * @throws \Error If invoked before write() or after write()/end()
      */
     public function flush() {
         if ($this->state & self::ENDED) {
@@ -207,32 +207,32 @@ class StandardResponse implements Response {
      *
      * Passing the optional $finalBody is equivalent to the following:
      *
-     *     $response->stream($finalBody);
+     *     $response->write($finalBody);
      *     $response->end();
      *
      * @param string $finalBody Optional final body data to send
      */
-    public function end(string $finalBody = null) {
+    public function end(string $finalBody = ""): \Amp\Promise {
         if ($this->state & self::ENDED) {
-            if (isset($finalBody)) {
+            if ($finalBody !== "") {
                 throw new \Error(
                     "Cannot send body data: response output already ended"
                 );
             }
-            return;
+            return new \Amp\Success;
         }
 
         if (!($this->state & self::STARTED)) {
             $this->setCookies();
             // An @ (as opposed to a numeric length) indicates "no entity content"
-            $entityValue = isset($finalBody) ? \strlen($finalBody) : "@";
+            $entityValue = $finalBody !== "" ? \strlen($finalBody) : "@";
             $headers = $this->headers;
             $headers[":reason"] = $headers[":reason"] ?? HTTP_REASON[$headers[":status"]] ?? "";
             $headers[":aerys-entity-length"] = $entityValue;
             $this->codec->send($headers);
         }
 
-        if (isset($finalBody)) {
+        if ($finalBody !== "") {
             $this->codec->send($finalBody);
         }
         $this->codec->send(null);
@@ -240,6 +240,8 @@ class StandardResponse implements Response {
         // Update the state *AFTER* the codec operation so that if it throws
         // we can handle things appropriately in the server.
         $this->state = self::ENDED | self::STARTED;
+
+        return $this->client->bufferDeferred ? $this->client->bufferDeferred->promise() : new \Amp\Success;
     }
 
     private function setCookies() {

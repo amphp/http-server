@@ -184,7 +184,7 @@ class BodyParser implements Stream {
      * @param int $size <= 0: use last size, if none present, count toward total size, else separate size just respecting value size
      * @return FieldBody
      */
-    public function stream(string $name, int $size = 0): FieldBody {
+    public function write(string $name, int $size = 0): FieldBody {
         if ($this->req) {
             if ($size > 0) {
                 if (!empty($this->curSizes)) {

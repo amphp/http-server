@@ -64,17 +64,17 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
-    public function stream(string $partialBodyChunk): \Amp\Promise {
+    public function write(string $partialBodyChunk): \Amp\Promise {
         if ($this->status === 101) {
             throw new \Error(
-                "Cannot stream(); entity body content disallowed for Switching Protocols Response"
+                "Cannot write(); entity body content disallowed for Switching Protocols Response"
             );
         }
         if (!$this->isStarted) {
             $this->handshake();
         }
         $this->isStarted = true;
-        return $this->response->stream($partialBodyChunk);
+        return $this->response->write($partialBodyChunk);
     }
 
     /**
@@ -90,14 +90,13 @@ class Handshake implements Response {
         // this method before Response output starts is an error and will
         // throw when invoked on the wrapped Response.
         $this->response->flush();
-        return $this;
     }
 
     /**
      * {@inheritDoc}
      */
-    public function end(string $finalBodyChunk = null) {
-        if ($this->status === 101 && isset($finalBodyChunk)) {
+    public function end(string $finalBodyChunk = ""): \Amp\Promise {
+        if ($this->status === 101 && $finalBodyChunk !== "") {
             throw new \Error(
                 "Cannot end() with body data; entity body content disallowed for Switching Protocols Response"
             );
@@ -106,8 +105,7 @@ class Handshake implements Response {
             $this->handshake();
         }
         $this->isStarted = true;
-        $this->response->end($finalBodyChunk);
-        return $this;
+        return $this->response->end($finalBodyChunk);
     }
 
     /**

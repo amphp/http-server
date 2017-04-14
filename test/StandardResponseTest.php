@@ -13,7 +13,7 @@ class StandardResponseTest extends TestCase {
      */
     public function testSetStatusErrorsIfResponseAlreadyStarted() {
         $response = new StandardResponse((function() { while (1) yield; })(), new Client);
-        $response->stream("test");
+        $response->write("test");
         $response->setStatus(200);
     }
 
@@ -23,7 +23,7 @@ class StandardResponseTest extends TestCase {
      */
     public function testSetReasonErrorsIfResponseAlreadyStarted() {
         $response = new StandardResponse((function() { while (1) yield; })(), new Client);
-        $response->stream("test");
+        $response->write("test");
         $response->setReason("zanzibar");
     }
 
@@ -33,7 +33,7 @@ class StandardResponseTest extends TestCase {
      */
     public function testAddHeaderErrorsIfResponseAlreadyStarted() {
         $response = new StandardResponse((function() { while (1) yield; })(), new Client);
-        $response->stream("test");
+        $response->write("test");
         $response->addHeader("Content-Length", "42");
     }
 
@@ -43,7 +43,7 @@ class StandardResponseTest extends TestCase {
      */
     public function testSetHeaderErrorsIfResponseAlreadyStarted() {
         $response = new StandardResponse((function() { while (1) yield; })(), new Client);
-        $response->stream("test");
+        $response->write("test");
         $response->setHeader("Content-Length", "42");
     }
 
@@ -68,32 +68,32 @@ class StandardResponseTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Cannot stream: response already sent
+     * @expectedExceptionMessage Cannot write: response already sent
      */
     public function testSendThrowsIfResponseAlreadyComplete() {
         $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->end("test");
-        $response->stream("this should throw");
+        $response->write("this should throw");
     }
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Cannot stream: response already sent
+     * @expectedExceptionMessage Cannot write: response already sent
      */
     public function testStreamThrowsIfResponseAlreadySent() {
         $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->end("test");
-        $response->stream("this should throw");
+        $response->write("this should throw");
     }
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Cannot stream: response already sent
+     * @expectedExceptionMessage Cannot write: response already sent
      */
     public function testStreamThrowsIfResponseAlreadyEnded() {
         $response = new StandardResponse((function() { while (1) yield; })(), new Client);
         $response->end();
-        $response->stream("this should throw");
+        $response->write("this should throw");
     }
 
     public function testMultiStream() {
@@ -107,9 +107,9 @@ class StandardResponseTest extends TestCase {
         };
 
         $response = new StandardResponse($writer(), new Client);
-        $response->stream("foo\n");
-        $response->stream("bar\n");
-        $response->stream("baz\n");
+        $response->write("foo\n");
+        $response->write("bar\n");
+        $response->write("baz\n");
         $response->end("bat\n");
         $expected = [":aerys-entity-length" => "*", ":reason" => "OK", ":status" => 200];
         $this->assertEquals($expected, $headers);
