@@ -702,16 +702,10 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                     $code = Code::GOING_AWAY;
                     $reason = "Server shutting down!";
 
-                    $result = $this->doClose($client, $code, $reason);
-                    if ($result instanceof \Generator) {
-                        $promise[] = new Coroutine($result);
-                    }
+                    $promises[] = new Coroutine($this->doClose($client, $code, $reason));
 
                     if (!empty($client->writeDeferredControlQueue)) {
-                        $promise = end($client->writeDeferredControlQueue)->promise();
-                        if ($promise) {
-                            $promises[] = $promise;
-                        }
+                        $promises[] = end($client->writeDeferredControlQueue)->promise();
                     }
                 }
                 $promise = Promise\any($promises);
@@ -731,7 +725,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         if ($client->pingCount - $client->pongCount > $this->queuedPingLimit) {
             $code = Code::POLICY_VIOLATION;
             $reason = 'Exceeded unanswered PING limit';
-            $this->doClose($client, $code, $reason);
+            Promise\rethrow(new Coroutine($this->doClose($client, $code, $reason)));
         } else {
             $this->compile($client, (string) $client->pingCount++, self::OP_PING);
         }
