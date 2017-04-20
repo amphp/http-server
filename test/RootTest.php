@@ -8,10 +8,13 @@ use Aerys\Root;
 use Aerys\Server;
 use Aerys\ServerObserver;
 use Aerys\StandardResponse;
-use Amp\File as file;
+use Amp\Loop;
 use PHPUnit\Framework\TestCase;
 
 class RootTest extends TestCase {
+    /** @var \Amp\Loop\Driver */
+    private static $loop;
+
     private static function fixturePath() {
         return \sys_get_temp_dir() . "/aerys_root_test_fixture";
     }
@@ -20,6 +23,8 @@ class RootTest extends TestCase {
      * Setup a directory we can use as the document root
      */
     static function setUpBeforeClass() {
+        self::$loop = Loop::get();
+
         $fixtureDir = self::fixturePath();
         if (!file_exists($fixtureDir) && !\mkdir($fixtureDir)) {
             throw new \RuntimeException(
@@ -53,6 +58,14 @@ class RootTest extends TestCase {
         } else {
             \system('/usr/bin/env rm -rf ' . \escapeshellarg($fixtureDir));
         }
+    }
+
+    /**
+     * Restore original loop driver instance as data providers require the same driver instance to be active as when
+     * the data was generated.
+     */
+    public function setUp() {
+        Loop::set(self::$loop);
     }
 
     /**
