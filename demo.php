@@ -1,10 +1,12 @@
 <?php
 
-// <ignore>
-if (!class_exists('Aerys\Process')) { if (PHP_MAJOR_VERSION < 7) { echo "To run aerys, you need to run it with PHP 7.\n"; } echo "This file is not supposed to be invoked directly. To run it, use `php bin/aerys -c demo.php`.\n"; die(1); } eval(file_get_contents(__FILE__, null, null, __COMPILER_HALT_OFFSET__)); __halt_compiler();
-// </ignore>
+// Ignore this if-statement, it serves only to prevent running this file directly.
+if (!class_exists(Aerys\Process::class, false)) {
+    echo "This file is not supposed to be invoked directly. To run it, use `php bin/aerys -c demo.php`.\n";
+    exit(1);
+}
 
-use Aerys\{ Host, Request, Response, Router, Websocket, function root, function router, function websocket };
+use Aerys\{ Host, Request, Response, Websocket, function root, function router, function websocket };
 
 /* --- Global server options -------------------------------------------------------------------- */
 
@@ -63,7 +65,7 @@ $router = router()
         $res->end("<html><body><h1>ZANZIBAR!</h1></body></html>");
     });
 
-$websocket = websocket(new class implements Aerys\Websocket {
+$websocket = websocket(new class implements Websocket {
     private $endpoint;
 
     public function onStart(Websocket\Endpoint $endpoint) {
