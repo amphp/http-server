@@ -31,10 +31,10 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "php": ">=7.0.0",
+        "php": ">=7",
         "amphp/amp": "dev-master as 2.0",
         "amphp/file": "dev-amp_v2",
-        "amphp/stream": "dev-master",
+        "amphp/byte-stream": "dev-master",
         "amphp/socket": "dev-amp_v2",
         "league/climate": "^3",
         "nikic/fast-route": "^1",
