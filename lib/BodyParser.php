@@ -60,7 +60,7 @@ class BodyParser implements Stream {
             $this->boundary = $m[2];
         }
 
-        $this->initIncremental = \Amp\wrap($this->callableFromInstanceMethod('initIncremental'));
+        $this->initIncremental = $this->callableFromInstanceMethod('initIncremental');
 
         Loop::defer(function() {
             if ($this->parsing === 1) {

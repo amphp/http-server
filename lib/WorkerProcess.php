@@ -32,10 +32,10 @@ class WorkerProcess extends Process {
         $server = yield from $this->bootstrapper->boot($this->logger, $console);
         yield $server->start();
         $this->server = $server;
-        Loop::onReadable($this->ipcSock, \Amp\wrap(function($watcherId) {
+        Loop::onReadable($this->ipcSock, function($watcherId) {
             Loop::cancel($watcherId);
             yield from $this->stop();
-        }));
+        });
     }
 
     protected function doStop(): \Generator {
