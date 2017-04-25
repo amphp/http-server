@@ -34,7 +34,7 @@ class BodyParsingTest extends TestCase {
         $this->assertEquals($fields, $result["fields"]);
         $this->assertEquals($metadata, $result["metadata"]);
     }
-    
+
     /**
      * @dataProvider requestBodies
      */
@@ -83,7 +83,7 @@ class BodyParsingTest extends TestCase {
 
         Loop::run(function() use ($emitter, $data, $ireq, $fields, $metadata) {
             $fieldlist = $fields;
-            
+
             Loop::defer(function() use ($emitter, $data) {
                 $emitter->emit($data);
                 $emitter->resolve();
@@ -109,7 +109,7 @@ class BodyParsingTest extends TestCase {
     function testNew() {
         $header = null;
         $data = "a=ba%66g&&&be=c&d=f%6&gh&j";
-        
+
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
@@ -125,14 +125,13 @@ class BodyParsingTest extends TestCase {
         $gh = $body->write("gh");
         $j = $body->write("j");
 
-
         Loop::run(function() use ($a, $b, $be, $d, $gh, $j, $data, $emitter) {
-            Loop::defer(\Amp\wrap(function() use ($data, $emitter) {
+            Loop::defer(function() use ($data, $emitter) {
                 for ($i = 0; $i < \strlen($data); $i++) {
                     $emitter->emit($data[$i]);
                 }
                 $emitter->resolve();
-            }));
+            });
             $this->assertEquals("bafg", yield $a);
             $this->assertEquals("", yield $b); // not existing
             $this->assertEquals("c", yield $be);

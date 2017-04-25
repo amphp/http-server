@@ -84,7 +84,7 @@ abstract class Process {
             return;
         }
 
-        $onSignal = \Amp\wrap([$this, "stop"]);
+        $onSignal = [$this, "stop"];
 
         $loop = Loop::get()->getHandle();
         if (is_resource($loop) && get_resource_type($loop) == "uv_loop") {
