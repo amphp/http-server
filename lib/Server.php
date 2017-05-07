@@ -764,6 +764,8 @@ class Server implements Monitor {
             if ($out instanceof \Generator) {
                 $promise = resolve($out);
                 $promise->when($this->onCoroutineAppResolve, [$ireq, $response, $filters]);
+            } elseif ($out instanceof Promise) {
+                $out->when($this->onCoroutineAppResolve, [$ireq, $response, $filters]);
             } elseif ($response->state() & Response::STARTED) {
                 $response->end();
             } else {
