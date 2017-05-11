@@ -19,12 +19,12 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($emitter->stream());
+        $ireq->body = new Body($emitter->iterate());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
         $emitter->emit($data);
-        $emitter->resolve();
+        $emitter->complete();
 
         Loop::run(function() use ($ireq, &$result) {
             $parsedBody = yield \Aerys\parseBody(new StandardRequest($ireq));
@@ -42,27 +42,23 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($emitter->stream());
+        $ireq->body = new Body($emitter->iterate());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
         $emitter->emit($data);
-        $emitter->resolve();
+        $emitter->complete();
 
         Loop::run(function() use ($ireq, $fields, $metadata) {
             $fieldlist = $fields;
 
             $body = \Aerys\parseBody(new StandardRequest($ireq));
 
-            $body->onEmit(function ($data) use (&$fieldlist) {
-                $this->assertArrayHasKey($data, $fieldlist);
-                array_pop($fieldlist[$data]);
-            });
-            $body->onResolve(function ($e, $parsedBody) use (&$result) {
-                $result = $parsedBody->getAll();
-                $this->assertNull($e);
-            });
-            yield $body;
+            while (($field = yield $body->read()) !== null) {
+                $this->assertArrayHasKey($field, $fieldlist);
+                array_pop($fieldlist[$field]);
+            }
+            $result = (yield $body)->getAll();
 
             $this->assertEquals(count($fieldlist), count($fieldlist, \COUNT_RECURSIVE));
             $this->assertEquals($fields, $result["fields"]);
@@ -77,7 +73,7 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($emitter->stream());
+        $ireq->body = new Body($emitter->iterate());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
@@ -86,19 +82,15 @@ class BodyParsingTest extends TestCase {
 
             Loop::defer(function() use ($emitter, $data) {
                 $emitter->emit($data);
-                $emitter->resolve();
+                $emitter->complete();
             });
 
             $body = \Aerys\parseBody(new StandardRequest($ireq));
-            $body->onEmit(function ($data) use (&$fieldlist) {
-                $this->assertArrayHasKey($data, $fieldlist);
-                array_pop($fieldlist[$data]);
-            });
-            $body->onResolve(function ($e, $parsedBody) use (&$result) {
-                $this->assertNull($e);
-                $result = $parsedBody->getAll();
-            });
-            yield $body;
+            while (($field = yield $body->read()) !== null) {
+                $this->assertArrayHasKey($field, $fieldlist);
+                array_pop($fieldlist[$field]);
+            }
+            $result = (yield $body)->getAll();
 
             $this->assertEquals(count($fieldlist), count($fieldlist, \COUNT_RECURSIVE));
             $this->assertEquals($fields, $result["fields"]);
@@ -113,7 +105,7 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body($emitter->stream());
+        $ireq->body = new Body($emitter->iterate());
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
@@ -130,7 +122,7 @@ class BodyParsingTest extends TestCase {
                 for ($i = 0; $i < \strlen($data); $i++) {
                     $emitter->emit($data[$i]);
                 }
-                $emitter->resolve();
+                $emitter->complete();
             });
             $this->assertEquals("bafg", yield $a);
             $this->assertEquals("", yield $b); // not existing

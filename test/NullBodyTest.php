@@ -2,24 +2,16 @@
 
 namespace Aerys\Test;
 
-use Amp\Success;
+use Amp\Loop;
 use Aerys\NullBody;
 use PHPUnit\Framework\TestCase;
 
 class NullBodyTest extends TestCase {
     public function testBufferReturnsFulfilledPromiseWithEmptyString() {
-        $body = new NullBody;
-        $invoked = false;
-        $result = null;
-        $body->onResolve(function($e, $r) use (&$invoked, &$result) {
-            $this->assertNull($e);
-            $invoked = true;
-            $result = $r;
+        Loop::run(function() {
+            $body = new NullBody;
+            $this->assertEquals("", yield $body->read());
+            $this->assertSame("", yield $body);
         });
-        $body->advance()->onResolve(function($e, $emitted) {
-            $this->assertFalse($emitted);
-        });
-        $this->assertTrue($invoked);
-        $this->assertSame("", $result);
     }
 }

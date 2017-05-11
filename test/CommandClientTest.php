@@ -16,7 +16,7 @@ class CommandClientTest extends TestCase {
             if ($unix) {
                 $socketAddr = "unix://$path.sock";
             } else {
-                $socketAddr = "tcp://127.0.0.1:*";
+                $socketAddr = "tcp://127.0.0.1:0";
             }
 
             if (!$commandServer = stream_socket_server($socketAddr, $errno, $errstr)) {

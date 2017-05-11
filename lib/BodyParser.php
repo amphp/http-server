@@ -2,13 +2,14 @@
 
 namespace Aerys;
 
-use Amp\{ CallableMaker, Deferred, Emitter, Internal\Producer, Loop, Stream, Success };
+use Amp\{ Coroutine, Deferred, Emitter, Internal\Placeholder, Promise, Success };
+use Amp\ByteStream\{ InputStream, PendingReadException };
 
-class BodyParser implements Stream {
-    use CallableMaker;
-    use Producer {
-        onEmit as private watch;
+class BodyParser implements InputStream, Promise {
+    use Placeholder {
+        onResolve as private when;
     }
+    // use $this->onResolved for checking whether such a handler was installed
 
     /** @var \Aerys\Request */
     private $req;
@@ -21,8 +22,10 @@ class BodyParser implements Stream {
     private $bodyDeferreds = [];
     private $bodies = [];
 
-    /** @var int */
-    private $parsing = 0;
+    private $fieldQueue = [];
+    private $pendingRead = null;
+
+    private $startedParsing = false;
 
     private $size;
     private $totalSize;
@@ -33,7 +36,6 @@ class BodyParser implements Stream {
     private $maxFieldLen; // prevent buffering of arbitrary long names and fail instead
     private $maxInputVars; // prevent requests from creating arbitrary many fields causing lot of processing time
     private $inputVarCount = 0;
-    private $initIncremental;
 
     /**
      * @param Request $req
@@ -52,7 +54,7 @@ class BodyParser implements Stream {
         if ($type !== null && strncmp($type, "application/x-www-form-urlencoded", \strlen("application/x-www-form-urlencoded"))) {
             if (!preg_match('#^\s*multipart/(?:form-data|mixed)(?:\s*;\s*boundary\s*=\s*("?)([^"]*)\1)?$#', $type, $m)) {
                 $this->req = null;
-                $this->parsing = 1;
+                $this->startedParsing = true;
                 $this->resolve(new ParsedBody([]));
                 return;
             }
@@ -60,41 +62,31 @@ class BodyParser implements Stream {
             $this->boundary = $m[2];
         }
 
-        $this->initIncremental = $this->callableFromInstanceMethod('initIncremental');
+    }
 
-        Loop::defer(function() {
-            if ($this->parsing === 1) {
-                yield from $this->initIncremental();
-            }
-
-            try {
-                $data = yield $this->body;
-
-                $result = $this->end($data);
-
-                if (!$this->parsing) {
-                    $this->parsing = 2;
-                    foreach ($result->getNames() as $field) {
-                        foreach ($result->getArray($field) as $_) {
-                            $this->emit($field);
-                        }
+    public function onResolve(callable $onResolved) {
+        if (!$this->onResolved) {
+            \Amp\asyncCall(function () {
+                try {
+                    $this->resolve($this->end(yield $this->body));
+                } catch (\Throwable $exception) {
+                    if ($exception instanceof ClientSizeException) {
+                        $exception = new ClientException("", 0, $exception);
                     }
+                    $this->error($exception);
+                } finally {
+                    $this->req = null;
                 }
+            });
+        }
 
-                $this->resolve($result);
-            } catch (\Throwable $exception) {
-                if ($exception instanceof ClientSizeException) {
-                    $exception = new ClientException("", 0, $e);
-                }
-                $this->error($exception);
-            } finally {
-                $this->req = null;
-            }
-        });
+        $this->when($onResolved);
     }
 
     private function end($data): ParsedBody {
-        if (!$this->bodies && $data != "") {
+        if (!$this->startedParsing) {
+            $this->startedParsing = true;
+
             // if we end up here, we haven't parsed anything at all yet, so do a quick parse
             if ($this->boundary !== null) {
                 $fields = $metadata = [];
@@ -125,6 +117,7 @@ class BodyParser implements Stream {
                     }
                     $name = $m[1];
                     $fields[$name][] = $text;
+                    $this->fieldQueue[] = $name;
 
                     // Ignore Content-Transfer-Encoding as deprecated and hence we won't support it
 
@@ -141,7 +134,9 @@ class BodyParser implements Stream {
                 $fields = [];
                 foreach (explode("&", $data) as $pair) {
                     $pair = explode("=", $pair, 2);
-                    $fields[urldecode($pair[0])][] = urldecode($pair[1] ?? "");
+                    $field = urldecode($pair[0]);
+                    $fields[$field][] = urldecode($pair[1] ?? "");
+                    $this->fieldQueue[] = $field;
                 }
                 return new ParsedBody($fields, []);
             }
@@ -166,17 +161,28 @@ class BodyParser implements Stream {
         }
     }
 
-    public function onEmit(callable $onEmit) {
-        if ($this->req) {
-            $this->watch($onEmit);
-
-            if (!$this->parsing) {
-                $this->parsing = 1;
-                Loop::defer($this->initIncremental);
-            }
-        } elseif (!$this->parsing) {
-            $this->watch($onEmit);
+    public function read(): Promise {
+        if ($this->pendingRead) {
+            throw new PendingReadException;
         }
+
+        if (!empty($this->fieldQueue)) {
+            $key = \key($this->fieldQueue);
+            $val = $this->fieldQueue[$key];
+            unset($this->fieldQueue[$key]);
+            return new Success($val);
+        } elseif ($this->req) {
+            $this->pendingRead = new Deferred;
+            $promise = $this->pendingRead->promise();
+
+            if (!$this->startedParsing) {
+                Promise\rethrow(new Coroutine($this->initIncremental()));
+            }
+
+            return $promise;
+        }
+
+        return new Success;
     }
 
     /**
@@ -198,16 +204,17 @@ class BodyParser implements Stream {
                 $this->sizes[$name] = $size;
                 $this->body = $this->req->getBody($this->totalSize += $size);
             }
-            if (!$this->parsing) {
-                $this->parsing = 1;
-                Loop::defer($this->initIncremental);
+            if (!$this->startedParsing) {
+                Promise\rethrow(new Coroutine($this->initIncremental()));
             }
             if (empty($this->bodies[$name])) {
                 $this->bodyDeferreds[$name][] = [$body = new Emitter, $metadata = new Deferred];
-                return new FieldBody($body->stream(), $metadata->promise());
+                return new FieldBody($body->iterate(), $metadata->promise());
             }
         } elseif (empty($this->bodies[$name])) {
-            return new FieldBody(new Success, new Success([]));
+            $emptyEmitter = new Emitter;
+            $emptyEmitter->complete();
+            return new FieldBody($emptyEmitter->iterate(), new Success([]));
         }
         
         $key = key($this->bodies[$name]);
@@ -236,11 +243,17 @@ class BodyParser implements Stream {
             unset($this->bodyDeferreds[$field]);
         } else {
             $dataEmitter = new Emitter;
-            $this->bodies[$field][] = new FieldBody($dataEmitter->stream(), new Success($metadata));
+            $this->bodies[$field][] = new FieldBody($dataEmitter->iterate(), new Success($metadata));
         }
-        
-        $this->emit($field);
-        
+
+        if ($this->pendingRead) {
+            $pendingRead = $this->pendingRead;
+            $this->pendingRead = null;
+            $pendingRead->resolve($field);
+        } else {
+            $this->fieldQueue[] = $field;
+        }
+
         return $dataEmitter;
     }
 
@@ -263,8 +276,8 @@ class BodyParser implements Stream {
 
     private function error(\Throwable $e = null) {
         $e = $e ?? new ClientSizeException;
-        foreach ($this->bodyDeferreds as list($deferred, $metadata)) {
-            $deferred->fail($e);
+        foreach ($this->bodyDeferreds as list($emitter, $metadata)) {
+            $emitter->fail($e);
             $metadata->fail($e);
         }
         $this->bodyDeferreds = [];
@@ -273,23 +286,19 @@ class BodyParser implements Stream {
         $this->fail($e);
     }
 
-    // this should be inside a defer (not direct Coroutine) to give user a chance to install listen() handlers
     private function initIncremental() {
-        if ($this->parsing !== 1) {
-            return;
-        }
-        $this->parsing = 2;
+        $this->startedParsing = true;
 
         $buf = "";
         if ($this->boundary) {
             // RFC 7578, RFC 2046 Section 5.1.1
             $sep = "--$this->boundary";
             while (\strlen($buf) < \strlen($sep) + 4) {
-                if (!yield $this->body->advance()) {
+                $buf .= $chunk = yield $this->body->read();
+                if ($chunk == "") {
                     $this->error(new ClientException);
                     return;
                 }
-                $buf .= $this->body->getChunk();
             }
             $off = \strlen($sep);
             if (strncmp($buf, $sep, $off)) {
@@ -303,12 +312,11 @@ class BodyParser implements Stream {
                 $off += 2;
                 
                 while (($end = strpos($buf, "\r\n\r\n", $off)) === false) {
-                    if (!yield $this->body->advance()) {
+                    $buf .= $chunk = yield $this->body->read();
+                    if ($chunk == "") {
                         $this->error(new ClientException);
                         return;
                     }
-                    $off = \strlen($buf);
-                    $buf .= $this->body->getChunk();
                 }
 
                 $headers = [];
@@ -343,14 +351,14 @@ class BodyParser implements Stream {
                 $off = 0;
                 
                 while (($end = strpos($buf, $sep, $off)) === false) {
-                    if (!yield $this->body->advance()) {
+                    $buf .= $chunk = yield $this->body->read();
+                    if ($chunk == "") {
                         $e = new ClientException;
                         $dataEmitter->fail($e);
                         $this->error($e);
                         return;
                     }
-                    
-                    $buf .= $this->body->getChunk();
+
                     if (\strlen($buf) > \strlen($sep)) {
                         $off = \strlen($buf) - \strlen($sep);
                         $data = substr($buf, 0, $off);
@@ -369,22 +377,20 @@ class BodyParser implements Stream {
                     return;
                 }
                 $dataEmitter->emit($data);
-                $dataEmitter->resolve();
+                $dataEmitter->complete();
                 $off = $end + \strlen($sep);
 
                 while (\strlen($buf) < 4) {
-                    if (!yield $this->body->advance()) {
+                    $buf .= $chunk = yield $this->body->read();
+                    if ($chunk == "") {
                         $this->error(new ClientException);
                         return;
                     }
-                    $buf .= $this->body->getChunk();
                 }
             }
         } else {
             $field = null;
-            while (yield $this->body->advance()) {
-                $new = $this->body->getChunk();
-
+            while (($new = yield $this->body->read()) != "") {
                 if ($new[0] === "&") {
                     if ($field !== null) {
                         if ($noData || $buf != "") {
@@ -397,13 +403,13 @@ class BodyParser implements Stream {
                             $buf = "";
                         }
                         $field = null;
-                        $dataEmitter->resolve();
+                        $dataEmitter->complete();
                     } elseif ($buf != "") {
                         if (!$dataEmitter = $this->initField(urldecode($buf))) {
                             return;
                         }
                         $dataEmitter->emit("");
-                        $dataEmitter->resolve();
+                        $dataEmitter->complete();
                         $buf = "";
                     }
                 }
@@ -416,7 +422,7 @@ class BodyParser implements Stream {
                         return;
                     }
                     $dataEmitter->emit($data);
-                    $dataEmitter->resolve();
+                    $dataEmitter->complete();
 
                     $buf = $new;
                     $field = null;
@@ -434,7 +440,7 @@ class BodyParser implements Stream {
                         return;
                     }
                     $dataEmitter->emit($data);
-                    $dataEmitter->resolve();
+                    $dataEmitter->complete();
 
                     $buf = $next;
                 }
@@ -483,7 +489,7 @@ class BodyParser implements Stream {
                     }
                     $dataEmitter->emit($data);
                 }
-                $dataEmitter->resolve();
+                $dataEmitter->complete();
                 $field = null;
             } elseif ($buf) {
                 $field = urldecode($buf);
@@ -491,15 +497,28 @@ class BodyParser implements Stream {
                     return;
                 }
                 $dataEmitter->emit("");
-                $dataEmitter->resolve();
+                $dataEmitter->complete();
             }
         }
 
         foreach ($this->bodyDeferreds as $fieldArray) {
-            foreach ($fieldArray as list($deferred, $metadata)) {
-                $deferred->resolve();
+            foreach ($fieldArray as list($emitter, $metadata)) {
+                $emitter->complete();
                 $metadata->resolve([]);
             }
         }
+
+        $this->req = null;
+
+        if ($this->pendingRead) {
+            $pendingRead = $this->pendingRead;
+            $this->pendingRead = null;
+            $pendingRead->resolve(null);
+        }
+    }
+
+    // ...
+    public function close() {
+        throw new \Error("Must not call BodyParser::close()");
     }
 }

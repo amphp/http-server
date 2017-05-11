@@ -136,8 +136,8 @@ class ServerTest extends TestCase {
             [HttpDriver::ENTITY_PART, ["id" => 2, "protocol" => "2.0", "body" => "BAZ!"], null],
             [HttpDriver::ENTITY_RESULT, ["id" => 2, "protocol" => "2.0"], null],
         ], function (Request $req, Response $res) {
-            while (yield $req->getBody()->advance()) {
-                $res->write($req->getBody()->getChunk());
+            while (($chunk = yield $req->getBody()->read()) != "") {
+                $res->write($chunk);
             }
             $res->end();
         }, [function (InternalRequest $ireq) {
@@ -289,7 +289,7 @@ class ServerTest extends TestCase {
     }
 
     function startServer($parser, $tls) {
-        if (!$server = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
+        if (!$server = @stream_socket_server("tcp://127.0.0.1:0", $errno, $errstr)) {
             $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
         }
         $address = stream_socket_get_name($server, $wantPeer = false);
@@ -361,8 +361,7 @@ class ServerTest extends TestCase {
             Loop::defer(function() use ($deferred) { Loop::defer([$deferred, "resolve"]); });
             yield $deferred->promise();
             yield $client->write("b");
-            yield $client->advance();
-            $this->assertEquals("cd", $client->getChunk());
+            $this->assertEquals("cd", yield $client->read());
             yield $server->stop();
             Loop::stop();
         });
@@ -408,8 +407,7 @@ class ServerTest extends TestCase {
             $client = yield sock\cryptoConnect($address, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
             yield $client->write(str_repeat("1", 65537)); // larger than one TCP frame
             yield $client->write("a");
-            yield $client->advance();
-            $this->assertEquals("b", $client->getChunk());
+            $this->assertEquals("b", yield $client->read());
             $client->close();
 
             yield $deferred->promise();

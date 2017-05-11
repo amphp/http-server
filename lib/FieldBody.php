@@ -2,13 +2,13 @@
 
 namespace Aerys;
 
-use Amp\{ Promise, Stream };
+use Amp\{ Promise, Iterator };
 
 class FieldBody extends Body {
     private $metadata;
 
-    public function __construct(Stream $stream, Promise $metadata) {
-        parent::__construct($stream);
+    public function __construct(Iterator $iterator, Promise $metadata) {
+        parent::__construct($iterator);
         $this->metadata = $metadata;
     }
     

@@ -555,14 +555,14 @@ class Server implements Monitor {
         $ireq = $this->initializeRequest($client, $parseResult);
         $id = $parseResult["id"];
         $client->bodyEmitters[$id] = $bodyEmitter = new Emitter;
-        $ireq->body = new Body($bodyEmitter->stream());
+        $ireq->body = new Body($bodyEmitter->iterate());
 
         $this->respond($ireq);
     }
 
     private function onParsedMessageWithEntity(Client $client, array $parseResult) {
         $id = $parseResult["id"];
-        $client->bodyEmitters[$id]->resolve();
+        $client->bodyEmitters[$id]->complete();
         unset($client->bodyEmitters[$id]);
         // @TODO Update trailer headers if present
 

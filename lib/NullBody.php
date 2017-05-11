@@ -2,10 +2,12 @@
 
 namespace Aerys;
 
-use Amp\Success;
+use Amp\Emitter;
 
 final class NullBody extends Body {
     public function __construct() {
-        parent::__construct(new Success);
+        $emitter = new Emitter;
+        $emitter->complete();
+        parent::__construct($emitter->iterate());
     }
 }

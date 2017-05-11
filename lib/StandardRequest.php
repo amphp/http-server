@@ -74,7 +74,7 @@ class StandardRequest implements Request {
                 if ($e instanceof ClientSizeException) {
                     $ireq = $this->internalRequest;
                     $bodyEmitter = $ireq->client->bodyEmitters[$ireq->streamId];
-                    $ireq->body = new Body($bodyEmitter->stream());
+                    $ireq->body = new Body($bodyEmitter->iterate());
                     $bodyEmitter->emit($data);
                 }
             });

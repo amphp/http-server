@@ -13,7 +13,7 @@ class Rfc6455Client {
     public $parser;
     public $readWatcher;
     public $writeWatcher;
-    public $msgDeferred;
+    public $msgEmitter;
 
     public $pingCount = 0;
     public $pongCount = 0;

@@ -320,8 +320,8 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         unset($this->clients[$client->id]);
 
         // fail not yet terminated message streams; they *must not* be failed before client is removed
-        if ($client->msgDeferred) {
-            $client->msgDeferred->fail(new ClientException);
+        if ($client->msgEmitter) {
+            $client->msgEmitter->fail(new ClientException);
         }
 
         if ($client->writeBuffer != "") {
@@ -379,16 +379,16 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
         $client->lastDataReadAt = $this->now;
 
-        if (!$client->msgDeferred) {
-            $client->msgDeferred = new Emitter;
-            $msg = new Message($client->msgDeferred->stream(), $binary);
+        if (!$client->msgEmitter) {
+            $client->msgEmitter = new Emitter;
+            $msg = new Message($client->msgEmitter->iterate(), $binary);
             Promise\rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
         }
 
-        $client->msgDeferred->emit($data);
+        $client->msgEmitter->emit($data);
         if ($terminated) {
-            $client->msgDeferred->resolve();
-            $client->msgDeferred = null;
+            $client->msgEmitter->complete();
+            $client->msgEmitter = null;
             ++$client->messagesRead;
         }
     }

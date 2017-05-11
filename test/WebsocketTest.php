@@ -17,7 +17,7 @@ use Aerys\{
     Websocket\Rfc6455Gateway,
     const HTTP_STATUS
 };
-use Amp\{ Deferred, Emitter, Loop, Message, Pause };
+use Amp\{ Deferred, Emitter, Loop, Message, Delayed };
 use PHPUnit\Framework\TestCase;
 
 class NullWebsocket implements Websocket {
@@ -271,7 +271,7 @@ class WebsocketTest extends TestCase {
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
 
         $_ireq = clone $ireq;
-        $_ireq->body = new Body((new Emitter)->stream());
+        $_ireq->body = new Body((new Emitter)->iterate());
         $return[] = [$_ireq, [":status" => HTTP_STATUS["BAD_REQUEST"]]];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->
@@ -320,7 +320,7 @@ class WebsocketTest extends TestCase {
     function testCloseFrame() {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, "");
-            yield new Pause(10); // Time to read, write, and close.
+            yield new Delayed(10); // Time to read, write, and close.
             $this->assertEquals(Websocket\Code::NONE, $ws->closed);
             $this->assertSocket([[Rfc6455Gateway::OP_CLOSE, ""]], stream_get_contents($sock));
         });
@@ -329,7 +329,7 @@ class WebsocketTest extends TestCase {
     function testCloseWithStatus() {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY));
-            yield new Pause(10); // Time to read, write, and close.
+            yield new Delayed(10); // Time to read, write, and close.
             $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
             $this->assertSocket([[Rfc6455Gateway::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY)]], stream_get_contents($sock));
         });
@@ -338,7 +338,7 @@ class WebsocketTest extends TestCase {
     function testIOClose() {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
             fclose($sock);
-            yield new Pause(10); // Time to read, write, and close.
+            yield new Delayed(10); // Time to read, write, and close.
             $this->assertEquals(Websocket\Code::ABNORMAL_CLOSE, $ws->closed);
         });
     }
