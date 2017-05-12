@@ -571,8 +571,9 @@ class Server implements Monitor {
 
     private function onParsedMessageWithEntity(Client $client, array $parseResult) {
         $id = $parseResult["id"];
-        $client->bodyPromisors[$id]->succeed();
+        $promisor = $client->bodyPromisors[$id];
         unset($client->bodyPromisors[$id]);
+        $promisor->succeed();
         // @TODO Update trailer headers if present
 
         // Don't respond() because we always start the response when headers arrive
