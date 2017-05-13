@@ -174,7 +174,11 @@ class StandardResponse implements Response {
         // it throws we can handle InternalFilterException appropriately in the server.
         $this->state = self::STREAMING|self::STARTED;
 
-        return $this->client->bufferPromisor ? $this->client->bufferPromisor->promise() : new \Amp\Success;
+        if ($promisor = $this->client->bufferPromisor) {
+            return $promisor->promise();
+        } else {
+            return $this->client->isDead & Client::CLOSED_WR ? new \Amp\Failure(new ClientException) : new \Amp\Success;
+        }
     }
 
     /**
