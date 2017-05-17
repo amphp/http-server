@@ -913,7 +913,6 @@ class Server implements Monitor {
             $ex = $ex ?? new ClientException;
             $client->bufferPromisor->fail($ex);
         }
-
     }
 
     private function clear(Client $client) {
