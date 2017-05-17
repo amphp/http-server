@@ -609,11 +609,17 @@ class Http1DriverTest extends TestCase {
     }
 
     function verifyWrite($input, $status, $headers, $data) {
-        $parser = new Parser(Parser::MODE_RESPONSE);
+        $actualBody = "";
+        $parser = new Parser(static function ($chunk) use (&$actualBody) {
+            $actualBody .= $chunk;
+        }, Parser::MODE_RESPONSE);
         $parsed = $parser->parse($input);
+        if ($parsed["headersOnly"]) {
+            $parser->parse();
+        }
         $this->assertEquals($status, $parsed["status"]);
         $this->assertEquals($headers, $parsed["headers"]);
-        $this->assertEquals($data, stream_get_contents($parsed["body"]));
+        $this->assertEquals($data, $actualBody);
     }
 
     function testWriter() {

@@ -64,16 +64,15 @@ class ClientTest extends TestCase {
             $client = new Client($cookies);
             $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
             $port = parse_url($address, PHP_URL_PORT);
-            $promise = $client->request((new \Amp\Artax\Request)
-                ->setUri("https://localhost:$port/uri?foo=bar&baz=1&baz=2")
-                ->setMethod("GET")
-                ->setHeader("custom", "header")
+            $promise = $client->request((new \Amp\Artax\Request("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))
+                ->withHeader("custom", "header")
             );
 
             $res = yield $promise;
             $this->assertEquals(200, $res->getStatus());
-            $this->assertEquals(["header"], $res->getHeader("custom"));
-            $this->assertEquals("data".str_repeat("*", 100000)."data", $res->getBody());
+            $this->assertEquals(["header"], $res->getHeaderArray("custom"));
+            $body = yield $res->getBody();
+            $this->assertEquals("data".str_repeat("*", 100000)."data", $body);
             $this->assertEquals("with value", $cookies->get("localhost", "/", "cookie")[0]->getValue());
 
             Loop::stop();
@@ -119,23 +118,13 @@ class ClientTest extends TestCase {
 
             $client = new Client;
             $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
-            $promise = $client->request((new \Amp\Artax\Request)
-                ->setUri("https://$address/")
-                ->setMethod("POST")
-                ->setBody("body")
+            $promise = $client->request((new \Amp\Artax\Request("https://$address/", "POST"))
+                ->withBody("body")
             );
 
-            $body = "";
-            $promise->onEmit(function($update) use (&$body) {
-                list($type, $data) = $update;
-                if ($type == Notify::RESPONSE_BODY_DATA) {
-                    $body .= $data;
-                }
-            });
-            try {
-                yield $promise;
-            } catch (SocketException $e) { }
-            $this->assertTrue(isset($e));
+            $response = yield $promise;
+            $body = yield $response->getBody();
+
             $this->assertEquals("data", $body);
 
             yield $deferred->promise();
