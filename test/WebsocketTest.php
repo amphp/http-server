@@ -17,7 +17,7 @@ use Aerys\{
     Websocket\Rfc6455Gateway,
     const HTTP_STATUS
 };
-use Amp\{ Deferred, Emitter, Loop, Message, Delayed };
+use Amp\{ ByteStream\IteratorStream, Deferred, Emitter, Loop, Delayed };
 use PHPUnit\Framework\TestCase;
 
 class NullWebsocket implements Websocket {
@@ -271,7 +271,7 @@ class WebsocketTest extends TestCase {
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
 
         $_ireq = clone $ireq;
-        $_ireq->body = new Body((new Emitter)->iterate());
+        $_ireq->body = new Body(new IteratorStream((new Emitter)->iterate()));
         $return[] = [$_ireq, [":status" => HTTP_STATUS["BAD_REQUEST"]]];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->

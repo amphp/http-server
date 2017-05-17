@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-use Amp\{ CallableMaker, Coroutine, Deferred, Emitter, Failure, Loop, Promise, Success };
+use Amp\{ ByteStream\IteratorStream, CallableMaker, Coroutine, Deferred, Emitter, Failure, Loop, Promise, Success };
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\Promise\{ timeout, any, all };
 
@@ -555,7 +555,7 @@ class Server implements Monitor {
         $ireq = $this->initializeRequest($client, $parseResult);
         $id = $parseResult["id"];
         $client->bodyEmitters[$id] = $bodyEmitter = new Emitter;
-        $ireq->body = new Body($bodyEmitter->iterate());
+        $ireq->body = new Body(new IteratorStream($bodyEmitter->iterate()));
 
         $this->respond($ireq);
     }
