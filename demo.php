@@ -43,7 +43,7 @@ $router = router()
         while (true) {
             $res->write("hello!<br/>");
             $res->flush();
-            yield new Amp\Pause(1000);
+            yield new Amp\Delayed(1000);
         }
     })
     ->post("/body1", function(Request $req, Response $res) {
