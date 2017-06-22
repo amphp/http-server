@@ -389,6 +389,10 @@ class WatcherProcess extends Process {
     private function generateWorkerCommand(Console $console): string {
         $parts[] = \PHP_BINARY;
 
+        if (false === php_ini_scanned_files()) {
+            $parts[] = "-n";
+        }
+
         if ($ini = \get_cfg_var("cfg_file_path")) {
             $parts[] = "-c";
             $parts[] = $ini;

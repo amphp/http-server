@@ -125,10 +125,6 @@ class Http1Driver implements HttpDriver {
                 $msgs = "";
 
                 if ($client->isDead & Client::CLOSED_WR) {
-                    if (!$client->bufferDeferred) {
-                        $client->bufferDeferred = new Deferred;
-                        $client->bufferDeferred->fail(new ClientException);
-                    }
                     while (true) {
                         yield;
                     }
@@ -154,12 +150,7 @@ class Http1Driver implements HttpDriver {
 
         ($this->responseWriter)($client, $final = true);
 
-        if ($client->isDead & Client::CLOSED_WR) {
-            if (!$client->bufferDeferred) {
-                $client->bufferDeferred = new Deferred;
-                $client->bufferDeferred->fail(new ClientException);
-            }
-        } elseif (($client->isDead & Client::CLOSED_RD) && $client->bodyEmitters) {
+        if ($client->isDead == Client::CLOSED_RD /* i.e. not CLOSED_WR */ && $client->bodyEmitters) {
             array_pop($client->bodyEmitters)->fail(new ClientException); // just one element with Http1Driver
         }
     }

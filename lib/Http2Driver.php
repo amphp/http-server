@@ -259,10 +259,6 @@ class Http2Driver implements HttpDriver {
             }
 
             if ($client->isDead & Client::CLOSED_WR) {
-                if (!$client->bufferDeferred) {
-                    $client->bufferDeferred = new Deferred;
-                    $client->bufferDeferred->fail(new ClientException);
-                }
                 while (true) {
                     yield;
                 }
@@ -270,10 +266,6 @@ class Http2Driver implements HttpDriver {
         }
 
         $this->writeData($client, $msgs, $id, true);
-
-        if (($client->isDead & Client::CLOSED_WR) && !$client->bufferDeferred) {
-            $client->bufferDeferred = new Failure(new ClientException);
-        }
 
         if ($client->bufferDeferred) {
             $keepAlives = &$client->remainingKeepAlives; // avoid cyclic reference
