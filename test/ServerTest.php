@@ -13,7 +13,7 @@ use Aerys\Server;
 use Aerys\Ticker;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
-use Amp\Socket as sock;
+use Amp\Socket;
 use Amp\Loop;
 use PHPUnit\Framework\TestCase;
 
@@ -354,7 +354,7 @@ class ServerTest extends TestCase {
             }, false);
 
             /** @var \Amp\Socket\Socket $client */
-            $client = yield sock\connect($address);
+            $client = yield Socket\connect($address);
             yield $client->write("a");
             // give readWatcher a chance
             $deferred = new \Amp\Deferred;
@@ -402,9 +402,13 @@ class ServerTest extends TestCase {
                 }
             }, true);
 
-            // lowest possible
+            $context = (new Socket\ClientTlsContext)
+                ->withoutPeerVerification()
+                ->withPeerName("localhost")
+                ->withMinimumVersion(STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT);
+
             /** @var \Amp\Socket\Socket $client */
-            $client = yield sock\cryptoConnect($address, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
+            $client = yield Socket\cryptoConnect($address, null, $context);
             yield $client->write(str_repeat("1", 65537)); // larger than one TCP frame
             yield $client->write("a");
             $this->assertEquals("b", yield $client->read());

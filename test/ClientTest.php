@@ -4,7 +4,7 @@ namespace Aerys\Test;
 
 use Aerys\ClientException;
 use Aerys\InternalRequest;
-use Amp\Artax\Client;
+use Amp\Artax\BasicClient;
 use Aerys\Http1Driver;
 use Aerys\Http2Driver;
 use Aerys\Logger;
@@ -18,6 +18,7 @@ use Aerys\VhostContainer;
 use Amp\Artax\Notify;
 use Amp\Artax\SocketException;
 use Amp\Loop;
+use Amp\Socket\ClientTlsContext;
 use PHPUnit\Framework\TestCase;
 
 class ClientTest extends TestCase {
@@ -61,8 +62,11 @@ class ClientTest extends TestCase {
 
             $cookies = new \Amp\Artax\Cookie\ArrayCookieJar;
             $cookies->store(new \Amp\Artax\Cookie\Cookie("test", "value", null, "/", "localhost"));
-            $client = new Client($cookies);
-            $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
+            $context = (new ClientTlsContext)
+                ->withoutPeerVerification()
+                ->withPeerName("localhost")
+                ->withMinimumVersion(STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT);
+            $client = new BasicClient($cookies, null, $context);
             $port = parse_url($address, PHP_URL_PORT);
             $promise = $client->request((new \Amp\Artax\Request("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))
                 ->withHeader("custom", "header")
@@ -116,8 +120,11 @@ class ClientTest extends TestCase {
                 return $end;
             }]);
 
-            $client = new Client;
-            $client->setOption(Client::OP_CRYPTO, ["allow_self_signed" => true, "peer_name" => "localhost", "crypto_method" => STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT]);
+            $context = (new ClientTlsContext)
+                ->withoutPeerVerification()
+                ->withPeerName("localhost")
+                ->withMinimumVersion(STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT);
+            $client = new BasicClient(null, null, $context);
             $promise = $client->request((new \Amp\Artax\Request("https://$address/", "POST"))
                 ->withBody("body")
             );

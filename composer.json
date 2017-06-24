@@ -26,6 +26,10 @@
         {
             "name": "Niklas Keller",
             "role": "Quality Assurance / Developer"
+        },
+        {
+            "name": "Aaron Piotrowski",
+            "email": "aaron@trowski.com"
         }
     ],
     "minimum-stability": "dev",
@@ -33,19 +37,19 @@
     "require": {
         "php": ">=7",
         "amphp/amp": "^2",
-        "amphp/file": "dev-amp_v2",
-        "amphp/byte-stream": "dev-master",
-        "amphp/socket": "dev-amp_v2",
+        "amphp/file": "^0.2",
+        "amphp/byte-stream": "^1",
+        "amphp/socket": "^0.10",
         "league/climate": "^3",
         "nikic/fast-route": "^1",
         "psr/log": "^1"
     },
     "require-dev": {
-        "amphp/phpunit-util": "dev-master",
-        "amphp/artax": "^3@dev",
-        "friendsofphp/php-cs-fixer": "~1.9",
-        "http2jp/hpack-test-case": "1.0",
-        "phpunit/phpunit": "^6.0"
+        "amphp/phpunit-util": "^1",
+        "amphp/artax": "dev-master",
+        "friendsofphp/php-cs-fixer": "^2.3",
+        "http2jp/hpack-test-case": "^1",
+        "phpunit/phpunit": "^6"
     },
     "autoload": {
         "psr-4": {

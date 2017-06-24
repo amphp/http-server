@@ -3,7 +3,7 @@
 namespace Aerys;
 
 use Amp\{ Coroutine, Deferred, Emitter, Internal\Placeholder, Promise, Success };
-use Amp\ByteStream\{ InputStream, PendingReadException };
+use Amp\ByteStream\{ InputStream, PendingReadError };
 
 class BodyParser implements InputStream, Promise {
     use Placeholder {
@@ -163,7 +163,7 @@ class BodyParser implements InputStream, Promise {
 
     public function read(): Promise {
         if ($this->pendingRead) {
-            throw new PendingReadException;
+            throw new PendingReadError;
         }
 
         if (!empty($this->fieldQueue)) {
