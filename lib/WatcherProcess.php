@@ -19,12 +19,19 @@ class WatcherProcess extends Process {
     private $defunctProcessCount = 0;
     private $expectedFailures = 0;
 
+    private $useSocketTransfer;
+    private $addrCtx = [];
+    private $serverSockets = [];
+
+    const STOP_SEQUENCE = "\0\0\0\0\n"; // 4 leading NUL-bytes to signal zero sockets if sent early in socket-transfer mode
+
     public function __construct(PsrLogger $logger) {
         parent::__construct($logger);
         $this->logger = $logger;
         $this->procGarbageWatcher = \Amp\repeat(function() {
             $this->collectProcessGarbage();
         }, 100, ["enable" => false]);
+        $this->useSocketTransfer = $this->useSocketTransfer();
     }
 
     private function collectProcessGarbage() {
@@ -294,6 +301,17 @@ class WatcherProcess extends Process {
         return $cores;
     }
 
+    private function useSocketTransfer() {
+        $os = (stripos(PHP_OS, "WIN") === 0) ? "win" : strtolower(trim(shell_exec("uname")));
+        switch ($os) {
+            case "darwin":
+            case "freebsd":
+                // needs socket_export_stream()
+                return \extension_loaded("sockets") && PHP_VERSION_ID >= 70007;
+        }
+        return false;
+    }
+
     private function bindIpcServer() {
         $socketAddress = "127.0.0.1:*";
         $socketTransport = "tcp";
@@ -324,9 +342,8 @@ class WatcherProcess extends Process {
             return;
         }
 
-
         if ($this->stopPromisor) {
-            @\fwrite($ipcClient, "\n");
+            @\fwrite($ipcClient, self::STOP_SEQUENCE);
         }
 
         stream_set_blocking($ipcClient, false);
@@ -353,11 +370,12 @@ class WatcherProcess extends Process {
             $buffer .= $data;
             do {
                 if (!isset($length)) {
-                    if (!isset($buffer[3])) {
+                    if (!isset($buffer[4])) {
                         break;
                     }
-                    $length = unpack("Nlength", substr($buffer, 0, 4))["length"];
-                    $buffer = substr($buffer, 4);
+                    $unpacked = unpack("ctype/Nlength", $buffer);
+                    $length = $unpacked["length"];
+                    $buffer = substr($buffer, 5);
                 }
                 if (!isset($buffer[$length - 1])) {
                     break;
@@ -366,8 +384,14 @@ class WatcherProcess extends Process {
                 $buffer = (string) substr($buffer, $length);
                 $length = null;
 
-                // all messages received from workers are sent to STDOUT
-                $this->console->output($message);
+                if ($unpacked["type"]) {
+                    \assert($unpacked["type"] === 1 && $this->useSocketTransfer);
+
+                    $this->parseWorkerAddrCtx($ipcClient, $message);
+                } else {
+                    // all type 0 messages received from workers are sent to STDOUT
+                    $this->console->output($message);
+                }
             } while (1);
 
             if (($data == "" && !is_resource($ipcClient)) || @feof($ipcClient)) {
@@ -383,6 +407,56 @@ class WatcherProcess extends Process {
         unset($this->ipcClients[$readWatcherId]);
         $this->defunctProcessCount++;
         \Amp\enable($this->procGarbageWatcher);
+    }
+
+    private function parseWorkerAddrCtx($ipcClient, $message) {
+        $addrCtxMap = json_decode($message, true);
+
+        foreach ($addrCtxMap as $address => $context) {
+            if (!isset($this->addrCtx[$address])) {
+                $this->addrCtx[$address] = $context;
+
+                // do NOT invoke STREAM_SERVER_LISTEN here - we explicitly invoke \socket_listen() in our worker processes
+                if (!$socket = stream_socket_server($address, $errno, $errstr, STREAM_SERVER_BIND, stream_context_create(["socket" => $context]))) {
+                    throw new \RuntimeException(sprintf("Failed binding socket on %s: [Err# %s] %s", $address, $errno, $errstr));
+                }
+
+                $this->serverSockets[$address] = $socket;
+            } elseif ($this->addrCtx[$address] != $context) {
+                $this->logger->warning("Context of existing socket for $address differs from new context. Skipping. Current: " . json_encode($this->addrCtx[$address]) . " New: " . json_encode($ctx));
+                unset($addrCtxMap[$address]);
+            }
+        }
+
+        $sockets = array_intersect_key($this->serverSockets, $addrCtxMap);
+
+        // Number of sockets (pack("N")), then individual sockets
+        $gen = (function() use ($ipcClient, &$watcherId, $sockets) {
+            $data = pack("N", count($sockets));
+            do {
+                yield;
+                $bytesWritten = \fwrite($ipcClient, $data);
+                $data = \substr($data, $bytesWritten);
+                if ($bytesWritten === false || ($bytesWritten === 0 && (!\is_resource($ipcClient) || @\feof($ipcClient)))) {
+                    \Amp\cancel($watcherId);
+                }
+            } while ($data != "");
+
+            \stream_set_blocking($ipcClient, true);
+            $ipcSock = \socket_import_stream($ipcClient);
+            foreach ($sockets as $address => $socket) {
+                yield;
+                if (!\socket_sendmsg($ipcSock, ["iov" => [$address], "control" => [["level" => \SOL_SOCKET, "type" => \SCM_RIGHTS, "data" => [$socket]]]], 0)) {
+                    \Amp\cancel($watcherId);
+                }
+            }
+            \stream_set_blocking($ipcClient, false);
+
+            \Amp\cancel($watcherId);
+        })();
+        $watcherId = \Amp\onWritable($ipcClient, function() use ($gen) {
+            $gen->next();
+        });
     }
 
     private function generateWorkerCommand(Console $console): string {
@@ -425,10 +499,13 @@ class WatcherProcess extends Process {
 
     private function spawn() {
         $cmd = $this->workerCommand;
+        if ($this->useSocketTransfer) {
+            $cmd .= " --socket-transfer";
+        }
         $fds = [["pipe", "r"], ["pipe", "w"], ["pipe", "w"]];
         $options = ["bypass_shell" => true];
         if (!$procHandle = \proc_open($cmd, $fds, $pipes, null, null, $options)) {
-            return new Failure(new \RuntimeException(
+            return new \Amp\Failure(new \RuntimeException(
                 "Failed spawning worker process"
             ));
         }
@@ -441,10 +518,11 @@ class WatcherProcess extends Process {
     }
 
     public function restart() {
+        $this->serverSockets = $this->addrCtx = [];
         $spawn = count($this->ipcClients);
         for ($i = 0; $i < $spawn; $i++) {
             $this->spawn()->when(function() {
-                @\fwrite(current($this->ipcClients), "\n");
+                @\fwrite(current($this->ipcClients), self::STOP_SEQUENCE);
                 next($this->ipcClients);
             });
         }
@@ -455,7 +533,7 @@ class WatcherProcess extends Process {
         if (!$this->stopPromisor) {
             $this->stopPromisor = new Deferred;
             foreach ($this->ipcClients as $ipcClient) {
-                @\fwrite($ipcClient, "\n");
+                @\fwrite($ipcClient, self::STOP_SEQUENCE);
             }
         }
 
