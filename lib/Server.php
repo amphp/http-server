@@ -231,6 +231,7 @@ class Server implements Monitor {
             $context = ["socket" => [
                 "backlog"      => $backlogSize,
                 "so_reuseport" => $shouldReusePort,
+                "so_reuseaddr" => stripos(PHP_OS, "WIN") === 0, // SO_REUSEADDR has SO_REUSEPORT semantics on Windows
                 "ipv6_v6only"  => true,
             ]];
             if (isset($tlsBindings[$address])) {
