@@ -1,7 +1,10 @@
 #!/usr/bin/env php
 <?php
 
-@cli_set_process_title("aerys-worker");
+if (function_exists("cli_set_process_title")) {
+    @cli_set_process_title("aerys-worker");
+}
+
 error_reporting(E_ALL);
 
 (function () {
@@ -34,6 +37,10 @@ $climate = new League\CLImate\CLImate;
 $climate->arguments->add([
     "ipc" => [
         "prefix"       => "i",
+    ],
+    "socket-transfer" => [
+        "longPrefix"   => "socket-transfer",
+        "noValue"      => true,
     ],
     "log" => [
         "prefix"       => "l",

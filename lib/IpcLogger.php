@@ -10,6 +10,8 @@ class IpcLogger extends Logger {
     private $ipcSock;
     private $writeWatcherId;
     private $writeQueue = [];
+    private $pendingQueue = null;
+    private $writeDeferred;
     private $writeBuffer = "";
     private $isDead;
 
@@ -30,9 +32,13 @@ class IpcLogger extends Logger {
 
     protected function output(string $message) {
         if (empty($this->isDead)) {
-            $this->writeQueue[] = pack("N", \strlen($message));
-            $this->writeQueue[] = $message;
-            Loop::enable($this->writeWatcherId);
+            $msg = "\0" . pack("N", \strlen($message)) . $message;
+            if ($this->pendingQueue === null) {
+                $this->writeQueue[] = $msg;
+                Loop::enable($this->writeWatcherId);
+            } else {
+                $this->pendingQueue[] = $msg;
+            }
         }
     }
 
@@ -64,8 +70,11 @@ class IpcLogger extends Logger {
         }
 
         $this->writeBuffer = "";
-
         Loop::disable($this->writeWatcherId);
+        if ($deferred = $this->writeDeferred) {
+            $this->writeDeferred = null;
+            $deferred->resolve();
+        }
     }
 
     private function onDeadIpcSock() {
@@ -83,5 +92,22 @@ class IpcLogger extends Logger {
         stream_set_blocking($this->ipcSock, true);
         $this->onWritable();
         stream_set_blocking($this->ipcSock, false);
+    }
+
+    public function disableSending() {
+        $this->pendingQueue = [];
+        if ($this->writeQueue) {
+            $this->writeDeferred = new \Amp\Deferred;
+            return $this->writeDeferred->promise();
+        }
+        return new \Amp\Success;
+    }
+
+    public function enableSending() {
+        if ($this->pendingQueue) {
+            $this->writeQueue = $this->pendingQueue;
+            Loop::enable($this->writeWatcherId);
+        }
+        $this->pendingQueue = null;
     }
 }

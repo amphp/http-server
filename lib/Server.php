@@ -144,9 +144,10 @@ class Server implements Monitor {
     /**
      * Start the server
      *
-     * @return Promise
+     * @param callable(array) $bindSockets is passed the $address => $context map
+     * @return \Amp\Promise
      */
-    public function start(): Promise {
+    public function start(callable $bindSockets = null): Promise {
         try {
             if ($this->state == self::STOPPED) {
                 if ($this->vhosts->count() === 0) {
@@ -154,7 +155,19 @@ class Server implements Monitor {
                         "Cannot start: no virtual hosts registered in composed VhostContainer"
                     ));
                 }
-                return new Coroutine($this->doStart());
+                return new Coroutine($this->doStart($bindSockets ?? function($addrCtxMap) {
+                    $serverSockets = [];
+
+                    foreach ($addrCtxMap as $address => $context) {
+                        if (!$socket = stream_socket_server($address, $errno, $errstr, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, stream_context_create($context))) {
+                            return new Failure(new \RuntimeException(sprintf("Failed binding socket on %s: [Err# %s] %s", $address, $errno, $errstr)));
+                        }
+
+                        $serverSockets[$address] = $socket;
+                    }
+
+                    return new Success($serverSockets);
+                }));
             } else {
                 return new Failure(new \Error(
                     "Cannot start server: already ".self::STATES[$this->state]
@@ -165,17 +178,14 @@ class Server implements Monitor {
         }
     }
 
-    private function doStart(): \Generator {
+    private function doStart($bindSockets): \Generator {
         assert($this->logDebug("starting"));
 
         $emitter = $this->callableFromInstanceMethod("onParseEmit");
         $writer = $this->callableFromInstanceMethod("writeResponse");
         $this->vhosts->setupHttpDrivers($emitter, $writer);
 
-        $addrCtxMap = $this->generateBindableAddressContextMap();
-        foreach ($addrCtxMap as $address => $context) {
-            $this->boundServers[$address] = $this->bind($address, $context);
-        }
+        $this->boundServers = yield $bindSockets($this->generateBindableAddressContextMap());
 
         $this->state = self::STARTING;
         $notifyResult = yield $this->notify();
@@ -199,15 +209,12 @@ class Server implements Monitor {
             $this->logger->info("Listening on {$serverName}");
         }
 
-        return $this->notify()->onResolve(function($e, $notifyResult) {
-            if ($hadErrors = $e || $notifyResult[0]) {
-                (new Coroutine($this->doStop()))->onResolve(function($e) {
-                    throw new \RuntimeException(
-                        "Server::STARTED observer initialization failure", 0, $e
-                    );
-                });
-            }
-        });
+        try {
+            return yield $this->notify();
+        } catch (\Throwable $exception) {
+            yield $this->doStop();
+            throw new \RuntimeException("Server::STARTED observer initialization failure", 0, $exception);
+        }
     }
 
     private function generateBindableAddressContextMap() {
@@ -218,33 +225,19 @@ class Server implements Monitor {
         $shouldReusePort = !$this->options->debug;
 
         foreach ($addresses as $address) {
-            $context = stream_context_create(["socket" => [
+            $context = ["socket" => [
                 "backlog"      => $backlogSize,
                 "so_reuseport" => $shouldReusePort,
+                "so_reuseaddr" => stripos(PHP_OS, "WIN") === 0, // SO_REUSEADDR has SO_REUSEPORT semantics on Windows
                 "ipv6_v6only"  => true,
-            ]]);
+            ]];
             if (isset($tlsBindings[$address])) {
-                stream_context_set_option($context, ["ssl" => $tlsBindings[$address]]);
+                $context["ssl"] = $tlsBindings[$address];
             }
             $addrCtxMap[$address] = $context;
         }
 
         return $addrCtxMap;
-    }
-
-    private function bind(string $address, $context) {
-        if (!$socket = stream_socket_server($address, $errno, $errstr, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, $context)) {
-            throw new \RuntimeException(
-                sprintf(
-                    "Failed binding socket on %s: [Err# %s] %s",
-                    $address,
-                    $errno,
-                    $errstr
-                )
-            );
-        }
-
-        return $socket;
     }
 
     private function onAcceptable(string $watcherId, $server) {
