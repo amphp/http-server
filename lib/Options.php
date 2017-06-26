@@ -27,7 +27,7 @@ class Options {
     private $deflateEnable;
     private $deflateContentTypes = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
     private $configPath = null;
-    
+
     private $maxFieldLen = 16384; // this must be strictly less than maxBodySize
     private $maxInputVars = 200;
     private $maxBodySize = 131072;
@@ -56,7 +56,7 @@ class Options {
     }
 
     /**
-     * Allow retrieval of "public" properties
+     * Allow retrieval of "public" properties.
      *
      * @param string $property
      * @return mixed Returns the value of the requested property
@@ -65,17 +65,16 @@ class Options {
     public function __get(string $property) {
         if (\property_exists($this, $property)) {
             return $this->{$property};
-        } else {
+        }
             // Use \Amp\Struct::generateStructPropertyError() to get a nice message
             // with a possible suggestion for the correct name
             throw new \Error(
                 $this->generateStructPropertyError($property)
             );
-        }
     }
 
     /**
-     * Prevent external code from modifying our "public" time/date properties
+     * Prevent external code from modifying our "public" time/date properties.
      *
      * @param string $property
      * @param mixed $value
@@ -97,9 +96,8 @@ class Options {
         $setter = "set" . \ucfirst($property);
         if (\method_exists($this, $setter)) {
             return $this->{$setter}($value);
-        } else {
-            $this->{$property} = $value;
         }
+        $this->{$property} = $value;
     }
 
     private function setDebug(bool $flag) {

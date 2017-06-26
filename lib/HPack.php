@@ -100,7 +100,7 @@ class HPack {
             for ($bit = 0; $bit < 8; $bit++) {
                 $offlen = $len + $bit;
                 $next = &$encodingAccess[$bit];
-                for ($byte = (int)(($offlen - 1) / 8); $byte > 0; $byte--) {
+                for ($byte = (int) (($offlen - 1) / 8); $byte > 0; $byte--) {
                     $cur = \str_pad(\decbin(($bits >> ($byte * 8 - (0x30 - $offlen) % 8)) & 0xFF), 8, "0", STR_PAD_LEFT);
                     if (isset($next[$cur]) && $next[$cur][0] != $encodingAccess[0]) {
                         $next = &$next[$cur][0];
@@ -223,7 +223,7 @@ class HPack {
         }
 
         $bytes = $bitcount / 8;
-        $e = (int)\ceil($bytes);
+        $e = (int) \ceil($bytes);
         if ($e != $bytes) {
             $out[$e - 1] = $out[$e - 1] | \chr(0xFF >> $bitcount % 8);
         }
@@ -347,7 +347,7 @@ class HPack {
                     $headers[] = $this->headers[$index];
                 }
             } elseif (($index & 0x60) != 0x20) { // (($index & 0x40) || !($index & 0x20)): bit 4: never index is ignored
-                $dynamic = (bool)($index & 0x40);
+                $dynamic = (bool) ($index & 0x40);
                 if ($index & ($dynamic ? 0x3f : 0x0f)) { // separate length
                     if ($dynamic) {
                         if ($index == 0x7f) {
@@ -415,9 +415,8 @@ class HPack {
                 }
                 if ($index > 4096) { // initial limit … may be adjusted??
                     return null;
-                } else {
-                    $this->table_resize($index);
                 }
+                $this->table_resize($index);
             }
         }
 

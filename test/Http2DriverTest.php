@@ -10,12 +10,11 @@ use Aerys\Options;
 use PHPUnit\Framework\TestCase;
 
 class Http2DriverTest extends TestCase {
-
-    function packFrame($data, $type, $flags, $stream = 0) {
+    public function packFrame($data, $type, $flags, $stream = 0) {
         return substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
     }
 
-    function packHeader($headers, $hasBody = false, $stream = 1, $split = PHP_INT_MAX) {
+    public function packHeader($headers, $hasBody = false, $stream = 1, $split = PHP_INT_MAX) {
         $data = "";
         $headers = (new HPack)->encode($headers);
         $all = str_split($headers, $split);
@@ -39,11 +38,13 @@ class Http2DriverTest extends TestCase {
     /**
      * @dataProvider provideSimpleCases
      */
-    function testSimpleCases($msg, $expectations) {
+    public function testSimpleCases($msg, $expectations) {
         $msg = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$msg";
 
         $driver = new class($this) extends Http2Driver {
-            public function __construct($test) { $this->test = $test; }
+            public function __construct($test) {
+                $this->test = $test;
+            }
             protected function writeFrame(Client $client, $data, $type, $flags, $stream = 0) {
                 if ($type == Http2Driver::RST_STREAM || $type == Http2Driver::GOAWAY) {
                     $this->test->fail("RST_STREAM or GOAWAY frame received");
@@ -51,7 +52,7 @@ class Http2DriverTest extends TestCase {
             }
         };
 
-        $emitCallback = function(...$emitStruct) use (&$client, &$invoked, &$parseResult, &$body) {
+        $emitCallback = function (...$emitStruct) use (&$client, &$invoked, &$parseResult, &$body) {
             list(, $resultCode, $tmpResult, $errorStruct) = $emitStruct;
             if (!$invoked++) {
                 $parseResult = $tmpResult;
@@ -60,7 +61,7 @@ class Http2DriverTest extends TestCase {
             $body .= $tmpResult["body"];
             $client->bodyEmitters[$tmpResult["id"]] = true; // is used to verify whether headers were sent
         };
-        $driver->setup($emitCallback, function(){});
+        $driver->setup($emitCallback, function () {});
 
         for ($mode = 0; $mode <= 1; $mode++) {
             $invoked = 0;
@@ -94,7 +95,7 @@ class Http2DriverTest extends TestCase {
         }
     }
 
-    function provideSimpleCases() {
+    public function provideSimpleCases() {
         // 0 --- basic request -------------------------------------------------------------------->
 
         $headers = [
@@ -140,10 +141,12 @@ class Http2DriverTest extends TestCase {
         return $return;
     }
 
-    function setupDriver() {
+    public function setupDriver() {
         $driver = new class($this) extends Http2Driver {
             public $frames = [];
-            public function __construct($test) { $this->test = $test; }
+            public function __construct($test) {
+                $this->test = $test;
+            }
             protected function writeFrame(Client $client, $data, $type, $flags, $stream = 0) {
                 if ($type == Http2Driver::RST_STREAM || $type == Http2Driver::GOAWAY) {
                     $this->test->fail("RST_STREAM or GOAWAY frame received");
@@ -155,12 +158,12 @@ class Http2DriverTest extends TestCase {
             }
         };
 
-        $driver->setup(function() {}, function(){});
+        $driver->setup(function () {}, function () {});
 
         return $driver;
     }
 
-    function testPingPong() {
+    public function testPingPong() {
         $driver = $this->setupDriver();
 
         $client = new Client;
@@ -175,7 +178,7 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals([["blahbleh", Http2Driver::PING, Http2Driver::ACK, 0]], $driver->frames);
     }
 
-    function testFlowControl() {
+    public function testFlowControl() {
         $driver = $this->setupDriver();
 
         $client = new Client;
@@ -304,5 +307,4 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals("", $data);
         $this->assertEquals(3, $stream);
     }
-
 }

@@ -2,8 +2,8 @@
 
 namespace Aerys;
 
-use Amp\Success;
 use Amp\Promise;
+use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Bootstrapper {
@@ -14,7 +14,7 @@ class Bootstrapper {
     }
 
     /**
-     * Bootstrap a server from command line options
+     * Bootstrap a server from command line options.
      *
      * @param PsrLogger $logger
      * @param \Aerys\Console $console
@@ -65,7 +65,7 @@ class Bootstrapper {
     }
 
     /**
-     * Initializes the server directly without config file inclusion
+     * Initializes the server directly without config file inclusion.
      *
      * @param PsrLogger $logger
      * @param array $options Aerys options array
@@ -81,7 +81,7 @@ class Bootstrapper {
         $ticker = new Ticker($logger);
         $server = new Server($options, $vhosts, $logger, $ticker);
 
-        $bootLoader = static function(Bootable $bootable) use ($server, $logger) {
+        $bootLoader = static function (Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
             if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
                 throw new \Error("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Middleware and/or be callable, got ' . gettype($booted) . ".");
@@ -117,7 +117,8 @@ class Bootstrapper {
                 if (@assert(false)) {
                     return $this->generatePublicOptionsStruct($optionsObj);
                 }
-            } catch (\AssertionError $e) {}
+            } catch (\AssertionError $e) {
+            }
             return $optionsObj;
         } catch (\Throwable $e) {
             throw new \Error(
@@ -177,7 +178,7 @@ class Bootstrapper {
             }
 
             if (empty($applications)) {
-                $application = static function(Request $request, Response $response) {
+                $application = static function (Request $request, Response $response) {
                     $response->end("<html><body><h1>It works!</h1></body></html>");
                 };
             } elseif (count($applications) === 1) {

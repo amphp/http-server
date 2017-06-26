@@ -67,7 +67,7 @@ class StandardRequest implements Request {
                 $ireq->client->httpDriver->upgradeBodySize($this->internalRequest);
             }
         }
-        
+
         if ($ireq->body != $this->body) {
             $this->body = $ireq->body;
             $ireq->body->onResolve(function ($e, $data) {
@@ -102,7 +102,7 @@ class StandardRequest implements Request {
     public function getAllParams(): array {
         return $this->queryParams ?? $this->queryParams = $this->parseParams();
     }
-    
+
     private function parseParams() {
         if (empty($this->internalRequest->uriQuery)) {
             return $this->queryParams = [];
@@ -112,7 +112,7 @@ class StandardRequest implements Request {
         if (count($pairs) > $this->internalRequest->client->options->maxInputVars) {
             throw new ClientSizeException;
         }
-        
+
         $this->queryParams = [];
         foreach ($pairs as $pair) {
             $pair = explode("=", $pair, 2);
@@ -167,5 +167,4 @@ class StandardRequest implements Request {
     public function getOption(string $option) {
         return $this->internalRequest->client->options->{$option};
     }
-
 }

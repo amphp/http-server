@@ -13,14 +13,14 @@ use Aerys\Server;
 use Aerys\Ticker;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
-use Amp\Socket;
 use Amp\Loop;
+use Amp\Socket;
 use PHPUnit\Framework\TestCase;
 
 // @TODO test communication on half-closed streams (both ways) [also with yield message] (also with HTTP/1 pipelining...)
 
 class ServerTest extends TestCase {
-    function tryRequest($emit, $responder, $middlewares = []) {
+    public function tryRequest($emit, $responder, $middlewares = []) {
         $gen = $this->tryIterativeRequest($responder, $middlewares);
         foreach ($emit as $part) {
             $gen->send($part);
@@ -29,7 +29,7 @@ class ServerTest extends TestCase {
     }
 
 
-    function tryIterativeRequest($responder, $middlewares = []) {
+    public function tryIterativeRequest($responder, $middlewares = []) {
         $vhosts = new VhostContainer($driver = new class($this) implements HttpDriver {
             private $test;
             private $emit;
@@ -62,7 +62,8 @@ class ServerTest extends TestCase {
                 } while ($part !== null);
             }
 
-            public function upgradeBodySize(InternalRequest $ireq) { }
+            public function upgradeBodySize(InternalRequest $ireq) {
+            }
 
             public function parser(Client $client): \Generator {
                 $this->test->fail("We shouldn't be invoked the parser with no actual clients");
@@ -74,7 +75,10 @@ class ServerTest extends TestCase {
         });
         $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));
 
-        $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
+        $logger = new class extends Logger {
+            protected function output(string $message) { /* /dev/null */
+            }
+        };
         $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
         $driver->setup((new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server), "strlen");
         $part = yield;
@@ -84,7 +88,7 @@ class ServerTest extends TestCase {
         }
     }
 
-    function testBasicRequest() {
+    public function testBasicRequest() {
         $parseResult = [
             "id" => 2,
             "trace" => [["host", "localhost"]],
@@ -119,7 +123,7 @@ class ServerTest extends TestCase {
         $this->assertEquals("message", $body);
     }
 
-    function testStreamRequest() {
+    public function testStreamRequest() {
         $parseResult = [
             "id" => 2,
             "trace" => [["host", "localhost"]],
@@ -151,7 +155,7 @@ class ServerTest extends TestCase {
         $this->assertEquals("fooBarBUZZ!", $body);
     }
 
-    function testDelayedStreamRequest() {
+    public function testDelayedStreamRequest() {
         $parseResult = [
             "id" => 2,
             "trace" => [["host", "localhost"]],
@@ -179,7 +183,7 @@ class ServerTest extends TestCase {
         $this->assertEquals("Success!", $body);
     }
 
-    function testFlushRequest() {
+    public function testFlushRequest() {
         $parseResult = [
             "id" => 2,
             "trace" => [["host", "localhost"]],
@@ -211,7 +215,7 @@ class ServerTest extends TestCase {
     /**
      * @dataProvider providePreResponderHeaders
      */
-    function testPreResponderFailures($result, $status) {
+    public function testPreResponderFailures($result, $status) {
         $parseResult = $result + [
             "id" => 2,
             "trace" => [["host", "localhost"]],
@@ -234,7 +238,7 @@ class ServerTest extends TestCase {
         ];
     }
 
-    function testOptionsRequest() {
+    public function testOptionsRequest() {
         $parseResult = [
                 "id" => 2,
                 "trace" => [["host", "localhost"]],
@@ -251,7 +255,7 @@ class ServerTest extends TestCase {
         $this->assertEquals(implode(",", (new Options)->allowedMethods), $headers["allow"][0]);
     }
 
-    function testError() {
+    public function testError() {
         $parseResult = [
                 "id" => 2,
                 "trace" => [["host", "localhost"]],
@@ -267,7 +271,7 @@ class ServerTest extends TestCase {
         $this->assertEquals(\Aerys\HTTP_STATUS["INTERNAL_SERVER_ERROR"], $headers[":status"]);
     }
 
-    function testNotFound() {
+    public function testNotFound() {
         $parseResult = [
                 "id" => 2,
                 "trace" => [["host", "localhost"]],
@@ -288,7 +292,7 @@ class ServerTest extends TestCase {
         $this->assertEquals(\Aerys\HTTP_STATUS["NOT_FOUND"], $result[0][":status"]);
     }
 
-    function startServer($parser, $tls) {
+    public function startServer($parser, $tls) {
         if (!$server = @stream_socket_server("tcp://127.0.0.1:0", $errno, $errstr)) {
             $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
         }
@@ -320,19 +324,38 @@ class ServerTest extends TestCase {
                 yield from ($this->parser)($client, $this->write);
             }
 
-            public function upgradeBodySize(InternalRequest $ireq) {}
+            public function upgradeBodySize(InternalRequest $ireq) {
+            }
         };
 
         $vhosts = new class($tls, $address, $this, $driver) extends VhostContainer {
-            public function __construct($tls, $address, $test, $driver) { $this->tls = $tls; $this->test = $test; $this->address = $address; $this->driver = $driver; }
-            public function getBindableAddresses(): array { return [$this->address]; }
-            public function getTlsBindingsByAddress(): array { return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER]] : []; }
-            public function selectHost(InternalRequest $ireq): Vhost { $this->test->fail("We should never get to dispatching requests here..."); }
-            public function selectHttpDriver($addr, $port) { return $this->driver; }
-            public function count() { return 1; }
+            public function __construct($tls, $address, $test, $driver) {
+                $this->tls = $tls;
+                $this->test = $test;
+                $this->address = $address;
+                $this->driver = $driver;
+            }
+            public function getBindableAddresses(): array {
+                return [$this->address];
+            }
+            public function getTlsBindingsByAddress(): array {
+                return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER]] : [];
+            }
+            public function selectHost(InternalRequest $ireq): Vhost {
+                $this->test->fail("We should never get to dispatching requests here...");
+            }
+            public function selectHttpDriver($addr, $port) {
+                return $this->driver;
+            }
+            public function count() {
+                return 1;
+            }
         };
 
-        $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
+        $logger = new class extends Logger {
+            protected function output(string $message) { /* /dev/null */
+            }
+        };
         $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
         $driver->setup("strlen", (new \ReflectionClass($server))->getMethod("writeResponse")->getClosure($server));
         $driver->parser = $parser;
@@ -340,8 +363,8 @@ class ServerTest extends TestCase {
         return [$address, $server];
     }
 
-    function testUnencryptedIO() {
-        Loop::run(function() {
+    public function testUnencryptedIO() {
+        Loop::run(function () {
             list($address, $server) = yield from $this->startServer(function (Client $client, $write) {
                 $this->assertFalse($client->isEncrypted);
 
@@ -358,7 +381,7 @@ class ServerTest extends TestCase {
             yield $client->write("a");
             // give readWatcher a chance
             $deferred = new \Amp\Deferred;
-            Loop::defer(function() use ($deferred) { Loop::defer([$deferred, "resolve"]); });
+            Loop::defer(function () use ($deferred) { Loop::defer([$deferred, "resolve"]); });
             yield $deferred->promise();
             yield $client->write("b");
             $this->assertEquals("cd", yield $client->read());
@@ -367,8 +390,8 @@ class ServerTest extends TestCase {
         });
     }
 
-    function testEncryptedIO() {
-        Loop::run(function() {
+    public function testEncryptedIO() {
+        Loop::run(function () {
             $deferred = new \Amp\Deferred;
             list($address) = yield from $this->startServer(function (Client $client, $write) use ($deferred) {
                 try {
@@ -389,7 +412,7 @@ class ServerTest extends TestCase {
                     if (isset($e)) {
                         return;
                     }
-                    Loop::defer(function() use ($client, $deferred) {
+                    Loop::defer(function () use ($client, $deferred) {
                         try {
                             $this->assertEquals(Client::CLOSED_RDWR, $client->isDead);
                         } catch (\Throwable $e) {

@@ -16,7 +16,7 @@ class VhostContainer implements \Countable, Monitor {
     }
 
     /**
-     * Add a virtual host to the collection
+     * Add a virtual host to the collection.
      *
      * @param \Aerys\Vhost $vhost
      * @return void
@@ -86,7 +86,6 @@ class VhostContainer implements \Countable, Monitor {
             $driver->setup(...$this->setupArgs);
             $this->setupHttpDrivers[$hash] = true;
         }
-
     }
 
     public function setupHttpDrivers(...$args) {
@@ -107,7 +106,7 @@ class VhostContainer implements \Countable, Monitor {
     }
 
     /**
-     * Select the suited HttpDriver instance, filtered by address and port pair
+     * Select the suited HttpDriver instance, filtered by address and port pair.
      */
     public function selectHttpDriver($address, $port) {
         return $this->httpDrivers[$port][$address] ??
@@ -115,7 +114,7 @@ class VhostContainer implements \Countable, Monitor {
     }
 
     /**
-     * Select a virtual host match for the specified request according to RFC 7230 criteria
+     * Select a virtual host match for the specified request according to RFC 7230 criteria.
      *
      * @param \Aerys\InternalRequest $ireq
      * @return Vhost|null Returns a Vhost object and boolean TRUE if a valid host selected, FALSE otherwise
@@ -125,16 +124,16 @@ class VhostContainer implements \Countable, Monitor {
     public function selectHost(InternalRequest $ireq) {
         if (isset($ireq->uriHost)) {
             return $this->selectHostByAuthority($ireq);
-        } else {
-            return null;
         }
+        return null;
+
 
         // If null is returned a stream must return 400 for HTTP/1.1 requests and use the default
         // host for HTTP/1.0 requests.
     }
 
     /**
-     * Retrieve the group's default host
+     * Retrieve the group's default host.
      *
      * @return \Aerys\Vhost
      */
@@ -143,11 +142,10 @@ class VhostContainer implements \Countable, Monitor {
             return $this->defaultHost;
         } elseif ($this->cachedVhostCount) {
             return current($this->vhosts);
-        } else {
-            throw new \Error(
+        }
+        throw new \Error(
                 "Cannot retrieve default host; no Vhost instances added to the group"
             );
-        }
     }
 
     private function selectHostByAuthority(InternalRequest $ireq) {
@@ -190,18 +188,18 @@ class VhostContainer implements \Countable, Monitor {
     }
 
     /**
-     * Retrieve an array of unique socket addresses on which hosts should listen
+     * Retrieve an array of unique socket addresses on which hosts should listen.
      *
      * @return array Returns an array of unique host addresses in the form: tcp://ip:port
      */
     public function getBindableAddresses(): array {
-        return array_unique(array_merge(...array_values(array_map(function($vhost) {
+        return array_unique(array_merge(...array_values(array_map(function ($vhost) {
             return $vhost->getBindableAddresses();
         }, $this->vhosts))));
     }
 
     /**
-     * Retrieve stream encryption settings by bind address
+     * Retrieve stream encryption settings by bind address.
      *
      * @return array
      */
@@ -244,7 +242,7 @@ class VhostContainer implements \Countable, Monitor {
             "defaultHost" => $this->defaultHost,
         ];
     }
-    
+
     public function monitor(): array {
         return array_map(function ($vhost) { return $vhost->monitor(); }, $this->vhosts);
     }

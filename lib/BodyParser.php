@@ -2,8 +2,14 @@
 
 namespace Aerys;
 
-use Amp\{ Coroutine, Deferred, Emitter, Internal\Placeholder, Promise, Success };
-use Amp\ByteStream\{ InputStream, PendingReadError };
+use Amp\ByteStream\InputStream;
+use Amp\ByteStream\PendingReadError;
+use Amp\Coroutine;
+use Amp\Deferred;
+use Amp\Emitter;
+use Amp\Internal\Placeholder;
+use Amp\Promise;
+use Amp\Success;
 
 class BodyParser implements InputStream, Promise {
     use Placeholder {
@@ -61,7 +67,6 @@ class BodyParser implements InputStream, Promise {
 
             $this->boundary = $m[2];
         }
-
     }
 
     public function onResolve(callable $onResolved) {
@@ -129,36 +134,33 @@ class BodyParser implements InputStream, Promise {
                 }
 
                 return new ParsedBody($fields, $metadata);
-
-            } else {
-                $fields = [];
-                foreach (explode("&", $data) as $pair) {
-                    $pair = explode("=", $pair, 2);
-                    $field = urldecode($pair[0]);
-                    $fields[$field][] = urldecode($pair[1] ?? "");
-                    $this->fieldQueue[] = $field;
-                }
-                return new ParsedBody($fields, []);
             }
-        } else {
-            $fields = $metadata = [];
-            $when = static function($e, $data) use (&$fields, &$key) {
-                $fields[$key][] = $data;
-            };
-            $metawhen = static function($e, $data) use (&$metadata, &$key) {
-                $metadata[$key][] = $data;
-            };
-
-            foreach ($this->bodies as $key => $bodies) {
-                foreach ($bodies as $body) {
-                    $body->onResolve($when);
-                    $body->getMetadata()->onResolve($metawhen);
-                }
-                $metadata[$key] = array_filter($metadata[$key]);
+            $fields = [];
+            foreach (explode("&", $data) as $pair) {
+                $pair = explode("=", $pair, 2);
+                $field = urldecode($pair[0]);
+                $fields[$field][] = urldecode($pair[1] ?? "");
+                $this->fieldQueue[] = $field;
             }
-
-            return new ParsedBody($fields, array_filter($metadata));
+            return new ParsedBody($fields, []);
         }
+        $fields = $metadata = [];
+        $when = static function ($e, $data) use (&$fields, &$key) {
+            $fields[$key][] = $data;
+        };
+        $metawhen = static function ($e, $data) use (&$metadata, &$key) {
+            $metadata[$key][] = $data;
+        };
+
+        foreach ($this->bodies as $key => $bodies) {
+            foreach ($bodies as $body) {
+                $body->onResolve($when);
+                $body->getMetadata()->onResolve($metawhen);
+            }
+            $metadata[$key] = array_filter($metadata[$key]);
+        }
+
+        return new ParsedBody($fields, array_filter($metadata));
     }
 
     public function read(): Promise {
@@ -216,7 +218,7 @@ class BodyParser implements InputStream, Promise {
             $emptyEmitter->complete();
             return new FieldBody($emptyEmitter->iterate(), new Success([]));
         }
-        
+
         $key = key($this->bodies[$name]);
         $ret = $this->bodies[$name][$key];
         unset($this->bodies[$name][$key], $this->curSizes[$name][$key]);
@@ -235,7 +237,7 @@ class BodyParser implements InputStream, Promise {
             $this->error();
             return null;
         }
-        
+
         if (isset($this->bodyDeferreds[$field])) {
             $key = key($this->bodyDeferreds[$field]);
             list($dataEmitter, $metadataDeferred) = $this->bodyDeferreds[$field][$key];
@@ -307,10 +309,10 @@ class BodyParser implements InputStream, Promise {
             }
 
             $sep = "\r\n$sep";
-            
+
             while (substr_compare($buf, "--\r\n", $off)) {
                 $off += 2;
-                
+
                 while (($end = strpos($buf, "\r\n\r\n", $off)) === false) {
                     $buf .= $chunk = yield $this->body->read();
                     if ($chunk == "") {
@@ -349,7 +351,7 @@ class BodyParser implements InputStream, Promise {
 
                 $buf = substr($buf, $end + 4);
                 $off = 0;
-                
+
                 while (($end = strpos($buf, $sep, $off)) === false) {
                     $buf .= $chunk = yield $this->body->read();
                     if ($chunk == "") {

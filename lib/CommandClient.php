@@ -39,10 +39,9 @@ class CommandClient {
         $unix = \in_array("unix", \stream_get_transports(), true);
         if ($unix) {
             return yield Socket\connect("unix://$this->path.sock");
-        } else {
-            $uri = yield File\get($this->path);
-            return yield Socket\connect($uri);
         }
+        $uri = yield File\get($this->path);
+        return yield Socket\connect($uri);
     }
 
     public function restart(): Promise {

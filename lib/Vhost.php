@@ -101,7 +101,7 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Retrieve the name:port IDs for this host
+     * Retrieve the name:port IDs for this host.
      *
      * @return array<string>
      */
@@ -110,7 +110,7 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Retrieve the list of address-port pairs on which this host listens (address may be a wildcard "0.0.0.0" or "[::]")
+     * Retrieve the list of address-port pairs on which this host listens (address may be a wildcard "0.0.0.0" or "[::]").
      *
      * @return array<array<string, int>>
      */
@@ -119,12 +119,12 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Retrieve the URIs on which this host should be bound
+     * Retrieve the URIs on which this host should be bound.
      *
      * @return array
      */
     public function getBindableAddresses(): array {
-        return array_map(static function($interface) {
+        return array_map(static function ($interface) {
             list($address, $port) = $interface;
             if (strpos($address, ":") !== false) {
                 $address = "[$address]";
@@ -134,7 +134,7 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Retrieve the host's name (may be an empty string)
+     * Retrieve the host's name (may be an empty string).
      *
      * @return string
      */
@@ -143,7 +143,7 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Retrieve the host's callable application
+     * Retrieve the host's callable application.
      *
      * @return callable
      */
@@ -172,9 +172,8 @@ class Vhost implements Monitor {
             return $this->addressMap[$packedAddress] ?? [];
         } elseif (!isset($this->addressMap[$packedAddress])) {
             return $this->addressMap[$wildcard];
-        } else {
-            return array_merge($this->addressMap[$wildcard], $this->addressMap[$packedAddress]);
         }
+        return array_merge($this->addressMap[$wildcard], $this->addressMap[$packedAddress]);
     }
 
     public function getHttpDriver() {
@@ -200,7 +199,7 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Define TLS encryption settings for this host
+     * Define TLS encryption settings for this host.
      *
      * @param array $tls An array mapping TLS stream context values
      * @link http://php.net/manual/en/context.ssl.php
@@ -265,7 +264,7 @@ class Vhost implements Monitor {
         }
 
         $tls = array_merge($this->tlsDefaults, $tls);
-        $tls = array_filter($tls, function($value) { return isset($value); });
+        $tls = array_filter($tls, function ($value) { return isset($value); });
 
         $this->tlsContextArr = $tls;
     }
@@ -334,7 +333,7 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Retrieve this host's TLS connection context options
+     * Retrieve this host's TLS connection context options.
      *
      * @return array An array of stream encryption context options
      */
@@ -343,7 +342,7 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Retrieve filters registered for this host
+     * Retrieve filters registered for this host.
      *
      * @return array
      */
@@ -352,7 +351,7 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Returns the host name
+     * Returns the host name.
      *
      * @return string
      */
@@ -361,7 +360,7 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Simplify debug output
+     * Simplify debug output.
      *
      * @return array
      */

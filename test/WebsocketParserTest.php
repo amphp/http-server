@@ -21,7 +21,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WebsocketParserTest extends TestCase {
-    static function compile($opcode, $fin, $msg = "", $rsv = 0b000) {
+    public static function compile($opcode, $fin, $msg = "", $rsv = 0b000) {
         $len = strlen($msg);
 
         // FRRROOOO per RFC 6455 Section 5.2
@@ -47,9 +47,9 @@ class WebsocketParserTest extends TestCase {
     /**
      * @dataProvider provideParserData
      */
-    function testParser($msg, array $message = null, array $control = null, array $error = null) {
+    public function testParser($msg, array $message = null, array $control = null, array $error = null) {
         $mock = $this->createMock(Rfc6455Gateway::class);
-    
+
         $buffer = '';
         $mock->method("onParsedData")
             ->willReturnCallback(function ($client, $data, $binary, $terminated) use ($message, &$executed, &$buffer) {
@@ -62,10 +62,10 @@ class WebsocketParserTest extends TestCase {
                     $this->assertEquals($buffer, $payload);
                     $buffer = '';
                 }
-    
+
                 $executed = true;
             });
-        
+
         $mock->method("onParsedControlFrame")
             ->willReturnCallback(function ($client, $opcode, $data) use ($control, &$executed) {
                 list($payload, $code) = $control;
@@ -100,7 +100,7 @@ class WebsocketParserTest extends TestCase {
         }
     }
 
-    function provideParserData() {
+    public function provideParserData() {
         $return = [];
 
         // 0-13 -- basic text and binary frames with fixed lengths -------------------------------->
@@ -217,15 +217,26 @@ class WebsocketParserTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Cannot boot websocket handler; Aerys\Websocket required, boolean provided
      */
-    function testBadWebsocketClass() {
-        \Aerys\websocket(new class implements Bootable { public function boot(Server $server, PsrLogger $logger) { return false; } })
-            ->boot(new class extends Server { function __construct() { } }, new class extends \Aerys\Logger { protected function output(string $message) { } });
+    public function testBadWebsocketClass() {
+        \Aerys\websocket(new class implements Bootable {
+            public function boot(Server $server, PsrLogger $logger) {
+                return false;
+            }
+        }
+        )
+            ->boot(new class extends Server {
+                function __construct() {
+                }
+            }, new class extends \Aerys\Logger {
+                protected function output(string $message) {
+                }
+            });
     }
 
-    function testUpgrading() {
-        Loop::run(function() use (&$sock) {
+    public function testUpgrading() {
+        Loop::run(function () use (&$sock) {
             $client = new Client;
-            $client->exporter = function() use (&$exported) {
+            $client->exporter = function () use (&$exported) {
                 $exported = true;
                 return function () { $this->fail("This test doesn't expect the client to be closed or unloaded"); };
             };
@@ -277,16 +288,20 @@ class WebsocketParserTest extends TestCase {
                     ]);
                 }
 
-                public function upgradeBodySize(InternalRequest $ireq) {}
+                public function upgradeBodySize(InternalRequest $ireq) {
+                }
             });
-            $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
+            $logger = new class extends Logger {
+                protected function output(string $message) { /* /dev/null */
+                }
+            };
             $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
             $driver->setup((new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server), "strlen");
 
             $ws = $this->createMock(Websocket::class);
             $ws->expects($this->exactly(1))
                 ->method("onHandshake")
-                ->will($this->returnValue((function() { if (0) { yield; } return "foo"; })()));
+                ->will($this->returnValue((function () { if (0) { yield; } return "foo"; })()));
             $ws->expects($this->exactly(1))
                 ->method("onOpen")
                 ->willReturnCallback(function (int $clientId, $handshakeData) {

@@ -28,7 +28,7 @@ class CommandClientTest extends TestCase {
                 ));
                 return;
             }
-            
+
             try {
                 if (!$unix) {
                     file_put_contents($path, stream_socket_get_name($commandServer, $wantPeer = false));

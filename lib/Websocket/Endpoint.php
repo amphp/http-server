@@ -93,7 +93,7 @@ interface Endpoint {
      * ]
      */
     public function getInfo(int $clientId): array;
-    
+
     /**
      * @return int[] Array of client IDs.
      */

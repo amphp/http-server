@@ -6,7 +6,6 @@ namespace Aerys;
  * ~~~~~~~~~~~~~~~ WARNING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  * This class is strictly for internal Aerys use!
  * Do NOT throw it in userspace code or you risk breaking things.
- * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
  * ClientException indicates that the requesting client has (or will be) closed
  * the incoming data stream. [if thrown on a reading action]
@@ -18,4 +17,5 @@ namespace Aerys;
  * to continue other processing. Users are NOT required to catch it and if left
  * uncaught it will simply end responder execution.
  */
-class ClientException extends \Exception {}
+class ClientException extends \Exception {
+}

@@ -143,7 +143,7 @@ class StandardResponse implements Response {
     }
 
     /**
-     * Stream partial entity body data
+     * Stream partial entity body data.
      *
      * If response output has not yet started headers will also be sent
      * when this method is invoked.
@@ -176,13 +176,12 @@ class StandardResponse implements Response {
 
         if ($deferred = $this->client->bufferDeferred) {
             return $deferred->promise();
-        } else {
-            return $this->client->isDead & Client::CLOSED_WR ? new \Amp\Failure(new ClientException) : new \Amp\Success;
         }
+        return $this->client->isDead & Client::CLOSED_WR ? new \Amp\Failure(new ClientException) : new \Amp\Success;
     }
 
     /**
-     * Request that any buffered data be flushed to the client
+     * Request that any buffered data be flushed to the client.
      *
      * This method only makes sense when streaming output via Response::write().
      * Invoking it before calling write() or after write()/end() is a logic error.
@@ -204,7 +203,7 @@ class StandardResponse implements Response {
     }
 
     /**
-     * Signify the end of streaming response output
+     * Signify the end of streaming response output.
      *
      * User applications are NOT required to call Response::end() as the server
      * will handle this automatically as needed.
@@ -281,7 +280,7 @@ class StandardResponse implements Response {
             );
         }
 
-        \assert((function($headers) {
+        \assert((function ($headers) {
             foreach ($headers ?? [] as $name => $header) {
                 if (\is_int($name)) {
                     if (count($header) != 2) {

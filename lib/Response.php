@@ -9,7 +9,7 @@ interface Response {
     const ENDED     = 0b100;
 
     /**
-     * Set the numeric HTTP status code
+     * Set the numeric HTTP status code.
      *
      * If not assigned this value defaults to 200.
      *
@@ -19,7 +19,7 @@ interface Response {
     public function setStatus(int $code): Response;
 
     /**
-     * Set the optional HTTP reason phrase
+     * Set the optional HTTP reason phrase.
      *
      * @param string $phrase A human readable string describing the status code
      * @return self
@@ -27,7 +27,7 @@ interface Response {
     public function setReason(string $phrase): Response;
 
     /**
-     * Append the specified header
+     * Append the specified header.
      *
      * @param string $field
      * @param string $value
@@ -36,7 +36,7 @@ interface Response {
     public function addHeader(string $field, string $value): Response;
 
     /**
-     * Set the specified header
+     * Set the specified header.
      *
      * This method will replace any existing headers for the specified field.
      *
@@ -58,7 +58,7 @@ interface Response {
     public function setCookie(string $name, string $value, array $flags = []): Response;
 
     /**
-     * Incrementally stream parts of the response entity body
+     * Incrementally stream parts of the response entity body.
      *
      * This method may be repeatedly called to stream the response body.
      * Applications that can afford to buffer an entire response in memory or
@@ -73,7 +73,7 @@ interface Response {
     public function write(string $partialBodyChunk): \Amp\Promise;
 
     /**
-     * Request that buffered stream data be flushed to the client
+     * Request that buffered stream data be flushed to the client.
      *
      * This method only makes sense when streaming output via Response::write().
      * Invoking it before calling write() or after end() is a logic error.
@@ -81,7 +81,7 @@ interface Response {
     public function flush();
 
     /**
-     * Signify the end of streaming response output
+     * Signify the end of streaming response output.
      *
      * User applications are NOT required to call Response::end() after streaming
      * or sending response data (though it's not incorrect to do so) -- the server
@@ -103,7 +103,7 @@ interface Response {
     public function end(string $finalBodyChunk = ""): \Amp\Promise;
 
     /**
-     * Indicate resources which a client likely needs to fetch. (e.g. Link: preload or HTTP/2 Server Push)
+     * Indicate resources which a client likely needs to fetch. (e.g. Link: preload or HTTP/2 Server Push).
      *
      * @param string $url The URL this request should be dispatched to
      * @param array $headers Optional custom headers, else the server will try to reuse headers from the last request
@@ -112,7 +112,7 @@ interface Response {
     public function push(string $url, array $headers = null): Response;
 
     /**
-     * Retrieve the current response state
+     * Retrieve the current response state.
      *
      * The response state is a bitmask of the following flags:
      *

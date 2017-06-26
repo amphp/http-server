@@ -2,18 +2,11 @@
 
 namespace Aerys;
 
-use FastRoute\{
-    Dispatcher,
-    RouteCollector,
-    function simpleDispatcher
-};
-
-use Amp\{
-    Success,
-    Failure,
-    Promise
-};
-
+use Amp\Failure;
+use Amp\Promise;
+use Amp\Success;
+use FastRoute\Dispatcher;
+use FastRoute\RouteCollector;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Router implements Bootable, Middleware, Monitor, ServerObserver {
@@ -28,7 +21,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
     private $maxCacheEntries = 512;
 
     /**
-     * Set a router option
+     * Set a router option.
      *
      * @param string $key
      * @param mixed $value
@@ -53,7 +46,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
     }
 
     /**
-     * Route a request
+     * Route a request.
      *
      * @param \Aerys\Request $request
      * @param \Aerys\Response $response
@@ -66,16 +59,15 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         list($isMethodAllowed, $data) = $preRoute;
         if ($isMethodAllowed) {
             return $data($request, $response, $request->getLocalVar("aerys.routeArgs"));
-        } else {
-            $allowedMethods = implode(",", $data);
-            $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
-            $response->setHeader("Allow", $allowedMethods);
-            $response->end(makeGenericBody(HTTP_STATUS["METHOD_NOT_ALLOWED"]));
         }
+        $allowedMethods = implode(",", $data);
+        $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
+        $response->setHeader("Allow", $allowedMethods);
+        $response->end(makeGenericBody(HTTP_STATUS["METHOD_NOT_ALLOWED"]));
     }
 
     /**
-     * Execute router middleware functionality
+     * Execute router middleware functionality.
      * @param InternalRequest $ireq
      */
     public function do(InternalRequest $ireq) {
@@ -144,7 +136,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
 
     /**
      * Import a router or attach a callable, Middleware or Bootable.
-     * Router imports do *not* import the options
+     * Router imports do *not* import the options.
      *
      * @param callable|Middleware|Bootable|Monitor $action
      * @return self
@@ -173,7 +165,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
     }
 
     /**
-     * Prefix all the (already defined) routes with a given prefix
+     * Prefix all the (already defined) routes with a given prefix.
      *
      * @param string $prefix
      * @return self
@@ -206,7 +198,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
     }
 
     /**
-     * Allow shortcut route registration using the called method name as the HTTP method verb
+     * Allow shortcut route registration using the called method name as the HTTP method verb.
      *
      * HTTP method verbs -- though case-sensitive -- are used in all-caps for most applications.
      * Shortcut method verbs will automatically be changed to all-caps. Applications wishing to
@@ -224,7 +216,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
     }
 
     /**
-     * Define an application route
+     * Define an application route.
      *
      * The variadic ...$actions argument allows applications to specify multiple separate
      * handlers for a given route URI. When matched these action callables will be invoked
@@ -266,12 +258,12 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         $actions = array_merge($this->actions, $actions);
 
         $uri = "/" . ltrim($uri, "/");
-        
+
         // Special-case, otherwise we redirect just to the same URI again
         if ($uri === "/?") {
             $uri = "/";
         }
-        
+
         if (substr($uri, -2) === "/?") {
             $canonicalUri = substr($uri, 0, -2);
             $redirectUri = substr($uri, 0, -1);
@@ -299,7 +291,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
 
     public function boot(Server $server, PsrLogger $logger) {
         $server->attach($this);
-        $this->bootLoader = static function(Bootable $bootable) use ($server, $logger) {
+        $this->bootLoader = static function (Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
             if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
                 throw new \Error("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Middleware and/or be callable');
@@ -347,14 +339,13 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         if (empty($applications[1])) {
             if (empty($applications[0])) {
                 // in order to specify only middlewares (in combination with e.g. a fallback handler)
-                return [[function() {}, $middlewares], $monitors];
-            } else {
-                return [[$applications[0], $middlewares], $monitors];
+                return [[function () {}, $middlewares], $monitors];
             }
+            return [[$applications[0], $middlewares], $monitors];
         }
 
         return [
-            [static function(Request $request, Response $response, array $args) use ($applications) {
+            [static function (Request $request, Response $response, array $args) use ($applications) {
                 foreach ($applications as $application) {
                     $result = $application($request, $response, $args);
                     if ($result instanceof \Generator) {
@@ -370,7 +361,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
     }
 
     /**
-     * React to server state changes
+     * React to server state changes.
      *
      * Here we generate our dispatcher when the server notifies us that it is
      * ready to start (Server::STARTING).

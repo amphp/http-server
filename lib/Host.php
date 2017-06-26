@@ -20,7 +20,7 @@ class Host {
     }
 
     /**
-     * Assign the IP and port on which to listen
+     * Assign the IP and port on which to listen.
      *
      * The address may be any valid IPv4 or IPv6 address. The "0.0.0.0" indicates
      * "all IPv4 interfaces" and is appropriate for most users. Use "::" to indicate "all IPv6
@@ -65,7 +65,7 @@ class Host {
     }
 
     /**
-     * Assign a domain name (e.g. localhost or mysite.com or subdomain.mysite.com)
+     * Assign a domain name (e.g. localhost or mysite.com or subdomain.mysite.com).
      *
      * A host name is only required if a server exposes more than one host. If a name is not defined
      * the server will default to "localhost"
@@ -80,7 +80,7 @@ class Host {
     }
 
     /**
-     * Use a callable request action or Middleware
+     * Use a callable request action or Middleware.
      *
      * Host actions are invoked to service requests in the order in which they are added.
      *
@@ -114,7 +114,7 @@ class Host {
     }
 
     /**
-     * Define TLS encryption settings for this host
+     * Define TLS encryption settings for this host.
      *
      * @param string $certificate A string path pointing to your SSL/TLS certificate
      * @param string|null $key A string path pointing to your SSL/TLS key file (null if the certificate file is containing the key already)
@@ -133,7 +133,7 @@ class Host {
     }
 
     /**
-     * Redirect all requests that aren't serviced by an action callable
+     * Redirect all requests that aren't serviced by an action callable.
      *
      * NOTE: the redirect URI must match the format "scheme://hostname.tld" (with optional port and path).
      *
@@ -175,7 +175,7 @@ class Host {
             );
         }
 
-        $this->redirect = static function(Request $req, Response $res) use ($redirectUri, $redirectCode) {
+        $this->redirect = static function (Request $req, Response $res) use ($redirectUri, $redirectCode) {
             $res->setStatus($redirectCode);
             $res->setHeader("location", $redirectUri . \ltrim($req->getUri(), "/"));
             $res->end();
@@ -200,7 +200,7 @@ class Host {
     }
 
     /**
-     * Retrieve an associative array summarizing the host definition
+     * Retrieve an associative array summarizing the host definition.
      *
      * @return array
      */
@@ -231,7 +231,7 @@ class Host {
     }
 
     /**
-     * Used by the server bootstrapper to access host configs created by the application
+     * Used by the server bootstrapper to access host configs created by the application.
      *
      * @return array
      */

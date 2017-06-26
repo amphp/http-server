@@ -8,7 +8,7 @@ use Aerys\Options;
 use PHPUnit\Framework\TestCase;
 
 class deflateResponseFilterTest extends TestCase {
-    function testNoDeflate() {
+    public function testNoDeflate() {
         $longData = str_repeat("10", 1000);
         $shortData = str_repeat("10", 10);
         $ireq = new InternalRequest;
@@ -62,7 +62,7 @@ class deflateResponseFilterTest extends TestCase {
         $try(["content-type" => ["text/html"], "content-length" => [20]], $shortData);
     }
 
-    function testSuccessfulDeflate() {
+    public function testSuccessfulDeflate() {
         $try = function ($header = []) {
             $ireq = new InternalRequest;
             $ireq->client = new Client;

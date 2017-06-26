@@ -53,7 +53,7 @@ class Root implements ServerObserver {
         $this->root = \rtrim(\realpath($root), "/");
         $this->filesystem = $filesystem ?: file\filesystem();
         $this->multipartBoundary = \uniqid("", true);
-        $this->cacheWatcher = Loop::repeat(1000, function() {
+        $this->cacheWatcher = Loop::repeat(1000, function () {
             $this->now = $now = time();
             foreach ($this->cacheTimeouts as $path => $timeout) {
                 if ($now <= $timeout) {
@@ -72,7 +72,7 @@ class Root implements ServerObserver {
     }
 
     /**
-     * Respond to HTTP requests for filesystem resources
+     * Respond to HTTP requests for filesystem resources.
      */
     public function __invoke(Request $request, Response $response) {
         $uri = $request->getLocalVar("aerys.sendfile") ?: $request->getUri();
@@ -90,7 +90,7 @@ class Root implements ServerObserver {
     }
 
     /**
-     * Normalize paths with relative dot segments in their path
+     * Normalize paths with relative dot segments in their path.
      *
      * This functionality is critical to avoid malicious URIs attempting to
      * traverse the document root above the allowed base path.
@@ -107,12 +107,12 @@ class Root implements ServerObserver {
         $outputStack = [];
 
         /**
-         * 2.  While the input buffer is not empty, loop as follows:
+         * 2.  While the input buffer is not empty, loop as follows:.
          */
         while ($inputBuffer != '') {
             /**
              * A.  If the input buffer begins with a prefix of "../" or "./",
-             *     then remove that prefix from the input buffer; otherwise,
+             *     then remove that prefix from the input buffer; otherwise,.
              */
             if (strpos($inputBuffer, "./") === 0) {
                 $inputBuffer = substr($inputBuffer, 2);
@@ -126,7 +126,7 @@ class Root implements ServerObserver {
             /**
              * B.  if the input buffer begins with a prefix of "/./" or "/.",
              *     where "." is a complete path segment, then replace that
-             *     prefix with "/" in the input buffer; otherwise,
+             *     prefix with "/" in the input buffer; otherwise,.
              */
             if ($inputBuffer === "/.") {
                 $outputStack[] = '/';
@@ -142,7 +142,7 @@ class Root implements ServerObserver {
              *     where ".." is a complete path segment, then replace that
              *     prefix with "/" in the input buffer and remove the last
              *     segment and its preceding "/" (if any) from the output
-             *     buffer; otherwise,
+             *     buffer; otherwise,.
              */
             if ($inputBuffer === "/..") {
                 array_pop($outputStack);
@@ -157,7 +157,7 @@ class Root implements ServerObserver {
 
             /**
              * D.  if the input buffer consists only of "." or "..", then remove
-             *     that from the input buffer; otherwise,
+             *     that from the input buffer; otherwise,.
              */
             if ($inputBuffer === '.' || $inputBuffer === '..') {
                 break;
@@ -172,10 +172,9 @@ class Root implements ServerObserver {
             if (($slashPos = stripos($inputBuffer, '/', 1)) === false) {
                 $outputStack[] = $inputBuffer;
                 break;
-            } else {
-                $outputStack[] = substr($inputBuffer, 0, $slashPos);
-                $inputBuffer = substr($inputBuffer, $slashPos);
             }
+            $outputStack[] = substr($inputBuffer, 0, $slashPos);
+            $inputBuffer = substr($inputBuffer, $slashPos);
         }
 
         return implode($outputStack);
@@ -386,7 +385,7 @@ class Root implements ServerObserver {
 
         /**
          * This is a really stupid feature of HTTP but ...
-         * If-Range headers may be either an HTTP timestamp or an Etag:
+         * If-Range headers may be either an HTTP timestamp or an Etag:.
          *
          *     If-Range = "If-Range" ":" ( entity-tag | HTTP-date )
          *
@@ -402,7 +401,7 @@ class Root implements ServerObserver {
 
     private function doNonRangeResponse($fileInfo, Response $response) {
         $this->assignCommonHeaders($fileInfo, $response);
-        $response->setHeader("Content-Length",  (string) $fileInfo->size);
+        $response->setHeader("Content-Length", (string) $fileInfo->size);
         $response->setHeader("Content-Type", $this->selectMimeTypeFromPath($fileInfo->path));
 
         return isset($fileInfo->buffer)
@@ -575,7 +574,7 @@ class Root implements ServerObserver {
     }
 
     /**
-     * Set a document root option
+     * Set a document root option.
      *
      * @param string $option The option key (case-insensitve)
      * @param mixed $value The option value to assign
@@ -750,7 +749,7 @@ class Root implements ServerObserver {
     }
 
     /**
-     * Receive notifications from the server when it starts/stops
+     * Receive notifications from the server when it starts/stops.
      */
     public function update(Server $server): \Amp\Promise {
         switch ($server->state()) {

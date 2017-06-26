@@ -2,9 +2,19 @@
 
 namespace Aerys;
 
-use Amp\{ ByteStream\IteratorStream, CallableMaker, Coroutine, Deferred, Emitter, Failure, Loop, Promise, Success };
+use Amp\ByteStream\IteratorStream;
+use Amp\CallableMaker;
+use Amp\Coroutine;
+use Amp\Deferred;
+use Amp\Emitter;
+use Amp\Failure;
+use Amp\Loop;
+use Amp\Promise;
+use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\Promise\{ timeout, any, all };
+use function Amp\Promise\all;
+use function Amp\Promise\any;
+use function Amp\Promise\timeout;
 
 class Server implements Monitor {
     use CallableMaker;
@@ -64,7 +74,7 @@ class Server implements Monitor {
     }
 
     /**
-     * Retrieve the current server state
+     * Retrieve the current server state.
      *
      * @return int
      */
@@ -73,7 +83,7 @@ class Server implements Monitor {
     }
 
     /**
-     * Retrieve a server option value
+     * Retrieve a server option value.
      *
      * @param string $option The option to retrieve
      * @throws \Error on unknown option
@@ -83,7 +93,7 @@ class Server implements Monitor {
     }
 
     /**
-     * Assign a server option value
+     * Assign a server option value.
      *
      * @param string $option The option to retrieve
      * @param mixed $newValue
@@ -96,7 +106,7 @@ class Server implements Monitor {
     }
 
     /**
-     * Attach an observer
+     * Attach an observer.
      *
      * @param ServerObserver $observer
      * @return void
@@ -106,7 +116,7 @@ class Server implements Monitor {
     }
 
     /**
-     * Detach an Observer
+     * Detach an Observer.
      *
      * @param ServerObserver $observer
      * @return void
@@ -116,7 +126,7 @@ class Server implements Monitor {
     }
 
     /**
-     * Notify observers of a server state change
+     * Notify observers of a server state change.
      *
      * Resolves to an indexed any() Promise combinator array.
      *
@@ -129,7 +139,7 @@ class Server implements Monitor {
         }
 
         $promise = any($promises);
-        $promise->onResolve(function($error, $result) {
+        $promise->onResolve(function ($error, $result) {
             // $error is always empty because an any() combinator Promise never fails.
             // Instead we check the error array at index zero in the two-item any() $result
             // and log as needed.
@@ -142,7 +152,7 @@ class Server implements Monitor {
     }
 
     /**
-     * Start the server
+     * Start the server.
      *
      * @param callable(array) $bindSockets is passed the $address => $context map
      * @return \Amp\Promise
@@ -155,7 +165,7 @@ class Server implements Monitor {
                         "Cannot start: no virtual hosts registered in composed VhostContainer"
                     ));
                 }
-                return new Coroutine($this->doStart($bindSockets ?? function($addrCtxMap) {
+                return new Coroutine($this->doStart($bindSockets ?? function ($addrCtxMap) {
                     $serverSockets = [];
 
                     foreach ($addrCtxMap as $address => $context) {
@@ -189,7 +199,7 @@ class Server implements Monitor {
 
         $this->state = self::STARTING;
         $notifyResult = yield $this->notify();
-        if ($hadErrors = (bool)$notifyResult[0]) {
+        if ($hadErrors = (bool) $notifyResult[0]) {
             yield from $this->doStop();
             throw new \RuntimeException(
                 "Server::STARTING observer initialization failure"
@@ -279,7 +289,7 @@ class Server implements Monitor {
     private function negotiateCrypto(string $watcherId, $socket, $peer) {
         list($ip, $port) = $peer;
         if ($handshake = @\stream_socket_enable_crypto($socket, true)) {
-            $socketId = (int)$socket;
+            $socketId = (int) $socket;
             Loop::cancel($watcherId);
             unset($this->pendingTlsStreams[$socketId]);
             assert((function () use ($socket, $ip, $port) {
@@ -311,7 +321,7 @@ class Server implements Monitor {
     }
 
     /**
-     * Stop the server
+     * Stop the server.
      *
      * @return Promise
      */
@@ -583,7 +593,7 @@ class Server implements Monitor {
         $ireq = $this->initializeRequest($client, $parseResult);
 
         $client->pendingResponses++;
-        $this->tryApplication($ireq, static function(Request $request, Response $response) use ($parseResult, $error) {
+        $this->tryApplication($ireq, static function (Request $request, Response $response) use ($parseResult, $error) {
             if ($error === HttpDriver::BAD_VERSION) {
                 $status = HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"];
                 $error = "Unsupported version {$parseResult['protocol']}";
@@ -750,7 +760,7 @@ class Server implements Monitor {
                 $out = new Coroutine($out);
             }
             if ($out instanceof Promise) {
-                $out->onResolve(function($error) use ($ireq, $response, $filters) {
+                $out->onResolve(function ($error) use ($ireq, $response, $filters) {
                     if (empty($error)) {
                         if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
                             return;
@@ -894,7 +904,6 @@ class Server implements Monitor {
             $ex = $ex ?? new ClientException;
             $client->bufferDeferred->fail($ex);
         }
-
     }
 
     private function clear(Client $client) {
@@ -922,14 +931,14 @@ class Server implements Monitor {
         }
         $clientCount = &$this->clientCount;
         $clientsPerIP = &$this->clientsPerIP[$net];
-        $closer = static function() use (&$clientCount, &$clientsPerIP) {
+        $closer = static function () use (&$clientCount, &$clientsPerIP) {
             $clientCount--;
             $clientsPerIP--;
         };
-        assert($closer = (function() use ($client, &$clientCount, &$clientsPerIP) {
+        assert($closer = (function () use ($client, &$clientCount, &$clientsPerIP) {
             $logger = $this->logger;
             $message = "close {$client->clientAddr}:{$client->clientPort}";
-            return static function() use (&$clientCount, &$clientsPerIP, $logger, $message) {
+            return static function () use (&$clientCount, &$clientsPerIP, $logger, $message) {
                 $clientCount--;
                 $clientsPerIP--;
                 assert($clientCount >= 0);
@@ -949,9 +958,8 @@ class Server implements Monitor {
         if (!extension_loaded("posix")) {
             if ($user !== null) {
                 throw new \RuntimeException("Posix extension must be enabled to switch to user '{$user}'!");
-            } else {
-                $this->logger->warning("Posix extension not enabled, be sure not to run your server as root!");
             }
+            $this->logger->warning("Posix extension not enabled, be sure not to run your server as root!");
         } elseif (posix_geteuid() === 0) {
             if ($user === null) {
                 $this->logger->warning("Running as privileged user is discouraged! Use the 'user' option to switch to another user after startup!");

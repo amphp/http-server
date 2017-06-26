@@ -2,7 +2,8 @@
 
 namespace Aerys\Test;
 
-use Aerys\{ FilterException, InternalRequest, function responseFilter };
+use Aerys\FilterException;
+use Aerys\InternalRequest;
 use PHPUnit\Framework\TestCase;
 
 class responseFilterTest extends TestCase {
@@ -31,7 +32,7 @@ class responseFilterTest extends TestCase {
     }
 
     public function testSingleHeaderArrayFilter() {
-        $filter = $this->getFilter([function() {
+        $filter = $this->getFilter([function () {
             $headers = yield;
             yield [":status" => 404];
         }]);
@@ -54,7 +55,7 @@ class responseFilterTest extends TestCase {
 
     public function testBadHeaderTypeThrows() {
         try {
-            $filter = $this->getFilter([function() {
+            $filter = $this->getFilter([function () {
                 $headers = yield;
                 yield 42;
             }]);
@@ -72,8 +73,10 @@ class responseFilterTest extends TestCase {
 
     public function testFilterThrowsIfHeadersNotReturnedWhenFlushing() {
         try {
-            $filter = $this->getFilter([function() {
-                while(1) yield;
+            $filter = $this->getFilter([function () {
+                while (1) {
+                    yield;
+                }
             }]);
             $filter->current();
             $result = $filter->send([":status" => 200]);
@@ -91,8 +94,10 @@ class responseFilterTest extends TestCase {
 
     public function testFilterThrowsIfHeadersNotReturnedWhenEnding() {
         try {
-            $filter = $this->getFilter([function() {
-                while(1) yield;
+            $filter = $this->getFilter([function () {
+                while (1) {
+                    yield;
+                }
             }]);
             $filter->current();
             $result = $filter->send([":status" => 200]);
@@ -110,10 +115,9 @@ class responseFilterTest extends TestCase {
 
     public function testFilterThrowsIfDetchedBeforeHeaderReturn() {
         try {
-            $filter = $this->getFilter([function() {
+            $filter = $this->getFilter([function () {
                 yield;
                 yield;
-                return;
             }]);
             $filter->current();
             $result = $filter->send([":status" => 200]);
@@ -131,7 +135,7 @@ class responseFilterTest extends TestCase {
     }
 
     public function testBufferedFilterHeaderYield() {
-        $filter = $this->getFilter([function() {
+        $filter = $this->getFilter([function () {
             $headers = yield;
             $buffer = "";
             while (($part = yield) !== null) {
@@ -153,12 +157,12 @@ class responseFilterTest extends TestCase {
     }
 
     public function testNestedBufferedFilterHeaderYield() {
-        $filter = $this->getFilter([function() {
+        $filter = $this->getFilter([function () {
             $headers = yield;
             $this->assertSame("foo", yield $headers);
             $this->assertSame("bar", yield "foo");
             $this->assertSame(null, yield "bar");
-        }, function() {
+        }, function () {
             $headers = yield;
             $buffer = "";
             while (($part = yield) !== null) {
@@ -178,7 +182,7 @@ class responseFilterTest extends TestCase {
     }
 
     public function testFlushBufferedFilterHeaderYield() {
-        $filter = $this->getFilter([function() {
+        $filter = $this->getFilter([function () {
             $headers = yield;
             $buffer = "";
             while (($part = yield) !== null) {
@@ -208,9 +212,9 @@ class responseFilterTest extends TestCase {
     }
 
     public function testDoubleFlushWithHeader() {
-        $filter = $this->getFilter([function() {
+        $filter = $this->getFilter([function () {
             $headers = yield;
-            $this->assertTrue(is_array($headers));
+            $this->assertInternalType('array', $headers);
 
             $data = yield;
             $this->assertEquals("stream", $data);
@@ -239,7 +243,7 @@ class responseFilterTest extends TestCase {
 
     public function testBufferedFilterHeaderYieldThrowsIfNotAnArray() {
         try {
-            $filter = $this->getFilter([function() {
+            $filter = $this->getFilter([function () {
                 $headers = yield;
                 $buffer = "";
                 while (($part = yield) !== null) {

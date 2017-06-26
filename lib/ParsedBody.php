@@ -13,7 +13,7 @@ class ParsedBody {
     }
 
     /**
-     * Fetch a string parameter (or null if it doesn't exist)
+     * Fetch a string parameter (or null if it doesn't exist).
      *
      * @param string $name
      * @return string|null
@@ -23,7 +23,7 @@ class ParsedBody {
     }
 
     /**
-     * Fetch an array parameter (or empty array if it doesn't exist)
+     * Fetch an array parameter (or empty array if it doesn't exist).
      *
      * @param string $name
      * @return array
@@ -34,7 +34,7 @@ class ParsedBody {
 
     /**
      * Contains an array("filename" => $name, "mime" => $mimetype)
-     * Elements may be missing, but in case a filename is provided, mime is always set
+     * Elements may be missing, but in case a filename is provided, mime is always set.
      *
      * @param string $name
      * @return array|null
@@ -44,7 +44,7 @@ class ParsedBody {
     }
 
     /**
-     * Fetch an array of metadata
+     * Fetch an array of metadata.
      *
      * @param string $name
      * @return array
@@ -54,7 +54,7 @@ class ParsedBody {
     }
 
     /**
-     * Returns the names of the passed fields
+     * Returns the names of the passed fields.
      *
      * @return array
      */
@@ -63,7 +63,7 @@ class ParsedBody {
     }
 
     /**
-     * returns two associative fields and metadata arrays (like for extended abstractions or debug)
+     * returns two associative fields and metadata arrays (like for extended abstractions or debug).
      *
      * @return array
      */

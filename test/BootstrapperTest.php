@@ -11,9 +11,9 @@ use Aerys\Logger;
 use Aerys\StandardRequest;
 use Aerys\StandardResponse;
 use Amp\Coroutine;
-use function Amp\Promise\wait;
 use League\CLImate\CLImate;
 use PHPUnit\Framework\TestCase;
+use function Amp\Promise\wait;
 
 class BootstrapperTest extends TestCase {
     /**
@@ -21,7 +21,7 @@ class BootstrapperTest extends TestCase {
      * @expectedExceptionMessage No config file found, specify one via the -c switch on command line
      */
     public function testThrowsWithoutConfig() {
-        $bootstrapper = new Bootstrapper(function() {
+        $bootstrapper = new Bootstrapper(function () {
             return [];
         });
 
@@ -48,9 +48,14 @@ class BootstrapperTest extends TestCase {
                 "config" => __DIR__."/TestBootstrapperInclude.php",
             ];
             private $test;
-            public function __construct($test) { $this->test = $test; }
-            public function output(string $msg) { $this->test->fail("Shouldn't be reached here"); }
-            public function forceAnsiOn() { }
+            public function __construct($test) {
+                $this->test = $test;
+            }
+            public function output(string $msg) {
+                $this->test->fail("Shouldn't be reached here");
+            }
+            public function forceAnsiOn() {
+            }
             public function isArgDefined(string $arg) {
                 return isset(self::ARGS[$arg]);
             }
@@ -73,13 +78,13 @@ class BootstrapperTest extends TestCase {
 
         $vhosts = $info["vhosts"]->__debugInfo()["vhosts"];
         $this->assertEquals(["localhost:443", "example.com:80", "foo.bar:80"], array_keys($vhosts));
-        $this->assertTrue(is_callable($vhosts["localhost:443"]->getApplication()));
+        $this->assertInternalType('callable', $vhosts["localhost:443"]->getApplication());
         $middleware = current($vhosts["example.com:80"]->getFilters());
         $this->assertInstanceOf("OurMiddleware", $middleware[0]);
         $this->assertEquals("do", $middleware[1]);
         $this->assertInstanceOf("OurMiddleware", $vhosts["example.com:80"]->getApplication());
         $this->assertEquals(2, count($vhosts["foo.bar:80"]->getApplication()->__debugInfo()["applications"]));
-        $vhosts["foo.bar:80"]->getApplication()(new StandardRequest($ireq = new InternalRequest), new StandardResponse((function(){yield;})(), new Client))->next();
+        $vhosts["foo.bar:80"]->getApplication()(new StandardRequest($ireq = new InternalRequest), new StandardResponse((function () {yield;})(), new Client))->next();
         $this->assertEquals(["responder" => 1, "foo.bar" => 1], $ireq->locals);
     }
 }

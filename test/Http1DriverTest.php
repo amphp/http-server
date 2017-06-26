@@ -3,9 +3,8 @@
 namespace Aerys\Test;
 
 use Aerys\Client;
-use Aerys\HttpDriver;
 use Aerys\Http1Driver;
-use Aerys\Http2Driver;
+use Aerys\HttpDriver;
 use Aerys\InternalRequest;
 use Aerys\Options;
 use Amp\Artax\Parser;
@@ -17,13 +16,13 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideUnparsableRequests
      */
-    function testBadRequestBufferedParse($unparsable, $errCode, $errMsg, $opts) {
+    public function testBadRequestBufferedParse($unparsable, $errCode, $errMsg, $opts) {
         $invoked = 0;
         $resultCode = null;
         $parseResult = null;
         $errorMsg = null;
 
-        $emitCallback = function(...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
+        $emitCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
             $invoked++;
             list(, $resultCode, $parseResult, $errorMsg) = $emitStruct;
         };
@@ -34,7 +33,7 @@ class Http1DriverTest extends TestCase {
             $client->options->$key = $val;
         }
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, function(){});
+        $driver->setup($emitCallback, function () {});
         $parser = $driver->parser($client);
         $parser->send($unparsable);
 
@@ -46,13 +45,13 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideUnparsableRequests
      */
-    function testBadRequestIncrementalParse($unparsable, $errCode, $errMsg, $opts) {
+    public function testBadRequestIncrementalParse($unparsable, $errCode, $errMsg, $opts) {
         $invoked = 0;
         $resultCode = null;
         $parseResult = null;
         $errorMsg = null;
 
-        $emitCallback = function(...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
+        $emitCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
             $invoked++;
             list(, $resultCode, $parseResult, $errorMsg) = $emitStruct;
         };
@@ -63,7 +62,7 @@ class Http1DriverTest extends TestCase {
             $client->options->$key = $val;
         }
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, function(){});
+        $driver->setup($emitCallback, function () {});
         $parser = $driver->parser($client);
 
         for ($i = 0, $c = strlen($unparsable); $i < $c; $i++) {
@@ -81,12 +80,12 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideParsableRequests
      */
-    function testBufferedRequestParse($msg, $expectations) {
+    public function testBufferedRequestParse($msg, $expectations) {
         $invoked = 0;
         $parseResult = null;
         $body = "";
 
-        $emitCallback = function(...$emitStruct) use (&$invoked, &$parseResult, &$body) {
+        $emitCallback = function (...$emitStruct) use (&$invoked, &$parseResult, &$body) {
             $invoked++;
             list(, $resultCode, $parseResult, $errorStruct) = $emitStruct;
             $this->assertNull($errorStruct);
@@ -96,7 +95,7 @@ class Http1DriverTest extends TestCase {
         $client = new Client;
         $client->options = new Options;
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, function(){});
+        $driver->setup($emitCallback, function () {});
         $parser = $driver->parser($client);
         $parser->send($msg);
 
@@ -112,12 +111,12 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideParsableRequests
      */
-    function testIncrementalRequestParse($msg, $expectations) {
+    public function testIncrementalRequestParse($msg, $expectations) {
         $invoked = 0;
         $parseResult = null;
         $body = "";
 
-        $emitCallback = function(...$emitStruct) use (&$invoked, &$parseResult, &$body) {
+        $emitCallback = function (...$emitStruct) use (&$invoked, &$parseResult, &$body) {
             $invoked++;
             list(, $resultCode, $parseResult, $errorStruct) = $emitStruct;
             $this->assertNull($errorStruct);
@@ -127,9 +126,9 @@ class Http1DriverTest extends TestCase {
         $client = new Client;
         $client->options = new Options;
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, function(){});
+        $driver->setup($emitCallback, function () {});
         $parser = $driver->parser($client);
-        for($i = 0, $c = strlen($msg); $i < $c; $i++) {
+        for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
         }
 
@@ -142,7 +141,7 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($expectations["body"], $body, "body mismatch");
     }
 
-    function testIdentityBodyParseEmit() {
+    public function testIdentityBodyParseEmit() {
         $originalBody = "12345";
         $msg =
             "POST /post-endpoint HTTP/1.0\r\n" .
@@ -151,13 +150,12 @@ class Http1DriverTest extends TestCase {
             "Cookie: cookie2\r\n" .
             "Content-Length: 10\r\n" .
             "\r\n" .
-            $originalBody
-        ;
+            $originalBody;
 
         $invoked = 0;
         $body = "";
 
-        $emitCallback = function(...$emitStruct) use (&$invoked, &$body) {
+        $emitCallback = function (...$emitStruct) use (&$invoked, &$body) {
             $invoked++;
             $body .= $emitStruct[2]["body"];
         };
@@ -166,9 +164,9 @@ class Http1DriverTest extends TestCase {
         $client->options = new Options;
         $client->options->ioGranularity = 1;
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, function(){});
+        $driver->setup($emitCallback, function () {});
         $parser = $driver->parser($client);
-        for($i = 0, $c = strlen($msg); $i < $c; $i++) {
+        for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
         }
 
@@ -177,13 +175,13 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($originalBody, $body);
     }
 
-    function testStreamingBodyParseEmit() {
+    public function testStreamingBodyParseEmit() {
         $body = "";
         $invoked = 0;
-        $emitCallback = function(...$emitStruct) use (&$invoked, &$body) {
+        $emitCallback = function (...$emitStruct) use (&$invoked, &$body) {
             $invoked++;
             list(, $parseCode, $parseResultArr) = $emitStruct;
-            switch($invoked) {
+            switch ($invoked) {
                 case 1:
                     $this->assertSame(HttpDriver::ENTITY_HEADERS, $parseCode);
                     $this->assertSame("", $parseResultArr["body"]);
@@ -207,13 +205,12 @@ class Http1DriverTest extends TestCase {
         $client->options = new Options;
         $client->options->ioGranularity = 1;
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, function(){});
+        $driver->setup($emitCallback, function () {});
         $parser = $driver->parser($client);
         $headers =
             "POST /post-endpoint HTTP/1.1\r\n" .
             "Host: localhost\r\n" .
-            "Content-Length: 4\r\n\r\n"
-        ;
+            "Content-Length: 4\r\n\r\n";
         $part1 = "1\r\n";
         $part2 = "2\r\n";
         $parser->send($headers);
@@ -224,7 +221,7 @@ class Http1DriverTest extends TestCase {
         $this->assertSame("1\r\n2", $body);
     }
 
-    function testChunkedBodyParseEmit() {
+    public function testChunkedBodyParseEmit() {
         $msg =
             "POST /post-endpoint HTTP/1.0\r\n" .
             "Host: localhost\r\n" .
@@ -237,13 +234,12 @@ class Http1DriverTest extends TestCase {
             "woot!\r\n" .
             "4\r\n" .
             "test\r\n" .
-            "0\r\n\r\n"
-        ;
+            "0\r\n\r\n";
 
         $expectedBody = "woot!test";
         $invoked = 0;
         $body = "";
-        $emitCallback = function(...$emitStruct) use (&$invoked, &$body) {
+        $emitCallback = function (...$emitStruct) use (&$invoked, &$body) {
             $invoked++;
             $body .= $emitStruct[2]["body"];
         };
@@ -252,10 +248,10 @@ class Http1DriverTest extends TestCase {
         $client->options = new Options;
         $client->options->ioGranularity = 1;
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, function(){});
+        $driver->setup($emitCallback, function () {});
         $parser = $driver->parser($client);
 
-        for($i=0,$c=strlen($msg);$i<$c;$i++) {
+        for ($i=0, $c=strlen($msg);$i<$c;$i++) {
             $parser->send($msg[$i]);
         }
 
@@ -263,7 +259,7 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($expectedBody, $body);
     }
 
-    function provideParsableRequests() {
+    public function provideParsableRequests() {
         $return = [];
 
         // 0 --- basic request -------------------------------------------------------------------->
@@ -271,8 +267,7 @@ class Http1DriverTest extends TestCase {
         $msg =
             "GET / HTTP/1.1" . "\r\n" .
             "Host: localhost" . "\r\n" .
-            "\r\n"
-        ;
+            "\r\n";
         $trace = substr($msg, 0, -2);
         $expectations = [
             "trace"       => $trace,
@@ -295,8 +290,7 @@ class Http1DriverTest extends TestCase {
             "Cookie: cookie2\r\n" .
             "Content-Length: 3\r\n" .
             "\r\n" .
-            "123"
-        ;
+            "123";
         $trace = explode("\r\n", $msg);
         array_pop($trace);
         $trace = implode("\r\n", $trace);
@@ -347,8 +341,7 @@ class Http1DriverTest extends TestCase {
             "Accept-Encoding: gzip,deflate,sdch\r\n" .
             "Accept-Language: en-US,en;q=0.8\r\n" .
             "Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.3\r\n" .
-            "Content-Length: 5\r\n"
-        ;
+            "Content-Length: 5\r\n";
 
         $msg = "{$trace}\r\n12345";
 
@@ -380,16 +373,14 @@ class Http1DriverTest extends TestCase {
         $trace =
             "GET /test HTTP/1.1\r\n" .
             "Host: localhost\r\n" .
-            "Transfer-Encoding: chunked\r\n"
-        ;
+            "Transfer-Encoding: chunked\r\n";
         $msg = $trace .
             "\r\n" .
             "5\r\n" .
             "woot!\r\n" .
             "4\r\n" .
             "test\r\n" .
-            "0\r\n\r\n"
-        ;
+            "0\r\n\r\n";
 
         $headers = [
             "host" => ["localhost"],
@@ -413,8 +404,7 @@ class Http1DriverTest extends TestCase {
         $trace =
             "GET /test HTTP/1.1\r\n" .
             "Host: localhost\r\n" .
-            "Transfer-Encoding: chunked\r\n"
-        ;
+            "Transfer-Encoding: chunked\r\n";
         $msg = $trace .
             "\r\n" .
             "5\r\n" .
@@ -423,8 +413,7 @@ class Http1DriverTest extends TestCase {
             "test\r\n" .
             "0\r\n" .
             "My-Trailer: 42\r\n" .
-            "\r\n"
-        ;
+            "\r\n";
 
         $headers = [
             "host" => ["localhost"],
@@ -449,7 +438,7 @@ class Http1DriverTest extends TestCase {
         return $return;
     }
 
-    function provideUnparsableRequests() {
+    public function provideUnparsableRequests() {
         $return = [];
 
         // 0 -------------------------------------------------------------------------------------->
@@ -474,8 +463,7 @@ class Http1DriverTest extends TestCase {
             "GET /someurl.html HTTP/1.0\r\n" .
             "Host: localhost\r\n" .
             "X-My-Header: " . str_repeat("x", 1024) . "r\n" .
-            "\r\n"
-        ;
+            "\r\n";
         $errCode = 431;
         $errMsg = "Bad Request: header size violation";
         $opts = ["maxHeaderSize" => 128];
@@ -488,8 +476,7 @@ class Http1DriverTest extends TestCase {
             "Host: \r\n" .
             " localhost\r\n" .
             "X-My-Header: 42\r\n" .
-            "\r\n"
-        ;
+            "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: multi-line headers deprecated by RFC 7230";
         $opts = [];
@@ -501,8 +488,7 @@ class Http1DriverTest extends TestCase {
             "GET /someurl.html HTTP/1.0\r\n" .
             "Host: \r\n\tlocalhost\r\n" .
             "X-My-Header: 42\r\n" .
-            "\r\n"
-        ;
+            "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: multi-line headers deprecated by RFC 7230";
         $opts = [];
@@ -530,13 +516,13 @@ class Http1DriverTest extends TestCase {
         return $return;
     }
 
-    function testUpgradeBodySizeContentLength() {
+    public function testUpgradeBodySizeContentLength() {
         $invoked = 0;
         $parseResult = null;
         $body = "";
         $client = new Client;
 
-        $emitCallback = function(...$emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
+        $emitCallback = function (...$emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
             $client->pendingResponses = 1;
             $invoked++;
             list(, $resultCode, $parseResult, $errorStruct) = $emitStruct;
@@ -548,9 +534,9 @@ class Http1DriverTest extends TestCase {
 
         $client->options = new Options;
         $client->options->maxBodySize = 4;
-        $client->readWatcher = Loop::defer(function(){}); // dummy watcher
+        $client->readWatcher = Loop::defer(function () {}); // dummy watcher
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, function(){});
+        $driver->setup($emitCallback, function () {});
         $parser = $driver->parser($client);
         $ireq = new InternalRequest;
         $ireq->client = $client;
@@ -559,7 +545,7 @@ class Http1DriverTest extends TestCase {
         $payload = "abcdefghijklmnopqrstuvwxyz";
         $data = "POST / HTTP/1.1\r\nHost:localhost\r\nContent-Length: 26\r\n\r\n$payload";
         $parser->send($data);
-        
+
         $this->assertEquals(4, \strlen($body));
         $ireq->maxBodySize = 10;
         $driver->upgradeBodySize($ireq);
@@ -569,13 +555,13 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($payload, $body);
     }
 
-    function testUpgradeBodySizeStream() {
+    public function testUpgradeBodySizeStream() {
         $invoked = 0;
         $parseResult = null;
         $body = "";
         $client = new Client;
 
-        $emitCallback = function(...$emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
+        $emitCallback = function (...$emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
             $client->pendingResponses = 1;
             $invoked++;
             list(, $resultCode, $parseResult, $errorStruct) = $emitStruct;
@@ -587,9 +573,9 @@ class Http1DriverTest extends TestCase {
 
         $client->options = new Options;
         $client->options->maxBodySize = 4;
-        $client->readWatcher = Loop::defer(function(){}); // dummy watcher
+        $client->readWatcher = Loop::defer(function () {}); // dummy watcher
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, function(){});
+        $driver->setup($emitCallback, function () {});
         $parser = $driver->parser($client);
         $ireq = new InternalRequest;
         $ireq->client = $client;
@@ -608,7 +594,7 @@ class Http1DriverTest extends TestCase {
         $this->assertSame("abcdefghijklmnopqrstuvwxyz", $body);
     }
 
-    function verifyWrite($input, $status, $headers, $data) {
+    public function verifyWrite($input, $status, $headers, $data) {
         $actualBody = "";
         $parser = new Parser(static function ($chunk) use (&$actualBody) {
             $actualBody .= $chunk;
@@ -622,14 +608,14 @@ class Http1DriverTest extends TestCase {
         $this->assertEquals($data, $actualBody);
     }
 
-    function testWriter() {
+    public function testWriter() {
         $headers = ["test" => ["successful"]];
         $status = 200;
         $rawHeaders = $headers + [":status" => $status, ":reason" => "OK", ":aerys-entity-length" => "*", ":aerys-push" => ["/foo" => []]];
         $data = "foobar";
 
         $driver = new Http1Driver;
-        $driver->setup(function(){$this->fail();}, function($client, $final = false) use (&$fin) { $fin = $final; });
+        $driver->setup(function () {$this->fail();}, function ($client, $final = false) use (&$fin) { $fin = $final; });
         $client = new Client;
         $client->options = new Options;
         $client->remainingKeepAlives = PHP_INT_MAX;
@@ -655,11 +641,11 @@ class Http1DriverTest extends TestCase {
         $this->assertNotTrue($client->shouldClose);
     }
 
-    function testHttp2Upgrade() {
+    public function testHttp2Upgrade() {
         $ireq = new InternalRequest;
         $ireq->protocol = "1.1";
         $ireq->headers = ["upgrade" => ["h2c"], "http2-settings" => [strtr(base64_encode("somesettings"), "+/", "-_")], "host" => ["foo.bar"]];
-        $ireq->responseWriter = (function() use (&$headers) {
+        $ireq->responseWriter = (function () use (&$headers) {
             $headers = yield;
         })();
         $ireq->uriPath = "/path";
@@ -669,10 +655,16 @@ class Http1DriverTest extends TestCase {
 
         $driver = new Http1Driver;
         $http2 = new class implements HttpDriver {
-            public function setup(callable $parseEmitter, callable $responseWriter) {}
-            public function upgradeBodySize(InternalRequest $ireq) {}
-            public function filters(InternalRequest $ireq, array $filters): array { return $filters; }
-            public function writer(InternalRequest $ireq): \Generator { yield; }
+            public function setup(callable $parseEmitter, callable $responseWriter) {
+            }
+            public function upgradeBodySize(InternalRequest $ireq) {
+            }
+            public function filters(InternalRequest $ireq, array $filters): array {
+                return $filters;
+            }
+            public function writer(InternalRequest $ireq): \Generator {
+                yield;
+            }
 
             public $received = "";
             public function parser(Client $client): \Generator {
@@ -681,7 +673,7 @@ class Http1DriverTest extends TestCase {
                 }
             }
         };
-        (function() use ($http2) {
+        (function () use ($http2) {
             $this->http2 = $http2;
         })->call($driver);
         $driver->filters($ireq, []);
@@ -695,13 +687,19 @@ class Http1DriverTest extends TestCase {
         $this->assertEquals("", $http2->received);
     }
 
-    function testNativeHttp2() {
+    public function testNativeHttp2() {
         $driver = new Http1Driver;
         $http2 = new class implements HttpDriver {
-            public function setup(callable $parseEmitter, callable $responseWriter) {}
-            public function upgradeBodySize(InternalRequest $ireq) {}
-            public function filters(InternalRequest $ireq, array $filters): array { return $filters; }
-            public function writer(InternalRequest $ireq): \Generator { yield; }
+            public function setup(callable $parseEmitter, callable $responseWriter) {
+            }
+            public function upgradeBodySize(InternalRequest $ireq) {
+            }
+            public function filters(InternalRequest $ireq, array $filters): array {
+                return $filters;
+            }
+            public function writer(InternalRequest $ireq): \Generator {
+                yield;
+            }
 
             public $received;
             public function parser(Client $client): \Generator {
@@ -709,9 +707,8 @@ class Http1DriverTest extends TestCase {
                     $this->received .= yield;
                 }
             }
-
         };
-        (function() use ($http2) {
+        (function () use ($http2) {
             $this->http2 = $http2;
         })->call($driver);
 
@@ -720,6 +717,5 @@ class Http1DriverTest extends TestCase {
         $data = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\nbinary data";
         $driver->parser($client)->send($data);
         $this->assertEquals($data, $http2->received);
-
     }
 }

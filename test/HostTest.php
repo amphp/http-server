@@ -11,7 +11,7 @@ use Aerys\StandardResponse;
 use PHPUnit\Framework\TestCase;
 
 class HostTest extends TestCase {
-    function getHost() { // we do not want to add to definitions, that's for the Bootstrapper test.
+    public function getHost() { // we do not want to add to definitions, that's for the Bootstrapper test.
         return (new \ReflectionClass('Aerys\Host'))->newInstanceWithoutConstructor();
     }
 
@@ -19,7 +19,7 @@ class HostTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Invalid port number; integer in the range 1..65535 required
      */
-    function testThrowsWithBadPort() {
+    public function testThrowsWithBadPort() {
         $this->getHost()->expose("127.0.0.1", 65536);
     }
 
@@ -27,11 +27,11 @@ class HostTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Invalid IP address
      */
-    function testThrowsWithBadInterface() {
+    public function testThrowsWithBadInterface() {
         $this->getHost()->expose("bizzibuzzi", 1025);
     }
 
-    function testGenericInterface() {
+    public function testGenericInterface() {
         $host = $this->getHost();
         $host->expose("*", 1025);
         if (Host::separateIPv4Binding()) {
@@ -45,7 +45,7 @@ class HostTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Aerys\Host::use requires a callable action or Bootable or Middleware or HttpDriver instance
      */
-    function testBadUse() {
+    public function testBadUse() {
         $this->getHost()->use(1);
     }
 
@@ -53,7 +53,7 @@ class HostTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Invalid redirect URI
      */
-    function testBadRedirectUrl() {
+    public function testBadRedirectUrl() {
         $this->getHost()->redirect(":");
     }
 
@@ -61,7 +61,7 @@ class HostTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Invalid redirect URI; "http" or "https" scheme required
      */
-    function testBadRedirectScheme() {
+    public function testBadRedirectScheme() {
         $this->getHost()->redirect("ssl://foo");
     }
 
@@ -70,7 +70,7 @@ class HostTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Invalid redirect URI; Host redirect must not contain a query or fragment component
      */
-    function testBadRedirectPath() {
+    public function testBadRedirectPath() {
         $this->getHost()->redirect("http://localhost/?foo");
     }
 
@@ -78,7 +78,7 @@ class HostTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Invalid redirect code; code in the range 300..399 required
      */
-    function testBadRedirectCode() {
+    public function testBadRedirectCode() {
         $this->getHost()->redirect("http://localhost", 201);
     }
 
@@ -86,17 +86,20 @@ class HostTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Impossible to define two HttpDriver instances for one same Host; an instance of Aerys\Http1Driver has already been defined as driver
      */
-    function testDriverRedefine() {
+    public function testDriverRedefine() {
         $this->getHost()->use(new Http1Driver)->use(new Http2Driver);
     }
 
 
-    function testSuccessfulRedirect() {
+    public function testSuccessfulRedirect() {
         $actions = $this->getHost()->redirect("http://localhost", 301)->export()["actions"];
         $this->assertEquals(1, count($actions));
         $req = new class extends StandardRequest {
-            public function __construct() { }
-            public function getUri(): string { return "/foo"; }
+            public function __construct() {
+            }
+            public function getUri(): string {
+                return "/foo";
+            }
         };
         $actions[0]($req, new StandardResponse((function () use (&$body) {
             $headers = yield;

@@ -8,7 +8,7 @@ class Client {
     const CLOSED_RD = 1;
     const CLOSED_WR = 2;
     const CLOSED_RDWR = 3;
-    
+
     use Struct;
     public $id;
     public $socket;

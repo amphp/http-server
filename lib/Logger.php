@@ -2,10 +2,8 @@
 
 namespace Aerys;
 
-use Psr\Log\{
-    LogLevel as PsrLogLevel,
-    LoggerInterface as PsrLogger
-};
+use Psr\Log\LoggerInterface as PsrLogger;
+use Psr\Log\LogLevel as PsrLogLevel;
 
 abstract class Logger implements PsrLogger {
     const DEBUG = PsrLogLevel::DEBUG;

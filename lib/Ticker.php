@@ -2,7 +2,10 @@
 
 namespace Aerys;
 
-use Amp\{ Loop, Promise, Success, Struct };
+use Amp\Loop;
+use Amp\Promise;
+use Amp\Struct;
+use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Ticker implements ServerObserver {
@@ -35,7 +38,7 @@ class Ticker implements ServerObserver {
     }
 
     /**
-     * Add a callback to invoke each time the time context updates
+     * Add a callback to invoke each time the time context updates.
      *
      * Callbacks are invoked with two parameters: currentTime and currentHttpDate.
      *
@@ -47,7 +50,7 @@ class Ticker implements ServerObserver {
     }
 
     /**
-     * Updates the context with the current time
+     * Updates the context with the current time.
      *
      * @return void
      */

@@ -9,7 +9,7 @@ class HPackTest extends TestCase {
     /**
      * @dataProvider provideDecodeCases
      */
-    function testDecode($cases) {
+    public function testDecode($cases) {
         $hpack = new HPack;
         foreach ($cases as $i => list($input, $output)) {
             $result = $hpack->decode($input);
@@ -17,7 +17,7 @@ class HPackTest extends TestCase {
         }
     }
 
-    function provideDecodeCases() {
+    public function provideDecodeCases() {
         $root = __DIR__."/../vendor/http2jp/hpack-test-case";
         $paths = glob("$root/*/*.json");
         foreach ($paths as $path) {
@@ -42,7 +42,7 @@ class HPackTest extends TestCase {
      * @depends testDecode
      * @dataProvider provideEncodeCases
      */
-    function testEncode($cases) {
+    public function testEncode($cases) {
         foreach ($cases as $i => list($input, $output)) {
             $hpack = new HPack;
             $encoded = $hpack->encode($input);
@@ -65,7 +65,7 @@ class HPackTest extends TestCase {
         }
     }
 
-    function provideEncodeCases() {
+    public function provideEncodeCases() {
         $root = __DIR__."/../vendor/http2jp/hpack-test-case";
         $paths = glob("$root/raw-data/*.json");
         foreach ($paths as $path) {
@@ -85,5 +85,4 @@ class HPackTest extends TestCase {
             yield basename($path) . (isset($data->description) ? ": $data->description" : "") => [$cases];
         }
     }
-
 }

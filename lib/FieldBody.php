@@ -3,7 +3,8 @@
 namespace Aerys;
 
 use Amp\ByteStream\IteratorStream;
-use Amp\{ Promise, Iterator };
+use Amp\Iterator;
+use Amp\Promise;
 
 class FieldBody extends Body {
     private $metadata;
@@ -12,7 +13,7 @@ class FieldBody extends Body {
         parent::__construct(new IteratorStream($iterator));
         $this->metadata = $metadata;
     }
-    
+
     public function getMetadata(): Promise {
         return $this->metadata;
     }

@@ -2,7 +2,9 @@
 
 namespace Aerys\Test;
 
-use Aerys\{ Client, Filter, InternalRequest, Response, StandardResponse, function responseFilter };
+use Aerys\Client;
+use Aerys\Response;
+use Aerys\StandardResponse;
 use PHPUnit\Framework\TestCase;
 
 class StandardResponseTest extends TestCase {
@@ -12,7 +14,7 @@ class StandardResponseTest extends TestCase {
      * @expectedExceptionMessage Cannot set status code; output already started
      */
     public function testSetStatusErrorsIfResponseAlreadyStarted() {
-        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
+        $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
         $response->write("test");
         $response->setStatus(200);
     }
@@ -22,7 +24,7 @@ class StandardResponseTest extends TestCase {
      * @expectedExceptionMessage Cannot set reason phrase; output already started
      */
     public function testSetReasonErrorsIfResponseAlreadyStarted() {
-        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
+        $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
         $response->write("test");
         $response->setReason("zanzibar");
     }
@@ -32,7 +34,7 @@ class StandardResponseTest extends TestCase {
      * @expectedExceptionMessage Cannot add header; output already started
      */
     public function testAddHeaderErrorsIfResponseAlreadyStarted() {
-        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
+        $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
         $response->write("test");
         $response->addHeader("Content-Length", "42");
     }
@@ -42,7 +44,7 @@ class StandardResponseTest extends TestCase {
      * @expectedExceptionMessage Cannot set header; output already started
      */
     public function testSetHeaderErrorsIfResponseAlreadyStarted() {
-        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
+        $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
         $response->write("test");
         $response->setHeader("Content-Length", "42");
     }
@@ -50,7 +52,7 @@ class StandardResponseTest extends TestCase {
     public function testSendUpdatesResponseState() {
         $headers = [];
         $received = "";
-        $writer = function() use (&$headers, &$received) {
+        $writer = function () use (&$headers, &$received) {
             $headers = yield;
             while (true) {
                 $received .= yield;
@@ -71,7 +73,7 @@ class StandardResponseTest extends TestCase {
      * @expectedExceptionMessage Cannot write: response already sent
      */
     public function testSendThrowsIfResponseAlreadyComplete() {
-        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
+        $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
         $response->end("test");
         $response->write("this should throw");
     }
@@ -81,7 +83,7 @@ class StandardResponseTest extends TestCase {
      * @expectedExceptionMessage Cannot write: response already sent
      */
     public function testStreamThrowsIfResponseAlreadySent() {
-        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
+        $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
         $response->end("test");
         $response->write("this should throw");
     }
@@ -91,7 +93,7 @@ class StandardResponseTest extends TestCase {
      * @expectedExceptionMessage Cannot write: response already sent
      */
     public function testStreamThrowsIfResponseAlreadyEnded() {
-        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
+        $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
         $response->end();
         $response->write("this should throw");
     }
@@ -99,7 +101,7 @@ class StandardResponseTest extends TestCase {
     public function testMultiStream() {
         $headers = [];
         $received = "";
-        $writer = function() use (&$headers, &$received) {
+        $writer = function () use (&$headers, &$received) {
             $headers = yield;
             while (true) {
                 $received .= yield;
@@ -121,7 +123,7 @@ class StandardResponseTest extends TestCase {
      * @expectedExceptionMessage Cannot flush: response already sent
      */
     public function testFlushThrowsIfResponseAlreadySent() {
-        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
+        $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
         $response->end();
         $response->flush();
     }
@@ -131,7 +133,7 @@ class StandardResponseTest extends TestCase {
      * @expectedExceptionMessage Cannot flush: response output not started
      */
     public function testFlushThrowsIfResponseOutputNotStarted() {
-        $response = new StandardResponse((function() { while (1) yield; })(), new Client);
+        $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
         $response->flush();
     }
 }

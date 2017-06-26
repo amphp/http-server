@@ -6,7 +6,7 @@ use Amp\Loop;
 
 class IpcLogger extends Logger {
     use \Amp\CallableMaker;
-    
+
     private $ipcSock;
     private $writeWatcherId;
     private $writeQueue = [];

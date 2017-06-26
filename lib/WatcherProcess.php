@@ -2,12 +2,15 @@
 
 namespace Aerys;
 
-use Amp\{ CallableMaker, Deferred, Failure, Loop, Success };
+use Amp\CallableMaker;
+use Amp\Deferred;
+use Amp\Loop;
+use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WatcherProcess extends Process {
     use CallableMaker;
-    
+
     private $logger;
     private $console;
     private $workerCount;
@@ -143,7 +146,7 @@ class WatcherProcess extends Process {
         }
         stream_set_blocking($client, false);
         $parser = $this->commandParser($client);
-        $readWatcherId = Loop::onReadable($client, function() use ($parser) { $parser->next(); });
+        $readWatcherId = Loop::onReadable($client, function () use ($parser) { $parser->next(); });
         $parser->send($readWatcherId);
     }
 
@@ -290,7 +293,7 @@ class WatcherProcess extends Process {
                 $cmd = "sysctl -a | grep 'hw.ncpu:' | awk '{ print $2 }'";
                 break;
             default:
-                $cmd = NULL;
+                $cmd = null;
                 break;
         }
         $execResult = $cmd ? shell_exec($cmd) : 1;
@@ -432,7 +435,7 @@ class WatcherProcess extends Process {
         $sockets = array_intersect_key($this->serverSockets, $addrCtxMap);
 
         // Number of sockets (pack("N")), then individual sockets
-        $gen = (function() use ($ipcClient, &$watcherId, $sockets) {
+        $gen = (function () use ($ipcClient, &$watcherId, $sockets) {
             $data = pack("N", count($sockets));
             do {
                 yield;
@@ -455,7 +458,7 @@ class WatcherProcess extends Process {
 
             Loop::cancel($watcherId);
         })();
-        $watcherId = Loop::onWritable($ipcClient, function() use ($gen) {
+        $watcherId = Loop::onWritable($ipcClient, function () use ($gen) {
             $gen->next();
         });
     }
@@ -522,7 +525,7 @@ class WatcherProcess extends Process {
         $this->serverSockets = $this->addrCtx = [];
         $spawn = count($this->ipcClients);
         for ($i = 0; $i < $spawn; $i++) {
-            $this->spawn()->onResolve(function() {
+            $this->spawn()->onResolve(function () {
                 @\fwrite(current($this->ipcClients), self::STOP_SEQUENCE);
                 next($this->ipcClients);
             });
@@ -539,6 +542,5 @@ class WatcherProcess extends Process {
         }
 
         yield $this->stopDeferred === true ? new Success : $this->stopDeferred->promise();
-
     }
 }

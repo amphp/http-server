@@ -21,10 +21,10 @@ class WorkerProcess extends Process {
     public function recvServerSocketCallback($addrCtxMap) {
         $deferred = new Deferred;
 
-        $json = json_encode(array_map(function($context) { return $context["socket"]; }, $addrCtxMap));
+        $json = json_encode(array_map(function ($context) { return $context["socket"]; }, $addrCtxMap));
         $data = "\x1" . pack("N", \strlen($json)) . $json;
         // Logger must not be writing at the same time as we do here
-        $this->logger->disableSending()->onResolve(function() use (&$data, $deferred, $addrCtxMap) {
+        $this->logger->disableSending()->onResolve(function () use (&$data, $deferred, $addrCtxMap) {
             Loop::onWritable($this->ipcSock, function ($watcherId, $socket) use (&$data, $deferred, $addrCtxMap) {
                 $bytesWritten = \fwrite($socket, $data);
                 if ($bytesWritten === false || ($bytesWritten === 0 && (!\is_resource($socket) || @\feof($socket)))) {
@@ -73,7 +73,7 @@ class WorkerProcess extends Process {
                     Loop::cancel($watcherId);
                     $deferred->resolve($serverSockets);
                 })();
-                $watcherId = Loop::onReadable($socket, function() use ($gen) {
+                $watcherId = Loop::onReadable($socket, function () use ($gen) {
                     $gen->next();
                 });
             });
@@ -84,10 +84,10 @@ class WorkerProcess extends Process {
 
     protected function doStart(Console $console): \Generator {
         // Shutdown the whole server in case we needed to stop during startup
-        register_shutdown_function(function() use ($console) {
+        register_shutdown_function(function () use ($console) {
             if (!$this->server) {
                 // ensure a clean reactor for clean shutdown
-                Loop::run(function() use ($console) {
+                Loop::run(function () use ($console) {
                     yield (new CommandClient((string) $console->getArg("config")))->stop();
                 });
             }
@@ -101,7 +101,7 @@ class WorkerProcess extends Process {
             yield $server->start();
         }
         $this->server = $server;
-        Loop::onReadable($this->ipcSock, function($watcherId) {
+        Loop::onReadable($this->ipcSock, function ($watcherId) {
             Loop::cancel($watcherId);
             yield from $this->stop();
         });

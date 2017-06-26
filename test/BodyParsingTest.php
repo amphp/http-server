@@ -8,7 +8,6 @@ use Aerys\InternalRequest;
 use Aerys\Options;
 use Aerys\StandardRequest;
 use Amp\ByteStream\IteratorStream;
-use Amp\Message;
 use Amp\Loop;
 use PHPUnit\Framework\TestCase;
 
@@ -16,7 +15,7 @@ class BodyParsingTest extends TestCase {
     /**
      * @dataProvider requestBodies
      */
-    function testDecoding($header, $data, $fields, $metadata) {
+    public function testDecoding($header, $data, $fields, $metadata) {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
@@ -27,7 +26,7 @@ class BodyParsingTest extends TestCase {
         $emitter->emit($data);
         $emitter->complete();
 
-        Loop::run(function() use ($ireq, &$result) {
+        Loop::run(function () use ($ireq, &$result) {
             $parsedBody = yield \Aerys\parseBody(new StandardRequest($ireq));
             $result = $parsedBody->getAll();
         });
@@ -39,7 +38,7 @@ class BodyParsingTest extends TestCase {
     /**
      * @dataProvider requestBodies
      */
-    function testImmediateWatch($header, $data, $fields, $metadata) {
+    public function testImmediateWatch($header, $data, $fields, $metadata) {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
@@ -50,7 +49,7 @@ class BodyParsingTest extends TestCase {
         $emitter->emit($data);
         $emitter->complete();
 
-        Loop::run(function() use ($ireq, $fields, $metadata) {
+        Loop::run(function () use ($ireq, $fields, $metadata) {
             $fieldlist = $fields;
 
             $body = \Aerys\parseBody(new StandardRequest($ireq));
@@ -70,7 +69,7 @@ class BodyParsingTest extends TestCase {
     /**
      * @dataProvider requestBodies
      */
-    function testIncrementalWatch($header, $data, $fields, $metadata) {
+    public function testIncrementalWatch($header, $data, $fields, $metadata) {
         $emitter = new \Amp\Emitter;
         $ireq = new InternalRequest;
         $ireq->headers["content-type"][0] = $header;
@@ -78,10 +77,10 @@ class BodyParsingTest extends TestCase {
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
-        Loop::run(function() use ($emitter, $data, $ireq, $fields, $metadata) {
+        Loop::run(function () use ($emitter, $data, $ireq, $fields, $metadata) {
             $fieldlist = $fields;
 
-            Loop::defer(function() use ($emitter, $data) {
+            Loop::defer(function () use ($emitter, $data) {
                 $emitter->emit($data);
                 $emitter->complete();
             });
@@ -99,7 +98,7 @@ class BodyParsingTest extends TestCase {
         });
     }
 
-    function testNew() {
+    public function testNew() {
         $header = null;
         $data = "a=ba%66g&&&be=c&d=f%6&gh&j";
 
@@ -118,8 +117,8 @@ class BodyParsingTest extends TestCase {
         $gh = $body->write("gh");
         $j = $body->write("j");
 
-        Loop::run(function() use ($a, $b, $be, $d, $gh, $j, $data, $emitter) {
-            Loop::defer(function() use ($data, $emitter) {
+        Loop::run(function () use ($a, $b, $be, $d, $gh, $j, $data, $emitter) {
+            Loop::defer(function () use ($data, $emitter) {
                 for ($i = 0; $i < \strlen($data); $i++) {
                     $emitter->emit($data[$i]);
                 }
@@ -132,10 +131,10 @@ class BodyParsingTest extends TestCase {
             $this->assertEquals("", yield $gh);
             $this->assertEquals("", yield $j);
         });
-        $body->onResolve(function($e) { print $e; });
+        $body->onResolve(function ($e) { print $e; });
     }
 
-    function requestBodies() {
+    public function requestBodies() {
         $return = [];
 
         // 0 --- basic request -------------------------------------------------------------------->

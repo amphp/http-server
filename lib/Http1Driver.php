@@ -2,7 +2,8 @@
 
 namespace Aerys;
 
-use Amp\{ Deferred, Loop };
+use Amp\Deferred;
+use Amp\Loop;
 
 class Http1Driver implements HttpDriver {
     const HEADER_REGEX = "(
@@ -175,7 +176,7 @@ class Http1Driver implements HttpDriver {
             // break potential references
             unset($traceBuffer, $protocol, $method, $uri, $headers);
             $client->streamWindow = $client->options->maxBodySize;
-                
+
             $traceBuffer = null;
             $headers = [];
             $contentLength = null;
@@ -259,10 +260,9 @@ class Http1Driver implements HttpDriver {
                     $client->requestParser = $client->httpDriver->parser($client);
                     $client->requestParser->send("$startLineAndHeaders\r\n$buffer");
                     return;
-                } else {
-                    $error = HttpDriver::BAD_VERSION;
-                    break;
                 }
+                $error = HttpDriver::BAD_VERSION;
+                break;
             }
 
             if ($rawHeaders) {
@@ -414,7 +414,7 @@ class Http1Driver implements HttpDriver {
                             if ($bodySize != $client->streamWindow) {
                                 continue;
                             }
-                            
+
                             ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
                             $client->parserEmitLock = true;
                             Loop::disable($client->readWatcher);
@@ -431,7 +431,7 @@ class Http1Driver implements HttpDriver {
                             $client->parserEmitLock = false;
                         } while ($client->streamWindow < $bodySize + $chunkLenRemaining);
                     }
-                                         
+
                     $bodyBufferSize = 0;
 
                     while (1) {
@@ -461,12 +461,11 @@ class Http1Driver implements HttpDriver {
                         if ($bufferLen >= $chunkLenRemaining + 2) {
                             $chunkLenRemaining = null;
                             continue 2; // next chunk ($is_chunked loop)
-                        } else {
-                            $buffer = yield;
                         }
+                        $buffer = yield;
                     }
                 }
-                
+
                 if ($body != "") {
                     ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null);
                 }
@@ -515,7 +514,6 @@ class Http1Driver implements HttpDriver {
                         break;
                     }
                 }
-
             }
 
             $client->streamWindow = $client->options->maxBodySize;
@@ -596,7 +594,7 @@ class Http1Driver implements HttpDriver {
     }
 
     /**
-     * Apply chunk encoding to response entity bodies
+     * Apply chunk encoding to response entity bodies.
      *
      * @param \Aerys\InternalRequest $ireq
      * @return \Generator
@@ -627,8 +625,7 @@ class Http1Driver implements HttpDriver {
 
         $chunk = ($bodyBuffer != "")
             ? (\dechex(\strlen($bodyBuffer)) . "\r\n{$bodyBuffer}\r\n0\r\n\r\n")
-            : "0\r\n\r\n"
-        ;
+            : "0\r\n\r\n";
 
         return $chunk;
     }

@@ -2,4 +2,5 @@
 
 namespace Aerys;
 
-class FilterException extends \Exception {}
+class FilterException extends \Exception {
+}

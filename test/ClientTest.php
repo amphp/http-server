@@ -3,10 +3,9 @@
 namespace Aerys\Test;
 
 use Aerys\ClientException;
-use Aerys\InternalRequest;
-use Amp\Artax\BasicClient;
 use Aerys\Http1Driver;
 use Aerys\Http2Driver;
+use Aerys\InternalRequest;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
@@ -15,14 +14,13 @@ use Aerys\Server;
 use Aerys\Ticker;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
-use Amp\Artax\Notify;
-use Amp\Artax\SocketException;
+use Amp\Artax\BasicClient;
 use Amp\Loop;
 use Amp\Socket\ClientTlsContext;
 use PHPUnit\Framework\TestCase;
 
 class ClientTest extends TestCase {
-    function startServer($handler, $filters = []) {
+    public function startServer($handler, $filters = []) {
         if (!$server = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
             $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
         }
@@ -35,14 +33,17 @@ class ClientTest extends TestCase {
         $vhost->setCrypto(["local_cert" => __DIR__."/server.pem", "crypto_method" => "tls"]);
         $vhosts->use($vhost);
 
-        $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */ } };
+        $logger = new class extends Logger {
+            protected function output(string $message) { /* /dev/null */
+            }
+        };
         $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
         yield $server->start();
         return [$address, $server];
     }
 
-    function testTrivialHttpRequest() {
-        Loop::run(function() {
+    public function testTrivialHttpRequest() {
+        Loop::run(function () {
             $deferred = new \Amp\Deferred;
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) {
                 $this->assertEquals("GET", $req->getMethod());
@@ -83,8 +84,8 @@ class ClientTest extends TestCase {
         });
     }
 
-    function testClientDisconnect() {
-        Loop::run(function() {
+    public function testClientDisconnect() {
+        Loop::run(function () {
             $deferred = new \Amp\Deferred;
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) use ($deferred, &$server) {
                 $this->assertEquals("POST", $req->getMethod());
@@ -102,7 +103,7 @@ class ClientTest extends TestCase {
                 } catch (\Throwable $e) {
                     $deferred->fail($e);
                 }
-            }, [function(InternalRequest $res) {
+            }, [function (InternalRequest $res) {
                 $headers = yield;
 
                 $data = yield $headers;
@@ -111,7 +112,9 @@ class ClientTest extends TestCase {
                 $flush = yield $data;
                 $this->assertFalse($flush);
 
-                do { $end = yield; } while ($end === false);
+                do {
+                    $end = yield;
+                } while ($end === false);
                 $this->assertEquals("_", $end[0]);
 
                 // now shut the socket down (fake disconnect)

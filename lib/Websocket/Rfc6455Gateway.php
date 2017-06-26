@@ -2,37 +2,29 @@
 
 namespace Aerys\Websocket;
 
-use Amp\{
-    CallableMaker,
-    Coroutine,
-    Deferred,
-    Emitter,
-    Failure,
-    Loop,
-    Promise,
-    Success
-};
-
-use Aerys\{
-    ClientException,
-    InternalRequest,
-    Middleware,
-    Monitor,
-    NullBody,
-    Request,
-    Response,
-    Server,
-    ServerObserver,
-    Websocket,
-    function makeGenericBody,
-    const HTTP_STATUS
-};
-
+use Aerys\ClientException;
+use Aerys\InternalRequest;
+use Aerys\Middleware;
+use Aerys\Monitor;
+use Aerys\NullBody;
+use Aerys\Request;
+use Aerys\Response;
+use Aerys\Server;
+use Aerys\ServerObserver;
+use Aerys\Websocket;
+use Amp\CallableMaker;
+use Amp\Coroutine;
+use Amp\Deferred;
+use Amp\Emitter;
+use Amp\Failure;
+use Amp\Loop;
+use Amp\Promise;
+use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     use CallableMaker;
-    
+
     private $logger;
     private $application;
     private $endpoint;
@@ -170,7 +162,6 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $response->setReason("Bad Request: \"Sec-Websocket-Key\" header required");
             $response->end(makeGenericBody(HTTP_STATUS["BAD_REQUEST"]));
             return;
-
         }
 
         if (!in_array("13", $request->getHeaderArray("Sec-Websocket-Version"))) {
@@ -406,7 +397,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             yield from $this->onAppError($client->id, $e);
         }
     }
-    
+
     public function onParsedError(Rfc6455Client $client, int $code, string $msg) {
         // something went that wrong that we had to shutdown our readWatcher... if parser has anything left, we don't care!
         if (!$client->readWatcher) {
@@ -496,7 +487,6 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                     $client->writeDeferredDataQueue[$key]->resolve($client->writeDeferred);
                     unset($client->writeDataQueue[$key], $client->writeDeferredDataQueue[$key]);
                 }
-
             } elseif ($client->closedAt) {
                 $client->writeBuffer = "";
                 $client->writeDeferred = null;
@@ -776,7 +766,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     }
 
     /**
-     * A stateful generator websocket frame parser
+     * A stateful generator websocket frame parser.
      *
      * @param \Aerys\Websocket\Rfc6455Endpoint $endpoint Endpoint to receive parser event emissions
      * @param \Aerys\Websocket\Rfc6455Client $client Client associated with event emissions.
@@ -816,10 +806,10 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $offset += 2;
             $bufferSize -= 2;
 
-            $fin = (bool)($firstByte & 0b10000000);
+            $fin = (bool) ($firstByte & 0b10000000);
             // $rsv = ($firstByte & 0b01110000) >> 4; // unused (let's assume the bits are all zero)
             $opcode = $firstByte & 0b00001111;
-            $isMasked = (bool)($secondByte & 0b10000000);
+            $isMasked = (bool) ($secondByte & 0b10000000);
             $maskingKey = null;
             $frameLength = $secondByte & 0b01111111;
 
@@ -1044,7 +1034,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                         $dataMsgBytesRecd = 0;
                     }
                     $nextEmit = $dataMsgBytesRecd + $emitThreshold;
-    
+
                     $endpoint->onParsedData($client, $payload, $opcode === self::OP_BIN, $fin);
                 }
             } else {
@@ -1058,7 +1048,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         // stop parsing here ...
         $endpoint->onParsedError($client, $code, $errorMsg);
         yield $frames;
-        
+
         while (1) {
             yield 0;
         }

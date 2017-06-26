@@ -20,9 +20,9 @@ class RootTest extends TestCase {
     }
 
     /**
-     * Setup a directory we can use as the document root
+     * Setup a directory we can use as the document root.
      */
-    static function setUpBeforeClass() {
+    public static function setUpBeforeClass() {
         self::$loop = Loop::get();
 
         $fixtureDir = self::fixturePath();
@@ -48,7 +48,7 @@ class RootTest extends TestCase {
         }
     }
 
-    static function tearDownAfterClass() {
+    public static function tearDownAfterClass() {
         $fixtureDir = self::fixturePath();
         if (!@\file_exists($fixtureDir)) {
             return;
@@ -73,26 +73,33 @@ class RootTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Document root requires a readable directory
      */
-    function testConstructorThrowsOnInvalidDocRoot($badPath) {
+    public function testConstructorThrowsOnInvalidDocRoot($badPath) {
         $filesystem = $this->createMock('Amp\File\Driver');
         $root = new Root($badPath, $filesystem);
     }
 
-    function provideBadDocRoots() {
+    public function provideBadDocRoots() {
         return [
             [self::fixturePath() . "/some-dir-that-doesnt-exist"],
             [self::fixturePath() . "/index.htm"],
         ];
     }
 
-    function testBasicFileResponse() {
+    public function testBasicFileResponse() {
         $root = new Root(self::fixturePath());
         $server = new class extends Server {
-            function __construct() {}
-            function attach(ServerObserver $obj){}
-            function detach(ServerObserver $obj){}
-            function getOption(string $option) { return true; }
-            function state(): int { return Server::STARTING; }
+            function __construct() {
+            }
+            function attach(ServerObserver $obj) {
+            }
+            function detach(ServerObserver $obj) {
+            }
+            function getOption(string $option) {
+                return true;
+            }
+            function state(): int {
+                return Server::STARTING;
+            }
         };
         $root->update($server);
         foreach ([
@@ -134,25 +141,23 @@ class RootTest extends TestCase {
      * @depends testBasicFileResponse
      * @dataProvider provideRelativePathsAboveRoot
      */
-    function testPathsOnRelativePathAboveRoot($relativePath, $root) {
+    public function testPathsOnRelativePathAboveRoot($relativePath, $root) {
         $request = $this->createMock("Aerys\\Request");
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue($relativePath))
-        ;
+            ->will($this->returnValue($relativePath));
         $request->expects($this->any())
             ->method("getMethod")
-            ->will($this->returnValue("GET"))
-        ;
+            ->will($this->returnValue("GET"));
         $response = $this->createMock("Aerys\\Response");
         $response->expects($this->once())
             ->method("end")
             ->with("test") // <-- the contents of the /index.htm fixture file
-        ;
+;
         $root->__invoke($request, $response);
     }
 
-    function provideRelativePathsAboveRoot() {
+    public function provideRelativePathsAboveRoot() {
         return [
             ["/../../../index.htm"],
             ["/dir/../../"],
@@ -163,82 +168,81 @@ class RootTest extends TestCase {
      * @depends testBasicFileResponse
      * @dataProvider provideUnavailablePathsAboveRoot
      */
-    function testUnavailablePathsOnRelativePathAboveRoot($relativePath, $root) {
+    public function testUnavailablePathsOnRelativePathAboveRoot($relativePath, $root) {
         $request = $this->createMock("Aerys\\Request");
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue($relativePath))
-        ;
+            ->will($this->returnValue($relativePath));
         $request->expects($this->any())
             ->method("getMethod")
-            ->will($this->returnValue("GET"))
-        ;
+            ->will($this->returnValue("GET"));
         $response = $this->createMock("Aerys\\Response");
         $response->expects($this->never())
-            ->method("end")
-        ;
+            ->method("end");
         $root->__invoke($request, $response);
     }
 
-    function provideUnavailablePathsAboveRoot() {
+    public function provideUnavailablePathsAboveRoot() {
         return [
             ["/../aerys_root_test_fixture/index.htm"],
             ["/aerys_root_test_fixture/../../aerys_root_test_fixture"],
         ];
     }
-    
+
     /**
      * @depends testBasicFileResponse
      */
-    function testCachedResponse($root) {
+    public function testCachedResponse($root) {
         $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue("/index.htm"))
-        ;
+            ->will($this->returnValue("/index.htm"));
         $request->expects($this->any())
             ->method("getMethod")
-            ->will($this->returnValue("GET"))
-        ;
+            ->will($this->returnValue("GET"));
         $response = $this->createMock('Aerys\Response');
         $response->expects($this->once())
             ->method("end")
             ->with("test") // <-- the contents of the /index.htm fixture file
-        ;
+;
         $root->__invoke($request, $response);
     }
 
     /**
      * @depends testBasicFileResponse
      */
-    function testDebugModeIgnoresCacheIfCacheControlHeaderIndicatesToDoSo($root) {
+    public function testDebugModeIgnoresCacheIfCacheControlHeaderIndicatesToDoSo($root) {
         $server = new class extends Server {
-            function __construct() {}
-            function attach(ServerObserver $obj){}
-            function detach(ServerObserver $obj){}
-            function getOption(string $option) { return true; }
-            function state(): int { return Server::STARTED; }
+            function __construct() {
+            }
+            function attach(ServerObserver $obj) {
+            }
+            function detach(ServerObserver $obj) {
+            }
+            function getOption(string $option) {
+                return true;
+            }
+            function state(): int {
+                return Server::STARTED;
+            }
         };
         $root->update($server);
 
         $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue("/index.htm"))
-        ;
+            ->will($this->returnValue("/index.htm"));
         $request->expects($this->once())
             ->method("getHeaderArray")
-            ->will($this->returnValue(["no-cache"]))
-        ;
+            ->will($this->returnValue(["no-cache"]));
         $request->expects($this->any())
             ->method("getMethod")
-            ->will($this->returnValue("GET"))
-        ;
+            ->will($this->returnValue("GET"));
         $response = $this->createMock('Aerys\Response');
         $response->expects($this->once())
             ->method("end")
             ->with("test") // <-- the contents of the /index.htm fixture file
-        ;
+;
         $generator = $root->__invoke($request, $response);
         $promise = new \Amp\Coroutine($generator);
         \Amp\Promise\wait($promise);
@@ -249,25 +253,22 @@ class RootTest extends TestCase {
     /**
      * @depends testDebugModeIgnoresCacheIfCacheControlHeaderIndicatesToDoSo
      */
-    function testDebugModeIgnoresCacheIfPragmaHeaderIndicatesToDoSo($root) {
+    public function testDebugModeIgnoresCacheIfPragmaHeaderIndicatesToDoSo($root) {
         $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue("/index.htm"))
-        ;
+            ->will($this->returnValue("/index.htm"));
         $request->expects($this->exactly(2))
             ->method("getHeaderArray")
-            ->will($this->onConsecutiveCalls([], ["no-cache"]))
-        ;
+            ->will($this->onConsecutiveCalls([], ["no-cache"]));
         $request->expects($this->any())
             ->method("getMethod")
-            ->will($this->returnValue("GET"))
-        ;
+            ->will($this->returnValue("GET"));
         $response = $this->createMock('Aerys\Response');
         $response->expects($this->once())
             ->method("end")
             ->with("test") // <-- the contents of the /index.htm fixture file
-        ;
+;
         $generator = $root->__invoke($request, $response);
         $promise = new \Amp\Coroutine($generator);
         \Amp\Promise\wait($promise);
@@ -275,7 +276,7 @@ class RootTest extends TestCase {
         return $root;
     }
 
-    function testOptionsHeader() {
+    public function testOptionsHeader() {
         $root = new Root(self::fixturePath());
         $request = $this->createMock('Aerys\Request');
         $request->expects($this->once())
@@ -293,7 +294,7 @@ class RootTest extends TestCase {
         \Amp\Promise\wait($promise);
     }
 
-    function testPreconditionFailure() {
+    public function testPreconditionFailure() {
         $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
@@ -317,7 +318,7 @@ class RootTest extends TestCase {
         \Amp\Promise\wait($promise);
     }
 
-    function testPreconditionNotModified() {
+    public function testPreconditionNotModified() {
         $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
@@ -328,10 +329,12 @@ class RootTest extends TestCase {
             ->will($this->returnValue("/index.htm"));
         $request->expects($this->any())
             ->method("getHeader")
-            ->will($this->returnCallback(function($header) use ($etag) { return [
+            ->will($this->returnCallback(function ($header) use ($etag) {
+                return [
                 "If-Match" => $etag,
                 "If-Modified-Since" => "2.1.1970",
-            ][$header] ?? ""; }));
+            ][$header] ?? "";
+            }));
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
@@ -350,7 +353,7 @@ class RootTest extends TestCase {
         \Amp\Promise\wait($promise);
     }
 
-    function testPreconditionRangeFail() {
+    public function testPreconditionRangeFail() {
         $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
@@ -361,9 +364,11 @@ class RootTest extends TestCase {
             ->will($this->returnValue("/index.htm"));
         $request->expects($this->any())
             ->method("getHeader")
-            ->will($this->returnCallback(function($header) use ($etag) { return [
+            ->will($this->returnCallback(function ($header) use ($etag) {
+                return [
                 "If-Range" => "foo",
-            ][$header] ?? ""; }));
+            ][$header] ?? "";
+            }));
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
@@ -371,13 +376,13 @@ class RootTest extends TestCase {
         $response->expects($this->once())
             ->method("end")
             ->with("test") // <-- the contents of the /index.htm fixture file
-        ;
+;
         $generator = $root->__invoke($request, $response);
         $promise = new \Amp\Coroutine($generator);
         \Amp\Promise\wait($promise);
     }
 
-    function testBadRange() {
+    public function testBadRange() {
         $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
@@ -388,10 +393,12 @@ class RootTest extends TestCase {
             ->will($this->returnValue("/index.htm"));
         $request->expects($this->any())
             ->method("getHeader")
-            ->will($this->returnCallback(function($header) use ($etag) { return [
+            ->will($this->returnCallback(function ($header) use ($etag) {
+                return [
                 "If-Range" => $etag,
                 "Range" => "bytes=7-10",
-            ][$header] ?? ""; }));
+            ][$header] ?? "";
+            }));
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
@@ -410,7 +417,7 @@ class RootTest extends TestCase {
     /**
      * @dataProvider provideValidRanges
      */
-    function testValidRange($range, $cb) {
+    public function testValidRange($range, $cb) {
         $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
@@ -420,10 +427,12 @@ class RootTest extends TestCase {
             ->will($this->returnValue("/index.htm"));
         $request->expects($this->any())
             ->method("getHeader")
-            ->will($this->returnCallback(function($header) use ($range) { return [
+            ->will($this->returnCallback(function ($header) use ($range) {
+                return [
                 "If-Range" => "+1 second",
                 "Range" => "bytes=$range",
-            ][$header] ?? ""; }));
+            ][$header] ?? "";
+            }));
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
@@ -441,7 +450,7 @@ class RootTest extends TestCase {
         $cb($headers, $body);
     }
 
-    function provideValidRanges() {
+    public function provideValidRanges() {
         return [
             ["1-2", function ($headers, $body) {
                 $this->assertEquals(2, $headers["content-length"][0]);
@@ -472,21 +481,19 @@ PART;
     /**
      * @depends testBasicFileResponse
      */
-    function testMimetypeParsing($root) {
+    public function testMimetypeParsing($root) {
         $request = $this->createMock("Aerys\\Request");
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue("/svg.svg"))
-        ;
+            ->will($this->returnValue("/svg.svg"));
         $request->expects($this->any())
             ->method("getMethod")
-            ->will($this->returnValue("GET"))
-        ;
+            ->will($this->returnValue("GET"));
         $response = $this->createMock("Aerys\\Response");
         $response->expects($this->once())
             ->method("end")
             ->with("<svg></svg>") // <-- the contents of the /svg.svg fixture file
-        ;
+;
         $response->expects($this->atLeastOnce())
             ->method("setHeader")
             ->will($this->returnCallback(function ($header, $value) use ($response, &$wasCalled): Response {

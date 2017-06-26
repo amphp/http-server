@@ -2,38 +2,48 @@
 
 namespace Aerys\Test;
 
-use Aerys\{
-    Body,
-    Client,
-    InternalRequest,
-    Logger,
-    NullBody,
-    Request,
-    Response,
-    Server,
-    StandardRequest,
-    StandardResponse,
-    Websocket,
-    Websocket\Rfc6455Gateway,
-    const HTTP_STATUS
-};
-use Amp\{ ByteStream\IteratorStream, Deferred, Emitter, Loop, Delayed };
+use Aerys\Body;
+use Aerys\Client;
+use Aerys\InternalRequest;
+use Aerys\Logger;
+use Aerys\NullBody;
+use Aerys\Request;
+use Aerys\Response;
+use Aerys\Server;
+use Aerys\StandardRequest;
+use Aerys\StandardResponse;
+use Aerys\Websocket;
+use Aerys\Websocket\Rfc6455Gateway;
+use Amp\ByteStream\IteratorStream;
+use Amp\Deferred;
+use Amp\Delayed;
+use Amp\Emitter;
+use Amp\Loop;
 use PHPUnit\Framework\TestCase;
 
 class NullWebsocket implements Websocket {
     public $test;
     public $endpoint;
-    public function __construct($test = null) { $this->test = $test; }
-    public function onStart(Websocket\Endpoint $endpoint) { $this->endpoint = $endpoint; }
-    public function onHandshake(Request $request, Response $response) { }
-    public function onOpen(int $clientId, $handshakeData) { }
-    public function onData(int $clientId, Websocket\Message $msg) { }
-    public function onClose(int $clientId, int $code, string $reason) { }
-    public function onStop() { }
+    public function __construct($test = null) {
+        $this->test = $test;
+    }
+    public function onStart(Websocket\Endpoint $endpoint) {
+        $this->endpoint = $endpoint;
+    }
+    public function onHandshake(Request $request, Response $response) {
+    }
+    public function onOpen(int $clientId, $handshakeData) {
+    }
+    public function onData(int $clientId, Websocket\Message $msg) {
+    }
+    public function onClose(int $clientId, int $code, string $reason) {
+    }
+    public function onStop() {
+    }
 }
 
 class WebsocketTest extends TestCase {
-    function assertSocket($expectations, $data) {
+    public function assertSocket($expectations, $data) {
         while ($expected = array_shift($expectations)) {
             $op = $expected[0];
             $content = $expected[1] ?? null;
@@ -59,7 +69,7 @@ class WebsocketTest extends TestCase {
         }
     }
 
-    function initEndpoint($ws, $timeoutTest = false) {
+    public function initEndpoint($ws, $timeoutTest = false) {
         $ireq = new InternalRequest();
         $ireq->client = $client = new Client;
         list($sock, $client->socket) = stream_socket_pair(\stripos(PHP_OS, "win") === 0 ? STREAM_PF_INET : STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
@@ -67,22 +77,36 @@ class WebsocketTest extends TestCase {
         $server = new class extends Server {
             public $state;
             public $requireClientFree = false;
-            public function __construct() { }
-            public function state(): int { return $this->state; }
+            public function __construct() {
+            }
+            public function state(): int {
+                return $this->state;
+            }
         };
         $client->exporter = function ($_client) use ($client, $server) {
             $this->assertSame($client, $_client);
-            $dtor = new class { public $test; public $server; function __destruct() { if ($this->server->requireClientFree) $this->test->fail("Expected client to be killed, but 'decrementer' never called"); } };
+            $dtor = new class {
+                public $test;
+                public $server;
+                function __destruct() {
+                    if ($this->server->requireClientFree) {
+                        $this->test->fail("Expected client to be killed, but 'decrementer' never called");
+                    }
+                }
+            };
             $dtor->test = $this;
             $dtor->server = $server;
-            return function() use ($dtor, $client) {
+            return function () use ($dtor, $client) {
                 $this->assertTrue($dtor->server->requireClientFree);
                 $dtor->server->requireClientFree = false;
                 fclose($client->socket);
             };
         };
 
-        $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
+        $logger = new class extends Logger {
+            protected function output(string $message) { /* /dev/null */
+            }
+        };
         $gateway = new Rfc6455Gateway($logger, $ws);
 
         if ($timeoutTest) {
@@ -101,22 +125,22 @@ class WebsocketTest extends TestCase {
         return [$gateway, $client, $sock, $server];
     }
 
-    function waitOnRead($sock) {
+    public function waitOnRead($sock) {
         $deferred = new Deferred;
         $watcher = Loop::onReadable($sock, [$deferred, "resolve"]);
         $promise = $deferred->promise();
-        $promise->onResolve(function() use ($watcher) { Loop::cancel($watcher); });
+        $promise->onResolve(function () use ($watcher) { Loop::cancel($watcher); });
         return $promise;
     }
 
-    function triggerTimeout(Rfc6455Gateway $gateway) {
-        (function() {
+    public function triggerTimeout(Rfc6455Gateway $gateway) {
+        (function () {
             $this->timeout();
         })->call($gateway);
     }
 
-    function testFullSequence() {
-        Loop::run(function() {
+    public function testFullSequence() {
+        Loop::run(function () {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             $server->requireClientFree = true;
             $server->state = Server::STOPPING;
@@ -129,18 +153,21 @@ class WebsocketTest extends TestCase {
     /**
      * @dataProvider provideParsedData
      */
-    function testParseData($data, $func) {
-        Loop::run(function() use ($data, $func) {
+    public function testParseData($data, $func) {
+        Loop::run(function () use ($data, $func) {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this, $func) extends NullWebsocket {
                 public $func;
                 public $gen;
-                function __construct($test, $func) { parent::__construct($test); $this->func = $func; }
+                function __construct($test, $func) {
+                    parent::__construct($test);
+                    $this->func = $func;
+                }
                 function onData(int $clientId, Websocket\Message $msg) {
                     $this->gen = ($this->func)($clientId, $msg);
                     if ($this->gen instanceof \Generator) {
                         yield from $this->gen;
                     } else {
-                        ($this->gen = (function(){ yield; })())->next(); // finished generator
+                        ($this->gen = (function () { yield; })())->next(); // finished generator
                     }
                 }
             });
@@ -154,7 +181,7 @@ class WebsocketTest extends TestCase {
         });
     }
 
-    function provideParsedData() {
+    public function provideParsedData() {
         return [
             [[
                 ["foo", true]
@@ -183,12 +210,12 @@ class WebsocketTest extends TestCase {
     /**
      * @dataProvider provideErrorEvent
      */
-    function testAppError($method, $call) {
-        Loop::run(function() use ($method, $call) {
+    public function testAppError($method, $call) {
+        Loop::run(function () use ($method, $call) {
             $ws = $this->createMock('Aerys\Websocket');
             $ws->expects($this->once())
                 ->method($method)
-                ->willReturnCallback(function() {
+                ->willReturnCallback(function () {
                     throw new \Exception;
                 });
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws, $timeoutTest = true);
@@ -209,7 +236,7 @@ class WebsocketTest extends TestCase {
         });
     }
 
-    function provideErrorEvent() {
+    public function provideErrorEvent() {
         return [
             ["onOpen", null],
             ["onData", ["onParsedData", ["data", false, true]]],
@@ -221,8 +248,11 @@ class WebsocketTest extends TestCase {
     /**
      * @dataProvider provideHandshakes
      */
-    function testHandshake($ireq, $expected) {
-        $logger = new class extends Logger { protected function output(string $message) { /* /dev/null */} };
+    public function testHandshake($ireq, $expected) {
+        $logger = new class extends Logger {
+            protected function output(string $message) { /* /dev/null */
+            }
+        };
         $ws = $this->createMock('Aerys\Websocket');
         $ws->expects($expected[":status"] === 101 ? $this->once() : $this->never())
             ->method("onHandshake");
@@ -238,7 +268,7 @@ class WebsocketTest extends TestCase {
         }
     }
 
-    function provideHandshakes() {
+    public function provideHandshakes() {
         $return = [];
 
         // 0 ----- valid Handshake request -------------------------------------------------------->
@@ -303,8 +333,8 @@ class WebsocketTest extends TestCase {
         return $return;
     }
 
-    function runClose(callable $closeCb) {
-        Loop::run(function() use ($closeCb) {
+    public function runClose(callable $closeCb) {
+        Loop::run(function () use ($closeCb) {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 public $closed = false;
                 function onClose(int $clientId, int $code, string $reason) {
@@ -317,7 +347,7 @@ class WebsocketTest extends TestCase {
         });
     }
 
-    function testCloseFrame() {
+    public function testCloseFrame() {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, "");
             yield new Delayed(10); // Time to read, write, and close.
@@ -326,7 +356,7 @@ class WebsocketTest extends TestCase {
         });
     }
 
-    function testCloseWithStatus() {
+    public function testCloseWithStatus() {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY));
             yield new Delayed(10); // Time to read, write, and close.
@@ -335,7 +365,7 @@ class WebsocketTest extends TestCase {
         });
     }
 
-    function testIOClose() {
+    public function testIOClose() {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
             fclose($sock);
             yield new Delayed(10); // Time to read, write, and close.
@@ -343,7 +373,7 @@ class WebsocketTest extends TestCase {
         });
     }
 
-    function testIORead() {
+    public function testIORead() {
         Loop::run(function () {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             fwrite($sock, WebsocketParserTest::compile(Rfc6455Gateway::OP_PING, true, "foo"));
@@ -355,8 +385,8 @@ class WebsocketTest extends TestCase {
         });
     }
 
-    function testMultiWrite() {
-        Loop::run(function() {
+    public function testMultiWrite() {
+        Loop::run(function () {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 function onData(int $clientId, Websocket\Message $msg) {
                     $this->endpoint->broadcast("foo".str_repeat("*", 65528 /* fill buffer */));
@@ -385,10 +415,10 @@ class WebsocketTest extends TestCase {
         });
     }
 
-    function testFragmentation() {
+    public function testFragmentation() {
         Loop::run(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $endpoint->broadcast(str_repeat("*", 131046), true)->onResolve(function() use ($sock, $server) {
+            $endpoint->broadcast(str_repeat("*", 131046), true)->onResolve(function () use ($sock, $server) {
                 stream_socket_shutdown($sock, STREAM_SHUT_WR);
                 $server->requireClientFree = true;
             });
@@ -403,7 +433,7 @@ class WebsocketTest extends TestCase {
         });
     }
 
-    function testSinglePong() {
+    public function testSinglePong() {
         Loop::run(function () {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             $client->pingCount = 2;

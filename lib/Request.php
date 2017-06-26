@@ -4,21 +4,21 @@ namespace Aerys;
 
 interface Request {
     /**
-     * Retrieve the HTTP method used to make this request
+     * Retrieve the HTTP method used to make this request.
      *
      * @return string
      */
     public function getMethod(): string;
 
     /**
-     * Retrieve the request URI in the form /some/resource/foo?bar=1&baz=2
+     * Retrieve the request URI in the form /some/resource/foo?bar=1&baz=2.
      *
      * @return string
      */
     public function getUri(): string;
 
     /**
-     * Retrieve the HTTP protocol version number used by this request
+     * Retrieve the HTTP protocol version number used by this request.
      *
      * This method returns the HTTP protocol version (e.g. "1.0", "1.1", "2.0") in use;
      * it has nothing to do with URI schemes like http:// or https:// ...
@@ -28,13 +28,13 @@ interface Request {
     public function getProtocolVersion(): string;
 
     /**
-     * Retrieve the first occurrence of specified header in the message
+     * Retrieve the first occurrence of specified header in the message.
      *
      * If multiple headers were received for the specified field only the
      * value of the first header is returned. Applications may use
      * Request::getHeaderArray() to retrieve a list of all header values
      * received for a given field.
-     * 
+     *
      * All header $field names are treated case-insensitively.
      *
      * A null return indicates the requested header field was not present.
@@ -45,7 +45,7 @@ interface Request {
     public function getHeader(string $field);
 
     /**
-     * Retrieve the specified header as an array of each of its occurrences in the request
+     * Retrieve the specified header as an array of each of its occurrences in the request.
      *
      * All header $field names are treated case-insensitively.
      *
@@ -57,7 +57,7 @@ interface Request {
     public function getHeaderArray(string $field): array;
 
     /**
-     * Retrieve an array of all headers in the message
+     * Retrieve an array of all headers in the message.
      *
      * The returned array uses header names normalized to all-lowercase for
      * simplified querying via isset().
@@ -80,7 +80,7 @@ interface Request {
     public function getBody(int $bodySize = -1): Body;
 
     /**
-     * Retrieve one query string value of that name
+     * Retrieve one query string value of that name.
      *
      * @param string $name
      * @return string|null
@@ -88,7 +88,7 @@ interface Request {
     public function getParam(string $name);
 
     /**
-     * Retrieve a array of query string values
+     * Retrieve a array of query string values.
      *
      * @param string $name
      * @return array
@@ -96,14 +96,14 @@ interface Request {
     public function getParamArray(string $name): array;
 
     /**
-     * Retrieve an associative array of an array of query string values
+     * Retrieve an associative array of an array of query string values.
      *
      * @return array
      */
     public function getAllParams(): array;
 
     /**
-     * Retrieve a cookie
+     * Retrieve a cookie.
      *
      * @param string $name
      * @return string|null
@@ -111,7 +111,7 @@ interface Request {
     public function getCookie(string $name);
 
     /**
-     * Retrieve a variable from the request's mutable local storage
+     * Retrieve a variable from the request's mutable local storage.
      *
      * Each request has its own mutable local storage to which application
      * callables and middleware may read and write data. Other callables
@@ -124,7 +124,7 @@ interface Request {
     public function getLocalVar(string $key);
 
     /**
-     * Assign a variable to the request's mutable local storage
+     * Assign a variable to the request's mutable local storage.
      *
      * Each request has its own mutable local storage to which application
      * callables and middleware may read and write data. Other callables
@@ -138,7 +138,7 @@ interface Request {
     public function setLocalVar(string $key, $value);
 
     /**
-     * Retrieve an associative array of extended information about the underlying connection
+     * Retrieve an associative array of extended information about the underlying connection.
      *
      * Keys:
      *      - client_port
@@ -155,7 +155,7 @@ interface Request {
     public function getConnectionInfo(): array;
 
     /**
-     * Retrieve a server option value
+     * Retrieve a server option value.
      *
      * @param string $option The option to retrieve
      * @throws \Error on unknown option

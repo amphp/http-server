@@ -22,7 +22,7 @@ abstract class Process {
     }
 
     /**
-     * Start the process
+     * Start the process.
      *
      * @param \Aerys\Console $console
      * @return \Generator
@@ -55,7 +55,7 @@ abstract class Process {
     }
 
     /**
-     * Stop the process
+     * Stop the process.
      *
      * @return \Generator
      */
@@ -79,7 +79,7 @@ abstract class Process {
     }
 
     private function registerSignalHandler() {
-        if (php_sapi_name() === "phpdbg") {
+        if (PHP_SAPI === "phpdbg") {
             // phpdbg captures SIGINT so don't bother inside the debugger
             return;
         }
@@ -97,7 +97,7 @@ abstract class Process {
     }
 
     private function registerShutdownHandler() {
-        register_shutdown_function(function() {
+        register_shutdown_function(function () {
             if (!$err = \error_get_last()) {
                 return;
             }
@@ -123,7 +123,7 @@ abstract class Process {
 
             try {
                 Loop::set((new Loop\DriverFactory)->create());
-                Loop::run(function() use ($msg) {
+                Loop::run(function () use ($msg) {
                     $this->logger->critical($msg);
                     yield from $this->stop();
                 });
@@ -134,7 +134,7 @@ abstract class Process {
     }
 
     private function registerErrorHandler() {
-        set_error_handler(function($errno, $msg, $file, $line) {
+        set_error_handler(function ($errno, $msg, $file, $line) {
             if (!(error_reporting() & $errno)) {
                 return;
             }
@@ -171,7 +171,7 @@ abstract class Process {
     }
 
     /**
-     * This function only exists as protected so we can test for its invocation
+     * This function only exists as protected so we can test for its invocation.
      */
     protected function exit() {
         exit($this->exitCode);

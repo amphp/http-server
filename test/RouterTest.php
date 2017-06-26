@@ -2,56 +2,85 @@
 
 namespace Aerys\Test;
 
-use Amp\ {
-    Coroutine,
-    Promise,
-    Success
-};
+use Aerys\Client;
+use Aerys\InternalRequest;
+use Aerys\Middleware;
 
-use Aerys\{
-    Client,
-    InternalRequest,
-    Middleware,
-    Options,
-    Router,
-    Server,
-    Response,
-    StandardRequest,
-    StandardResponse
-};
+use Aerys\Options;
+use Aerys\Response;
+use Aerys\Router;
+use Aerys\Server;
+use Aerys\StandardRequest;
+use Aerys\StandardResponse;
+use Amp\ Coroutine;
+use Amp\ Promise;
+use Amp\ Success;
 use PHPUnit\Framework\TestCase;
 
 class RouterTest extends TestCase {
-    function mockServer($state) {
+    public function mockServer($state) {
         return new class($state) extends Server {
             private $state;
             private $options;
-            function __construct($state) { $this->state = $state; $this->options = new Options; }
+            function __construct($state) {
+                $this->state = $state;
+                $this->options = new Options;
+            }
             function state(): int {
                 return $this->state;
             }
-            function getOption(string $opt) { return $this->options->$opt; }
-            function setOption(string $opt, $val) { return $this->options->$opt = $val; }
+            function getOption(string $opt) {
+                return $this->options->$opt;
+            }
+            function setOption(string $opt, $val) {
+                return $this->options->$opt = $val;
+            }
         };
     }
 
-    function mockResponse($state = Response::NONE) {
+    public function mockResponse($state = Response::NONE) {
         return new class($state) implements Response {
             private $state;
             public $headers = [];
             public $status = 200;
-            public function __construct($state) { $this->state = $state; }
-            function setStatus(int $code): Response { $this->status = $code; return $this; }
-            function setReason(string $phrase): Response { return $this; }
-            function addHeader(string $field, string $value): Response { $this->headers[strtolower($field)] = $value; return $this; }
-            function setHeader(string $field, string $value): Response { $this->headers[strtolower($field)] = $value; return $this; }
-            function setCookie(string $field, string $value, array $flags = []): Response { return $this; }
-            function send(string $body) { $this->state = self::ENDED; }
-            function write(string $partialBodyChunk): Promise { return new Success; }
-            function flush() { }
-            function end(string $finalBodyChunk = ""): Promise { return new Success; }
-            function push(string $url, array $headers = null): Response { return $this; }
-            function state(): int { return $this->state; }
+            public function __construct($state) {
+                $this->state = $state;
+            }
+            function setStatus(int $code): Response {
+                $this->status = $code;
+                return $this;
+            }
+            function setReason(string $phrase): Response {
+                return $this;
+            }
+            function addHeader(string $field, string $value): Response {
+                $this->headers[strtolower($field)] = $value;
+                return $this;
+            }
+            function setHeader(string $field, string $value): Response {
+                $this->headers[strtolower($field)] = $value;
+                return $this;
+            }
+            function setCookie(string $field, string $value, array $flags = []): Response {
+                return $this;
+            }
+            function send(string $body) {
+                $this->state = self::ENDED;
+            }
+            function write(string $partialBodyChunk): Promise {
+                return new Success;
+            }
+            function flush() {
+            }
+            function end(string $finalBodyChunk = ""): Promise {
+                return new Success;
+            }
+            function push(string $url, array $headers = null): Response {
+                return $this;
+            }
+            function state(): int {
+                return $this->state;
+            }
         };
     }
 
@@ -59,27 +88,27 @@ class RouterTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Aerys\Router::route requires a non-empty string HTTP method at Argument 1
      */
-    function testRouteThrowsOnEmptyMethodString() {
+    public function testRouteThrowsOnEmptyMethodString() {
         $router = new Router;
-        $router->route("", "/uri", function(){});
+        $router->route("", "/uri", function () {});
     }
 
     /**
      * @expectedException \Error
      * @expectedExceptionMessage Aerys\Router::route requires at least one callable route action or middleware at Argument 3
      */
-    function testRouteThrowsOnEmptyActionsArray() {
+    public function testRouteThrowsOnEmptyActionsArray() {
         $router = new Router;
         $router->route("GET", "/uri");
     }
 
-    function testUpdateFailsIfStartedWithoutAnyRoutes() {
+    public function testUpdateFailsIfStartedWithoutAnyRoutes() {
         $router = new Router;
         $mock = $this->mockServer(Server::STARTING);
         $result = $router->update($mock);
         $this->assertInstanceOf("Amp\\Failure", $result);
         $i = 0;
-        $result->onResolve(function($e, $r) use (&$i) {
+        $result->onResolve(function ($e, $r) use (&$i) {
             $i++;
             $this->assertInstanceOf("Error", $e);
             $this->assertSame("Router start failure: no routes registered", $e->getMessage());
@@ -87,9 +116,9 @@ class RouterTest extends TestCase {
         $this->assertSame($i, 1);
     }
 
-    function testUseCanonicalRedirector() {
+    public function testUseCanonicalRedirector() {
         $router = new Router;
-        $router->route("GET", "/{name}/{age}/?", function($req, $res) { $res->send("OK"); });
+        $router->route("GET", "/{name}/{age}/?", function ($req, $res) { $res->send("OK"); });
         $router->prefix("/mediocre-dev");
         $router = (new Router)->use($router);
         $mock = $this->mockServer(Server::STARTING);
@@ -131,10 +160,10 @@ class RouterTest extends TestCase {
         $this->assertEquals(\Aerys\HTTP_STATUS["OK"], $response->status);
     }
 
-    function testMultiActionRouteInvokesEachCallableUntilResponseIsStarted() {
+    public function testMultiActionRouteInvokesEachCallableUntilResponseIsStarted() {
         $i = 0;
-        $foo = function() use (&$i) { $i++; };
-        $bar = function($request, $response) use (&$i) {
+        $foo = function () use (&$i) { $i++; };
+        $bar = function ($request, $response) use (&$i) {
             $i++;
             $response->send("test");
         };
@@ -161,7 +190,7 @@ class RouterTest extends TestCase {
         $this->assertSame(["name" => "daniel", "age" => "32"], $ireq->locals["aerys.routeArgs"]);
     }
 
-    function testCachedMiddlewareRoute() {
+    public function testCachedMiddlewareRoute() {
         $middleware = new class implements Middleware {
             function do(InternalRequest $ireq) {
                 $data = yield;
@@ -171,7 +200,7 @@ class RouterTest extends TestCase {
                 }
             }
         };
-        $action = function($req, $res) {
+        $action = function ($req, $res) {
             $res->end("action");
         };
 
