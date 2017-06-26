@@ -5,6 +5,7 @@ namespace Aerys\Test;
 use Aerys\FilterException;
 use Aerys\InternalRequest;
 use PHPUnit\Framework\TestCase;
+use function Aerys\responseFilter;
 
 class responseFilterTest extends TestCase {
     private function getFilter(array $filters, InternalRequest $ireq = null) {

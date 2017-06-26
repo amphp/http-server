@@ -21,6 +21,8 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
+use const Aerys\HTTP_STATUS;
+use function Aerys\makeGenericBody;
 
 class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     use CallableMaker;

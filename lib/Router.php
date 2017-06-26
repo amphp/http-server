@@ -8,6 +8,7 @@ use Amp\Success;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
 use Psr\Log\LoggerInterface as PsrLogger;
+use function FastRoute\simpleDispatcher;
 
 class Router implements Bootable, Middleware, Monitor, ServerObserver {
     private $state = Server::STOPPED;
