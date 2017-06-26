@@ -1,5 +1,5 @@
-test/coverage
-test/junk
-.idea
+.php_cs.cache
+build
 composer.lock
+phpunit.xml
 vendor
