@@ -20,6 +20,7 @@ use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Loop;
 use PHPUnit\Framework\TestCase;
+use const Aerys\HTTP_STATUS;
 
 class NullWebsocket implements Websocket {
     public $test;
