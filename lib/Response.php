@@ -2,7 +2,7 @@
 
 namespace Aerys;
 
-interface Response {
+interface Response extends \Amp\ByteStream\OutputStream {
     const NONE      = 0b000;
     const STARTED   = 0b001;
     const STREAMING = 0b010;
