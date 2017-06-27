@@ -425,10 +425,7 @@ class ServerTest extends TestCase {
                 }
             }, true);
 
-            $context = (new Socket\ClientTlsContext)
-                ->withoutPeerVerification()
-                ->withPeerName("localhost")
-                ->withMinimumVersion(STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT);
+            $context = (new Socket\ClientTlsContext)->withoutPeerVerification();
 
             /** @var \Amp\Socket\Socket $client */
             $client = yield Socket\cryptoConnect($address, null, $context);

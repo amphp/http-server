@@ -44,7 +44,6 @@ class ClientTest extends TestCase {
 
     public function testTrivialHttpRequest() {
         Loop::run(function () {
-            $deferred = new \Amp\Deferred;
             list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) {
                 $this->assertEquals("GET", $req->getMethod());
                 $this->assertEquals("/uri", explode("?", $req->getUri())[0]);
@@ -63,10 +62,7 @@ class ClientTest extends TestCase {
 
             $cookies = new \Amp\Artax\Cookie\ArrayCookieJar;
             $cookies->store(new \Amp\Artax\Cookie\Cookie("test", "value", null, "/", "localhost"));
-            $context = (new ClientTlsContext)
-                ->withoutPeerVerification()
-                ->withPeerName("localhost")
-                ->withMinimumVersion(STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT);
+            $context = (new ClientTlsContext)->withoutPeerVerification();
             $client = new BasicClient($cookies, null, $context);
             $port = parse_url($address, PHP_URL_PORT);
             $promise = $client->request((new \Amp\Artax\Request("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))
@@ -123,10 +119,7 @@ class ClientTest extends TestCase {
                 return $end;
             }]);
 
-            $context = (new ClientTlsContext)
-                ->withoutPeerVerification()
-                ->withPeerName("localhost")
-                ->withMinimumVersion(STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT);
+            $context = (new ClientTlsContext)->withoutPeerVerification();
             $client = new BasicClient(null, null, $context);
             $promise = $client->request((new \Amp\Artax\Request("https://$address/", "POST"))
                 ->withBody("body")
