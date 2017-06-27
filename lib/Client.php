@@ -24,7 +24,10 @@ class Client {
 
     public $writeBuffer = "";
     public $bufferSize = 0;
+
+    /** @var \Amp\Deferred */
     public $bufferDeferred;
+
     public $onWriteDrain;
     public $shouldClose;
     public $isDead = 0;
@@ -32,7 +35,10 @@ class Client {
     public $remainingKeepAlives;
     public $pendingResponses = 0;
 
+    /** @var \Aerys\Options */
     public $options;
+
+    /** @var \Aerys\HttpDriver */
     public $httpDriver;
     public $exporter; // Requires Client object as first argument // @TODO cyclic reference to Server object
 

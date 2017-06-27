@@ -12,6 +12,7 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
+use function Amp\call;
 use function Amp\Promise\all;
 use function Amp\Promise\any;
 use function Amp\Promise\timeout;
@@ -30,20 +31,49 @@ class Server implements Monitor {
         self::STOPPING => "STOPPING",
     ];
 
+    /** @var int */
     private $state = self::STOPPED;
+
+    /** @var \Aerys\Options */
     private $options;
+
+    /** @var \Aerys\VhostContainer */
     private $vhosts;
+
+    /** @var \Psr\Log\LoggerInterface */
     private $logger;
+
+    /** @var \Aerys\Ticker */
     private $ticker;
+
+    /** @var \SplObjectStorage */
     private $observers;
+
+    /** @var string[] */
     private $acceptWatcherIds = [];
+
+    /** @var resource[] Server sockets. */
     private $boundServers = [];
+
+    /** @var resource[] */
     private $pendingTlsStreams = [];
+
+    /** @var \Aerys\Client[] */
     private $clients = [];
+
+    /** @var int */
     private $clientCount = 0;
+
+    /** @var int[] */
     private $clientsPerIP = [];
+
+    /** @var int[] */
     private $keepAliveTimeouts = [];
+
+    /** @var \Aerys\NullBody */
     private $nullBody;
+
+    /** @var \Amp\Deferred|null */
     private $stopDeferred;
 
     // private callables that we pass to external code //
@@ -53,6 +83,11 @@ class Server implements Monitor {
     private $onReadable;
     private $onWritable;
     private $onResponseDataDone;
+    private $sendPreAppServiceUnavailableResponse;
+    private $sendPreAppMethodNotAllowedResponse;
+    private $sendPreAppInvalidHostResponse;
+    private $sendPreAppTraceResponse;
+    private $sendPreAppOptionsResponse;
 
     public function __construct(Options $options, VhostContainer $vhosts, PsrLogger $logger, Ticker $ticker) {
         $this->options = $options;
@@ -71,6 +106,11 @@ class Server implements Monitor {
         $this->onReadable = $this->callableFromInstanceMethod("onReadable");
         $this->onWritable = $this->callableFromInstanceMethod("onWritable");
         $this->onResponseDataDone = $this->callableFromInstanceMethod("onResponseDataDone");
+        $this->sendPreAppServiceUnavailableResponse = $this->callableFromInstanceMethod("sendPreAppServiceUnavailableResponse");
+        $this->sendPreAppMethodNotAllowedResponse = $this->callableFromInstanceMethod("sendPreAppMethodNotAllowedResponse");
+        $this->sendPreAppInvalidHostResponse = $this->callableFromInstanceMethod("sendPreAppInvalidHostResponse");
+        $this->sendPreAppTraceResponse = $this->callableFromInstanceMethod("sendPreAppTraceResponse");
+        $this->sendPreAppOptionsResponse = $this->callableFromInstanceMethod("sendPreAppOptionsResponse");
     }
 
     /**
@@ -188,7 +228,7 @@ class Server implements Monitor {
         }
     }
 
-    private function doStart($bindSockets): \Generator {
+    private function doStart(callable $bindSockets): \Generator {
         assert($this->logDebug("starting"));
 
         $emitter = $this->callableFromInstanceMethod("onParseEmit");
@@ -697,16 +737,16 @@ class Server implements Monitor {
         $ireq->client->pendingResponses++;
 
         if ($this->stopDeferred) {
-            $this->tryApplication($ireq, [$this, "sendPreAppServiceUnavailableResponse"], []);
+            $this->tryApplication($ireq, $this->sendPreAppServiceUnavailableResponse, []);
         } elseif (!in_array($ireq->method, $this->options->allowedMethods)) {
-            $this->tryApplication($ireq, [$this, "sendPreAppMethodNotAllowedResponse"], []);
+            $this->tryApplication($ireq, $this->sendPreAppMethodNotAllowedResponse, []);
         } elseif (!$vhost = $this->vhosts->selectHost($ireq)) {
-            $this->tryApplication($ireq, [$this, "sendPreAppInvalidHostResponse"], []);
+            $this->tryApplication($ireq, $this->sendPreAppInvalidHostResponse, []);
         } elseif ($ireq->method === "TRACE") {
             $this->setTrace($ireq);
-            $this->tryApplication($ireq, [$this, "sendPreAppTraceResponse"], []);
+            $this->tryApplication($ireq, $this->sendPreAppTraceResponse, []);
         } elseif ($ireq->method === "OPTIONS" && $ireq->uriRaw === "*") {
-            $this->tryApplication($ireq, [$this, "sendPreAppOptionsResponse"], []);
+            $this->tryApplication($ireq, $this->sendPreAppOptionsResponse, []);
         } else {
             $this->tryApplication($ireq, $vhost->getApplication(), $vhost->getFilters());
         }
@@ -754,31 +794,17 @@ class Server implements Monitor {
         $response = $this->initializeResponse($ireq, $filters);
         $request = new StandardRequest($ireq);
 
-        try {
-            $out = ($application)($request, $response);
-            if ($out instanceof \Generator) {
-                $out = new Coroutine($out);
+        call($application, $request, $response)->onResolve(function ($error) use ($ireq, $response, $filters) {
+            if ($error) {
+                if (!$error instanceof ClientException) {
+                    // Ignore uncaught ClientException -- applications aren't required to catch this
+                    $this->onApplicationError($error, $ireq, $response, $filters);
+                }
+                return;
             }
-            if ($out instanceof Promise) {
-                $out->onResolve(function ($error) use ($ireq, $response, $filters) {
-                    if (empty($error)) {
-                        if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
-                            return;
-                        } elseif ($response->state() & Response::STARTED) {
-                            $response->end();
-                        } else {
-                            $status = HTTP_STATUS["NOT_FOUND"];
-                            $body = makeGenericBody($status, [
-                                "sub_heading" => "Requested: {$ireq->uri}",
-                            ]);
-                            $response->setStatus($status);
-                            $response->end($body);
-                        }
-                    } elseif (!$error instanceof ClientException) {
-                        // Ignore uncaught ClientException -- applications aren't required to catch this
-                        $this->onApplicationError($error, $ireq, $response, $filters);
-                    }
-                });
+
+            if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
+                return;
             } elseif ($response->state() & Response::STARTED) {
                 $response->end();
             } else {
@@ -789,20 +815,7 @@ class Server implements Monitor {
                 $response->setStatus($status);
                 $response->end($body);
             }
-        } catch (ClientSizeException $error) {
-            if (!($response->state() & Response::STARTED)) {
-                $status = HTTP_STATUS["REQUEST_ENTITY_TOO_LARGE"];
-                $body = makeGenericBody($status, [
-                    "sub_heading" => "Requested: {$ireq->uri}",
-                ]);
-                $response->setStatus($status);
-                $response->end($body);
-            }
-        } catch (ClientException $error) {
-            // Do nothing -- responder actions aren't required to catch this
-        } catch (\Throwable $error) {
-            $this->onApplicationError($error, $ireq, $response, $filters);
-        }
+        });
     }
 
     private function initializeResponse(InternalRequest $ireq, array $filters): Response {

@@ -23,20 +23,42 @@ use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 use const Aerys\HTTP_STATUS;
 use function Aerys\makeGenericBody;
+use function Amp\call;
 
 class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     use CallableMaker;
 
+    /** @var \Psr\Log\LoggerInterface */
     private $logger;
+
+    /** @var \Aerys\Websocket */
     private $application;
+
+    /** @var \Aerys\Websocket\Rfc6455Endpoint */
     private $endpoint;
+
+    /** @var int */
     private $state;
+
+    /** @var \Aerys\Websocket\Rfc6455Client[] */
     private $clients = [];
+
+    /** @var \Aerys\Websocket\Rfc6455Client[] */
     private $lowCapacityClients = [];
+
+    /** @var \Aerys\Websocket\Rfc6455Client[] */
     private $highFramesPerSecondClients = [];
+
+    /** @var int[] */
     private $closeTimeouts = [];
+
+    /** @var int[] */
     private $heartbeatTimeouts = [];
+
+    /** @var string */
     private $timeoutWatcher;
+
+    /** @var int */
     private $now;
 
     private $autoFrameSize = (64 << 10) - 9 /* frame overhead */;
@@ -50,6 +72,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     private $queuedPingLimit = 3;
     private $maxFramesPerSecond = 100; // do not bother with setting it too low, fread(8192) may anyway include up to 2700 frames
 
+    // private callables that we pass to external code //
     private $reapClient;
     private $onReadable;
     private $onWritable;
@@ -175,13 +198,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
 
         $handshaker = new Handshake($response, $acceptKey);
-
-        $onHandshakeResult = $this->application->onHandshake($request, $handshaker, ...$args);
-        if ($onHandshakeResult instanceof \Generator) {
-            $onHandshakeResult = yield from $onHandshakeResult;
-        } elseif ($onHandshakeResult instanceof Promise) {
-            $onHandshakeResult = yield $onHandshakeResult;
-        }
+        $onHandshakeResult = yield call([$this->application, "onHandshake"], $request, $handshaker, ...$args);
         $request->setLocalVar("aerys.websocket", $onHandshakeResult);
         $handshaker->end();
     }
@@ -242,12 +259,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
      */
     private function tryAppOnOpen(int $clientId, $onHandshakeResult): \Generator {
         try {
-            $onOpenResult = $this->application->onOpen($clientId, $onHandshakeResult);
-            if ($onOpenResult instanceof \Generator) {
-                yield from $onOpenResult;
-            } elseif ($onOpenResult instanceof Promise) {
-                yield $onOpenResult;
-            }
+            yield call([$this->application, "onOpen"], $clientId, $onHandshakeResult);
         } catch (\Throwable $e) {
             yield from $this->onAppError($clientId, $e);
         }
@@ -288,12 +300,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
     private function tryAppOnClose(int $clientId, int $code, string $reason): \Generator {
         try {
-            $onCloseResult = $this->application->onClose($clientId, $code, $reason);
-            if ($onCloseResult instanceof \Generator) {
-                yield from $onCloseResult;
-            } elseif ($onCloseResult instanceof Promise) {
-                yield $onCloseResult;
-            }
+            yield call([$this->application, "onClose"], $clientId, $code, $reason);
         } catch (\Throwable $e) {
             yield from $this->onAppError($clientId, $e);
         }
@@ -388,12 +395,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
     private function tryAppOnData(Rfc6455Client $client, Message $msg): \Generator {
         try {
-            $onDataResult = $this->application->onData($client->id, $msg);
-            if ($onDataResult instanceof \Generator) {
-                yield from $onDataResult;
-            } elseif ($onDataResult instanceof Promise) {
-                yield $onDataResult;
-            }
+            yield call([$this->application, "onData"], $client->id, $msg);
         } catch (ClientException $e) {
         } catch (\Throwable $e) {
             yield from $this->onAppError($client->id, $e);
@@ -651,26 +653,14 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     public function update(Server $server): Promise {
         switch ($this->state = $server->state()) {
             case Server::STARTING:
-                $result = $this->application->onStart($this->endpoint);
-                if ($result instanceof \Generator) {
-                    return new Coroutine($result);
-                }
-                break;
+                return call([$this->application, "onStart"], $this->endpoint);
 
             case Server::STARTED:
                 $this->timeoutWatcher = Loop::repeat(1000, $this->callableFromInstanceMethod("timeout"));
                 break;
 
             case Server::STOPPING:
-                $result = $this->application->onStop();
-                if ($result instanceof \Generator) {
-                    $promise = new Coroutine($result);
-                } elseif ($result instanceof Promise) {
-                    $promise = $result;
-                } else {
-                    $promise = new Success;
-                }
-
+                $promise = call([$this->application, "onStop"]);
                 $promise->onResolve(function () {
                     $code = Code::GOING_AWAY;
                     $reason = "Server shutting down!";

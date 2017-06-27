@@ -7,15 +7,15 @@ use Amp\ByteStream\PendingReadError;
 use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
-use Amp\Internal\Placeholder;
 use Amp\Promise;
 use Amp\Success;
 
 class BodyParser implements InputStream, Promise {
-    use Placeholder {
-        onResolve as private when;
-    }
-    // use $this->onResolved for checking whether such a handler was installed
+    /** @var \Amp\Deferred|null */
+    private $deferred;
+
+    /** @var \Amp\Promise|null */
+    private $promise;
 
     /** @var \Aerys\Request */
     private $req;
@@ -29,6 +29,8 @@ class BodyParser implements InputStream, Promise {
     private $bodies = [];
 
     private $fieldQueue = [];
+
+    /** @var \Amp\Deferred|null */
     private $pendingRead = null;
 
     private $startedParsing = false;
@@ -61,19 +63,23 @@ class BodyParser implements InputStream, Promise {
             if (!preg_match('#^\s*multipart/(?:form-data|mixed)(?:\s*;\s*boundary\s*=\s*("?)([^"]*)\1)?$#', $type, $m)) {
                 $this->req = null;
                 $this->startedParsing = true;
-                $this->resolve(new ParsedBody([]));
+                $this->promise = new Success(new ParsedBody([]));
                 return;
             }
 
             $this->boundary = $m[2];
         }
+
+        $this->deferred = new Deferred;
     }
 
     public function onResolve(callable $onResolved) {
-        if (!$this->onResolved) {
+        if (!$this->promise) {
+            $this->promise = $this->deferred->promise();
+
             \Amp\asyncCall(function () {
                 try {
-                    $this->resolve($this->end(yield $this->body));
+                    $this->deferred->resolve($this->end(yield $this->body));
                 } catch (\Throwable $exception) {
                     if ($exception instanceof ClientSizeException) {
                         $exception = new ClientException("", 0, $exception);
@@ -85,10 +91,10 @@ class BodyParser implements InputStream, Promise {
             });
         }
 
-        $this->when($onResolved);
+        $this->promise->onResolve($onResolved);
     }
 
-    private function end($data): ParsedBody {
+    private function end(string $data): ParsedBody {
         if (!$this->startedParsing) {
             $this->startedParsing = true;
 
@@ -189,7 +195,8 @@ class BodyParser implements InputStream, Promise {
 
     /**
      * @param string $name field name
-     * @param int $size <= 0: use last size, if none present, count toward total size, else separate size just respecting value size
+     * @param int $size <= 0: use last size, if none present, count toward total size, else separate size just
+     *     respecting value size
      * @return FieldBody
      */
     public function write(string $name, int $size = 0): FieldBody {
@@ -225,7 +232,7 @@ class BodyParser implements InputStream, Promise {
         return $ret;
     }
 
-    private function initField($field, $metadata = []) {
+    private function initField(string $field, array $metadata = []) {
         if ($this->inputVarCount++ == $this->maxInputVars || \strlen($field) > $this->maxFieldLen) {
             $this->error();
             return null;
@@ -259,7 +266,7 @@ class BodyParser implements InputStream, Promise {
         return $dataEmitter;
     }
 
-    private function updateFieldSize($field, $data) {
+    private function updateFieldSize(string $field, string $data): bool {
         $this->curSizes[$field] += \strlen($data);
         if (isset($this->sizes[$field])) {
             if ($this->curSizes[$field] > $this->sizes[$field]) {
@@ -285,10 +292,10 @@ class BodyParser implements InputStream, Promise {
         $this->bodyDeferreds = [];
         $this->req = null;
 
-        $this->fail($e);
+        $this->deferred->fail($e);
     }
 
-    private function initIncremental() {
+    private function initIncremental(): \Generator {
         $this->startedParsing = true;
 
         $buf = "";
@@ -392,10 +399,10 @@ class BodyParser implements InputStream, Promise {
             }
         } else {
             $field = null;
-            while (($new = yield $this->body->read()) != "") {
+            while (($new = yield $this->body->read()) !== null) {
                 if ($new[0] === "&") {
                     if ($field !== null) {
-                        if ($noData || $buf != "") {
+                        if ($noData || $buf !== "") {
                             $data = urldecode($buf);
                             if ($this->updateFieldSize($field, $data)) {
                                 $dataEmitter->fail(new ClientSizeException);
@@ -406,7 +413,7 @@ class BodyParser implements InputStream, Promise {
                         }
                         $field = null;
                         $dataEmitter->complete();
-                    } elseif ($buf != "") {
+                    } elseif ($buf !== "") {
                         if (!$dataEmitter = $this->initField(urldecode($buf))) {
                             return;
                         }
@@ -461,7 +468,7 @@ class BodyParser implements InputStream, Promise {
                     }
                 }
 
-                if ($field !== null && $buf != "" && (\strlen($buf) > 2 || $buf[0] !== "%")) {
+                if ($field !== null && $buf !== "" && (\strlen($buf) > 2 || $buf[0] !== "%")) {
                     if (\strlen($buf) > 1 ? false !== $percent = strrpos($buf, "%", -2) : !($percent = $buf[0] !== "%")) {
                         if ($percent) {
                             if ($this->updateFieldSize($field, $data)) {
@@ -517,10 +524,5 @@ class BodyParser implements InputStream, Promise {
             $this->pendingRead = null;
             $pendingRead->resolve(null);
         }
-    }
-
-    // ...
-    public function close() {
-        throw new \Error("Must not call BodyParser::close()");
     }
 }

@@ -5,6 +5,7 @@ namespace Aerys;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
+use function Amp\call;
 
 class Bootstrapper {
     private $hostAggregator;
@@ -34,13 +35,7 @@ class Bootstrapper {
         }
 
         if (is_callable($returnValue)) {
-            $returnValue = \call_user_func($returnValue);
-        }
-
-        if ($returnValue instanceof \Generator) {
-            yield from $returnValue;
-        } elseif ($returnValue instanceof Promise) {
-            yield $returnValue;
+            yield call($returnValue);
         }
 
         if (!defined("AERYS_OPTIONS")) {
@@ -209,10 +204,7 @@ class Bootstrapper {
 
                     public function __invoke(Request $request, Response $response) {
                         foreach ($this->applications as $action) {
-                            $out = $action($request, $response);
-                            if ($out instanceof \Generator) {
-                                yield from $out;
-                            }
+                            yield call($action, $request, $response);
                             if ($response->state() & Response::STARTED) {
                                 return;
                             }

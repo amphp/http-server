@@ -8,6 +8,7 @@ use Amp\Success;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
 use Psr\Log\LoggerInterface as PsrLogger;
+use function Amp\call;
 use function FastRoute\simpleDispatcher;
 
 class Router implements Bootable, Middleware, Monitor, ServerObserver {
@@ -348,10 +349,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         return [
             [static function (Request $request, Response $response, array $args) use ($applications) {
                 foreach ($applications as $application) {
-                    $result = $application($request, $response, $args);
-                    if ($result instanceof \Generator) {
-                        yield from $result;
-                    }
+                    yield call($application, $request, $response, $args);
                     if ($response->state() & Response::STARTED) {
                         return;
                     }
