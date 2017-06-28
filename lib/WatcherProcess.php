@@ -278,7 +278,7 @@ class WatcherProcess extends Process {
     }
 
     private function countCpuCores() {
-        $os = (stripos(PHP_OS, "WIN") === 0) ? "win" : strtolower(trim(shell_exec("uname")));
+        $os = (stripos(PHP_OS, "WIN") === 0) ? "win" : strtolower(PHP_OS);
         switch ($os) {
             case "win":
                 $cmd = "wmic cpu get NumberOfCores";
@@ -306,7 +306,7 @@ class WatcherProcess extends Process {
     }
 
     private function useSocketTransfer() {
-        $os = (stripos(PHP_OS, "WIN") === 0) ? "win" : strtolower(trim(shell_exec("uname")));
+        $os = (stripos(PHP_OS, "WIN") === 0) ? "win" : strtolower(PHP_OS);
         switch ($os) {
             case "darwin":
             case "freebsd":
@@ -413,6 +413,7 @@ class WatcherProcess extends Process {
         Loop::enable($this->procGarbageWatcher);
     }
 
+    /** receives a map of addresses to stream contexts, creates sockets from it and eventually sends them to the worker */
     private function parseWorkerAddrCtx($ipcClient, $message) {
         $addrCtxMap = json_decode($message, true);
 
@@ -446,7 +447,6 @@ class WatcherProcess extends Process {
                 }
             } while ($data != "");
 
-            \stream_set_blocking($ipcClient, true);
             $ipcSock = \socket_import_stream($ipcClient);
             foreach ($sockets as $address => $socket) {
                 yield;
@@ -454,7 +454,6 @@ class WatcherProcess extends Process {
                     Loop::cancel($watcherId);
                 }
             }
-            \stream_set_blocking($ipcClient, false);
 
             Loop::cancel($watcherId);
         })();
