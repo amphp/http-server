@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Amp\Deferred;
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class WorkerProcess extends Process {
     private $logger;
@@ -10,7 +11,8 @@ class WorkerProcess extends Process {
     private $bootstrapper;
     private $server;
 
-    public function __construct(IpcLogger $logger, $ipcSock, Bootstrapper $bootstrapper = null) {
+    // Loggers which hold a watcher on $ipcSock MUST implement disableSending():Promise and enableSending() methods in order to avoid conflicts from different watchers
+    public function __construct(PsrLogger $logger, $ipcSock, Bootstrapper $bootstrapper = null) {
         parent::__construct($logger);
         $this->logger = $logger;
         $this->ipcSock = $ipcSock;
@@ -23,7 +25,7 @@ class WorkerProcess extends Process {
         $json = json_encode(array_map(function($context) { return $context["socket"]; }, $addrCtxMap));
         $data = "\x1" . pack("N", \strlen($json)) . $json;
         // Logger must not be writing at the same time as we do here
-        $this->logger->disableSending()->when(function() use (&$data, $deferred, $addrCtxMap) {
+        $when = function() use (&$data, $deferred, $addrCtxMap) {
             \Amp\onWritable($this->ipcSock, function ($watcherId, $socket) use (&$data, $deferred, $addrCtxMap) {
                 $bytesWritten = \fwrite($socket, $data);
                 if ($bytesWritten === false || ($bytesWritten === 0 && (!\is_resource($socket) || @\feof($socket)))) {
@@ -37,7 +39,9 @@ class WorkerProcess extends Process {
                 }
 
                 \Amp\cancel($watcherId);
-                $this->logger->enableSending();
+                if (\method_exists($this->logger, "enableSending")) {
+                    $this->logger->enableSending();
+                }
 
                 $gen = (function () use ($socket, &$watcherId, $deferred, $addrCtxMap) {
                     $serverSockets = [];
@@ -76,7 +80,12 @@ class WorkerProcess extends Process {
                     $gen->next();
                 });
             });
-        });
+        };
+        if (\method_exists($this->logger, "disableSending")) {
+            $this->logger->disableSending()->when($when);
+        } else {
+            $when();
+        }
 
         return $deferred->promise();
     }
