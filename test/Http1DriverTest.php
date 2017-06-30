@@ -7,7 +7,7 @@ use Aerys\Http1Driver;
 use Aerys\HttpDriver;
 use Aerys\InternalRequest;
 use Aerys\Options;
-use Amp\Artax\Parser;
+use Amp\Artax\Internal\Parser;
 use Amp\Loop;
 use PHPUnit\Framework\TestCase;
 
