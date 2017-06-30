@@ -263,7 +263,7 @@ class Server implements Monitor {
         try {
             return yield $this->notify();
         } catch (\Throwable $exception) {
-            yield $this->doStop();
+            yield from $this->doStop();
             throw new \RuntimeException("Server::STARTED observer initialization failure", 0, $exception);
         }
     }
