@@ -68,16 +68,14 @@ interface Request {
 
     /**
      * Retrieve the streaming request entity body.
-     * Note that the returned Body instance may change between calls, the contents not
-     * explicitly fetched through its valid() / consume() API, will be moved to the new
-     * instance though. No need to buffer and concatenate manually in this case.
      *
      * @TODO add documentation for how the body object is used
+     *
      * @param int $bodySize maximum body size
      *
-     * @return \Aerys\Body
+     * @return \Amp\ByteStream\Message
      */
-    public function getBody(int $bodySize = -1): Body;
+    public function getBody(int $bodySize = -1): \Amp\ByteStream\Message;
 
     /**
      * Retrieve one query string value of that name.

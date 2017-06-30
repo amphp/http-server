@@ -2,7 +2,6 @@
 
 namespace Aerys\Test;
 
-use Aerys\Body;
 use Aerys\Client;
 use Aerys\InternalRequest;
 use Aerys\Logger;
@@ -15,6 +14,7 @@ use Aerys\StandardResponse;
 use Aerys\Websocket;
 use Aerys\Websocket\Rfc6455Gateway;
 use Amp\ByteStream\IteratorStream;
+use Amp\ByteStream\Message;
 use Amp\Deferred;
 use Amp\Delayed;
 use Amp\Emitter;
@@ -302,7 +302,7 @@ class WebsocketTest extends TestCase {
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
 
         $_ireq = clone $ireq;
-        $_ireq->body = new Body(new IteratorStream((new Emitter)->iterate()));
+        $_ireq->body = new Message(new IteratorStream((new Emitter)->iterate()));
         $return[] = [$_ireq, [":status" => HTTP_STATUS["BAD_REQUEST"]]];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->

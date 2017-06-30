@@ -2,15 +2,15 @@
 
 namespace Aerys;
 
-use Amp\ByteStream\IteratorStream;
-use Amp\Iterator;
+use Amp\ByteStream\InputStream;
+use Amp\ByteStream\Message;
 use Amp\Promise;
 
-class FieldBody extends Body {
+class FieldBody extends Message {
     private $metadata;
 
-    public function __construct(Iterator $iterator, Promise $metadata) {
-        parent::__construct(new IteratorStream($iterator));
+    public function __construct(InputStream $stream, Promise $metadata) {
+        parent::__construct($stream);
         $this->metadata = $metadata;
     }
 

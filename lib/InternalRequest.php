@@ -25,7 +25,7 @@ class InternalRequest {
     public $method;
     /** @var array */
     public $headers;
-    /** @var \Aerys\Body */
+    /** @var \Amp\ByteStream\Message */
     public $body;
     /** @var int */
     public $maxBodySize;

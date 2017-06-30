@@ -2,7 +2,9 @@
 
 namespace Aerys;
 
+use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
+use Amp\ByteStream\IteratorStream;
 use Amp\ByteStream\PendingReadError;
 use Amp\Coroutine;
 use Amp\Deferred;
@@ -218,12 +220,10 @@ class BodyParser implements InputStream, Promise {
             }
             if (empty($this->bodies[$name])) {
                 $this->bodyDeferreds[$name][] = [$body = new Emitter, $metadata = new Deferred];
-                return new FieldBody($body->iterate(), $metadata->promise());
+                return new FieldBody(new IteratorStream($body->iterate()), $metadata->promise());
             }
         } elseif (empty($this->bodies[$name])) {
-            $emptyEmitter = new Emitter;
-            $emptyEmitter->complete();
-            return new FieldBody($emptyEmitter->iterate(), new Success([]));
+            return new FieldBody(new InMemoryStream, new Success([]));
         }
 
         $key = key($this->bodies[$name]);
@@ -252,7 +252,7 @@ class BodyParser implements InputStream, Promise {
             unset($this->bodyDeferreds[$field]);
         } else {
             $dataEmitter = new Emitter;
-            $this->bodies[$field][] = new FieldBody($dataEmitter->iterate(), new Success($metadata));
+            $this->bodies[$field][] = new FieldBody(new IteratorStream($dataEmitter->iterate()), new Success($metadata));
         }
 
         if ($this->pendingRead) {

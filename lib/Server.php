@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Amp\ByteStream\IteratorStream;
+use Amp\ByteStream\Message;
 use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
@@ -598,7 +599,7 @@ class Server implements Monitor {
         $ireq = $this->initializeRequest($client, $parseResult);
         $id = $parseResult["id"];
         $client->bodyEmitters[$id] = $bodyEmitter = new Emitter;
-        $ireq->body = new Body(new IteratorStream($bodyEmitter->iterate()));
+        $ireq->body = new Message(new IteratorStream($bodyEmitter->iterate()));
 
         $this->respond($ireq);
     }

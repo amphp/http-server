@@ -2,13 +2,11 @@
 
 namespace Aerys;
 
-use Amp\ByteStream\IteratorStream;
-use Amp\Emitter;
+use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\Message;
 
-final class NullBody extends Body {
+final class NullBody extends Message {
     public function __construct() {
-        $emitter = new Emitter;
-        $emitter->complete();
-        parent::__construct(new IteratorStream($emitter->iterate()));
+        parent::__construct(new InMemoryStream);
     }
 }

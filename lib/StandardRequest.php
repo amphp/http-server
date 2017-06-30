@@ -2,6 +2,9 @@
 
 namespace Aerys;
 
+use Amp\ByteStream\IteratorStream;
+use Amp\ByteStream\Message;
+
 class StandardRequest implements Request {
     private $internalRequest;
     private $queryParams;
@@ -59,7 +62,7 @@ class StandardRequest implements Request {
     /**
      * {@inheritdoc}
      */
-    public function getBody(int $bodySize = -1): Body {
+    public function getBody(int $bodySize = -1): Message {
         $ireq = $this->internalRequest;
         if ($bodySize > -1) {
             if ($bodySize > ($ireq->maxBodySize ?? $ireq->client->options->maxBodySize)) {
@@ -74,7 +77,7 @@ class StandardRequest implements Request {
                 if ($e instanceof ClientSizeException) {
                     $ireq = $this->internalRequest;
                     $bodyEmitter = $ireq->client->bodyEmitters[$ireq->streamId];
-                    $ireq->body = new Body($bodyEmitter->iterate());
+                    $ireq->body = new Message(new IteratorStream($bodyEmitter->iterate()));
                     $bodyEmitter->emit($data);
                 }
             });
