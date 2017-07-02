@@ -14,21 +14,22 @@ This method is called exactly once when the [`Server`](server.html) is in `Serve
 
 You may return a [`Middleware`](middleware.html) and/or responder callable in order to use an alternate instance for middleware/responder.
 
-> **Note**: It is a bad idea to rely on the order in which the `boot()` methods of the `Bootable`s are called
+{:.note}
+> It is a bad idea to rely on the order in which the `boot()` methods of the `Bootable`s are called
 
 ## Example
 
 ```php
 class MyBootable implements Aerys\Bootable {
-	function boot(Aerys\Server $server, Aerys\Logger $logger) {
-		// we can now use $server in order to register a ServerObserver for example
+    function boot(Aerys\Server $server, Aerys\Logger $logger) {
+        // we can now use $server in order to register a ServerObserver for example
 
-		// In case we want to not use this instance for Middlewares or responder callables,
-		// we can return an alternate one
-		return new class implements Aerys\Middleware {
-			function do(Aerys\InternalRequest $ireq) { /* ... */ }
-		};
-	}
+        // In case we want to not use this instance for Middlewares or responder callables,
+        // we can return an alternate one
+        return new class implements Aerys\Middleware {
+            function do(Aerys\InternalRequest $ireq) { /* ... */ }
+        };
+    }
 }
 (new Aerys\Host)->use(new MyBootable);
 ```

@@ -28,8 +28,8 @@ Most importantly, if the request handler callable or the WebSocket handlers are 
 # DO NOT DO THIS
 
 (new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) {
-	$res->end("Some data");
-	sleep(5); # or a blocking I/O function with 5 second timeout
+    $res->end("Some data");
+    sleep(5); # or a blocking I/O function with 5 second timeout
 });
 
 # Open this route twice, you'll have to wait until the 5 seconds are over, until the next request is handled. (To try, start Aerys with only one worker: -w 1)

@@ -53,4 +53,5 @@ It should take the necessary measures so that further `HttpDriver::ENTITY_PART` 
 
 Inside the parser `yield` always returns raw string data from the socket.
 
-> **Note**: You _can_ rely on keep-alive timeout terminating the `\Amp\ByteStream\Message` with a `ClientException`, when no further data comes in. No need to manually handle that here.
+{:.note}
+> You _can_ rely on keep-alive timeout terminating the `\Amp\ByteStream\Message` with a `ClientException`, when no further data comes in. No need to manually handle that here.

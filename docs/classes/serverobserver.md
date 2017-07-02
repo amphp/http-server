@@ -16,18 +16,18 @@ The only method of this interface; it is called each time when the [`Server`](se
 
 ```php
 class MyObserver implements Aerys\Bootable, Aerys\ServerObserver {
-	function boot(Aerys\Server $server, Aerys\Logger $logger) {
-		$server->attach($this);
-	}
+    function boot(Aerys\Server $server, Aerys\Logger $logger) {
+        $server->attach($this);
+    }
 
-	function update(Aerys\Server $server): Amp\Promise {
-		switch ($server->state()) {
-			case Aerys\Server::STARTING: /* ... */ break;
-			case Aerys\Server::STARTED: /* ... */ break;
-			case Aerys\Server::STOPPING: /* ... */ break;
-			case Aerys\Server::STOPPED: /* ... */ break;
-		}
-		return new Amp\Success;
-	}
+    function update(Aerys\Server $server): Amp\Promise {
+        switch ($server->state()) {
+            case Aerys\Server::STARTING: /* ... */ break;
+            case Aerys\Server::STARTED: /* ... */ break;
+            case Aerys\Server::STOPPING: /* ... */ break;
+            case Aerys\Server::STOPPED: /* ... */ break;
+        }
+        return new Amp\Success;
+    }
 }
 ```

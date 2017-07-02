@@ -4,7 +4,7 @@ permalink: /options
 ---
 ```php
 const AERYS_OPTIONS = [
-	"sendServerToken" => true,
+    "sendServerToken" => true,
 ];
 ```
 

@@ -7,13 +7,13 @@ permalink: /http-advanced
 ```php
 $db = new Amp\Mysql\Pool("host=localhost;user=user;pass=pass;db=db");
 (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) use ($db) {
-	$result = yield $db->prepare("SELECT data FROM table WHERE key = ?", [$req->getParam("key") ?? "default"]);
-	while ($row = yield $result->fetchObject()) {
-		$res->write($row->data);
-		$res->write("\n");
-		$res->flush();
-	}
-	$res->end(); # is implicit if streaming has been started, but useful to signal end of data to wait on other things now
+    $result = yield $db->prepare("SELECT data FROM table WHERE key = ?", [$req->getParam("key") ?? "default"]);
+    while ($row = yield $result->fetchObject()) {
+        $res->write($row->data);
+        $res->write("\n");
+        $res->flush();
+    }
+    $res->end(); # is implicit if streaming has been started, but useful to signal end of data to wait on other things now
 });
 ```
 
@@ -27,11 +27,11 @@ There is a `Response::flush()` method which actually flushes all the buffers imm
 
 ```php
 (new Aerys\Host)
-	->use(Aerys\root("/path/to/folder")) # contains image.png
-	->use(function(Aerys\Request $req, Aerys\Response $res) {
-		$res->push("/image.png");
-		$res->end('<html><body>A nice image:<br /><img src="/image.png" /></body></html>');
-	})
+    ->use(Aerys\root("/path/to/folder")) # contains image.png
+    ->use(function(Aerys\Request $req, Aerys\Response $res) {
+        $res->push("/image.png");
+        $res->end('<html><body>A nice image:<br /><img src="/image.png" /></body></html>');
+    })
 ;
 ```
 
@@ -46,16 +46,16 @@ If the `$headers` parameter is `null`, certain headers are copied from the origi
 ```php
 # This is the foo/router.php file
 return Aerys\router()
-	->get("/", function(Aerys\Request $req, Aerys\Response $res) { $res->end("to-be-prefixed root"); })
-	->use(function(Aerys\Request $req, Aerys\Response $res) { $res->end("fallback route, only for this router"); }))
+    ->get("/", function(Aerys\Request $req, Aerys\Response $res) { $res->end("to-be-prefixed root"); })
+    ->use(function(Aerys\Request $req, Aerys\Response $res) { $res->end("fallback route, only for this router"); }))
 ;
 ```
 
 ```php
 $realRouter = Aerys\router()
-	->use((include "foo/router.php")->prefix("/foo"))
-	->get("/", function(Aerys\Request $req, Aerys\Response $res) { $res->end("real root"); })
-	->use(function(Aerys\Request $req, Aerys\Response $res) { $res->end("general fallback route"); }))
+    ->use((include "foo/router.php")->prefix("/foo"))
+    ->get("/", function(Aerys\Request $req, Aerys\Response $res) { $res->end("real root"); })
+    ->use(function(Aerys\Request $req, Aerys\Response $res) { $res->end("general fallback route"); }))
 ;
 
 (new Aerys\Host)->use($realRouter);

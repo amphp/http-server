@@ -60,12 +60,12 @@ Returns various information about the request, a map of the array is:
 
 ```php
 [
-	"client_port"  => int,
-	"client_addr"  => string,
-	"server_port"  => int,
-	"server_addr"  => string,
-	"is_encrypted" => bool,
-	"crypto_info"  => array, # Like returned via stream_get_meta_data($socket)["crypto"]
+    "client_port"  => int,
+    "client_addr"  => string,
+    "server_port"  => int,
+    "server_addr"  => string,
+    "is_encrypted" => bool,
+    "crypto_info"  => array, # Like returned via stream_get_meta_data($socket)["crypto"]
 ]
 ```
 
@@ -81,4 +81,5 @@ Gets an [option](options.html) value.
 
 The constructor accepts an [`InternalRequest`](internalrequest.html) object the `StandardRequest` class is reading and writing to.
 
-> **Note**: It may be helpful in integration tests to provide a `StandardRequest` class initialized with an adequately preset `InternalRequest` object.
+{:.note}
+> It may be helpful in integration tests to provide a `StandardRequest` class initialized with an adequately preset `InternalRequest` object.

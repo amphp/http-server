@@ -29,19 +29,19 @@ See [`Monitor`](monitor.html), it returns an array of the following structure:
 
 ```php
 [
-	"GET" => [
-		"/route" => [
-			"MyMonitorClass" => [
-				MyMonitorClass->monitor(),
-				MyMonitorClass->monitor(),
-				... # if there are multiple instances of a same handler
-			],
-			"OtherMonitorClass" => [...],
-			...
-		],
-		...
-	],
-	"method" => [...],
-	...
+    "GET" => [
+        "/route" => [
+            "MyMonitorClass" => [
+                MyMonitorClass->monitor(),
+                MyMonitorClass->monitor(),
+                ... # if there are multiple instances of a same handler
+            ],
+            "OtherMonitorClass" => [...],
+            ...
+        ],
+        ...
+    ],
+    "method" => [...],
+    ...
 ]
 ```

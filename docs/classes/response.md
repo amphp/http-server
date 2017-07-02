@@ -49,7 +49,8 @@ Incrementally streams parts of the response body.
 
 Applications that can afford to buffer an entire response in memory or can wait for all body data to generate may use `Response::end()` to output the entire response in a single call.
 
-> **Note**: Headers are sent upon the first invocation of Response::write().
+{:.note}
+> Headers are sent upon the first invocation of Response::write().
 
 ## `flush()`
 
@@ -69,7 +70,8 @@ the following:
     $response->write($finalBodyChunk);
     $response->end();
 
-> **Note**: Thus it is also fine to call this function without previous `write()` calls, to send it all at once.
+{:.note}
+> Thus it is also fine to call this function without previous `write()` calls, to send it all at once.
 
 ## `push(string $url, array $headers = null): Response`
 

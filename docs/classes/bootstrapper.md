@@ -28,14 +28,14 @@ The caller of this method then shall initialize the `Server` by calling `Server-
 
 ```php
 \Amp\run(function() use ($logger /* any PSR-3 Logger */) {
-	$handler = function(Aerys\Request $req, Aerys\Response $res) {
-		$res->end("A highly specialized handler!");
-	};
-	$bootstrapper = new Aerys\Bootstrapper(function () use ($handler) {
-		return (new Aerys\Host)->use($handler);
-	});
-	$server = $bootstrapper->init($logger, ["debug" => true]);
-	yield $server->start();
-	# Aerys is running!
+    $handler = function(Aerys\Request $req, Aerys\Response $res) {
+        $res->end("A highly specialized handler!");
+    };
+    $bootstrapper = new Aerys\Bootstrapper(function () use ($handler) {
+        return (new Aerys\Host)->use($handler);
+    });
+    $server = $bootstrapper->init($logger, ["debug" => true]);
+    yield $server->start();
+    # Aerys is running!
 });
 ```

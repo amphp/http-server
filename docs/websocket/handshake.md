@@ -7,44 +7,44 @@ permalink: /websocket/handshake
 # This example prints to STDOUT. Do that only for testing purposes!
 
 class MyWs implements Aerys\Websocket {
-	private $clients = [];
+    private $clients = [];
 
-	public function onStart(Aerys\Websocket\Endpoint $endpoint) {
-		// $endpoint is necessary for sending
-	}
+    public function onStart(Aerys\Websocket\Endpoint $endpoint) {
+        // $endpoint is necessary for sending
+    }
 
-	public function onHandshake(Aerys\Request $req, Aerys\Response $res) {
-		if ($req->getParam("password") != "reallyverysecure") {
-			# if status set to anything else than 101, no WebSocket connection will be established
-			$res->setStatus(403);
-			$res->end("Nope. Valid password required.");
-		}
-		# Nothing necessary for successful handshake (though one may set cookies for example)
-	}
+    public function onHandshake(Aerys\Request $req, Aerys\Response $res) {
+        if ($req->getParam("password") != "reallyverysecure") {
+            # if status set to anything else than 101, no WebSocket connection will be established
+            $res->setStatus(403);
+            $res->end("Nope. Valid password required.");
+        }
+        # Nothing necessary for successful handshake (though one may set cookies for example)
+    }
 
-	public function onOpen(int $clientId, $request) {
-		$this->clients[$clientId] = $request->getConnectionInfo();
-		print "Successful Handshake for user with client id $clientId from {$this->clients[$clientId]['client_addr']}\n";
-	}
+    public function onOpen(int $clientId, $request) {
+        $this->clients[$clientId] = $request->getConnectionInfo();
+        print "Successful Handshake for user with client id $clientId from {$this->clients[$clientId]['client_addr']}\n";
+    }
 
-	public function onData(int $clientId, Aerys\Websocket\Message $msg) {
-		print "User with client id $clientId from {$this->clients[$clientId]['client_addr']} sent: " . (yield $msg) . "\n";
-	}
+    public function onData(int $clientId, Aerys\Websocket\Message $msg) {
+        print "User with client id $clientId from {$this->clients[$clientId]['client_addr']} sent: " . (yield $msg) . "\n";
+    }
 
-	public function onClose(int $clientId, int $code, string $reason) {
-		unset($this->clients[$clientId]);
-		print "User with client id $clientId closed connection with code $code\n";
-	}
+    public function onClose(int $clientId, int $code, string $reason) {
+        unset($this->clients[$clientId]);
+        print "User with client id $clientId closed connection with code $code\n";
+    }
 
-	public function onStop() {
-		// when server stops, not important for now
-	}
+    public function onStop() {
+        // when server stops, not important for now
+    }
 }
 ```
 
 ```php
 $router = Aerys\router()
-	->get('/ws', Aerys\websocket(new MyWs));
+    ->get('/ws', Aerys\websocket(new MyWs));
 
 $root = Aerys\root(__DIR__ . "/public");
 
@@ -54,17 +54,17 @@ $root = Aerys\root(__DIR__ . "/public");
 ```html
 <!doctype html>
 <script type="text/javascript">
-	var ws = new WebSocket("ws://localhost/ws?password=reallyverysecure");
+    var ws = new WebSocket("ws://localhost/ws?password=reallyverysecure");
 
-	ws.onopen = function() {
-		// crappy console.log alternative for example purposes
-		document.writeln("opened<br />");
-		ws.send("ping");
-	};
+    ws.onopen = function() {
+        // crappy console.log alternative for example purposes
+        document.writeln("opened<br />");
+        ws.send("ping");
+    };
 
-	ws.onerror = ws.onmessage = ws.onclose = function(e) {
-		document.writeln(e);
-	};
+    ws.onerror = ws.onmessage = ws.onclose = function(e) {
+        document.writeln(e);
+    };
 </script>
 ```
 

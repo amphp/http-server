@@ -18,25 +18,25 @@ When invoked, this method must return an array with all the data it wishes to ma
 
 ```php
 class RequestCountingMonitor implements Aerys\Monitor, Aerys\Bootable {
-	private $server;
-	private $requestCounter = 0;
+    private $server;
+    private $requestCounter = 0;
 
-	function boot(Aerys\Server $server, \Psr\Log\LoggerInterface $log) {
-		$this->server = $server;
-	}
+    function boot(Aerys\Server $server, \Psr\Log\LoggerInterface $log) {
+        $this->server = $server;
+    }
 
-	function __invoke(Aerys\Request $req, Aerys\Response $res) {
-		$this->requestCounter++;
-		$res->write("<html><body><h1>MyMonitor</h1><ul>");
-		foreach($server->monitor()["hosts"] as $id => $host) {
-			$res->write("<li>$id: {$host["handlers"][self::class][0]["requestCounter"]}</li>");
+    function __invoke(Aerys\Request $req, Aerys\Response $res) {
+        $this->requestCounter++;
+        $res->write("<html><body><h1>MyMonitor</h1><ul>");
+        foreach($server->monitor()["hosts"] as $id => $host) {
+            $res->write("<li>$id: {$host["handlers"][self::class][0]["requestCounter"]}</li>");
         }
         $res->end("</ul></body></html>")
-	}
+    }
 
-	function monitor(): array {
-		return ["requestCounter" => $this->requestCounter];
-	}
+    function monitor(): array {
+        return ["requestCounter" => $this->requestCounter];
+    }
 }
 (new Aerys\Host)->name("foo.local")->use(new RequestCountingMonitor);
 (new Aerys\Host)->name("bar.local")->use(new RequestCountingMonitor);

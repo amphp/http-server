@@ -68,7 +68,8 @@ Later `yield`s may return as much data as they want.
 
 You can use `return` instead of `yield` in order to immediately detach with eventual final data. (In case you buffered a bit first and still hold the headers, use `return $data . yield $headers;`.)
 
-> **Note**: You cannot wait for promises inside middlewares. This is by design (as flushes should be propagating immediately etc.). If you need I/O, either move it to a responder in front of your actual responder or move it into your responder and call it explicitly.
+{:.note}
+> You cannot wait for promises inside middlewares. This is by design (as flushes should be propagating immediately etc.). If you need I/O, either move it to a responder in front of your actual responder or move it into your responder and call it explicitly.
 
 ## InternalRequest
 

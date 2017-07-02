@@ -43,28 +43,28 @@ See [`Monitor`](monitor.html), it returns an array of the following structure:
 
 ```php
 [
-	"state" => STARTING|STARTED|STOPPING|STOPPED,
-	"bindings" => ["tcp://127.0.0.1:80", "tcp://ip:port", ...],
-	"clients" => int, # number of clients
-	"IPs" => int, # number of different connected IPs
-	"pendingInputs" => int, # number of clients not being processed currently
-	"hosts" => [
-		"localhost:80" => [
-			"interfaces" => [["127.0.0.1", 80], ["ip", port], ...],
-			"name" => "localhost",
-			"tls" => array with "ssl" context options,
-			"handlers" => [
-				"MyMonitorClass" => [
-					MyMonitorClass->monitor(),
-					MyMonitorClass->monitor(),
-					... # if there are multiple instances of a same handler
-				],
-				"OtherMonitorClass" => [...],
-				...
-			],
-		],
-		"name:port" => [...],
-		...
-	],
+    "state" => STARTING|STARTED|STOPPING|STOPPED,
+    "bindings" => ["tcp://127.0.0.1:80", "tcp://ip:port", ...],
+    "clients" => int, # number of clients
+    "IPs" => int, # number of different connected IPs
+    "pendingInputs" => int, # number of clients not being processed currently
+    "hosts" => [
+        "localhost:80" => [
+            "interfaces" => [["127.0.0.1", 80], ["ip", port], ...],
+            "name" => "localhost",
+            "tls" => array with "ssl" context options,
+            "handlers" => [
+                "MyMonitorClass" => [
+                    MyMonitorClass->monitor(),
+                    MyMonitorClass->monitor(),
+                    ... # if there are multiple instances of a same handler
+                ],
+                "OtherMonitorClass" => [...],
+                ...
+            ],
+        ],
+        "name:port" => [...],
+        ...
+    ],
 ]
 ```

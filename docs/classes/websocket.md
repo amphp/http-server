@@ -8,7 +8,8 @@ permalink: /classes/bodyparser
 
 The `Websocket` interface is the general interface for your websocket class. To set it as a responder, just pass an instance of it to the `websocket()` function whose result must be passed to [`Host::use()`](host.html#use) or a specific route (see [`Router::route`](router.html#route)).
 
-> Note: `websocket()` returns a responder callable, it falls under the same rules as every responder callable passed to `use()`: after the first callable started the response, the following ones will be ignored. Make attention to not e.g. `(new Host)->use($router)->use($websocket)` and be then surprised why you get an invalid response with code 200 (OK).
+{:.note}
+> `websocket()` returns a responder callable, it falls under the same rules as every responder callable passed to `use()`: after the first callable started the response, the following ones will be ignored. Make attention to not e.g. `(new Host)->use($router)->use($websocket)` and be then surprised why you get an invalid response with code 200 (OK).
 
 Example:
 
@@ -37,7 +38,8 @@ In case of a successful handshake, this method gets called. `$clientId` is an op
 
 This method gets called each time a new data frame sequence is received.
 
-> Note: the second parameter is not a string, but a [`Websocket\Message` extends `Amp\ByteStream\Message`](../../byte-stream/message) [@TODO bogus link, Amp\ByteStream\Message docs missing], which implements Promise. The yielded Promise will return a string or fail with a ClientException if the client disconnected before transmitting the full data.
+{:.note}
+> The second parameter is not a string, but a [`Websocket\Message` extends `Amp\ByteStream\Message`](../../byte-stream/message) [@TODO bogus link, Amp\ByteStream\Message docs missing], which implements Promise. The yielded Promise will return a string or fail with a ClientException if the client disconnected before transmitting the full data.
 
 ## `onClose(int $clientId, int $code, string $reason)`
 
@@ -53,47 +55,47 @@ This means, you may only send, but not receive from this moment on. The clients 
 
 ```php
 class MyAwesomeWebsocket implements Aerys\Websocket {
-	private $endpoint;
+    private $endpoint;
 
-	public function onStart(Aerys\Websocket\Endpoint $endpoint) {
-		$this->endpoint = $endpoint;
-	}
+    public function onStart(Aerys\Websocket\Endpoint $endpoint) {
+        $this->endpoint = $endpoint;
+    }
 
-	public function onHandshake(Aerys\Request $request, Aerys\Response $response) {
-		// Do eventual session verification and manipulate Response if needed to abort
-	}
+    public function onHandshake(Aerys\Request $request, Aerys\Response $response) {
+        // Do eventual session verification and manipulate Response if needed to abort
+    }
 
-	public function onOpen(int $clientId, $handshakeData) {
-		$this->endpoint->send("Heyho!", $clientId);
-	}
+    public function onOpen(int $clientId, $handshakeData) {
+        $this->endpoint->send("Heyho!", $clientId);
+    }
 
-	public function onData(int $clientId, Aerys\Websocket\Message $msg) {
-		// send back what we get in
-		$msg = yield $msg; // Do not forget to yield here to get a string
-		yield $this->endpoint->send($msg, $clientId);
-	}
+    public function onData(int $clientId, Aerys\Websocket\Message $msg) {
+        // send back what we get in
+        $msg = yield $msg; // Do not forget to yield here to get a string
+        yield $this->endpoint->send($msg, $clientId);
+    }
 
-	public function onClose(int $clientId, int $code, string $reason) {
-		// client disconnected, we may not send anything to him anymore
-	}
+    public function onClose(int $clientId, int $code, string $reason) {
+        // client disconnected, we may not send anything to him anymore
+    }
 
-	public function onStop() {
-		$this->endpoint->broadcast("Byebye!");
-	}
+    public function onStop() {
+        $this->endpoint->broadcast("Byebye!");
+    }
 }
 
 $websocket = Aerys\websocket(new MyAwesomeWebsocket);
 $router = (new Aerys\Router)
-	->get('/websocket', $websocket)
-	->get('/', function(Aerys\Request $req, Aerys\Response $res) { $res->send('
+    ->get('/websocket', $websocket)
+    ->get('/', function(Aerys\Request $req, Aerys\Response $res) { $res->send('
 <script type="text/javascript">
-	ws = new WebSocket("ws://localhost:1337/ws");
-	ws.onopen = function() {
-		ws.send("ping");
-	};
-	ws.onmessage = function(e) {
-		console.log(e.data);
-	};
+    ws = new WebSocket("ws://localhost:1337/ws");
+    ws.onopen = function() {
+        ws.send("ping");
+    };
+    ws.onmessage = function(e) {
+        console.log(e.data);
+    };
 </script>'); });
 (new Aerys\Host)->use($router);
 ```

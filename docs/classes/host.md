@@ -14,9 +14,11 @@ The way everything is attached to the Host. Currently it accepts `Bootable`s, `M
 
 When the server is run `Bootable`s, `Middleware`s and callables are called in the order they are passed to `use()`. The `Bootable`s are all called extacly once right before the Server is started. `Middleware`s are all invoked each time before the callables are invoked. Then the callables are invoked one after the other *until* the response has been started - the remaining callables are ignored.
 
-> **Note**: be careful with `Middleware`s, only use them if you really need them. They are expensive as they're called at **each** request. You also can use route-specific `Middleware`s to only invoke them when needed.
+{:.note}
+> Be careful with `Middleware`s, only use them if you really need them. They are expensive as they're called at **each** request. You also can use route-specific `Middleware`s to only invoke them when needed.
 
-> **Note**: There can be only **one** HttpDriver instance per **port**. That means, if you have multiple `Host` instances listening on the same port, they all need to share the same `HttpDriver` instance!
+{:.note}
+> There can be only **one** HttpDriver instance per **port**. That means, if you have multiple `Host` instances listening on the same port, they all need to share the same `HttpDriver` instance!
 
 See also the documentation for [`Middleware`s](middleware.html) and [`Bootable`s](bootable.html).
 
@@ -42,9 +44,9 @@ The `$additionalSslSettings` array is passed directly as SSL context options and
 
 ```php
 (new Aerys\Host)
-	->expose("127.0.0.1", 80) // Yup, this is the only host here,
-	->name("localhost")       // so expose() and name() aren't necessary
-	->use(function(Aerys\Request $req, Aerys\Response $res) {
-		$res->end("<h1>Hello world!</h1>");
-	});
+    ->expose("127.0.0.1", 80) // Yup, this is the only host here,
+    ->name("localhost")       // so expose() and name() aren't necessary
+    ->use(function(Aerys\Request $req, Aerys\Response $res) {
+        $res->end("<h1>Hello world!</h1>");
+    });
 ```
