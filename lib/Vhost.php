@@ -381,7 +381,7 @@ class Vhost implements Monitor {
     public function monitor(): array {
         $handlers = [];
         foreach ($this->monitors as $class => $monitors) {
-            $handlers[$class] = array_map(function ($montior) { return $montior->monitor(); }, $monitors);
+            $handlers[$class] = array_map(function ($monitor) { return $monitor->monitor(); }, $monitors);
         }
         return [
             "interfaces" => $this->interfaces,

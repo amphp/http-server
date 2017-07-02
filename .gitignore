@@ -3,3 +3,4 @@ test/junk
 .idea
 composer.lock
 vendor
+docs/_site
