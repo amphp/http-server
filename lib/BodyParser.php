@@ -201,7 +201,7 @@ class BodyParser implements InputStream, Promise {
      *     respecting value size
      * @return FieldBody
      */
-    public function write(string $name, int $size = 0): FieldBody {
+    public function stream(string $name, int $size = 0): FieldBody {
         if ($this->req) {
             if ($size > 0) {
                 if (!empty($this->curSizes)) {

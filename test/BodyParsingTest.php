@@ -110,12 +110,12 @@ class BodyParsingTest extends TestCase {
         $ireq->client->options = new Options;
 
         $body = new \Aerys\BodyParser(new StandardRequest($ireq));
-        $a = $body->write("a");
-        $b = $body->write("b");
-        $be = $body->write("be");
-        $d = $body->write("d");
-        $gh = $body->write("gh");
-        $j = $body->write("j");
+        $a = $body->stream("a");
+        $b = $body->stream("b");
+        $be = $body->stream("be");
+        $d = $body->stream("d");
+        $gh = $body->stream("gh");
+        $j = $body->stream("j");
 
         Loop::run(function () use ($a, $b, $be, $d, $gh, $j, $data, $emitter) {
             Loop::defer(function () use ($data, $emitter) {
