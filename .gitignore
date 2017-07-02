@@ -4,3 +4,4 @@ composer.lock
 phpunit.xml
 vendor
 docs/_site
+docs/Gemfile.lock
