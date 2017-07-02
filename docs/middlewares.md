@@ -93,3 +93,9 @@ You can use `return` instead of `yield` in order to immediately detach with even
     })
 ;
 ```
+
+Middlewares provide access to [`InternalRequest`](classes/internalrequest.md). That class is a bunch of properties, [detailed here](classes/internalrequest.md).
+
+These properties expose the internal request data as well as connection specific data via [`InternalRequest->client`](classes/client.md) property.
+
+In particular, note the `InternalRequest->locals` property. There are the [`Request::getLocalVar($key)` respectively `Request::setLocalVar($key, $value)`](classes/request.md) methods which access or mutate that array. It is meant to be a general point of data exchange between the middlewares and the application callables.
