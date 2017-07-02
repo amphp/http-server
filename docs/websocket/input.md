@@ -1,7 +1,6 @@
 ---
-title: Input Handling with WebSockets
-title_menu: Input Handling
-layout: tutorial
+title: WebSocket Input
+permalink: /websocket/input
 ---
 
 ```php

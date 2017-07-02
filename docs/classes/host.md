@@ -1,7 +1,6 @@
 ---
-title: Virtual host endpoints in Aerys
-title_menu: Host
-layout: docs
+title: Host
+permalink: /classes/host
 ---
 
 * Table of Contents

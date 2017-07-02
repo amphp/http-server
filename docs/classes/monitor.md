@@ -1,7 +1,6 @@
 ---
-title: Monitors in Aerys
-title_menu: Monitor
-layout: docs
+title: Monitor
+permalink: /classes/monitor
 ---
 
 * Table of Contents

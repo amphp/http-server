@@ -1,7 +1,6 @@
 ---
-title: FieldBody in Aerys
-title_menu: FieldBody
-layout: docs
+title: FieldBody
+permalink: /classes/fieldbody
 ---
 
 `FieldBody` extends [`Amp\ByteStream\Message`](../../byte-stream/message) [@TODO bogus link, Amp\ByteStream\Message docs missing] is a class of which instances are returned by the [`BodyParser`](bodyparser.html).

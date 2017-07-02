@@ -1,9 +1,7 @@
 ---
-title: Running Aerys in Production
-title_menu: Running in Production
-layout: tutorial
+title: Running on Production
+permalink: /production
 ---
-
 ## General
 
 - Set your `ulimit -n` (maximum open file descriptors) high enough to manage all your connections. Recommended is at least `$workers * (Options->maxConnections + 100)`. [100 is an arbitrary number usually big enough for all the persisting file descriptors. If not enough, add more.]

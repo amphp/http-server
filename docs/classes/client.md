@@ -1,7 +1,6 @@
 ---
-title: Client in Aerys
-title_menu: Client
-layout: docs
+title: Client
+permalink: /classes/client
 ---
 
 * Table of Contents

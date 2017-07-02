@@ -1,7 +1,6 @@
 ---
-title: Router in Aerys
-title_menu: Router
-layout: docs
+title: Router
+permalink: /classes/router
 ---
 
 The `Router` class is typically instantiated via the `router()` function.

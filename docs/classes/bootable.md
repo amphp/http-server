@@ -1,7 +1,6 @@
 ---
-title: Bootables in Aerys
-title_menu: Bootable
-layout: docs
+title: Bootables
+permalink: /classes/bootable
 ---
 
 * Table of Contents

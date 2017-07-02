@@ -1,7 +1,6 @@
 ---
-title: Websocket\Endpoint interface in Aerys
-title_menu: Websocket\Endpoint
-layout: docs
+title: Websocket\Endpoint
+permalink: /classes/websocket-endpoint
 ---
 
 * Table of Contents

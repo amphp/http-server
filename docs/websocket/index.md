@@ -1,7 +1,6 @@
 ---
-title: Introduction to WebSockets
-title_menu: Introduction
-layout: tutorial
+title: WebSockets
+permalink: /websocket/
 ---
 
 ```php

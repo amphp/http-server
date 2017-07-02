@@ -1,25 +1,8 @@
 ---
-title: Aerys
-description: Aerys is a non-blocking HTTP/1.1 and HTTP/2 application / websocket / static file server.
-title_menu: Introduction
-layout: docs
+title: Introduction
+permalink: /
 ---
-
-`amphp/aerys` is a non-blocking HTTP/1.1 and HTTP/2 application, websocket and static file server written in PHP.
-
-## Required PHP Version
-
-- PHP 7
-
-## Optional Extension Backends
-
-- [ev](https://pecl.php.net/package/ev)
-- [libevent](https://pecl.php.net/package/libevent)
-- [php-uv](https://github.com/bwoebi/php-uv)
-
-## Current Stable Version
-
-Aerys has currently a few 0.x tags. APIs are still subject to very small changes and you may run into rogue <s>bugs</s> features. We love PRs, though :-)
+Aerys is a non-blocking HTTP/1.1 and HTTP/2 application, WebSocket and static file server written in PHP.
 
 ## Installation
 
@@ -33,11 +16,24 @@ composer require amphp/aerys
 vendor/bin/aerys -d -c demo.php
 ```
 
-> **Note:** In production you'll want to drop the `-d` (debug mode) flag. For development it is pretty helpful though. `-c demo.php` tells the program where to find the config file.
+{:.warning}
+> On production you'll want to drop the `-d` (debug mode) flag. For development it is pretty helpful though. `-c demo.php` tells the program where to find the config file.
 
-## Blog Posts
+## First Configuration
 
- - [Getting Started with Aerys](http://blog.kelunik.com/2015/10/21/getting-started-with-aerys.html)
- - [Getting Started with Aerys WebSockets](http://blog.kelunik.com/2015/10/20/getting-started-with-aerys-websockets.html)
+```php
+<?php
 
-<div class="tutorial-next">Start with the <a href="setup/start.html">Tutorial</a> or check the <a href="classes">Classes docs</a> out</div>
+(new Aerys\Host)->use(Aerys\root("/var/www/public_html"));
+```
+
+Save it as `config.php` and load it via `sudo php vendor/bin/aerys -d -c config.php`. The `sudo` may be necessary as it binds by default on port 80 - for this case there is an [`user` option to drop the privileges](options/common).
+
+That's all needed to serve files from a static root. Put an `index.html` there and try opening [`http://localhost/`](http://localhost/) in the browser.
+
+The host instance is at the root of each virtual host served by Aerys. By default it serves your content over port 80 on localhost. To configure an alternative binding, have a look [here](../host/interface.html).
+
+The `root($path)` function returns a handler for static file serving and expects a document root path to serve files from as first parameter.
+
+{:.note}
+> Debug mode is most helpful when zend.assertions is set to 1. If it isn't set to 1 in your config, load the server with `php -d zend.assertions=1 vendor/bin/aerys -d -c config.php`.

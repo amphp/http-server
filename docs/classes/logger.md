@@ -1,7 +1,6 @@
 ---
-title: Logging in Aerys
-title_menu: Logger
-layout: docs
+title: Logger
+permalink: /classes/logger
 ---
 
 * Table of Contents

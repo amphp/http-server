@@ -1,7 +1,6 @@
 ---
-title: CommandClient in Aerys
-title_menu: CommandClient
-layout: docs
+title: CommandClient
+permalink: /classes/commandclient
 ---
 
 * Table of Contents

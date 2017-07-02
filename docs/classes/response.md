@@ -1,7 +1,6 @@
 ---
-title: Response interface in Aerys
-title_menu: Response
-layout: docs
+title: Response
+permalink: /classes/response
 ---
 
 * Table of Contents

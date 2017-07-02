@@ -3,7 +3,7 @@ kramdown:
   toc_levels: 2..3
 
 baseurl: "/aerys"
-data_dir: "_data"
+layouts_dir: ".shared/layout"
 
 exclude: ["Gemfile", "Gemfile.lock", "README.md", "vendor"]
 include: [".shared"]
@@ -21,3 +21,18 @@ defaults:
      layout: "docs"
 
 asset_path: "/aerys/.shared/asset"
+
+navigation:
+ - http
+ - websocket
+ - host
+ - io
+ - helpers
+ - logging
+ - options
+ - http-advanced
+ - performance
+ - middlewares
+ - production
+ - more
+ - classes

@@ -1,7 +1,6 @@
 ---
-title: InternalRequest in Aerys
-title_menu: InternalRequest
-layout: docs
+title: InternalRequest
+permalink: /classes/internalrequest
 ---
 
 * Table of Contents

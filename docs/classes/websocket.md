@@ -1,7 +1,6 @@
 ---
-title: Websocket interface in Aerys
-title_menu: Websocket
-layout: docs
+title: WebSocket
+permalink: /classes/bodyparser
 ---
 
 * Table of Contents

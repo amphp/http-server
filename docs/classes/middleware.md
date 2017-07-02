@@ -1,7 +1,6 @@
 ---
-title: Middlewares in Aerys
-title_menu: Middleware
-layout: docs
+title: Middleware
+permalink: /classes/middleware
 ---
 
 * Table of Contents

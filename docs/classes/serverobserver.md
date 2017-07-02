@@ -1,7 +1,6 @@
 ---
-title: ServerObserver interface in Aerys
-title_menu: ServerObserver
-layout: docs
+title: ServerObserver
+permalink: /classes/serverobserver
 ---
 
 * Table of Contents

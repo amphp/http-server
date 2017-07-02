@@ -1,7 +1,6 @@
 ---
-title: Handling WebSocket Handshakes
-title_menu: Handshake
-layout: tutorial
+title: WebSocket Handshakes
+permalink: /websocket/handshake
 ---
 
 ```php

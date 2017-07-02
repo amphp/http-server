@@ -1,7 +1,6 @@
 ---
-title: ParsedBody in Aerys
-title_menu: ParsedBody
-layout: docs
+title: ParsedBody
+permalink: /classes/parsedbody
 ---
 
 * Table of Contents

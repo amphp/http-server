@@ -1,7 +1,6 @@
 ---
-title: Aerys functions
-title_menu: functions
-layout: docs
+title: Functions
+permalink: /classes/functions
 ---
 
 * Table of Contents

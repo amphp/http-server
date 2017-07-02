@@ -1,12 +1,7 @@
 ---
-title: BodyParser in Aerys
-title_menu: BodyParser
-layout: docs
+title: BodyParser
+permalink: /classes/bodyparser
 ---
-
-* Table of Contents
-{:toc}
-
 The `BodyParser` is the `Promise` to the [`ParsedBody`](parsedbody.html).
 
 You typically get a `BodyParser` instance by calling the `parseBody(Request, int $size = 0)` function.
@@ -15,7 +10,7 @@ You typically get a `BodyParser` instance by calling the `parseBody(Request, int
 
 If an instance of this class is yielded or `onResolve()` is used, it will either throw or pass a `ClientException` as first parameter, or return an instance of [`ParsedBody`](parsedbody.html) or pass it as second parameter, when all data has been fetched.
 
-## `\Amp\ByteStream\InputStream::read(): Promise`
+## `Amp\ByteStream\InputStream::read(): Promise`
 
 The returned Promise is resolved with a field name as soon as it starts being processed.
 

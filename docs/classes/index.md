@@ -1,30 +1,27 @@
 ---
-title: Using InternalRequest in Aerys Middlewares
-title_menu: Overview
-layout: docs
+title: Classes
+permalink: /classes/
 ---
+Aerys provides a set of classes and interfaces, as well as [functions](functions.md):
 
-Aerys provides a set of classes and interfaces, as well as [functions](functions.html):
-
-- [`Body`](body-message.html) &mdash; Request body message container
-- [`BodyParser`](bodyparser.html) &mdash; Parser for bodies
-- [`Bootable`](bootable.html) &mdash; Registers entry point for [`Server`](server.html) and [`Logger`](logger.html)
-- [`Bootstrapper`](bootstrapper.html) &mdash; Initializes [`Server`](server.html) (for custom process management)
-- [`Client`](client.html) &mdash; Client connection related information
-- [`CommandClient`](commandclient.html) &mdash; Controls the server master process
-- [`FieldBody`](fieldbody.html) &mdash; Field body message container (via [`BodyParser`](bodyparser.html))
-- [`Host`](host.html) &mdash; Registers a virtual host
-- [`HttpDriver`](httpdriver.html) &mdash; Driver for interaction with the raw socket
-- [`InternalRequest`](internalrequest.html) &mdash; Request related information
-- [`Logger`](logger.html) &mdash; PSR-3 compatible logger
-- [`Middleware`](middleware.html) &mdash; Defines a middleware callable in `do()` method
-- [`Options`](options.html) &mdash; Accessor of options
-- [`ParsedBody`](parsedbody.html) &mdash; Holds request body data in parsed form
-- [`Request`](request.html) &mdash; General request interface for responder callables
-- [`Response`](response.html) &mdash; General response interface for responder callables
-- [`Router`](router.html) &mdash; Manages and accumulates routes
-- [`Server`](server.html) &mdash; The server, tying everything together
-- [`ServerObserver`](serverobserver.html) &mdash; Registers method to be notified upon Server state changes
-- [`Websocket`](websocket.html) &mdash; General websocket connection manager
-- [`Websocket\Endpoint`](websocket-endpoint.html) &mdash; Provides API to communicate with a websocket client
-- [`Websocket\Message`](body-message.html) &mdash; Websocket message container
+- [`BodyParser`](bodyparser.md) &mdash; Parser for bodies
+- [`Bootable`](bootable.md) &mdash; Registers entry point for [`Server`](server.md) and [`Logger`](logger.md)
+- [`Bootstrapper`](bootstrapper.md) &mdash; Initializes [`Server`](server.md) (for custom process management)
+- [`Client`](client.md) &mdash; Client connection related information
+- [`CommandClient`](commandclient.md) &mdash; Controls the server master process
+- [`FieldBody`](fieldbody.md) &mdash; Field body message container (via [`BodyParser`](bodyparser.md))
+- [`Host`](host.md) &mdash; Registers a virtual host
+- [`HttpDriver`](httpdriver.md) &mdash; Driver for interaction with the raw socket
+- [`InternalRequest`](internalrequest.md) &mdash; Request related information
+- [`Logger`](logger.md) &mdash; PSR-3 compatible logger
+- [`Middleware`](middleware.md) &mdash; Defines a middleware callable in `do()` method
+- [`Options`](options.md) &mdash; Accessor of options
+- [`ParsedBody`](parsedbody.md) &mdash; Holds request body data in parsed form
+- [`Request`](request.md) &mdash; General request interface for responder callables
+- [`Response`](response.md) &mdash; General response interface for responder callables
+- [`Router`](router.md) &mdash; Manages and accumulates routes
+- [`Server`](server.md) &mdash; The server, tying everything together
+- [`ServerObserver`](serverobserver.md) &mdash; Registers method to be notified upon Server state changes
+- [`Websocket`](websocket.md) &mdash; General websocket connection manager
+- [`Websocket\Endpoint`](websocket-endpoint.md) &mdash; Provides API to communicate with a websocket client
+- [`Websocket\Message`](body-message.md) &mdash; Websocket message container

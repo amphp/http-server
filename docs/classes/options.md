@@ -1,7 +1,6 @@
 ---
-title: Options and the Options class in Aerys
-title_menu: Options
-layout: docs
+title: Options
+permalink: /classes/options
 ---
 
 * Table of Contents

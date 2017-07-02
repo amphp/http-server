@@ -1,7 +1,6 @@
 ---
-title: HttpDriver in Aerys
-title_menu: HttpDriver
-layout: docs
+title: HttpDriver
+permalink: /classes/httpdriver
 ---
 
 * Table of Contents

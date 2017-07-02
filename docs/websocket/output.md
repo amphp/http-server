@@ -1,7 +1,6 @@
 ---
-title: Pushing Data to Clients with WebSockets
-title_menu: Pushing Data to Clients
-layout: tutorial
+title: WebSocket Output
+permalink: /websocket/output
 ---
 
 ```php

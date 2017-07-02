@@ -1,10 +1,8 @@
 ---
-title: Aerys Helpers
-title_menu: Helpers
-layout: tutorial
+title: Addons
+permalink: /addons
 ---
-
-There are certain helpers in separate repositories which you can include via a simple `composer.json` entry.
+There are separate repositories which you can include via a simple `composer.json` entry.
 
 They usually reduce common tasks to simple function calls with an easy API.
 

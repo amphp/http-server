@@ -1,7 +1,6 @@
 ---
-title: Bootstrapper in Aerys
-title_menu: Bootstrapper
-layout: docs
+title: Bootstrapper
+permalink: /classes/bootstrapper
 ---
 
 * Table of Contents

@@ -1,7 +1,6 @@
 ---
-title: Server in Aerys
-title_menu: Server
-layout: docs
+title: Server
+permalink: /classes/server
 ---
 
 * Table of Contents

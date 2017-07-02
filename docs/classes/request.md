@@ -1,7 +1,6 @@
 ---
-title: Request interface in Aerys
-title_menu: Request
-layout: docs
+title: Request
+permalink: /classes/request
 ---
 
 * Table of Contents
