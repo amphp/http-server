@@ -17,6 +17,7 @@ class Bootstrapper {
     /**
      * Bootstrap a server from command line options.
      *
+     * @internal
      * @param PsrLogger $logger
      * @param \Aerys\Console $console
      * @return \Generator

@@ -1,0 +1,91 @@
+---
+layout: base
+---
+
+<style>
+	.sidebar-sub label { font-weight: bold; display: block; cursor: pointer; color: #4083C9; }
+	.sidebar-sub label:hover { text-decoration: underline; }
+	.sidebar-sub label .fa { float: right; line-height: 21px; }
+	.sidebar-sub input:checked ~ label .fa::before { content: "\f106"; /* angle-up */ }
+	.sidebar-sub-menu { display: none; }
+	.sidebar-sub input { display: none; }
+	.sidebar-sub input:checked ~ .sidebar-sub-menu { display: block; }
+	.sidebar-sub-menu li { margin-left: 15px; }
+</style>
+
+<div class="column-left dark"></div>
+<div class="column-main docs" style="display: flex; flex-direction: row; justify-content: center; align-items: stretch;">
+	<nav id="sidebar" class="dark" style="border-right: 1px solid rgba(0,0,0,.05); width: 200px; flex: 0 0 auto; padding-right: 1.5em; margin-right: 1.5em;">
+		{% assign url = page.url | slice: -1 %}
+		{% if url == "/" %}
+		{% assign url = page.url | append: "index.html" %}
+		{% else %}
+		{% assign url = page.url %}
+		{% endif %}
+
+		{% assign url_parts = url | split: '/' | slice: 0, 2 %}
+		{% assign url_parts_size = url_parts | size %}
+		{% assign base_url = url | split: '/' | slice: 0, 1 | join: '/' | append: "/" %}
+		{% assign sub_url = url_parts | join: '/' %}
+		{% assign pages = site.pages | sort: "url" %}
+		{% assign last_sub = "" %}
+		{% assign closed = "" %}
+
+		<ul>
+			{% for node in pages %}
+			{% assign node_url = node.url %}
+			{% if node_url == "/" %}
+			{% assign node_url = node.url | append: "index.html" %}
+			{% endif %}
+
+			{% assign node_url_parts = node_url | split: '/' %}
+			{% assign node_url_parts_size = node_url_parts | size %}
+			{% assign filename = node_url_parts | last %}
+
+			{% assign node_title = node.url | split: '/' | slice: 1, 1 | first | capitalize %}
+
+			{% if node_title == ".shared" or node_title == "Humans.txt" %}{% assign node_url_parts_size = -1 %}{% endif %}
+
+			{% if node_url contains base_url and url_parts_size == node_url_parts_size %}
+			{% if closed == "" %}
+		</ul></li>
+		{% assign closed = "1" %}
+		{% endif %}
+
+		<li {% if node.url == page.url %}class="active"{% endif %}><a href='{{site.baseurl}}{{node.url}}'>{% if node.title_menu %}{{node.title_menu}}{% else %}{{node.title}}{% endif %}</a></li>
+		{% elsif node.url contains base_url and url_parts_size < node_url_parts_size and node.layout != "tutorial" %}
+		{% if node_title != last_sub %}
+		{% if last_sub != "" %}
+		{% assign closed = "1" %}
+	</ul></li>
+	{% endif %}
+
+	<li class="sidebar-sub">
+		<input type="checkbox" id="sidebar-sub-menu-{{node_title}}" {% if node.url contains sub_url %}checked="checked"{% endif %}>
+
+		<label for="sidebar-sub-menu-{{node_title}}">
+			{{node_title}}
+			<i class="fa fa-angle-down"></i>
+		</label>
+
+		<ul class="sidebar-sub-menu">
+			{% assign closed = "" %}
+			{% endif %}
+
+			<li {% if node.url == page.url %}class="active"{% endif %}><a href='{{site.baseurl}}{{node.url}}'>{% if node.title_menu %}{{node.title_menu}}{% else %}{{node.title}}{% endif %}</a></li>
+
+			{% assign last_sub = node_title %}
+			{% endif %}
+			{% endfor %}
+
+			{% if closed == "" %}
+		</ul></li>
+		{% assign closed = "1" %}
+		{% endif %}
+
+	</ul>
+	</nav>
+
+    {{content}}
+</div>
+<div class="column-right"></div>
