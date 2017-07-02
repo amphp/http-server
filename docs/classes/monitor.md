@@ -30,7 +30,7 @@ class RequestCountingMonitor implements Aerys\Monitor, Aerys\Bootable {
 		$this->requestCounter++;
 		$res->stream("<html><body><h1>MyMonitor</h1><ul>");
 		foreach($server->monitor()["hosts"] as $id => $host) {
-			$res->stream("<li>$id: {$host[self::class][0]["requestCounter"]}</li>");
+			$res->stream("<li>$id: {$host["handlers"][self::class][0]["requestCounter"]}</li>");
         }
         $res->end("</ul></body></html>")
 	}

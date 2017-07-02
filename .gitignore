@@ -4,3 +4,4 @@ test/junk
 composer.lock
 vendor
 docs/_site
+docs/Gemfile.lock

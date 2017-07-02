@@ -21,11 +21,3 @@ defaults:
      layout: "docs"
 
 asset_path: "/aerys/.shared/asset"
-
-navigation:
- - event-loop
- - promises
- - coroutines
- - iterators
- - cancellation
- - utils
