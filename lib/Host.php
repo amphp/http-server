@@ -132,58 +132,6 @@ class Host {
         return $this;
     }
 
-    /**
-     * Redirect all requests that aren't serviced by an action callable.
-     *
-     * NOTE: the redirect URI must match the format "scheme://hostname.tld" (with optional port and path).
-     *
-     * The following example redirects all unencrypted requests to the equivalent
-     * encrypted resource:
-     *
-     *      <?php
-     *      // Redirect http://mysite.com to https://mysite.com
-     *      $host = new Aerys\Host;
-     *      $host->setName("mysite.com");
-     *      $host->redirect("https://mysite.com");
-     *
-     * @param string $absoluteUri The location to which we wish to redirect
-     * @param int $redirectCode The HTTP redirect status code (300-399)
-     * @return self
-     */
-    public function redirect(string $absoluteUri, int $redirectCode = 307): Host {
-        if (!$url = @parse_url($absoluteUri)) {
-            throw new \Error(
-                "Invalid redirect URI"
-            );
-        }
-        if (empty($url["scheme"]) || ($url["scheme"] !== "http" && $url["scheme"] !== "https")) {
-            throw new \Error(
-                "Invalid redirect URI; \"http\" or \"https\" scheme required"
-            );
-        }
-        if (isset($url["query"]) || isset($url["fragment"])) {
-            throw new \Error(
-                "Invalid redirect URI; Host redirect must not contain a query or fragment component"
-            );
-        }
-
-        $redirectUri = rtrim($absoluteUri, "/") . "/";
-
-        if ($redirectCode < 300 || $redirectCode > 399) {
-            throw new \Error(
-                "Invalid redirect code; code in the range 300..399 required"
-            );
-        }
-
-        $this->redirect = static function (Request $req, Response $res) use ($redirectUri, $redirectCode) {
-            $res->setStatus($redirectCode);
-            $res->setHeader("location", $redirectUri . \ltrim($req->getUri(), "/"));
-            $res->end();
-        };
-
-        return $this;
-    }
-
     public static function separateIPv4Binding(): bool {
         static $separateIPv6 = null;
 
