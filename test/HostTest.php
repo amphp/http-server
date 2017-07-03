@@ -2,12 +2,9 @@
 
 namespace Aerys\Test;
 
-use Aerys\Client;
 use Aerys\Host;
 use Aerys\Http1Driver;
 use Aerys\Http2Driver;
-use Aerys\StandardRequest;
-use Aerys\StandardResponse;
 use PHPUnit\Framework\TestCase;
 
 class HostTest extends TestCase {
@@ -51,62 +48,9 @@ class HostTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Invalid redirect URI
-     */
-    public function testBadRedirectUrl() {
-        $this->getHost()->redirect(":");
-    }
-
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Invalid redirect URI; "http" or "https" scheme required
-     */
-    public function testBadRedirectScheme() {
-        $this->getHost()->redirect("ssl://foo");
-    }
-
-
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Invalid redirect URI; Host redirect must not contain a query or fragment component
-     */
-    public function testBadRedirectPath() {
-        $this->getHost()->redirect("http://localhost/?foo");
-    }
-
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Invalid redirect code; code in the range 300..399 required
-     */
-    public function testBadRedirectCode() {
-        $this->getHost()->redirect("http://localhost", 201);
-    }
-
-    /**
-     * @expectedException \Error
      * @expectedExceptionMessage Impossible to define two HttpDriver instances for one same Host; an instance of Aerys\Http1Driver has already been defined as driver
      */
     public function testDriverRedefine() {
         $this->getHost()->use(new Http1Driver)->use(new Http2Driver);
-    }
-
-
-    public function testSuccessfulRedirect() {
-        $actions = $this->getHost()->redirect("http://localhost", 301)->export()["actions"];
-        $this->assertEquals(1, count($actions));
-        $req = new class extends StandardRequest {
-            public function __construct() {
-            }
-            public function getUri(): string {
-                return "/foo";
-            }
-        };
-        $actions[0]($req, new StandardResponse((function () use (&$body) {
-            $headers = yield;
-            $this->assertEquals("http://localhost/foo", $headers["location"][0]);
-            $this->assertEquals(301, $headers[":status"]);
-            $body = yield === null;
-        })(), new Client));
-        $this->assertTrue($body);
     }
 }

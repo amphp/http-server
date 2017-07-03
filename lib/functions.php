@@ -93,6 +93,37 @@ function root(string $docroot, array $options = []): Bootable {
 }
 
 /**
+ * Create a redirect handler callable for use in a Host instance.
+ *
+ * @param string $absoluteUri Absolute URI prefix to redirect to
+ * @param int $redirectCode HTTP status code to set
+ * @return callable Responder callable
+ */
+function redirect(string $absoluteUri, int $redirectCode = 307): callable {
+    if (!$url = @parse_url($absoluteUri)) {
+        throw new \Error("Invalid redirect URI");
+    }
+    if (empty($url["scheme"]) || ($url["scheme"] !== "http" && $url["scheme"] !== "https")) {
+        throw new \Error("Invalid redirect URI; \"http\" or \"https\" scheme required");
+    }
+    if (isset($url["query"]) || isset($url["fragment"])) {
+        throw new \Error("Invalid redirect URI; Host redirect must not contain a query or fragment component");
+    }
+
+    $redirectUri = rtrim($absoluteUri, "/") . "/";
+
+    if ($redirectCode < 300 || $redirectCode > 399) {
+        throw new \Error("Invalid redirect code; code in the range 300..399 required");
+    }
+
+    return function (Request $req, Response $res) use ($redirectUri, $redirectCode) {
+        $res->setStatus($redirectCode);
+        $res->setHeader("location", $redirectUri . \ltrim($req->getUri(), "/"));
+        $res->end();
+    };
+}
+
+/**
  * Try parsing a the Request's body with either x-www-form-urlencoded or multipart/form-data.
  *
  * @param Request $req

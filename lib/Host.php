@@ -8,7 +8,6 @@ class Host {
     private $interfaces = null;
     private $crypto = [];
     private $actions = [];
-    private $redirect;
     private $httpDriver;
 
     public function __construct() {
@@ -153,11 +152,6 @@ class Host {
      * @return array
      */
     public function export(): array {
-        $actions = $this->actions;
-        if ($this->redirect) {
-            $actions[] = $this->redirect;
-        }
-
         $defaultPort = $this->crypto ? 443 : 80;
 
         if (isset($this->interfaces)) {
@@ -173,7 +167,7 @@ class Host {
             "interfaces" => $interfaces,
             "name"       => $this->name,
             "crypto"     => $this->crypto,
-            "actions"    => $actions,
+            "actions"    => $this->actions,
             "httpdriver" => $this->httpDriver,
         ];
     }
