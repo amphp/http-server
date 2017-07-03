@@ -38,8 +38,8 @@ Most importantly, if the request handler callable or the WebSocket handlers are 
 {:.warning}
 > DO NOT USE BLOCKING I/O FUNCTIONS IN AERYS!
 
-Nearly every function built-in in PHP is doing blocking I/O, that means, the executing thread (equivalent to the process in the case of Aerys) will effectively be halted until the response is received. A few examples of such functions: `mysqli_query`, `file_get_contents`, `usleep` and many more.
+Nearly every built-in function of PHP is doing blocking I/O, that means, the executing thread (equivalent to the process in the case of Aerys) will effectively be halted until the response is received. A few examples of such functions: `mysqli_query`, `file_get_contents`, `usleep` and many more.
 
-A good rule of thumb is: every function doing I/O is doing it in a blocking way, unless you know for sure it doesn't.
+A good rule of thumb is: Every function doing I/O is doing it in a blocking way, unless you know for sure it doesn't.
 
-Thus there are libraries like [amphp/mysql](../../mysql), [amphp/redis](../../redis) (and more), built on top of Amp providing non-blocking I/O. You should use these instead of the built-in functions.
+Thus there are [libraries built on top of Amp](http://amphp.org/packages) providing non-blocking I/O. You should use these instead of the built-in functions.
