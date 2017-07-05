@@ -2,8 +2,7 @@
 
 namespace Aerys;
 
-use Amp as amp;
-use Amp\File as file;
+use Amp\File;
 use Amp\Loop;
 
 class Root implements ServerObserver {
@@ -43,7 +42,7 @@ class Root implements ServerObserver {
      * @param \Amp\File\Driver $filesystem Optional filesystem driver
      * @throws \Error On invalid root path
      */
-    public function __construct(string $root, file\Driver $filesystem = null) {
+    public function __construct(string $root, File\Driver $filesystem = null) {
         $root = \str_replace("\\", "/", $root);
         if (!(\is_readable($root) && \is_dir($root))) {
             throw new \Error(
@@ -51,7 +50,7 @@ class Root implements ServerObserver {
             );
         }
         $this->root = \rtrim(\realpath($root), "/");
-        $this->filesystem = $filesystem ?: file\filesystem();
+        $this->filesystem = $filesystem ?: File\filesystem();
         $this->multipartBoundary = \uniqid("", true);
         $this->cacheWatcher = Loop::repeat(1000, function () {
             $this->now = $now = time();
@@ -241,7 +240,7 @@ class Root implements ServerObserver {
 
     private function lookup(string $path): \Generator {
         $fileInfo = new class {
-            use amp\Struct;
+            use \Amp\Struct;
             public $exists;
             public $path;
             public $size;
@@ -355,7 +354,7 @@ class Root implements ServerObserver {
         $response->end();
     }
 
-    private function checkPreconditions(Request $request, int $mtime, string $etag) {
+    private function checkPreconditions(Request $request, int $mtime, string $etag): int {
         $ifMatch = $request->getHeader("If-Match");
         if ($ifMatch && \stripos($ifMatch, $etag) === false) {
             return self::PRECOND_FAILED;
@@ -495,7 +494,7 @@ class Root implements ServerObserver {
         }
 
         $range = new class {
-            use amp\Struct;
+            use \Amp\Struct;
             public $ranges;
             public $boundary;
             public $contentType;
@@ -506,7 +505,7 @@ class Root implements ServerObserver {
         return $range;
     }
 
-    private function doRangeResponse($range, $fileInfo, Response $response) {
+    private function doRangeResponse($range, $fileInfo, Response $response): \Generator {
         $this->assignCommonHeaders($fileInfo, $response);
         $range->contentType = $mime = $this->selectMimeTypeFromPath($fileInfo->path);
 
@@ -538,14 +537,13 @@ class Root implements ServerObserver {
         $response->end();
     }
 
-    private function sendNonRange(file\Handle $handle, Response $response): \Generator {
-        while (!$handle->eof()) {
-            $chunk = yield $handle->read(8192);
+    private function sendNonRange(File\Handle $handle, Response $response): \Generator {
+        while (($chunk = yield $handle->read()) !== null) {
             yield $response->write($chunk);
         }
     }
 
-    private function sendSingleRange(file\Handle $handle, Response $response, int $startPos, int $endPos): \Generator {
+    private function sendSingleRange(File\Handle $handle, Response $response, int $startPos, int $endPos): \Generator {
         $bytesRemaining = $endPos - $startPos + 1;
         $handle->seek($startPos);
         while ($bytesRemaining) {
@@ -580,7 +578,7 @@ class Root implements ServerObserver {
      * @param mixed $value The option value to assign
      * @throws \Error On unrecognized option key
      */
-    public function setOption($option, $value) {
+    public function setOption(string $option, $value) {
         switch ($option) {
             case "indexes":
                 $this->setIndexes($value);

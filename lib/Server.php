@@ -268,7 +268,7 @@ class Server implements Monitor {
         }
     }
 
-    private function generateBindableAddressContextMap() {
+    private function generateBindableAddressContextMap(): array {
         $addrCtxMap = [];
         $addresses = $this->vhosts->getBindableAddresses();
         $tlsBindings = $this->vhosts->getTlsBindingsByAddress();
@@ -559,7 +559,7 @@ class Server implements Monitor {
         $client->requestParser->send($data);
     }
 
-    private function onParseEmit(Client $client, $eventType, $parseResult, $errorStruct = null) {
+    private function onParseEmit(Client $client, int $eventType, array $parseResult, $error = null) {
         switch ($eventType) {
             case HttpDriver::RESULT:
                 $this->onParsedMessageWithoutEntity($client, $parseResult);
@@ -577,7 +577,7 @@ class Server implements Monitor {
                 $this->onEntitySizeWarning($client, $parseResult);
                 break;
             case HttpDriver::ERROR:
-                $this->onParseError($client, $parseResult, $errorStruct);
+                $this->onParseError($client, $parseResult, $error);
                 break;
             default:
                 assert(false, "Unexpected parser result code encountered");
@@ -621,7 +621,7 @@ class Server implements Monitor {
         $deferred->fail(new ClientSizeException);
     }
 
-    private function onParseError(Client $client, array $parseResult, string $error) {
+    private function onParseError(Client $client, array $parseResult, $error) {
         $this->clearKeepAliveTimeout($client);
 
         if ($client->bodyEmitters) {

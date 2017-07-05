@@ -4,7 +4,7 @@ namespace Aerys\Internal;
 
 use Amp\InvalidYieldError;
 
-function validateFilterHeaders(\Generator $generator, array $headers) {
+function validateFilterHeaders(\Generator $generator, array $headers): bool {
     if (!isset($headers[":status"])) {
         throw new InvalidYieldError(
             $generator,
