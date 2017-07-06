@@ -10,24 +10,24 @@ permalink: /classes/httpdriver
 
 It is only possible to have one driver per **port**. There are some few possible applications of it (e.g. a PROXY protocol wrapping HTTP/1.1 communication). There are currently two classes implementing it `Http1Driver` (for HTTP/1) and `Http2Driver` (for HTTP/2).
 
-## `setup(callable $parseEmitter, callable $responseWriter)`
+## `setup(array $parseEmitters, callable $responseWriter)`
 
 Called upon initialization (possibly even before [`Bootable::boot`](bootable.html) was called).
 
-`$parseEmitter` is a `callable(Client $client, int $eventType, array $parseResult, string $errorStruct = null)`.
+`$parseEmitter` is an array of `callable(Client $client, array $parseResult)`, keyed by `HttpDriver` constants.
 
 In every case the `$parseResult` array needs to contain an `"id"` key with an identifier (unique during the requests lifetime) for the specific request.
 
 A _request initializing_ `$parseResult` array requires a `"trace"` key (raw string trace or array with `[field, value]` header pairs), with optional `"uri"` (string &mdash; default: `"/"`), `"method"` (string &mdash; default: `"GET"`), `"protocol"` (string &mdash; default: `"1.0"`) and `"headers"` (array with `[field, value]` pairs &mdash; default: `[]`).
 
-Depending on `$eventType` value, different `$parseResult` contents are expected:
+Depending on the callback type (as identified by the key in `$parseEmitter` array), different `$parseResult` contents are expected:
 
 - `HttpDriver::RESULT`: the request has no entity body and `$parseResult` must be _request initializing_.
 - `HttpDriver::ENTITY_HEADERS`: the request will be followed by subsequent body (`HttpDriver::ENTITY_PART` / `HttpDriver::ENITITY_RESULT`) and `$parseResult` must be _request initializing_.
 - `HttpDriver::ENTITY_PART`: contains the next part of the entity body, inside a `"body"` key inside the `$parseResult` array.
 - `HttpDriver::ENTITY_RESULT`: signals the end of the entity body
-- `HttpDriver::ERROR`: `$parseResult` must be _request initializing_ if the Request has not started yet; `$errorStruct` shall contain a short string message to generate the error.
 - `HttpDriver::SIZE_WARNING`: to be used when the body size exceeds the current size limits (by default `Options->maxBodySize`, might have been upgraded via `upgradeBodySize()`). Before emitting this, all the data up to the limit **must** be emitted via `HttpDriver::ENTITY_PART` first.
+- `HttpDriver::ERROR`: `$parseResult` must be _request initializing_ if the Request has not started yet; there are two additional trailing arguments to this callback: a HTTP status code followed by a string error message.
 
 `$responseWriter` is a `callable(Client $client, bool $final = false)`, supposed to be called after updates to [`$client->writeBuffer`](client.html) with the `$final` parameter signaling the response end [this is important for managing timeouts and counters].
 

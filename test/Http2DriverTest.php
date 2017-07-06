@@ -5,11 +5,15 @@ namespace Aerys\Test;
 use Aerys\Client;
 use Aerys\HPack;
 use Aerys\Http2Driver;
+use Aerys\HttpDriver;
 use Aerys\InternalRequest;
 use Aerys\Options;
 use Amp\PHPUnit\TestCase;
 
 class Http2DriverTest extends TestCase {
+    const HTTP_ENTITY_EMITTERS = HttpDriver::ENTITY_HEADERS | HttpDriver::ENTITY_PART | HttpDriver::ENTITY_RESULT;
+    const HTTP_DATA_EMITTERS = HttpDriver::RESULT | self::HTTP_ENTITY_EMITTERS;
+
     public function packFrame($data, $type, $flags, $stream = 0) {
         return substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
     }
@@ -52,15 +56,14 @@ class Http2DriverTest extends TestCase {
             }
         };
 
-        $emitCallback = function (...$emitStruct) use (&$client, &$invoked, &$parseResult, &$body) {
-            list(, $resultCode, $tmpResult) = $emitStruct;
+        $emitCallback = function ($client, $tmpResult) use (&$invoked, &$parseResult, &$body) {
             if (!$invoked++) {
                 $parseResult = $tmpResult;
             }
             $body .= $tmpResult["body"];
             $client->bodyEmitters[$tmpResult["id"]] = true; // is used to verify whether headers were sent
         };
-        $driver->setup($emitCallback, $this->createCallback(0), $this->createCallback(0));
+        $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback], $this->createCallback(0));
 
         for ($mode = 0; $mode <= 1; $mode++) {
             $invoked = 0;
@@ -157,11 +160,7 @@ class Http2DriverTest extends TestCase {
             }
         };
 
-        $driver->setup(
-            function () { /* Ignore calls to this function */ },
-            $this->createCallback(0),
-            $this->createCallback(0)
-        );
+        $driver->setup([self::HTTP_DATA_EMITTERS => function () {}], $this->createCallback(0));
 
         return $driver;
     }

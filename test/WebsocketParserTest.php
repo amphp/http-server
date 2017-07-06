@@ -256,8 +256,8 @@ class WebsocketParserTest extends TestCase {
                     $this->client->httpDriver = $this;
                 }
 
-                public function setup(callable $emit, callable $error, callable $write) {
-                    $this->emit = $emit;
+                public function setup(array $parseEmitters, callable $write) {
+                    $this->emit = $parseEmitters[HttpDriver::RESULT];
                 }
 
                 public function filters(InternalRequest $ireq, array $filters): array {
@@ -277,7 +277,7 @@ class WebsocketParserTest extends TestCase {
                 }
 
                 public function emit() {
-                    ($this->emit)($this->client, HttpDriver::RESULT, [
+                    ($this->emit)($this->client, [
                         "id" => 0,
                         "protocol" => "1.1",
                         "method" => "GET",
@@ -296,11 +296,7 @@ class WebsocketParserTest extends TestCase {
                 }
             };
             $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
-            $driver->setup(
-                (new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server),
-                $this->createCallback(0),
-                $this->createCallback(0)
-            );
+            $driver->setup((function() { return $this->createHttpDriverHandlers(); })->call($server), $this->createCallback(0));
 
             $ws = $this->createMock(Websocket::class);
             $ws->expects($this->exactly(1))

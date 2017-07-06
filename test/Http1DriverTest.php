@@ -13,6 +13,8 @@ use Amp\PHPUnit\TestCase;
 use const Aerys\HTTP_STATUS;
 
 class Http1DriverTest extends TestCase {
+    const HTTP_ENTITY_EMITTERS = HttpDriver::ENTITY_HEADERS | HttpDriver::ENTITY_PART | HttpDriver::ENTITY_RESULT;
+    const HTTP_DATA_EMITTERS = HttpDriver::RESULT | self::HTTP_ENTITY_EMITTERS;
 
     /**
      * @dataProvider provideUnparsableRequests
@@ -23,9 +25,9 @@ class Http1DriverTest extends TestCase {
         $parseResult = null;
         $errorMsg = null;
 
-        $emitCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
+        $emitCallback = function (...$emitStruct) use (&$invoked, &$parseResult) {
             $invoked++;
-            list(, $resultCode, $parseResult) = $emitStruct;
+            list(, $parseResult) = $emitStruct;
         };
 
         $errorCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
@@ -39,7 +41,7 @@ class Http1DriverTest extends TestCase {
             $client->options->$key = $val;
         }
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, $errorCallback, function () {});
+        $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback, HttpDriver::ERROR => $errorCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
         $parser->send($unparsable);
 
@@ -57,9 +59,9 @@ class Http1DriverTest extends TestCase {
         $parseResult = null;
         $errorMsg = null;
 
-        $emitCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
+        $emitCallback = function (...$emitStruct) use (&$invoked, &$parseResult) {
             $invoked++;
-            list(, $resultCode, $parseResult, $errorMsg) = $emitStruct;
+            list(, $parseResult) = $emitStruct;
         };
 
         $errorCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
@@ -73,7 +75,7 @@ class Http1DriverTest extends TestCase {
             $client->options->$key = $val;
         }
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, $errorCallback, $this->createCallback(0));
+        $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback, HttpDriver::ERROR => $errorCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
 
         for ($i = 0, $c = strlen($unparsable); $i < $c; $i++) {
@@ -98,14 +100,14 @@ class Http1DriverTest extends TestCase {
 
         $emitCallback = function (...$emitStruct) use (&$invoked, &$parseResult, &$body) {
             $invoked++;
-            list(, $resultCode, $parseResult) = $emitStruct;
+            list(, $parseResult) = $emitStruct;
             $body .= $parseResult["body"];
         };
 
         $client = new Client;
         $client->options = new Options;
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, $this->createCallback(0), $this->createCallback(0));
+        $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
         $parser->send($msg);
 
@@ -128,14 +130,14 @@ class Http1DriverTest extends TestCase {
 
         $emitCallback = function (...$emitStruct) use (&$invoked, &$parseResult, &$body) {
             $invoked++;
-            list(, $resultCode, $parseResult) = $emitStruct;
+            list(, $parseResult) = $emitStruct;
             $body .= $parseResult["body"];
         };
 
         $client = new Client;
         $client->options = new Options;
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, $this->createCallback(0), $this->createCallback(0));
+        $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
@@ -164,16 +166,16 @@ class Http1DriverTest extends TestCase {
         $invoked = 0;
         $body = "";
 
-        $emitCallback = function (...$emitStruct) use (&$invoked, &$body) {
+        $emitCallback = function ($client, $parseResultArr) use (&$invoked, &$body) {
             $invoked++;
-            $body .= $emitStruct[2]["body"];
+            $body .= $parseResultArr["body"];
         };
 
         $client = new Client;
         $client->options = new Options;
         $client->options->ioGranularity = 1;
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, $this->createCallback(0), $this->createCallback(0));
+        $driver->setup([self::HTTP_ENTITY_EMITTERS => $emitCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
@@ -185,36 +187,31 @@ class Http1DriverTest extends TestCase {
     }
 
     public function testStreamingBodyParseEmit() {
-        $body = "";
         $invoked = 0;
-        $emitCallback = function (...$emitStruct) use (&$invoked, &$body) {
-            $invoked++;
-            list(, $parseCode, $parseResultArr) = $emitStruct;
-            switch ($invoked) {
-                case 1:
-                    $this->assertSame(HttpDriver::ENTITY_HEADERS, $parseCode);
-                    $this->assertSame("", $parseResultArr["body"]);
-                    break;
-                case 2:
-                    $this->assertSame(HttpDriver::ENTITY_PART, $parseCode);
+        $emitCallbacks = [
+            HttpDriver::ENTITY_HEADERS => function ($client, $parseResultArr) use (&$invoked) {
+                $this->assertSame(++$invoked, 1);
+                $this->assertSame("", $parseResultArr["body"]);
+            },
+            HttpDriver::ENTITY_PART => function ($client, $parseResultArr) use (&$invoked) {
+                if (++$invoked == 2) {
                     $this->assertSame("1\r\n", $parseResultArr["body"]);
-                    break;
-                case 3:
-                    $this->assertSame(HttpDriver::ENTITY_PART, $parseCode);
+                } else {
+                    $this->assertSame($invoked, 3);
                     $this->assertSame("2", $parseResultArr["body"]);
-                    break;
-                case 4:
-                    $this->assertSame(HttpDriver::ENTITY_RESULT, $parseCode);
-                    break;
-            }
-            $body .= $emitStruct[2]["body"];
-        };
+                }
+            },
+            HttpDriver::ENTITY_RESULT => function ($client, $parseResultArr) use (&$invoked) {
+                $this->assertSame(++$invoked, 4);
+                $this->assertSame("", $parseResultArr["body"]);
+            },
+        ];
 
         $client = new Client;
         $client->options = new Options;
         $client->options->ioGranularity = 1;
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, $this->createCallback(0), $this->createCallback(0));
+        $driver->setup($emitCallbacks, $this->createCallback(0));
         $parser = $driver->parser($client);
         $headers =
             "POST /post-endpoint HTTP/1.1\r\n" .
@@ -227,7 +224,6 @@ class Http1DriverTest extends TestCase {
         $parser->send($part2);
 
         $this->assertSame(4, $invoked);
-        $this->assertSame("1\r\n2", $body);
     }
 
     public function testChunkedBodyParseEmit() {
@@ -248,16 +244,16 @@ class Http1DriverTest extends TestCase {
         $expectedBody = "woot!test";
         $invoked = 0;
         $body = "";
-        $emitCallback = function (...$emitStruct) use (&$invoked, &$body) {
+        $emitCallback = function ($client, $parseResultArr) use (&$invoked, &$body) {
             $invoked++;
-            $body .= $emitStruct[2]["body"];
+            $body .= $parseResultArr["body"];
         };
 
         $client = new Client;
         $client->options = new Options;
         $client->options->ioGranularity = 1;
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, $this->createCallback(0), $this->createCallback(0));
+        $driver->setup([self::HTTP_ENTITY_EMITTERS => $emitCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
 
         for ($i=0, $c=strlen($msg);$i<$c;$i++) {
@@ -525,80 +521,71 @@ class Http1DriverTest extends TestCase {
         return $return;
     }
 
-    public function testUpgradeBodySizeContentLength() {
+    /**
+     * @dataProvider provideUpgradeBodySizeData
+     */
+    public function testUpgradeBodySizeContentLength($data, $payload) {
         $invoked = 0;
         $parseResult = null;
         $body = "";
         $client = new Client;
 
-        $emitCallback = function (...$emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
-            $client->pendingResponses = 1;
-            $invoked++;
-            list(, $resultCode, $parseResult) = $emitStruct;
-            if ($resultCode != HttpDriver::SIZE_WARNING) {
+        $emitCallbacks = [
+            self::HTTP_ENTITY_EMITTERS => function (...$emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
+                $client->pendingResponses = 1;
+                $invoked++;
+                list(, $parseResult) = $emitStruct;
                 $body .= $parseResult["body"];
-            }
-        };
+            },
+            HttpDriver::SIZE_WARNING => function () use (&$expectsWarning) {
+                $this->assertTrue($expectsWarning);
+                $expectsWarning = false;
+            },
+        ];
 
         $client->options = new Options;
         $client->options->maxBodySize = 4;
         $client->readWatcher = Loop::defer(function () {}); // dummy watcher
         $driver = new Http1Driver;
-        $driver->setup($emitCallback, $this->createCallback(0), $this->createCallback(0));
+        $driver->setup($emitCallbacks, $this->createCallback(0));
         $parser = $driver->parser($client);
         $ireq = new InternalRequest;
         $ireq->client = $client;
         $client->bodyEmitters = ["set"];
         $client->requestParser = $parser;
-        $payload = "abcdefghijklmnopqrstuvwxyz";
-        $data = "POST / HTTP/1.1\r\nHost:localhost\r\nContent-Length: 26\r\n\r\n$payload";
+
+        $expectsWarning = true;
         $parser->send($data);
+        $this->assertFalse($expectsWarning);
 
         $this->assertEquals(4, \strlen($body));
         $ireq->maxBodySize = 10;
+
+        $expectsWarning = true;
         $driver->upgradeBodySize($ireq);
+        $this->assertFalse($expectsWarning);
+
         $this->assertEquals(10, \strlen($body));
         $ireq->maxBodySize = 26;
+
         $driver->upgradeBodySize($ireq);
         $this->assertSame($payload, $body);
+
+        $this->assertSame($invoked, 5 /* headers + 3*part + result */);
     }
 
-    public function testUpgradeBodySizeStream() {
-        $invoked = 0;
-        $parseResult = null;
-        $body = "";
-        $client = new Client;
+    public function provideUpgradeBodySizeData() {
+        $body = "abcdefghijklmnopqrstuvwxyz";
 
-        $emitCallback = function (...$emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
-            $client->pendingResponses = 1;
-            $invoked++;
-            list(, $resultCode, $parseResult) = $emitStruct;
-            if ($resultCode != HttpDriver::SIZE_WARNING) {
-                $body .= $parseResult["body"];
-            }
-        };
+        $payload = $body;
+        $data = "POST / HTTP/1.1\r\nHost:localhost\r\nContent-Length: 26\r\n\r\n$payload";
+        $return[] = [$data, $body];
 
-        $client->options = new Options;
-        $client->options->maxBodySize = 4;
-        $client->readWatcher = Loop::defer(function () {}); // dummy watcher
-        $driver = new Http1Driver;
-        $driver->setup($emitCallback, $this->createCallback(0), $this->createCallback(0));
-        $parser = $driver->parser($client);
-        $ireq = new InternalRequest;
-        $ireq->client = $client;
-        $client->bodyEmitters = ["set"];
-        $client->requestParser = $parser;
         $payload = "2\r\nab\r\n3\r\ncde\r\n5\r\nfghij\r\n10\r\nklmnopqrstuvwxyz\r\n0\r\n\r\n";
         $data = "POST / HTTP/1.1\r\nHost:localhost\r\nTransfer-Encoding: chunked\r\n\r\n$payload";
-        $parser->send($data);
+        $return[] = [$data, $body];
 
-        $this->assertEquals(4, \strlen($body));
-        $ireq->maxBodySize = 10;
-        $driver->upgradeBodySize($ireq);
-        $this->assertEquals(10, \strlen($body));
-        $ireq->maxBodySize = 26;
-        $driver->upgradeBodySize($ireq);
-        $this->assertSame("abcdefghijklmnopqrstuvwxyz", $body);
+        return $return;
     }
 
     public function verifyWrite($input, $status, $headers, $data) {
@@ -622,7 +609,7 @@ class Http1DriverTest extends TestCase {
         $data = "foobar";
 
         $driver = new Http1Driver;
-        $driver->setup(function () {$this->fail();}, function () {}, function ($client, $final = false) use (&$fin) { $fin = $final; });
+        $driver->setup([], function ($client, $final = false) use (&$fin) { $fin = $final; });
         $client = new Client;
         $client->options = new Options;
         $client->remainingKeepAlives = PHP_INT_MAX;
@@ -662,10 +649,8 @@ class Http1DriverTest extends TestCase {
 
         $driver = new Http1Driver;
         $http2 = new class implements HttpDriver {
-            public function setup(callable $parseEmitter, callable $errorEmitter, callable $responseWriter) {
-            }
-            public function upgradeBodySize(InternalRequest $ireq) {
-            }
+            public function setup(array $parseEmitters, callable $responseWriter) { }
+            public function upgradeBodySize(InternalRequest $ireq) { }
             public function filters(InternalRequest $ireq, array $filters): array {
                 return $filters;
             }
@@ -697,10 +682,8 @@ class Http1DriverTest extends TestCase {
     public function testNativeHttp2() {
         $driver = new Http1Driver;
         $http2 = new class implements HttpDriver {
-            public function setup(callable $parseEmitter, callable $errorEmitter, callable $responseWriter) {
-            }
-            public function upgradeBodySize(InternalRequest $ireq) {
-            }
+            public function setup(array $parseEmitters, callable $responseWriter) { }
+            public function upgradeBodySize(InternalRequest $ireq) { }
             public function filters(InternalRequest $ireq, array $filters): array {
                 return $filters;
             }

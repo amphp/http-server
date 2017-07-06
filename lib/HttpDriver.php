@@ -8,8 +8,9 @@ interface HttpDriver {
     const ENTITY_PART = 4;
     const ENTITY_RESULT = 8;
     const SIZE_WARNING = 16;
+    const ERROR = 32;
 
-    public function setup(callable $parseEmitter, callable $errorEmitter, callable $responseWriter);
+    public function setup(array $parseEmitters, callable $responseWriter);
     public function filters(InternalRequest $ireq, array $userFilters): array;
     public function writer(InternalRequest $ireq): \Generator;
     public function upgradeBodySize(InternalRequest $ireq);

@@ -12,16 +12,33 @@ class Http1Driver implements HttpDriver {
     )x";
 
     private $http2;
-    private $parseEmitter;
+    private $resultEmitter;
+    private $entityHeaderEmitter;
+    private $entityPartEmitter;
+    private $entityResultEmitter;
+    private $sizeWarningEmitter;
     private $errorEmitter;
     private $responseWriter;
 
-    public function setup(callable $parseEmitter, callable $errorEmitter, callable $responseWriter) {
-        $this->parseEmitter = $parseEmitter;
-        $this->errorEmitter = $errorEmitter;
+    public function setup(array $parseEmitters, callable $responseWriter) {
+        $map = [
+            self::RESULT => "resultEmitter",
+            self::ENTITY_HEADERS => "entityHeaderEmitter",
+            self::ENTITY_PART => "entityPartEmitter",
+            self::ENTITY_RESULT => "entityResultEmitter",
+            self::SIZE_WARNING => "sizeWarningEmitter",
+            self::ERROR => "errorEmitter",
+        ];
+        foreach ($parseEmitters as $emitterType => $emitter) {
+            foreach ($map as $key => $property) {
+                if ($emitterType & $key) {
+                    $this->$property = $emitter;
+                }
+            }
+        }
         $this->responseWriter = $responseWriter;
         $this->http2 = new Http2Driver;
-        $this->http2->setup($parseEmitter, $errorEmitter, $responseWriter);
+        $this->http2->setup($parseEmitters, $responseWriter);
     }
 
     public function filters(InternalRequest $ireq, array $userFilters): array {
@@ -307,11 +324,11 @@ class Http1Driver implements HttpDriver {
             }
 
             if (!$hasBody) {
-                ($this->parseEmitter)($client, HttpDriver::RESULT, $parseResult);
+                ($this->resultEmitter)($client, $parseResult);
                 continue;
             }
 
-            ($this->parseEmitter)($client, HttpDriver::ENTITY_HEADERS, $parseResult);
+            ($this->entityHeaderEmitter)($client, $parseResult);
             $body = "";
 
             if ($isChunked) {
@@ -394,7 +411,7 @@ class Http1Driver implements HttpDriver {
 
                             while ($bodyBufferSize < $remaining) {
                                 if ($bodyBufferSize >= $bodyEmitSize) {
-                                    ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body]);
+                                    ($this->entityPartEmitter)($client, ["id" => 0, "body" => $body]);
                                     $body = '';
                                     $bodySize += $bodyBufferSize;
                                     $remaining -= $bodyBufferSize;
@@ -403,7 +420,7 @@ class Http1Driver implements HttpDriver {
                                 $bodyBufferSize = \strlen($body);
                             }
                             if ($remaining) {
-                                ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($body, 0, $remaining)]);
+                                ($this->entityPartEmitter)($client, ["id" => 0, "body" => substr($body, 0, $remaining)]);
                                 $buffer = substr($body, $remaining);
                                 $body = "";
                                 $bodySize += $remaining;
@@ -417,7 +434,7 @@ class Http1Driver implements HttpDriver {
                                 continue;
                             }
 
-                            ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0]);
+                            ($this->sizeWarningEmitter)($client, ["id" => 0]);
                             $client->parserEmitLock = true;
                             Loop::disable($client->readWatcher);
                             $yield = yield;
@@ -452,7 +469,7 @@ class Http1Driver implements HttpDriver {
                         }
 
                         if ($bodyBufferSize >= $bodyEmitSize) {
-                            ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body]);
+                            ($this->entityPartEmitter)($client, ["id" => 0, "body" => $body]);
                             $body = '';
                             $bodySize += $bodyBufferSize;
                             $bodyBufferSize = 0;
@@ -467,7 +484,7 @@ class Http1Driver implements HttpDriver {
                 }
 
                 if ($body != "") {
-                    ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body]);
+                    ($this->entityPartEmitter)($client, ["id" => 0, "body" => $body]);
                 }
             } else {
                 $bodySize = 0;
@@ -477,7 +494,7 @@ class Http1Driver implements HttpDriver {
 
                     while ($bodySize + $bodyBufferSize < $bound) {
                         if ($bodyBufferSize >= $bodyEmitSize) {
-                            ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $buffer]);
+                            ($this->entityPartEmitter)($client, ["id" => 0, "body" => $buffer]);
                             $buffer = '';
                             $bodySize += $bodyBufferSize;
                         }
@@ -486,7 +503,7 @@ class Http1Driver implements HttpDriver {
                     }
                     $remaining = $bound - $bodySize;
                     if ($remaining) {
-                        ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($buffer, 0, $remaining)]);
+                        ($this->entityPartEmitter)($client, ["id" => 0, "body" => substr($buffer, 0, $remaining)]);
                         $buffer = substr($buffer, $remaining);
                         $bodySize = $bound;
                     }
@@ -496,7 +513,7 @@ class Http1Driver implements HttpDriver {
                         if (!$client->pendingResponses) {
                             return;
                         }
-                        ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0]);
+                        ($this->sizeWarningEmitter)($client, ["id" => 0]);
                         $client->parserEmitLock = true;
                         Loop::disable($client->readWatcher);
                         $yield = yield;
@@ -516,7 +533,7 @@ class Http1Driver implements HttpDriver {
 
             $client->streamWindow = $client->options->maxBodySize;
 
-            ($this->parseEmitter)($client, HttpDriver::ENTITY_RESULT, $parseResult);
+            ($this->entityResultEmitter)($client, $parseResult);
         } while (true);
     }
 

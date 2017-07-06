@@ -54,13 +54,30 @@ class Http2Driver implements HttpDriver {
 
     private $counter = "aaaaaaaa"; // 64 bit for ping (@TODO we maybe want to timeout once a day and reset the first letter of counter to "a")
 
-    private $emit;
+    private $resultEmitter;
+    private $entityHeaderEmitter;
+    private $entityPartEmitter;
+    private $entityResultEmitter;
+    private $sizeWarningEmitter;
+    private $errorEmitter;
     private $write;
-    private $error;
 
-    public function setup(callable $emit, callable $error, callable $write) {
-        $this->emit = $emit;
-        $this->error = $error;
+    public function setup(array $parseEmitters, callable $write) {
+        $map = [
+            self::RESULT => "resultEmitter",
+            self::ENTITY_HEADERS => "entityHeaderEmitter",
+            self::ENTITY_PART => "entityPartEmitter",
+            self::ENTITY_RESULT => "entityResultEmitter",
+            self::SIZE_WARNING => "sizeWarningEmitter",
+            self::ERROR => "errorEmitter",
+        ];
+        foreach ($parseEmitters as $emitterType => $emitter) {
+            foreach ($map as $key => $property) {
+                if ($emitterType & $key) {
+                    $this->$property = $emitter;
+                }
+            }
+        }
         $this->write = $write;
     }
 
@@ -224,7 +241,7 @@ class Http2Driver implements HttpDriver {
             $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::END_HEADERS, $ireq->streamId);
         }
 
-        ($this->emit)($client, HttpDriver::RESULT, $parseResult);
+        ($this->resultEmitter)($client, $parseResult);
     }
 
     public function writer(InternalRequest $ireq): \Generator {
@@ -443,7 +460,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
             $start = \strpos($buffer, "HTTP/") + 5;
             if ($start < \strlen($buffer)) {
                 $protocol = \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start);
-                ($this->error)($client, ["protocol" => $protocol], HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"], "Unsupported version {$protocol}");
+                ($this->errorEmitter)($client, ["protocol" => $protocol], HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"], "Unsupported version {$protocol}");
             }
             return;
         }
@@ -533,26 +550,27 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                     }
 
                     while (\strlen($buffer) < $length) {
+                        /* it is fine to just .= the $body as $length < 2^14 */
                         $buffer .= yield;
                     }
 
                     if (($flags & self::END_STREAM) !== "\0") {
                         unset($bodyLens[$id], $client->streamWindow[$id]);
-                        $type = HttpDriver::ENTITY_PART;
+                        $cb = $this->entityPartEmitter;
                     } else {
                         $bodyLens[$id] += $length;
-                        $type = HttpDriver::ENTITY_RESULT;
+                        $cb = $this->entityResultEmitter;
                     }
 
                     $body = \substr($buffer, 0, $length - $padding);
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                     if ($body != "") {
-                        ($this->emit)($client, $type, ["id" => $id, "protocol" => "2.0", "body" => $body], null);
+                        $cb($client, ["id" => $id, "protocol" => "2.0", "body" => $body], null);
                     }
                     $buffer = \substr($buffer, $length);
 
                     if ($remaining == 0 && ($flags & self::END_STREAM) !== "\0" && $length) {
-                        ($this->emit)($client, HttpDriver::SIZE_WARNING, ["id" => $id]);
+                        ($this->sizeWarningEmitter)($client, ["id" => $id]);
                     }
 
                     continue 2;
@@ -776,7 +794,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                     }
 
                     if ($error !== 0) {
-                        // ($this->error)($client, ["body" => \substr($buffer, 0, $length)], HTTP_STATUS["BAD_REQUEST"], $error);
+                        // ($this->errorEmitter)($client, ["body" => \substr($buffer, 0, $length)], HTTP_STATUS["BAD_REQUEST"], $error);
                     }
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer, 0, $length)."\n");
@@ -890,9 +908,9 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                 $client->streamWindowBuffer[$id] = "";
 
                 if ($streamEnd) {
-                    ($this->emit)($client, HttpDriver::RESULT, $parseResult);
+                    ($this->entityResultEmitter)($client, $parseResult);
                 } else {
-                    ($this->emit)($client, HttpDriver::ENTITY_HEADERS, $parseResult);
+                    ($this->entityHeaderEmitter)($client, $parseResult);
                     $bodyLens[$id] = 0;
                 }
                 continue;

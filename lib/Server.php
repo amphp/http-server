@@ -229,13 +229,21 @@ class Server implements Monitor {
         }
     }
 
+    private function createHttpDriverHandlers() {
+        return [
+            HttpDriver::RESULT => $this->callableFromInstanceMethod("onParsedMessageWithoutEntity"),
+            HttpDriver::ENTITY_HEADERS => $this->callableFromInstanceMethod("onParsedEntityHeaders"),
+            HttpDriver::ENTITY_PART => $this->callableFromInstanceMethod("onParsedEntityPart"),
+            HttpDriver::ENTITY_RESULT => $this->callableFromInstanceMethod("onParsedMessageWithEntity"),
+            HttpDriver::SIZE_WARNING => $this->callableFromInstanceMethod("onEntitySizeWarning"),
+            HttpDriver::ERROR => $this->callableFromInstanceMethod("onParseError"),
+        ];
+    }
+
     private function doStart(callable $bindSockets): \Generator {
         assert($this->logDebug("starting"));
 
-        $emitter = $this->callableFromInstanceMethod("onParseEmit");
-        $error = $this->callableFromInstanceMethod("onParseError");
-        $writer = $this->callableFromInstanceMethod("writeResponse");
-        $this->vhosts->setupHttpDrivers($emitter, $error, $writer);
+        $this->vhosts->setupHttpDrivers($this->createHttpDriverHandlers(), $this->callableFromInstanceMethod("writeResponse"));
 
         $this->boundServers = yield $bindSockets($this->generateBindableAddressContextMap());
 
@@ -560,37 +568,10 @@ class Server implements Monitor {
         $client->requestParser->send($data);
     }
 
-    private function onParseEmit(Client $client, int $eventType, array $parseResult) {
-        switch ($eventType) {
-            case HttpDriver::RESULT:
-                $this->onParsedMessageWithoutEntity($client, $parseResult);
-                break;
-            case HttpDriver::ENTITY_HEADERS:
-                $this->onParsedEntityHeaders($client, $parseResult);
-                break;
-            case HttpDriver::ENTITY_PART:
-                $this->onParsedEntityPart($client, $parseResult);
-                break;
-            case HttpDriver::ENTITY_RESULT:
-                $this->onParsedMessageWithEntity($client, $parseResult);
-                break;
-            case HttpDriver::SIZE_WARNING:
-                $this->onEntitySizeWarning($client, $parseResult);
-                break;
-            default:
-                assert(false, "Unexpected parser result code encountered");
-        }
-    }
-
     private function onParsedMessageWithoutEntity(Client $client, array $parseResult) {
         $ireq = $this->initializeRequest($client, $parseResult);
 
         $this->respond($ireq);
-    }
-
-    private function onParsedEntityPart(Client $client, array $parseResult) {
-        $id = $parseResult["id"];
-        $client->bodyEmitters[$id]->emit($parseResult["body"]);
     }
 
     private function onParsedEntityHeaders(Client $client, array $parseResult) {
@@ -600,6 +581,11 @@ class Server implements Monitor {
         $ireq->body = new Message(new IteratorStream($bodyEmitter->iterate()));
 
         $this->respond($ireq);
+    }
+
+    private function onParsedEntityPart(Client $client, array $parseResult) {
+        $id = $parseResult["id"];
+        $client->bodyEmitters[$id]->emit($parseResult["body"]);
     }
 
     private function onParsedMessageWithEntity(Client $client, array $parseResult) {

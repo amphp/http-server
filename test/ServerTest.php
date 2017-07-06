@@ -32,7 +32,7 @@ class ServerTest extends TestCase {
     public function tryIterativeRequest($responder, $middlewares = []) {
         $vhosts = new VhostContainer($driver = new class($this) implements HttpDriver {
             private $test;
-            private $emit;
+            private $emitters;
             public $headers;
             public $body;
             private $client;
@@ -44,8 +44,8 @@ class ServerTest extends TestCase {
                 $this->client->httpDriver = $this;
             }
 
-            public function setup(callable $emit, callable $error, callable $write) {
-                $this->emit = $emit;
+            public function setup(array $parseEmitters, callable $write) {
+                $this->emitters = $parseEmitters;
             }
 
             public function filters(InternalRequest $ireq, array $filters): array {
@@ -70,7 +70,12 @@ class ServerTest extends TestCase {
             }
 
             public function emit($emit) {
-                ($this->emit)($this->client, ...$emit);
+                $type = array_shift($emit);
+                foreach ($this->emitters as $key => $emitter) {
+                    if ($key & $type) {
+                        $emitter($this->client, ...$emit);
+                    }
+                }
             }
         });
         $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));
@@ -80,11 +85,7 @@ class ServerTest extends TestCase {
             }
         };
         $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
-        $driver->setup(
-            (new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server),
-            $this->createCallback(0),
-            $this->createCallback(0)
-        );
+        $driver->setup((function() { return $this->createHttpDriverHandlers(); })->call($server), $this->createCallback(0));
         $part = yield;
         while (1) {
             $driver->emit($part);
@@ -312,7 +313,7 @@ class ServerTest extends TestCase {
                 $this->test = $test;
             }
 
-            public function setup(callable $emit, callable $error, callable $write) {
+            public function setup(array $parseEmitters, callable $write) {
                 $this->write = $write;
             }
 
@@ -328,8 +329,7 @@ class ServerTest extends TestCase {
                 yield from ($this->parser)($client, $this->write);
             }
 
-            public function upgradeBodySize(InternalRequest $ireq) {
-            }
+            public function upgradeBodySize(InternalRequest $ireq) { }
         };
 
         $vhosts = new class($tls, $address, $this, $driver) extends VhostContainer {
@@ -361,11 +361,7 @@ class ServerTest extends TestCase {
             }
         };
         $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
-        $driver->setup(
-            $this->createCallback(0),
-            $this->createCallback(0),
-            (new \ReflectionClass($server))->getMethod("writeResponse")->getClosure($server)
-        );
+        $driver->setup([], (new \ReflectionClass($server))->getMethod("writeResponse")->getClosure($server));
         $driver->parser = $parser;
         yield $server->start();
         return [$address, $server];
@@ -375,6 +371,8 @@ class ServerTest extends TestCase {
         Loop::run(function () {
             list($address, $server) = yield from $this->startServer(function (Client $client, $write) {
                 $this->assertFalse($client->isEncrypted);
+
+                $client->pendingResponses = 1;
 
                 $this->assertEquals("a", yield);
                 $this->assertEquals("b", yield);
@@ -392,7 +390,8 @@ class ServerTest extends TestCase {
             Loop::defer(function () use ($deferred) { Loop::defer([$deferred, "resolve"]); });
             yield $deferred->promise();
             yield $client->write("b");
-            $this->assertEquals("cd", yield $client->read());
+            stream_socket_shutdown($client->getResource(), STREAM_SHUT_WR);
+            $this->assertEquals("cd", (yield $client->read()) . (yield $client->read()) . yield $client->read());
             yield $server->stop();
             Loop::stop();
         });
@@ -400,6 +399,10 @@ class ServerTest extends TestCase {
 
     public function testEncryptedIO() {
         Loop::run(function () {
+            try { /* prevent crashes with phpdbg due to SIGPIPE not being handled... */
+                Loop::onSignal(defined("SIGPIPE") ? SIGPIPE : 13, function () {});
+            } catch (Loop\UnsupportedFeatureException $e) {}
+
             $deferred = new \Amp\Deferred;
             list($address) = yield from $this->startServer(function (Client $client, $write) use ($deferred) {
                 try {
