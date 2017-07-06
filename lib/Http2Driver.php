@@ -355,8 +355,8 @@ class Http2Driver implements HttpDriver {
 
     protected function writeFrame(Client $client, $data, $type, $flags, $stream = 0) {
         assert($stream >= 0);
-        assert(!\defined("Aerys\\DEBUG_HTTP2") || print "OUT: ");
-        assert(!\defined("Aerys\\DEBUG_HTTP2") || !(unset) var_dump(bin2hex(substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data)));
+assert(!\defined("Aerys\\DEBUG_HTTP2") || print "OUT: ");
+assert(!\defined("Aerys\\DEBUG_HTTP2") || var_dump(bin2hex(substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data)) || 1);
         $new = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
         $client->writeBuffer .= $new;
         $client->bufferSize += \strlen($new);
@@ -395,7 +395,7 @@ class Http2Driver implements HttpDriver {
 
         $setSetting = function ($buffer) use ($client, $table) {
             $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value"] >= 0
-            assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]}): {$unpacked["value"]}\n");
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]}): {$unpacked["value"]}\n");
 
             switch ($unpacked["setting"]) {
                 case self::MAX_HEADER_LIST_SIZE:
@@ -499,11 +499,10 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                             $error = self::PROTOCOL_ERROR;
                             goto connection_error;
                         }
+
+                        // technically it is a protocol error to send data to a never opened stream
+                        // but we do not want to store what streams WE have closed via RST_STREAM, thus we're just reporting them as closed
                         $error = self::STREAM_CLOSED;
-                        while (\strlen($buffer) < $length) {
-                            $buffer .= yield;
-                        }
-                        $buffer = \substr($buffer, $length);
                         goto stream_error;
                     }
 
@@ -605,11 +604,6 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
 
                     if ($length > $maxHeaderSize) {
                         $error = self::ENHANCE_YOUR_CALM;
-                        while ($length) {
-                            $buffer = yield;
-                            $length -= \strlen($buffer);
-                        }
-                        $buffer = substr($buffer, \strlen($buffer) + $length);
                         goto stream_error;
                     }
 
@@ -632,11 +626,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                 case self::PRIORITY:
                     if ($length != 5) {
                         $error = self::FRAME_SIZE_ERROR;
-                        while (\strlen($buffer) < $length) {
-                            $buffer .= yield;
-                        }
-                        $buffer = substr($buffer, $length);
-                        goto stream_error;
+                        goto connection_error;
                     }
 
                     if ($id === 0) {
@@ -706,11 +696,17 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                             goto connection_error;
                         }
 
-                        assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                         // got ACK
                         continue 2;
                     } elseif ($length % 6 != 0) {
                         $error = self::FRAME_SIZE_ERROR;
+                        goto connection_error;
+                    }
+
+                    if ($length > 60) {
+                        // Even with room for a few future options, sending that a big SETTINGS frame is just about wasting our processing time. I hereby declare this a protocol error.
+                        $error = self::PROTOCOL_ERROR;
                         goto connection_error;
                     }
 
@@ -790,6 +786,11 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
                     // keepAliveTimeout will force a close when necessary
 
                 case self::WINDOW_UPDATE:
+                    if ($length != 4) {
+                        $error = self::FRAME_SIZE_ERROR;
+                        goto connection_error;
+                    }
+
                     while (\strlen($buffer) < 4) {
                         $buffer .= yield;
                     }
@@ -828,8 +829,15 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
 
                 case self::CONTINUATION:
                     if (!isset($headers[$id])) {
-                        $error = self::PROTOCOL_ERROR;
-                        goto connection_error;
+                        // technically it is a protocol error to send data to a never opened stream
+                        // but we do not want to store what streams WE have closed via RST_STREAM, thus we're just reporting them as closed
+                        $error = self::STREAM_CLOSED;
+                        goto stream_error;
+                    }
+
+                    if ($length > $maxHeaderSize - \strlen($headers[$id])) {
+                        $error = self::ENHANCE_YOUR_CALM;
+                        goto stream_error;
                     }
 
                     while (\strlen($buffer) < $length) {
@@ -859,7 +867,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "BAD TYPE: ".ord($type)."\n");
                     $error = self::COMPRESSION_ERROR;
                     break;
                 }
-                assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $padding) . "): " . implode(" | ", array_map(function ($x) { return implode(": ", $x); }, $headerList)) . "\n");
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $padding) . "): " . implode(" | ", array_map(function ($x) { return implode(": ", $x); }, $headerList)) . "\n");
 
                 $headerArray = [];
                 foreach ($headerList as list($name, $value)) {
@@ -891,10 +899,23 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "BAD TYPE: ".ord($type)."\n");
             }
 
             stream_error: {
+                if ($length > (1 << 14)) {
+                    $error = self::PROTOCOL_ERROR;
+                    goto connection_error;
+                }
+
                 $this->writeFrame($client, pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
-                assert(!defined("Aerys\\DEBUG_HTTP2") || print "Stream ERROR: $error\n");
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "Stream ERROR: $error\n");
                 unset($headers[$id], $bodyLens[$id], $client->streamWindow[$id]);
                 $client->remainingKeepAlives++;
+
+                // consume whole frame to be able to continue this connection
+                $length -= \strlen($buffer);
+                while ($length > 0) {
+                    $buffer = yield;
+                    $length -= \strlen($buffer);
+                }
+                $buffer = substr($buffer, \strlen($buffer) + $length);
                 continue;
             }
         }
@@ -902,7 +923,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "BAD TYPE: ".ord($type)."\n");
         connection_error: {
             $client->shouldClose = true;
             $this->writeFrame($client, pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
-            assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
+assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
 
             Loop::disable($client->readWatcher);
         }
