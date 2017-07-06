@@ -32,7 +32,7 @@ composer require amphp/aerys
 
 ## Documentation
 
-- [Official Documentation](http://amphp.org/docs/aerys/)
+- [Official Documentation](http://amphp.org/aerys/)
 - [Getting Started with Aerys](http://blog.kelunik.com/2015/10/21/getting-started-with-aerys.html)
 - [Getting Started with Aerys WebSockets](http://blog.kelunik.com/2015/10/20/getting-started-with-aerys-websockets.html)
 
