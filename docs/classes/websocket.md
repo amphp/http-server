@@ -1,6 +1,6 @@
 ---
 title: WebSocket
-permalink: /classes/bodyparser
+permalink: /classes/websocket
 ---
 
 * Table of Contents
