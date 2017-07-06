@@ -56,9 +56,11 @@ class Http2Driver implements HttpDriver {
 
     private $emit;
     private $write;
+    private $error;
 
-    public function setup(callable $emit, callable $write) {
+    public function setup(callable $emit, callable $error, callable $write) {
         $this->emit = $emit;
+        $this->error = $error;
         $this->write = $write;
     }
 
@@ -222,7 +224,7 @@ class Http2Driver implements HttpDriver {
             $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::END_HEADERS, $ireq->streamId);
         }
 
-        ($this->emit)($client, HttpDriver::RESULT, $parseResult, null);
+        ($this->emit)($client, HttpDriver::RESULT, $parseResult);
     }
 
     public function writer(InternalRequest $ireq): \Generator {
@@ -440,11 +442,10 @@ class Http2Driver implements HttpDriver {
         if (\strncmp($buffer, $preface, \strlen($preface)) !== 0) {
             $start = \strpos($buffer, "HTTP/") + 5;
             if ($start < \strlen($buffer)) {
-                ($this->emit)($client, HttpDriver::ERROR, ["protocol" => \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start)], HttpDriver::BAD_VERSION);
+                $protocol = \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start);
+                ($this->error)($client, ["protocol" => $protocol], HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"], "Unsupported version {$protocol}");
             }
-            while (1) {
-                yield;
-            }
+            return;
         }
         $buffer = \substr($buffer, \strlen($preface));
         $client->remainingKeepAlives = $maxStreams;
@@ -552,7 +553,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                     $buffer = \substr($buffer, $length);
 
                     if ($remaining == 0 && ($flags & self::END_STREAM) !== "\0" && $length) {
-                        ($this->emit)($client, HttpDriver::SIZE_WARNING, ["id" => $id], null);
+                        ($this->emit)($client, HttpDriver::SIZE_WARNING, ["id" => $id]);
                     }
 
                     continue 2;
@@ -779,15 +780,13 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                     }
 
                     if ($error !== 0) {
-                        // ($this->emit)($client, HttpDriver::ERROR, ["body" => substr($buffer, 0, $length)], $error);
+                        // ($this->error)($client, ["body" => \substr($buffer, 0, $length)], HTTP_STATUS["BAD_REQUEST"], $error);
                     }
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer, 0, $length)."\n");
                     $client->shouldClose = true;
                     Loop::disable($client->readWatcher);
-                    while (1) {
-                        yield;
-                    }
+                    return;
                     // keepAliveTimeout will force a close when necessary
 
                 case self::WINDOW_UPDATE:
@@ -883,9 +882,9 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "BAD TYPE: ".ord($type)."\n");
                 $client->streamWindowBuffer[$id] = "";
 
                 if ($streamEnd) {
-                    ($this->emit)($client, HttpDriver::RESULT, $parseResult, null);
+                    ($this->emit)($client, HttpDriver::RESULT, $parseResult);
                 } else {
-                    ($this->emit)($client, HttpDriver::ENTITY_HEADERS, $parseResult, null);
+                    ($this->emit)($client, HttpDriver::ENTITY_HEADERS, $parseResult);
                     $bodyLens[$id] = 0;
                 }
                 continue;
@@ -906,9 +905,6 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "BAD TYPE: ".ord($type)."\n");
             assert(!defined("Aerys\\DEBUG_HTTP2") || print "Connection ERROR: $error\n");
 
             Loop::disable($client->readWatcher);
-            while (1) {
-                yield;
-            }
         }
     }
 }

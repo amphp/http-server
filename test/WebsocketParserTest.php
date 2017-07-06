@@ -17,7 +17,7 @@ use Aerys\Websocket;
 use Aerys\Websocket\Code;
 use Aerys\Websocket\Rfc6455Gateway;
 use Amp\Loop;
-use PHPUnit\Framework\TestCase;
+use Amp\PHPUnit\TestCase;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WebsocketParserTest extends TestCase {
@@ -256,7 +256,7 @@ class WebsocketParserTest extends TestCase {
                     $this->client->httpDriver = $this;
                 }
 
-                public function setup(callable $emit, callable $write) {
+                public function setup(callable $emit, callable $error, callable $write) {
                     $this->emit = $emit;
                 }
 
@@ -296,7 +296,11 @@ class WebsocketParserTest extends TestCase {
                 }
             };
             $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
-            $driver->setup((new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server), "strlen");
+            $driver->setup(
+                (new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server),
+                $this->createCallback(0),
+                $this->createCallback(0)
+            );
 
             $ws = $this->createMock(Websocket::class);
             $ws->expects($this->exactly(1))

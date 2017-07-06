@@ -233,8 +233,9 @@ class Server implements Monitor {
         assert($this->logDebug("starting"));
 
         $emitter = $this->callableFromInstanceMethod("onParseEmit");
+        $error = $this->callableFromInstanceMethod("onParseError");
         $writer = $this->callableFromInstanceMethod("writeResponse");
-        $this->vhosts->setupHttpDrivers($emitter, $writer);
+        $this->vhosts->setupHttpDrivers($emitter, $error, $writer);
 
         $this->boundServers = yield $bindSockets($this->generateBindableAddressContextMap());
 
@@ -448,7 +449,7 @@ class Server implements Monitor {
         $this->renewKeepAliveTimeout($client);
     }
 
-    private function writeResponse(Client $client, $final = false) {
+    private function writeResponse(Client $client, bool $final = false) {
         $this->onWritable($client->writeWatcher, $client->socket, $client);
 
         if (empty($final)) {
@@ -559,7 +560,7 @@ class Server implements Monitor {
         $client->requestParser->send($data);
     }
 
-    private function onParseEmit(Client $client, int $eventType, array $parseResult, $error = null) {
+    private function onParseEmit(Client $client, int $eventType, array $parseResult) {
         switch ($eventType) {
             case HttpDriver::RESULT:
                 $this->onParsedMessageWithoutEntity($client, $parseResult);
@@ -575,9 +576,6 @@ class Server implements Monitor {
                 break;
             case HttpDriver::SIZE_WARNING:
                 $this->onEntitySizeWarning($client, $parseResult);
-                break;
-            case HttpDriver::ERROR:
-                $this->onParseError($client, $parseResult, $error);
                 break;
             default:
                 assert(false, "Unexpected parser result code encountered");
@@ -621,11 +619,10 @@ class Server implements Monitor {
         $deferred->fail(new ClientSizeException);
     }
 
-    private function onParseError(Client $client, array $parseResult, $error) {
+    private function onParseError(Client $client, array $parseResult, int $status, string $message) {
         $this->clearKeepAliveTimeout($client);
 
         if ($client->bodyEmitters) {
-            $client->writeBuffer .= "\n\n$error";
             $client->shouldClose = true;
             $this->writeResponse($client, true);
             return;
@@ -634,15 +631,9 @@ class Server implements Monitor {
         $ireq = $this->initializeRequest($client, $parseResult);
 
         $client->pendingResponses++;
-        $this->tryApplication($ireq, static function (Request $request, Response $response) use ($parseResult, $error) {
-            if ($error === HttpDriver::BAD_VERSION) {
-                $status = HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"];
-                $error = "Unsupported version {$parseResult['protocol']}";
-            } else {
-                $status = HTTP_STATUS["BAD_REQUEST"];
-            }
+        $this->tryApplication($ireq, static function (Request $request, Response $response) use ($status, $message) {
             $body = makeGenericBody($status, [
-                "msg" => $error,
+                "msg" => $message,
             ]);
             $response->setStatus($status);
             $response->setHeader("Connection", "close");

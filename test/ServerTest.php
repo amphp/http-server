@@ -14,8 +14,8 @@ use Aerys\Ticker;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Loop;
+use Amp\PHPUnit\TestCase;
 use Amp\Socket;
-use PHPUnit\Framework\TestCase;
 
 // @TODO test communication on half-closed streams (both ways) [also with yield message] (also with HTTP/1 pipelining...)
 
@@ -44,7 +44,7 @@ class ServerTest extends TestCase {
                 $this->client->httpDriver = $this;
             }
 
-            public function setup(callable $emit, callable $write) {
+            public function setup(callable $emit, callable $error, callable $write) {
                 $this->emit = $emit;
             }
 
@@ -80,7 +80,11 @@ class ServerTest extends TestCase {
             }
         };
         $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
-        $driver->setup((new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server), "strlen");
+        $driver->setup(
+            (new \ReflectionClass($server))->getMethod("onParseEmit")->getClosure($server),
+            $this->createCallback(0),
+            $this->createCallback(0)
+        );
         $part = yield;
         while (1) {
             $driver->emit($part);
@@ -308,7 +312,7 @@ class ServerTest extends TestCase {
                 $this->test = $test;
             }
 
-            public function setup(callable $emit, callable $write) {
+            public function setup(callable $emit, callable $error, callable $write) {
                 $this->write = $write;
             }
 
@@ -357,7 +361,11 @@ class ServerTest extends TestCase {
             }
         };
         $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
-        $driver->setup("strlen", (new \ReflectionClass($server))->getMethod("writeResponse")->getClosure($server));
+        $driver->setup(
+            $this->createCallback(0),
+            $this->createCallback(0),
+            (new \ReflectionClass($server))->getMethod("writeResponse")->getClosure($server)
+        );
         $driver->parser = $parser;
         yield $server->start();
         return [$address, $server];

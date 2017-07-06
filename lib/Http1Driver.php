@@ -13,13 +13,15 @@ class Http1Driver implements HttpDriver {
 
     private $http2;
     private $parseEmitter;
+    private $errorEmitter;
     private $responseWriter;
 
-    public function setup(callable $parseEmitter, callable $responseWriter) {
+    public function setup(callable $parseEmitter, callable $errorEmitter, callable $responseWriter) {
         $this->parseEmitter = $parseEmitter;
+        $this->errorEmitter = $errorEmitter;
         $this->responseWriter = $responseWriter;
         $this->http2 = new Http2Driver;
-        $this->http2->setup($parseEmitter, $responseWriter);
+        $this->http2->setup($parseEmitter, $errorEmitter, $responseWriter);
     }
 
     public function filters(InternalRequest $ireq, array $userFilters): array {
@@ -222,8 +224,8 @@ class Http1Driver implements HttpDriver {
                     $buffer = (string) \substr($buffer, $headerPos + 4);
                     break;
                 } elseif (\strlen($buffer) > $maxHeaderSize) {
-                    $error = "Bad Request: header size violation";
-                    break 2;
+                    ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["BAD_REQUEST"], "Bad Request: header size violation");
+                    return;
                 }
 
                 $buffer .= yield;
@@ -235,19 +237,19 @@ class Http1Driver implements HttpDriver {
             $traceBuffer = $startLineAndHeaders;
 
             if (!$method = \strtok($startLine, " ")) {
-                $error = "Bad Request: invalid request line";
-                break;
+                ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["BAD_REQUEST"], "Bad Request: invalid request line");
+                return;
             }
 
             if (!$uri = \strtok(" ")) {
-                $error = "Bad Request: invalid request line";
-                break;
+                ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["BAD_REQUEST"], "Bad Request: invalid request line");
+                return;
             }
 
             $protocol = \strtok(" ");
             if (!is_string($protocol) || stripos($protocol, "HTTP/") !== 0) {
-                $error = "Bad Request: invalid request line";
-                break;
+                ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["BAD_REQUEST"], "Bad Request: invalid request line");
+                return;
             }
 
             $protocol = \substr($protocol, 5);
@@ -261,19 +263,19 @@ class Http1Driver implements HttpDriver {
                     $client->requestParser->send("$startLineAndHeaders\r\n$buffer");
                     return;
                 }
-                $error = HttpDriver::BAD_VERSION;
+                ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"], "Unsupported version {$protocol}");
                 break;
             }
 
             if ($rawHeaders) {
                 if (\strpos($rawHeaders, "\n\x20") || \strpos($rawHeaders, "\n\t")) {
-                    $error = "Bad Request: multi-line headers deprecated by RFC 7230";
-                    break;
+                    ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["BAD_REQUEST"], "Bad Request: multi-line headers deprecated by RFC 7230");
+                    return;
                 }
 
                 if (!\preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches)) {
-                    $error = "Bad Request: header syntax violation";
-                    break;
+                    ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["BAD_REQUEST"], "Bad Request: header syntax violation");
+                    return;
                 }
 
                 list(, $fields, $values) = $matches;
@@ -305,11 +307,11 @@ class Http1Driver implements HttpDriver {
             }
 
             if (!$hasBody) {
-                ($this->parseEmitter)($client, HttpDriver::RESULT, $parseResult, null);
+                ($this->parseEmitter)($client, HttpDriver::RESULT, $parseResult);
                 continue;
             }
 
-            ($this->parseEmitter)($client, HttpDriver::ENTITY_HEADERS, $parseResult, null);
+            ($this->parseEmitter)($client, HttpDriver::ENTITY_HEADERS, $parseResult);
             $body = "";
 
             if ($isChunked) {
@@ -325,8 +327,8 @@ class Http1Driver implements HttpDriver {
                     $chunkLenRemaining = \hexdec($hex);
 
                     if ($lineEndPos === 0 || $hex != \dechex($chunkLenRemaining)) {
-                        $error = "Bad Request: hex chunk size expected";
-                        break 2;
+                        ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["BAD_REQUEST"], "Bad Request: hex chunk size expected");
+                        return;
                     }
 
                     if ($chunkLenRemaining === 0) {
@@ -349,19 +351,19 @@ class Http1Driver implements HttpDriver {
                                 $trailers = null;
                             }
                             if ($maxHeaderSize > 0 && $trailerSize > $maxHeaderSize) {
-                                $error = "Trailer headers too large";
-                                break 3;
+                                ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["BAD_REQUEST"], "Trailer headers too large");
+                                return;
                             }
                         } while (!isset($trailers));
 
                         if (\strpos($trailers, "\n\x20") || \strpos($trailers, "\n\t")) {
-                            $error = "Bad Request: multi-line trailers deprecated by RFC 7230";
-                            break 2;
+                            ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["BAD_REQUEST"], "Bad Request: multi-line trailers deprecated by RFC 7230");
+                            return;
                         }
 
                         if (!\preg_match_all(self::HEADER_REGEX, $trailers, $matches)) {
-                            $error = "Bad Request: trailer syntax violation";
-                            break 2;
+                            ($this->errorEmitter)($client, $parseResult, HTTP_STATUS["BAD_REQUEST"], "Bad Request: trailer syntax violation");
+                            return;
                         }
 
                         list(, $fields, $values) = $matches;
@@ -392,7 +394,7 @@ class Http1Driver implements HttpDriver {
 
                             while ($bodyBufferSize < $remaining) {
                                 if ($bodyBufferSize >= $bodyEmitSize) {
-                                    ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null);
+                                    ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body]);
                                     $body = '';
                                     $bodySize += $bodyBufferSize;
                                     $remaining -= $bodyBufferSize;
@@ -401,7 +403,7 @@ class Http1Driver implements HttpDriver {
                                 $bodyBufferSize = \strlen($body);
                             }
                             if ($remaining) {
-                                ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($body, 0, $remaining)], null);
+                                ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($body, 0, $remaining)]);
                                 $buffer = substr($body, $remaining);
                                 $body = "";
                                 $bodySize += $remaining;
@@ -415,15 +417,13 @@ class Http1Driver implements HttpDriver {
                                 continue;
                             }
 
-                            ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
+                            ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0]);
                             $client->parserEmitLock = true;
                             Loop::disable($client->readWatcher);
                             $yield = yield;
                             if ($yield === false) {
                                 $client->shouldClose = true;
-                                while (1) {
-                                    yield;
-                                }
+                                return;
                             }
                             if (!($client->isDead & Client::CLOSED_RD)) {
                                 Loop::enable($client->readWatcher);
@@ -452,7 +452,7 @@ class Http1Driver implements HttpDriver {
                         }
 
                         if ($bodyBufferSize >= $bodyEmitSize) {
-                            ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null);
+                            ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body]);
                             $body = '';
                             $bodySize += $bodyBufferSize;
                             $bodyBufferSize = 0;
@@ -467,7 +467,7 @@ class Http1Driver implements HttpDriver {
                 }
 
                 if ($body != "") {
-                    ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body], null);
+                    ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $body]);
                 }
             } else {
                 $bodySize = 0;
@@ -477,7 +477,7 @@ class Http1Driver implements HttpDriver {
 
                     while ($bodySize + $bodyBufferSize < $bound) {
                         if ($bodyBufferSize >= $bodyEmitSize) {
-                            ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $buffer], null);
+                            ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => $buffer]);
                             $buffer = '';
                             $bodySize += $bodyBufferSize;
                         }
@@ -486,7 +486,7 @@ class Http1Driver implements HttpDriver {
                     }
                     $remaining = $bound - $bodySize;
                     if ($remaining) {
-                        ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($buffer, 0, $remaining)], null);
+                        ($this->parseEmitter)($client, HttpDriver::ENTITY_PART, ["id" => 0, "body" => substr($buffer, 0, $remaining)]);
                         $buffer = substr($buffer, $remaining);
                         $bodySize = $bound;
                     }
@@ -496,15 +496,13 @@ class Http1Driver implements HttpDriver {
                         if (!$client->pendingResponses) {
                             return;
                         }
-                        ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0], null);
+                        ($this->parseEmitter)($client, HttpDriver::SIZE_WARNING, ["id" => 0]);
                         $client->parserEmitLock = true;
                         Loop::disable($client->readWatcher);
                         $yield = yield;
                         if ($yield === false) {
                             $client->shouldClose = true;
-                            while (1) {
-                                yield;
-                            }
+                            return;
                         }
                         if ($client->isDead & Client::CLOSED_RD) {
                             Loop::enable($client->readWatcher);
@@ -518,15 +516,8 @@ class Http1Driver implements HttpDriver {
 
             $client->streamWindow = $client->options->maxBodySize;
 
-            ($this->parseEmitter)($client, HttpDriver::ENTITY_RESULT, $parseResult, null);
+            ($this->parseEmitter)($client, HttpDriver::ENTITY_RESULT, $parseResult);
         } while (true);
-
-        // An error occurred...
-        // stop parsing here ...
-        ($this->parseEmitter)($client, HttpDriver::ERROR, $parseResult, $error);
-        while (1) {
-            yield;
-        }
     }
 
     public static function responseInitFilter(InternalRequest $ireq) {

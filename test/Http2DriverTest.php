@@ -7,7 +7,7 @@ use Aerys\HPack;
 use Aerys\Http2Driver;
 use Aerys\InternalRequest;
 use Aerys\Options;
-use PHPUnit\Framework\TestCase;
+use Amp\PHPUnit\TestCase;
 
 class Http2DriverTest extends TestCase {
     public function packFrame($data, $type, $flags, $stream = 0) {
@@ -53,15 +53,14 @@ class Http2DriverTest extends TestCase {
         };
 
         $emitCallback = function (...$emitStruct) use (&$client, &$invoked, &$parseResult, &$body) {
-            list(, $resultCode, $tmpResult, $errorStruct) = $emitStruct;
+            list(, $resultCode, $tmpResult) = $emitStruct;
             if (!$invoked++) {
                 $parseResult = $tmpResult;
             }
-            $this->assertNull($errorStruct);
             $body .= $tmpResult["body"];
             $client->bodyEmitters[$tmpResult["id"]] = true; // is used to verify whether headers were sent
         };
-        $driver->setup($emitCallback, function () {});
+        $driver->setup($emitCallback, $this->createCallback(0), $this->createCallback(0));
 
         for ($mode = 0; $mode <= 1; $mode++) {
             $invoked = 0;
@@ -158,7 +157,11 @@ class Http2DriverTest extends TestCase {
             }
         };
 
-        $driver->setup(function () {}, function () {});
+        $driver->setup(
+            function () { /* Ignore calls to this function */ },
+            $this->createCallback(0),
+            $this->createCallback(0)
+        );
 
         return $driver;
     }

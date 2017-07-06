@@ -841,34 +841,53 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
                 if (PHP_INT_MAX === 0x7fffffff) {
                     if ($lengthLong32Pair[1] !== 0 || $lengthLong32Pair[2] < 0) {
-                        $code = Code::MESSAGE_TOO_LARGE;
-                        $errorMsg = 'Payload exceeds maximum allowable size';
-                        break;
+                        $endpoint->onParsedError(
+                            $client,
+                            Code::MESSAGE_TOO_LARGE,
+                            'Payload exceeds maximum allowable size'
+                        );
+                        return;
                     }
                     $frameLength = $lengthLong32Pair[2];
                 } else {
                     $frameLength = ($lengthLong32Pair[1] << 32) | $lengthLong32Pair[2];
                     if ($frameLength < 0) {
-                        $code = Code::PROTOCOL_ERROR;
-                        $errorMsg = 'Most significant bit of 64-bit length field set';
-                        break;
+                        $endpoint->onParsedError(
+                            $client,
+                            Code::PROTOCOL_ERROR,
+                            'Most significant bit of 64-bit length field set'
+                        );
+                        return;
                     }
                 }
             }
 
             if ($frameLength > 0 && !$isMasked) {
-                $code = Code::PROTOCOL_ERROR;
-                $errorMsg = 'Payload mask required';
-                break;
-            } elseif ($isControlFrame) {
+                $endpoint->onParsedError(
+                    $client,
+                    Code::PROTOCOL_ERROR,
+                    'Payload mask required'
+                );
+                return;
+            }
+
+            if ($isControlFrame) {
                 if (!$fin) {
-                    $code = Code::PROTOCOL_ERROR;
-                    $errorMsg = 'Illegal control frame fragmentation';
-                    break;
-                } elseif ($frameLength > 125) {
-                    $code = Code::PROTOCOL_ERROR;
-                    $errorMsg = 'Control frame payload must be of maximum 125 bytes or less';
-                    break;
+                    $endpoint->onParsedError(
+                        $client,
+                        Code::PROTOCOL_ERROR,
+                        'Illegal control frame fragmentation'
+                    );
+                    return;
+                }
+
+                if ($frameLength > 125) {
+                    $endpoint->onParsedError(
+                        $client,
+                        Code::PROTOCOL_ERROR,
+                        'Control frame payload must be of maximum 125 bytes or less'
+                    );
+                    return;
                 }
             } elseif (($opcode === 0x00) === ($dataMsgBytesRecd === 0)) {
                 // We deliberately do not accept a non-fin empty initial text frame
@@ -878,19 +897,35 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 } else {
                     $errorMsg = 'Illegal data type opcode after unfinished previous data type frame; opcode MUST be CONTINUATION';
                 }
-                break;
-            } elseif ($maxFrameSize && $frameLength > $maxFrameSize) {
-                $code = Code::MESSAGE_TOO_LARGE;
-                $errorMsg = 'Payload exceeds maximum allowable frame size';
-                break;
-            } elseif ($maxMsgSize && ($frameLength + $dataMsgBytesRecd) > $maxMsgSize) {
-                $code = Code::MESSAGE_TOO_LARGE;
-                $errorMsg = 'Payload exceeds maximum allowable message size';
-                break;
-            } elseif ($textOnly && $opcode === 0x02) {
-                $code = Code::UNACCEPTABLE_TYPE;
-                $errorMsg = 'BINARY opcodes (0x02) not accepted';
-                break;
+                $endpoint->onParsedError($client, $code, $errorMsg);
+                return;
+            }
+
+            if ($maxFrameSize && $frameLength > $maxFrameSize) {
+                $endpoint->onParsedError(
+                    $client,
+                    Code::MESSAGE_TOO_LARGE,
+                    'Payload exceeds maximum allowable size'
+                );
+                return;
+            }
+
+            if ($maxMsgSize && ($frameLength + $dataMsgBytesRecd) > $maxMsgSize) {
+                $endpoint->onParsedError(
+                    $client,
+                    Code::MESSAGE_TOO_LARGE,
+                    'Payload exceeds maximum allowable size'
+                );
+                return;
+            }
+
+            if ($textOnly && $opcode === 0x02) {
+                $endpoint->onParsedError(
+                    $client,
+                    Code::UNACCEPTABLE_TYPE,
+                    'BINARY opcodes (0x02) not accepted'
+                );
+                return;
             }
 
             if ($isMasked) {
@@ -948,9 +983,12 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                                 $payload = substr($payload, 0, -1);
                             }
                             if ($i === 8) {
-                                $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
-                                $errorMsg = 'Invalid TEXT data; UTF-8 required';
-                                break 2;
+                                $endpoint->onParsedError(
+                                    $client,
+                                    Code::INCONSISTENT_FRAME_DATA_TYPE,
+                                    'Invalid TEXT data; UTF-8 required'
+                                );
+                                return;
                             }
 
                             $endpoint->onParsedData($client, $payload, $opcode === self::OP_BIN, false);
@@ -1016,9 +1054,12 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                             }
                         }
                         if ($i === 8) {
-                            $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
-                            $errorMsg = 'Invalid TEXT data; UTF-8 required';
-                            break;
+                            $endpoint->onParsedError(
+                                $client,
+                                Code::INCONSISTENT_FRAME_DATA_TYPE,
+                                'Invalid TEXT data; UTF-8 required'
+                            );
+                            return;
                         }
                     }
 
@@ -1034,15 +1075,6 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             }
 
             $frames++;
-        }
-
-        // An error occurred...
-        // stop parsing here ...
-        $endpoint->onParsedError($client, $code, $errorMsg);
-        yield $frames;
-
-        while (1) {
-            yield 0;
         }
     }
 

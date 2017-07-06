@@ -3,16 +3,13 @@
 namespace Aerys;
 
 interface HttpDriver {
-    const ERROR = 1;
-    const RESULT = 2;
-    const ENTITY_HEADERS = 3;
+    const RESULT = 1;
+    const ENTITY_HEADERS = 2;
     const ENTITY_PART = 4;
-    const ENTITY_RESULT = 5;
-    const SIZE_WARNING = 6;
+    const ENTITY_RESULT = 8;
+    const SIZE_WARNING = 16;
 
-    const BAD_VERSION = 1;
-
-    public function setup(callable $parseEmitter, callable $responseWriter);
+    public function setup(callable $parseEmitter, callable $errorEmitter, callable $responseWriter);
     public function filters(InternalRequest $ireq, array $userFilters): array;
     public function writer(InternalRequest $ireq): \Generator;
     public function upgradeBodySize(InternalRequest $ireq);
