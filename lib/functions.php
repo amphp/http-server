@@ -110,15 +110,15 @@ function redirect(string $absoluteUri, int $redirectCode = 307): callable {
         throw new \Error("Invalid redirect URI; Host redirect must not contain a query or fragment component");
     }
 
-    $redirectUri = rtrim($absoluteUri, "/") . "/";
+    $absoluteUri = rtrim($absoluteUri, "/");
 
     if ($redirectCode < 300 || $redirectCode > 399) {
         throw new \Error("Invalid redirect code; code in the range 300..399 required");
     }
 
-    return function (Request $req, Response $res) use ($redirectUri, $redirectCode) {
+    return function (Request $req, Response $res) use ($absoluteUri, $redirectCode) {
         $res->setStatus($redirectCode);
-        $res->setHeader("location", $redirectUri . \ltrim($req->getUri(), "/"));
+        $res->setHeader("location", $absoluteUri . $req->getUri());
         $res->end();
     };
 }

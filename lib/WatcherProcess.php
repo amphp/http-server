@@ -19,6 +19,8 @@ class WatcherProcess extends Process {
     private $processes;
     private $ipcClients = [];
     private $procGarbageWatcher;
+    private $commandServerWatcher;
+    private $ipcServerWatcher;
     private $stopDeferred;
     private $spawnDeferreds = [];
     private $defunctProcessCount = 0;
@@ -33,7 +35,7 @@ class WatcherProcess extends Process {
     public function __construct(PsrLogger $logger) {
         parent::__construct($logger);
         $this->logger = $logger;
-        $this->procGarbageWatcher = Loop::repeat(100, $this->callableFromInstanceMethod("collectProcessGarbage"));
+        $this->procGarbageWatcher = Loop::repeat(10, $this->callableFromInstanceMethod("collectProcessGarbage"));
         Loop::disable($this->procGarbageWatcher);
         $this->useSocketTransfer = $this->useSocketTransfer();
     }
@@ -63,6 +65,8 @@ class WatcherProcess extends Process {
 
         if ($this->stopDeferred && empty($this->processes)) {
             Loop::cancel($this->procGarbageWatcher);
+            Loop::cancel($this->commandServerWatcher);
+            Loop::cancel($this->ipcServerWatcher);
             if ($this->stopDeferred !== true) {
                 Loop::defer([$this->stopDeferred, "resolve"]);
             }
@@ -130,7 +134,7 @@ class WatcherProcess extends Process {
         }
 
         stream_set_blocking($commandServer, false);
-        Loop::onReadable($commandServer, $this->callableFromInstanceMethod("acceptCommand"));
+        $this->commandServerWatcher = Loop::onReadable($commandServer, $this->callableFromInstanceMethod("acceptCommand"));
 
         register_shutdown_function(function () use ($path) {
             @\unlink($path);
@@ -189,7 +193,7 @@ class WatcherProcess extends Process {
                         break;
 
                     case "stop":
-                        (new \Amp\Coroutine($this->stop()))->onResolve('Amp\stop');
+                        (new \Amp\Coroutine($this->stop()))->onResolve([Loop::class, "stop"]);
                         break;
                 }
             } while (1);
@@ -334,7 +338,7 @@ class WatcherProcess extends Process {
         }
 
         \stream_set_blocking($ipcServer, false);
-        Loop::onReadable($ipcServer, $this->callableFromInstanceMethod("accept"));
+        $this->ipcServerWatcher = Loop::onReadable($ipcServer, $this->callableFromInstanceMethod("accept"));
 
         $resolvedSocketAddress = \stream_socket_get_name($ipcServer, $wantPeer = false);
 
@@ -344,6 +348,11 @@ class WatcherProcess extends Process {
     private function accept($watcherId, $ipcServer) {
         if (!$ipcClient = @stream_socket_accept($ipcServer, $timeout = 0)) {
             return;
+        }
+
+        // processes are marked as defunct until a socket connection has been established
+        if (!--$this->defunctProcessCount) {
+            Loop::disable($this->procGarbageWatcher);
         }
 
         if ($this->stopDeferred) {
@@ -482,20 +491,14 @@ class WatcherProcess extends Process {
         $parts[] = "-i";
         $parts[] = $this->ipcServerUri;
 
-        if ($console->isArgDefined("config")) {
-            $parts[] = "-c";
-            $parts[] = $console->getArg("config");
-        }
+        $parts[] = "-c";
+        $parts[] = $console->getArg("config");
 
-        if ($console->isArgDefined("color")) {
-            $parts[] = "--color";
-            $parts[] = $console->getArg("color");
-        }
+        $parts[] = "--color";
+        $parts[] = $console->getArg("color");
 
-        if ($console->isArgDefined("log")) {
-            $parts[] = "-l";
-            $parts[] = $console->getArg("log");
-        }
+        $parts[] = "-l";
+        $parts[] = $console->getArg("log");
 
         return implode(" ", array_map("escapeshellarg", $parts));
     }
@@ -516,6 +519,10 @@ class WatcherProcess extends Process {
             @fclose($pipe);
         }
         $this->processes[] = $procHandle;
+
+        // mark processes as potentially defunct until the IPC socket connection has been established
+        Loop::enable($this->procGarbageWatcher);
+        $this->defunctProcessCount++;
 
         return ($this->spawnDeferreds[] = new Deferred)->promise();
     }

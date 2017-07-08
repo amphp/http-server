@@ -16,9 +16,7 @@ class IpcLogger extends Logger {
     private $isDead;
 
     public function __construct(Console $console, $ipcSock) {
-        if ($console->isArgDefined("color")) {
-            $this->setAnsify($console->getArg("color"));
-        }
+        $this->setAnsify($console->getArg("color"));
         $level = $console->getArg("log");
         $level = isset(self::LEVELS[$level]) ? self::LEVELS[$level] : $level;
         $this->setOutputLevel($level);

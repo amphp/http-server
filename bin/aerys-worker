@@ -37,6 +37,7 @@ $climate = new League\CLImate\CLImate;
 $climate->arguments->add([
     "ipc" => [
         "prefix"       => "i",
+        "required"     => true,
     ],
     "socket-transfer" => [
         "longPrefix"   => "socket-transfer",
@@ -44,15 +45,16 @@ $climate->arguments->add([
     ],
     "log" => [
         "prefix"       => "l",
-        "defaultValue" => "warning",
+        "required"     => true,
     ],
     "color" => [
         "longPrefix"   => "color",
         "castTo"       => "string",
-        "defaultValue" => "auto",
+        "required"     => true,
     ],
     "config" => [
         "prefix"       => "c",
+        "required"     => true,
     ],
 ]);
 
