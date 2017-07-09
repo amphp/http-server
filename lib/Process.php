@@ -50,6 +50,9 @@ abstract class Process {
         } catch (\Throwable $uncaught) {
             $this->exitCode = 1;
             $this->logger->critical($uncaught);
+            if (method_exists($this->logger, "flush")) {
+                $this->logger->flush();
+            }
             static::exit();
         }
     }

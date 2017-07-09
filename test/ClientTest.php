@@ -14,7 +14,7 @@ use Aerys\Server;
 use Aerys\Ticker;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
-use Amp\Artax\BasicClient;
+use Amp\Artax\DefaultClient;
 use Amp\Loop;
 use Amp\Socket\ClientTlsContext;
 use PHPUnit\Framework\TestCase;
@@ -63,7 +63,7 @@ class ClientTest extends TestCase {
             $cookies = new \Amp\Artax\Cookie\ArrayCookieJar;
             $cookies->store(new \Amp\Artax\Cookie\Cookie("test", "value", null, "/", "localhost"));
             $context = (new ClientTlsContext)->withoutPeerVerification();
-            $client = new BasicClient($cookies, null, $context);
+            $client = new DefaultClient($cookies, null, $context);
             $port = parse_url($address, PHP_URL_PORT);
             $promise = $client->request((new \Amp\Artax\Request("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))
                 ->withHeader("custom", "header")
@@ -120,7 +120,7 @@ class ClientTest extends TestCase {
             }]);
 
             $context = (new ClientTlsContext)->withoutPeerVerification();
-            $client = new BasicClient(null, null, $context);
+            $client = new DefaultClient(null, null, $context);
             $promise = $client->request((new \Amp\Artax\Request("https://$address/", "POST"))
                 ->withBody("body")
             );
