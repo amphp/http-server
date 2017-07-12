@@ -218,7 +218,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         Loop::defer($this->reapClient, $ireq);
     }
 
-    public function reapClient(string $watcherId, InternalRequest $ireq) {
+    private function reapClient(string $watcherId, InternalRequest $ireq) {
         $client = new Rfc6455Client;
         $client->capacity = $this->maxBytesPerMinute;
         $client->connectedAt = $this->now;
@@ -293,7 +293,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
     private function sendCloseFrame(Rfc6455Client $client, int $code, string $msg): Promise {
         \assert($code !== Code::NONE || $msg == "");
-        $promise = $this->compile($client, $code !== Code::NONE ? pack('n', $code) . $msg : "", self::OP_CLOSE);
+        $promise = $this->write($client, $code !== Code::NONE ? pack('n', $code) . $msg : "", self::OP_CLOSE);
         $client->closedAt = $this->now;
         return $promise;
     }
@@ -334,7 +334,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    public function onParsedControlFrame(Rfc6455Client $client, int $opcode, string $data) {
+    private function onParsedControlFrame(Rfc6455Client $client, int $opcode, string $data) {
         // something went that wrong that we had to shutdown our readWatcher... if parser has anything left, we don't care!
         if (!$client->readWatcher) {
             return;
@@ -362,7 +362,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 break;
 
             case self::OP_PING:
-                $this->compile($client, $data, self::OP_PONG);
+                $this->write($client, $data, self::OP_PONG);
                 break;
 
             case self::OP_PONG:
@@ -372,7 +372,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    public function onParsedData(Rfc6455Client $client, string $data, bool $binary, bool $terminated) {
+    private function onParsedData(Rfc6455Client $client, string $data, bool $binary, bool $terminated) {
         if ($client->closedAt || $this->state === Server::STOPPING) {
             return;
         }
@@ -421,7 +421,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    public function onReadable($watcherId, $socket, Rfc6455Client $client) {
+    private function onReadable($watcherId, $socket, Rfc6455Client $client) {
         $data = @fread($socket, 8192);
 
         if ($data !== "") {
@@ -457,7 +457,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    public function onWritable($watcherId, $socket, Rfc6455Client $client) {
+    private function onWritable($watcherId, $socket, Rfc6455Client $client) {
         $bytes = @fwrite($socket, $client->writeBuffer);
         $client->bytesSent += $bytes;
 
@@ -523,46 +523,44 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    private function compile(Rfc6455Client $client, string $msg, int $opcode, bool $fin = true): Promise {
-        $rsv = 0b000;
+    private function compile(Rfc6455Client $client, string $msg, int $opcode, bool $fin): string {
+        $rsv = 0b000; // @TODO Add filter mechanism based on $client (e.g. gzip)
 
-        // @TODO Add filter mechanism (e.g. gzip)
+        $len = \strlen($msg);
+        $w = \chr(($fin << 7) | ($rsv << 4) | $opcode);
 
-        return $this->write($client, $msg, $opcode, $rsv, $fin);
+        if ($len > 0xFFFF) {
+            $w .= "\x7F" . \pack('J', $len);
+        } elseif ($len > 0x7D) {
+            $w .= "\x7E" . \pack('n', $len);
+        } else {
+            $w .= \chr($len);
+        }
+
+        return $w . $msg;
     }
 
-    private function write(Rfc6455Client $client, string $msg, int $opcode, int $rsv, bool $fin): Promise {
+    private function write(Rfc6455Client $client, string $msg, int $opcode, bool $fin = true): Promise {
         if ($client->closedAt) {
             return new Failure(new ClientException);
         }
 
-        $len = \strlen($msg);
-        $w = chr(($fin << 7) | ($rsv << 4) | $opcode);
-
-        if ($len > 0xFFFF) {
-            $w .= "\x7F" . pack('J', $len);
-        } elseif ($len > 0x7D) {
-            $w .= "\x7E" . pack('n', $len);
-        } else {
-            $w .= chr($len);
-        }
-
-        $w .= $msg;
+        $frame = $this->compile($client, $msg, $opcode, $fin);
 
         if ($client->writeBuffer !== "") {
             if (\strlen($client->writeBuffer) < 65536 && !$client->writeDataQueue && !$client->writeControlQueue) {
-                $client->writeBuffer .= $w;
+                $client->writeBuffer .= $frame;
                 $deferred = $client->writeDeferred;
             } elseif ($opcode >= 0x8) {
-                $client->writeControlQueue[] = $w;
+                $client->writeControlQueue[] = $frame;
                 $deferred = $client->writeDeferredControlQueue[] = new Deferred;
             } else {
-                $client->writeDataQueue[] = $w;
+                $client->writeDataQueue[] = $frame;
                 $deferred = $client->writeDeferredDataQueue[] = new Deferred;
             }
         } else {
             Loop::enable($client->writeWatcher);
-            $client->writeBuffer = $w;
+            $client->writeBuffer = $frame;
             $deferred = $client->writeDeferred = new Deferred;
         }
 
@@ -585,11 +583,11 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $frames = str_split($data, (int) ceil($len / $slices));
             $data = array_pop($frames);
             foreach ($frames as $frame) {
-                $this->compile($client, $frame, $opcode, false);
+                $this->write($client, $frame, $opcode, false);
                 $opcode = self::OP_CONT;
             }
         }
-        return $this->compile($client, $data, $opcode);
+        return $this->write($client, $data, $opcode);
     }
 
     public function broadcast(string $data, bool $binary, array $exceptIds = []): Promise {
@@ -709,7 +707,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $reason = 'Exceeded unanswered PING limit';
             Promise\rethrow(new Coroutine($this->doClose($client, $code, $reason)));
         } else {
-            $this->compile($client, (string) $client->pingCount++, self::OP_PING);
+            $this->write($client, (string) $client->pingCount++, self::OP_PING);
         }
     }
 
@@ -765,7 +763,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
      * @param array $options Optional parser settings
      * @return \Generator
      */
-    public static function parser(self $endpoint, Rfc6455Client $client, array $options = []): \Generator {
+    private static function parser(self $endpoint, Rfc6455Client $client, array $options = []): \Generator {
         $emitThreshold = $options["threshold"] ?? 32768;
         $maxFrameSize = $options["max_frame_size"] ?? PHP_INT_MAX;
         $maxMsgSize = $options["max_msg_size"] ?? PHP_INT_MAX;
