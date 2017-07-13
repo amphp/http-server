@@ -218,7 +218,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         Loop::defer($this->reapClient, $ireq);
     }
 
-    private function reapClient(string $watcherId, InternalRequest $ireq) {
+    public function reapClient(string $watcherId, InternalRequest $ireq) {
         $client = new Rfc6455Client;
         $client->capacity = $this->maxBytesPerMinute;
         $client->connectedAt = $this->now;
@@ -334,7 +334,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    private function onParsedControlFrame(Rfc6455Client $client, int $opcode, string $data) {
+    public function onParsedControlFrame(Rfc6455Client $client, int $opcode, string $data) {
         // something went that wrong that we had to shutdown our readWatcher... if parser has anything left, we don't care!
         if (!$client->readWatcher) {
             return;
@@ -372,7 +372,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    private function onParsedData(Rfc6455Client $client, string $data, bool $binary, bool $terminated) {
+    public function onParsedData(Rfc6455Client $client, string $data, bool $binary, bool $terminated) {
         if ($client->closedAt || $this->state === Server::STOPPING) {
             return;
         }
@@ -421,7 +421,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    private function onReadable($watcherId, $socket, Rfc6455Client $client) {
+    public function onReadable($watcherId, $socket, Rfc6455Client $client) {
         $data = @fread($socket, 8192);
 
         if ($data !== "") {
@@ -457,7 +457,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    private function onWritable($watcherId, $socket, Rfc6455Client $client) {
+    public function onWritable($watcherId, $socket, Rfc6455Client $client) {
         $bytes = @fwrite($socket, $client->writeBuffer);
         $client->bytesSent += $bytes;
 
@@ -763,7 +763,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
      * @param array $options Optional parser settings
      * @return \Generator
      */
-    private static function parser(self $endpoint, Rfc6455Client $client, array $options = []): \Generator {
+    public static function parser(self $endpoint, Rfc6455Client $client, array $options = []): \Generator {
         $emitThreshold = $options["threshold"] ?? 32768;
         $maxFrameSize = $options["max_frame_size"] ?? PHP_INT_MAX;
         $maxMsgSize = $options["max_msg_size"] ?? PHP_INT_MAX;
