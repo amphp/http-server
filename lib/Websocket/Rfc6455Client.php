@@ -7,23 +7,29 @@ use Amp\Struct;
 class Rfc6455Client {
     use Struct;
 
+    /** @var int */
     public $id;
+
+    /** @var \Amp\Socket\ServerSocket */
     public $socket;
+
+    /** @var callable */
     public $serverRefClearer;
+
+    /** @var \Generator */
     public $parser;
-    public $readWatcher;
-    public $writeWatcher;
+
+    /** @var \Amp\Promise|null */
+    public $lastWrite;
+
+    /** @var \Amp\Deferred|null */
+    public $rateDeferred;
+
+    /** @var \Amp\Emitter */
     public $msgEmitter;
 
     public $pingCount = 0;
     public $pongCount = 0;
-
-    public $writeBuffer = '';
-    public $writeDeferred;
-    public $writeDataQueue = [];
-    public $writeDeferredDataQueue = [];
-    public $writeControlQueue = [];
-    public $writeDeferredControlQueue = [];
 
     // getInfo() properties
     public $connectedAt;
