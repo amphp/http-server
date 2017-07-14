@@ -19,7 +19,7 @@ use Amp\Deferred;
 use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Loop;
-use PHPUnit\Framework\TestCase;
+use Amp\PHPUnit\TestCase;
 use const Aerys\HTTP_STATUS;
 
 class NullWebsocket implements Websocket {
@@ -78,7 +78,6 @@ class WebsocketTest extends TestCase {
         stream_set_blocking($client->socket, false);
         $server = new class extends Server {
             public $state;
-            public $requireClientFree = false;
             public function __construct() {
             }
             public function state(): int {
@@ -88,21 +87,10 @@ class WebsocketTest extends TestCase {
         $client->id = (int) $client->socket;
         $client->exporter = function ($_client) use ($client, $server) {
             $this->assertSame($client, $_client);
-            $dtor = new class {
-                public $test;
-                public $server;
-                function __destruct() {
-                    if ($this->server->requireClientFree) {
-                        $this->test->fail("Expected client to be killed, but 'decrementer' never called");
-                    }
-                }
-            };
-            $dtor->test = $this;
-            $dtor->server = $server;
-            return function () use ($dtor, $client) {
+            $callback = $this->createCallback(1);
+            return function () use ($callback, $client) {
                 @fclose($client->socket);
-                $this->assertTrue($dtor->server->requireClientFree);
-                $dtor->server->requireClientFree = false;
+                $callback();
             };
         };
 
@@ -136,16 +124,9 @@ class WebsocketTest extends TestCase {
         return $promise;
     }
 
-    public function triggerTimeout(Rfc6455Gateway $gateway) {
-        (function () {
-            $this->timeout();
-        })->call($gateway);
-    }
-
     public function testFullSequence() {
         Loop::run(function () {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $server->requireClientFree = true;
             $server->state = Server::STOPPING;
             yield $gateway->update($server);
             $server->state = Server::STOPPED;
@@ -174,11 +155,15 @@ class WebsocketTest extends TestCase {
                     }
                 }
             });
+
             foreach ($data as $datum) {
                 list($payload, $terminated) = $datum;
                 $gateway->onParsedData($client, $payload, false, $terminated);
             }
             $this->assertFalse($ws->gen->valid());
+
+            $server->state = Server::STOPPED;
+            yield $gateway->update($server);
 
             Loop::stop();
         });
@@ -189,7 +174,7 @@ class WebsocketTest extends TestCase {
             [[
                 ["foo", true]
             ], function ($clientId, $msg) {
-                $this->assertEquals("foo", yield $msg);
+                $this->assertSame("foo", yield $msg);
             }],
             [[
                 ["foo", false],
@@ -197,12 +182,11 @@ class WebsocketTest extends TestCase {
                 ["baz", true]
             ], function ($clientId, $msg) {
                 static $call = 0;
-                if (++$call == 1) {
-                    $this->assertTrue(yield $msg->valid());
-                    $this->assertEquals("foo", $msg->consume());
-                    $this->assertTrue(yield $msg->valid());
-                    $this->assertEquals("bar", $msg->consume());
-                    $this->assertFalse(yield $msg->valid());
+                if (++$call === 1) {
+                    $expected = ["foo", "bar"];
+                    while (($chunk = yield $msg->read()) !== null) {
+                        $this->assertSame(\array_shift($expected), $chunk);
+                    }
                 } else {
                     $this->assertEquals("baz", yield $msg);
                 }
@@ -228,11 +212,7 @@ class WebsocketTest extends TestCase {
                 $gateway->$method($client, ...$args);
             }
 
-            $server->requireClientFree = true;
-
             yield new Delayed(10); // Time to read and write.
-
-            $this->triggerTimeout($gateway);
 
             $this->assertSocket([[Rfc6455Gateway::OP_CLOSE]], stream_get_contents($sock));
             Loop::stop();
@@ -344,7 +324,6 @@ class WebsocketTest extends TestCase {
                     $this->closed = $code;
                 }
             });
-            $server->requireClientFree = true;
             yield from $closeCb($gateway, $sock, $ws, $client);
             Loop::stop();
         });
@@ -402,7 +381,7 @@ class WebsocketTest extends TestCase {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
             fwrite($sock, WebsocketParserTest::compile(Rfc6455Gateway::OP_PING, true, "foo"));
             yield $this->waitOnRead($sock);
-            fclose($client->socket);
+            $client->socket->close();
             $this->assertSocket([[Rfc6455Gateway::OP_PONG, "foo"]], stream_get_contents($sock));
 
             Loop::stop();
@@ -429,8 +408,8 @@ class WebsocketTest extends TestCase {
             } while (!feof($sock));
             $this->assertSocket([
                 [Rfc6455Gateway::OP_TEXT, "foo".str_repeat("*", 65528)],
-                [Rfc6455Gateway::OP_TEXT, "bar"],
                 [Rfc6455Gateway::OP_PONG, "pingpong"],
+                [Rfc6455Gateway::OP_TEXT, "bar"],
                 [Rfc6455Gateway::OP_TEXT, "baz"],
                 [Rfc6455Gateway::OP_CLOSE],
             ], $data);
@@ -442,9 +421,11 @@ class WebsocketTest extends TestCase {
     public function testFragmentation() {
         Loop::run(function () {
             list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $endpoint->broadcast(str_repeat("*", 131046), true)->onResolve(function () use ($sock, $server) {
+            $endpoint->broadcast(str_repeat("*", 131046), true)->onResolve(function ($exception) use ($sock, $server) {
                 stream_socket_shutdown($sock, STREAM_SHUT_WR);
-                $server->requireClientFree = true;
+                if ($exception) {
+                    throw $exception;
+                }
             });
             $data = "";
             do {
@@ -463,6 +444,9 @@ class WebsocketTest extends TestCase {
             $client->pingCount = 2;
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_PONG, "1");
             $this->assertEquals(1, $client->pongCount);
+
+            $server->state = Server::STOPPED;
+            yield $gateway->update($server);
 
             Loop::stop();
         });

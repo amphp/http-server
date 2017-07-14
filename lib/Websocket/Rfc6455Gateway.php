@@ -279,8 +279,6 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $code = Code::ABNORMAL_CLOSE;
             $reason = "Client closed underlying TCP connection";
             Promise\rethrow(new Coroutine($this->tryAppOnClose($client->id, $code, $reason)));
-        } else {
-            unset($this->closeTimeouts[$client->id]);
         }
 
         $this->unloadClient($client);
@@ -314,22 +312,24 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             return 0;
         }
 
+        $bytes = 0;
+
         try {
             $this->closeTimeouts[$client->id] = $this->now + $this->closePeriod;
             $promise = $this->sendCloseFrame($client, $code, $reason);
+            $client->closedAt = $this->now; // Set only after sending close frame.
             yield from $this->tryAppOnClose($client->id, $code, $reason);
-            return yield $promise;
+            $bytes = yield $promise;
         } catch (ClientException $e) {
             // Ignore client failures.
         } catch (StreamException $e) {
-            $this->unloadClient($client);
+            // Ignore stream failures, closing anyway.
         } finally {
-            $client->closedAt = $this->now;
+            $client->socket->close();
+            // Do not unload client here, will be unloaded later.
         }
 
-        // Do not close client socket here, will be unloaded later.
-
-        return 0;
+        return $bytes;
     }
 
     private function sendCloseFrame(Rfc6455Client $client, int $code, string $msg): Promise {
@@ -353,9 +353,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         ($client->serverRefClearer)();
         $client->serverRefClearer = null;
 
-        $client->socket = null;
-
-        unset($this->heartbeatTimeouts[$client->id], $this->clients[$client->id]);
+        unset($this->heartbeatTimeouts[$client->id], $this->clients[$client->id], $this->closeTimeouts[$client->id]);
 
         // fail not yet terminated message streams; they *must not* be failed before client is removed
         if ($client->msgEmitter) {
@@ -365,14 +363,13 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
     public function onParsedControlFrame(Rfc6455Client $client, int $opcode, string $data) {
         // something went that wrong that we had to close... if parser has anything left, we don't care!
-        if ($client->closedAt) {
+        if ($client->parser === null) {
             return;
         }
 
         switch ($opcode) {
             case self::OP_CLOSE:
                 if ($client->closedAt) {
-                    unset($this->closeTimeouts[$client->id]);
                     $this->unloadClient($client);
                 } else {
                     if (\strlen($data) < 2) {
@@ -399,7 +396,8 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     }
 
     public function onParsedData(Rfc6455Client $client, string $data, bool $binary, bool $terminated) {
-        if ($client->closedAt || $this->state === Server::STOPPING) {
+        // something went that wrong that we had to close... if parser has anything left, we don't care!
+        if ($client->parser === null || $this->state === Server::STOPPING) {
             return;
         }
 
@@ -409,6 +407,11 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $client->msgEmitter = new Emitter;
             $msg = new Message($client->msgEmitter->iterate(), $binary);
             Promise\rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
+
+            // something went that wrong that we had to close... emitter has been failed.
+            if ($client->parser === null) {
+                return;
+            }
         }
 
         $client->msgEmitter->emit($data);
