@@ -85,6 +85,7 @@ class WebsocketTest extends TestCase {
                 return $this->state;
             }
         };
+        $client->id = (int) $client->socket;
         $client->exporter = function ($_client) use ($client, $server) {
             $this->assertSame($client, $_client);
             $dtor = new class {
@@ -99,9 +100,9 @@ class WebsocketTest extends TestCase {
             $dtor->test = $this;
             $dtor->server = $server;
             return function () use ($dtor, $client) {
+                @fclose($client->socket);
                 $this->assertTrue($dtor->server->requireClientFree);
                 $dtor->server->requireClientFree = false;
-                fclose($client->socket);
             };
         };
 
@@ -228,9 +229,9 @@ class WebsocketTest extends TestCase {
             }
 
             $server->requireClientFree = true;
-            if ($client->writeBuffer != "") {
-                $gateway->onWritable($client->writeWatcher, $client->socket, $client);
-            }
+
+            yield new Delayed(10); // Time to read and write.
+
             $this->triggerTimeout($gateway);
 
             $this->assertSocket([[Rfc6455Gateway::OP_CLOSE]], stream_get_contents($sock));

@@ -318,14 +318,18 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $this->closeTimeouts[$client->id] = $this->now + $this->closePeriod;
             $promise = $this->sendCloseFrame($client, $code, $reason);
             yield from $this->tryAppOnClose($client->id, $code, $reason);
-            yield $promise;
+            return yield $promise;
         } catch (ClientException $e) {
             // Ignore client failures.
         } catch (StreamException $e) {
-            // Ignore stream failures.
+            $this->unloadClient($client);
+        } finally {
+            $client->closedAt = $this->now;
         }
 
         // Do not close client socket here, will be unloaded later.
+
+        return 0;
     }
 
     private function sendCloseFrame(Rfc6455Client $client, int $code, string $msg): Promise {
@@ -347,6 +351,9 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         $client->parser = null;
 
         ($client->serverRefClearer)();
+        $client->serverRefClearer = null;
+
+        $client->socket = null;
 
         unset($this->heartbeatTimeouts[$client->id], $this->clients[$client->id]);
 
