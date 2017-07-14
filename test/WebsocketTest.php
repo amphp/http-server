@@ -366,6 +366,27 @@ class WebsocketTest extends TestCase {
         });
     }
 
+    public function testCloseFrameWithHalfClose() {
+        $this->runClose(function ($gateway, $sock, $ws, $client) {
+            @fwrite($client->socket, str_repeat("*", 1 << 18)); // just fill the buffer to have the server not write the close frame immediately
+            $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, "");
+            stream_socket_shutdown($sock, STREAM_SHUT_WR);
+            fread($sock, 1 << 18);
+            yield new Delayed(10); // Time to read, write, and close.
+            $this->assertEquals(Websocket\Code::NONE, $ws->closed);
+            $this->assertSocket([[Rfc6455Gateway::OP_CLOSE, ""]], stream_get_contents($sock));
+        });
+    }
+
+    public function testHalfClose() {
+        $this->runClose(function ($gateway, $sock, $ws, $client) {
+            stream_socket_shutdown($sock, STREAM_SHUT_WR);
+            yield new Delayed(10); // Time to read, write, and close.
+            $this->assertEquals(Websocket\Code::ABNORMAL_CLOSE, $ws->closed);
+            $this->assertEquals("", stream_get_contents($sock));
+        });
+    }
+
     public function testIOClose() {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
             fclose($sock);
