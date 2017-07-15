@@ -222,7 +222,6 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         $client->connectedAt = $this->now;
         $client->id = $ireq->client->id;
         $client->socket = new ServerSocket($ireq->client->socket);
-        //$client->writeBuffer = $ireq->client->writeBuffer;
         $client->serverRefClearer = ($ireq->client->exporter)($ireq->client);
 
         $client->parser = self::parser($this, $client, $options = [
@@ -317,7 +316,6 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         try {
             $this->closeTimeouts[$client->id] = $this->now + $this->closePeriod;
             $promise = $this->sendCloseFrame($client, $code, $reason);
-            $client->closedAt = $this->now; // Set only after sending close frame.
             yield from $this->tryAppOnClose($client->id, $code, $reason);
             $bytes = yield $promise;
         } catch (ClientException $e) {
@@ -353,7 +351,11 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         ($client->serverRefClearer)();
         $client->serverRefClearer = null;
 
-        unset($this->heartbeatTimeouts[$client->id], $this->clients[$client->id], $this->closeTimeouts[$client->id]);
+        $id = $client->id;
+        if ($this->clients[$id]->rateDeferred) { // otherwise we may pile up circular references in read()
+            unset($this->clients[$id]->rateDeferred, $this->highFramesPerSecondClients[$id], $this->lowCapacityClients[$id]);
+        }
+        unset($this->clients[$id], $this->heartbeatTimeouts[$id], $this->closeTimeouts[$id]);
 
         // fail not yet terminated message streams; they *must not* be failed before client is removed
         if ($client->msgEmitter) {
@@ -483,40 +485,37 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         $opcode = $binary ? self::OP_BIN : self::OP_TEXT;
         assert($binary || preg_match("//u", $data), "non-binary data needs to be UTF-8 compatible");
 
-        return new Coroutine($this->doSend($client, $data, $opcode));
+        return $client->lastWrite = new Coroutine($this->doSend($client, $data, $opcode));
     }
 
     private function doSend(Rfc6455Client $client, string $data, int $opcode): \Generator {
-        while ($client->lastWrite !== null) {
+        if ($client->lastWrite) {
             yield $client->lastWrite;
         }
 
-        if (\strlen($data) > 1.5 * $this->autoFrameSize) {
-            $client->lastWrite = call(function () use ($client, $data, $opcode) {
+        try {
+            $bytes = 0;
+
+            if (\strlen($data) > 1.5 * $this->autoFrameSize) {
                 $len = \strlen($data);
                 $slices = \ceil($len / $this->autoFrameSize);
                 $chunks = \str_split($data, \ceil($len / $slices));
-                $bytes = 0;
                 $final = \array_pop($chunks);
                 foreach ($chunks as $chunk) {
                     $bytes += yield $this->write($client, $chunk, $opcode, false);
                     $opcode = self::OP_CONT;
                 }
-                return $bytes + yield $this->write($client, $final, $opcode, true);
-            });
-        } else {
-            $client->lastWrite = $this->write($client, $data, $opcode);
-        }
-
-        try {
-            $bytes = yield $client->lastWrite;
+                $bytes += yield $this->write($client, $final, $opcode, true);
+            } else {
+                $bytes = yield $this->write($client, $data, $opcode);
+            }
         } catch (\Throwable $exception) {
             $this->close($client->id);
+            $client->lastWrite = null; // prevent storing a cyclic reference
             throw $exception;
-        } finally {
-            $client->lastWrite = null;
         }
 
+        $client->lastWrite = null;
         return $bytes;
     }
 
