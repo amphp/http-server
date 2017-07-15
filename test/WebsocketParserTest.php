@@ -236,6 +236,7 @@ class WebsocketParserTest extends TestCase {
     public function testUpgrading() {
         Loop::run(function () use (&$sock) {
             $client = new Client;
+            $client->id = 1;
             $client->exporter = function () use (&$exported) {
                 $exported = true;
                 return function () { $this->fail("This test doesn't expect the client to be closed or unloaded"); };
