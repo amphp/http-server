@@ -111,7 +111,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             case "heartbeatPeriod":
             case "closePeriod":
             case "queuedPingLimit":
-                if (0 <= $value = filter_var($value, FILTER_VALIDATE_INT)) {
+                if (0 >= $value = filter_var($value, FILTER_VALIDATE_INT)) {
                     throw new \Error("$option must be a positive integer greater than 0");
                 }
                 break;
