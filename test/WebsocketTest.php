@@ -55,7 +55,7 @@ class WebsocketTest extends TestCase {
                 $len = unpack('n', $data[2] . $data[3])[1];
                 $data = substr($data, 4);
             } elseif ($len == 0x7F) {
-                $len = unpack('J', substr($data, 2, 8));
+                $len = unpack('J', substr($data, 2, 8))[1];
                 $data = substr($data, 10);
             } else {
                 $data = substr($data, 2);
@@ -392,12 +392,13 @@ class WebsocketTest extends TestCase {
         Loop::run(function () {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 function onData(int $clientId, Websocket\Message $msg) {
-                    $this->endpoint->broadcast("foo".str_repeat("*", 65528 /* fill buffer */));
+                    $this->endpoint->broadcast("foo".str_repeat("*", 1 << 20 /* fill buffer */));
                     $this->endpoint->send("bar", $clientId);
                     yield $this->endpoint->multicast("baz", [$clientId]);
                     $this->endpoint->close($clientId);
                 }
             });
+            $gateway->setOption("autoFrameSize", 10 + (1 << 20));
             $gateway->onParsedData($client, "start...", true, true);
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_PING, "pingpong");
             stream_set_blocking($sock, false);
@@ -407,7 +408,7 @@ class WebsocketTest extends TestCase {
                 $data .= fread($sock, 1024);
             } while (!feof($sock));
             $this->assertSocket([
-                [Rfc6455Gateway::OP_TEXT, "foo".str_repeat("*", 65528)],
+                [Rfc6455Gateway::OP_TEXT, "foo".str_repeat("*", 1 << 20)],
                 [Rfc6455Gateway::OP_PONG, "pingpong"],
                 [Rfc6455Gateway::OP_TEXT, "bar"],
                 [Rfc6455Gateway::OP_TEXT, "baz"],
