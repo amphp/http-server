@@ -35,7 +35,7 @@ switch (fread($testSock, 1)) {
         exit;
     case 3:
         $ipcSock = stream_socket_client($argv[2]);
-        $data = fread($ipcSock, strlen(\Aerys\WatcherProcess::STOP_SEQUENCE));
+        $data = stream_get_contents($ipcSock, strlen(\Aerys\WatcherProcess::STOP_SEQUENCE));
         fwrite($testSock, 3);
         fwrite($testSock, $data);
         exit;
