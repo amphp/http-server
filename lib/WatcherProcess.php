@@ -2,10 +2,14 @@
 
 namespace Aerys;
 
+use Amp\ByteStream\StreamException;
 use Amp\CallableMaker;
+use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Loop;
-use Amp\Success;
+use Amp\Promise;
+use Amp\Socket\Socket;
+use Amp\Socket\Server;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WatcherProcess extends Process {
@@ -17,12 +21,19 @@ class WatcherProcess extends Process {
     private $ipcServerUri;
     private $workerCommand;
     private $processes;
+
+    /** @var \Amp\Socket\ClientSocket[] */
     private $ipcClients = [];
+
+    /** @var string */
     private $procGarbageWatcher;
-    private $commandServerWatcher;
-    private $ipcServerWatcher;
+
+    /** @var \Amp\Deferred|null */
     private $stopDeferred;
+
+    /** @var \Amp\Deferred[] */
     private $spawnDeferreds = [];
+
     private $defunctProcessCount = 0;
     private $expectedFailures = 0;
 
@@ -65,12 +76,9 @@ class WatcherProcess extends Process {
 
         if ($this->stopDeferred && empty($this->processes)) {
             Loop::cancel($this->procGarbageWatcher);
-            Loop::cancel($this->commandServerWatcher);
-            Loop::cancel($this->ipcServerWatcher);
-            if ($this->stopDeferred !== true) {
+            if ($this->stopDeferred) {
                 Loop::defer([$this->stopDeferred, "resolve"]);
             }
-            $this->stopDeferred = true;
         }
     }
 
@@ -117,57 +125,37 @@ class WatcherProcess extends Process {
             $socketAddress = "tcp://127.0.0.1:*";
         }
 
-        if (yield \Amp\file\exists($path)) {
-            if (is_resource(@stream_socket_client($unix ? $socketAddress : yield \Amp\file\get($path)))) {
-                throw new \RuntimeException("Aerys is already running, can't start it again");
+        if (yield \Amp\File\exists($path)) {
+            if (is_resource(@stream_socket_client($unix ? $socketAddress : yield \Amp\File\get($path)))) {
+                throw new \Error("Aerys is already running, can't start it again");
             } elseif ($unix) {
-                yield \Amp\file\unlink($path);
+                yield \Amp\File\unlink($path);
             }
         }
 
-        if (!$commandServer = @stream_socket_server($socketAddress, $errno, $errstr)) {
-            throw new \RuntimeException(sprintf(
-                "Failed binding socket server on $socketAddress: [%d] %s",
-                $errno,
-                $errstr
-            ));
-        }
+        $commandServer = \Amp\Socket\listen($socketAddress);
 
-        stream_set_blocking($commandServer, false);
-        $this->commandServerWatcher = Loop::onReadable($commandServer, $this->callableFromInstanceMethod("acceptCommand"));
+        Promise\rethrow(new Coroutine($this->acceptCommand($commandServer, $path)));
 
-        register_shutdown_function(function () use ($path) {
-            @\unlink($path);
-        });
         if (!$unix) {
-            yield \Amp\file\put($path, stream_socket_get_name($commandServer, $wantPeer = false));
+            yield \Amp\File\put($path, $commandServer->getAddress());
         }
     }
 
-    private function acceptCommand($watcherId, $commandServer) {
-        if (!$client = @stream_socket_accept($commandServer, $timeout = 0)) {
-            return;
+    private function acceptCommand(Server $server, string $path): \Generator {
+        while ($client = yield $server->accept()) {
+            Promise\rethrow(new Coroutine($this->readCommand($client)));
         }
-        stream_set_blocking($client, false);
-        $parser = $this->commandParser($client);
-        $readWatcherId = Loop::onReadable($client, function () use ($parser) { $parser->next(); });
-        $parser->send($readWatcherId);
+
+        yield \Amp\File\unlink($path);
     }
 
-    private function commandParser($client): \Generator {
-        $readWatcherId = yield;
+    private function readCommand(Socket $client): \Generator {
         $buffer = "";
-        $length = null;
 
-        do {
-            yield;
-            $data = @fread($client, 8192);
-            if ($data == "" && (!is_resource($client) || @feof($client))) {
-                Loop::cancel($readWatcherId);
-                return;
-            }
+        while (($chunk = yield $client->read()) !== null) {
+            $buffer .= $chunk;
 
-            $buffer .= $data;
             do {
                 if (!isset($length)) {
                     if (!isset($buffer[3])) {
@@ -193,11 +181,19 @@ class WatcherProcess extends Process {
                         break;
 
                     case "stop":
-                        (new \Amp\Coroutine($this->stop()))->onResolve([Loop::class, "stop"]);
-                        break;
+                        try {
+                            yield from $this->stop();
+                        } finally {
+                            Loop::stop();
+                        }
+
+                        //(new \Amp\Coroutine($this->stop()))->onResolve([Loop::class, "stop"]);
+                        return;
                 }
-            } while (1);
-        } while (1);
+            } while (true);
+        }
+
+        $client->close();
     }
 
     protected function recommendAssertionSetting() {
@@ -329,58 +325,40 @@ class WatcherProcess extends Process {
             $socketTransport = "unix";
         }
 
-        if (!$ipcServer = @\stream_socket_server("{$socketTransport}://{$socketAddress}", $errno, $errstr)) {
-            throw new \RuntimeException(\sprintf(
-                "Failed binding socket server on {$socketTransport}://{$socketAddress}: [%d] %s",
-                $errno,
-                $errstr
-            ));
-        }
+        $ipcServer = \Amp\Socket\listen("{$socketTransport}://{$socketAddress}");
 
-        \stream_set_blocking($ipcServer, false);
-        $this->ipcServerWatcher = Loop::onReadable($ipcServer, $this->callableFromInstanceMethod("accept"));
+        Promise\rethrow(new Coroutine($this->accept($ipcServer)));
 
-        $resolvedSocketAddress = \stream_socket_get_name($ipcServer, $wantPeer = false);
-
-        return "{$socketTransport}://{$resolvedSocketAddress}";
+        return $socketTransport . "://" . $ipcServer->getAddress();
     }
 
-    private function accept($watcherId, $ipcServer) {
-        if (!$ipcClient = @stream_socket_accept($ipcServer, $timeout = 0)) {
-            return;
+    private function accept(Server $server): \Generator {
+        /** @var \Amp\Socket\ClientSocket $client */
+        while ($client = yield $server->accept()) {
+            // processes are marked as defunct until a socket connection has been established
+            if (!--$this->defunctProcessCount) {
+                Loop::disable($this->procGarbageWatcher);
+            }
+
+            if ($this->stopDeferred) {
+                $client->write(self::STOP_SEQUENCE);
+            }
+
+            $this->ipcClients[\spl_object_hash($client)] = $client;
+
+            assert(!empty($this->spawnDeferreds));
+            array_shift($this->spawnDeferreds)->resolve();
+
+            Promise\rethrow(new Coroutine($this->read($client)));
         }
-
-        // processes are marked as defunct until a socket connection has been established
-        if (!--$this->defunctProcessCount) {
-            Loop::disable($this->procGarbageWatcher);
-        }
-
-        if ($this->stopDeferred) {
-            @\fwrite($ipcClient, self::STOP_SEQUENCE);
-        }
-
-        stream_set_blocking($ipcClient, false);
-        $parser = $this->parser($ipcClient);
-        $readWatcherId = Loop::onReadable($ipcClient, function () use ($parser) {
-            $parser->next();
-        });
-        $this->ipcClients[$readWatcherId] = $ipcClient;
-        $parser->send($readWatcherId);
-
-        assert(!empty($this->spawnDeferreds));
-        array_shift($this->spawnDeferreds)->resolve();
     }
 
-    private function parser($ipcClient): \Generator {
-        $readWatcherId = yield;
+    private function read(Socket $client): \Generator {
         $buffer = "";
-        $length = null;
 
-        do {
-            yield;
-            $data = @fread($ipcClient, 8192);
+        while (($chunk = yield $client->read()) !== null) {
+            $buffer .= $chunk;
 
-            $buffer .= $data;
             do {
                 if (!isset($length)) {
                     if (!isset($buffer[4])) {
@@ -399,25 +377,20 @@ class WatcherProcess extends Process {
 
                 if ($unpacked["type"]) {
                     \assert($unpacked["type"] === 1 && $this->useSocketTransfer);
-
-                    $this->parseWorkerAddrCtx($ipcClient, $message);
+                    $this->parseWorkerAddrCtx($client->getResource(), $message);
                 } else {
                     // all type 0 messages received from workers are sent to STDOUT
                     $this->console->output($message);
                 }
-            } while (1);
+            } while (true);
+        }
 
-            if (($data == "" && !is_resource($ipcClient)) || @feof($ipcClient)) {
-                $this->onDeadIpcClient($readWatcherId, $ipcClient);
-                return;
-            }
-        } while (1);
+        $this->onDeadIpcClient($client);
     }
 
-    private function onDeadIpcClient(string $readWatcherId, $ipcClient) {
-        Loop::cancel($readWatcherId);
-        @fclose($ipcClient);
-        unset($this->ipcClients[$readWatcherId]);
+    private function onDeadIpcClient(Socket $client) {
+        $client->close();
+        unset($this->ipcClients[\spl_object_hash($client)]);
         $this->defunctProcessCount++;
         Loop::enable($this->procGarbageWatcher);
     }
@@ -503,7 +476,7 @@ class WatcherProcess extends Process {
         return implode(" ", array_map("escapeshellarg", $parts));
     }
 
-    private function spawn() {
+    private function spawn(): Promise {
         $cmd = $this->workerCommand;
         if ($this->useSocketTransfer) {
             $cmd .= " --socket-transfer";
@@ -532,7 +505,11 @@ class WatcherProcess extends Process {
         $spawn = count($this->ipcClients);
         for ($i = 0; $i < $spawn; $i++) {
             $this->spawn()->onResolve(function () {
-                @\fwrite(current($this->ipcClients), self::STOP_SEQUENCE);
+                try {
+                    yield current($this->ipcClients)->write(self::STOP_SEQUENCE);
+                } catch (StreamException $e) {
+                    // Ignore stream failures, restarting worker anyway.
+                }
                 next($this->ipcClients);
             });
         }
@@ -543,10 +520,10 @@ class WatcherProcess extends Process {
         if (!$this->stopDeferred) {
             $this->stopDeferred = new Deferred;
             foreach ($this->ipcClients as $ipcClient) {
-                @\fwrite($ipcClient, self::STOP_SEQUENCE);
+                $ipcClient->write(self::STOP_SEQUENCE);
             }
         }
 
-        yield $this->stopDeferred === true ? new Success : $this->stopDeferred->promise();
+        yield $this->stopDeferred->promise();
     }
 }
