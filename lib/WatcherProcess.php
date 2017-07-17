@@ -2,7 +2,6 @@
 
 namespace Aerys;
 
-use Amp\ByteStream\StreamException;
 use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
@@ -505,11 +504,7 @@ class WatcherProcess extends Process {
         $spawn = count($this->ipcClients);
         for ($i = 0; $i < $spawn; $i++) {
             $this->spawn()->onResolve(function () {
-                try {
-                    yield current($this->ipcClients)->write(self::STOP_SEQUENCE);
-                } catch (StreamException $e) {
-                    // Ignore stream failures, restarting worker anyway.
-                }
+                current($this->ipcClients)->write(self::STOP_SEQUENCE);
                 next($this->ipcClients);
             });
         }
