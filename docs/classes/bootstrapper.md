@@ -33,7 +33,7 @@ The caller of this method then shall initialize the `Server` by calling `Server-
 		$res->end("A highly specialized handler!");
 	};
 	$bootstrapper = new Aerys\Bootstrapper(function () use ($handler) {
-		return (new Aerys\Host)->use($handler);
+		return [(new Aerys\Host)->use($handler)];
 	});
 	$server = $bootstrapper->init($logger, ["debug" => true]);
 	yield $server->start();
