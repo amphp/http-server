@@ -13,7 +13,7 @@ class Options {
     private $user = null;
     private $maxConnections = 1000;
     private $connectionsPerIP = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
-    private $maxRequestsPerConnection = 1000; // set to 0 to disable
+    private $maxRequestsPerConnection = 1000; // set to PHP_INT_MAX to disable
     private $connectionTimeout = 6; // seconds
     private $defaultContentType = "text/html"; // can be vhost
     private $defaultTextCharset = "utf-8"; // can be vhost
