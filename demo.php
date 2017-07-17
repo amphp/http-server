@@ -11,7 +11,7 @@ use Aerys\{ Host, Request, Response, Websocket, function root, function router, 
 /* --- Global server options -------------------------------------------------------------------- */
 
 const AERYS_OPTIONS = [
-    "keepAliveTimeout" => 60,
+    "connectionTimeout" => 60,
     //"deflateMinimumLength" => 0,
 ];
 

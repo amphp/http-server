@@ -123,8 +123,7 @@ class Http2Driver implements HttpDriver {
 
         $status = $headers[":status"];
         $contentLength = $headers[":aerys-entity-length"];
-        unset($headers[":aerys-entity-length"], $headers["transfer-encoding"]);
-         // obsolete in HTTP/2
+        unset($headers[":aerys-entity-length"], $headers["transfer-encoding"] /* obsolete in HTTP/2 */);
 
         if ($contentLength === "@") {
             $hasContent = false;
@@ -288,12 +287,12 @@ class Http2Driver implements HttpDriver {
         $this->writeData($client, $msgs, $id, true);
 
         if ($client->bufferDeferred) {
-            $keepAlives = &$client->remainingKeepAlives; // avoid cyclic reference
+            $keepAlives = &$client->remainingRequests; // avoid cyclic reference
             $client->bufferDeferred->onResolve(static function () use (&$keepAlives) {
                 $keepAlives++;
             });
         } else {
-            $client->remainingKeepAlives++;
+            $client->remainingRequests++;
         }
     }
 
@@ -465,7 +464,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
             return;
         }
         $buffer = \substr($buffer, \strlen($preface));
-        $client->remainingKeepAlives = $maxStreams;
+        $client->remainingRequests = $maxStreams;
 
         while (1) {
             if (++$framesLastSecond > $maxFramesPerSecond / 2) {
@@ -581,7 +580,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                         goto connection_error;
                     }
 
-                    if ($client->remainingKeepAlives-- <= 0) {
+                    if ($client->remainingRequests-- <= 0) {
                         $error = self::PROTOCOL_ERROR;
                         goto connection_error;
                     }
@@ -764,7 +763,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                     $data = \substr($buffer, 0, 8);
 
                     if (($flags & self::ACK) !== "\0") {
-                        // do not resolve ping - unneeded because of keepAliveTimeout
+                        // do not resolve ping - unneeded because of connectionTimeout
                     } else {
                         $this->writeFrame($client, $data, self::PING, self::ACK);
                     }
@@ -801,7 +800,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer
                     $client->shouldClose = true;
                     Loop::disable($client->readWatcher);
                     return;
-                    // keepAliveTimeout will force a close when necessary
+                    // connectionTimeout will force a close when necessary
 
                 case self::WINDOW_UPDATE:
                     if ($length != 4) {
@@ -925,7 +924,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                 $this->writeFrame($client, pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "Stream ERROR: $error\n");
                 unset($headers[$id], $bodyLens[$id], $client->streamWindow[$id]);
-                $client->remainingKeepAlives++;
+                $client->remainingRequests++;
 
                 // consume whole frame to be able to continue this connection
                 $length -= \strlen($buffer);

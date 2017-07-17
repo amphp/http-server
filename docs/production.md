@@ -23,6 +23,6 @@ Defaults are chosen in a moderate way between security and performance on a typi
 - `maxInputVars` limits the number of input vars processed by `Response` and `BodyParser`. This is especially important to be small enough in order to prevent HashDos attacks and overly much processing.
 - `maxFieldLen` limits field name lengths in order to avoid excessive buffering (which would defeat any possibilities of incremental parsing).
 - `ioGranularity` is buffering input and output - data will be usually sent after the defined amount of buffered data and fed into the `Body` after receiving at least that amount of data.
-- `disableKeepAlive` is possible, but not recommended to be ever deactivated (it will automatically avoid keep-alive with HTTP/1.0).
+- `maxRequestsPerConnection` limits the number of requests before the connection is closed (for a HTTP/1.1 connection it also controls the Keep-Alive header). Setting it to `PHP_INT_MAX` allows for an unlimited amount of connections.
 - `socketBacklogSize` is the queue size of sockets pending acceptance (i.e. being in queue for an `accept()` call by the `Server`).
 - `deflateContentTypes` is a regular expression containing the content-types of responses to be deflated. If you use a bit more exotic content-types for deflatable content not starting with `text/` or ending with `/xml` or `+xml` or equal to `application/(json|(x-)?javascript)`, you should extend the regex appropriately.

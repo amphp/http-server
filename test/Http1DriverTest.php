@@ -612,8 +612,8 @@ class Http1DriverTest extends TestCase {
         $driver->setup([], function ($client, $final = false) use (&$fin) { $fin = $final; });
         $client = new Client;
         $client->options = new Options;
-        $client->remainingKeepAlives = PHP_INT_MAX;
-        foreach (["keepAliveTimeout" => 60, "defaultContentType" => "text/html", "defaultTextCharset" => "utf-8", "deflateEnable" => false, "sendServerToken" => false] as $k => $v) {
+        $client->remainingRequests = PHP_INT_MAX;
+        foreach (["connectionTimeout" => 60, "defaultContentType" => "text/html", "defaultTextCharset" => "utf-8", "deflateEnable" => false, "sendServerToken" => false] as $k => $v) {
             $client->options->$k = $v;
         }
         $ireq = new InternalRequest;

@@ -84,9 +84,9 @@ One of `0`, `Client::CLOSED_RD`, `Client::CLOSED_WR` or `Client::CLOSED_RDWR`, w
 
 Boolean whether the `$export` callable has been called.
 
-## `$remainingKeepAlives`
+## `$remainingRequests`
 
-Number of remaining keep-alives.
+Number of remaining requests until the connection will be forcefully killed.
 
 ## `$pendingResponses`
 

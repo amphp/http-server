@@ -13,12 +13,11 @@ class Options {
     private $user = null;
     private $maxConnections = 1000;
     private $connectionsPerIP = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
-    private $maxKeepAliveRequests = 1000;
-    private $keepAliveTimeout = 6; // seconds
+    private $maxRequestsPerConnection = 1000; // set to 0 to disable
+    private $connectionTimeout = 6; // seconds
     private $defaultContentType = "text/html"; // can be vhost
     private $defaultTextCharset = "utf-8"; // can be vhost
     private $sendServerToken = false;
-    private $disableKeepAlive = false;
     private $socketBacklogSize = 128;
     private $normalizeMethodCase = true;
     private $maxConcurrentStreams = 20;
@@ -135,18 +134,23 @@ class Options {
         $this->connectionsPerIP = $count;
     }
 
-    private function setMaxKeepAliveRequests(int $count) {
-        $this->maxKeepAliveRequests = $count;
+    private function setMaxRequestsPerConnection(int $count) {
+        if ($count < 1) {
+            throw new \Error(
+                "Maximum number of requests on a connection must be greater than zero. Set it to PHP_INT_MAX to allow an unlimited amount of requests"
+            );
+        }
+        $this->maxRequestsPerConnection = $count;
     }
 
-    private function setKeepAliveTimeout(int $seconds) {
+    private function setConnectionTimeout(int $seconds) {
         if ($seconds < 1) {
             throw new \Error(
                 "Keep alive timeout setting must be greater than or equal to one second"
             );
         }
 
-        $this->keepAliveTimeout = $seconds;
+        $this->connectionTimeout = $seconds;
     }
 
     private function setDefaultContentType(string $contentType) {
@@ -159,10 +163,6 @@ class Options {
 
     private function setSendServerToken(bool $flag) {
         $this->sendServerToken = $flag;
-    }
-
-    private function setDisableKeepAlive(bool $flag) {
-        $this->disableKeepAlive = $flag;
     }
 
     private function setSocketBacklogSize(int $backlog) {

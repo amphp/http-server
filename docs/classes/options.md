@@ -32,17 +32,17 @@ Maximum number of allowed connections from an individual /32 IPv4 or /56 IPv6 ra
 
 Type: integer greater than 0 &mdash; Default: `30`
 
-## `$maxKeepAliveRequests`
+## `$maxRequestsPerConnection`
 
-Maximum number of keep-alive requests on a single connection.
+Maximum number of requests on a single connection. (On HTTP/1.1 it controls the Keep-Alive header.)
 
 Set to `PHP_INT_MAX` to effectively disable this limit.
 
 Type: integer greater than 0 &mdash; Default: `1000`
 
-## `$keepAliveTimeout`
+## `$connectionTimeout`
 
-Time in seconds after a keep-alive connection is timed out (if no further data comes in). [This also affects HTTP/2]
+Time in seconds until a connection is closed (if no further data comes in).
 
 Type: integer greater than 0 &mdash; Default: `6`
 
@@ -63,12 +63,6 @@ Type: string &mdash; Default: `"utf-8"`
 Whether a `Server` header field should be sent along with the response.
 
 Type: boolean &mdash; Default: `false`
-
-## `$disableKeepAlive`
-
-Whether keep-alive should be disabled for HTTP/1.1 requests.
-
-Type: boolean &mdash; Default: `false
 
 ## `$socketBacklogSize`
 

@@ -69,7 +69,7 @@ class Server implements Monitor {
     private $clientsPerIP = [];
 
     /** @var int[] */
-    private $keepAliveTimeouts = [];
+    private $connectionTimeouts = [];
 
     /** @var \Aerys\NullBody */
     private $nullBody;
@@ -410,7 +410,7 @@ class Server implements Monitor {
                 if (empty($client->requestCycles)) {
                     $this->close($client);
                 } else {
-                    $client->remainingKeepAlives = PHP_INT_MIN;
+                    $client->remainingRequests = PHP_INT_MIN;
                 }
             }
         }
@@ -430,7 +430,7 @@ class Server implements Monitor {
         $client->socket = $socket;
         $client->options = $this->options;
         $client->exporter = $this->exporter;
-        $client->remainingKeepAlives = $this->options->maxKeepAliveRequests ?: PHP_INT_MAX;
+        $client->remainingRequests = $this->options->maxRequestsPerConnection;
 
         $client->clientAddr = $ip;
         $client->clientPort = $port;
@@ -454,7 +454,7 @@ class Server implements Monitor {
         $client->requestParser = $client->httpDriver->parser($client);
         $client->requestParser->valid();
 
-        $this->renewKeepAliveTimeout($client);
+        $this->renewConnectionTimeout($client);
     }
 
     private function writeResponse(Client $client, bool $final = false) {
@@ -475,7 +475,7 @@ class Server implements Monitor {
         if ($client->shouldClose || (--$client->pendingResponses == 0 && $client->isDead == Client::CLOSED_RD)) {
             $this->close($client);
         } elseif (!($client->isDead & Client::CLOSED_RD)) {
-            $this->renewKeepAliveTimeout($client);
+            $this->renewConnectionTimeout($client);
         }
     }
 
@@ -510,7 +510,7 @@ class Server implements Monitor {
 
     private function timeoutKeepAlives(int $now) {
         $timeouts = [];
-        foreach ($this->keepAliveTimeouts as $id => $expiresAt) {
+        foreach ($this->connectionTimeouts as $id => $expiresAt) {
             if ($now > $expiresAt) {
                 $timeouts[] = $this->clients[$id];
             } else {
@@ -520,7 +520,7 @@ class Server implements Monitor {
         foreach ($timeouts as $client) {
             // do not close in case some longer response is taking longer, but do in case bodyEmitters aren't fulfilled
             if ($client->pendingResponses > \count($client->bodyEmitters)) {
-                $this->clearKeepAliveTimeout($client);
+                $this->clearConnectionTimeout($client);
             } else {
                 // timeouts are only active while Client is doing nothing (not sending nor receving) and no pending writes, hence we can just fully close here
                 $this->close($client);
@@ -528,19 +528,19 @@ class Server implements Monitor {
         }
     }
 
-    private function renewKeepAliveTimeout(Client $client) {
-        $timeoutAt = $this->ticker->currentTime + $this->options->keepAliveTimeout;
+    private function renewConnectionTimeout(Client $client) {
+        $timeoutAt = $this->ticker->currentTime + $this->options->connectionTimeout;
         // DO NOT remove the call to unset(); it looks superfluous but it's not.
         // Keep-alive timeout entries must be ordered by value. This means that
         // it's not enough to replace the existing map entry -- we have to remove
         // it completely and push it back onto the end of the array to maintain the
         // correct order.
-        unset($this->keepAliveTimeouts[$client->id]);
-        $this->keepAliveTimeouts[$client->id] = $timeoutAt;
+        unset($this->connectionTimeouts[$client->id]);
+        $this->connectionTimeouts[$client->id] = $timeoutAt;
     }
 
-    private function clearKeepAliveTimeout(Client $client) {
-        unset($this->keepAliveTimeouts[$client->id]);
+    private function clearConnectionTimeout(Client $client) {
+        unset($this->connectionTimeouts[$client->id]);
     }
 
     private function onReadable(string $watcherId, $socket, Client $client) {
@@ -564,7 +564,7 @@ class Server implements Monitor {
             return;
         }
 
-        $this->renewKeepAliveTimeout($client);
+        $this->renewConnectionTimeout($client);
         $client->requestParser->send($data);
     }
 
@@ -606,7 +606,7 @@ class Server implements Monitor {
     }
 
     private function onParseError(Client $client, array $parseResult, int $status, string $message) {
-        $this->clearKeepAliveTimeout($client);
+        $this->clearConnectionTimeout($client);
 
         if ($client->bodyEmitters) {
             $client->shouldClose = true;
@@ -647,9 +647,7 @@ class Server implements Monitor {
             empty($parseResult["server_push"]) ? "" : " (server-push via {$parseResult["server_push"]})"
         )));
 
-        if (isset($client->remainingKeepAlives)) {
-            $client->remainingKeepAlives--;
-        }
+        $client->remainingRequests--;
 
         $ireq = new InternalRequest;
         $ireq->client = $client;
@@ -902,7 +900,7 @@ class Server implements Monitor {
         $client->onWriteDrain = null;
         Loop::cancel($client->readWatcher);
         Loop::cancel($client->writeWatcher);
-        $this->clearKeepAliveTimeout($client);
+        $this->clearConnectionTimeout($client);
         unset($this->clients[$client->id]);
         if ($this->stopDeferred && empty($this->clients)) {
             $this->stopDeferred->resolve();
@@ -991,7 +989,7 @@ class Server implements Monitor {
             "boundServers" => $this->boundServers,
             "pendingTlsStreams" => $this->pendingTlsStreams,
             "clients" => $this->clients,
-            "keepAliveTimeouts" => $this->keepAliveTimeouts,
+            "connectionTimeouts" => $this->connectionTimeouts,
             "stopPromise" => $this->stopDeferred ? $this->stopDeferred->promise() : null,
         ];
     }
@@ -1002,7 +1000,7 @@ class Server implements Monitor {
             "bindings" => $this->vhosts->getBindableAddresses(),
             "clients" => count($this->clients),
             "IPs" => count($this->clientsPerIP),
-            "pendingInputs" => count($this->keepAliveTimeouts),
+            "pendingInputs" => count($this->connectionTimeouts),
             "hosts" => $this->vhosts->monitor(),
         ];
     }

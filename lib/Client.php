@@ -32,7 +32,7 @@ class Client {
     public $shouldClose;
     public $isDead = 0;
     public $isExported;
-    public $remainingKeepAlives;
+    public $remainingRequests;
     public $pendingResponses = 0;
 
     /** @var \Aerys\Options */
