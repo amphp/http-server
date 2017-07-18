@@ -12,15 +12,13 @@ class WorkerProcess extends Process {
 
     private $logger;
     private $ipcSock;
-    private $bootstrapper;
     private $server;
 
     // Loggers which hold a watcher on $ipcSock MUST implement disableSending():Promise and enableSending() methods in order to avoid conflicts from different watchers
-    public function __construct(PsrLogger $logger, $ipcSock, Bootstrapper $bootstrapper = null) {
+    public function __construct(PsrLogger $logger, $ipcSock) {
         parent::__construct($logger);
         $this->logger = $logger;
         $this->ipcSock = $ipcSock;
-        $this->bootstrapper = $bootstrapper ?: new Bootstrapper;
     }
 
     private function receiveServerSocketCallback($addrCtxMap) {
@@ -90,7 +88,7 @@ class WorkerProcess extends Process {
             }
         });
 
-        $server = yield from $this->bootstrapper->boot($this->logger, $console);
+        $server = yield from Internal\bootServer($this->logger, $console);
         if ($console->isArgDefined("socket-transfer")) {
             \assert(\extension_loaded("sockets") && PHP_VERSION_ID > 70007);
             yield $server->start($this->callableFromInstanceMethod("receiveServerSocketCallback"));

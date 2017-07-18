@@ -13,7 +13,7 @@ Additionally, use of ANSI colors (for nicer displaying in terminal) can be turne
 ## Usage
 
 ```php
-(new Aerys\Host)->use(new class implements Bootable {
+return (new Aerys\Host)->use(new class implements Bootable {
     private $logger;
 
     function boot(Aerys\Server $server, Psr\Log\LoggerInterface $logger) {

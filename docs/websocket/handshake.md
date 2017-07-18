@@ -48,7 +48,7 @@ $router = Aerys\router()
 
 $root = Aerys\root(__DIR__ . "/public");
 
-(new Aerys\Host)->use($router)->use($root);
+return (new Aerys\Host)->use($router)->use($root);
 ```
 
 ```html

@@ -107,7 +107,7 @@ class WatcherProcess extends Process {
     }
 
     private function bindCommandServer(string $config) {
-        $path = CommandClient::socketPath(Bootstrapper::selectConfigFile($config));
+        $path = CommandClient::socketPath(selectConfigFile($config));
 
         $unix = in_array("unix", \stream_get_transports(), true);
         if ($unix) {

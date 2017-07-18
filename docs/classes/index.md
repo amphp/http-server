@@ -6,7 +6,6 @@ Aerys provides a set of classes and interfaces, as well as [functions](functions
 
 - [`BodyParser`](bodyparser.md) &mdash; Parser for bodies
 - [`Bootable`](bootable.md) &mdash; Registers entry point for [`Server`](server.md) and [`Logger`](logger.md)
-- [`Bootstrapper`](bootstrapper.md) &mdash; Initializes [`Server`](server.md) (for custom process management)
 - [`Client`](client.md) &mdash; Client connection related information
 - [`CommandClient`](commandclient.md) &mdash; Controls the server master process
 - [`FieldBody`](fieldbody.md) &mdash; Field body message container (via [`BodyParser`](bodyparser.md))

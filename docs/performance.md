@@ -17,7 +17,7 @@ The problem really is CPU cost. Inefficient I/O management (as long as it is non
 ## Disconnecting Clients
 
 ```php
-(new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
+return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
     $handle = \Amp\File\open("largefile.txt", "r");
     while (null !== $chunk = yield $handle->read(8192)) {
         yield $response->write($chunk); # it will just abort here, when the client disconnects
@@ -36,7 +36,7 @@ Thus, this isn't relevant for most handlers, except the ones possibly generating
 ```php
 use Amp\File;
 
-(new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) {
+return (new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) {
     try {
         $path = "test.txt";
         $handle = yield File\open($path, "w+");

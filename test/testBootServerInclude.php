@@ -14,13 +14,13 @@ class OurMiddleware implements \Aerys\Middleware {
     }
 }
 
-(new Aerys\Host)->name("localhost")->encrypt(__DIR__."/server.pem");
+($hosts[] = new Aerys\Host)->name("localhost")->encrypt(__DIR__."/server.pem");
 
-$host = (new Aerys\Host)->expose("127.0.0.1", 80)->name("example.com")->use(new class implements \Aerys\Bootable {
+$host = ($hosts[] = new Aerys\Host)->expose("127.0.0.1", 80)->name("example.com")->use(new class implements \Aerys\Bootable {
     public function boot(\Aerys\Server $server, \Psr\Log\LoggerInterface $logger) {
         return new OurMiddleware;
     }
 });
-(clone $host)->name("foo.bar")->use(function (\Aerys\Request $req, \Aerys\Response $res) { $req->setLocalVar("foo.bar", $req->getLocalVar("foo.bar") + 1); $res->end(); });
+($hosts[] = clone $host)->name("foo.bar")->use(function (\Aerys\Request $req, \Aerys\Response $res) { $req->setLocalVar("foo.bar", $req->getLocalVar("foo.bar") + 1); $res->end(); });
 
-return function () { return new Amp\Success; };
+return new Amp\Success($hosts);

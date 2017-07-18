@@ -6,7 +6,7 @@ permalink: /http-advanced
 
 ```php
 $db = new Amp\Mysql\Pool("host=localhost;user=user;pass=pass;db=db");
-(new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) use ($db) {
+return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) use ($db) {
     $result = yield $db->prepare("SELECT data FROM table WHERE key = ?", [$req->getParam("key") ?? "default"]);
     while ($row = yield $result->fetchObject()) {
         $res->write($row->data);
@@ -26,7 +26,7 @@ There is a `Response::flush()` method which actually flushes all the buffers imm
 ## Pushing Resources
 
 ```php
-(new Aerys\Host)
+return (new Aerys\Host)
     ->use(Aerys\root("/path/to/folder")) # contains image.png
     ->use(function(Aerys\Request $req, Aerys\Response $res) {
         $res->push("/image.png");
@@ -58,7 +58,7 @@ $realRouter = Aerys\router()
     ->use(function(Aerys\Request $req, Aerys\Response $res) { $res->end("general fallback route"); }))
 ;
 
-(new Aerys\Host)->use($realRouter);
+return (new Aerys\Host)->use($realRouter);
 ```
 
 A `Router` can also `use()` `Bootable`s, `callable`s, `Middleware`s _and_ other `Router` instances.

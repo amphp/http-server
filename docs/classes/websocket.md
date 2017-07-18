@@ -97,5 +97,5 @@ $router = (new Aerys\Router)
         console.log(e.data);
     };
 </script>'); });
-(new Aerys\Host)->use($router);
+return (new Aerys\Host)->use($router);
 ```

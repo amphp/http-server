@@ -526,3 +526,60 @@ function makeGenericBody(int $status, array $options = []): string {
         $msg
     );
 }
+
+/**
+ * Initializes the server directly from a given set of Hosts.
+ *
+ * @param PsrLogger $logger
+ * @param Host[] $hosts
+ * @param array $options Aerys options array
+ * @return Server
+ */
+function initServer(PsrLogger $logger, array $hosts, array $options = []): Server {
+    foreach ($hosts as $host) {
+        if (!$host instanceof Host) {
+            throw new \TypeError(
+                "Expected an array of Hosts as second parameter, but array also contains ".(is_object($host) ? "instance of " .get_class($host) : gettype($host))
+            );
+        }
+    }
+
+    if (!array_key_exists("debug", $options)) {
+        $options["debug"] = false;
+    }
+
+    $options = Internal\generateOptionsObjFromArray($options);
+    $vhosts = new VhostContainer(new Http1Driver);
+    $ticker = new Ticker($logger);
+    $server = new Server($options, $vhosts, $logger, $ticker);
+
+    $bootLoader = static function (Bootable $bootable) use ($server, $logger) {
+        $booted = $bootable->boot($server, $logger);
+        if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
+            throw new \Error("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Middleware and/or be callable, got ' . gettype($booted) . ".");
+        }
+        return $booted ?? $bootable;
+    };
+    foreach ($hosts ?: [new Host] as $host) {
+        $vhost = Internal\buildVhost($host, $bootLoader);
+        $vhosts->use($vhost);
+    }
+
+    return $server;
+}
+
+/**
+ * Gives the absolute path of a config file
+ *
+ * @param string $configFile path to config file used by Aerys instance
+ * @return string
+ */
+function selectConfigFile(string $configFile): string {
+    if ($configFile == "") {
+        throw new \Error(
+            "No config file found, specify one via the -c switch on command line"
+        );
+    }
+
+    return realpath(is_dir($configFile) ? rtrim($configFile, "/") . "/config.php" : $configFile);
+}

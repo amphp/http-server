@@ -3,20 +3,11 @@
 namespace Aerys;
 
 class Host {
-    private static $definitions = [];
     private $name = "";
     private $interfaces = null;
     private $crypto = [];
     private $actions = [];
     private $httpDriver;
-
-    public function __construct() {
-        self::$definitions[] = $this;
-    }
-
-    public function __clone() {
-        self::$definitions[] = $this;
-    }
 
     /**
      * Assign the IP and port on which to listen.
@@ -170,14 +161,5 @@ class Host {
             "actions"    => $this->actions,
             "httpdriver" => $this->httpDriver,
         ];
-    }
-
-    /**
-     * Used by the server bootstrapper to access host configs created by the application.
-     *
-     * @return array
-     */
-    public static function getDefinitions(): array {
-        return self::$definitions;
     }
 }

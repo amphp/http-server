@@ -38,6 +38,7 @@ class RequestCountingMonitor implements Aerys\Monitor, Aerys\Bootable {
         return ["requestCounter" => $this->requestCounter];
     }
 }
-(new Aerys\Host)->name("foo.local")->use(new RequestCountingMonitor);
-(new Aerys\Host)->name("bar.local")->use(new RequestCountingMonitor);
+($hosts[] = new Aerys\Host)->name("foo.local")->use(new RequestCountingMonitor);
+($hosts[] = new Aerys\Host)->name("bar.local")->use(new RequestCountingMonitor);
+return $hosts;
 ```

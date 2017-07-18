@@ -20,7 +20,7 @@ class CommandClient {
 
     public static function socketPath(string $config) {
         // that base64_encode instead of the standard hex representation of sha1 is necessary to avoid overly long paths for unix domain sockets
-        return \sys_get_temp_dir() . "/aerys_" . \strtr(\base64_encode(\sha1(Bootstrapper::selectConfigFile($config), true)), "+/", "-_").".tmp";
+        return \sys_get_temp_dir() . "/aerys_" . \strtr(\base64_encode(\sha1(selectConfigFile($config), true)), "+/", "-_").".tmp";
     }
 
     private function send($message): Promise {

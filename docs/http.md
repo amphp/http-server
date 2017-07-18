@@ -3,7 +3,7 @@ title: HTTP APIs
 permalink: /http
 ---
 ```php
-(new Aerys\Host)
+return (new Aerys\Host)
     ->use(function(Aerys\Request $request, Aerys\Response $response) {
         $response->end("<h1>Hello, world!</h1>");
     });
@@ -17,7 +17,7 @@ To define a dynamic handler, all that is needed is a callable passed to `Host::u
 ## Responses
 
 ```php
-(new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
+return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
     # This is the default status code and does not need to be set explicitly
     # $res->setStatus(200);
 
@@ -37,7 +37,7 @@ For a full explanation of all available methods check out the [`Response` class 
 ## Requests
 
 ```php
-(new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
+return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
     # if the header not passed, null is returned
     $user_agent = $req->getHeader("User-Agent") ?? "";
 
@@ -59,7 +59,7 @@ There is additional information available about the full request API, check out 
 ## Request Bodies
 
 ```php
-(new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
+return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
     $body = yield Aerys\parseBody($req);
     $webserver = $body->get("webserver");
 
@@ -88,7 +88,7 @@ The metadata of a request consists of an array which may contain `"mime"` and `"
 ## Handling Uploads
 
 ```php
-(new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
+return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
     $body = yield Aerys\parseBody($req, 200000 /* max 200 KB */);
     $file = $body->get("file");
 
@@ -113,7 +113,7 @@ Additionally, uploads may contain some metadata: `getMetadata($name)` returns an
 ## Cookies
 
 ```php
-(new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) {
+return (new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) {
     if (($date = $req->getCookie('tasty')) !== null) {
         if ($req->getParam('eat') !== null) {
             $res->setCookie("tasty", "", ["Expires" => date("r", 784111777)]); # somewhen in the past
@@ -168,7 +168,7 @@ $router = Aerys\router()
         $res->end('1 is a bad choice! Try again <a href="/">here</a>');
     });
 
-(new Aerys\Host)
+return (new Aerys\Host)
     ->use(function(Aerys\Request $req, Aerys\Response $res) {
         if ($req->getMethod() == "POST" && $req->getCookie("csrf") != $req->getParam("csrf")) {
             $res->setStatus(400);
@@ -206,7 +206,7 @@ $router = Aerys\router()
         $res->end("The user with name {$route['name']} and id {$route['id']} has been requested!");
     });
 
-(new Aerys\Host)->use($router);
+return (new Aerys\Host)->use($router);
 ```
 
 The Router is using [FastRoute from Nikita Popov](https://github.com/nikic/FastRoute) and inherits its dynamic possibilities. Hence it is possible to to use dynamic routes, the matches will be in a third $routes array passed to the callable. This array will contain the matches keyed by the identifiers in the route.

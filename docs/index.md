@@ -24,7 +24,7 @@ vendor/bin/aerys -d -c demo.php
 ```php
 <?php
 
-(new Aerys\Host)->use(Aerys\root("/var/www/public_html"));
+return (new Aerys\Host)->use(Aerys\root("/var/www/public_html"));
 ```
 
 Save it as `config.php` and load it via `sudo php vendor/bin/aerys -d -c config.php`. The `sudo` may be necessary as it binds by default on port 80 - for this case there is an [`user` option to drop the privileges](options/common).

@@ -4,9 +4,9 @@ permalink: /io
 ---
 
 ```php
-(new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
+return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
     # in general yield is waiting for the Promise result to be available (just in the special case of Amp\Success it is available immediately)
-    $data = yield new Amp\Success("foo"); # Amp\Sucess will always resolve to the value passed to its constructor
+    $data = yield new Amp\Success("foo"); # Amp\Success will always resolve to the value passed to its constructor
     $res->end($data); # We end up with $data === "foo"
 });
 ```
@@ -27,7 +27,7 @@ Most importantly, if the request handler callable or the WebSocket handlers are 
 ```php
 # DO NOT DO THIS
 
-(new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) {
+return (new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) {
     $res->end("Some data");
     sleep(5); # or a blocking I/O function with 5 second timeout
 });

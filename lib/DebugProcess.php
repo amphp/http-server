@@ -6,13 +6,11 @@ use Psr\Log\LoggerInterface as PsrLogger;
 
 class DebugProcess extends Process {
     private $logger;
-    private $bootstrapper;
     private $server;
 
-    public function __construct(PsrLogger $logger, Bootstrapper $bootstrapper = null) {
+    public function __construct(PsrLogger $logger) {
         parent::__construct($logger);
         $this->logger = $logger;
-        $this->bootstrapper = $bootstrapper ?: new Bootstrapper;
     }
 
     protected function doStart(Console $console): \Generator {
@@ -31,7 +29,7 @@ class DebugProcess extends Process {
             ini_set("zend.assertions", "1");
         }
 
-        $server = yield from $this->bootstrapper->boot($this->logger, $console);
+        $server = yield from Internal\bootServer($this->logger, $console);
         yield $server->start();
         $this->server = $server;
     }

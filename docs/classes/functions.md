@@ -59,3 +59,25 @@ Returns a [middleware](middleware.html) Generator managing multiple filters. Can
 Returns a Generator which can be used to construct a `StandardResponse` object (its signature is `__construct(\Generator $codec, Client)` and implements [`Response`](response.html)).
 
 This function may be useful for testing the combination of application callable and middlewares via a custom `InternalRequest->responseWriter.
+
+## `init(\Psr\Log\LoggerInterface, array<Host>, array $options = []): Server`
+
+This function is only useful, if you want to run Aerys as a small server within a bigger project, or have a specialized process manager etc., outside of the standard `bin/aerys` binary. For normal usage of Aerys it isn't needed.
+
+It does a full initialization of all dependencies of [`Server`](server.md) and then returns an instance of `Server`, given only a PSR-3 logger, the individual [`Host`](host.md) instances and the server [`Options`](options.md).
+
+The caller of this method then shall initialize the `Server` by calling `Server->start(): Promise`.
+
+### Example
+
+```php
+\Amp\run(function() use ($logger /* any PSR-3 Logger */) {
+    $handler = function(Aerys\Request $req, Aerys\Response $res) {
+        $res->end("A highly specialized handler!");
+    };
+    $host = (new Aerys\Host)->use($handler);
+    $server = Aerys\initServer($logger, [$host], ["debug" => true]);
+    yield $server->start();
+    # Aerys is running!
+});
+```

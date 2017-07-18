@@ -5,7 +5,7 @@ permalink: /hosts
 Aerys supports virtual hosts by default. Each host needs to be an `Aerys\Host` instance and is automatically registered upon creation of that instance.
 
 ```php
-(new Aerys\Host)
+return (new Aerys\Host)
     ->expose("127.0.0.1", 8080) // IPv4
     ->expose("::1", 8080) // IPv6
     ->name("localhost") // actually redundant as localhost is the default
@@ -23,7 +23,7 @@ The example above will be thus accessible via `http://localhost:8080/` on the lo
 Aerys supports TLS that can be enabled per host.
 
 ```php
-(new Aerys\Host)
+return (new Aerys\Host)
     ->expose("*", 443) // bind to everywhere on port 443
     ->encrypt("/path/to/certificate.crt", "/path/to/private.key")
     ->use(Aerys\root("/var/www/public_html"));
@@ -41,7 +41,7 @@ The `$options` array is passed directly as SSL context options and thus equivale
 ## Adding Handlers
 
 ```php
-(new Aerys\Host)
+return (new Aerys\Host)
     ->use(Aerys\router()->get('/', function(Aerys\Request $req, Aerys\Response $res) {
         $res->end("default route");
     }))

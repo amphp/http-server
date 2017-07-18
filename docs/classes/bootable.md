@@ -31,5 +31,5 @@ class MyBootable implements Aerys\Bootable {
         };
     }
 }
-(new Aerys\Host)->use(new MyBootable);
+return (new Aerys\Host)->use(new MyBootable);
 ```

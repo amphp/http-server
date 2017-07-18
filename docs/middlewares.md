@@ -18,7 +18,7 @@ Most middlewares though will only need to manipulate direct request input (heade
 ## Middleware::do
 
 ```php
-(new Aerys\Host)->use(new class implements Aerys\Middleware {
+return (new Aerys\Host)->use(new class implements Aerys\Middleware {
     function do(Aerys\InternalRequest $ireq) {
         $headers = yield;
 
@@ -74,7 +74,7 @@ You can use `return` instead of `yield` in order to immediately detach with even
 ## InternalRequest
 
 ```php
-(new Aerys\Host)
+return (new Aerys\Host)
     ->use(new class implements Aerys\Middleware {
         # Middlewares don't have to return a Generator, they can also just terminate immediately
         function do(Aerys\InternalRequest $ireq) {

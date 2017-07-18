@@ -2,15 +2,15 @@
 
 namespace Aerys\Test;
 
-use Aerys\Bootstrapper;
 use Aerys\CommandClient;
+use function Aerys\selectConfigFile;
 use Amp\Loop;
 use PHPUnit\Framework\TestCase;
 
 class CommandClientTest extends TestCase {
     public function testSendRestart() {
         Loop::run(function () {
-            $path = CommandClient::socketPath(Bootstrapper::selectConfigFile(__FILE__));
+            $path = CommandClient::socketPath(selectConfigFile(__FILE__));
             $unix = in_array("unix", \stream_get_transports(), true);
 
             if ($unix) {

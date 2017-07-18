@@ -52,9 +52,9 @@ Altering this value should be followed by a call to `HttpDriver::upgradeBodySize
 
 The URI string consisting of the path and query components.
 
-## `$uriRaw`
+## `$uriScheme`
 
-The raw URI string as sent by the client.
+The scheme [typically `"http"` or `"https"`] (either from target URI or whether the connection is encrypted or not).
 
 ## `$uriHost`
 

@@ -94,4 +94,4 @@ $fallback = function(Request $req, Response $res) {
     $res->end("<html><body><h1>Fallback \o/</h1></body></html>");
 };
 
-(new Host)->expose("*", 1337)->use($router)->use($root)->use($fallback);
+return (new Host)->expose("*", 1337)->use($router)->use($root)->use($fallback);

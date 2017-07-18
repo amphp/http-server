@@ -2,7 +2,7 @@
 
 namespace Aerys\Test;
 
-use Aerys\Bootstrapper;
+use Aerys\Internal;
 use Aerys\Client;
 use Aerys\Console;
 use Aerys\Host;
@@ -21,22 +21,16 @@ class BootstrapperTest extends TestCase {
      * @expectedExceptionMessage No config file found, specify one via the -c switch on command line
      */
     public function testThrowsWithoutConfig() {
-        $bootstrapper = new Bootstrapper(function () {
-            return [];
-        });
-
         $logger = new class extends Logger {
             protected function output(string $message) {
                 // do nothing
             }
         };
 
-        wait(new Coroutine($bootstrapper->boot($logger, new Console(new CLImate))));
+        wait(new Coroutine(Internal\bootServer($logger, new Console(new CLImate))));
     }
 
-    public function testBootstrap() {
-        $bootstrapper = new Bootstrapper;
-
+    public function testBoot() {
         $logger = new class extends Logger {
             protected function output(string $message) {
                 // do nothing
@@ -45,7 +39,7 @@ class BootstrapperTest extends TestCase {
 
         $console = new class($this) extends Console {
             const ARGS = [
-                "config" => __DIR__."/TestBootstrapperInclude.php",
+                "config" => __DIR__ . "/testBootServerInclude.php",
             ];
             private $test;
             public function __construct($test) {
@@ -65,7 +59,7 @@ class BootstrapperTest extends TestCase {
             }
         };
 
-        $server = wait(new Coroutine($bootstrapper->boot($logger, $console)));
+        $server = wait(new Coroutine(Internal\bootServer($logger, $console)));
 
         $info = $server->__debugInfo();
         if (Host::separateIPv4Binding()) {
@@ -86,5 +80,18 @@ class BootstrapperTest extends TestCase {
         $this->assertEquals(2, count($vhosts["foo.bar:80"]->getApplication()->__debugInfo()["applications"]));
         $vhosts["foo.bar:80"]->getApplication()(new StandardRequest($ireq = new InternalRequest), new StandardResponse((function () {yield;})(), new Client))->next();
         $this->assertEquals(["responder" => 1, "foo.bar" => 1], $ireq->locals);
+    }
+
+    // initServer() is essentially already covered by the previous test in detail, just checking if it works at all here.
+    public function testInit() {
+        $logger = new class extends Logger {
+            protected function output(string $message) {
+                // do nothing
+            }
+        };
+
+        $server = \Aerys\initServer($logger, [(new Host)->name("foo.bar")]);
+        $vhosts = $server->__debugInfo()["vhosts"]->__debugInfo()["vhosts"];
+        $this->assertEquals("foo.bar:80", key($vhosts));
     }
 }

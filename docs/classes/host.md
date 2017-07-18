@@ -43,7 +43,7 @@ The `$additionalSslSettings` array is passed directly as SSL context options and
 ## Example
 
 ```php
-(new Aerys\Host)
+return (new Aerys\Host)
     ->expose("127.0.0.1", 80) // Yup, this is the only host here,
     ->name("localhost")       // so expose() and name() aren't necessary
     ->use(function(Aerys\Request $req, Aerys\Response $res) {
