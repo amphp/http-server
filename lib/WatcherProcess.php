@@ -6,6 +6,7 @@ use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Loop;
+use Amp\Process\Process as AmpProcess;
 use Amp\Promise;
 use Amp\Socket\Socket;
 use Amp\Socket\Server;
@@ -14,11 +15,22 @@ use Psr\Log\LoggerInterface as PsrLogger;
 class WatcherProcess extends Process {
     use CallableMaker;
 
+    /** @var \Psr\Log\LoggerInterface */
     private $logger;
+
+    /** @var \Aerys\Console */
     private $console;
+
+    /** @var int Number of workers to create. */
     private $workerCount;
+
+    /** @var string */
     private $ipcServerUri;
+
+    /** @var string Command used to create each worker. */
     private $workerCommand;
+
+    /** @var \Amp\Process\Process[] */
     private $processes;
 
     /** @var \Amp\Socket\ClientSocket[] */
@@ -51,13 +63,14 @@ class WatcherProcess extends Process {
     }
 
     private function collectProcessGarbage() {
-        foreach ($this->processes as $key => $procHandle) {
-            $info = proc_get_status($procHandle);
-            if ($info["running"]) {
+        foreach ($this->processes as $key => $process) {
+            if ($process->isRunning()) {
                 continue;
             }
+
             $this->defunctProcessCount--;
-            proc_close($procHandle);
+            $process->kill();
+
             unset($this->processes[$key]);
             if ($this->expectedFailures > 0) {
                 $this->expectedFailures--;
@@ -185,8 +198,6 @@ class WatcherProcess extends Process {
                         } finally {
                             Loop::stop();
                         }
-
-                        //(new \Amp\Coroutine($this->stop()))->onResolve([Loop::class, "stop"]);
                         return;
                 }
             } while (true);
@@ -341,6 +352,7 @@ class WatcherProcess extends Process {
 
             if ($this->stopDeferred) {
                 $client->write(self::STOP_SEQUENCE);
+                $client->close();
             }
 
             $this->ipcClients[\spl_object_hash($client)] = $client;
@@ -480,17 +492,22 @@ class WatcherProcess extends Process {
         if ($this->useSocketTransfer) {
             $cmd .= " --socket-transfer";
         }
-        $fds = [["pipe", "r"], ["pipe", "w"], ["pipe", "w"]];
-        $options = ["bypass_shell" => true];
-        if (!$procHandle = \proc_open($cmd, $fds, $pipes, null, null, $options)) {
-            return new \Amp\Failure(new \RuntimeException(
-                "Failed spawning worker process"
-            ));
-        }
-        foreach ($pipes as $pipe) {
-            @fclose($pipe);
-        }
-        $this->processes[] = $procHandle;
+
+        $options = [
+            "html_errors" => "0",
+            "display_errors" => "0",
+            "log_errors" => "1",
+            "bypass_shell" => true,
+        ];
+
+        $process = new AmpProcess($cmd, null, [], $options);
+        $process->start();
+
+        $process->getStdin()->close();
+        $process->getStdout()->close();
+        $process->getStderr()->close();
+
+        $this->processes[] = $process;
 
         // mark processes as potentially defunct until the IPC socket connection has been established
         Loop::enable($this->procGarbageWatcher);
@@ -504,7 +521,7 @@ class WatcherProcess extends Process {
         $spawn = count($this->ipcClients);
         for ($i = 0; $i < $spawn; $i++) {
             $this->spawn()->onResolve(function () {
-                current($this->ipcClients)->write(self::STOP_SEQUENCE);
+                current($this->ipcClients)->end(self::STOP_SEQUENCE);
                 next($this->ipcClients);
             });
         }
@@ -515,7 +532,7 @@ class WatcherProcess extends Process {
         if (!$this->stopDeferred) {
             $this->stopDeferred = new Deferred;
             foreach ($this->ipcClients as $ipcClient) {
-                $ipcClient->write(self::STOP_SEQUENCE);
+                $ipcClient->end(self::STOP_SEQUENCE);
             }
         }
 
