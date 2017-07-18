@@ -535,23 +535,21 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         $buffer .= yield;
                     }
 
-                    if (($flags & self::END_STREAM) !== "\0") {
-                        unset($bodyLens[$id], $client->streamWindow[$id]);
-                        $type = HttpDriver::ENTITY_PART;
-                    } else {
-                        $bodyLens[$id] += $length;
-                        $type = HttpDriver::ENTITY_RESULT;
-                    }
-
                     $body = \substr($buffer, 0, $length - $padding);
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
-                    if ($body != "") {
-                        ($this->emit)($client, $type, ["id" => $id, "protocol" => "2.0", "body" => $body], null);
-                    }
                     $buffer = \substr($buffer, $length);
+                    if ($body != "") {
+                        ($this->emit)($client, HttpDriver::ENTITY_PART, ["id" => $id, "body" => $body], null);
+                    }
 
-                    if ($remaining == 0 && ($flags & self::END_STREAM) !== "\0" && $length) {
-                        ($this->emit)($client, HttpDriver::SIZE_WARNING, ["id" => $id], null);
+                    if (($flags & self::END_STREAM) !== "\0") {
+                        unset($bodyLens[$id], $client->streamWindow[$id]);
+                        ($this->emit)($client, HttpDriver::ENTITY_RESULT, ["id" => $id], null);
+                    } else {
+                        $bodyLens[$id] += $length;
+                        if ($remaining == 0 && $length) {
+                            ($this->emit)($client, HttpDriver::SIZE_WARNING, ["id" => $id], null);
+                        }
                     }
 
                     continue 2;
