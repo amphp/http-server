@@ -10,29 +10,25 @@ use Aerys\Options;
 use Amp\Artax\Internal\Parser;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
-use const Aerys\HTTP_STATUS;
 
 class Http1DriverTest extends TestCase {
-    const HTTP_ENTITY_EMITTERS = HttpDriver::ENTITY_HEADERS | HttpDriver::ENTITY_PART | HttpDriver::ENTITY_RESULT;
-    const HTTP_DATA_EMITTERS = HttpDriver::RESULT | self::HTTP_ENTITY_EMITTERS;
-
+    const HTTP_HEADER_EMITTERS = HttpDriver::RESULT | HttpDriver::ENTITY_HEADERS;
+    const HTTP_EMITTERS = self::HTTP_HEADER_EMITTERS | HttpDriver::ENTITY_PART | HttpDriver::ENTITY_RESULT;
     /**
      * @dataProvider provideUnparsableRequests
      */
     public function testBadRequestBufferedParse($unparsable, $errCode, $errMsg, $opts) {
         $invoked = 0;
         $resultCode = null;
-        $parseResult = null;
         $errorMsg = null;
 
-        $emitCallback = function (...$emitStruct) use (&$invoked, &$parseResult) {
+        $emitCallback = function () use (&$invoked) {
             $invoked++;
-            list(, $parseResult) = $emitStruct;
         };
 
-        $errorCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
+        $errorCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$errorMsg) {
             $invoked++;
-            list(, $parseResult, $resultCode, $errorMsg) = $emitStruct;
+            list(, $resultCode, $errorMsg) = $emitStruct;
         };
 
         $client = new Client;
@@ -41,12 +37,12 @@ class Http1DriverTest extends TestCase {
             $client->options->$key = $val;
         }
         $driver = new Http1Driver;
-        $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback, HttpDriver::ERROR => $errorCallback], $this->createCallback(0));
+        $driver->setup([self::HTTP_EMITTERS => $emitCallback, HttpDriver::ERROR => $errorCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
         $parser->send($unparsable);
 
         $this->assertTrue($invoked > 0);
-        $this->assertSame(HTTP_STATUS["BAD_REQUEST"], $resultCode);
+        $this->assertSame($errCode, $resultCode);
         $this->assertSame($errMsg, $errorMsg);
     }
 
@@ -56,17 +52,15 @@ class Http1DriverTest extends TestCase {
     public function testBadRequestIncrementalParse($unparsable, $errCode, $errMsg, $opts) {
         $invoked = 0;
         $resultCode = null;
-        $parseResult = null;
         $errorMsg = null;
 
-        $emitCallback = function (...$emitStruct) use (&$invoked, &$parseResult) {
+        $emitCallback = function () use (&$invoked) {
             $invoked++;
-            list(, $parseResult) = $emitStruct;
         };
 
-        $errorCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$parseResult, &$errorMsg) {
+        $errorCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$errorMsg) {
             $invoked++;
-            list(, $parseResult, $resultCode, $errorMsg) = $emitStruct;
+            list(, $resultCode, $errorMsg) = $emitStruct;
         };
 
         $client = new Client;
@@ -75,7 +69,7 @@ class Http1DriverTest extends TestCase {
             $client->options->$key = $val;
         }
         $driver = new Http1Driver;
-        $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback, HttpDriver::ERROR => $errorCallback], $this->createCallback(0));
+        $driver->setup([self::HTTP_EMITTERS => $emitCallback, HttpDriver::ERROR => $errorCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
 
         for ($i = 0, $c = strlen($unparsable); $i < $c; $i++) {
@@ -86,7 +80,7 @@ class Http1DriverTest extends TestCase {
         }
 
         $this->assertTrue($invoked > 0);
-        $this->assertSame(HTTP_STATUS["BAD_REQUEST"], $resultCode);
+        $this->assertSame($errCode, $resultCode);
         $this->assertSame($errMsg, $errorMsg);
     }
 
@@ -98,25 +92,31 @@ class Http1DriverTest extends TestCase {
         $parseResult = null;
         $body = "";
 
-        $emitCallback = function (...$emitStruct) use (&$invoked, &$parseResult, &$body) {
+        $headerEmitCallback = function (...$emitStruct) use (&$invoked, &$ireq) {
             $invoked++;
-            list(, $parseResult) = $emitStruct;
-            $body .= $parseResult["body"];
+            list($ireq) = $emitStruct;
+        };
+        $dataEmitCallback = function ($client, $bodyData = "") use (&$invoked, &$body) {
+            $invoked++;
+            $body .= $bodyData;
+        };
+        $invokedCallback = function () use (&$invoked) {
+            $invoked++;
         };
 
         $client = new Client;
         $client->options = new Options;
         $driver = new Http1Driver;
-        $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback], $this->createCallback(0));
+        $driver->setup([self::HTTP_HEADER_EMITTERS => $headerEmitCallback, HttpDriver::ENTITY_PART => $dataEmitCallback, HttpDriver::ENTITY_RESULT => $invokedCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
         $parser->send($msg);
 
         $this->assertSame($expectations["invocations"], $invoked, "invocations mismatch");
-        $this->assertSame($expectations["trace"], $parseResult["trace"], "trace mismatch");
-        $this->assertSame($expectations["protocol"], $parseResult["protocol"], "protocol mismatch");
-        $this->assertSame($expectations["method"], $parseResult["method"], "method mismatch");
-        $this->assertSame($expectations["uri"], $parseResult["uri"], "uri mismatch");
-        $this->assertSame($expectations["headers"], $parseResult["headers"], "headers mismatch");
+        $this->assertSame($expectations["trace"], $ireq->trace, "trace mismatch");
+        $this->assertSame($expectations["protocol"], $ireq->protocol, "protocol mismatch");
+        $this->assertSame($expectations["method"], $ireq->method, "method mismatch");
+        $this->assertSame($expectations["uri"], $ireq->uri, "uri mismatch");
+        $this->assertSame($expectations["headers"], $ireq->headers, "headers mismatch");
         $this->assertSame($expectations["body"], $body, "body mismatch");
     }
 
@@ -128,27 +128,33 @@ class Http1DriverTest extends TestCase {
         $parseResult = null;
         $body = "";
 
-        $emitCallback = function (...$emitStruct) use (&$invoked, &$parseResult, &$body) {
+        $headerEmitCallback = function (...$emitStruct) use (&$invoked, &$ireq) {
             $invoked++;
-            list(, $parseResult) = $emitStruct;
-            $body .= $parseResult["body"];
+            list($ireq) = $emitStruct;
+        };
+        $dataEmitCallback = function ($client, $bodyData) use (&$invoked, &$body) {
+            $invoked++;
+            $body .= $bodyData;
+        };
+        $invokedCallback = function () use (&$invoked) {
+            $invoked++;
         };
 
         $client = new Client;
         $client->options = new Options;
         $driver = new Http1Driver;
-        $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback], $this->createCallback(0));
+        $driver->setup([self::HTTP_HEADER_EMITTERS => $headerEmitCallback, HttpDriver::ENTITY_PART => $dataEmitCallback, HttpDriver::ENTITY_RESULT => $invokedCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
         }
 
         $this->assertSame($expectations["invocations"], $invoked, "invocations mismatch");
-        $this->assertSame($expectations["trace"], $parseResult["trace"], "trace mismatch");
-        $this->assertSame($expectations["protocol"], $parseResult["protocol"], "protocol mismatch");
-        $this->assertSame($expectations["method"], $parseResult["method"], "method mismatch");
-        $this->assertSame($expectations["uri"], $parseResult["uri"], "uri mismatch");
-        $this->assertSame($expectations["headers"], $parseResult["headers"], "headers mismatch");
+        $this->assertSame($expectations["trace"], $ireq->trace, "trace mismatch");
+        $this->assertSame($expectations["protocol"], $ireq->protocol, "protocol mismatch");
+        $this->assertSame($expectations["method"], $ireq->method, "method mismatch");
+        $this->assertSame($expectations["uri"], $ireq->uri, "uri mismatch");
+        $this->assertSame($expectations["headers"], $ireq->headers, "headers mismatch");
         $this->assertSame($expectations["body"], $body, "body mismatch");
     }
 
@@ -166,16 +172,19 @@ class Http1DriverTest extends TestCase {
         $invoked = 0;
         $body = "";
 
-        $emitCallback = function ($client, $parseResultArr) use (&$invoked, &$body) {
+        $invokedCallback = function () use (&$invoked) {
             $invoked++;
-            $body .= $parseResultArr["body"];
+        };
+        $emitCallback = function ($client, $bodyData) use (&$invoked, &$body) {
+            $invoked++;
+            $body .= $bodyData;
         };
 
         $client = new Client;
         $client->options = new Options;
         $client->options->ioGranularity = 1;
         $driver = new Http1Driver;
-        $driver->setup([self::HTTP_ENTITY_EMITTERS => $emitCallback], $this->createCallback(0));
+        $driver->setup([HttpDriver::ENTITY_HEADERS | HttpDriver::ENTITY_RESULT => $invokedCallback, HttpDriver::ENTITY_PART => $emitCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
@@ -189,21 +198,21 @@ class Http1DriverTest extends TestCase {
     public function testStreamingBodyParseEmit() {
         $invoked = 0;
         $emitCallbacks = [
-            HttpDriver::ENTITY_HEADERS => function ($client, $parseResultArr) use (&$invoked) {
+            HttpDriver::ENTITY_HEADERS => function ($ireq) use (&$invoked) {
                 $this->assertSame(++$invoked, 1);
-                $this->assertSame("", $parseResultArr["body"]);
+                $this->assertSame("localhost", $ireq->uriHost);
+                $this->assertSame(1337, $ireq->uriPort);
             },
-            HttpDriver::ENTITY_PART => function ($client, $parseResultArr) use (&$invoked) {
+            HttpDriver::ENTITY_PART => function ($client, $body) use (&$invoked) {
                 if (++$invoked == 2) {
-                    $this->assertSame("1\r\n", $parseResultArr["body"]);
+                    $this->assertSame("1\r\n", $body);
                 } else {
                     $this->assertSame($invoked, 3);
-                    $this->assertSame("2", $parseResultArr["body"]);
+                    $this->assertSame("2", $body);
                 }
             },
-            HttpDriver::ENTITY_RESULT => function ($client, $parseResultArr) use (&$invoked) {
+            HttpDriver::ENTITY_RESULT => function () use (&$invoked) {
                 $this->assertSame(++$invoked, 4);
-                $this->assertSame("", $parseResultArr["body"]);
             },
         ];
 
@@ -215,7 +224,7 @@ class Http1DriverTest extends TestCase {
         $parser = $driver->parser($client);
         $headers =
             "POST /post-endpoint HTTP/1.1\r\n" .
-            "Host: localhost\r\n" .
+            "Host: localhost:1337\r\n" .
             "Content-Length: 4\r\n\r\n";
         $part1 = "1\r\n";
         $part2 = "2\r\n";
@@ -228,7 +237,7 @@ class Http1DriverTest extends TestCase {
 
     public function testChunkedBodyParseEmit() {
         $msg =
-            "POST /post-endpoint HTTP/1.0\r\n" .
+            "POST https://test.local:1337/post-endpoint HTTP/1.0\r\n" .
             "Host: localhost\r\n" .
             "Transfer-Encoding: chunked\r\n" .
             "Cookie: cookie1\r\n" .
@@ -244,16 +253,28 @@ class Http1DriverTest extends TestCase {
         $expectedBody = "woot!test";
         $invoked = 0;
         $body = "";
-        $emitCallback = function ($client, $parseResultArr) use (&$invoked, &$body) {
-            $invoked++;
-            $body .= $parseResultArr["body"];
-        };
+        $emitCallbacks = [
+            HttpDriver::ENTITY_HEADERS => function ($ireq) use (&$invoked) {
+                $this->assertSame(++$invoked, 1);
+                $this->assertSame("https", $ireq->uriScheme);
+                $this->assertSame("test.local", $ireq->uriHost);
+                $this->assertSame(1337, $ireq->uriPort);
+            },
+            HttpDriver::ENTITY_PART => function ($client, $bodyData) use (&$invoked, &$body) {
+                $invoked++;
+                $body .= $bodyData;
+            },
+            HttpDriver::ENTITY_RESULT => function () use (&$invoked) {
+                ++$invoked;
+            },
+        ];
+
 
         $client = new Client;
         $client->options = new Options;
         $client->options->ioGranularity = 1;
         $driver = new Http1Driver;
-        $driver->setup([self::HTTP_ENTITY_EMITTERS => $emitCallback], $this->createCallback(0));
+        $driver->setup($emitCallbacks, $this->createCallback(0));
         $parser = $driver->parser($client);
 
         for ($i=0, $c=strlen($msg);$i<$c;$i++) {
@@ -423,7 +444,7 @@ class Http1DriverTest extends TestCase {
         $headers = [
             "host" => ["localhost"],
             "transfer-encoding" => ["chunked"],
-            "my-trailer" => ["42"],
+            //"my-trailer" => ["42"],
         ];
 
         $expectations = [
@@ -531,11 +552,13 @@ class Http1DriverTest extends TestCase {
         $client = new Client;
 
         $emitCallbacks = [
-            self::HTTP_ENTITY_EMITTERS => function (...$emitStruct) use ($client, &$invoked, &$parseResult, &$body) {
+            HttpDriver::ENTITY_HEADERS | HttpDriver::ENTITY_RESULT => function() use (&$invoked) {
+                $invoked++;
+            },
+            HttpDriver::ENTITY_PART => function ($client, $bodyData) use (&$invoked, &$body) {
                 $client->pendingResponses = 1;
                 $invoked++;
-                list(, $parseResult) = $emitStruct;
-                $body .= $parseResult["body"];
+                $body .= $bodyData;
             },
             HttpDriver::SIZE_WARNING => function () use (&$expectsWarning) {
                 $this->assertTrue($expectsWarning);

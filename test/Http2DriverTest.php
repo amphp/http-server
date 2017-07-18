@@ -11,8 +11,8 @@ use Aerys\Options;
 use Amp\PHPUnit\TestCase;
 
 class Http2DriverTest extends TestCase {
-    const HTTP_ENTITY_EMITTERS = HttpDriver::ENTITY_HEADERS | HttpDriver::ENTITY_PART | HttpDriver::ENTITY_RESULT;
-    const HTTP_DATA_EMITTERS = HttpDriver::RESULT | self::HTTP_ENTITY_EMITTERS;
+    const HTTP_HEADER_EMITTERS = HttpDriver::RESULT | HttpDriver::ENTITY_HEADERS;
+    const HTTP_EMITTERS = self::HTTP_HEADER_EMITTERS | HttpDriver::ENTITY_PART | HttpDriver::ENTITY_RESULT;
 
     public function packFrame($data, $type, $flags, $stream = 0) {
         return substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
@@ -56,14 +56,19 @@ class Http2DriverTest extends TestCase {
             }
         };
 
-        $emitCallback = function ($client, $tmpResult) use (&$invoked, &$parseResult, &$body) {
-            if (!$invoked++) {
-                $parseResult = $tmpResult;
-            }
-            $body .= $tmpResult["body"] ?? "";
-            $client->bodyEmitters[$tmpResult["id"]] = true; // is used to verify whether headers were sent
+        $headerEmitCallback = function ($new_ireq) use (&$invoked, &$ireq) {
+            $this->assertSame(0, $invoked++);
+            $ireq = $new_ireq;
+            $ireq->client->bodyEmitters[$ireq->streamId] = true; // is used to verify whether headers were sent
         };
-        $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback], $this->createCallback(0));
+        $dataEmitCallback = function($client, $bodyData) use (&$invoked, &$body) {
+            $invoked++;
+            $body .= $bodyData;
+        };
+        $invokedCallback = function () use (&$invoked) {
+            $invoked++;
+        };
+        $driver->setup([self::HTTP_HEADER_EMITTERS => $headerEmitCallback, HttpDriver::ENTITY_PART => $dataEmitCallback, HttpDriver::ENTITY_RESULT => $invokedCallback], $this->createCallback(0));
 
         for ($mode = 0; $mode <= 1; $mode++) {
             $invoked = 0;
@@ -82,17 +87,17 @@ class Http2DriverTest extends TestCase {
                 $parser->send($msg);
             }
 
-            foreach ($parseResult["headers"] as $header => $_) {
+            foreach ($ireq->headers as $header => $_) {
                 if ($header[0] == ":") {
-                    unset($parseResult["headers"][$header]);
+                    unset($ireq->headers[$header]);
                 }
             }
 
             $this->assertSame($expectations["invocations"], $invoked, "invocations mismatch");
-            $this->assertSame($expectations["protocol"], $parseResult["protocol"], "protocol mismatch");
-            $this->assertSame($expectations["method"], $parseResult["method"], "method mismatch");
-            $this->assertSame($expectations["uri"], $parseResult["uri"], "uri mismatch");
-            $this->assertSame($expectations["headers"], $parseResult["headers"], "headers mismatch");
+            $this->assertSame($expectations["protocol"], $ireq->protocol, "protocol mismatch");
+            $this->assertSame($expectations["method"], $ireq->method, "method mismatch");
+            $this->assertSame($expectations["uri"], $ireq->uri, "uri mismatch");
+            $this->assertSame($expectations["headers"], $ireq->headers, "headers mismatch");
             $this->assertSame($expectations["body"], $body, "body mismatch");
         }
     }
@@ -102,7 +107,7 @@ class Http2DriverTest extends TestCase {
 
         $headers = [
             ":authority" => "localhost",
-            ":path" => "/",
+            ":path" => "/foo",
             ":scheme" => "http",
             ":method" => "GET",
             "test" => "successful"
@@ -113,7 +118,7 @@ class Http2DriverTest extends TestCase {
         $expectations = [
             "protocol"    => "2.0",
             "method"      => "GET",
-            "uri"         => "http://localhost/",
+            "uri"         => "/foo",
             "headers"     => ["test" => ["successful"]],
             "body"        => "",
             "invocations" => 1
@@ -132,7 +137,7 @@ class Http2DriverTest extends TestCase {
         $expectations = [
             "protocol"    => "2.0",
             "method"      => "GET",
-            "uri"         => "http://localhost/",
+            "uri"         => "/foo",
             "headers"     => ["test" => ["successful"]],
             "body"        => "ab",
             "invocations" => 4 /* header + 2 * individual data + end */
@@ -160,7 +165,7 @@ class Http2DriverTest extends TestCase {
             }
         };
 
-        $driver->setup([self::HTTP_DATA_EMITTERS => function () {}], $this->createCallback(0));
+        $driver->setup([self::HTTP_EMITTERS => function () {}], $this->createCallback(0));
 
         return $driver;
     }

@@ -73,7 +73,12 @@ class ServerTest extends TestCase {
                 $type = array_shift($emit);
                 foreach ($this->emitters as $key => $emitter) {
                     if ($key & $type) {
-                        $emitter($this->client, ...$emit);
+                        if ($emit[0] instanceof InternalRequest) {
+                            $emit[0]->client = $this->client;
+                            $emitter(...$emit);
+                        } else {
+                            $emitter($this->client, ...$emit);
+                        }
                     }
                 }
             }
@@ -93,19 +98,27 @@ class ServerTest extends TestCase {
         }
     }
 
+    function newIreq() {
+        $ireq = new InternalRequest;
+        $ireq->streamId = 2;
+        $ireq->trace = [["host", "localhost"]];
+        $ireq->protocol = "2.0";
+        $ireq->method = "GET";
+        $ireq->uri = "/foo";
+        $ireq->uriScheme = "http";
+        $ireq->uriHost = "localhost";
+        $ireq->uriPort = 80;
+        $ireq->uriPath = "/foo";
+        $ireq->uriQuery = "";
+        $ireq->headers = ["host" => ["localhost"]];
+        return $ireq;
+    }
+
     public function testBasicRequest() {
-        $parseResult = [
-            "id" => 2,
-            "trace" => [["host", "localhost"]],
-            "protocol" => "2.0",
-            "method" => "GET",
-            "uri" => "http://localhost/foo",
-            "headers" => ["host" => ["localhost"]],
-            "body" => "",
-        ];
+        $ireq = $this->newIreq();
 
         $order = 0;
-        list($headers, $body) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) use (&$order) {
+        list($headers, $body) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req, Response $res) use (&$order) {
             $this->assertEquals(2, ++$order);
             $this->assertEquals("localhost", $req->getHeader("Host"));
             $this->assertEquals("/foo", $req->getUri());
@@ -129,21 +142,13 @@ class ServerTest extends TestCase {
     }
 
     public function testStreamRequest() {
-        $parseResult = [
-            "id" => 2,
-            "trace" => [["host", "localhost"]],
-            "protocol" => "2.0",
-            "method" => "POST",
-            "uri" => "http://localhost/foo",
-            "headers" => ["host" => ["localhost"]],
-            "body" => "",
-        ];
+        $ireq = $this->newIreq();
 
         list($headers, $body) = $this->tryRequest([
-            [HttpDriver::ENTITY_HEADERS, $parseResult, null],
-            [HttpDriver::ENTITY_PART, ["id" => 2, "protocol" => "2.0", "body" => "fooBar"], null],
-            [HttpDriver::ENTITY_PART, ["id" => 2, "protocol" => "2.0", "body" => "BAZ!"], null],
-            [HttpDriver::ENTITY_RESULT, ["id" => 2, "protocol" => "2.0"], null],
+            [HttpDriver::ENTITY_HEADERS, $ireq],
+            [HttpDriver::ENTITY_PART, "fooBar", 2],
+            [HttpDriver::ENTITY_PART, "BAZ!", 2],
+            [HttpDriver::ENTITY_RESULT, 2],
         ], function (Request $req, Response $res) {
             while (($chunk = yield $req->getBody()->read()) != "") {
                 $res->write($chunk);
@@ -161,21 +166,16 @@ class ServerTest extends TestCase {
     }
 
     public function testDelayedStreamRequest() {
-        $parseResult = [
-            "id" => 2,
-            "trace" => [["host", "localhost"]],
-            "protocol" => "2.0",
-            "method" => "POST",
-            "uri" => "http://localhost/foo",
-            "headers" => ["host" => ["localhost"]],
-        ];
+        $ireq = $this->newIreq();
+        $ireq->method = "POST";
 
-        list($headers, $body) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) {
+        list($headers, $body) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req, Response $res) {
             $this->assertEquals("", yield $req->getBody());
             $res->write("fooBar");
             $res->write("BAZ!");
             $res->end();
         }, [function (InternalRequest $ireq) {
+            $this->assertSame("POST", $ireq->method);
             $headers = yield;
             $this->assertEquals("fooBar", yield);
             $this->assertEquals("BAZ!", yield);
@@ -189,17 +189,9 @@ class ServerTest extends TestCase {
     }
 
     public function testFlushRequest() {
-        $parseResult = [
-            "id" => 2,
-            "trace" => [["host", "localhost"]],
-            "protocol" => "2.0",
-            "method" => "GET",
-            "uri" => "http://localhost/foo",
-            "headers" => ["host" => ["localhost"]],
-            "body" => "",
-        ];
+        $ireq = $this->newIreq();
 
-        list($headers, $body) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) {
+        list($headers, $body) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req, Response $res) {
             $res->write("Bob");
             $res->flush();
             $res->write(" ");
@@ -220,79 +212,52 @@ class ServerTest extends TestCase {
     /**
      * @dataProvider providePreResponderHeaders
      */
-    public function testPreResponderFailures($result, $status) {
-        $parseResult = $result + [
-            "id" => 2,
-            "trace" => [["host", "localhost"]],
-            "protocol" => "2.0",
-            "method" => "GET",
-            "uri" => "/foo",
-            "headers" => ["host" => ["localhost"]],
-            "body" => "",
-        ];
+    public function testPreResponderFailures($changes, $status) {
+        $ireq = $this->newIreq();
+        foreach ($changes as $key => $change) {
+            $ireq->$key = $change;
+        }
 
-        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) { $this->fail("We should already have failed and never invoke the responder..."); });
+        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req, Response $res) { $this->fail("We should already have failed and never invoke the responder..."); });
 
         $this->assertEquals($status, $headers[":status"]);
     }
 
     public function providePreResponderHeaders() {
         return [
-            [["headers" => ["host" => "undefined"]], \Aerys\HTTP_STATUS["BAD_REQUEST"]],
+            [["headers" => ["host" => "undefined"], "uriHost" => "undefined"], \Aerys\HTTP_STATUS["BAD_REQUEST"]],
             [["method" => "NOT_ALLOWED"], \Aerys\HTTP_STATUS["METHOD_NOT_ALLOWED"]],
         ];
     }
 
     public function testOptionsRequest() {
-        $parseResult = [
-                "id" => 2,
-                "trace" => [["host", "localhost"]],
-                "protocol" => "2.0",
-                "method" => "OPTIONS",
-                "uri" => "*",
-                "headers" => ["host" => ["localhost"]],
-                "body" => "",
-            ];
+        $ireq = $this->newIreq();
+        $ireq->uri = $ireq->uriPath = "*";
+        $ireq->method = "OPTIONS";
 
-        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) { $this->fail("We should already have failed and never invoke the responder..."); });
+        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req, Response $res) { $this->fail("We should already have failed and never invoke the responder..."); });
 
         $this->assertEquals(\Aerys\HTTP_STATUS["OK"], $headers[":status"]);
         $this->assertEquals(implode(",", (new Options)->allowedMethods), $headers["allow"][0]);
     }
 
     public function testError() {
-        $parseResult = [
-                "id" => 2,
-                "trace" => [["host", "localhost"]],
-                "protocol" => "2.0",
-                "method" => "GET",
-                "uri" => "/foo",
-                "headers" => ["host" => ["localhost"]],
-                "body" => "",
-            ];
+        $ireq = $this->newIreq();
 
-        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) { throw new \Exception; });
+        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req, Response $res) { throw new \Exception; });
 
         $this->assertEquals(\Aerys\HTTP_STATUS["INTERNAL_SERVER_ERROR"], $headers[":status"]);
     }
 
     public function testNotFound() {
-        $parseResult = [
-                "id" => 2,
-                "trace" => [["host", "localhost"]],
-                "protocol" => "2.0",
-                "method" => "GET",
-                "uri" => "/foo",
-                "headers" => ["host" => ["localhost"]],
-                "body" => "",
-            ];
+        $ireq = $this->newIreq();
 
-        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) { /* nothing */ });
+        list($headers) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req, Response $res) { /* nothing */ });
         $this->assertEquals(\Aerys\HTTP_STATUS["NOT_FOUND"], $headers[":status"]);
 
         // with coroutine
         $deferred = new \Amp\Deferred;
-        $result = $this->tryRequest([[HttpDriver::RESULT, $parseResult, null]], function (Request $req, Response $res) use ($deferred) { yield $deferred->promise(); });
+        $result = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req, Response $res) use ($deferred) { yield $deferred->promise(); });
         $deferred->resolve();
         $this->assertEquals(\Aerys\HTTP_STATUS["NOT_FOUND"], $result[0][":status"]);
     }

@@ -27,7 +27,6 @@ class VhostTest extends TestCase {
         $ireq->uriPort = 80;
         $this->assertEquals($vhost, $vhosts->selectHost($ireq));
 
-        $ireq->uriRaw = "http://localhost/";
         $ireq->uriPort = 80;
         $ireq->uriHost = "localhost";
         $this->assertEquals($localvhost, $vhosts->selectHost($ireq));

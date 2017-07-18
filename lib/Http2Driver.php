@@ -176,12 +176,9 @@ class Http2Driver implements HttpDriver {
 
         $url = parse_url($url);
         $scheme = $url["scheme"] ?? ($ireq->client->isEncrypted ? "https" : "http");
-        $authority = $url["host"] ?? $ireq->uriHost;
-        if (isset($url["port"])) {
-            $authority .= ":" . $url["port"];
-        } elseif (isset($ireq->uriPort)) {
-            $authority .= ":" . $ireq->uriPort;
-        }
+        $host = $url["host"] ?? $ireq->uriHost;
+        $port = $url["port"] ?? $ireq->uriPort;
+        $authority = "$host:$port";
         $path = $url["path"] . ($url["query"] ?? "");
 
         $headerArray[":authority"][0] = $authority;
@@ -211,16 +208,20 @@ class Http2Driver implements HttpDriver {
             }
         }
 
-        $parseResult = [
-            "id" => $id,
-            "trace" => $headerList,
-            "protocol" => "2.0",
-            "method" => "GET",
-            "uri" => $authority ? "$scheme://$authority$path" : $path,
-            "headers" => $headerArray,
-            "body" => "",
-            "server_push" => $ireq->uri,
-        ];
+        $new_ireq = new InternalRequest;
+        $new_ireq->client = $client;
+        $new_ireq->streamId = $id;
+        $new_ireq->trace = $headerList;
+        $new_ireq->protocol = "2.0";
+        $new_ireq->method = "GET";
+        $new_ireq->uri = $path;
+        $new_ireq->uriScheme = $scheme;
+        $new_ireq->uriHost = $authority;
+        $new_ireq->uriPort = $port;
+        $new_ireq->uriPath = $url["path"];
+        $new_ireq->uriQuery = $url["query"] ?? "";
+        $new_ireq->headers = $headerArray;
+        // server_push = $ireq->uri
 
         $client->streamWindow[$id] = $client->initialWindowSize;
         $client->streamWindowBuffer[$id] = "";
@@ -240,7 +241,7 @@ class Http2Driver implements HttpDriver {
             $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::END_HEADERS, $ireq->streamId);
         }
 
-        ($this->resultEmitter)($client, $parseResult);
+        ($this->resultEmitter)($ireq);
     }
 
     public function writer(InternalRequest $ireq): \Generator {
@@ -459,7 +460,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
             $start = \strpos($buffer, "HTTP/") + 5;
             if ($start < \strlen($buffer)) {
                 $protocol = \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start);
-                ($this->errorEmitter)($client, ["protocol" => $protocol], HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"], "Unsupported version {$protocol}");
+                ($this->errorEmitter)($client, HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"], "Unsupported version {$protocol}");
             }
             return;
         }
@@ -557,16 +558,17 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                     $buffer = \substr($buffer, $length);
                     if ($body != "") {
-                        ($this->entityPartEmitter)($client, ["id" => $id, "body" => $body]);
+                        ($this->entityPartEmitter)($client, $body, $id);
                     }
 
                     if (($flags & self::END_STREAM) !== "\0") {
                         unset($bodyLens[$id], $client->streamWindow[$id]);
-                        ($this->entityResultEmitter)($client, ["id" => $id]);
+                        ($this->entityResultEmitter)($client, $id);
                     } else {
                         $bodyLens[$id] += $length;
+
                         if ($remaining == 0 && $length) {
-                            ($this->sizeWarningEmitter)($client, ["id" => $id]);
+                            ($this->sizeWarningEmitter)($client, $id);
                         }
                     }
 
@@ -791,7 +793,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                     }
 
                     if ($error !== 0) {
-                        // ($this->errorEmitter)($client, ["body" => \substr($buffer, 0, $length)], HTTP_STATUS["BAD_REQUEST"], $error);
+                        // ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], $error);
                     }
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer, 0, $length)."\n");
@@ -889,15 +891,29 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                     $headerArray[$name][] = $value;
                 }
 
-                $parseResult = [
-                    "id"       => $id,
-                    "trace"    => $headerList,
-                    "protocol" => "2.0",
-                    "method"   => $headerArray[":method"][0],
-                    "uri"      => !empty($headerArray[":authority"][0]) ? "{$headerArray[":scheme"][0]}://{$headerArray[":authority"][0]}{$headerArray[":path"][0]}" : $headerArray[":path"][0],
-                    "headers"  => $headerArray,
-                    "body"     => "",
-                ];
+                $ireq = new InternalRequest;
+                $ireq->client = $client;
+                $ireq->streamId = $id;
+                $ireq->trace = $headerList;
+                $ireq->headers = $headerArray;
+                $ireq->protocol = "2.0";
+                $ireq->method = $headerArray[":method"][0];
+                $ireq->uri = $headerArray[":path"][0];
+                $ireq->uriScheme = $headerArray[":scheme"][0] ?? ($client->isEncrypted ? "https" : "http");
+                $host = $headerArray[":authority"][0] ?? "";
+                if (($colon = \strrpos($host, ":")) !== false) {
+                    $ireq->uriHost = \substr($host, 0, $colon);
+                    $ireq->uriPort = (int) \substr($host, $colon + 1);
+                } else {
+                    $ireq->uriHost = $host;
+                    $ireq->uriPort = $client->serverPort;
+                }
+                $uri = $headerArray[":path"][0];
+                if (\strpos($uri, '?') !== false) {
+                    list($uri, $ireq->uriQuery) = \explode("?", $uri, 2);
+                }
+                $ireq->uriPath = \rawurldecode($uri);
+
 
                 if (!isset($client->streamWindow[$id])) {
                     $client->streamWindow[$id] = $client->initialWindowSize;
@@ -905,9 +921,9 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                 $client->streamWindowBuffer[$id] = "";
 
                 if ($streamEnd) {
-                    ($this->entityResultEmitter)($client, $parseResult);
+                    ($this->resultEmitter)($ireq);
                 } else {
-                    ($this->entityHeaderEmitter)($client, $parseResult);
+                    ($this->entityHeaderEmitter)($ireq);
                     $bodyLens[$id] = 0;
                 }
                 continue;

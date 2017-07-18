@@ -14,20 +14,20 @@ It is only possible to have one driver per **port**. There are some few possible
 
 Called upon initialization (possibly even before [`Bootable::boot`](bootable.html) was called).
 
-`$parseEmitter` is an array of `callable(Client $client, array $parseResult)`, keyed by `HttpDriver` constants.
+`$parseEmitter` is an array of `callable`s, keyed by `HttpDriver` constants.
 
-In every case the `$parseResult` array needs to contain an `"id"` key with an identifier (unique during the requests lifetime) for the specific request.
+When an instance of `InternalRequest` is passed, in particular `client`, `headers`, `method`, `protocol`, `trace` and `uri*` properties should be initialized.
 
-A _request initializing_ `$parseResult` array requires a `"trace"` key (raw string trace or array with `[field, value]` header pairs), with optional `"uri"` (string &mdash; default: `"/"`), `"method"` (string &mdash; default: `"GET"`), `"protocol"` (string &mdash; default: `"1.0"`) and `"headers"` (array with `[field, value]` pairs &mdash; default: `[]`).
+Several callables have an optional `$streamId` parameter. If only one request is handled simultaneously on a same connection, this parameter can be ignored, otherwise one must set it to the same value than `InternalRequest->streamId` to enable the server to feed the body data to the right request.
 
-Depending on the callback type (as identified by the key in `$parseEmitter` array), different `$parseResult` contents are expected:
+Depending on the callback type, different signatures are expected:
 
-- `HttpDriver::RESULT`: the request has no entity body and `$parseResult` must be _request initializing_.
-- `HttpDriver::ENTITY_HEADERS`: the request will be followed by subsequent body (`HttpDriver::ENTITY_PART` / `HttpDriver::ENITITY_RESULT`) and `$parseResult` must be _request initializing_.
-- `HttpDriver::ENTITY_PART`: contains the next part of the entity body, inside a `"body"` key inside the `$parseResult` array.
-- `HttpDriver::ENTITY_RESULT`: signals the end of the entity body
-- `HttpDriver::SIZE_WARNING`: to be used when the body size exceeds the current size limits (by default `Options->maxBodySize`, might have been upgraded via `upgradeBodySize()`). Before emitting this, all the data up to the limit **must** be emitted via `HttpDriver::ENTITY_PART` first.
-- `HttpDriver::ERROR`: `$parseResult` must be _request initializing_ if the Request has not started yet; there are two additional trailing arguments to this callback: a HTTP status code followed by a string error message.
+- `HttpDriver::RESULT`: the request has no entity body. Expects an `InternalRequest` as only parameter.
+- `HttpDriver::ENTITY_HEADERS`: the request will be followed by subsequent body (`HttpDriver::ENTITY_PART` / `HttpDriver::ENITITY_RESULT`). Expects `InternalRequest` as only parameter.
+- `HttpDriver::ENTITY_PART`: contains the next part of the entity body. The signature is `(Client, string $body, int $streamId = 0)`
+- `HttpDriver::ENTITY_RESULT`: signals the end of the entity body. The signature is `(Client, int $streamId = 0)`.
+- `HttpDriver::SIZE_WARNING`: to be used when the body size exceeds the current size limits (by default `Options->maxBodySize`, might have been upgraded via `upgradeBodySize()`). Before emitting this, all the data up to the limit **must** be emitted via `HttpDriver::ENTITY_PART` first. The signature is `(Client, int $streamId = 0)`.
+- `HttpDriver::ERROR`: signals a protocol error. Here are two additional trailing arguments to this callback: a HTTP status code followed by a string error message. The signature is `(Client, int $status, string $message)`.
 
 `$responseWriter` is a `callable(Client $client, bool $final = false)`, supposed to be called after updates to [`$client->writeBuffer`](client.html) with the `$final` parameter signaling the response end [this is important for managing timeouts and counters].
 

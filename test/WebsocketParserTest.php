@@ -277,15 +277,16 @@ class WebsocketParserTest extends TestCase {
                 }
 
                 public function emit() {
-                    ($this->emit)($this->client, [
-                        "id" => 0,
-                        "protocol" => "1.1",
-                        "method" => "GET",
-                        "uri" => "/foo",
-                        "headers" => ["host" => ["localhost"], "sec-websocket-key" => ["x3JJHMbDL1EzLkh9GBhXDw=="], "sec-websocket-version" => ["13"], "upgrade" => ["websocket"], "connection" => ["keep-alive, upgrade"]],
-                        "trace" => [["host", "localhost"], /* irrelevant ... */],
-                        "body" => "",
-                    ]);
+                    $ireq = new InternalRequest;
+                    $ireq->client = $this->client;
+                    $ireq->protocol = "1.1";
+                    $ireq->method = "GET";
+                    $ireq->uri = "/foo";
+                    $ireq->uriHost = "localhost";
+                    $ireq->uriPort = 80;
+                    $ireq->headers = ["host" => ["localhost"], "sec-websocket-key" => ["x3JJHMbDL1EzLkh9GBhXDw=="], "sec-websocket-version" => ["13"], "upgrade" => ["websocket"], "connection" => ["keep-alive, upgrade"]];
+                    $ireq->trace = [["host", "localhost"], /* irrelevant ... */];
+                    ($this->emit)($ireq);
                 }
 
                 public function upgradeBodySize(InternalRequest $ireq) {

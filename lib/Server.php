@@ -231,7 +231,7 @@ class Server implements Monitor {
 
     private function createHttpDriverHandlers() {
         return [
-            HttpDriver::RESULT => $this->callableFromInstanceMethod("onParsedMessageWithoutEntity"),
+            HttpDriver::RESULT => $this->callableFromInstanceMethod("onParsedMessage"),
             HttpDriver::ENTITY_HEADERS => $this->callableFromInstanceMethod("onParsedEntityHeaders"),
             HttpDriver::ENTITY_PART => $this->callableFromInstanceMethod("onParsedEntityPart"),
             HttpDriver::ENTITY_RESULT => $this->callableFromInstanceMethod("onParsedMessageWithEntity"),
@@ -568,44 +568,65 @@ class Server implements Monitor {
         $client->requestParser->send($data);
     }
 
-    private function onParsedMessageWithoutEntity(Client $client, array $parseResult) {
-        $ireq = $this->initializeRequest($client, $parseResult);
+    private function onParsedMessage(InternalRequest $ireq) {
+        if ($this->options->normalizeMethodCase) {
+            $ireq->method = strtoupper($ireq->method);
+        }
+
+        assert($this->logDebug(sprintf(
+            "%s %s HTTP/%s @ %s:%s%s",
+            $ireq->method,
+            $ireq->uri,
+            $ireq->protocol,
+            $ireq->client->clientAddr,
+            $ireq->client->clientPort,
+            ""//empty($parseResult["server_push"]) ? "" : " (server-push via {$parseResult["server_push"]})"
+        )));
+
+        $ireq->client->remainingRequests--;
+
+        $ireq->time = $this->ticker->currentTime;
+        $ireq->httpDate = $this->ticker->currentHttpDate;
+        if (!isset($ireq->body)) {
+            $ireq->body = $this->nullBody;
+        }
+
+        if (empty($ireq->headers["cookie"])) {
+            $ireq->cookies = [];
+        } else { // @TODO delay initialization
+            $ireq->cookies = array_merge(...array_map('\Aerys\parseCookie', $ireq->headers["cookie"]));
+        }
 
         $this->respond($ireq);
     }
 
-    private function onParsedEntityHeaders(Client $client, array $parseResult) {
-        $ireq = $this->initializeRequest($client, $parseResult);
-        $id = $parseResult["id"];
-        $client->bodyEmitters[$id] = $bodyEmitter = new Emitter;
+    private function onParsedEntityHeaders(InternalRequest $ireq) {
+        $ireq->client->bodyEmitters[$ireq->streamId] = $bodyEmitter = new Emitter;
         $ireq->body = new Message(new IteratorStream($bodyEmitter->iterate()));
 
-        $this->respond($ireq);
+        $this->onParsedMessage($ireq);
     }
 
-    private function onParsedEntityPart(Client $client, array $parseResult) {
-        $id = $parseResult["id"];
-        $client->bodyEmitters[$id]->emit($parseResult["body"]);
+    private function onParsedEntityPart(Client $client, $body, int $streamId = 0) {
+        $client->bodyEmitters[$streamId]->emit($body);
     }
 
-    private function onParsedMessageWithEntity(Client $client, array $parseResult) {
-        $id = $parseResult["id"];
-        $emitter = $client->bodyEmitters[$id];
-        unset($client->bodyEmitters[$id]);
+    private function onParsedMessageWithEntity(Client $client, int $streamId = 0) {
+        $emitter = $client->bodyEmitters[$streamId];
+        unset($client->bodyEmitters[$streamId]);
         $emitter->complete();
         // @TODO Update trailer headers if present
 
         // Don't respond() because we always start the response when headers arrive
     }
 
-    private function onEntitySizeWarning(Client $client, array $parseResult) {
-        $id = $parseResult["id"];
-        $deferred = $client->bodyEmitters[$id];
-        $client->bodyEmitters[$id] = new Emitter;
-        $deferred->fail(new ClientSizeException);
+    private function onEntitySizeWarning(Client $client, int $streamId = 0) {
+        $emitter = $client->bodyEmitters[$streamId];
+        $client->bodyEmitters[$streamId] = new Emitter;
+        $emitter->fail(new ClientSizeException);
     }
 
-    private function onParseError(Client $client, array $parseResult, int $status, string $message) {
+    private function onParseError(Client $client, int $status, string $message) {
         $this->clearConnectionTimeout($client);
 
         if ($client->bodyEmitters) {
@@ -614,9 +635,13 @@ class Server implements Monitor {
             return;
         }
 
-        $ireq = $this->initializeRequest($client, $parseResult);
-
         $client->pendingResponses++;
+
+        $ireq = new InternalRequest;
+        $ireq->client = $client;
+        $ireq->time = $this->ticker->currentTime;
+        $ireq->httpDate = $this->ticker->currentHttpDate;
+
         $this->tryApplication($ireq, static function (Request $request, Response $response) use ($status, $message) {
             $body = makeGenericBody($status, [
                 "msg" => $message,
@@ -625,76 +650,6 @@ class Server implements Monitor {
             $response->setHeader("Connection", "close");
             $response->end($body);
         }, []);
-    }
-
-    private function initializeRequest(Client $client, array $parseResult): InternalRequest {
-        $trace = $parseResult["trace"];
-        $protocol = empty($parseResult["protocol"]) ? "1.0" : $parseResult["protocol"];
-        $method = empty($parseResult["method"]) ? "GET" : $parseResult["method"];
-        if ($this->options->normalizeMethodCase) {
-            $method = strtoupper($method);
-        }
-        $uri = empty($parseResult["uri"]) ? "/" : $parseResult["uri"];
-        $headers = empty($parseResult["headers"]) ? [] : $parseResult["headers"];
-
-        assert($this->logDebug(sprintf(
-            "%s %s HTTP/%s @ %s:%s%s",
-            $method,
-            $uri,
-            $protocol,
-            $client->clientAddr,
-            $client->clientPort,
-            empty($parseResult["server_push"]) ? "" : " (server-push via {$parseResult["server_push"]})"
-        )));
-
-        $client->remainingRequests--;
-
-        $ireq = new InternalRequest;
-        $ireq->client = $client;
-        $ireq->time = $this->ticker->currentTime;
-        $ireq->httpDate = $this->ticker->currentHttpDate;
-        $ireq->locals = [];
-        $ireq->trace = $trace;
-        $ireq->protocol = $protocol;
-        $ireq->method = $method;
-        $ireq->headers = $headers;
-        $ireq->body = $this->nullBody;
-        $ireq->streamId = $parseResult["id"];
-
-        if (empty($ireq->headers["cookie"])) {
-            $ireq->cookies = [];
-        } else { // @TODO delay initialization
-            $ireq->cookies = array_merge(...array_map('\Aerys\parseCookie', $ireq->headers["cookie"]));
-        }
-
-        $ireq->uriRaw = $uri;
-        if (stripos($uri, "http://") === 0 || stripos($uri, "https://") === 0) {
-            $uri = parse_url($uri);
-            $ireq->uriHost = $uri["host"];
-            $ireq->uriPort = isset($uri["port"]) ? (int) $uri["port"] : $client->serverPort;
-            $ireq->uriPath = \rawurldecode($uri["path"]);
-            $ireq->uriQuery = $uri["query"] ?? "";
-            $ireq->uri = isset($uri["query"]) ? "{$ireq->uriPath}?{$uri['query']}" : $ireq->uriPath;
-        } else {
-            if ($qPos = strpos($uri, '?')) {
-                $ireq->uriQuery = substr($uri, $qPos + 1);
-                $ireq->uriPath = \rawurldecode(substr($uri, 0, $qPos));
-                $ireq->uri = "{$ireq->uriPath}?{$ireq->uriQuery}";
-            } else {
-                $ireq->uri = $ireq->uriPath = \rawurldecode($uri);
-                $ireq->uriQuery = "";
-            }
-            $host = $ireq->headers["host"][0] ?? "";
-            if (($colon = strrpos($host, ":")) !== false) {
-                $ireq->uriHost = substr($host, 0, $colon);
-                $ireq->uriPort = (int) substr($host, $colon + 1);
-            } else {
-                $ireq->uriHost = $host;
-                $ireq->uriPort = $client->serverPort;
-            }
-        }
-
-        return $ireq;
     }
 
     private function setTrace(InternalRequest $ireq) {
@@ -721,7 +676,7 @@ class Server implements Monitor {
         } elseif ($ireq->method === "TRACE") {
             $this->setTrace($ireq);
             $this->tryApplication($ireq, $this->sendPreAppTraceResponse, []);
-        } elseif ($ireq->method === "OPTIONS" && $ireq->uriRaw === "*") {
+        } elseif ($ireq->method === "OPTIONS" && $ireq->uri === "*") {
             $this->tryApplication($ireq, $this->sendPreAppOptionsResponse, []);
         } else {
             $this->tryApplication($ireq, $vhost->getApplication(), $vhost->getFilters());

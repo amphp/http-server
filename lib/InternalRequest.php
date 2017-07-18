@@ -16,7 +16,7 @@ class InternalRequest {
     /** @var boolean */
     public $filterErrorFlag;
     /** @var integer */
-    public $streamId;
+    public $streamId = 0;
     /** @var string|array literal trace for HTTP/1, for HTTP/2 an array of [name, value] arrays in the original order */
     public $trace;
     /** @var string */
@@ -32,7 +32,7 @@ class InternalRequest {
     /** @var string */
     public $uri;
     /** @var string */
-    public $uriRaw;
+    public $uriScheme;
     /** @var string */
     public $uriHost;
     /** @var integer */
@@ -48,5 +48,5 @@ class InternalRequest {
     /** @var string */
     public $httpDate;
     /** @var array */
-    public $locals;
+    public $locals = [];
 }
