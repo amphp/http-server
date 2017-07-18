@@ -65,7 +65,7 @@ return (new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) 
 
 `Amp\ByteStream\Message` (and the equivalent `Aerys\Websocket\Message`) also provide incremental access to messages, which is particularly important if you have larger message limits (like tens of megabytes) and don't want to buffer it all in memory. If multiple people are uploading large bodies concurrently, the memory might quickly get exhausted.
 
-Hence, incremental handling is important, accessible via [the `read()` API of `Amp\ByteStream\Message`](//amphp.org/byte-stream/message).
+Hence, incremental handling is important, accessible via [the `read()` API of `Amp\ByteStream\Message`](http://amphp.org/byte-stream/message).
 
 In case a client disconnects, the `Message` instance fails with an `Aerys\ClientException`. This exception is thrown for both the `read()` API and when `yield`ing the `Message`. If the size limits are exceeded, it's a `ClientSizeException` which is a child class of `ClientException`.
 
@@ -100,7 +100,7 @@ Apart from implementing `Amp\Promise` (to be able to return `Aerys\ParsedBody` u
 
 `stream($field, $size = 0): Aerys\FieldBody` with `$size` being the maximum size of the field (the size is added to the general size passed to `Aerys\parseBody()`).
 
-This returned `Aerys\FieldBody` instance extends `\Amp\ByteStream\Message` and thus has [the same semantics](//amphp.org/byte-stream/message).
+This returned `Aerys\FieldBody` instance extends `\Amp\ByteStream\Message` and thus has [the same semantics](http://amphp.org/byte-stream/message).
 
 Additionally, to provide the metadata information, the `Aerys\FieldBody` class has a `getMetadata()` function to return [the metadata array](http.md#request-body).
 
