@@ -351,8 +351,7 @@ class WatcherProcess extends Process {
             }
 
             if ($this->stopDeferred) {
-                $client->write(self::STOP_SEQUENCE);
-                $client->close();
+                $client->end(self::STOP_SEQUENCE);
             }
 
             $this->ipcClients[\spl_object_hash($client)] = $client;
