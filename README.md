@@ -1,7 +1,6 @@
 # aerys
 
 [![Build Status](https://travis-ci.org/amphp/aerys.svg?branch=master)](https://travis-ci.org/amphp/aerys)
-[![Dependency Status](https://www.versioneye.com/user/projects/56cc2d7918b2710403dfee93/badge.svg)](https://www.versioneye.com/user/projects/56cc2d7918b2710403dfee93)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/amphp/aerys/blob/master/LICENSE)
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/amphp/aerys.svg)](http://isitmaintained.com/project/amphp/aerys "Average time to resolve an issue")
 
