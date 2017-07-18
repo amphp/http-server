@@ -39,7 +39,7 @@ In case of a successful handshake, this method gets called. `$clientId` is an op
 This method gets called each time a new data frame sequence is received.
 
 {:.note}
-> The second parameter is not a string, but a [`Websocket\Message` extends `Amp\ByteStream\Message`](//byte-stream/message), which implements Promise. The yielded Promise will return a string or fail with a ClientException if the client disconnected before transmitting the full data.
+> The second parameter is not a string, but a [`Websocket\Message` extends `Amp\ByteStream\Message`](http://amphp.org/byte-stream/message), which implements Promise. The yielded Promise will return a string or fail with a ClientException if the client disconnected before transmitting the full data.
 
 ## `onClose(int $clientId, int $code, string $reason)`
 

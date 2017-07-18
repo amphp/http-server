@@ -46,7 +46,7 @@ Gets the decoded query string as associative array.
 
 ## `getBody(): \Amp\ByteStream\Message`
 
-Returns a representation of the request body. The [`\Amp\ByteStream\Message`](//byte-stream/message) can be `yield`ed to get the actual string.
+Returns a representation of the request body. The [`\Amp\ByteStream\Message`](http://amphp.org/byte-stream/message) can be `yield`ed to get the actual string.
 
 There also exists a [`parseBody()`](parsedbody.md) function for processing of a typical HTTP form data.
 
