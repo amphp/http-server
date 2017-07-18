@@ -553,23 +553,21 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type
                         $buffer .= yield;
                     }
 
-                    if (($flags & self::END_STREAM) !== "\0") {
-                        unset($bodyLens[$id], $client->streamWindow[$id]);
-                        $cb = $this->entityPartEmitter;
-                    } else {
-                        $bodyLens[$id] += $length;
-                        $cb = $this->entityResultEmitter;
-                    }
-
                     $body = \substr($buffer, 0, $length - $padding);
 assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
-                    if ($body != "") {
-                        $cb($client, ["id" => $id, "protocol" => "2.0", "body" => $body], null);
-                    }
                     $buffer = \substr($buffer, $length);
+                    if ($body != "") {
+                        ($this->entityPartEmitter)($client, ["id" => $id, "body" => $body]);
+                    }
 
-                    if ($remaining == 0 && ($flags & self::END_STREAM) !== "\0" && $length) {
-                        ($this->sizeWarningEmitter)($client, ["id" => $id]);
+                    if (($flags & self::END_STREAM) !== "\0") {
+                        unset($bodyLens[$id], $client->streamWindow[$id]);
+                        ($this->entityResultEmitter)($client, ["id" => $id]);
+                    } else {
+                        $bodyLens[$id] += $length;
+                        if ($remaining == 0 && $length) {
+                            ($this->sizeWarningEmitter)($client, ["id" => $id]);
+                        }
                     }
 
                     continue 2;

@@ -60,7 +60,7 @@ class Http2DriverTest extends TestCase {
             if (!$invoked++) {
                 $parseResult = $tmpResult;
             }
-            $body .= $tmpResult["body"];
+            $body .= $tmpResult["body"] ?? "";
             $client->bodyEmitters[$tmpResult["id"]] = true; // is used to verify whether headers were sent
         };
         $driver->setup([self::HTTP_DATA_EMITTERS => $emitCallback], $this->createCallback(0));
@@ -135,7 +135,7 @@ class Http2DriverTest extends TestCase {
             "uri"         => "http://localhost/",
             "headers"     => ["test" => ["successful"]],
             "body"        => "ab",
-            "invocations" => 3
+            "invocations" => 4 /* header + 2 * individual data + end */
         ];
 
         $return[] = [$msg, $expectations];
