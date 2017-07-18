@@ -6,7 +6,7 @@ permalink: /classes/websocket-endpoint
 * Table of Contents
 {:toc}
 
-The `Websocket\Endpoint` interface is the door to communicating with the client. `$clientId` is here in every case the client identifier passed in via [`Websocket` interface functions](websocket.html).
+The `Websocket\Endpoint` interface is the door to communicating with the client. `$clientId` is here in every case the client identifier passed in via [`Websocket` interface functions](websocket.md).
 
 ## `send(string $data, int $clientId): Promise`
 

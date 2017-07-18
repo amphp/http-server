@@ -8,7 +8,7 @@ permalink: /classes/monitor
 
 `Monitor`s expose a method `monitor()` to retrieve statistical and sanity information about its internal state.
 
-In particular the [`Server`](server.html) class extends `Monitor` and will call `monitor()` on every virtual host.
+In particular the [`Server`](server.md) class extends `Monitor` and will call `monitor()` on every virtual host.
 
 ## `monitor(): array`
 

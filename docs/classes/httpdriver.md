@@ -12,7 +12,7 @@ It is only possible to have one driver per **port**. There are some few possible
 
 ## `setup(array $parseEmitters, callable $responseWriter)`
 
-Called upon initialization (possibly even before [`Bootable::boot`](bootable.html) was called).
+Called upon initialization (possibly even before [`Bootable::boot`](bootable.md) was called).
 
 `$parseEmitter` is an array of `callable`s, keyed by `HttpDriver` constants.
 
@@ -29,11 +29,11 @@ Depending on the callback type, different signatures are expected:
 - `HttpDriver::SIZE_WARNING`: to be used when the body size exceeds the current size limits (by default `Options->maxBodySize`, might have been upgraded via `upgradeBodySize()`). Before emitting this, all the data up to the limit **must** be emitted via `HttpDriver::ENTITY_PART` first. The signature is `(Client, int $streamId = 0)`.
 - `HttpDriver::ERROR`: signals a protocol error. Here are two additional trailing arguments to this callback: a HTTP status code followed by a string error message. The signature is `(Client, int $status, string $message)`.
 
-`$responseWriter` is a `callable(Client $client, bool $final = false)`, supposed to be called after updates to [`$client->writeBuffer`](client.html) with the `$final` parameter signaling the response end [this is important for managing timeouts and counters].
+`$responseWriter` is a `callable(Client $client, bool $final = false)`, supposed to be called after updates to [`$client->writeBuffer`](client.md) with the `$final` parameter signaling the response end [this is important for managing timeouts and counters].
 
 ## `filters(InternalRequest $ireq, array<callable> $userFilters): array<callable>`
 
-Returns an array of callables working according to the [`Middleware`](middleware.html) protocol. [Not actual `Middleware` instances, but only the direct `callable`!]
+Returns an array of callables working according to the [`Middleware`](middleware.md) protocol. [Not actual `Middleware` instances, but only the direct `callable`!]
 
 ## `writer(InternalRequest $ireq): \Generator`
 

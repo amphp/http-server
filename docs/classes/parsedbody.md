@@ -6,7 +6,7 @@ permalink: /classes/parsedbody
 * Table of Contents
 {:toc}
 
-A `ParsedBody` instance is in general returned by a `Promise` returned by [`BodyParser`](bodyparser.html).
+A `ParsedBody` instance is in general returned by a `Promise` returned by [`BodyParser`](bodyparser.md).
 
 ## `get(string $name): string|null`
 

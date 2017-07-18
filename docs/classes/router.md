@@ -25,7 +25,7 @@ Forwards the call to `route($method, $uri, $actions)`. (E.g. `get("/", $action)`
 
 ## `monitor(): array`
 
-See [`Monitor`](monitor.html), it returns an array of the following structure:
+See [`Monitor`](monitor.md), it returns an array of the following structure:
 
 ```php
 [

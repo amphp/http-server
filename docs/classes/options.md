@@ -90,7 +90,7 @@ Type: integer &mdash; Default: `60`
 
 ## `$allowedMethods`
 
-Array of allowed HTTP methods. [The [`Router`](router.html) class will extend this array with the used methods.]
+Array of allowed HTTP methods. [The [`Router`](router.md) class will extend this array with the used methods.]
 
 Type: array&lt;string> &mdash; Default: `["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"]`
 
@@ -126,7 +126,7 @@ Type: integer greater or equal to 0 &mdash; Default: `200`
 
 ## `$maxBodySize`
 
-Default maximum size of HTTP bodies. [Can be increased by calling [`HttpDriver::upgradeBodySize($ireq)`](HttpDriver.html) or more commonly [`Response::getBody($size)`](response.html).]
+Default maximum size of HTTP bodies. [Can be increased by calling [`HttpDriver::upgradeBodySize($ireq)`](HttpDriver.md) or more commonly [`Response::getBody($size)`](response.md).]
 
 Type: integer greater than or equal to 0 &mdash; Default: `131072`
 

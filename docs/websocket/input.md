@@ -65,7 +65,7 @@ ws.onerror = ws.onmessage = ws.onclose = function(e) {
 
 Each connection is identified by an unique client id, which is passed to `onOpen()`, `onData()` and `onClose()`.
 
-`onOpen($clientId, $handshakeData)` is called at the moment where the websocket connection has been successfully established (i.e. after the handshake has been sent). For `$handshakeData`, check the [Handshake handling](handshake.html) out.
+`onOpen($clientId, $handshakeData)` is called at the moment where the websocket connection has been successfully established (i.e. after the handshake has been sent). For `$handshakeData`, check the [Handshake handling](handshake.md) out.
 
 `onData($clientId, $msg)` is called upon each received Websocket frame. At the time when `onData()` is called, the message may not yet have been fully received. Thus use `yield $msg` to wait on data to complete. The return value of that `yield` is a string with the full data.
 

@@ -6,7 +6,7 @@ permalink: /classes/middleware
 * Table of Contents
 {:toc}
 
-Middlewares are a powerful tool to intercept requests and manipulate them with low-level access to the [`InternalRequest`](internalrequest.html) instance.
+Middlewares are a powerful tool to intercept requests and manipulate them with low-level access to the [`InternalRequest`](internalrequest.md) instance.
 
 {:.warning}
 > We do not validate anything on the `InternalRequest` instance and objects only accessible through it from outside though. It's a value object with only public properties. It's your responsibility to not fuck up the objects and make things go bad. You can manipulate nearly everything request and client related here - and if you do, make attention to really know what you do.

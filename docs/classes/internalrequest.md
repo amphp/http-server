@@ -6,17 +6,17 @@ permalink: /classes/internalrequest
 * Table of Contents
 {:toc}
 
-This is a value class exposing the whole data of the clients request via public properties. It is only accessible from within [`Middleware`s](middleware.html) as well as [`HttpDriver`](httpdriver.html).
+This is a value class exposing the whole data of the clients request via public properties. It is only accessible from within [`Middleware`s](middleware.md) as well as [`HttpDriver`](httpdriver.md).
 
 Values marked with a <sup>†</sup> **_must_** not be altered in order to not bring the server down.
 
 ## `$client`<sup>†</sup>
 
-Holds a reference to the [`Client`](client.html).
+Holds a reference to the [`Client`](client.md).
 
 ## `$responseWriter`
 
-A Generator instance following the [`HttpDriver::writer`](httpdriver.html) protocol.
+A Generator instance following the [`HttpDriver::writer`](httpdriver.md) protocol.
 
 ## `$streamId`<sup>†</sup>
 
@@ -40,7 +40,7 @@ Associative array of HTTP headers containing arrays of values. The header field 
 
 ## `$body`
 
-An instance of [`Body`](body.html).
+An instance of [`Body`](body.md).
 
 ## `$maxBodySize`
 

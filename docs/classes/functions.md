@@ -8,7 +8,7 @@ permalink: /classes/functions
 
 ## `router(array $options = []): Router`
 
-Returns an instance of [`Router`](router.html).
+Returns an instance of [`Router`](router.md).
 
 There is currently only one option:
 
@@ -16,15 +16,15 @@ There is currently only one option:
 
 ## `websocket(Websocket|Bootable $app, array $options = []): Bootable`
 
-Requires an instance of [`Websocket`](websocket.html) or an instance of [`Bootable`](bootable.html) returning an instance of [`Websocket`](websocket.html).
+Requires an instance of [`Websocket`](websocket.md) or an instance of [`Bootable`](bootable.md) returning an instance of [`Websocket`](websocket.md).
 
-It wraps your [`Websocket`](websocket.html) implementing instance into something usable with [`Host::use()`](host.html) (or in [`Router`](router.html)).
+It wraps your [`Websocket`](websocket.md) implementing instance into something usable with [`Host::use()`](host.md) (or in [`Router`](router.md)).
 
 ## `root(string $docroot, array $options = []): Bootable`
 
 Defines a static file root handler based on `$docroot`.
 
-It returns an instance of something usable with [`Host::use()`](host.html) (or in [`Router`](router.html)).
+It returns an instance of something usable with [`Host::use()`](host.md) (or in [`Router`](router.md)).
 
 Available `$options` are:
 
@@ -44,7 +44,7 @@ Available `$options` are:
 
 ## `parseBody(Request $req, $size = 0): BodyParser`
 
-Creates a [`BodyParser`](bodyparser.html) instance which can be `yield`ed to get the full body string, where `$size` is the maximum accepted body size.
+Creates a [`BodyParser`](bodyparser.md) instance which can be `yield`ed to get the full body string, where `$size` is the maximum accepted body size.
 
 ## `parseCookie(string $cookies): array`
 
@@ -52,11 +52,11 @@ Parses a `Cookie` header string into an associative array of format `$name => $v
 
 ## `responseFilter(array $filters, InternalRequest $ireq): \Generator`
 
-Returns a [middleware](middleware.html) Generator managing multiple filters. Can be `yield from` from another middleware or passed into the `responseCodec()` function.
+Returns a [middleware](middleware.md) Generator managing multiple filters. Can be `yield from` from another middleware or passed into the `responseCodec()` function.
 
 ## `responseCodec(\Generator $filter, InternalRequest $ireq): \Generator`
 
-Returns a Generator which can be used to construct a `StandardResponse` object (its signature is `__construct(\Generator $codec, Client)` and implements [`Response`](response.html)).
+Returns a Generator which can be used to construct a `StandardResponse` object (its signature is `__construct(\Generator $codec, Client)` and implements [`Response`](response.md)).
 
 This function may be useful for testing the combination of application callable and middlewares via a custom `InternalRequest->responseWriter.
 

@@ -6,11 +6,11 @@ permalink: /classes/serverobserver
 * Table of Contents
 {:toc}
 
-The `ServerObserver` interface is necessary to be able to watch for state changes of the [`Server`](server.html).
+The `ServerObserver` interface is necessary to be able to watch for state changes of the [`Server`](server.md).
 
 ## `update(Server): Promise`
 
-The only method of this interface; it is called each time when the [`Server`](server.html) changes its state. It is guaranteed that nothing further happens until all the `Promise`s returned by each attached `ServerObserver` have been resolved (or eventually timed out).
+The only method of this interface; it is called each time when the [`Server`](server.md) changes its state. It is guaranteed that nothing further happens until all the `Promise`s returned by each attached `ServerObserver` have been resolved (or eventually timed out).
 
 ## Example
 

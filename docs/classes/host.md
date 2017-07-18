@@ -20,7 +20,7 @@ When the server is run `Bootable`s, `Middleware`s and callables are called in th
 {:.note}
 > There can be only **one** HttpDriver instance per **port**. That means, if you have multiple `Host` instances listening on the same port, they all need to share the same `HttpDriver` instance!
 
-See also the documentation for [`Middleware`s](middleware.html) and [`Bootable`s](bootable.html).
+See also the documentation for [`Middleware`s](middleware.md) and [`Bootable`s](bootable.md).
 
 ## `name(string)`
 

@@ -10,11 +10,11 @@ The `Server` instance controls the whole listening and dispatches the parsed req
 
 ## `attach(ServerObserver)`
 
-Enables a [`ServerObserver`](serverobserver.html) instance to be notified of the updates.
+Enables a [`ServerObserver`](serverobserver.md) instance to be notified of the updates.
 
 ## `detach(ServerObserver)`
 
-Disables notifications for the passed [`ServerObserver`](serverobserver.html) instance.
+Disables notifications for the passed [`ServerObserver`](serverobserver.md) instance.
 
 ## `state()`
 
@@ -27,11 +27,11 @@ Gets the current server state, which is one of the following class constants:
 
 ## `getOption(string)`
 
-Gets an [`option`](options.html) value.
+Gets an [`option`](options.md) value.
 
 ## `setOption(string, $value)`
 
-Sets an [`option`](options.html) value.
+Sets an [`option`](options.md) value.
 
 ## `stop(): Promise`
 
@@ -39,7 +39,7 @@ Initiate shutdown sequence. The returned `Promise` will resolve when the server 
 
 ## `monitor(): array`
 
-See [`Monitor`](monitor.html), it returns an array of the following structure:
+See [`Monitor`](monitor.md), it returns an array of the following structure:
 
 ```php
 [

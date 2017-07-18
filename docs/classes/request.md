@@ -6,7 +6,7 @@ permalink: /classes/request
 * Table of Contents
 {:toc}
 
-The `Request` interface generally finds its only use in responder callables (or [`Websocket::onOpen()`](websocket.html#onopen)). [`Middleware`s](middleware.html) do never see the `Request`; the `StandardRequest` class is supposed to be a simple request API reading from and manipulating [`InternalRequest`](internalrequest.html) under the hood.
+The `Request` interface generally finds its only use in responder callables (or [`Websocket::onOpen()`](websocket.html#onopen)). [`Middleware`s](middleware.md) do never see the `Request`; the `StandardRequest` class is supposed to be a simple request API reading from and manipulating [`InternalRequest`](internalrequest.md) under the hood.
 
 ## `getMethod(): string`
 
@@ -46,9 +46,9 @@ Gets the decoded query string as associative array.
 
 ## `getBody(): \Amp\ByteStream\Message`
 
-Returns a representation of the request body. The [`\Amp\ByteStream\Message`](../../byte-stream/message) [@TODO bogus link, Amp\ByteStream\Message docs missing] can be `yield`ed to get the actual string.
+Returns a representation of the request body. The [`\Amp\ByteStream\Message`](//byte-stream/message) can be `yield`ed to get the actual string.
 
-There also exists a [`parseBody()`](parsedbody.html) function for processing of a typical HTTP form data.
+There also exists a [`parseBody()`](parsedbody.md) function for processing of a typical HTTP form data.
 
 ## `getCookie(string): string | null`
 
@@ -71,15 +71,15 @@ Returns various information about the request, a map of the array is:
 
 ## `getLocalVar(string)` / `setLocalVar(string, $value)`
 
-These methods are only important when using [`Middleware`s](middleware.html). They manipulate the [`InternalRequest->locals`](internalrequest.html#locals) array.
+These methods are only important when using [`Middleware`s](middleware.md). They manipulate the [`InternalRequest->locals`](internalrequest.html#locals) array.
 
 ## `getOption(string)`
 
-Gets an [option](options.html) value.
+Gets an [option](options.md) value.
 
 ## `StandardRequest::__construct(InternalRequest)`
 
-The constructor accepts an [`InternalRequest`](internalrequest.html) object the `StandardRequest` class is reading and writing to.
+The constructor accepts an [`InternalRequest`](internalrequest.md) object the `StandardRequest` class is reading and writing to.
 
 {:.note}
 > It may be helpful in integration tests to provide a `StandardRequest` class initialized with an adequately preset `InternalRequest` object.

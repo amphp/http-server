@@ -12,7 +12,7 @@ return (new Aerys\Host)
 To define a dynamic handler, all that is needed is a callable passed to `Host::use()`, accepting an `Aerys\Request` and an `Aerys\Response` instance as first and second parameters, respectively.
 
 {:.note}
-> This handler is used for all URIs of that Host by default, but it can be routed with the [Router](router.html).
+> This handler is used for all URIs of that Host by default, but it can be routed with the [Router](router.md).
 
 ## Responses
 
@@ -188,7 +188,7 @@ A router is instantiated by `Aerys\router()`. To define routes: `->method($locat
 
 Alternate callables can be defined as fallback to have e.g. a static files handler or a custom 404 Not Found page (precise: when no response was _started_ in the callable(s) before). Or even as a primary check for e.g. csrf tokens to prevent execution of the main responder callable.
 
-It is also possible to define routes with dynamic parts in them, see [the next step on dynamic route definitions](dynamic-routes.html).
+It is also possible to define routes with dynamic parts in them, see [the next step on dynamic route definitions](dynamic-routes.md).
 
 If there are more and more routes, there might be the desire to split them up. Refer to [the managing routes guide](../http-advanced/routes.html).
 

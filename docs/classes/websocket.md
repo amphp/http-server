@@ -6,7 +6,7 @@ permalink: /classes/websocket
 * Table of Contents
 {:toc}
 
-The `Websocket` interface is the general interface for your websocket class. To set it as a responder, just pass an instance of it to the `websocket()` function whose result must be passed to [`Host::use()`](host.html#use) or a specific route (see [`Router::route`](router.html#route)).
+The `Websocket` interface is the general interface for your websocket class. To set it as a responder, just pass an instance of it to the `websocket()` function whose result must be passed to [`Host::use()`](host.md#use) or a specific route (see [`Router::route`](router.md#route)).
 
 {:.note}
 > `websocket()` returns a responder callable, it falls under the same rules as every responder callable passed to `use()`: after the first callable started the response, the following ones will be ignored. Make attention to not e.g. `(new Host)->use($router)->use($websocket)` and be then surprised why you get an invalid response with code 200 (OK).
@@ -20,11 +20,11 @@ $websocket = Aerys\websocket(new MyAwesomeWebsocket);
 
 ## `onStart(Websocket\Endpoint)`
 
-This method is called when the [`Server`](server.html) is in `STARTING` mode. The sole argument is the [`Websocket\Endpoint`](websocket-endpoint.html) instace via which you do the whole communication to the outside.
+This method is called when the [`Server`](server.md) is in `STARTING` mode. The sole argument is the [`Websocket\Endpoint`](websocket-endpoint.md) instace via which you do the whole communication to the outside.
 
 ## `onHandshake(Request, Response)`
 
-This is the chance to deny the handshake. The [`Request`](request.html) and [`Response`](response.html) are just like for any normal HTTP request.
+This is the chance to deny the handshake. The [`Request`](request.md) and [`Response`](response.md) are just like for any normal HTTP request.
 
 To prevent a successful handshake, set the response to a status not equal to 101 (Switching Protocols).
 
@@ -39,15 +39,15 @@ In case of a successful handshake, this method gets called. `$clientId` is an op
 This method gets called each time a new data frame sequence is received.
 
 {:.note}
-> The second parameter is not a string, but a [`Websocket\Message` extends `Amp\ByteStream\Message`](../../byte-stream/message) [@TODO bogus link, Amp\ByteStream\Message docs missing], which implements Promise. The yielded Promise will return a string or fail with a ClientException if the client disconnected before transmitting the full data.
+> The second parameter is not a string, but a [`Websocket\Message` extends `Amp\ByteStream\Message`](//byte-stream/message), which implements Promise. The yielded Promise will return a string or fail with a ClientException if the client disconnected before transmitting the full data.
 
 ## `onClose(int $clientId, int $code, string $reason)`
 
-This method is called after the client has (been) disconnected: you must not use any [`Websocket\Endpoint`](websocket-endpoint.html) API with the passed client id in this method.
+This method is called after the client has (been) disconnected: you must not use any [`Websocket\Endpoint`](websocket-endpoint.md) API with the passed client id in this method.
 
 ## `onStop(): Generator|Promise|null`
 
-When the [`Server`](server.html) enters `STOPPING` state, this method is called. It is guaranteed that no further calls to any method except `onClose()` will happen after this method was called.
+When the [`Server`](server.md) enters `STOPPING` state, this method is called. It is guaranteed that no further calls to any method except `onClose()` will happen after this method was called.
 
 This means, you may only send, but not receive from this moment on. The clients are only forcefully closed after this methods call and the eventual returned Promise resolved.
 

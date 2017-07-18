@@ -11,16 +11,16 @@ return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
 });
 ```
 
-Aerys is built on top of [the non-blocking concurrency framework Amp](http://amphp.org/amp).
+Aerys is built on top of [the non-blocking concurrency framework Amp](//amphp.org/amp).
 
 Thus it inherits full support of all its primitives and it is possible to use all the non-blocking libraries built on top it.
 
-That's also why several things need to be `yield`ed, as they are `Promise`s, which are resolved upon `yield` inside a Generator controlled by Amp. See also [the related documentation](http://amphp.org/amp/coroutines).
+That's also why several things need to be `yield`ed, as they are `Promise`s, which are resolved upon `yield` inside a Generator controlled by Amp. See also [the related documentation](//amphp.org/amp/coroutines).
 
 Most importantly, if the request handler callable or the WebSocket handlers are returning a Generator, these are also passed to Amp's control.
 
 {:.note}
-> In general, you should make yourself familiar with [the Promise **concept**](http://amphp.org/amp/promises), with [`yield`ing](http://amphp.org/amp/coroutines) and be aware of the several [combinator](http://amphp.org/amp/promises/helpers) and [coroutine helper](http://amphp.org/amp/coroutines/helpers) functions, to really succeed at Aerys.
+> In general, you should make yourself familiar with [the Promise **concept**](//amphp.org/amp/promises), with [`yield`ing](//amphp.org/amp/coroutines) and be aware of the several [combinator](//amphp.org/amp/promises/helpers) and [coroutine helper](//amphp.org/amp/coroutines/helpers) functions, to really succeed at Aerys.
 
 ## Blocking I/O
 
@@ -42,4 +42,4 @@ Nearly every built-in function of PHP is doing blocking I/O, that means, the exe
 
 A good rule of thumb is: Every function doing I/O is doing it in a blocking way, unless you know for sure it doesn't.
 
-Thus there are [libraries built on top of Amp](http://amphp.org/packages) providing non-blocking I/O. You should use these instead of the built-in functions.
+Thus there are [libraries built on top of Amp](//amphp.org/packages) providing non-blocking I/O. You should use these instead of the built-in functions.

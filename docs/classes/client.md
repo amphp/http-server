@@ -6,7 +6,7 @@ permalink: /classes/client
 * Table of Contents
 {:toc}
 
-This is a value class exposing the whole data of the clients request via public properties. It is only accessible via [`InternalRequest`](internalrequest.html) as well as [`HttpDriver`](httpdriver.html).
+This is a value class exposing the whole data of the clients request via public properties. It is only accessible via [`InternalRequest`](internalrequest.md) as well as [`HttpDriver`](httpdriver.md).
 
 Values marked with a <sup>†</sup> **_must_** not be altered in order to not bring the server down.
 
@@ -46,11 +46,11 @@ Is equivalent to the `stream_get_meta_data($socket)["crypto"]` array.
 
 ## `$requestParser`
 
-Is a Generator returned by [`HttpDriver::parser()`](httpdriver.html).
+Is a Generator returned by [`HttpDriver::parser()`](httpdriver.md).
 
 ## `$readWatcher`<sup>†</sup>
 
-The read watcher identifier returned by `Amp\onReadable` for the `$socket`. May be disabled or enabled to stop or resume reading from it, especially in [`HttpDriver`](httpdriver.html).
+The read watcher identifier returned by `Amp\onReadable` for the `$socket`. May be disabled or enabled to stop or resume reading from it, especially in [`HttpDriver`](httpdriver.md).
 
 ## `$writeWatcher`<sup>†</sup>
 
@@ -94,27 +94,27 @@ The number of responses not yet completely replied to.
 
 ## `$options`
 
-The [`Options`](options.html) instance.
+The [`Options`](options.md) instance.
 
 ## `$httpDriver`
 
-The [`HttpDriver`](httpdriver.html) instance used by the client.
+The [`HttpDriver`](httpdriver.md) instance used by the client.
 
 ## `$exporter`
 
-A callable requiring the `Client` object as first argument. It unregisters the client from the [`Server`](server.html) and returns a callable, which, when called, decrements counters related to rate-limiting.
+A callable requiring the `Client` object as first argument. It unregisters the client from the [`Server`](server.md) and returns a callable, which, when called, decrements counters related to rate-limiting.
 
 (Unstable, may be altered in near future)
 
 ## `$bodyEmitters`
 
-An array of `Emitter`s whose `Iterator`s have been passed to [`InternalRequest->body`](internalrequest.html). You may `fail()` **and then** `unset()` them.
+An array of `Emitter`s whose `Iterator`s have been passed to [`InternalRequest->body`](internalrequest.md). You may `fail()` **and then** `unset()` them.
 
 If the `$client->bodyPromisors[$internalRequest->streamId]` entry exists, this means the body is still being processed.
 
 ## `$parserEmitLock`
 
-A boolean available for use by a [`HttpDriver`](httpdriver.html) instance (to regulate parser halts and avoid resuming already active Generators).
+A boolean available for use by a [`HttpDriver`](httpdriver.md) instance (to regulate parser halts and avoid resuming already active Generators).
 
 ## `$allowsPush`
 
