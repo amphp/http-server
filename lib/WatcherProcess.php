@@ -6,7 +6,6 @@ use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Loop;
-use Amp\Process\Process as AmpProcess;
 use Amp\Promise;
 use Amp\Socket\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
@@ -29,7 +28,7 @@ class WatcherProcess extends Process {
     /** @var string Command used to create each worker. */
     private $workerCommand;
 
-    /** @var \Amp\Process\Process[] */
+    /** @var resource[] */
     private $processes;
 
     /** @var \Amp\Socket\ClientSocket[] */
@@ -68,14 +67,14 @@ class WatcherProcess extends Process {
     }
 
     private function collectProcessGarbage() {
-        foreach ($this->processes as $key => $process) {
-            if ($process->isRunning()) {
+        foreach ($this->processes as $key => $procHandle) {
+            $info = proc_get_status($procHandle);
+            if ($info["running"]) {
                 continue;
             }
 
             $this->defunctProcessCount--;
-            $process->kill();
-
+            proc_close($procHandle);
             unset($this->processes[$key]);
             if ($this->expectedFailures > 0) {
                 $this->expectedFailures--;
@@ -498,22 +497,17 @@ class WatcherProcess extends Process {
         if ($this->useSocketTransfer) {
             $cmd .= " --socket-transfer";
         }
-
-        $options = [
-            "html_errors" => "0",
-            "display_errors" => "0",
-            "log_errors" => "1",
-            "bypass_shell" => true,
-        ];
-
-        $process = new AmpProcess($cmd, null, [], $options);
-        $process->start();
-
-        $process->getStdin()->close();
-        $process->getStdout()->close();
-        $process->getStderr()->close();
-
-        $this->processes[] = $process;
+        $fds = [["pipe", "r"], ["pipe", "w"], ["pipe", "w"]];
+        $options = ["bypass_shell" => true];
+        if (!$procHandle = \proc_open($cmd, $fds, $pipes, null, null, $options)) {
+            return new \Amp\Failure(new \RuntimeException(
+                "Failed spawning worker process"
+            ));
+        }
+        foreach ($pipes as $pipe) {
+            @fclose($pipe);
+        }
+        $this->processes[] = $procHandle;
 
         // mark processes as potentially defunct until the IPC socket connection has been established
         Loop::enable($this->procGarbageWatcher);
