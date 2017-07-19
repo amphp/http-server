@@ -65,7 +65,7 @@ Use the `-h, --help` switches for more instructions.
 To start a static file server simply pass a root handler as part of your config file.
 
 ```php
-(new Aerys\Host)
+return (new Aerys\Host)
     ->expose("*", 1337)
     ->use(Aerys\root(__DIR__ . "/public"));
 ```
