@@ -9,7 +9,6 @@ use Amp\Loop;
 use Amp\Process\Process as AmpProcess;
 use Amp\Promise;
 use Amp\Socket\Socket;
-use Amp\Socket\Server;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WatcherProcess extends Process {
@@ -44,6 +43,12 @@ class WatcherProcess extends Process {
 
     /** @var \Amp\Deferred[] */
     private $spawnDeferreds = [];
+
+    /** @var \Amp\Socket\Server */
+    private $commandServer;
+
+    /** @var \Amp\Socket\Server */
+    private $ipcServer;
 
     private $defunctProcessCount = 0;
     private $expectedFailures = 0;
@@ -87,6 +92,8 @@ class WatcherProcess extends Process {
         }
 
         if ($this->stopDeferred && empty($this->processes)) {
+            $this->commandServer->close();
+            $this->ipcServer->close();
             Loop::cancel($this->procGarbageWatcher);
             if ($this->stopDeferred) {
                 Loop::defer([$this->stopDeferred, "resolve"]);
@@ -145,17 +152,17 @@ class WatcherProcess extends Process {
             }
         }
 
-        $commandServer = \Amp\Socket\listen($socketAddress);
+        $this->commandServer = \Amp\Socket\listen($socketAddress);
 
-        Promise\rethrow(new Coroutine($this->acceptCommand($commandServer, $path)));
+        Promise\rethrow(new Coroutine($this->acceptCommand($path)));
 
         if (!$unix) {
-            yield \Amp\File\put($path, $commandServer->getAddress());
+            yield \Amp\File\put($path, $this->commandServer->getAddress());
         }
     }
 
-    private function acceptCommand(Server $server, string $path): \Generator {
-        while ($client = yield $server->accept()) {
+    private function acceptCommand(string $path): \Generator {
+        while ($client = yield $this->commandServer->accept()) {
             Promise\rethrow(new Coroutine($this->readCommand($client)));
         }
 
@@ -335,16 +342,16 @@ class WatcherProcess extends Process {
             $socketTransport = "unix";
         }
 
-        $ipcServer = \Amp\Socket\listen("{$socketTransport}://{$socketAddress}");
+        $this->ipcServer = \Amp\Socket\listen("{$socketTransport}://{$socketAddress}");
 
-        Promise\rethrow(new Coroutine($this->accept($ipcServer)));
+        Promise\rethrow(new Coroutine($this->accept()));
 
-        return $socketTransport . "://" . $ipcServer->getAddress();
+        return $socketTransport . "://" . $this->ipcServer->getAddress();
     }
 
-    private function accept(Server $server): \Generator {
+    private function accept(): \Generator {
         /** @var \Amp\Socket\ClientSocket $client */
-        while ($client = yield $server->accept()) {
+        while ($client = yield $this->ipcServer->accept()) {
             // processes are marked as defunct until a socket connection has been established
             if (!--$this->defunctProcessCount) {
                 Loop::disable($this->procGarbageWatcher);
