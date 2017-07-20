@@ -142,12 +142,6 @@ class WatcherProcessTest extends TestCase {
             $address = "tcp://" . stream_socket_get_name($socket, $want_peer = false);
             $ctxs = [$address => ["socket" => ["so_reuseport" => true, "so_reuseaddr" => true], "ssl" => ["random_option" => true]]];
 
-            $logger = new class extends Logger {
-                protected function output(string $message) {
-                    // do nothing
-                }
-            };
-
             $server = new Server($this->_sock);
 
             $this->useSocketTransfer = true;
@@ -159,8 +153,7 @@ class WatcherProcessTest extends TestCase {
 
             for ($i = 0; $i < 2; $i++) {
                 $ipcCli[$i] = stream_socket_client($this->ipcServerUri);
-                $worker = new WorkerProcess($logger, $ipcCli[$i]);
-                $socketPromises[$i] = (function ($ctxs) { return $this->receiveServerSocketCallback($ctxs); })->call($worker, $ctxs);
+                $socketPromises[$i] = (new CommandClient(WatcherProcessTest::DUMMY_WORKER))->importServerSockets($ctxs);
             }
 
             $socketsArray = yield $socketPromises;

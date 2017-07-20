@@ -30,7 +30,7 @@ class IpcLogger extends Logger {
 
     protected function output(string $message) {
         if (empty($this->isDead)) {
-            $msg = "\0" . pack("N", \strlen($message)) . $message;
+            $msg = pack("N", \strlen($message)) . $message;
             if ($this->pendingQueue === null) {
                 $this->writeQueue[] = $msg;
                 Loop::enable($this->writeWatcherId);
@@ -90,22 +90,5 @@ class IpcLogger extends Logger {
         stream_set_blocking($this->ipcSock, true);
         $this->onWritable();
         stream_set_blocking($this->ipcSock, false);
-    }
-
-    public function disableSending() {
-        $this->pendingQueue = [];
-        if ($this->writeQueue) {
-            $this->writeDeferred = new \Amp\Deferred;
-            return $this->writeDeferred->promise();
-        }
-        return new \Amp\Success;
-    }
-
-    public function enableSending() {
-        if ($this->pendingQueue) {
-            $this->writeQueue = $this->pendingQueue;
-            Loop::enable($this->writeWatcherId);
-        }
-        $this->pendingQueue = null;
     }
 }

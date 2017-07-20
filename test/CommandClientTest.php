@@ -39,8 +39,13 @@ class CommandClientTest extends TestCase {
                 Loop::onReadable($commandServer, function ($watcher, $commandServer) use (&$clientSocket) {
                     if ($clientSocket = stream_socket_accept($commandServer, $timeout = 0)) {
                         Loop::cancel($watcher);
+                        Loop::onReadable($clientSocket, function ($watcher, $socket) {
+                            fwrite($socket, "[]\n");
+                            Loop::cancel($watcher);
+                        });
                     }
                 });
+
 
                 yield $client->restart();
 
@@ -48,13 +53,13 @@ class CommandClientTest extends TestCase {
                 $deferred = new \Amp\Deferred;
                 Loop::defer([$deferred, "resolve"]);
                 yield $deferred->promise();
-                unset($client); // force freeing of client and the socket
-                gc_collect_cycles();
+
+                unset($client); // so that stream_get_contents() will read from a closed socket
 
                 $data = stream_get_contents($clientSocket);
-                $this->assertEquals(\strlen($data) - 4, unpack("Nlength", $data)["length"]);
+                $this->assertEquals("\n", substr($data, -1));
 
-                $response = json_decode(substr($data, 4), true);
+                $response = json_decode(substr($data, 0, -1), true);
                 $this->assertEquals(["action" => "restart"], $response);
             } finally {
                 if ($unix) {

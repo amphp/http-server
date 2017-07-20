@@ -56,7 +56,7 @@ class WatcherProcess extends Process {
     private $addrCtx = [];
     private $serverSockets = [];
 
-    const STOP_SEQUENCE = "\0\0\0\0\n"; // 4 leading NUL-bytes to signal zero sockets if sent early in socket-transfer mode
+    const STOP_SEQUENCE = "\n";
 
     public function __construct(PsrLogger $logger) {
         parent::__construct($logger);
@@ -168,48 +168,93 @@ class WatcherProcess extends Process {
         yield \Amp\File\unlink($path);
     }
 
+    private function replyCommand(Socket $client, $message) {
+        $message = json_encode($message) . "\n";
+        return $client->write($message);
+    }
+
     private function readCommand(Socket $client): \Generator {
-        $buffer = "";
+        $parser = new \Amp\Parser\Parser((function () use (&$messages) {
+            while (true) {
+                $messages[] = @\json_decode(yield "\n", true);
+            }
+        })());
 
         while (($chunk = yield $client->read()) !== null) {
-            $buffer .= $chunk;
+            $messages = [];
 
-            do {
-                if (!isset($length)) {
-                    if (!isset($buffer[3])) {
-                        break;
-                    }
-                    $length = unpack("Nlength", substr($buffer, 0, 4))["length"];
-                    $buffer = substr($buffer, 4);
-                }
-                if (!isset($buffer[$length - 1])) {
-                    break;
-                }
-                $message = @\json_decode(substr($buffer, 0, $length), true);
-                $buffer = (string) substr($buffer, $length);
-                $length = null;
+            $parser->push($chunk);
 
+            foreach ($messages as $message) {
                 if (!isset($message["action"])) {
                     continue;
                 }
 
                 switch ($message["action"]) {
                     case "restart":
-                        $this->restart();
+                        try {
+                            yield $this->restart();
+                            $this->replyCommand($client, []);
+                        } catch (\Exception $e) {
+                            $this->replyCommand($client, ["exception" => $e->getMessage()]);
+                        }
                         break;
 
                     case "stop":
                         try {
-                            yield from $this->stop();
+                            yield $this->replyCommand($client, []);
                         } finally {
-                            Loop::stop();
-                        }
+                            (new Coroutine($this->stop()))->onResolve([Loop::class, "stop"]);
+                        };
                         return;
+
+                    case "import-sockets":
+                        yield from $this->parseWorkerAddrCtx($client, $message["addrCtxMap"]);
+                        break;
                 }
-            } while (true);
+            }
         }
 
         $client->close();
+    }
+
+    /** receives a map of addresses to stream contexts, creates sockets from it and eventually sends them to the worker */
+    private function parseWorkerAddrCtx(Socket $client, $addrCtxMap) {
+        foreach ($addrCtxMap as $address => $context) {
+            if (!isset($this->addrCtx[$address])) {
+                $this->addrCtx[$address] = $context;
+
+                // do NOT invoke STREAM_SERVER_LISTEN here - we explicitly invoke \socket_listen() in our worker processes
+                if (!$socket = stream_socket_server($address, $errno, $errstr, STREAM_SERVER_BIND, stream_context_create(["socket" => $context]))) {
+                    throw new \RuntimeException(sprintf("Failed binding socket on %s: [Err# %s] %s", $address, $errno, $errstr));
+                }
+
+                $this->serverSockets[$address] = $socket;
+            } elseif ($this->addrCtx[$address] != $context) {
+                $this->logger->warning("Context of existing socket for $address differs from new context. Skipping. Current: " . json_encode($this->addrCtx[$address]) . " New: " . json_encode($context));
+                unset($addrCtxMap[$address]);
+            }
+        }
+
+        $sockets = array_intersect_key($this->serverSockets, $addrCtxMap);
+
+        // Number of sockets, then individual sockets
+        yield $this->replyCommand($client, ["count" => count($sockets)]);
+
+        $watcherId = Loop::onWritable($client->getResource(), function () use (&$deferred) {
+            $deferred->resolve();
+        });
+
+        $sock = \socket_import_stream($client->getResource());
+        foreach ($sockets as $address => $socket) {
+            yield ($deferred = new Deferred)->promise();
+
+            if (!\socket_sendmsg($sock, ["iov" => [$address], "control" => [["level" => \SOL_SOCKET, "type" => \SCM_RIGHTS, "data" => [$socket]]]], 0)) {
+                Loop::cancel($watcherId);
+                return;
+            }
+        }
+        Loop::cancel($watcherId);
     }
 
     protected function recommendAssertionSetting() {
@@ -391,13 +436,7 @@ class WatcherProcess extends Process {
                 $buffer = (string) substr($buffer, $length);
                 $length = null;
 
-                if ($unpacked["type"]) {
-                    \assert($unpacked["type"] === 1 && $this->useSocketTransfer);
-                    $this->parseWorkerAddrCtx($client->getResource(), $message);
-                } else {
-                    // all type 0 messages received from workers are sent to STDOUT
-                    $this->console->output($message);
-                }
+                $this->console->output($message);
             } while (true);
         }
 
@@ -409,55 +448,6 @@ class WatcherProcess extends Process {
         unset($this->ipcClients[\spl_object_hash($client)]);
         $this->defunctProcessCount++;
         Loop::enable($this->procGarbageWatcher);
-    }
-
-    /** receives a map of addresses to stream contexts, creates sockets from it and eventually sends them to the worker */
-    private function parseWorkerAddrCtx($ipcClient, $message) {
-        $addrCtxMap = json_decode($message, true);
-
-        foreach ($addrCtxMap as $address => $context) {
-            if (!isset($this->addrCtx[$address])) {
-                $this->addrCtx[$address] = $context;
-
-                // do NOT invoke STREAM_SERVER_LISTEN here - we explicitly invoke \socket_listen() in our worker processes
-                if (!$socket = stream_socket_server($address, $errno, $errstr, STREAM_SERVER_BIND, stream_context_create(["socket" => $context]))) {
-                    throw new \RuntimeException(sprintf("Failed binding socket on %s: [Err# %s] %s", $address, $errno, $errstr));
-                }
-
-                $this->serverSockets[$address] = $socket;
-            } elseif ($this->addrCtx[$address] != $context) {
-                $this->logger->warning("Context of existing socket for $address differs from new context. Skipping. Current: " . json_encode($this->addrCtx[$address]) . " New: " . json_encode($context));
-                unset($addrCtxMap[$address]);
-            }
-        }
-
-        $sockets = array_intersect_key($this->serverSockets, $addrCtxMap);
-
-        // Number of sockets (pack("N")), then individual sockets
-        $gen = (function () use ($ipcClient, &$watcherId, $sockets) {
-            $data = pack("N", count($sockets));
-            do {
-                yield;
-                $bytesWritten = \fwrite($ipcClient, $data);
-                $data = \substr($data, $bytesWritten);
-                if ($bytesWritten === false || ($bytesWritten === 0 && (!\is_resource($ipcClient) || @\feof($ipcClient)))) {
-                    Loop::cancel($watcherId);
-                }
-            } while ($data != "");
-
-            $ipcSock = \socket_import_stream($ipcClient);
-            foreach ($sockets as $address => $socket) {
-                yield;
-                if (!\socket_sendmsg($ipcSock, ["iov" => [$address], "control" => [["level" => \SOL_SOCKET, "type" => \SCM_RIGHTS, "data" => [$socket]]]], 0)) {
-                    Loop::cancel($watcherId);
-                }
-            }
-
-            Loop::cancel($watcherId);
-        })();
-        $watcherId = Loop::onWritable($ipcClient, function () use ($gen) {
-            $gen->next();
-        });
     }
 
     private function generateWorkerCommand(Console $console): string {
@@ -520,12 +510,15 @@ class WatcherProcess extends Process {
         $this->serverSockets = $this->addrCtx = [];
         $spawn = count($this->ipcClients);
         for ($i = 0; $i < $spawn; $i++) {
-            $this->spawn()->onResolve(function () {
+            $spawnPromise = $this->spawn();
+            $spawnPromise->onResolve(function () {
                 current($this->ipcClients)->end(self::STOP_SEQUENCE);
                 next($this->ipcClients);
             });
+            $promises[] = $spawnPromise;
         }
         $this->expectedFailures += $spawn;
+        return Promise\any($promises);
     }
 
     protected function doStop(): \Generator {
