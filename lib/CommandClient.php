@@ -7,6 +7,7 @@ use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\File;
 use Amp\Loop;
+use Amp\Parser\Parser;
 use Amp\Promise;
 use Amp\Socket;
 use function Amp\call;
@@ -18,10 +19,14 @@ class CommandClient {
     /** @var \Amp\Socket\ClientSocket */
     private $socket;
     private $socketPromise;
-    private $readDeferreds = [];
+    private $readMessages = [];
+
+    /** @var \Amp\Parser\Parser */
+    private $parser;
 
     public function __construct(string $config) {
         $this->path = self::socketPath($config);
+        $this->parser = new Parser(self::parser($this->readMessages));
     }
 
     public static function socketPath(string $config) {
@@ -31,77 +36,54 @@ class CommandClient {
 
     private function send($message): Promise {
         return call(function () use ($message) {
-            if (!$this->socket) {
-                if (!$this->socketPromise) {
-                    new Coroutine(self::start($this->path, $this->socket, $this->socketPromise, $this->readDeferreds));
+            if ($this->socketPromise) {
+                yield $this->socketPromise;
+            } elseif (!$this->socket) {
+                $this->socket = yield $this->socketPromise = new Coroutine(self::connect($this->path));
+                $this->socketPromise = null;
+            }
+
+            $message = \json_encode($message) . "\n";
+            yield $this->socket->write($message);
+
+            while (empty($this->readMessages)) {
+                if (($chunk = yield $this->socket->read()) === null) {
+                    $this->socket->close();
+                    throw new ClosedException("Connection went away ...");
                 }
 
-                yield $this->socketPromise;
+                $this->parser->push($chunk);
             }
 
-            try {
-                $message = \json_encode($message) . "\n";
-                yield $this->socket->write($message);
-            } catch (ClosedException $e) {
-                $this->socket = null;
-                new Coroutine(self::start($this->path, $this->socket, $this->socketDeferred, $this->readDeferreds));
-                yield $this->socketPromise;
-                yield $this->socket->write($message);
+            $message = \array_shift($this->readMessages);
+
+            if (isset($message["exception"])) {
+                throw new \RuntimeException($message["exception"]);
             }
 
-            $promise = ($this->readDeferreds[] = new Deferred)->promise();
-
-
-            return $promise;
+            return $message;
         });
     }
 
-    private static function start($path, &$socket, &$socketPromise, &$readDeferreds) {
-        $socketDeferred = new Deferred;
-        $socketPromise = $socketDeferred->promise();
-
+    private static function connect($path): \Generator {
         $unix = \in_array("unix", \stream_get_transports(), true);
         if ($unix) {
             $uri = "unix://$path.sock";
         } else {
             $uri = yield File\get($path);
         }
-        $socket = yield Socket\connect($uri);
+        return yield Socket\connect($uri);
+    }
 
-        $socketDeferred->resolve();
-
-        $parser = new \Amp\Parser\Parser((function () use (&$readDeferreds) {
-            do {
-                $message = @\json_decode(yield "\n", true);
-                if (isset($message["exception"])) {
-                    \current($readDeferreds)->fail(new \RuntimeException($message["exception"]));
-                } else {
-                    \current($readDeferreds)->resolve($message);
-                }
-                unset($readDeferreds[\key($readDeferreds)]);
-            } while (true);
-        })());
-
-        while (($chunk = yield $socket->read()) !== null) {
-            $parser->push($chunk);
-        }
-
-        $socket = null;
-        $deferreds = $readDeferreds;
-        $readDeferreds = [];
-        foreach ($deferreds as $deferred) {
-            $deferred->fail(new ClosedException("Connection went away ..."));
-        }
+    private static function parser(array &$messages): \Generator {
+        do {
+            $messages[] = @\json_decode(yield "\n", true);
+        } while (true);
     }
 
     function __destruct() {
         if ($this->socket) {
-            if ($this->readDeferreds) {
-                end($this->readDeferreds)->promise()->onResolve([$this->socket, "close"]);
-                reset($this->readDeferreds);
-            } else {
-                $this->socket->close();
-            }
+            $this->socket->close();
         }
     }
 
@@ -114,33 +96,20 @@ class CommandClient {
     }
 
     public function importServerSockets($addrCtxMap): Promise {
-        return \Amp\call(function() use ($addrCtxMap) {
+        return call(function() use ($addrCtxMap) {
             $reply = yield $this->send(["action" => "import-sockets", "addrCtxMap" => array_map(function ($context) { return $context["socket"]; }, $addrCtxMap)]);
-
-            // replace $this->socket temporarily by a dummy read() which will later be resolved to $this->socket->read() in order to avoid simultaneous read watchers here
-            $socket = $this->socket;
-            $this->socket = new class {
-                public $deferred;
-                function read() {
-                    return $this->deferred;
-                }
-            };
 
             $sockets = $reply["count"];
             $serverSockets = [];
+            $deferred = new Deferred;
+            $sock = \socket_import_stream($this->socket->getResource());
 
-            $watcherId = Loop::onReadable($socket->getResource(), function () use (&$deferred) {
-                $deferred->resolve();
-            });
-
-            $sock = \socket_import_stream($socket->getResource());
-            while ($sockets--) {
-                yield ($deferred = new Deferred)->promise();
-
+            // Creates a second watcher on the socket, but send() will not be called while this watcher exists, so this is not a problem.
+            Loop::onReadable($this->socket->getResource(), function ($watcherId) use (&$serverSockets, &$sockets, $sock, $deferred, $addrCtxMap) {
                 $data = ["controllen" => \socket_cmsg_space(SOL_SOCKET, SCM_RIGHTS) + 4]; // 4 == sizeof(int)
                 if (!\socket_recvmsg($sock, $data)) {
                     Loop::cancel($watcherId);
-                    throw new \RuntimeException("Server sockets could not be received from watcher process");
+                    $deferred->fail(new \RuntimeException("Server sockets could not be received from watcher process"));
                 }
                 $address = $data["iov"][0];
                 $newSock = $data["control"][0]["data"][0];
@@ -149,15 +118,14 @@ class CommandClient {
                 $newSocket = \socket_export_stream($newSock);
                 \stream_context_set_option($newSocket, $addrCtxMap[$address]); // put eventual options like ssl back (per worker)
                 $serverSockets[$address] = $newSocket;
-            }
 
-            Loop::cancel($watcherId);
+                if (!--$sockets) {
+                    Loop::cancel($watcherId);
+                    $deferred->resolve($serverSockets);
+                }
+            });
 
-            $this->socket->deferred = $deferred = new Deferred;
-            $this->socket = $socket;
-            $deferred->resolve($socket->read());
-
-            return $serverSockets;
+            return yield $deferred->promise();
         });
     }
 }
