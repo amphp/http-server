@@ -18,7 +18,7 @@ class CommandClient {
 
     /** @var \Amp\Socket\ClientSocket */
     private $socket;
-    private $socketPromise;
+    private $lastSend;
     private $readMessages = [];
 
     /** @var \Amp\Parser\Parser */
@@ -35,12 +35,13 @@ class CommandClient {
     }
 
     private function send($message): Promise {
-        return call(function () use ($message) {
-            if ($this->socketPromise) {
-                yield $this->socketPromise;
-            } elseif (!$this->socket) {
-                $this->socket = yield $this->socketPromise = new Coroutine(self::connect($this->path));
-                $this->socketPromise = null;
+        return $this->lastSend = call(function () use ($message) {
+            if ($this->lastSend) {
+                yield $this->lastSend;
+            }
+
+            if (!$this->socket) {
+                $this->socket = yield new Coroutine(self::connect($this->path));
             }
 
             $message = \json_encode($message) . "\n";
@@ -55,6 +56,8 @@ class CommandClient {
                 $this->parser->push($chunk);
             }
 
+            $this->lastSend = null;
+
             $message = \array_shift($this->readMessages);
 
             if (isset($message["exception"])) {
@@ -65,7 +68,7 @@ class CommandClient {
         });
     }
 
-    private static function connect($path): \Generator {
+    private static function connect(string $path): \Generator {
         $unix = \in_array("unix", \stream_get_transports(), true);
         if ($unix) {
             $uri = "unix://$path.sock";
@@ -102,9 +105,9 @@ class CommandClient {
             $sockets = $reply["count"];
             $serverSockets = [];
             $deferred = new Deferred;
+            $this->lastSend = $deferred->promise(); // Guards second watcher on socket by blocking calls to send()
             $sock = \socket_import_stream($this->socket->getResource());
 
-            // Creates a second watcher on the socket, but send() will not be called while this watcher exists, so this is not a problem.
             Loop::onReadable($this->socket->getResource(), function ($watcherId) use (&$serverSockets, &$sockets, $sock, $deferred, $addrCtxMap) {
                 $data = ["controllen" => \socket_cmsg_space(SOL_SOCKET, SCM_RIGHTS) + 4]; // 4 == sizeof(int)
                 if (!\socket_recvmsg($sock, $data)) {
@@ -121,11 +124,17 @@ class CommandClient {
 
                 if (!--$sockets) {
                     Loop::cancel($watcherId);
-                    $deferred->resolve($serverSockets);
+                    $deferred->resolve($this->socket);
                 }
             });
 
-            return yield $deferred->promise();
+            try {
+                yield $this->lastSend;
+            } finally {
+                $this->lastSend = null;
+            }
+
+            return $serverSockets;
         });
     }
 }
