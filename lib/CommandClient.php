@@ -105,9 +105,8 @@ class CommandClient {
             $sockets = $reply["count"];
             $serverSockets = [];
             $deferred = new Deferred;
-            $this->lastSend = $deferred->promise(); // Guards second watcher on socket by blocking calls to send()
-            $sock = \socket_import_stream($this->socket->getResource());
 
+            $sock = \socket_import_stream($this->socket->getResource());
             Loop::onReadable($this->socket->getResource(), function ($watcherId) use (&$serverSockets, &$sockets, $sock, $deferred, $addrCtxMap) {
                 $data = ["controllen" => \socket_cmsg_space(SOL_SOCKET, SCM_RIGHTS) + 4]; // 4 == sizeof(int)
                 if (!\socket_recvmsg($sock, $data)) {
@@ -124,17 +123,13 @@ class CommandClient {
 
                 if (!--$sockets) {
                     Loop::cancel($watcherId);
-                    $deferred->resolve($this->socket);
+                    $deferred->resolve($serverSockets);
                 }
             });
 
-            try {
-                yield $this->lastSend;
-            } finally {
-                $this->lastSend = null;
-            }
-
-            return $serverSockets;
+            $this->lastSend = $deferred->promise(); // Guards second watcher on socket by blocking calls to send()
+            $this->lastSend->onResolve(function() { $this->lastSend = null; });
+            return $this->lastSend;
         });
     }
 }
