@@ -68,13 +68,13 @@ class WatcherProcess extends Process {
 
     private function collectProcessGarbage() {
         foreach ($this->processes as $key => $procHandle) {
-            $info = proc_get_status($procHandle);
+            $info = \proc_get_status($procHandle);
             if ($info["running"]) {
                 continue;
             }
 
             $this->defunctProcessCount--;
-            proc_close($procHandle);
+            \proc_close($procHandle);
             unset($this->processes[$key]);
             if ($this->expectedFailures > 0) {
                 $this->expectedFailures--;
@@ -94,9 +94,7 @@ class WatcherProcess extends Process {
             $this->commandServer->close();
             $this->ipcServer->close();
             Loop::cancel($this->procGarbageWatcher);
-            if ($this->stopDeferred) {
-                Loop::defer([$this->stopDeferred, "resolve"]);
-            }
+            $this->stopDeferred->resolve();
         }
     }
 
@@ -522,13 +520,30 @@ class WatcherProcess extends Process {
     }
 
     protected function doStop(): \Generator {
-        if (!$this->stopDeferred) {
-            $this->stopDeferred = new Deferred;
-            foreach ($this->ipcClients as $ipcClient) {
-                $ipcClient->end(self::STOP_SEQUENCE);
-            }
+        if ($this->stopDeferred) {
+            yield $this->stopDeferred->promise();
+            return;
         }
 
-        yield $this->stopDeferred->promise();
+        $this->stopDeferred = new Deferred;
+
+        foreach ($this->ipcClients as $ipcClient) {
+            $ipcClient->end(self::STOP_SEQUENCE);
+        }
+
+        // Give each process 250ms max to stop, otherwise forcefully stop it.
+        $watcher = Loop::delay(250, function () {
+            foreach ($this->processes as $procHandle) {
+                $info = proc_get_status($procHandle);
+                if ($info["running"]) {
+                    \proc_terminate($procHandle, 9);
+                }
+            }
+        });
+        Loop::unreference($watcher);
+
+        yield $this->stopDeferred->promise(); // Wait for all processes to stop.
+
+        Loop::cancel($watcher);
     }
 }
