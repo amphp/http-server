@@ -423,9 +423,8 @@ class WatcherProcess extends Process {
                     if (!isset($buffer[4])) {
                         break;
                     }
-                    $unpacked = unpack("ctype/Nlength", $buffer);
-                    $length = $unpacked["length"];
-                    $buffer = substr($buffer, 5);
+                    $length = unpack("N", $buffer)[1];
+                    $buffer = substr($buffer, 4);
                 }
                 if (!isset($buffer[$length - 1])) {
                     break;
