@@ -509,8 +509,9 @@ class WatcherProcess extends Process {
         for ($i = 0; $i < $spawn; $i++) {
             $spawnPromise = $this->spawn();
             $spawnPromise->onResolve(function () {
-                current($this->ipcClients)->end(self::STOP_SEQUENCE);
+                $client = current($this->ipcClients);
                 next($this->ipcClients);
+                $client->end(self::STOP_SEQUENCE);
             });
             $promises[] = $spawnPromise;
         }
