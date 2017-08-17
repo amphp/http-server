@@ -102,6 +102,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 if (8192 > $value) {
                     throw new \Error("$option must be at least 8192 bytes");
                 }
+                // no break
             case "autoFrameSize":
             case "maxFrameSize":
             case "maxFramesPerSecond":

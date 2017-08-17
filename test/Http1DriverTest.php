@@ -552,7 +552,7 @@ class Http1DriverTest extends TestCase {
         $client = new Client;
 
         $emitCallbacks = [
-            HttpDriver::ENTITY_HEADERS | HttpDriver::ENTITY_RESULT => function() use (&$invoked) {
+            HttpDriver::ENTITY_HEADERS | HttpDriver::ENTITY_RESULT => function () use (&$invoked) {
                 $invoked++;
             },
             HttpDriver::ENTITY_PART => function ($client, $bodyData) use (&$invoked, &$body) {
@@ -672,8 +672,10 @@ class Http1DriverTest extends TestCase {
 
         $driver = new Http1Driver;
         $http2 = new class implements HttpDriver {
-            public function setup(array $parseEmitters, callable $responseWriter) { }
-            public function upgradeBodySize(InternalRequest $ireq) { }
+            public function setup(array $parseEmitters, callable $responseWriter) {
+            }
+            public function upgradeBodySize(InternalRequest $ireq) {
+            }
             public function filters(InternalRequest $ireq, array $filters): array {
                 return $filters;
             }
@@ -705,8 +707,10 @@ class Http1DriverTest extends TestCase {
     public function testNativeHttp2() {
         $driver = new Http1Driver;
         $http2 = new class implements HttpDriver {
-            public function setup(array $parseEmitters, callable $responseWriter) { }
-            public function upgradeBodySize(InternalRequest $ireq) { }
+            public function setup(array $parseEmitters, callable $responseWriter) {
+            }
+            public function upgradeBodySize(InternalRequest $ireq) {
+            }
             public function filters(InternalRequest $ireq, array $filters): array {
                 return $filters;
             }

@@ -65,8 +65,8 @@ class ClientTest extends TestCase {
             $context = (new ClientTlsContext)->withoutPeerVerification();
             $client = new DefaultClient($cookies, null, $context);
             $port = parse_url($address, PHP_URL_PORT);
-            $promise = $client->request((new \Amp\Artax\Request("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))
-                ->withHeader("custom", "header")
+            $promise = $client->request(
+                (new \Amp\Artax\Request("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))->withHeader("custom", "header")
             );
 
             $res = yield $promise;
@@ -121,8 +121,8 @@ class ClientTest extends TestCase {
 
             $context = (new ClientTlsContext)->withoutPeerVerification();
             $client = new DefaultClient(null, null, $context);
-            $promise = $client->request((new \Amp\Artax\Request("https://$address/", "POST"))
-                ->withBody("body")
+            $promise = $client->request(
+                (new \Amp\Artax\Request("https://$address/", "POST"))->withBody("body")
             );
 
             $response = yield $promise;

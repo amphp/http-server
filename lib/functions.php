@@ -569,7 +569,7 @@ function initServer(PsrLogger $logger, array $hosts, array $options = []): Serve
 }
 
 /**
- * Gives the absolute path of a config file
+ * Gives the absolute path of a config file.
  *
  * @param string $configFile path to config file used by Aerys instance
  * @return string

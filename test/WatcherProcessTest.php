@@ -5,21 +5,20 @@ namespace Aerys\Test;
 use Aerys\CommandClient;
 use Aerys\Console;
 use Aerys\Logger;
-use Aerys\WorkerProcess;
-use Amp\Coroutine;
-use Amp\Socket\Server;
 use Aerys\WatcherProcess;
+use Amp\Coroutine;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
+use Amp\Socket\Server;
 use Amp\Socket\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class WatcherProcessTest extends TestCase {
     const DUMMY_WORKER = __DIR__."/dummyWorker.php";
 
-    function init($cb) {
-        Loop::run(function() use ($cb) {
+    public function init($cb) {
+        Loop::run(function () use ($cb) {
             $logger = new class extends Logger {
                 protected function output(string $message) {
                     // do nothing
@@ -63,7 +62,7 @@ class WatcherProcessTest extends TestCase {
         });
     }
 
-    function getConsole($args, &$outputCb = null) {
+    public function getConsole($args, &$outputCb = null) {
         return new class($args, $outputCb) extends Console {
             const ARGS = [
                 "config" => WatcherProcessTest::DUMMY_WORKER,
@@ -89,18 +88,17 @@ class WatcherProcessTest extends TestCase {
         };
     }
 
-    function assertStopSequence(Socket $cli) {
+    public function assertStopSequence(Socket $cli) {
         $buf = "";
         do {
             $buf .= $data = yield $cli->read();
         } while ($data !== null);
         $this->assertEquals(3, substr($buf, 0, 1));
         $this->assertSame(WatcherProcess::STOP_SEQUENCE, substr($buf, 1));
-
     }
 
-    function testWatcherLifecycle() {
-        $this->init(function($test) {
+    public function testWatcherLifecycle() {
+        $this->init(function ($test) {
             $server = new Server($this->_sock);
 
             $console = $test->getConsole([], $outputCb);
@@ -127,7 +125,7 @@ class WatcherProcessTest extends TestCase {
         });
     }
 
-    function testSocketTransfer() {
+    public function testSocketTransfer() {
         if (stripos(PHP_OS, "WIN") === 0) {
             $this->markTestSkipped("Socket transfer only works on POSIX systems");
         }
@@ -174,8 +172,8 @@ class WatcherProcessTest extends TestCase {
         });
     }
 
-    function testCommands() {
-        $this->init(function($test) use (&$end) {
+    public function testCommands() {
+        $this->init(function ($test) use (&$end) {
             $server = new Server($this->_sock);
 
             $console = $test->getConsole([]);

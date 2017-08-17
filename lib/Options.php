@@ -65,11 +65,11 @@ class Options {
         if (\property_exists($this, $property)) {
             return $this->{$property};
         }
-            // Use \Amp\Struct::generateStructPropertyError() to get a nice message
-            // with a possible suggestion for the correct name
-            throw new \Error(
-                $this->generateStructPropertyError($property)
-            );
+        // Use \Amp\Struct::generateStructPropertyError() to get a nice message
+        // with a possible suggestion for the correct name
+        throw new \Error(
+            $this->generateStructPropertyError($property)
+        );
     }
 
     /**

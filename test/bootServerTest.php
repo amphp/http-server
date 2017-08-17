@@ -2,10 +2,10 @@
 
 namespace Aerys\Test;
 
-use Aerys\Internal;
 use Aerys\Client;
 use Aerys\Console;
 use Aerys\Host;
+use Aerys\Internal;
 use Aerys\InternalRequest;
 use Aerys\Logger;
 use Aerys\StandardRequest;

@@ -3,9 +3,9 @@
 namespace Aerys\Test;
 
 use Aerys\CommandClient;
-use function Aerys\selectConfigFile;
 use Amp\Loop;
 use PHPUnit\Framework\TestCase;
+use function Aerys\selectConfigFile;
 
 class CommandClientTest extends TestCase {
     public function testSendRestart() {

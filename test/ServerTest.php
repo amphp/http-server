@@ -90,7 +90,7 @@ class ServerTest extends TestCase {
             }
         };
         $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
-        $driver->setup((function() { return $this->createHttpDriverHandlers(); })->call($server), $this->createCallback(0));
+        $driver->setup((function () { return $this->createHttpDriverHandlers(); })->call($server), $this->createCallback(0));
         $part = yield;
         while (1) {
             $driver->emit($part);
@@ -98,7 +98,7 @@ class ServerTest extends TestCase {
         }
     }
 
-    function newIreq() {
+    public function newIreq() {
         $ireq = new InternalRequest;
         $ireq->streamId = 2;
         $ireq->trace = [["host", "localhost"]];
@@ -294,7 +294,8 @@ class ServerTest extends TestCase {
                 yield from ($this->parser)($client, $this->write);
             }
 
-            public function upgradeBodySize(InternalRequest $ireq) { }
+            public function upgradeBodySize(InternalRequest $ireq) {
+            }
         };
 
         $vhosts = new class($tls, $address, $this, $driver) extends VhostContainer {
@@ -366,7 +367,8 @@ class ServerTest extends TestCase {
         Loop::run(function () {
             try { /* prevent crashes with phpdbg due to SIGPIPE not being handled... */
                 Loop::onSignal(defined("SIGPIPE") ? SIGPIPE : 13, function () {});
-            } catch (Loop\UnsupportedFeatureException $e) {}
+            } catch (Loop\UnsupportedFeatureException $e) {
+            }
 
             $deferred = new \Amp\Deferred;
             list($address) = yield from $this->startServer(function (Client $client, $write) use ($deferred) {

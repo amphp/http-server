@@ -372,8 +372,8 @@ class Http2Driver implements HttpDriver {
 
     protected function writeFrame(Client $client, $data, $type, $flags, $stream = 0) {
         assert($stream >= 0);
-assert(!\defined("Aerys\\DEBUG_HTTP2") || print "OUT: ");
-assert(!\defined("Aerys\\DEBUG_HTTP2") || var_dump(bin2hex(substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data)) || 1);
+        assert(!\defined("Aerys\\DEBUG_HTTP2") || print "OUT: ");
+        assert(!\defined("Aerys\\DEBUG_HTTP2") || var_dump(bin2hex(substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data)) || 1);
         $new = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
         $client->writeBuffer .= $new;
         $client->bufferSize += \strlen($new);
@@ -412,7 +412,7 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || var_dump(bin2hex(substr(pack("N", \str
 
         $setSetting = function ($buffer) use ($client, $table) {
             $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value"] >= 0
-assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]}): {$unpacked["value"]}\n");
+            assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]}): {$unpacked["value"]}\n");
 
             switch ($unpacked["setting"]) {
                 case self::MAX_HEADER_LIST_SIZE:
@@ -501,7 +501,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS({$unpacked["setting"]})
             /*if ($id < 0) {
                 $id = ~$id;
             }*/
-assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type: ".bin2hex($type)."; Stream: $id; Length: $length\n");
+            assert(!\defined("Aerys\\DEBUG_HTTP2") || print "Flag: ".bin2hex($flags)."; Type: ".bin2hex($type)."; Stream: $id; Length: $length\n");
             $buffer = \substr($buffer, 9);
 
             switch ($type) {
@@ -713,7 +713,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                             goto connection_error;
                         }
 
-assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
+                        assert(!defined("Aerys\\DEBUG_HTTP2") || print "SETTINGS: ACK\n");
                         // got ACK
                         continue 2;
                     } elseif ($length % 6 != 0) {

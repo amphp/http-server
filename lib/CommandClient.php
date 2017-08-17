@@ -84,7 +84,7 @@ class CommandClient {
         } while (true);
     }
 
-    function __destruct() {
+    public function __destruct() {
         if ($this->socket) {
             $this->socket->close();
         }
@@ -99,7 +99,7 @@ class CommandClient {
     }
 
     public function importServerSockets($addrCtxMap): Promise {
-        return call(function() use ($addrCtxMap) {
+        return call(function () use ($addrCtxMap) {
             $reply = yield $this->send(["action" => "import-sockets", "addrCtxMap" => array_map(function ($context) { return $context["socket"]; }, $addrCtxMap)]);
 
             $sockets = $reply["count"];
@@ -128,7 +128,7 @@ class CommandClient {
             });
 
             $this->lastSend = $deferred->promise(); // Guards second watcher on socket by blocking calls to send()
-            $this->lastSend->onResolve(function() { $this->lastSend = null; });
+            $this->lastSend->onResolve(function () { $this->lastSend = null; });
             return $this->lastSend;
         });
     }

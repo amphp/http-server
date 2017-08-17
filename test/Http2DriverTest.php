@@ -61,7 +61,7 @@ class Http2DriverTest extends TestCase {
             $ireq = $new_ireq;
             $ireq->client->bodyEmitters[$ireq->streamId] = true; // is used to verify whether headers were sent
         };
-        $dataEmitCallback = function($client, $bodyData) use (&$invoked, &$body) {
+        $dataEmitCallback = function ($client, $bodyData) use (&$invoked, &$body) {
             $invoked++;
             $body .= $bodyData;
         };

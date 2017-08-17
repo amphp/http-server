@@ -112,7 +112,7 @@ class WebsocketParserTest extends TestCase {
                 $return[] = [$input, [$data, $optype]];
             }
         }
-//
+        //
         // 14-17 - basic control frame parsing ---------------------------------------------------->
 
         foreach (["" /* 14 */, "Hello world!" /* 15 */, "\x00\xff\xfe\xfd\xfc\xfb\x00\xff" /* 16 */, str_repeat("*", 125) /* 17 */] as $data) {
@@ -298,7 +298,7 @@ class WebsocketParserTest extends TestCase {
                 }
             };
             $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
-            $driver->setup((function() { return $this->createHttpDriverHandlers(); })->call($server), $this->createCallback(0));
+            $driver->setup((function () { return $this->createHttpDriverHandlers(); })->call($server), $this->createCallback(0));
 
             $ws = $this->createMock(Websocket::class);
             $ws->expects($this->exactly(1))

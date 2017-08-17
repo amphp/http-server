@@ -22,7 +22,7 @@ switch (fread($testSock, 1)) {
         $console = new Aerys\Console($climate);
         $ipcLogger = new Aerys\IpcLogger($console, $ipcSock);
 
-        \Amp\Loop::run(function() use ($ipcLogger) {
+        \Amp\Loop::run(function () use ($ipcLogger) {
             $ipcLogger->warning("testmessage");
         });
 

@@ -2,8 +2,6 @@
 
 namespace Aerys;
 
-use Amp\ByteStream\ResourceOutputStream;
-use Amp\Deferred;
 use Amp\Loop;
 use Psr\Log\LoggerInterface as PsrLogger;
 
