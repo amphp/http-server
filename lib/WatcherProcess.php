@@ -505,8 +505,7 @@ class WatcherProcess extends Process {
 
     public function restart() {
         $this->serverSockets = $this->addrCtx = [];
-        $spawn = count($this->ipcClients);
-        for ($i = 0; $i < $spawn; $i++) {
+        for ($i = 0; $i < $this->workerCount; $i++) {
             $spawnPromise = $this->spawn();
             $spawnPromise->onResolve(function () {
                 $client = current($this->ipcClients);
@@ -515,7 +514,7 @@ class WatcherProcess extends Process {
             });
             $promises[] = $spawnPromise;
         }
-        $this->expectedFailures += $spawn;
+        $this->expectedFailures += $this->workerCount;
         return Promise\any($promises);
     }
 
