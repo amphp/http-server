@@ -45,7 +45,7 @@
     "require-dev": {
         "amphp/phpunit-util": "^1",
         "amphp/artax": "^3",
-        "friendsofphp/php-cs-fixer": "^2.3",
+        "friendsofphp/php-cs-fixer": "^2.3@dev",
         "http2jp/hpack-test-case": "^1",
         "phpunit/phpunit": "^6"
     },

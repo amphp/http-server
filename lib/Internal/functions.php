@@ -13,16 +13,16 @@ use Aerys\Response;
 use Aerys\Server;
 use Aerys\ServerObserver;
 use Aerys\Vhost;
+use Amp\InvalidYieldError;
+use Amp\Promise;
+use Amp\Success;
+use Psr\Log\LoggerInterface as PsrLogger;
+use React\Promise\PromiseInterface as ReactPromise;
 use const Aerys\HTTP_STATUS;
 use function Aerys\initServer;
 use function Aerys\makeGenericBody;
 use function Aerys\selectConfigFile;
-use Amp\InvalidYieldError;
-use Amp\Promise;
-use Amp\Success;
 use function Amp\call;
-use Psr\Log\LoggerInterface as PsrLogger;
-use React\Promise\PromiseInterface as ReactPromise;
 
 function validateFilterHeaders(\Generator $generator, array $headers): bool {
     if (!isset($headers[":status"])) {
@@ -144,7 +144,9 @@ function generateOptionsObjFromArray(array $optionsArray): Options {
         return $optionsObj;
     } catch (\Throwable $e) {
         throw new \Error(
-            "Failed assigning options from config file", 0, $e
+            "Failed assigning options from config file",
+            0,
+            $e
         );
     }
 }
