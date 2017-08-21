@@ -52,8 +52,8 @@ $router = router()
     })
     ->post("/body2", function(Request $req, Response $res) {
         $body = "";
-        while (yield $req->getBody()->advance()) {
-            $body .= $req->getBody()->getChunk();
+        while (null != $chunk = yield $req->getBody()->read()) {
+            $body .= $chunk;
         }
         $res->end("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
     })
