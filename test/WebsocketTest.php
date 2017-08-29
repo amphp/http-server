@@ -142,11 +142,11 @@ class WebsocketTest extends TestCase {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this, $func) extends NullWebsocket {
                 public $func;
                 public $gen;
-                function __construct($test, $func) {
+                public function __construct($test, $func) {
                     parent::__construct($test);
                     $this->func = $func;
                 }
-                function onData(int $clientId, Websocket\Message $msg) {
+                public function onData(int $clientId, Websocket\Message $msg) {
                     $this->gen = ($this->func)($clientId, $msg);
                     if ($this->gen instanceof \Generator) {
                         yield from $this->gen;
@@ -320,7 +320,7 @@ class WebsocketTest extends TestCase {
         Loop::run(function () use ($closeCb) {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
                 public $closed = false;
-                function onClose(int $clientId, int $code, string $reason) {
+                public function onClose(int $clientId, int $code, string $reason) {
                     $this->closed = $code;
                 }
             });
@@ -391,7 +391,7 @@ class WebsocketTest extends TestCase {
     public function testMultiWrite() {
         Loop::run(function () {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
-                function onData(int $clientId, Websocket\Message $msg) {
+                public function onData(int $clientId, Websocket\Message $msg) {
                     $this->endpoint->broadcast("foo".str_repeat("*", 1 << 20 /* fill buffer */));
                     $this->endpoint->send("bar", $clientId);
                     yield $this->endpoint->multicast("baz", [$clientId]);

@@ -22,17 +22,17 @@ class RouterTest extends TestCase {
         return new class($state) extends Server {
             private $state;
             private $options;
-            function __construct($state) {
+            public function __construct($state) {
                 $this->state = $state;
                 $this->options = new Options;
             }
-            function state(): int {
+            public function state(): int {
                 return $this->state;
             }
-            function getOption(string $opt) {
+            public function getOption(string $opt) {
                 return $this->options->$opt;
             }
-            function setOption(string $opt, $val) {
+            public function setOption(string $opt, $val) {
                 return $this->options->$opt = $val;
             }
         };
@@ -46,39 +46,39 @@ class RouterTest extends TestCase {
             public function __construct($state) {
                 $this->state = $state;
             }
-            function setStatus(int $code): Response {
+            public function setStatus(int $code): Response {
                 $this->status = $code;
                 return $this;
             }
-            function setReason(string $phrase): Response {
+            public function setReason(string $phrase): Response {
                 return $this;
             }
-            function addHeader(string $field, string $value): Response {
+            public function addHeader(string $field, string $value): Response {
                 $this->headers[strtolower($field)] = $value;
                 return $this;
             }
-            function setHeader(string $field, string $value): Response {
+            public function setHeader(string $field, string $value): Response {
                 $this->headers[strtolower($field)] = $value;
                 return $this;
             }
-            function setCookie(string $field, string $value, array $flags = []): Response {
+            public function setCookie(string $field, string $value, array $flags = []): Response {
                 return $this;
             }
-            function send(string $body) {
+            public function send(string $body) {
                 $this->state = self::ENDED;
             }
-            function write(string $partialBodyChunk): Promise {
+            public function write(string $partialBodyChunk): Promise {
                 return new Success;
             }
-            function flush() {
+            public function flush() {
             }
-            function end(string $finalBodyChunk = ""): Promise {
+            public function end(string $finalBodyChunk = ""): Promise {
                 return new Success;
             }
-            function push(string $url, array $headers = null): Response {
+            public function push(string $url, array $headers = null): Response {
                 return $this;
             }
-            function state(): int {
+            public function state(): int {
                 return $this->state;
             }
         };
@@ -192,7 +192,7 @@ class RouterTest extends TestCase {
 
     public function testCachedMiddlewareRoute() {
         $middleware = new class implements Middleware {
-            function do(InternalRequest $ireq) {
+            public function do(InternalRequest $ireq) {
                 $data = yield;
                 $data = "middleware + " . yield $data;
                 while (true) {

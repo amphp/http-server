@@ -88,16 +88,16 @@ class RootTest extends TestCase {
     public function testBasicFileResponse() {
         $root = new Root(self::fixturePath());
         $server = new class extends Server {
-            function __construct() {
+            public function __construct() {
             }
-            function attach(ServerObserver $obj) {
+            public function attach(ServerObserver $obj) {
             }
-            function detach(ServerObserver $obj) {
+            public function detach(ServerObserver $obj) {
             }
-            function getOption(string $option) {
+            public function getOption(string $option) {
                 return true;
             }
-            function state(): int {
+            public function state(): int {
                 return Server::STARTING;
             }
         };
@@ -213,16 +213,16 @@ class RootTest extends TestCase {
      */
     public function testDebugModeIgnoresCacheIfCacheControlHeaderIndicatesToDoSo($root) {
         $server = new class extends Server {
-            function __construct() {
+            public function __construct() {
             }
-            function attach(ServerObserver $obj) {
+            public function attach(ServerObserver $obj) {
             }
-            function detach(ServerObserver $obj) {
+            public function detach(ServerObserver $obj) {
             }
-            function getOption(string $option) {
+            public function getOption(string $option) {
                 return true;
             }
-            function state(): int {
+            public function state(): int {
                 return Server::STARTED;
             }
         };

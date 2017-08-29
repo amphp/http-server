@@ -30,24 +30,24 @@ class WatcherProcessTest extends TestCase {
                 public $_sock;
                 public $_ipcAddress;
 
-                function __construct(PsrLogger $logger) {
+                public function __construct(PsrLogger $logger) {
                     parent::__construct($logger);
                 }
-                function __set($prop, $val) {
+                public function __set($prop, $val) {
                     if ($prop === "workerCommand") {
                         $this->_workerCommand = $val;
                         return;
                     }
                     $this->$prop = $val;
                 }
-                function __get($prop) {
+                public function __get($prop) {
                     if ($prop == "workerCommand") {
                         $address = stream_socket_get_name($this->_sock, $wantPeer = false);
                         return \PHP_BINARY . (strpos(\PHP_BINARY, "phpdbg") !== false ? " -qrr" : "") . " ".escapeshellarg(WatcherProcessTest::DUMMY_WORKER)." ".escapeshellarg("tcp://$address")." ".escapeshellarg($this->_ipcAddress);
                     }
                     throw new \Error("Invalid property access");
                 }
-                function stop(): \Generator {
+                public function stop(): \Generator {
                     return parent::doStop();
                 }
             };

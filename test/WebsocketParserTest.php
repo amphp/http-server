@@ -225,7 +225,7 @@ class WebsocketParserTest extends TestCase {
         }
         )
             ->boot(new class extends Server {
-                function __construct() {
+                public function __construct() {
                 }
             }, new class extends \Aerys\Logger {
                 protected function output(string $message) {
