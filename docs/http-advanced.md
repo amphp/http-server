@@ -19,7 +19,7 @@ return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) u
 
 `Response::write($data)` is an useful API to incrementally send data.
 
-This does *not* guarantee that data is immediately sent; it may be buffered temporarily for performance or implementation reasons [example: the http driver may buffer up to Options->outputBufferSize bytes to reduce number of TCP frames].
+This does *not* guarantee that data is immediately sent; it may be buffered temporarily for performance or implementation reasons [example: the http driver may buffer up to `Options->outputBufferSize` bytes to reduce number of TCP frames].
 
 There is a `Response::flush()` method which actually flushes all the buffers immediately.
 
@@ -66,5 +66,3 @@ A `Router` can also `use()` `Bootable`s, `callable`s, `Middleware`s _and_ other 
 This gives a certain flexibility allowing merging router definitions, easy definition of a common fallback callable or middleware for a group of routes.
 
 For that purpose `Router::prefix($prefix)` exists, it allows to prefix all the routes with a certain `$prefix`.
-
-That way, projects should provide a router file (no `Aerys\Host` instances, these are for the actual server definition!) containing all the routes and used `Middleware`s etc., so that the user can just eventually `prefix()` the `Router` instance easily in the big router and `use()` it in the `Host` instance.

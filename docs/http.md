@@ -12,7 +12,7 @@ return (new Aerys\Host)
 To define a dynamic handler, all that is needed is a callable passed to `Host::use()`, accepting an `Aerys\Request` and an `Aerys\Response` instance as first and second parameters, respectively.
 
 {:.note}
-> This handler is used for all URIs of that Host by default, but it can be routed with the [Router](router.md).
+> This handler is used for all URIs of that Host by default, but it can be routed with the [Router](classes/router.md).
 
 ## Responses
 
@@ -30,9 +30,9 @@ return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
 
 `Aerys\Response::setHeader($header, $value)` sets a custom header, but be aware about header injections. Do not accept `\n` characters here if there will ever be user input! See also the [OWASP page on HTTP Response Splitting](https://www.owasp.org/index.php/HTTP_Response_Splitting).
 
-`Aerys\Response::end($data = "")` terminates a response and sends the passed data. For more fine grained sending, have a look at [the guide about streaming](../http-advanced/streaming.html).
+`Aerys\Response::end($data = "")` terminates a response and sends the passed data. For more fine grained sending, have a look at [the guide about streaming](http-advanced.md#streaming-responses).
 
-For a full explanation of all available methods check out the [`Response` class docs](../contents/classes/response.html).
+For a full explanation of all available methods check out the [`Response` class docs](classes/response.md).
 
 ## Requests
 
@@ -54,7 +54,7 @@ Try accessing `http://localhost/?action=beautiful` in the browser.
 
 `Aerys\Request::getHeader(string $name)` returns a headers value. If multiple headers with the same name exist, it will return the first value. If none exists, it will return `null`.
 
-There is additional information available about the full request API, check out the [`Request` docs](../contents/classes/request.html).
+There is additional information available about the full request API, check out the [`Request` docs](classes/request.md).
 
 ## Request Bodies
 
@@ -73,7 +73,7 @@ return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
 });
 ```
 
-`yield Aerys\parseBody($request, $size = 0)` expects an `Aerys\Request` instance and a maximum body size (there is [a configurable default](../performance/production.html)) as parameters and returns a [`ParsedBody`](../contents/classes/parsedbody.html) instance exposing a `get($name)` and a `getArray($name)`.
+`yield Aerys\parseBody($request, $size = 0)` expects an `Aerys\Request` instance and a maximum body size (there is [a configurable default](production.md)) as parameters and returns a [`ParsedBody`](classes/parsedbody.md) instance exposing a `get($name)` and a `getArray($name)`.
 
 `get($name)` always returns a string (first parameter) or null if the parameter was not defined.
 
@@ -108,7 +108,7 @@ Generally uploads are just a normal field of the body you can grab with `get($na
 Additionally, uploads may contain some metadata: `getMetadata($name)` returns an array with the fields `"mime"` and `"filename"` (if the client passed these).
 
 {:.warning}
-> Avoid setting the `$size` parameter on `parseBody()` very high, that may impact performance with many users accessing it. Check [the guide for larger parsed bodies](../performance/bodyparser.html) out if you want to do that.
+> Avoid setting the `$size` parameter on `parseBody()` very high, that may impact performance with many users accessing it. Check [the guide for larger parsed bodies](performance.md#bodyparser) out if you want to do that.
 
 ## Cookies
 
@@ -186,11 +186,11 @@ return (new Aerys\Host)
 
 A router is instantiated by `Aerys\router()`. To define routes: `->method($location, $callable[, ...$callableOrMiddleware[, ...]])`, e.g. `->get('/foo', $callable)` or `->put('/foo', $callable, $middleware)`.
 
-Alternate callables can be defined as fallback to have e.g. a static files handler or a custom 404 Not Found page (precise: when no response was _started_ in the callable(s) before). Or even as a primary check for e.g. csrf tokens to prevent execution of the main responder callable.
+Alternate callables can be defined as fallback to have e.g. a static files handler or a custom `404 Not Found` page (precise: when no response was _started_ in the callable(s) before). Or even as a primary check for e.g. CSRF tokens to prevent execution of the main responder callable.
 
-It is also possible to define routes with dynamic parts in them, see [the next step on dynamic route definitions](dynamic-routes.md).
+It is also possible to define routes with dynamic parts in them, see [the next step on dynamic route definitions](#dynamic-routing).
 
-If there are more and more routes, there might be the desire to split them up. Refer to [the managing routes guide](../http-advanced/routes.html).
+If there are more and more routes, there might be the desire to split them up. Refer to [the managing routes guide](http-advanced.md#managing-routes).
 
 ## Dynamic Routing
 
@@ -209,6 +209,6 @@ $router = Aerys\router()
 return (new Aerys\Host)->use($router);
 ```
 
-The Router is using [FastRoute from Nikita Popov](https://github.com/nikic/FastRoute) and inherits its dynamic possibilities. Hence it is possible to to use dynamic routes, the matches will be in a third $routes array passed to the callable. This array will contain the matches keyed by the identifiers in the route.
+The Router is using [FastRoute from Nikita Popov](https://github.com/nikic/FastRoute) and inherits its dynamic possibilities. Hence it is possible to use dynamic routes, the matches will be in a third $routes array passed to the callable. This array will contain the matches keyed by the identifiers in the route.
 
 A trailing `/?` on the route will make the slash optional and, when the route is called with a slash, issue a 302 Temporary Redirect to the canonical route without trailing slash.
