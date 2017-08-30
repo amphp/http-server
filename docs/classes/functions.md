@@ -60,7 +60,7 @@ Returns a Generator which can be used to construct a `StandardResponse` object (
 
 This function may be useful for testing the combination of application callable and middlewares via a custom `InternalRequest->responseWriter.
 
-## `init(\Psr\Log\LoggerInterface, array<Host>, array $options = []): Server`
+## `initServer(\Psr\Log\LoggerInterface, array<Host>, array $options = []): Server`
 
 This function is only useful, if you want to run Aerys as a small server within a bigger project, or have a specialized process manager etc., outside of the standard `bin/aerys` binary. For normal usage of Aerys it isn't needed.
 
