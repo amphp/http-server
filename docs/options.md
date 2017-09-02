@@ -19,7 +19,7 @@ Additionally, there are several ways to get an options value:
 
 ## Common Options
 
-This describes the common options, not affecting performance; to fine-tune your servers limits, look at the [production specific options](../performance/production.html).
+This describes the common options, not affecting performance; to fine-tune your servers limits, look at the [production specific options](production.md#options).
 
 - `defaultContentType` The default content type of responses (Default: `"text/html"`)
 - `defaultTextCharset` The default charset of `text/` content types (Default: `"utf-8"`)
