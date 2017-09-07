@@ -71,14 +71,14 @@ class BootstrapperTest extends TestCase {
         $this->assertEquals(5000, $server->getOption("shutdownTimeout")); // custom option test
 
         $vhosts = $info["vhosts"]->__debugInfo()["vhosts"];
-        $this->assertEquals(["localhost:443", "example.com:80", "foo.bar:80"], array_keys($vhosts));
-        $this->assertInternalType('callable', $vhosts["localhost:443"]->getApplication());
-        $middleware = current($vhosts["example.com:80"]->getFilters());
+        $this->assertEquals(["localhost:443:[::]:443", "localhost:443:0.0.0.0:443", "example.com:80:127.0.0.1:80", "foo.bar:80:127.0.0.1:80"], array_keys($vhosts));
+        $this->assertInternalType('callable', $vhosts["localhost:443:0.0.0.0:443"]->getApplication());
+        $middleware = current($vhosts["example.com:80:127.0.0.1:80"]->getFilters());
         $this->assertInstanceOf("OurMiddleware", $middleware[0]);
         $this->assertEquals("do", $middleware[1]);
-        $this->assertInstanceOf("OurMiddleware", $vhosts["example.com:80"]->getApplication());
-        $this->assertEquals(2, count($vhosts["foo.bar:80"]->getApplication()->__debugInfo()["applications"]));
-        $vhosts["foo.bar:80"]->getApplication()(new StandardRequest($ireq = new InternalRequest), new StandardResponse((function () {yield;})(), new Client))->next();
+        $this->assertInstanceOf("OurMiddleware", $vhosts["example.com:80:127.0.0.1:80"]->getApplication());
+        $this->assertEquals(2, count($vhosts["foo.bar:80:127.0.0.1:80"]->getApplication()->__debugInfo()["applications"]));
+        $vhosts["foo.bar:80:127.0.0.1:80"]->getApplication()(new StandardRequest($ireq = new InternalRequest), new StandardResponse((function () {yield;})(), new Client))->next();
         $this->assertEquals(["responder" => 1, "foo.bar" => 1], $ireq->locals);
     }
 
@@ -92,6 +92,6 @@ class BootstrapperTest extends TestCase {
 
         $server = \Aerys\initServer($logger, [(new Host)->name("foo.bar")]);
         $vhosts = $server->__debugInfo()["vhosts"]->__debugInfo()["vhosts"];
-        $this->assertEquals("foo.bar:80", key($vhosts));
+        $this->assertEquals("foo.bar:80:[::]:80", key($vhosts));
     }
 }

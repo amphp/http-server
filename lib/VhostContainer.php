@@ -5,7 +5,6 @@ namespace Aerys;
 class VhostContainer implements \Countable, Monitor {
     private $vhosts = [];
     private $cachedVhostCount = 0;
-    private $defaultHost;
     private $httpDrivers = [];
     private $defaultHttpDriver;
     private $setupHttpDrivers = [];
@@ -26,10 +25,11 @@ class VhostContainer implements \Countable, Monitor {
         $this->preventCryptoSocketConflict($vhost);
         foreach ($vhost->getIds() as $id) {
             if (isset($this->vhosts[$id])) {
+                list($host, $port, $interfaceAddr, $interfacePort) = explode(":", $id);
                 throw new \LogicException(
-                    $vhost->getName() == ""
-                        ? "Cannot have two default hosts on the same `$id` interface"
-                        : "Cannot have two hosts with the same `$id` name"
+                    $host === "*"
+                        ? "Cannot have two default hosts " . ($interfacePort == $port ? "" : "on port $port ") . "on the same interface ($interfaceAddr:$interfacePort)"
+                        : "Cannot have two hosts with the same name ($host" . ($interfacePort == $port ? "" : ":$port") . ") on the same interface ($interfaceAddr:$interfacePort)"
                 );
             }
 
@@ -39,6 +39,7 @@ class VhostContainer implements \Countable, Monitor {
         $this->cachedVhostCount++;
     }
 
+    // TLS is inherently bound to a specific interface. Unencrypted wildcard hosts will not work on encrypted interfaces and vice versa.
     private function preventCryptoSocketConflict(Vhost $new) {
         foreach ($this->vhosts as $old) {
             // If both hosts are encrypted or both unencrypted there is no conflict
@@ -50,9 +51,9 @@ class VhostContainer implements \Countable, Monitor {
                     throw new \Error(
                         sprintf(
                             "Cannot register encrypted host `%s`; unencrypted " .
-                            "host `%s` registered on conflicting port `%s`",
-                            ($new->IsEncrypted() ? $new->getName() : $old->getName()) ?: "*",
-                            ($new->IsEncrypted() ? $old->getName() : $new->getName()) ?: "*",
+                            "host `%s` registered on conflicting interface `%s`",
+                            $new->IsEncrypted() ? $new->getName() : $old->getName(),
+                            $new->IsEncrypted() ? $old->getName() : $new->getName(),
                             "$address:$port"
                         )
                     );
@@ -64,8 +65,8 @@ class VhostContainer implements \Countable, Monitor {
     private function addHttpDriver(Vhost $vhost) {
         $driver = $vhost->getHttpDriver() ?? $this->defaultHttpDriver;
         foreach ($vhost->getInterfaces() as list($address, $port)) {
-            $generic = $this->httpDrivers[$port][\strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"] ?? $driver;
-            if (($this->httpDrivers[$port][$address] ?? $generic) !== $driver) {
+            $defaultDriver = $this->httpDrivers[$port][\strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"] ?? $driver;
+            if (($this->httpDrivers[$port][$address] ?? $defaultDriver) !== $driver) {
                 throw new \Error(
                     "Cannot use two different HttpDriver instances on an equivalent address-port pair"
                 );
@@ -110,11 +111,14 @@ class VhostContainer implements \Countable, Monitor {
      */
     public function selectHttpDriver($address, $port) {
         return $this->httpDrivers[$port][$address] ??
-            $this->httpDrivers[$port][\strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"];
+            $this->httpDrivers[$port][\strpos($address, ":") === false ? "0.0.0.0" : "::"];
     }
 
     /**
      * Select a virtual host match for the specified request according to RFC 7230 criteria.
+     *
+     * Note: For HTTP/1.0 requests (aka omitting a Host header), a proper Vhost will only ever be returned
+     *       if there is a matching wildcard host.
      *
      * @param \Aerys\InternalRequest $ireq
      * @return Vhost|null Returns a Vhost object and boolean TRUE if a valid host selected, FALSE otherwise
@@ -122,69 +126,53 @@ class VhostContainer implements \Countable, Monitor {
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.6.1.1
      */
     public function selectHost(InternalRequest $ireq) {
-        if (isset($ireq->uriHost)) {
-            return $this->selectHostByAuthority($ireq);
-        }
-        return null;
+        $client = $ireq->client;
+        $serverId = ":{$client->serverAddr}:{$client->serverPort}";
 
-
-        // If null is returned a stream must return 400 for HTTP/1.1 requests and use the default
-        // host for HTTP/1.0 requests.
-    }
-
-    /**
-     * Retrieve the group's default host.
-     *
-     * @return \Aerys\Vhost
-     */
-    public function getDefaultHost(): Vhost {
-        if ($this->defaultHost) {
-            return $this->defaultHost;
-        } elseif ($this->cachedVhostCount) {
-            return current($this->vhosts);
-        }
-        throw new \Error(
-                "Cannot retrieve default host; no Vhost instances added to the group"
-            );
-    }
-
-    private function selectHostByAuthority(InternalRequest $ireq) {
-        $explicitHostId = "{$ireq->uriHost}:{$ireq->uriPort}";
-        $wildcardHost = "0.0.0.0:{$ireq->uriPort}";
-        $ipv6WildcardHost = "[::]:{$ireq->uriPort}";
-
+        $explicitHostId = "{$ireq->uriHost}:{$ireq->uriPort}{$serverId}";
         if (isset($this->vhosts[$explicitHostId])) {
-            $vhost = $this->vhosts[$explicitHostId];
-        } elseif (isset($this->vhosts[$wildcardHost])) {
-            $vhost = $this->vhosts[$wildcardHost];
-        } elseif (isset($this->vhosts[$ipv6WildcardHost])) {
-            $vhost = $this->vhosts[$ipv6WildcardHost];
-        } elseif ($this->cachedVhostCount !== 1) {
-            return null;
-        } else {
-            $ipComparison = $ireq->uriHost;
-
-            if (!@inet_pton($ipComparison)) {
-                $ipComparison = (string) substr($ipComparison, 1, -1); // IPv6 braces
-                if (!@inet_pton($ipComparison)) {
-                    return null;
-                }
-            }
-            if (!(($vhost = $this->getDefaultHost()) && in_array($ireq->uriPort, $vhost->getPorts($ipComparison)))) {
-                return null;
-            }
+            return $this->vhosts[$explicitHostId];
         }
 
-        // IMPORTANT: Wildcard IP hosts without names that are running both encrypted and plaintext
-        // apps on the same interface (via separate ports) must be checked for encryption to avoid
-        // displaying unencrypted data as a result of carefully crafted Host headers. This is an
-        // extreme edge case but it's potentially exploitable without this check.
-        // DO NOT REMOVE THIS UNLESS YOU'RE SURE YOU KNOW WHAT YOU'RE DOING.
-        if ($vhost->isEncrypted() != $ireq->client->isEncrypted) {
-            return null;
+        $addressWildcardHost = "*:{$ireq->uriPort}{$serverId}";
+        if (isset($this->vhosts[$addressWildcardHost])) {
+            return $this->vhosts[$addressWildcardHost];
         }
 
-        return $vhost;
+        $portWildcardHostId = "{$ireq->uriHost}:0{$serverId}";
+        if (isset($this->vhosts[$portWildcardHostId])) {
+            return $this->vhosts[$portWildcardHostId];
+        }
+
+        $addressPortWildcardHost = "*:0{$serverId}";
+        if (isset($this->vhosts[$addressPortWildcardHost])) {
+            return $this->vhosts[$addressPortWildcardHost];
+        }
+
+        $wildcardIP = \strpos($client->serverAddr, ":") === false ? "0.0.0.0" : "[::]";
+        $serverId = ":$wildcardIP:{$client->serverPort}";
+
+        $explicitHostId = "{$ireq->uriHost}:{$ireq->uriPort}{$serverId}";
+        if (isset($this->vhosts[$explicitHostId])) {
+            return $this->vhosts[$explicitHostId];
+        }
+
+        $addressWildcardHost = "*:{$ireq->uriPort}{$serverId}";
+        if (isset($this->vhosts[$addressWildcardHost])) {
+            return $this->vhosts[$addressWildcardHost];
+        }
+
+        $portWildcardHostId = "{$ireq->uriHost}:0{$serverId}";
+        if (isset($this->vhosts[$portWildcardHostId])) {
+            return $this->vhosts[$portWildcardHostId];
+        }
+
+        $addressPortWildcardHost = "*:0{$serverId}";
+        if (isset($this->vhosts[$addressPortWildcardHost])) {
+            return $this->vhosts[$addressPortWildcardHost];
+        }
+
+        return null; // nothing found
     }
 
     /**
@@ -239,7 +227,6 @@ class VhostContainer implements \Countable, Monitor {
     public function __debugInfo() {
         return [
             "vhosts" => $this->vhosts,
-            "defaultHost" => $this->defaultHost,
         ];
     }
 

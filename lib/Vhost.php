@@ -65,18 +65,17 @@ class Vhost implements Monitor {
             $this->tlsDefaults["alpn_protocols"] = "h2";
         }
 
-        if ($this->name !== '') {
-            $addresses = [$this->name];
-        } else {
-            $addresses = array_unique(array_column($interfaces, 0));
-        }
-        $ports = array_unique(array_column($interfaces, 1));
-        foreach ($addresses as $address) {
-            if (strpos($address, ":") !== false) {
+        $name = explode(":", $this->name)[0];
+        $namePort = substr(strstr($this->name, ":"), 1);
+
+        foreach ($this->addressMap as $packedAddress => $ports) {
+            $address = inet_ntop($packedAddress);
+            if (strlen($packedAddress) === 16) {
                 $address = "[$address]";
             }
+
             foreach ($ports as $port) {
-                $this->ids[] = "$address:$port";
+                $this->ids[] = "$name:" . ($namePort === false ? $port : (int) $namePort) . ":$address:$port";
             }
         }
     }
@@ -96,7 +95,13 @@ class Vhost implements Monitor {
             );
         }
 
-        $this->interfaces[] = [$address, $port];
+        if (isset($this->addressMap[$packedAddress]) && in_array($port, $this->addressMap[$packedAddress])) {
+            throw new \Error(
+                "There must be no two identical interfaces for a same host"
+            );
+        }
+
+        $this->interfaces[] = [inet_ntop($packedAddress), $port];
         $this->addressMap[$packedAddress][] = $port;
     }
 
@@ -173,7 +178,7 @@ class Vhost implements Monitor {
         } elseif (!isset($this->addressMap[$packedAddress])) {
             return $this->addressMap[$wildcard];
         }
-        return array_merge($this->addressMap[$wildcard], $this->addressMap[$packedAddress]);
+        return array_merge($this->addressMap[$packedAddress], $this->addressMap[$wildcard]);
     }
 
     public function getHttpDriver() {
@@ -186,7 +191,7 @@ class Vhost implements Monitor {
      * @return bool
      */
     public function hasName(): bool {
-        return ($this->name !== "");
+        return $this->name !== "*" && strstr($this->name, ":", true) !== "*";
     }
 
     /**
@@ -241,7 +246,7 @@ class Vhost implements Monitor {
         }
 
         $names = $this->parseNamesFromTlsCertArray($cert);
-        if ($this->name != "" && !in_array($this->name, $names)) {
+        if ($this->hasName() && !in_array(explode(":", $this->name)[0], $names)) {
             trigger_error(
                 "TLS certificate `{$certBase}` has no CN or SAN name match for host `{$this}`; " .
                 "web browsers will not trust the validity of your certificate :(",
