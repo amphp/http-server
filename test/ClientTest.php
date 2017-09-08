@@ -121,8 +121,9 @@ class ClientTest extends TestCase {
 
             $context = (new ClientTlsContext)->withoutPeerVerification();
             $client = new DefaultClient(null, null, $context);
+            $port = parse_url($address, PHP_URL_PORT);
             $promise = $client->request(
-                (new \Amp\Artax\Request("https://$address/", "POST"))->withBody("body")
+                (new \Amp\Artax\Request("https://localhost:$port/", "POST"))->withBody("body")
             );
 
             $response = yield $promise;

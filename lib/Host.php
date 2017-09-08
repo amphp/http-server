@@ -3,7 +3,7 @@
 namespace Aerys;
 
 class Host {
-    private $name = "";
+    private $name = "*";
     private $interfaces = null;
     private $crypto = [];
     private $actions = [];
@@ -16,8 +16,8 @@ class Host {
      * "all IPv4 interfaces" and is appropriate for most users. Use "::" to indicate "all IPv6
      * interfaces". To indicate "all IPv4 *and* IPv6 interfaces", use a "*" wildcard character.
      *
-     * Note that "::" may also listen on some systems on IPv4 interfaces. PHP currently does
-     * not expose the IPV6_V6ONLY constant.
+     * Note that "::" may also listen on some systems on IPv4 interfaces. PHP did not expose the
+     * IPV6_V6ONLY constant before PHP 7.0.1.
      *
      * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
      * well-known services (like HTTP on port 80) and port numbers less than 1024 require root
@@ -57,14 +57,18 @@ class Host {
     /**
      * Assign a domain name (e.g. localhost or mysite.com or subdomain.mysite.com).
      *
-     * A host name is only required if a server exposes more than one host. If a name is not defined
-     * the server will default to "localhost"
+     * An explicit host name is only required if a server exposes more than one host on a given
+     * interface. If a name is not defined (or "*") the server will allow any hostname.
+     *
+     * By default the port must match with the interface. It is possible to explicitly require
+     * a specific port in the hostname by appending ":port" (e.g. "localhost:8080"). It is also
+     * possible to specify a wildcard with "*" (e.g. "*:*" to accept any hostname from any port).
      *
      * @param string $name
      * @return self
      */
     public function name(string $name): Host {
-        $this->name = $name;
+        $this->name = $name === "" ? "*" : $name;
 
         return $this;
     }
