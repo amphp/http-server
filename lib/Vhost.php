@@ -68,30 +68,55 @@ class Vhost implements Monitor {
         $name = explode(":", $this->name)[0];
         $namePort = substr(strstr($this->name, ":"), 1);
 
-        foreach ($this->addressMap as $packedAddress => $ports) {
-            $address = inet_ntop($packedAddress);
-            if (strlen($packedAddress) === 16) {
+        foreach ($this->interfaces as list($address, $port)) {
+            if (strpos($address, ":") !== false) {
                 $address = "[$address]";
             }
 
-            foreach ($ports as $port) {
-                $this->ids[] = "$name:" . ($namePort === false ? $port : (int) $namePort) . ":$address:$port";
-            }
+            $this->ids[] = $name . ":" . ($namePort === false ? $port : (int) $namePort) . ":$address:$port";
         }
     }
 
     private function addInterface(array $interface) {
         list($address, $port) = $interface;
 
-        if ($port < 1 || $port > 65535) {
+        $isUnixSocket = $address[0] == "/";
+
+        if ($isUnixSocket) {
+            if ($port != 0) {
+                throw new \Error(
+                    "Invalid host port: {$port}; must be 0 for unix domain sockets"
+                );
+            }
+        } elseif ($port < 1 || $port > 65535) {
             throw new \Error(
                 "Invalid host port: {$port}; integer in the range [1-65535] required"
             );
         }
 
-        if (!$packedAddress = @inet_pton($address)) {
+        if ($isUnixSocket) {
+            $socketPath = realpath($address);
+            if ($socketPath) {
+                $address = $socketPath;
+            }
+
+            $dir = realpath(dirname($address));
+            if (!$dir || !is_dir($dir)) {
+                throw new \Error(
+                    "Unix domain socket path is not in an existing or reachable directory"
+                );
+            } elseif (!is_readable($dir) || !is_writable($dir) || !is_executable($dir)) {
+                throw new \Error(
+                    "Unix domain socket path is in a directory without read, write and execute permissions"
+                );
+            }
+
+            $packedAddress = $address = $dir. "/" .basename($address);
+        } elseif ($packedAddress = @inet_pton($address)) {
+            $address = inet_ntop($packedAddress);
+        } else {
             throw new \Error(
-                "IPv4 or IPv6 address required: {$address}"
+                "IPv4 or IPv6 address or unix domain socket path required: {$address}"
             );
         }
 
@@ -101,7 +126,7 @@ class Vhost implements Monitor {
             );
         }
 
-        $this->interfaces[] = [inet_ntop($packedAddress), $port];
+        $this->interfaces[] = [$address, $port];
         $this->addressMap[$packedAddress][] = $port;
     }
 
@@ -131,6 +156,9 @@ class Vhost implements Monitor {
     public function getBindableAddresses(): array {
         return array_map(static function ($interface) {
             list($address, $port) = $interface;
+            if ($address[0] == "/") { // unix domain socket
+                return "unix://$address";
+            }
             if (strpos($address, ":") !== false) {
                 $address = "[$address]";
             }
@@ -161,6 +189,10 @@ class Vhost implements Monitor {
      * @return array<int> The list of listening ports on this address
      */
     public function getPorts(string $address): array {
+        if ($address[0] === "/") { // unix domain socket, no wildcards here
+            return $this->addressMap[$address] ?? [];
+        }
+
         if ($address === '0.0.0.0' || $address === '::') {
             $ports = [];
             foreach ($this->addressMap as $packedAddress => $port_list) {

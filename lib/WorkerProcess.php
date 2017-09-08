@@ -12,7 +12,6 @@ class WorkerProcess extends Process {
     private $ipcSock;
     private $server;
 
-    // Loggers which hold a watcher on $ipcSock MUST implement disableSending():Promise and enableSending() methods in order to avoid conflicts from different watchers
     public function __construct(PsrLogger $logger, $ipcSock) {
         parent::__construct($logger);
         $this->logger = $logger;
@@ -31,9 +30,33 @@ class WorkerProcess extends Process {
         });
 
         $server = yield from Internal\bootServer($this->logger, $console);
-        if ($console->isArgDefined("socket-transfer")) {
-            \assert(\extension_loaded("sockets") && PHP_VERSION_ID > 70007);
-            yield $server->start([new CommandClient((string) $console->getArg("config")), "importServerSockets"]);
+        if (\extension_loaded("sockets") && PHP_VERSION_ID > 70007 && stripos(PHP_OS, "WIN") !== 0) {
+            // needs socket_export_stream() and no Windows
+            $config = (string) $console->getArg("config");
+            $getSocketTransferImporter = function () use ($config, &$socketTransfer) {
+                return $socketTransfer ?? $socketTransfer = [new CommandClient($config), "importServerSockets"];
+            };
+
+            if (in_array(strtolower(PHP_OS), ["darwin", "freebsd"])) { // the OS not supporting *round-robin* so_reuseport client distribution
+                $importer = $getSocketTransferImporter();
+            } else {
+                // prefer local so_reuseport binding in favor of transferring tcp server sockets (i.e. only use socket transfer for unix domain sockets)
+                $importer = \Amp\coroutine(function ($addrContextMap, $socketBinder) use ($getSocketTransferImporter) {
+                    $boundSockets = $unixAddrContextMap = [];
+
+                    foreach ($addrContextMap as $address => $context) {
+                        if (!strncmp("unix://", $address, 7)) {
+                            $unixAddrContextMap[$address] = $context;
+                        } else {
+                            $boundSockets[$address] = $socketBinder($address, $context);
+                        }
+                    }
+
+                    return $unixAddrContextMap ? $boundSockets + yield $getSocketTransferImporter()($unixAddrContextMap) : $boundSockets;
+                });
+            }
+
+            yield $server->start($importer);
         } else {
             yield $server->start();
         }

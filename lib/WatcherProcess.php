@@ -52,7 +52,6 @@ class WatcherProcess extends Process {
     private $defunctProcessCount = 0;
     private $expectedFailures = 0;
 
-    private $useSocketTransfer;
     private $addrCtx = [];
     private $serverSockets = [];
 
@@ -63,7 +62,6 @@ class WatcherProcess extends Process {
         $this->logger = $logger;
         $this->procGarbageWatcher = Loop::repeat(10, $this->callableFromInstanceMethod("collectProcessGarbage"));
         Loop::disable($this->procGarbageWatcher);
-        $this->useSocketTransfer = $this->useSocketTransfer();
     }
 
     private function collectProcessGarbage() {
@@ -222,6 +220,10 @@ class WatcherProcess extends Process {
             if (!isset($this->addrCtx[$address])) {
                 $this->addrCtx[$address] = $context;
 
+                if (!strcmp($address, "unix://", 7)) {
+                    @unlink(substr($address, 7));
+                }
+
                 // do NOT invoke STREAM_SERVER_LISTEN here - we explicitly invoke \socket_listen() in our worker processes
                 if (!$socket = stream_socket_server($address, $errno, $errstr, STREAM_SERVER_BIND, stream_context_create(["socket" => $context]))) {
                     throw new \RuntimeException(sprintf("Failed binding socket on %s: [Err# %s] %s", $address, $errno, $errstr));
@@ -364,17 +366,6 @@ class WatcherProcess extends Process {
         return $cores;
     }
 
-    private function useSocketTransfer() {
-        $os = (stripos(PHP_OS, "WIN") === 0) ? "win" : strtolower(PHP_OS);
-        switch ($os) {
-            case "darwin":
-            case "freebsd":
-                // needs socket_export_stream()
-                return \extension_loaded("sockets") && PHP_VERSION_ID >= 70007;
-        }
-        return false;
-    }
-
     private function bindIpcServer() {
         $socketAddress = "127.0.0.1:*";
         $socketTransport = "tcp";
@@ -481,9 +472,6 @@ class WatcherProcess extends Process {
 
     private function spawn(): Promise {
         $cmd = $this->workerCommand;
-        if ($this->useSocketTransfer) {
-            $cmd .= " --socket-transfer";
-        }
         $fds = [["pipe", "r"], ["pipe", "w"], ["pipe", "w"]];
         $options = ["bypass_shell" => true];
         if (!$procHandle = \proc_open($cmd, $fds, $pipes, null, null, $options)) {

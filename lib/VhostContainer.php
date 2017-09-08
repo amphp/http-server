@@ -65,7 +65,7 @@ class VhostContainer implements \Countable, Monitor {
     private function addHttpDriver(Vhost $vhost) {
         $driver = $vhost->getHttpDriver() ?? $this->defaultHttpDriver;
         foreach ($vhost->getInterfaces() as list($address, $port)) {
-            $defaultDriver = $this->httpDrivers[$port][\strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"] ?? $driver;
+            $defaultDriver = $this->httpDrivers[$port][$address[0] == "/" ? "" : \strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"] ?? $driver;
             if (($this->httpDrivers[$port][$address] ?? $defaultDriver) !== $driver) {
                 throw new \Error(
                     "Cannot use two different HttpDriver instances on an equivalent address-port pair"
@@ -147,6 +147,11 @@ class VhostContainer implements \Countable, Monitor {
         $addressPortWildcardHost = "*:0{$serverId}";
         if (isset($this->vhosts[$addressPortWildcardHost])) {
             return $this->vhosts[$addressPortWildcardHost];
+        }
+
+        if ($client->serverAddr[0] == "/") { // unix domain socket
+            // there is no such thing like interface wildcards for unix domain sockets
+            return null; // nothing found
         }
 
         $wildcardIP = \strpos($client->serverAddr, ":") === false ? "0.0.0.0" : "[::]";

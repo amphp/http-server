@@ -262,12 +262,16 @@ class ServerTest extends TestCase {
         $this->assertEquals(\Aerys\HTTP_STATUS["NOT_FOUND"], $result[0][":status"]);
     }
 
-    public function startServer($parser, $tls) {
-        if (!$server = @stream_socket_server("tcp://127.0.0.1:0", $errno, $errstr)) {
-            $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
+    public function startServer($parser, $tls, $unixSocket = false) {
+        if ($unixSocket) {
+            $address = "unix://" . tempnam(sys_get_temp_dir(), "aerys_server_test");
+        } else {
+            if (!$server = @stream_socket_server("tcp://127.0.0.1:0", $errno, $errstr)) {
+                $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
+            }
+            $address = stream_socket_get_name($server, $wantPeer = false);
+            fclose($server);
         }
-        $address = stream_socket_get_name($server, $wantPeer = false);
-        fclose($server);
 
         $driver = new class($this) implements HttpDriver {
             private $test;
@@ -333,8 +337,15 @@ class ServerTest extends TestCase {
         return [$address, $server];
     }
 
-    public function testUnencryptedIO() {
-        Loop::run(function () {
+    public function provideFalseTrueUnixDomainSocket() {
+        return ["tcp" => [false], "unix" => [true]];
+    }
+
+    /**
+     * @dataProvider provideFalseTrueUnixDomainSocket
+     */
+    public function testUnencryptedIO($useUnixDomainSocket) {
+        Loop::run(function () use ($useUnixDomainSocket) {
             list($address, $server) = yield from $this->startServer(function (Client $client, $write) {
                 $this->assertFalse($client->isEncrypted);
 
@@ -346,7 +357,7 @@ class ServerTest extends TestCase {
                 $write($client, false);
                 $client->writeBuffer .= "d";
                 $write($client, true);
-            }, false);
+            }, false, $useUnixDomainSocket);
 
             /** @var \Amp\Socket\Socket $client */
             $client = yield Socket\connect($address);

@@ -10,11 +10,11 @@ class Host {
     private $httpDriver;
 
     /**
-     * Assign the IP and port on which to listen.
+     * Assign the IP or unix domain socket and port on which to listen.
      *
-     * The address may be any valid IPv4 or IPv6 address. The "0.0.0.0" indicates
-     * "all IPv4 interfaces" and is appropriate for most users. Use "::" to indicate "all IPv6
-     * interfaces". To indicate "all IPv4 *and* IPv6 interfaces", use a "*" wildcard character.
+     * The address may be any valid IPv4 or IPv6 address or unix domain socket path. The "0.0.0.0"
+     * indicates "all IPv4 interfaces" and is appropriate for most users. Use "::" to indicate "all
+     * IPv6 interfaces". Use a "*" wildcard character to indicate "all IPv4 *and* IPv6 interfaces".
      *
      * Note that "::" may also listen on some systems on IPv4 interfaces. PHP did not expose the
      * IPV6_V6ONLY constant before PHP 7.0.1.
@@ -24,14 +24,22 @@ class Host {
      * access on UNIX-like systems. The default port for encrypted sockets (https) is 443. If you
      * plan to use encryption with this host you'll generally want to use port 443.
      *
-     * @param string $address The IPv4 or IPv6 interface to listen to
-     * @param int $port The port number on which to listen
+     * @param string $address The IPv4 or IPv6 interface or unix domain socket path to listen to
+     * @param int $port The port number on which to listen (0 for unix domain sockets)
      * @return self
      */
-    public function expose(string $address, int $port): Host {
-        if ($port < 1 || $port > 65535) {
+    public function expose(string $address, int $port = 0): Host {
+        $isPath = $address[0] == "/";
+
+        if ($isPath) {
+            if ($port != 0) {
+                throw new \Error(
+                    "Invalid port number {$port}; must be zero for an unix domain socket"
+                );
+            }
+        } elseif ($port < 1 || $port > 65535) {
             throw new \Error(
-                "Invalid port number; integer in the range 1..65535 required"
+                "Invalid port number {$port}; integer in the range 1..65535 required"
             );
         }
 
@@ -43,9 +51,9 @@ class Host {
             $address = "::";
         }
 
-        if (!@inet_pton($address)) {
+        if (!$isPath && !@inet_pton($address)) {
             throw new \Error(
-                "Invalid IP address"
+                "Invalid IP address or unix domain socket path"
             );
         }
 

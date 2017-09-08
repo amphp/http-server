@@ -80,6 +80,7 @@ class Server implements Monitor {
     // private callables that we pass to external code //
     private $exporter;
     private $onAcceptable;
+    private $onUnixSocketAcceptable;
     private $negotiateCrypto;
     private $onReadable;
     private $onWritable;
@@ -103,6 +104,7 @@ class Server implements Monitor {
         // private callables that we pass to external code //
         $this->exporter = $this->callableFromInstanceMethod("export");
         $this->onAcceptable = $this->callableFromInstanceMethod("onAcceptable");
+        $this->onUnixSocketAcceptable = $this->callableFromInstanceMethod("onUnixSocketAcceptable");
         $this->negotiateCrypto = $this->callableFromInstanceMethod("negotiateCrypto");
         $this->onReadable = $this->callableFromInstanceMethod("onReadable");
         $this->onWritable = $this->callableFromInstanceMethod("onWritable");
@@ -206,19 +208,14 @@ class Server implements Monitor {
                         "Cannot start: no virtual hosts registered in composed VhostContainer"
                     ));
                 }
-                return new Coroutine($this->doStart($bindSockets ?? function ($addrCtxMap) {
+
+                return new Coroutine($this->doStart($bindSockets ?? \Amp\coroutine(function ($addrCtxMap, $socketBinder) {
                     $serverSockets = [];
-
                     foreach ($addrCtxMap as $address => $context) {
-                        if (!$socket = stream_socket_server($address, $errno, $errstr, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, stream_context_create($context))) {
-                            return new Failure(new \RuntimeException(sprintf("Failed binding socket on %s: [Err# %s] %s", $address, $errno, $errstr)));
-                        }
-
-                        $serverSockets[$address] = $socket;
+                        $serverSockets[$address] = $socketBinder($address, $context);
                     }
-
-                    return new Success($serverSockets);
-                }));
+                    return $serverSockets;
+                })));
             } else {
                 return new Failure(new \Error(
                     "Cannot start server: already ".self::STATES[$this->state]
@@ -245,7 +242,18 @@ class Server implements Monitor {
 
         $this->vhosts->setupHttpDrivers($this->createHttpDriverHandlers(), $this->callableFromInstanceMethod("writeResponse"));
 
-        $this->boundServers = yield $bindSockets($this->generateBindableAddressContextMap());
+        $socketBinder = function ($address, $context) {
+            if (!strncmp($address, "unix://", 7)) {
+                @unlink(substr($address, 7));
+            }
+
+            if (!$socket = stream_socket_server($address, $errno, $errstr, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, stream_context_create($context))) {
+                throw new \RuntimeException(sprintf("Failed binding socket on %s: [Err# %s] %s", $address, $errno, $errstr));
+            }
+
+            return $socket;
+        };
+        $this->boundServers = yield $bindSockets($this->generateBindableAddressContextMap(), $socketBinder);
 
         $this->state = self::STARTING;
         $notifyResult = yield $this->notify();
@@ -265,7 +273,11 @@ class Server implements Monitor {
         assert($this->logDebug("started"));
 
         foreach ($this->boundServers as $serverName => $server) {
-            $this->acceptWatcherIds[$serverName] = Loop::onReadable($server, $this->onAcceptable);
+            $onAcceptable = $this->onAcceptable;
+            if (!strncmp($serverName, "unix://", 7)) {
+                $onAcceptable = $this->onUnixSocketAcceptable;
+            }
+            $this->acceptWatcherIds[$serverName] = Loop::onReadable($server, $onAcceptable);
             $this->logger->info("Listening on {$serverName}");
         }
 
@@ -323,7 +335,7 @@ class Server implements Monitor {
             return;
         }
 
-        \assert($this->logDebug("accept {$peerName}"));
+        \assert($this->logDebug("accept {$peerName} on " . stream_socket_get_name($client, false) . " #" . (int) $client));
 
         \stream_set_blocking($client, false);
         $contextOptions = \stream_context_get_options($client);
@@ -334,6 +346,17 @@ class Server implements Monitor {
         } else {
             $this->importClient($client, $ip, $port);
         }
+    }
+
+    private function onUnixSocketAcceptable(string $watcherId, $server) {
+        if (!$client = @\stream_socket_accept($server, $timeout = 0)) {
+            return;
+        }
+
+        \assert($this->logDebug("accept connection on " . stream_socket_get_name($client, false) . " #" . (int) $client));
+
+        \stream_set_blocking($client, false);
+        $this->importClient($client, "", 0);
     }
 
     private function negotiateCrypto(string $watcherId, $socket, $peer) {
@@ -436,9 +459,13 @@ class Server implements Monitor {
         $client->clientPort = $port;
 
         $serverName = stream_socket_get_name($socket, false);
-        $portStartPos = strrpos($serverName, ":");
-        $client->serverAddr = substr($serverName, 0, $portStartPos);
-        $client->serverPort = substr($serverName, $portStartPos + 1);
+        if ($portStartPos = strrpos($serverName, ":")) {
+            $client->serverAddr = substr($serverName, 0, $portStartPos);
+            $client->serverPort = (int) substr($serverName, $portStartPos + 1);
+        } else {
+            $client->serverAddr = $serverName;
+            $client->serverPort = 0;
+        }
 
         $meta = stream_get_meta_data($socket);
         $client->cryptoInfo = $meta["crypto"] ?? [];
@@ -831,12 +858,17 @@ class Server implements Monitor {
         $client->isDead = Client::CLOSED_RDWR;
 
         $this->clientCount--;
-        $net = @\inet_pton($client->clientAddr);
-        if (isset($net[4])) {
-            $net = substr($net, 0, 7 /* /56 block */);
+        if ($client->serverAddr[0] != "/") { // no unix domain socket
+            $net = @\inet_pton($client->clientAddr);
+            if (isset($net[4])) {
+                $net = substr($net, 0, 7 /* /56 block */);
+            }
+            $this->clientsPerIP[$net]--;
+            assert($this->logDebug("close {$client->clientAddr}:{$client->clientPort} #{$client->id}"));
+        } else {
+            assert($this->logDebug("close connection on {$client->serverAddr} #{$client->id}"));
         }
-        $this->clientsPerIP[$net]--;
-        assert($this->logDebug("close {$client->clientAddr}:{$client->clientPort}"));
+
         if ($client->bodyEmitters) {
             $ex = new ClientException;
             foreach ($client->bodyEmitters as $key => $emitter) {

@@ -41,10 +41,6 @@ $climate->arguments->add([
         "prefix"       => "i",
         "required"     => true,
     ],
-    "socket-transfer" => [
-        "longPrefix"   => "socket-transfer",
-        "noValue"      => true,
-    ],
     "log" => [
         "prefix"       => "l",
         "required"     => true,

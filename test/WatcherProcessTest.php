@@ -138,7 +138,11 @@ class WatcherProcessTest extends TestCase {
                 $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
             }
             $address = "tcp://" . stream_socket_get_name($socket, $want_peer = false);
-            $ctxs = [$address => ["socket" => ["so_reuseport" => true, "so_reuseaddr" => true], "ssl" => ["random_option" => true]]];
+            $unixAddress = "unix://" . realpath(tempnam(sys_get_temp_dir(), "aerys_test_watcher_process"));
+            $ctxs = [
+                $address => ["socket" => ["so_reuseport" => true, "so_reuseaddr" => true], "ssl" => ["random_option" => true]],
+                $unixAddress => [],
+            ];
 
             $server = new Server($this->_sock);
 
@@ -161,11 +165,16 @@ class WatcherProcessTest extends TestCase {
             foreach ($socketsArray as $i => $sockets) {
                 $test->assertSame(WatcherProcess::STOP_SEQUENCE, fread($ipcCli[$i], \strlen(WatcherProcess::STOP_SEQUENCE)));
 
-                $test->assertSame(1, count($sockets));
+                $test->assertSame(2, count($sockets));
+
                 $socket = $sockets[$address];
                 $socket_address = "tcp://" . stream_socket_get_name($socket, $want_peer = false);
                 $test->assertSame($address, $socket_address);
                 $test->assertSame(true, stream_context_get_options($socket)["ssl"]["random_option"]);
+
+                $socket = $sockets[$unixAddress];
+                $socket_address = "unix://" . stream_socket_get_name($socket, $want_peer = false);
+                $test->assertSame($unixAddress, $socket_address);
 
                 yield $cli[$i]->write(2); // shutdown worker
             }

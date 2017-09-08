@@ -9,6 +9,10 @@ use Aerys\VhostContainer;
 use PHPUnit\Framework\TestCase;
 
 class VhostTest extends TestCase {
+    private static function socketPath() {
+        return realpath(sys_get_temp_dir()) . "/aerys_vhost_test_no_socket.sock";
+    }
+
     public function provideVhostRequests() {
         return [
             0 => ["::1", 8080, "[::1]", 8080, null],
@@ -22,6 +26,10 @@ class VhostTest extends TestCase {
             8 => ["localhost", 4444, "127.0.0.1", 80, "local:4444"],
             9 => ["foobar", 80, "127.0.0.1", 80, "*"],
             10 => ["localhost", 8080, "[::1]", 8080, "local"],
+            11 => ["localhost", 80, self::socketPath(), 0, "unix:80"],
+            12 => ["localhost", 0, self::socketPath(), 0, "unix"],
+            13 => ["localhost", 8080, self::socketPath(), 0, "unix"],
+            14 => ["localhost", 0, "/foo", 0, null],
         ];
     }
 
@@ -42,7 +50,13 @@ class VhostTest extends TestCase {
         $concreteportvhost = new Vhost("localhost:4444", [["127.0.0.1", 80]], function () {}, [function () {yield;}]);
         $vhosts->use($concreteportvhost);
 
-        $this->assertEquals(4, $vhosts->count());
+        $unixvhost = new Vhost("localhost", [[self::socketPath(), 0]], function () {}, [function () {yield;}]);
+        $vhosts->use($unixvhost);
+
+        $unixportvhost = new Vhost("*:80", [[self::socketPath(), 0]], function () {}, [function () {yield;}]);
+        $vhosts->use($unixportvhost);
+
+        $this->assertEquals(6, $vhosts->count());
 
         $ireq = new InternalRequest;
         $ireq->client = new Client;
@@ -53,6 +67,8 @@ class VhostTest extends TestCase {
 
         $this->assertEquals([
             "*" => $vhost,
+            "unix" => $unixvhost,
+            "unix:80" => $unixportvhost,
             "local:*" => $portvhost,
             "local:4444" => $concreteportvhost,
             "local" => $localvhost
@@ -114,7 +130,7 @@ class VhostTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage IPv4 or IPv6 address required: rd.lo.wr.ey
+     * @expectedExceptionMessage IPv4 or IPv6 address or unix domain socket path required: rd.lo.wr.ey
      */
     public function testBadInterface() {
         new Vhost("*", [["rd.lo.wr.ey", 1025]], function () {}, []);

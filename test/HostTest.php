@@ -14,7 +14,7 @@ class HostTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Invalid port number; integer in the range 1..65535 required
+     * @expectedExceptionMessage Invalid port number 65536; integer in the range 1..65535 required
      */
     public function testThrowsWithBadPort() {
         $this->getHost()->expose("127.0.0.1", 65536);
