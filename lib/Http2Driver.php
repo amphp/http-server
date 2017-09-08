@@ -174,11 +174,11 @@ class Http2Driver implements HttpDriver {
 
         $headerArray = $headerList = [];
 
-        $url = parse_url($url);
+        $url = \parse_url($url);
         $scheme = $url["scheme"] ?? ($ireq->client->isEncrypted ? "https" : "http");
         $host = $url["host"] ?? $ireq->uriHost;
         $port = $url["port"] ?? $ireq->uriPort;
-        $authority = "$host:$port";
+        $authority = \rawurlencode($host) . ":" . $port;
         $path = $url["path"] . ($url["query"] ?? "");
 
         $headerArray[":authority"][0] = $authority;
@@ -190,7 +190,7 @@ class Http2Driver implements HttpDriver {
         $headerArray[":method"][0] = "GET";
         $headerList[] = [":method", "GET"];
 
-        foreach (array_change_key_case($pushHeaders, CASE_LOWER) as $name => $header) {
+        foreach (\array_change_key_case($pushHeaders, \CASE_LOWER) as $name => $header) {
             if (\is_int($name)) {
                 \assert(\is_array($header));
                 $headerList[] = $header;
@@ -216,7 +216,7 @@ class Http2Driver implements HttpDriver {
         $new_ireq->method = "GET";
         $new_ireq->uri = $path;
         $new_ireq->uriScheme = $scheme;
-        $new_ireq->uriHost = $authority;
+        $new_ireq->uriHost = $host;
         $new_ireq->uriPort = $port;
         $new_ireq->uriPath = $url["path"];
         $new_ireq->uriQuery = $url["query"] ?? "";
@@ -902,18 +902,17 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                 $ireq->uriScheme = $headerArray[":scheme"][0] ?? ($client->isEncrypted ? "https" : "http");
                 $host = $headerArray[":authority"][0] ?? "";
                 if (($colon = \strrpos($host, ":")) !== false) {
-                    $ireq->uriHost = \substr($host, 0, $colon);
+                    $host = \substr($host, 0, $colon);
                     $ireq->uriPort = (int) \substr($host, $colon + 1);
                 } else {
-                    $ireq->uriHost = $host;
                     $ireq->uriPort = $client->serverPort;
                 }
+                $ireq->uriHost = \rawurldecode($host);
                 $uri = $headerArray[":path"][0];
                 if (\strpos($uri, '?') !== false) {
                     list($uri, $ireq->uriQuery) = \explode("?", $uri, 2);
                 }
                 $ireq->uriPath = \rawurldecode($uri);
-
 
                 if (!isset($client->streamWindow[$id])) {
                     $client->streamWindow[$id] = $client->initialWindowSize;

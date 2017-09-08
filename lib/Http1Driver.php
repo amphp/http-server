@@ -313,7 +313,7 @@ class Http1Driver implements HttpDriver {
             if (($schemepos = \strpos($uri, "://")) !== false && $schemepos < \strpos($uri, "/")) {
                 $uri = \parse_url($uri);
                 $ireq->uriScheme = $uri["scheme"];
-                $ireq->uriHost = $uri["host"];
+                $host = $uri["host"];
                 $ireq->uriPort = isset($uri["port"]) ? (int) $uri["port"] : $client->serverPort;
                 $ireq->uriQuery = $uri["query"] ?? "";
                 $uri = empty($uri["path"]) ? "/" : $uri["path"];
@@ -323,16 +323,16 @@ class Http1Driver implements HttpDriver {
                 $ireq->uriScheme = $client->isEncrypted ? "https" : "http";
                 $host = $headers["host"][0] ?? "";
                 if (($colon = \strrpos($host, ":")) !== false) {
-                    $ireq->uriHost = \substr($host, 0, $colon);
                     $ireq->uriPort = (int) \substr($host, $colon + 1);
+                    $host = \substr($host, 0, $colon);
                 } else {
-                    $ireq->uriHost = $host;
                     $ireq->uriPort = $client->serverPort;
                 }
                 if (\strpos($uri, '?') !== false) {
                     list($uri, $ireq->uriQuery) = \explode("?", $uri, 2);
                 }
             }
+            $ireq->uriHost = \rawurldecode($host);
             $ireq->uriPath = \rawurldecode($uri);
 
             if (!$hasBody) {
