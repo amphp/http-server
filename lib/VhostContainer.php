@@ -10,9 +10,11 @@ class VhostContainer implements \Countable, Monitor {
     private $defaultHttpDriver;
     private $setupHttpDrivers = [];
     private $setupArgs;
+    private $options;
 
-    public function __construct(HttpDriver $driver) {
+    public function __construct(HttpDriver $driver, Options $options = null) {
         $this->defaultHttpDriver = $driver;
+        $this->options = $options;
     }
 
     /**
@@ -122,14 +124,26 @@ class VhostContainer implements \Countable, Monitor {
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.6.1.1
      */
     public function selectHost(InternalRequest $ireq) {
-        if (isset($ireq->uriHost)) {
-            return $this->selectHostByAuthority($ireq);
-        }
-        return null;
-
-
         // If null is returned a stream must return 400 for HTTP/1.1 requests and use the default
         // host for HTTP/1.0 requests.
+        if (!isset($ireq->uriHost)) {
+            return null;
+        }
+
+        if (!$vhost = $this->selectHostByAuthority($ireq)) {
+            return null;
+        }
+
+        // IMPORTANT: Wildcard IP hosts without names that are running both encrypted and plaintext
+        // apps on the same interface (via separate ports) must be checked for encryption to avoid
+        // displaying unencrypted data as a result of carefully crafted Host headers. This is an
+        // extreme edge case but it's potentially exploitable without this check.
+        // DO NOT REMOVE THIS UNLESS YOU'RE SURE YOU KNOW WHAT YOU'RE DOING.
+        if ($vhost->isEncrypted() != $ireq->client->isEncrypted) {
+            return null;
+        }
+
+        return $vhost;
     }
 
     /**
@@ -150,37 +164,42 @@ class VhostContainer implements \Countable, Monitor {
 
     private function selectHostByAuthority(InternalRequest $ireq) {
         $explicitHostId = "{$ireq->uriHost}:{$ireq->uriPort}";
+
+        if (isset($this->vhosts[$explicitHostId])) {
+            return $this->vhosts[$explicitHostId];
+        }
+
+        if ($this->cachedVhostCount === 1 && isset($this->options) && !$this->options->strictHostMatch) {
+            return $this->getDefaultHost();
+        }
+
         $wildcardHost = "0.0.0.0:{$ireq->uriPort}";
         $ipv6WildcardHost = "[::]:{$ireq->uriPort}";
 
-        if (isset($this->vhosts[$explicitHostId])) {
-            $vhost = $this->vhosts[$explicitHostId];
-        } elseif (isset($this->vhosts[$wildcardHost])) {
-            $vhost = $this->vhosts[$wildcardHost];
-        } elseif (isset($this->vhosts[$ipv6WildcardHost])) {
-            $vhost = $this->vhosts[$ipv6WildcardHost];
-        } elseif ($this->cachedVhostCount !== 1) {
-            return null;
-        } else {
-            $ipComparison = $ireq->uriHost;
+        if (isset($this->vhosts[$wildcardHost])) {
+            return $this->vhosts[$wildcardHost];
+        }
 
+        if (isset($this->vhosts[$ipv6WildcardHost])) {
+            return $this->vhosts[$ipv6WildcardHost];
+        }
+
+        if ($this->cachedVhostCount !== 1) {
+            return null;
+        }
+
+        $ipComparison = $ireq->uriHost;
+
+        if (!@inet_pton($ipComparison)) {
+            $ipComparison = (string) substr($ipComparison, 1, -1); // IPv6 braces
             if (!@inet_pton($ipComparison)) {
-                $ipComparison = (string) substr($ipComparison, 1, -1); // IPv6 braces
-                if (!@inet_pton($ipComparison)) {
-                    return null;
-                }
-            }
-            if (!(($vhost = $this->getDefaultHost()) && in_array($ireq->uriPort, $vhost->getPorts($ipComparison)))) {
                 return null;
             }
         }
 
-        // IMPORTANT: Wildcard IP hosts without names that are running both encrypted and plaintext
-        // apps on the same interface (via separate ports) must be checked for encryption to avoid
-        // displaying unencrypted data as a result of carefully crafted Host headers. This is an
-        // extreme edge case but it's potentially exploitable without this check.
-        // DO NOT REMOVE THIS UNLESS YOU'RE SURE YOU KNOW WHAT YOU'RE DOING.
-        if ($vhost->isEncrypted() != $ireq->client->isEncrypted) {
+        $vhost = $this->getDefaultHost();
+
+        if (!in_array($ireq->uriPort, $vhost->getPorts($ipComparison))) {
             return null;
         }
 

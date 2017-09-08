@@ -549,7 +549,7 @@ function initServer(PsrLogger $logger, array $hosts, array $options = []): Serve
     }
 
     $options = Internal\generateOptionsObjFromArray($options);
-    $vhosts = new VhostContainer(new Http1Driver);
+    $vhosts = new VhostContainer(new Http1Driver, $options);
     $ticker = new Ticker($logger);
     $server = new Server($options, $vhosts, $logger, $ticker);
 

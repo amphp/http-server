@@ -23,6 +23,7 @@ class Options {
     private $maxConcurrentStreams = 20;
     private $maxFramesPerSecond = 60;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
+    private $strictHostMatch = true;
     private $deflateEnable;
     private $deflateContentTypes = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
     private $configPath = null;
@@ -369,5 +370,9 @@ class Options {
         }
 
         $this->configPath = $config;
+    }
+
+    private function setStrictHostMatch(bool $flag) {
+        $this->strictHostMatch = $flag;
     }
 }
