@@ -102,7 +102,7 @@ Apart from implementing `Amp\Promise` (to be able to return `Aerys\ParsedBody` u
 
 This returned `Aerys\FieldBody` instance extends `\Amp\ByteStream\Message` and thus has [the same semantics](http://amphp.org/byte-stream/message).
 
-Additionally, to provide the metadata information, the `Aerys\FieldBody` class has a `getMetadata()` function to return [the metadata array](http.md#request-body).
+Additionally, to provide the metadata information, the `Aerys\FieldBody` class has a `getMetadata()` function to return [the metadata array](http.md#request-bodies).
 
 The `Aerys\BodyParser::stream()` function can be called multiple times on the same field name in order to fetch all the fields with the same name:
 

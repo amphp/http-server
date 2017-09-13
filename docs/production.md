@@ -15,7 +15,7 @@ permalink: /production
 Defaults are chosen in a moderate way between security and performance on a typical machine.
 
 - `maxConnections` is important to prevent the server from going out of memory in combination with maximum body and header size and (for HTTP/2) `maxConcurrentStreams` option.
-- `maxBodySize` is recommended to be set to the lowest necessary for your application. If it is too high, people may fill your memory with useless data. (It is always possible to increase it at runtime, see [usage of Request::getBody($size)](classes/request#getbodystring-ampbytestreammessage).)
+- `maxBodySize` is recommended to be set to the lowest necessary for your application. If it is too high, people may fill your memory with useless data. (It is always possible to increase it at runtime, see [usage of Request::getBody($size)](classes/request#getbodyint-ampbytestreammessage).)
 - `maxHeaderSize` should never need to be touched except if you have 50 KB of cookies ...
 - `softStreamCap` is a limit where `Response::write()` returns an unresolved Promise until buffer is empty enough again. If you do not have much memory, consider lowering it, if you have enough, possibly set it a bit higher. It is not recommended to have it higher than available memory divided by `maxConnections` and `maxStreams` and 2 (example: for 8 GB memory, 256 KB buffer is fine). [Should be a multiple of `outputBufferSize`.]
 - `maxConcurrentStreams` is the maximum of concurrent HTTP/2 streams on a single connection. Do not set it too high (but neither too low to not limit concurrency) to avoid trivial attacks.

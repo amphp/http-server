@@ -6,7 +6,7 @@ permalink: /classes/response
 * Table of Contents
 {:toc}
 
-The `Response` interface (extends `\Amp\ByteStream\OutputStream`) generally finds its only use in responder callables (or [`Websocket::onOpen()`](websocket.md#onopen)). [`Middleware`s](middleware.md) do never see the `Response`; the `StandardResponse` class is communicating headers, data and flushes to a Generator under the hood.
+The `Response` interface (extends `\Amp\ByteStream\OutputStream`) generally finds its only use in responder callables (or [`Websocket::onOpen()`](websocket.md#onopenint-clientid-handshakedata)). [`Middleware`s](middleware.md) do never see the `Response`; the `StandardResponse` class is communicating headers, data and flushes to a Generator under the hood.
 
 ## `setStatus(int $code): Response`
 

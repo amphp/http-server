@@ -6,7 +6,7 @@ permalink: /classes/websocket
 * Table of Contents
 {:toc}
 
-The `Websocket` interface is the general interface for your websocket class. To set it as a responder, just pass an instance of it to the `websocket()` function whose result must be passed to [`Host::use()`](host.md#use) or a specific route (see [`Router::route`](router.md#route)).
+The `Websocket` interface is the general interface for your websocket class. To set it as a responder, just pass an instance of it to the `websocket()` function whose result must be passed to [`Host::use()`](host.md#usemiddleware--bootable--callablerequest-response--monitor--httpdriver) or a specific route (see [`Router::route`](router.md#routestring-method-string-uri-callablemiddlewarebootablemonitor-actions-self)).
 
 {:.note}
 > `websocket()` returns a responder callable, it falls under the same rules as every responder callable passed to `use()`: after the first callable started the response, the following ones will be ignored. Make attention to not e.g. `(new Host)->use($router)->use($websocket)` and be then surprised why you get an invalid response with code 200 (OK).

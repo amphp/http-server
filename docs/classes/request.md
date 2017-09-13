@@ -6,7 +6,7 @@ permalink: /classes/request
 * Table of Contents
 {:toc}
 
-The `Request` interface generally finds its only use in responder callables (or [`Websocket::onOpen()`](websocket.html#onopen)). [`Middleware`s](middleware.md) do never see the `Request`; the `StandardRequest` class is supposed to be a simple request API reading from and manipulating [`InternalRequest`](internalrequest.md) under the hood.
+The `Request` interface generally finds its only use in responder callables (or [`Websocket::onOpen()`](websocket.html#onopenint-clientid-handshakedata)). [`Middleware`s](middleware.md) do never see the `Request`; the `StandardRequest` class is supposed to be a simple request API reading from and manipulating [`InternalRequest`](internalrequest.md) under the hood.
 
 ## `getMethod(): string`
 
