@@ -20,7 +20,7 @@ That's also why several things need to be `yield`ed, as they are `Promise`s, whi
 Most importantly, if the request handler callable or the WebSocket handlers are returning a Generator, these are also passed to Amp's control.
 
 {:.note}
-> In general, you should make yourself familiar with [the Promise **concept**](http://amphp.org/amp/promises), with [`yield`ing](http://amphp.org/amp/coroutines) and be aware of the several [combinator](http://amphp.org/amp/promises/helpers) and [coroutine helper](http://amphp.org/amp/coroutines/helpers) functions, to really succeed at Aerys.
+> In general, you should make yourself familiar with [the Promise **concept**](https://amphp.org/amp/promises), with [`yield`ing](https://amphp.org/amp/coroutines) and be aware of the several [combinator](https://amphp.org/amp/promises/combinators) and [coroutine helper](https://amphp.org/amp/coroutines/helpers) functions, to really succeed at Aerys.
 
 ## Blocking I/O
 

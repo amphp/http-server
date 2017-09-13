@@ -72,4 +72,4 @@ Each connection is identified by an unique client id, which is passed to `onOpen
 `onClose($clientId, $code, $reason)` is called when any direction (ingoing or outgoing) of the websocket connection gets closed.
 
 {:.note}
-> Possibly it is not intuitive to have `onData()` called before the full message has been received, but it allows for incremental processing where needed, like large uploads over websockets. See the [usage and performance considerations about this](../performance/body.html).
+> Possibly it is not intuitive to have `onData()` called before the full message has been received, but it allows for incremental processing where needed, like large uploads over websockets. See the [usage and performance considerations about this](../performance.md#body).

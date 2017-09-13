@@ -126,7 +126,7 @@ Type: integer greater or equal to 0 &mdash; Default: `200`
 
 ## `$maxBodySize`
 
-Default maximum size of HTTP bodies. [Can be increased by calling [`HttpDriver::upgradeBodySize($ireq)`](HttpDriver.md) or more commonly [`Response::getBody($size)`](response.md).]
+Default maximum size of HTTP bodies. [Can be increased by calling [`HttpDriver::upgradeBodySize($ireq)`](httpdriver.md) or more commonly [`Response::getBody($size)`](response.md).]
 
 Type: integer greater than or equal to 0 &mdash; Default: `131072`
 

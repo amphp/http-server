@@ -23,4 +23,3 @@ Aerys provides a set of classes and interfaces, as well as [functions](functions
 - [`ServerObserver`](serverobserver.md) &mdash; Registers method to be notified upon Server state changes
 - [`Websocket`](websocket.md) &mdash; General websocket connection manager
 - [`Websocket\Endpoint`](websocket-endpoint.md) &mdash; Provides API to communicate with a websocket client
-- [`Websocket\Message`](body-message.md) &mdash; Websocket message container

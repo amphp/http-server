@@ -40,7 +40,7 @@ Associative array of HTTP headers containing arrays of values. The header field 
 
 ## `$body`
 
-An instance of [`Body`](body.md).
+An instance of [`Message`](https://amphp.org/byte-stream/message).
 
 ## `$maxBodySize`
 

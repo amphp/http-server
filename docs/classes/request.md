@@ -44,9 +44,11 @@ Gets an array with the values of the query string parameters with that name.
 
 Gets the decoded query string as associative array.
 
-## `getBody(): \Amp\ByteStream\Message`
+## `getBody(int): Amp\ByteStream\Message`
 
-Returns a representation of the request body. The [`\Amp\ByteStream\Message`](http://amphp.org/byte-stream/message) can be `yield`ed to get the actual string.
+Returns a representation of the request body. The [`Amp\ByteStream\Message`](http://amphp.org/byte-stream/message) can be `yield`ed to get the actual string.
+
+The parameter `$bodySize` defaults to `-1` to take the globally configured maximum, otherwise it's the maximum body size.
 
 There also exists a [`parseBody()`](parsedbody.md) function for processing of a typical HTTP form data.
 

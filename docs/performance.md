@@ -41,11 +41,11 @@ return (new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) 
         $path = "test.txt";
         $handle = yield File\open($path, "w+");
         $body = $res->getBody(10 * 1024 ** 2); // 10 MB
-        
+
         while (null !== $data = yield $body->read()) {
             yield $handle->write($data);
         }
-        
+
         $res->end("Data successfully saved");
     } catch (Aerys\ClientException $e) {
         # Writes may still arrive, even though reading stopped
@@ -54,10 +54,10 @@ return (new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) 
         } else {
             $res->end("Data has not been recevied completely.");
         }
-        
+
         yield $handle->close(); // explicit close to avoid issues when unlink()'ing
         yield File\unlink($path);
-        
+
         throw $e;
     }
 });
@@ -73,7 +73,7 @@ In case a client disconnects, the `Message` instance fails with an `Aerys\Client
 > `ClientException`s do not *need* to be caught. You may catch them if you want to continue, but don't have to. The Server will silently end the request cycle and discard that exception then.
 
 {:.note}
-> This describes only the direct return value of `getBody($size = -1)` respectively the `Aerys\Websocket\Message` usage; there is [similar handling for parsed bodies](bodyparser.md).
+> This describes only the direct return value of `getBody($size = -1)` respectively the `Aerys\Websocket\Message` usage; there is [similar handling for parsed bodies](classes/bodyparser.md).
 
 ## BodyParser
 
