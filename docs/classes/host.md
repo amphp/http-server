@@ -18,7 +18,7 @@ When the server is run `Bootable`s, `Middleware`s and callables are called in th
 > Be careful with `Middleware`s, only use them if you really need them. They are expensive as they're called at **each** request. You also can use route-specific `Middleware`s to only invoke them when needed.
 
 {:.note}
-> There can be only **one** HttpDriver instance per **port**. That means, if you have multiple `Host` instances listening on the same port, they all need to share the same `HttpDriver` instance!
+> There can be only **one** HttpDriver instance per **port** (or UNIX domain socket). That means, if you have multiple `Host` instances listening on the same port, they all need to share the same `HttpDriver` instance!
 
 See also the documentation for [`Middleware`s](middleware.md) and [`Bootable`s](bootable.md).
 
@@ -26,11 +26,20 @@ See also the documentation for [`Middleware`s](middleware.md) and [`Bootable`s](
 
 A name for non-wildcard domains. Like `"www.example.com"`. There only may be one single wildcard Host per interface. All the other `Host`s must have a name specified.
 
-## `expose(string $address, int $port)`
+For the case where the actual port does not match the port specified in the `Host` header, it is possible to append `:port` where `port` is either the port number to match against, or a wildcard `"*"` to allow any port.
 
-You can specify interfaces the server should listen on with IP and port. By default, if `expose()` is never called, it listens on all IPv4 and IPv6 interfaces on port 80 or 443 if encryption is enabled, basically an implicit `expose("*", $https ? 443 : 80)`.
+For example:
+
+- `"*:8080"` to specify a wildcard host, where requests must provide a `Host` header adressing port 8080,
+- or `"localhost:*"` specifying a host, which must be addressed on `"localhost"`, but no port matching will happen.
+
+## `expose(string $address, int $port = 0)`
+
+You can specify interfaces the server should listen on with IP and port. By default, if `expose()` is never called, it listens on all IPv4 and IPv6 interfaces on port 80, or 443 if encryption is enabled, basically an implicit `expose("*", $https ? 443 : 80)`. The port number must be between 1 and 65535.
 
 The generic addresses for IPv4 is `"0.0.0.0"`, for IPv6 it is `"::"` and `"*"` for both IPv4 and IPv6.
+
+You also can specify a filesystem path as address. The server will then create an UNIX domain socket at that location. The port number must be 0.
 
 ## `encrypt(string $certificatePath, string $keyPath = null, array $additionalSslSettings = [])`
 

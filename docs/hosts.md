@@ -8,15 +8,16 @@ Aerys supports virtual hosts by default. Each host needs to be an `Aerys\Host` i
 return (new Aerys\Host)
     ->expose("127.0.0.1", 8080) // IPv4
     ->expose("::1", 8080) // IPv6
+    ->expose("/path/to/unix/domain/socket.sock") // UNIX domain socket
     ->name("localhost") // actually redundant as localhost is the default
     ->use(Aerys\root("/var/www/public_html"));
 ```
 
-`expose(string $interface, int $port)` binds a host to a specific interface specified by the given IP address (`"*"` binds to _every_ interface) and port combination. This is where the server will be accessible. The method can be called multiple times to define multiple interfaces to listen on.
+`expose(string $interface, int $port)` binds a host to a specific interface specified by the given IP address (`"*"` binds to _every_ IP interface) and port combination or an UNIX domain socket path. This is where the server will be accessible. The method can be called multiple times to define multiple interfaces to listen on.
 
-`name(string $name)` gives the host a name. The server determines which host is actually accessed (relevant when having multiple hosts on the same interface-port combination), depending on the `Host` header.
+`name(string $name)` gives the host a name. The server determines which host is actually accessed (relevant when having multiple hosts on the same interface-port combination), depending on the `Host` header. For the case where the actual port does not match the port specified in the `Host` header, it is possible to append `:port` where `port` is either the port number to match against, or a wildcard `"*"` to allow any port.
 
-The example above will be thus accessible via `http://localhost:8080/` on the loopback interface (i.e. only locally).
+The example above will be thus accessible via `http://localhost:8080/` on the loopback interface (i.e. only locally) and via the UNIX domain socket located at `/path/to/unix/domain/socket.sock`.
 
 ## Encryption
 
