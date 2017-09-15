@@ -46,7 +46,7 @@ If the `$headers` parameter is `null`, certain headers are copied from the origi
 ```php
 # This is the foo/router.php file
 return Aerys\router()
-    ->get("/", function(Aerys\Request $req, Aerys\Response $res) { $res->end("to-be-prefixed root"); })
+    ->route("GET", "/", function(Aerys\Request $req, Aerys\Response $res) { $res->end("to-be-prefixed root"); })
     ->use(function(Aerys\Request $req, Aerys\Response $res) { $res->end("fallback route, only for this router"); }))
 ;
 ```
@@ -54,7 +54,7 @@ return Aerys\router()
 ```php
 $realRouter = Aerys\router()
     ->use((include "foo/router.php")->prefix("/foo"))
-    ->get("/", function(Aerys\Request $req, Aerys\Response $res) { $res->end("real root"); })
+    ->route("GET", "/", function(Aerys\Request $req, Aerys\Response $res) { $res->end("real root"); })
     ->use(function(Aerys\Request $req, Aerys\Response $res) { $res->end("general fallback route"); }))
 ;
 

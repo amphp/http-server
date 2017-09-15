@@ -148,12 +148,12 @@ Valid flags are per [RFC 6265](https://tools.ietf.org/html/rfc6265#section-5.2.1
 
 ```php
 $router = Aerys\router()
-    ->get('/', function (Aerys\Request $req, Aerys\Response $res) {
+    ->route('GET', '/', function (Aerys\Request $req, Aerys\Response $res) {
         $csrf = bin2hex(random_bytes(32));
         $res->setCookie("csrf", $csrf);
         $res->end('<form action="form" method="POST" action="?csrf=$csrf"><input type="submit" value="1" name="typ" /> or <input type="submit" value="2" name="typ" /></form>');
     })
-    ->post('/form', function (Aerys\Request $req, Aerys\Response $res) {
+    ->route('POST', '/form', function (Aerys\Request $req, Aerys\Response $res) {
         $body = yield Aerys\parseBody($req);
         if ($body->getString("typ") == "2") {
             $res->end('2 is the absolutely right choice.');
@@ -163,7 +163,7 @@ $router = Aerys\router()
         $res->setHeader("Location", "/form");
         $res->end(); # try removing this line to see why it is necessary
     })
-    ->get('/form', function (Aerys\Request $req, Aerys\Response $res) {
+    ->route('GET', '/form', function (Aerys\Request $req, Aerys\Response $res) {
         # if this route would not exist, we'd get a 405 Method Not Allowed
         $res->end('1 is a bad choice! Try again <a href="/">here</a>');
     });
@@ -196,11 +196,11 @@ If there are more and more routes, there might be the desire to split them up. R
 
 ```php
 $router = Aerys\router()
-    ->get('/foo/?', function (Aerys\Request $req, Aerys\Request $res) {
+    ->route('GET', '/foo/?', function (Aerys\Request $req, Aerys\Request $res) {
         # This just works for trailing slashes
         $res->end("You got here by either requesting /foo or redirected here from /foo/ to /foo.");
     })
-    ->get('/user/{name}/{id:[0-9]+}', function (Aerys\Request $req, Aerys\Response $res, array $route) {
+    ->route('GET', '/user/{name}/{id:[0-9]+}', function (Aerys\Request $req, Aerys\Response $res, array $route) {
         # matched by e.g. /user/rdlowrey/42
         # but not by /user/bwoebi/foo (note the regex requiring digits)
         $res->end("The user with name {$route['name']} and id {$route['id']} has been requested!");

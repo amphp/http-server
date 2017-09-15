@@ -26,10 +26,6 @@ A trailing `/?` on the route will make the slash optional and, when the route is
 {:.note}
 > Variable path segments can be defined using braces, e.g. `/users/{userId}`. Custom regular expressions can be used with a colon after the placeholder name, e.g. `/users/{userId:\d+}`. For a full list of route definition possiblities, have a look at the [FastRoute documentation](https://github.com/nikic/FastRoute#usage).
 
-## `$method(string $uri, callable|Middleware|Bootable|Monitor ...$actions): self` (aka `__call`)
-
-Forwards the call to `route($method, $uri, $actions)`. (E.g. `get("/", $action)` is equivalent to `route("GET", "/", $action)`.)
-
 ## `monitor(): array`
 
 See [`Monitor`](monitor.md), it returns an array of the following structure:

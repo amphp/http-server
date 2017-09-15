@@ -18,50 +18,50 @@ const AERYS_OPTIONS = [
 /* --- http://localhost:1337/ ------------------------------------------------------------------- */
 
 $router = router()
-    ->get("/", function(Request $req, Response $res) {
+    ->route("GET", "/", function(Request $req, Response $res) {
         $res->end("<html><body><h1>Hello, world.</h1></body></html>");
     })
-    ->get("/router/{myarg}", function(Request $req, Response $res, array $routeArgs) {
+    ->route("GET", "/router/{myarg}", function(Request $req, Response $res, array $routeArgs) {
         $body = "<html><body><h1>Route Args at param 3</h1>".print_r($routeArgs, true)."</body></html>";
         $res->end($body);
     })
-    ->post("/", function(Request $req, Response $res) {
+    ->route("POST", "/", function(Request $req, Response $res) {
         $res->end("<html><body><h1>Hello, world (POST).</h1></body></html>");
     })
-    ->get("error1", function(Request $req, Response $res) {
+    ->route("GET", "error1", function(Request $req, Response $res) {
         // ^ the router normalizes the leading forward slash in your URIs
         $nonexistent->methodCall();
     })
-    ->get("/error2", function(Request $req, Response $res) {
+    ->route("GET", "/error2", function(Request $req, Response $res) {
         throw new Exception("wooooooooo!");
     })
-    ->get("/directory/?", function(Request $req, Response $res) {
+    ->route("GET", "/directory/?", function(Request $req, Response $res) {
         // The trailing "/?" in the URI allows this route to match /directory OR /directory/
         $res->end("<html><body><h1>Dual directory match</h1></body></html>");
     })
-    ->get("/long-poll", function(Request $req, Response $res) {
+    ->route("GET", "/long-poll", function(Request $req, Response $res) {
         while (true) {
             $res->write("hello!<br/>");
             $res->flush();
             yield new Amp\Delayed(1000);
         }
     })
-    ->post("/body1", function(Request $req, Response $res) {
+    ->route("POST", "/body1", function(Request $req, Response $res) {
         $body = yield $req->getBody();
         $res->end("<html><body><h1>Buffer Body Echo:</h1><pre>{$body}</pre></body></html>");
     })
-    ->post("/body2", function(Request $req, Response $res) {
+    ->route("POST", "/body2", function(Request $req, Response $res) {
         $body = "";
         while (null != $chunk = yield $req->getBody()->read()) {
             $body .= $chunk;
         }
         $res->end("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
     })
-    ->get("/favicon.ico", function(Request $req, Response $res) {
+    ->route("GET", "/favicon.ico", function(Request $req, Response $res) {
         $res->setStatus(404);
         $res->end(Aerys\makeGenericBody(404));
     })
-    ->zanzibar("/zanzibar", function (Request $req, Response $res) {
+    ->route("ZANZIBAR", "/zanzibar", function (Request $req, Response $res) {
         $res->end("<html><body><h1>ZANZIBAR!</h1></body></html>");
     });
 
@@ -84,7 +84,7 @@ $websocket = websocket(new class implements Websocket {
     public function onStop() { }
 });
 
-$router->get("/ws", $websocket);
+$router->route("GET", "/ws", $websocket);
 
 // If none of our routes match try to serve a static file
 $root = root($docrootPath = __DIR__);
