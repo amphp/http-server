@@ -205,7 +205,7 @@ class RouterTest extends TestCase {
         };
 
         $router = new Router;
-        $router->get("/", $middleware, $action);
+        $router->route("GET", "/", $middleware, $action);
         $mock = $this->mockServer(Server::STARTING);
         $router->update($mock);
 

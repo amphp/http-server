@@ -200,24 +200,6 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
     }
 
     /**
-     * Allow shortcut route registration using the called method name as the HTTP method verb.
-     *
-     * HTTP method verbs -- though case-sensitive -- are used in all-caps for most applications.
-     * Shortcut method verbs will automatically be changed to all-caps. Applications wishing to
-     * define case-sensitive methods should use Router::route() to specify the desired method
-     * directly.
-     *
-     * @param string $method
-     * @param array $args
-     * @return self
-     */
-    public function __call(string $method, array $args): Router {
-        $uri = $args ? array_shift($args) : "";
-
-        return $this->route(strtoupper($method), $uri, ...$args);
-    }
-
-    /**
      * Define an application route.
      *
      * The variadic ...$actions argument allows applications to specify multiple separate
