@@ -111,16 +111,16 @@ class StandardRequest implements Request {
             return $this->queryParams = [];
         }
 
-        $pairs = explode("&", $this->internalRequest->uriQuery);
-        if (count($pairs) > $this->internalRequest->client->options->maxInputVars) {
+        $pairs = \explode("&", \rtrim($this->internalRequest->uriQuery, "&"));
+        if (\count($pairs) > $this->internalRequest->client->options->maxInputVars) {
             throw new ClientSizeException;
         }
 
         $this->queryParams = [];
         foreach ($pairs as $pair) {
-            $pair = explode("=", $pair, 2);
+            $pair = \explode("=", $pair, 2);
             // maxFieldLen should not be important here ... if it ever is, create an issue...
-            $this->queryParams[rawurldecode($pair[0])][] = rawurldecode($pair[1] ?? "");
+            $this->queryParams[\rawurldecode($pair[0])][] = \rawurldecode($pair[1] ?? "");
         }
 
         return $this->queryParams;
