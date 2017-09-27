@@ -4,9 +4,10 @@ kramdown:
 
 baseurl: "/aerys"
 layouts_dir: ".shared/layout"
+includes_dir: ".shared/includes"
 
 exclude: ["Gemfile", "Gemfile.lock", "README.md", "vendor"]
-include: [".shared"]
+safe: true
 
 repository: amphp/aerys
 gems:
@@ -19,8 +20,10 @@ defaults:
      type: "pages"
    values:
      layout: "docs"
+     description: "Aerys is a non-blocking HTTP/1.1 and HTTP/2 application, WebSocket and static file server written in PHP based on Amp."
+     keywords: ["amphp", "amp", "aerys", "http server", "http", "server", "application server", "php"]
 
-asset_path: "/aerys/.shared/asset"
+shared_asset_path: "/aerys/asset"
 
 navigation:
  - http
