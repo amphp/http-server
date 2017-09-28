@@ -611,6 +611,77 @@ class Http1DriverTest extends TestCase {
         return $return;
     }
 
+    public function testPipelinedRequests() {
+        list($payloads, $results) = array_map(null, ...$this->provideUpgradeBodySizeData());
+
+        $body = "";
+        $partInvoked = 0;
+        $client = new Client;
+
+        $emitCallbacks = [
+            HttpDriver::ENTITY_HEADERS | HttpDriver::ENTITY_RESULT => function () { },
+            HttpDriver::ENTITY_PART => function ($client, $bodyData) use (&$partInvoked, &$body) {
+                $client->pendingResponses++;
+                $partInvoked++;
+                $body = $bodyData;
+            },
+        ];
+
+        $client->options = new Options;
+        $client->readWatcher = Loop::defer(function () {}); // dummy watcher
+        $driver = new Http1Driver;
+        $driver->setup($emitCallbacks, function($client, $final = false) {
+            $client->writeBuffer = "";
+            if ($final) {
+                $client->pendingResponses--;
+            }
+        });
+
+        $parser = $driver->parser($client);
+        $client->requestParser = $parser;
+
+        $getWriter = function() use ($client, $driver) {
+            $ireq = new InternalRequest;
+            $ireq->client = $client;
+            $ireq->protocol = "1.1";
+            $ireq->responseWriter = $driver->writer($ireq);
+            $ireq->httpDate = "date";
+            $ireq->method = "GET";
+            return $ireq->responseWriter;//\Aerys\responseCodec(\Aerys\responseFilter($driver->filters($ireq, []), $ireq), $ireq);
+        };
+
+        $rawHeaders = [":status" => 200, ":reason" => "OK"];
+
+        $parser->send($payloads[0] . $payloads[1]);
+
+        $this->assertSame($results[0], $body);
+        $this->assertSame(1 /* first req */, $partInvoked);
+
+        $writer = $getWriter();
+        $writer->send($rawHeaders);
+        $writer->send(null);
+
+        $this->assertSame(2 /* second req */, $partInvoked);
+        $this->assertSame($results[1], $body);
+
+        $writer = $getWriter();
+        $writer->send($rawHeaders);
+        $writer->send(null);
+
+        $parser->send($payloads[0]);
+
+        $this->assertSame($results[0], $body);
+        $this->assertSame(3 /* third req */, $partInvoked);
+
+        $writer = $getWriter();
+        $writer->send($rawHeaders);
+        $writer->send(null);
+
+        $this->assertSame(3 /* once per request */, $partInvoked);
+
+        $this->assertSame(0, $client->pendingResponses);
+    }
+
     public function verifyWrite($input, $status, $headers, $data) {
         $actualBody = "";
         $parser = new Parser(static function ($chunk) use (&$actualBody) {

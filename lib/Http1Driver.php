@@ -163,12 +163,12 @@ class Http1Driver implements HttpDriver {
 
         $client->writeBuffer .= $msgs;
 
+        ($this->responseWriter)($client, $final = true);
+
         // parserEmitLock check is required to prevent recursive continuation of the parser
         if ($client->requestParser && $client->parserEmitLock && !$client->shouldClose) {
             $client->requestParser->send(false);
         }
-
-        ($this->responseWriter)($client, $final = true);
 
         if ($client->isDead == Client::CLOSED_RD /* i.e. not CLOSED_WR */ && $client->bodyEmitters) {
             array_pop($client->bodyEmitters)->fail(new ClientException); // just one element with Http1Driver
