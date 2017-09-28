@@ -124,6 +124,9 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
     }
 
     $options["debug"] = $console->isArgDefined("debug");
+    if($console->isArgDefined("user")){
+        $options["user"] = $console->getArg("user");
+    }
     $options["configPath"] = $configFile;
 
     return initServer($logger, $hosts, $options);

@@ -18,6 +18,7 @@ $help = <<<EOT
     -h, --help        Display the help screen
     -l, --log         Set the minimum log output level (default: warning (debug in debug mode))
     -r, --restart     Restart a running Aerys server with that config
+    -u, --user        Indicates to which user the server will switch after startup (under *nix) (overrides Options value).
     -w, --workers     Manually specify worker count (default: CPU core count)
         --color       Use ANSI codes in output (auto|on|off default: auto)
 
@@ -101,6 +102,11 @@ $climate->arguments->add([
         "longPrefix"   => "restart",
         "description"  => "Gracefully restart the workers",
         "noValue"      => true,
+    ],
+    "user" => [
+        "prefix"       => "u",
+        "longPrefix"   => "user",
+        "description"  => "Indicates the user the server will switch to"
     ]
 ]);
 
