@@ -630,7 +630,7 @@ class Http1DriverTest extends TestCase {
         $client->options = new Options;
         $client->readWatcher = Loop::defer(function () {}); // dummy watcher
         $driver = new Http1Driver;
-        $driver->setup($emitCallbacks, function($client, $final = false) {
+        $driver->setup($emitCallbacks, function ($client, $final = false) {
             $client->writeBuffer = "";
             if ($final) {
                 $client->pendingResponses--;
@@ -640,7 +640,7 @@ class Http1DriverTest extends TestCase {
         $parser = $driver->parser($client);
         $client->requestParser = $parser;
 
-        $getWriter = function() use ($client, $driver) {
+        $getWriter = function () use ($client, $driver) {
             $ireq = new InternalRequest;
             $ireq->client = $client;
             $ireq->protocol = "1.1";
