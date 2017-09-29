@@ -2,15 +2,6 @@
 title: Handling I/O
 permalink: /io
 ---
-
-```php
-return (new Aerys\Host)->use(function(Aerys\Request $req, Aerys\Response $res) {
-    # in general yield is waiting for the Promise result to be available (just in the special case of Amp\Success it is available immediately)
-    $data = yield new Amp\Success("foo"); # Amp\Success will always resolve to the value passed to its constructor
-    $res->end($data); # We end up with $data === "foo"
-});
-```
-
 Aerys is built on top of [the non-blocking concurrency framework Amp](http://amphp.org/amp).
 
 Thus it inherits full support of all its primitives and it is possible to use all the non-blocking libraries built on top it.
@@ -24,22 +15,22 @@ Most importantly, if the request handler callable or the WebSocket handlers are 
 
 ## Blocking I/O
 
-```php
-# DO NOT DO THIS
-
-return (new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) {
-    $res->end("Some data");
-    sleep(5); # or a blocking I/O function with 5 second timeout
-});
-
-# Open this route twice, you'll have to wait until the 5 seconds are over, until the next request is handled. (To try, start Aerys with only one worker: -w 1)
-```
-
-{:.warning}
-> DO NOT USE BLOCKING I/O FUNCTIONS IN AERYS!
-
 Nearly every built-in function of PHP is doing blocking I/O, that means, the executing thread (equivalent to the process in the case of Aerys) will effectively be halted until the response is received. A few examples of such functions: `mysqli_query`, `file_get_contents`, `usleep` and many more.
 
 A good rule of thumb is: Every function doing I/O is doing it in a blocking way, unless you know for sure it doesn't.
 
-Thus there are [libraries built on top of Amp](http://amphp.org/packages) providing non-blocking I/O. You should use these instead of the built-in functions.
+Thus there are [libraries built on top of Amp](https://amphp.org/packages) providing implementations that work with non-blocking I/O. You should use these instead of the built-in functions.
+
+{:.warning}
+> Don't use any blocking I/O functions in Aerys.
+
+```php
+// Here's a bad example, DO NOT do something like that!
+
+return (new Aerys\Host)->use(function (Aerys\Request $req, Aerys\Response $res) {
+    $res->end("Some data");
+    sleep(5); // Equivalent to a blocking I/O function with a 5 second timeout
+});
+
+// Access this route twice. You'll have to wait until the 5 seconds are over until the second request is handled. Start Aerys with only one worker (`-w 1` / `-d`), otherwise your second request might be handled by another worker and the effect not be visible.
+```
