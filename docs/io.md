@@ -2,13 +2,7 @@
 title: Handling I/O
 permalink: /io
 ---
-Aerys is built on top of [the non-blocking concurrency framework Amp](http://amphp.org/amp).
-
-Thus it inherits full support of all its primitives and it is possible to use all the non-blocking libraries built on top it.
-
-That's also why several things need to be `yield`ed, as they are `Promise`s, which are resolved upon `yield` inside a Generator controlled by Amp. See also [the related documentation](http://amphp.org/amp/coroutines).
-
-Most importantly, if the request handler callable or the WebSocket handlers are returning a Generator, these are also passed to Amp's control.
+Aerys is built on top of [the non-blocking concurrency framework Amp](https://amphp.org/amp). Thus it inherits full support of all its primitives and it is possible to use all the non-blocking libraries built on top it. That's also why several things need to be `yield`ed, as they are `Promise`s. [Coroutines](https://amphp.org/amp/coroutines) let you await their resolution using `yield`, so you can write your code almost like blocking code. Most importantly, if the request or WebSocket handlers are returning a `Generator`, these are automatically run as coroutines.
 
 {:.note}
 > In general, you should make yourself familiar with [the Promise **concept**](https://amphp.org/amp/promises), with [`yield`ing](https://amphp.org/amp/coroutines) and be aware of the several [combinator](https://amphp.org/amp/promises/combinators) and [coroutine helper](https://amphp.org/amp/coroutines/helpers) functions, to really succeed at Aerys.
