@@ -112,6 +112,12 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
         $hosts = [$hosts];
     }
 
+    if (empty($hosts)) {
+        throw new \Error(
+            "Config file at $configFile did not return any hosts"
+        );
+    }
+
     if (!defined("AERYS_OPTIONS")) {
         $options = [];
     } elseif (is_array(AERYS_OPTIONS)) {
