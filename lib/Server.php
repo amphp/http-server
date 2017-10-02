@@ -937,7 +937,10 @@ class Server implements Monitor {
             }
             $this->logger->warning("Posix extension not enabled, be sure not to run your server as root!");
         } elseif (posix_geteuid() === 0) {
-            if ($user === null) {
+            if ($user !== null) {
+                $userInfo = posix_getpwnam($user);
+            }
+            if ($user === null || (isset($userInfo) && $userInfo["uid"] === 0)) {
                 $this->logger->warning("Running as privileged user is discouraged! Use the 'user' option to switch to another user after startup!");
                 return;
             }
