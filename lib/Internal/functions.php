@@ -102,9 +102,13 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
 
     if ($hosts instanceof \Generator) {
         $hosts = yield from $hosts;
-    } elseif ($hosts instanceof Promise || $hosts instanceof ReactPromise) {
+    }
+
+    if ($hosts instanceof Promise || $hosts instanceof ReactPromise) {
         $hosts = yield $hosts;
-    } elseif (!\is_array($hosts)) {
+    }
+
+    if (!\is_array($hosts)) {
         $hosts = [$hosts];
     }
 

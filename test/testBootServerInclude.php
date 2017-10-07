@@ -14,13 +14,28 @@ class OurMiddleware implements \Aerys\Middleware {
     }
 }
 
-($hosts[] = new Aerys\Host)->name("localhost")->encrypt(__DIR__."/server.pem");
+return (function () {
+    yield new Amp\Success('test boot config');
 
-$host = ($hosts[] = new Aerys\Host)->expose("127.0.0.1", 80)->name("example.com")->use(new class implements \Aerys\Bootable {
-    public function boot(\Aerys\Server $server, \Psr\Log\LoggerInterface $logger) {
-        return new OurMiddleware;
-    }
-});
-($hosts[] = clone $host)->name("foo.bar")->use(function (\Aerys\Request $req, \Aerys\Response $res) { $req->setLocalVar("foo.bar", $req->getLocalVar("foo.bar") + 1); $res->end(); });
+    ($hosts[] = new Aerys\Host)
+        ->name("localhost")
+        ->encrypt(__DIR__."/server.pem");
 
-return new Amp\Success($hosts);
+    ($hosts[] = new Aerys\Host)
+        ->expose("127.0.0.1", 80)
+        ->name("example.com")
+        ->use(new class implements \Aerys\Bootable {
+            public function boot(\Aerys\Server $server, \Psr\Log\LoggerInterface $logger) {
+                return new OurMiddleware;
+            }
+        });
+
+    ($hosts[] = clone end($hosts))
+        ->name("foo.bar")
+        ->use(function (\Aerys\Request $req, \Aerys\Response $res) {
+            $req->setLocalVar("foo.bar", $req->getLocalVar("foo.bar") + 1);
+            $res->end();
+        });
+
+    return new Amp\Success($hosts);
+})();
