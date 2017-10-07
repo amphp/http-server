@@ -15,7 +15,7 @@ use League\CLImate\CLImate;
 use PHPUnit\Framework\TestCase;
 use function Amp\Promise\wait;
 
-class BootstrapperTest extends TestCase {
+class bootServerTest extends TestCase {
     /**
      * @expectedException \Error
      * @expectedExceptionMessage No config file found, specify one via the -c switch on command line
