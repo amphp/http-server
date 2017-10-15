@@ -99,10 +99,6 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     public function setOption(string $option, $value) {
         switch ($option) {
             case "maxBytesPerMinute":
-                if (8192 > $value) {
-                    throw new \Error("$option must be at least 8192 bytes");
-                }
-                // no break
             case "autoFrameSize":
             case "maxFrameSize":
             case "maxFramesPerSecond":
@@ -262,15 +258,19 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             $client->framesLastSecond += $frames;
 
             if ($client->capacity < $this->maxBytesPerMinute / 2) {
-                $client->rateDeferred = new Deferred;
                 $this->lowCapacityClients[$client->id] = $client;
-                yield $client->rateDeferred->promise();
+                if ($client->capacity < 0) {
+                    $client->rateDeferred = new Deferred;
+                    yield $client->rateDeferred->promise();
+                }
             }
 
             if ($client->framesLastSecond > $this->maxFramesPerSecond / 2) {
-                $client->rateDeferred = new Deferred;
                 $this->highFramesPerSecondClients[$client->id] = $client;
-                yield $client->rateDeferred->promise();
+                if ($client->framesLastSecond > $this->maxFramesPerSecond) {
+                    $client->rateDeferred = new Deferred;
+                    yield $client->rateDeferred->promise();
+                }
             }
         }
 
@@ -662,16 +662,16 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             if ($client->capacity > $this->maxBytesPerMinute) {
                 unset($this->lowCapacityClients[$id]);
             }
-            if ($client->capacity > 8192 && !isset($this->highFramesPerSecondClients[$id]) && !$client->closedAt) {
+            if ($client->capacity > 0 && !isset($this->highFramesPerSecondClients[$id]) && !$client->closedAt && $client->rateDeferred) {
                 $client->rateDeferred->resolve();
             }
         }
 
         foreach ($this->highFramesPerSecondClients as $id => $client) {
             $client->framesLastSecond -= $this->maxFramesPerSecond;
-            if ($client->framesLastSecond < $this->maxFramesPerSecond) {
+            if ($client->framesLastSecond < $this->maxFramesPerSecond / 2) {
                 unset($this->highFramesPerSecondClients[$id]);
-                if ($client->capacity > 8192 && !$client->closedAt) {
+                if ($client->capacity > 0 && !$client->closedAt && $client->rateDeferred) {
                     $client->rateDeferred->resolve();
                 }
             }
