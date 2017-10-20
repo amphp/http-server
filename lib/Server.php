@@ -390,7 +390,7 @@ class Server implements Monitor {
         list($watcherId) = $this->pendingTlsStreams[$socketId];
         Loop::cancel($watcherId);
         unset($this->pendingTlsStreams[$socketId]);
-	@\stream_socket_shutdown($socket, \STREAM_SHUT_RDWR); // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
+        @\stream_socket_shutdown($socket, \STREAM_SHUT_RDWR); // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
         @fclose($socket);
     }
 
@@ -855,7 +855,7 @@ class Server implements Monitor {
     private function close(Client $client) {
         $this->clear($client);
         assert($client->isDead != Client::CLOSED_RDWR);
-	@\stream_socket_shutdown($client->socket, \STREAM_SHUT_RDWR); // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
+        @\stream_socket_shutdown($client->socket, \STREAM_SHUT_RDWR); // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
         @fclose($client->socket);
         $client->isDead = Client::CLOSED_RDWR;
 
