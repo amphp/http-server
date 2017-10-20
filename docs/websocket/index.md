@@ -5,11 +5,11 @@ permalink: /websocket/
 
 ```php
 # just a blackhole, no processing yet
-return (new Aerys\Host)->use(Aerys\websocket(new class extends Aerys\Websocket {
-    public function onStart(Websocket\Endpoint $endpoint) { }
-    public function onHandshake(Request $request, Response $response) { }
+return (new Aerys\Host)->use(Aerys\websocket(new class implements Aerys\Websocket {
+    public function onStart(Aerys\Websocket\Endpoint $endpoint) {}
+    public function onHandshake(Aerys\Request $request, Aerys\Response $response) { }
     public function onOpen(int $clientId, $handshakeData) { }
-    public function onData(int $clientId, Websocket\Message $msg) { }
+    public function onData(int $clientId, Aerys\Websocket\Message $msg) { }
     public function onClose(int $clientId, int $code, string $reason) { }
     public function onStop() { }
 }));
