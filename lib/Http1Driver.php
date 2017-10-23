@@ -109,61 +109,68 @@ class Http1Driver implements HttpDriver {
     }
 
     public function writer(InternalRequest $ireq): \Generator {
-        $headers = yield;
-
         $client = $ireq->client;
-
-        if (!empty($headers["connection"])) {
-            foreach ($headers["connection"] as $connection) {
-                if (\strcasecmp($connection, "close") === 0) {
-                    $client->shouldClose = true;
-                }
-            }
-        }
-
-        $lines = ["HTTP/{$ireq->protocol} {$headers[":status"]} {$headers[":reason"]}"];
-        unset($headers[":status"], $headers[":reason"]);
-        foreach ($headers as $headerField => $headerLines) {
-            if ($headerField[0] !== ":") {
-                foreach ($headerLines as $headerLine) {
-                    /* verify header fields (per RFC) and header values against containing \n */
-                    \assert(strpbrk($headerField, "\n\t ()<>@,;:\\\"/[]?={}") === false && strpbrk((string) $headerLine, "\n") === false);
-                    $lines[] = "{$headerField}: {$headerLine}";
-                }
-            }
-        }
-        $lines[] = "\r\n";
-        $msgPart = \implode("\r\n", $lines);
         $msgs = "";
 
-        do {
-            $msgs .= $msgPart;
+        try {
+            $headers = yield;
 
-            if ($msgPart === false || \strlen($msgs) >= $client->options->outputBufferSize) {
-                $client->writeBuffer .= $msgs;
-                ($this->responseWriter)($client);
-                $msgs = "";
-
-                if ($client->isDead & Client::CLOSED_WR) {
-                    while (true) {
-                        yield;
+            if (!empty($headers["connection"])) {
+                foreach ($headers["connection"] as $connection) {
+                    if (\strcasecmp($connection, "close") === 0) {
+                        $client->shouldClose = true;
                     }
-                }
-
-                $client->bufferSize = \strlen($client->writeBuffer);
-                if ($client->bufferDeferred) {
-                    if ($client->bufferSize <= $client->options->softStreamCap) {
-                        $client->bufferDeferred->resolve();
-                    }
-                } elseif ($client->bufferSize > $client->options->softStreamCap) {
-                    $client->bufferDeferred = new Deferred;
                 }
             }
-        } while (($msgPart = yield) !== null);
 
-        $client->writeBuffer .= $msgs;
+            $lines = ["HTTP/{$ireq->protocol} {$headers[":status"]} {$headers[":reason"]}"];
+            unset($headers[":status"], $headers[":reason"]);
+            foreach ($headers as $headerField => $headerLines) {
+                if ($headerField[0] !== ":") {
+                    foreach ($headerLines as $headerLine) {
+                        /* verify header fields (per RFC) and header values against containing \n */
+                        \assert(strpbrk($headerField, "\n\t ()<>@,;:\\\"/[]?={}") === false && strpbrk((string) $headerLine, "\n") === false);
+                        $lines[] = "{$headerField}: {$headerLine}";
+                    }
+                }
+            }
+            $lines[] = "\r\n";
+            $msgPart = \implode("\r\n", $lines);
 
-        ($this->responseWriter)($client, $final = true);
+            do {
+                $msgs .= $msgPart;
+
+                if ($msgPart === false || \strlen($msgs) >= $client->options->outputBufferSize) {
+                    $client->writeBuffer .= $msgs;
+                    ($this->responseWriter)($client);
+                    $msgs = "";
+
+                    if ($client->isDead & Client::CLOSED_WR) {
+                        while (true) {
+                            yield;
+                        }
+                    }
+
+                    $client->bufferSize = \strlen($client->writeBuffer);
+                    if ($client->bufferDeferred) {
+                        if ($client->bufferSize <= $client->options->softStreamCap) {
+                            $client->bufferDeferred->resolve();
+                        }
+                    } elseif ($client->bufferSize > $client->options->softStreamCap) {
+                        $client->bufferDeferred = new Deferred;
+                    }
+                }
+            } while (($msgPart = yield) !== null);
+        } finally {
+            $client->writeBuffer .= $msgs;
+
+            if (!isset($headers) || $msgPart !== null) { // request was aborted
+                $client->shouldClose = true;
+                // bodyEmitters are failed by the Server when releasing the client
+            }
+
+            ($this->responseWriter)($client, $final = true);
+        }
 
         // parserEmitLock check is required to prevent recursive continuation of the parser
         if ($client->requestParser && $client->parserEmitLock && !$client->shouldClose) {

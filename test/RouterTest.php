@@ -75,6 +75,8 @@ class RouterTest extends TestCase {
             public function end(string $finalBodyChunk = ""): Promise {
                 return new Success;
             }
+            public function abort() {
+            }
             public function push(string $url, array $headers = null): Response {
                 return $this;
             }
