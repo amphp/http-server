@@ -136,4 +136,31 @@ class StandardResponseTest extends TestCase {
         $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
         $response->flush();
     }
+
+    /**
+     * @expectedException \Error
+     * @expectedExceptionMessage Cannot write: response already sent
+     */
+    public function testSendThrowsIfResponseAborted() {
+        $response = new StandardResponse((function () { while (1) { yield; } })(), new Client);
+        $response->abort();
+        $response->write("this should throw");
+    }
+
+    public function testAbort() {
+        $client = new Client;
+        $response = new StandardResponse((function () use (&$invoked) {
+            try {
+                yield;
+                $started = true;
+            } finally {
+                $this->assertFalse(isset($started));
+                $invoked = true;
+            }
+        })(), $client);
+
+        $this->assertNull($invoked);
+        $response->abort();
+        $this->assertTrue($invoked);
+    }
 }

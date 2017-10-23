@@ -111,6 +111,13 @@ class Handshake implements Response {
     /**
      * {@inheritDoc}
      */
+    public function abort() {
+        $this->response->abort();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public function setCookie(string $name, string $value, array $flags = []): Response {
         $this->response->setCookie($name, $value, $flags);
         return $this;

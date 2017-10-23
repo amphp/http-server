@@ -391,7 +391,7 @@ class Server implements Monitor {
         Loop::cancel($watcherId);
         unset($this->pendingTlsStreams[$socketId]);
         @\stream_socket_shutdown($socket, \STREAM_SHUT_RDWR); // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
-        @fclose($socket);
+        @\fclose($socket);
     }
 
     /**

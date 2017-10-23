@@ -731,6 +731,49 @@ class Http1DriverTest extends TestCase {
         $this->assertNotTrue($client->shouldClose);
     }
 
+    public function testWriterAbortBeforeHeaders() {
+        $driver = new Http1Driver;
+        $driver->setup([], function(Client $client, $final) use (&$invoked) {
+            $this->assertTrue($final);
+            $this->assertTrue($client->shouldClose);
+            $this->assertEquals("", $client->writeBuffer);
+            $invoked = true;
+        });
+
+        $ireq = new InternalRequest;
+        $ireq->client = new Client;
+        $writer = $driver->writer($ireq);
+        $writer->valid(); // start generator
+
+        $this->assertNull($invoked);
+        unset($writer);
+        $this->assertTrue($invoked);
+    }
+
+    public function testWriterAbortAfterHeaders() {
+        $driver = new Http1Driver;
+        $driver->setup([], function(Client $client, $final) use (&$invoked) {
+            $this->assertTrue($final);
+            $this->assertTrue($client->shouldClose);
+            $this->assertEquals("HTTP/1.1 200 OK\r\n\r\nfoo", $client->writeBuffer);
+            $invoked = true;
+        });
+
+        $client = new Client;
+        $client->options = new Options;
+        $ireq = new InternalRequest;
+        $ireq->client = $client;
+        $ireq->protocol = "1.1";
+        $writer = $driver->writer($ireq);
+
+        $writer->send([":status" => 200, ":reason" => "OK"]);
+        $writer->send("foo");
+
+        $this->assertNull($invoked);
+        unset($writer);
+        $this->assertTrue($invoked);
+    }
+
     public function testHttp2Upgrade() {
         $ireq = new InternalRequest;
         $ireq->protocol = "1.1";

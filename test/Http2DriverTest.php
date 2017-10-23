@@ -3,6 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Client;
+use Aerys\ClientException;
 use Aerys\HPack;
 use Aerys\Http2Driver;
 use Aerys\HttpDriver;
@@ -177,6 +178,68 @@ class Http2DriverTest extends TestCase {
         $driver->setup([self::HTTP_EMITTERS => function () {}], $this->createCallback(0));
 
         return $driver;
+    }
+
+    public function testWriterAbortBeforeHeaders() {
+        $driver = new Http2Driver;
+        $driver->setup([], function(Client $client, $final) use (&$invoked) {
+            // HTTP/2 shall only reset streams, not abort the connection
+            $this->assertFalse($final);
+            $this->assertFalse($client->shouldClose);
+            $this->assertEquals($this->packFrame(pack("N", Http2Driver::INTERNAL_ERROR), Http2Driver::RST_STREAM, Http2Driver::NOFLAG, 2), $client->writeBuffer);
+            $invoked = true;
+        });
+
+        $bodyEmitter = new \Amp\Emitter;
+        $bodyEmitter->iterate()->advance()->onResolve(function($e) use (&$promiseResolved) {
+            $this->assertInstanceOf(ClientException::class, $e);
+            $promiseResolved = true;
+        });
+
+        $client = new Client;
+        $client->options = new Options;
+        $client->bodyEmitters[2] = $bodyEmitter;
+        $ireq = new InternalRequest;
+        $ireq->client = $client;
+        $ireq->streamId = 2;
+        $writer = $driver->writer($ireq);
+        $writer->valid(); // start generator
+
+        $this->assertNull($invoked);
+        unset($writer);
+        $this->assertTrue($invoked);
+
+        $this->assertTrue($promiseResolved);
+    }
+
+    public function testWriterAbortAfterHeaders() {
+        $driver = new Http2Driver;
+        $invoked = 0;
+        $driver->setup([], function(Client $client, $final) {
+            // HTTP/2 shall only reset streams, not abort the connection
+            $this->assertFalse($final);
+            $this->assertFalse($client->shouldClose);
+        });
+
+        $client = new Client;
+        $client->options = new Options;
+        $client->streamWindow[2] = 65536;
+        $client->streamWindowBuffer[2] = "";
+        $ireq = new InternalRequest;
+        $ireq->client = $client;
+        $ireq->streamId = 2;
+        $writer = $driver->writer($ireq);
+
+        $writer->send([":status" => 200]);
+        $writer->send("foo");
+
+        unset($writer);
+
+        $data = $this->packFrame(HPack::encode([":status" => 200]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 2);
+        $data .= $this->packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 2);
+        $data .= $this->packFrame(pack("N", Http2Driver::INTERNAL_ERROR), Http2Driver::RST_STREAM, Http2Driver::NOFLAG, 2);
+
+        $this->assertEquals($data, $client->writeBuffer);
     }
 
     public function testPingPong() {

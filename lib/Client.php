@@ -29,7 +29,7 @@ class Client {
     public $bufferDeferred;
 
     public $onWriteDrain;
-    public $shouldClose;
+    public $shouldClose = false;
     public $isDead = 0;
     public $isExported;
     public $remainingRequests;
