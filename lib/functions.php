@@ -222,6 +222,9 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
                                 if (\is_array($yielded)) {
                                     assert(Internal\validateFilterHeaders($filter, $yielded) ?: 1);
                                     $toSend[] = $yielded;
+                                    if ($sendArray) {
+                                        $toSend = array_merge($toSend, $sendArray);
+                                    }
                                 } elseif ($send === null || $send === false) {
                                     $type = is_object($yielded) ? get_class($yielded) : gettype($yielded);
                                     throw new InvalidYieldError(
@@ -251,7 +254,7 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
                                 );
                             }
 
-                            $toSend = $toSend ? array_merge($toSend, $sendArray) : $sendArray;
+                            \assert($key > $hadHeaders || $sendArray === [] || $sendArray === [null]);
                             break;
                         }
                     } elseif (\is_string($yielded) && $key <= $hadHeaders) {
@@ -264,7 +267,7 @@ function responseFilter(array $filters, InternalRequest $ireq): \Generator {
                         assert(Internal\validateFilterHeaders($filter, $yielded) ?: 1);
                         $toSend[] = $yielded;
                         $hadHeaders = $key;
-                        if ($isEnding && empty($sendArray)) {
+                        if ($isEnding && !$sendArray) {
                             $sendArray = [null];
                         }
                     } else {

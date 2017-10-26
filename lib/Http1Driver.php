@@ -274,15 +274,13 @@ class Http1Driver implements HttpDriver {
                     return;
                 }
 
-                if (!\preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches)) {
+                if (!\preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches, \PREG_SET_ORDER)) {
                     ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: header syntax violation");
                     return;
                 }
 
-                list(, $fields, $values) = $matches;
-
-                foreach ($fields as $index => $field) {
-                    $headers[$field][] = $values[$index];
+                foreach ($matches as list(, $field, $value)) {
+                    $headers[$field][] = $value;
                 }
 
                 $headers = \array_change_key_case($headers);

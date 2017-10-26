@@ -241,6 +241,24 @@ class responseFilterTest extends TestCase {
         $this->assertNull($filter->getReturn());
     }
 
+    public function testDelayedHeaderWithTwoFilters() {
+        $filter = $this->getFilter([function () {
+            $headers = yield;
+            $data = yield;
+            yield;
+            yield $headers;
+            return $data;
+        }, function () {
+            $headers = yield;
+            return $headers;
+        }]);
+        $filter->current();
+        $this->assertNull($filter->send([":status" => 200]));
+        $this->assertNull($filter->send("stream"));
+        $this->assertSame([":status" => 200], $filter->send(null));
+        $this->assertNull($filter->send(null));
+        $this->assertSame("stream", $filter->getReturn());
+    }
 
     public function testBufferedFilterHeaderYieldThrowsIfNotAnArray() {
         try {
