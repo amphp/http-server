@@ -275,9 +275,9 @@ class WatcherProcess extends Process {
         if (!isset(Logger::LEVELS[$level])) {
             return;
         }
-        if (Logger::LEVELS[$level] > Logger::LEVELS[Logger::WARNING]) {
-            $this->logger->warning(
-                "Running aerys in production with a log level higher than \"warning\" is not " .
+        if (Logger::LEVELS[$level] === Logger::LEVELS[Logger::DEBUG]) {
+            $this->logger->debug(
+                "Running aerys in production with a log level equal to \"debug\" is not " .
                 "recommended. Note that internal \"debug\" events are NOT emitted by core " .
                 "aerys libs when assertions are disabled."
             );
