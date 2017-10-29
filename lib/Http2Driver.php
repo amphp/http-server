@@ -902,8 +902,8 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                 $ireq->uriScheme = $headerArray[":scheme"][0] ?? ($client->isEncrypted ? "https" : "http");
                 $host = $headerArray[":authority"][0] ?? "";
                 if (($colon = \strrpos($host, ":")) !== false) {
-                    $host = \substr($host, 0, $colon);
                     $ireq->uriPort = (int) \substr($host, $colon + 1);
+                    $host = \substr($host, 0, $colon);
                 } else {
                     $ireq->uriPort = $client->serverPort;
                 }
