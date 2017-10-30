@@ -77,6 +77,8 @@ class Http2DriverTest extends TestCase {
 
             $client = new Client;
             $client->options = new Options;
+            $client->serverAddr = "127.0.0.1";
+            $port = $client->serverPort = 80;
             $parser = $driver->parser($client);
 
             if ($mode == 1) {
@@ -98,6 +100,8 @@ class Http2DriverTest extends TestCase {
             $this->assertSame($expectations["method"], $ireq->method, "method mismatch");
             $this->assertSame($expectations["uri"], $ireq->uri, "uri mismatch");
             $this->assertSame($expectations["headers"], $ireq->headers, "headers mismatch");
+            $this->assertSame($expectations["port"] ?? $port, $ireq->uriPort, "uriPort mismatch");
+            $this->assertSame($expectations["host"], $ireq->uriHost, "uriHost mismatch");
             $this->assertSame($expectations["body"], $body, "body mismatch");
         }
     }
@@ -106,7 +110,7 @@ class Http2DriverTest extends TestCase {
         // 0 --- basic request -------------------------------------------------------------------->
 
         $headers = [
-            ":authority" => "localhost",
+            ":authority" => "localhost:8888",
             ":path" => "/foo",
             ":scheme" => "http",
             ":method" => "GET",
@@ -119,6 +123,8 @@ class Http2DriverTest extends TestCase {
             "protocol"    => "2.0",
             "method"      => "GET",
             "uri"         => "/foo",
+            "host"        => "localhost",
+            "port"        => 8888,
             "headers"     => ["test" => ["successful"]],
             "body"        => "",
             "invocations" => 1
@@ -138,6 +144,7 @@ class Http2DriverTest extends TestCase {
             "protocol"    => "2.0",
             "method"      => "GET",
             "uri"         => "/foo",
+            "host"        => "",
             "headers"     => ["test" => ["successful"]],
             "body"        => "ab",
             "invocations" => 4 /* header + 2 * individual data + end */

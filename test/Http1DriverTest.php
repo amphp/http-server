@@ -142,6 +142,7 @@ class Http1DriverTest extends TestCase {
 
         $client = new Client;
         $client->options = new Options;
+        $client->serverPort = 80;
         $driver = new Http1Driver;
         $driver->setup([self::HTTP_HEADER_EMITTERS => $headerEmitCallback, HttpDriver::ENTITY_PART => $dataEmitCallback, HttpDriver::ENTITY_RESULT => $invokedCallback], $this->createCallback(0));
         $parser = $driver->parser($client);
@@ -156,6 +157,7 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($expectations["uri"], $ireq->uri, "uri mismatch");
         $this->assertSame($expectations["headers"], $ireq->headers, "headers mismatch");
         $this->assertSame($expectations["body"], $body, "body mismatch");
+        $this->assertSame(80, $ireq->uriPort);
     }
 
     public function testIdentityBodyParseEmit() {
@@ -311,7 +313,7 @@ class Http1DriverTest extends TestCase {
 
         $msg =
             "POST /post-endpoint HTTP/1.0\r\n" .
-            "Host: localhost\r\n" .
+            "Host: localhost:80\r\n" .
             "Cookie: cookie1\r\n" .
             "Cookie: cookie2\r\n" .
             "Content-Length: 3\r\n" .
@@ -322,7 +324,7 @@ class Http1DriverTest extends TestCase {
         $trace = implode("\r\n", $trace);
 
         $headers = [
-            "host" => ["localhost"],
+            "host" => ["localhost:80"],
             "cookie" => ["cookie1", "cookie2"],
             "content-length" => ["3"]
         ];
