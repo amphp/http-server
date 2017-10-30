@@ -134,6 +134,8 @@ class Http2DriverTest extends TestCase {
 
         // 1 --- request with partial (continuation) frames --------------------------------------->
 
+        $headers[":authority"] = "localhost";
+
         $msg = $this->packFrame(pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
         $msg .= $this->packHeader($headers, true, 1, 1);
         $msg .= $this->packFrame("a", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
@@ -144,7 +146,7 @@ class Http2DriverTest extends TestCase {
             "protocol"    => "2.0",
             "method"      => "GET",
             "uri"         => "/foo",
-            "host"        => "",
+            "host"        => "localhost",
             "headers"     => ["test" => ["successful"]],
             "body"        => "ab",
             "invocations" => 4 /* header + 2 * individual data + end */
