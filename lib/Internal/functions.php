@@ -89,16 +89,19 @@ function validateFilterHeaders(\Generator $generator, array $headers): bool {
  */
 function bootServer(PsrLogger $logger, Console $console): \Generator {
     $configFile = selectConfigFile((string) $console->getArg("config"));
-    $logger->info("Using config file found at $configFile");
 
     // may return Promise or Generator for async I/O inside config file
-    $hosts = include $configFile;
+    $hosts = (function() use (&$logger, $console, $configFile) {
+        return include $configFile;
+    })();
 
     if ($hosts === false) {
         throw new \Error(
             "Config file inclusion failure: $configFile"
         );
     }
+
+    $logger->info("Using config file found at $configFile");
 
     if ($hosts instanceof \Generator) {
         $hosts = yield from $hosts;

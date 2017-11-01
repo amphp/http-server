@@ -86,8 +86,8 @@ class MyAwesomeWebsocket implements Aerys\Websocket {
 
 $websocket = Aerys\websocket(new MyAwesomeWebsocket);
 $router = (new Aerys\Router)
-    ->get('/websocket', $websocket)
-    ->get('/', function(Aerys\Request $req, Aerys\Response $res) { $res->send('
+    ->route('GET', '/websocket', $websocket)
+    ->route('GET', '/', function(Aerys\Request $req, Aerys\Response $res) { $res->send('
 <script type="text/javascript">
     ws = new WebSocket("ws://localhost:1337/ws");
     ws.onopen = function() {

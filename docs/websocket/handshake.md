@@ -44,7 +44,7 @@ class MyWs implements Aerys\Websocket {
 
 ```php
 $router = Aerys\router()
-    ->get('/ws', Aerys\websocket(new MyWs));
+    ->route('GET', '/ws', Aerys\websocket(new MyWs));
 
 $root = Aerys\root(__DIR__ . "/public");
 

@@ -43,7 +43,7 @@ The `$options` array is passed directly as SSL context options and thus equivale
 
 ```php
 return (new Aerys\Host)
-    ->use(Aerys\router()->get('/', function(Aerys\Request $req, Aerys\Response $res) {
+    ->use(Aerys\router()->route('GET', '/', function(Aerys\Request $req, Aerys\Response $res) {
         $res->end("default route");
     }))
     ->use(Aerys\root("/var/www/public_html")) # a file foo.txt exists in that folder
