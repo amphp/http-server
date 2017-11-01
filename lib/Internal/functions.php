@@ -89,7 +89,6 @@ function validateFilterHeaders(\Generator $generator, array $headers): bool {
  */
 function bootServer(PsrLogger $logger, Console $console): \Generator {
     $configFile = selectConfigFile((string) $console->getArg("config"));
-    $logger->info("Using config file found at $configFile");
 
     // may return Promise or Generator for async I/O inside config file
     $hosts = include $configFile;
@@ -139,7 +138,11 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
     }
     $options["configPath"] = $configFile;
 
-    return initServer($logger, $hosts, $options);
+    $init = initServer($logger, $hosts, $options);
+
+    $logger->info("Using config file found at $configFile");
+
+    return $init;
 }
 
 function generateOptionsObjFromArray(array $optionsArray): Options {
