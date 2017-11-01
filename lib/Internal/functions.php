@@ -142,7 +142,11 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
     }
     $options["configPath"] = $configFile;
 
-    return initServer($logger, $hosts, $options);
+    $init = initServer($logger, $hosts, $options);
+
+    $logger->info("Using config file found at $configFile");
+
+    return $init;
 }
 
 function generateOptionsObjFromArray(array $optionsArray): Options {
