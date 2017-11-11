@@ -40,7 +40,8 @@
         "amphp/socket": "^0.10",
         "league/climate": "^3",
         "nikic/fast-route": "^1",
-        "psr/log": "^1"
+        "psr/log": "^1",
+        "ocramius/package-versions": "^1.1"
     },
     "require-dev": {
         "amphp/phpunit-util": "^1",
