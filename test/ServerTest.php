@@ -238,7 +238,7 @@ class ServerTest extends TestCase {
         list($headers) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req, Response $res) { $this->fail("We should already have failed and never invoke the responder..."); });
 
         $this->assertEquals(\Aerys\HTTP_STATUS["OK"], $headers[":status"]);
-        $this->assertEquals(implode(",", (new Options)->allowedMethods), $headers["allow"][0]);
+        $this->assertEquals(implode(", ", (new Options)->allowedMethods), $headers["allow"][0]);
     }
 
     public function testError() {

@@ -733,7 +733,7 @@ class Server implements Monitor {
         $body = makeGenericBody($status);
         $response->setStatus($status);
         $response->setHeader("Connection", "close");
-        $response->setHeader("Allow", implode(",", $this->options->allowedMethods));
+        $response->setHeader("Allow", implode(", ", $this->options->allowedMethods));
         $response->end($body);
     }
 
@@ -745,7 +745,7 @@ class Server implements Monitor {
 
     private function sendPreAppOptionsResponse(Request $request, Response $response) {
         $response->setStatus(HTTP_STATUS["OK"]);
-        $response->setHeader("Allow", implode(",", $this->options->allowedMethods));
+        $response->setHeader("Allow", implode(", ", $this->options->allowedMethods));
         $response->end();
     }
 
