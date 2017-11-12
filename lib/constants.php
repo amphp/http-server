@@ -3,7 +3,7 @@
 namespace Aerys;
 
 const SERVER_NAME = "aerys";
-const SERVER_VERSION = "0.1.0-dev";
+define('Aerys\\SERVER_VERSION', \PackageVersions\Versions::getVersion('amphp/aerys'));
 const SERVER_TOKEN = SERVER_NAME . "/" . SERVER_VERSION;
 const HTTP_REASON = [
     100 => "Continue",
