@@ -345,13 +345,13 @@ class WatcherProcess extends Process {
                 $cmd = "wmic cpu get NumberOfCores";
                 break;
             case "linux":
-                $cmd = "nproc";
-                break;
-            case "freebsd":
-                $cmd = "sysctl -a | grep 'hw.ncpu' | cut -d ':' -f2";
-                break;
             case "darwin":
-                $cmd = "sysctl -a | grep 'hw.ncpu:' | awk '{ print $2 }'";
+                $cmd = "getconf _NPROCESSORS_ONLN";
+                break;
+            case "netbsd":
+            case "openbsd":
+            case "freebsd":
+                $cmd = "sysctl hw.ncpu | cut -d ':' -f2";
                 break;
             default:
                 $cmd = null;
