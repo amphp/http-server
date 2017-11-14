@@ -13,6 +13,7 @@ use Aerys\{ Host, Request, Response, Websocket, function root, function router, 
 const AERYS_OPTIONS = [
     "connectionTimeout" => 60,
     //"deflateMinimumLength" => 0,
+    "sendServerToken" => true,
 ];
 
 /* --- http://localhost:1337/ ------------------------------------------------------------------- */
