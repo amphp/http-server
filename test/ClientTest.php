@@ -16,7 +16,9 @@ use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Artax\DefaultClient;
 use Amp\Loop;
+use Amp\Socket\Certificate;
 use Amp\Socket\ClientTlsContext;
+use Amp\Socket\ServerTlsContext;
 use PHPUnit\Framework\TestCase;
 
 class ClientTest extends TestCase {
@@ -30,7 +32,7 @@ class ClientTest extends TestCase {
 
         $vhosts = new VhostContainer(new Http2Driver);
         $vhost = new Vhost("localhost", [["127.0.0.1", $port]], $handler, $filters, [], new Http1Driver);
-        $vhost->setCrypto(["local_cert" => __DIR__."/server.pem", "crypto_method" => "tls"]);
+        $vhost->setCrypto((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
         $vhosts->use($vhost);
 
         $logger = new class extends Logger {
