@@ -99,7 +99,9 @@ class ClientTest extends TestCase {
                 } catch (\Throwable $e) {
                     $deferred->fail($e);
                 }
-            }, [function (InternalRequest $res) {
+            }, [function (InternalRequest $ireq) {
+                $ireq->protocol = "1.0"; // fake it in order to enforce identity transfer
+
                 $headers = yield;
 
                 $data = yield $headers;
@@ -114,7 +116,7 @@ class ClientTest extends TestCase {
                 $this->assertEquals("_", $end[0]);
 
                 // now shut the socket down (fake disconnect)
-                fclose($res->client->socket);
+                fclose($ireq->client->socket);
 
                 return $end;
             }]);
