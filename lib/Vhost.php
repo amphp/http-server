@@ -2,6 +2,8 @@
 
 namespace Aerys;
 
+use Amp\Socket\ServerTlsContext;
+
 class Vhost implements Monitor {
     private $application;
     private $interfaces;
@@ -27,22 +29,6 @@ class Vhost implements Monitor {
         "reneg_limit"           => 0,
         "reneg_limit_callback"  => null,
         "crypto_method"         => STREAM_CRYPTO_METHOD_SSLv23_SERVER, /* means: TLS 1.0 and up */
-    ];
-
-    private static $cryptoMethodMap = [
-        "tls"       => STREAM_CRYPTO_METHOD_SSLv23_SERVER, // no, not STREAM_CRYPTO_METHOD_TLS_SERVER, which is equivalent to TLS v1.0 only
-        "tls1"      => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
-        "tlsv1"     => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
-        "tlsv1.0"   => STREAM_CRYPTO_METHOD_TLSv1_0_SERVER,
-        "tls1.1"    => STREAM_CRYPTO_METHOD_TLSv1_1_SERVER,
-        "tlsv1.1"   => STREAM_CRYPTO_METHOD_TLSv1_1_SERVER,
-        "tls1.2"    => STREAM_CRYPTO_METHOD_TLSv1_2_SERVER,
-        "tlsv1.2"   => STREAM_CRYPTO_METHOD_TLSv1_2_SERVER,
-        "ssl2"      => STREAM_CRYPTO_METHOD_SSLv2_SERVER,
-        "sslv2"     => STREAM_CRYPTO_METHOD_SSLv2_SERVER,
-        "ssl3"      => STREAM_CRYPTO_METHOD_SSLv3_SERVER,
-        "sslv3"     => STREAM_CRYPTO_METHOD_SSLv3_SERVER,
-        "any"       => STREAM_CRYPTO_METHOD_ANY_SERVER,
     ];
 
     /** @Note Vhosts do not allow wildcards, only separate 0.0.0.0 and :: */
@@ -238,16 +224,18 @@ class Vhost implements Monitor {
     /**
      * Define TLS encryption settings for this host.
      *
-     * @param array $tls An array mapping TLS stream context values
+     * @param ServerTlsContext $tls
      * @link http://php.net/manual/en/context.ssl.php
      * @return void
      */
-    public function setCrypto(array $tls) {
+    public function setCrypto(ServerTlsContext $tls) {
         if (!extension_loaded('openssl')) {
             throw new \Error(
                 "Cannot assign crypto settings in host `{$this}`; ext/openssl required"
             );
         }
+
+        $tls = $tls->toStreamContextArray()['ssl'];
 
         $certPath = $tls['local_cert'];
         $certBase = basename($certPath);
@@ -296,11 +284,7 @@ class Vhost implements Monitor {
             );
         }
 
-        if (isset($tls['crypto_method'])) {
-            $tls = $this->normalizeTlsCryptoMethod($tls);
-        }
-
-        $tls = array_merge($this->tlsDefaults, $tls);
+        $tls += $this->tlsDefaults;
         $tls = array_filter($tls, function ($value) { return isset($value); });
 
         $this->tlsContextArr = $tls;
@@ -324,37 +308,6 @@ class Vhost implements Monitor {
         }
 
         return array_map('strtolower', $names);
-    }
-
-    private function normalizeTlsCryptoMethod(array $tls): array {
-        $cryptoMethod = $tls['crypto_method'];
-
-        if (is_string($cryptoMethod)) {
-            $cryptoMethodArray = explode(' ', strtolower($cryptoMethod));
-        } elseif (is_array($cryptoMethod)) {
-            $cryptoMethodArray = array_map("strtolower", $cryptoMethod);
-        } else {
-            throw new \Error(
-                sprintf('Invalid crypto method type: %s. String or array required', gettype($cryptoMethod))
-            );
-        }
-
-        $bitmask = 0;
-        foreach ($cryptoMethodArray as $method) {
-            if (isset(self::$cryptoMethodMap[$method])) {
-                $bitmask |= self::$cryptoMethodMap[$method];
-            }
-        }
-
-        if (empty($bitmask)) {
-            throw new \Error(
-                'Invalid crypto method value: no valid methods found'
-            );
-        }
-
-        $tls['crypto_method'] = $bitmask;
-
-        return $tls;
     }
 
     /**

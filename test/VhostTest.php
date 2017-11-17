@@ -6,6 +6,8 @@ use Aerys\Client;
 use Aerys\InternalRequest;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
+use Amp\Socket\Certificate;
+use Amp\Socket\ServerTlsContext;
 use PHPUnit\Framework\TestCase;
 
 class VhostTest extends TestCase {
@@ -94,7 +96,7 @@ class VhostTest extends TestCase {
         $vhost = new Vhost("*", [["127.0.0.1", 80], ["::", 80]], function () {}, [function () {yield;}]);
         $vhosts->use($vhost);
         $vhost = new Vhost("localhost", [["127.0.0.1", 80]], function () {}, [function () {yield;}]);
-        $vhost->setCrypto(["local_cert" => __DIR__."/server.pem"]);
+        $vhost->setCrypto((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
         $vhosts->use($vhost);
     }
 
@@ -105,7 +107,7 @@ class VhostTest extends TestCase {
         $vhost = new Vhost("localhost", [["127.0.0.1", 80]], function () {}, []);
         $vhosts->use($vhost);
         $vhost = new Vhost("localhost", [["127.0.0.1", 8080]], function () {}, []);
-        $vhost->setCrypto(["local_cert" => __DIR__."/server.pem"]);
+        $vhost->setCrypto((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
         $vhosts->use($vhost);
 
         $this->assertTrue(isset($vhosts->getTlsBindingsByAddress()["tcp://127.0.0.1:8080"]));
