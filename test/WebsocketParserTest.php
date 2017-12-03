@@ -218,11 +218,12 @@ class WebsocketParserTest extends TestCase {
      * @expectedExceptionMessage Cannot boot websocket handler; Aerys\Websocket required, boolean provided
      */
     public function testBadWebsocketClass() {
-        \Aerys\websocket(new class implements Bootable {
-            public function boot(Server $server, PsrLogger $logger) {
-                return false;
+        \Aerys\websocket(
+            new class implements Bootable {
+                public function boot(Server $server, PsrLogger $logger) {
+                    return false;
+                }
             }
-        }
         )
             ->boot(new class extends Server {
                 public function __construct() {

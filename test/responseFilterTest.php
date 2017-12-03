@@ -162,7 +162,7 @@ class responseFilterTest extends TestCase {
             $headers = yield;
             $this->assertSame("foo", yield $headers);
             $this->assertSame("bar", yield "foo");
-            $this->assertSame(null, yield "bar");
+            $this->assertNull(yield "bar");
         }, function () {
             $headers = yield;
             $buffer = "";

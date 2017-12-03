@@ -91,7 +91,7 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
     $configFile = selectConfigFile((string) $console->getArg("config"));
 
     // may return Promise or Generator for async I/O inside config file
-    $hosts = (function() use (&$logger, $console, $configFile) {
+    $hosts = (function () use (&$logger, $console, $configFile) {
         return include $configFile;
     })();
 
