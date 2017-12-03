@@ -46,7 +46,7 @@
     "require-dev": {
         "amphp/phpunit-util": "^1",
         "amphp/artax": "^3",
-        "friendsofphp/php-cs-fixer": "^2.3@dev",
+        "friendsofphp/php-cs-fixer": "^2.3",
         "http2jp/hpack-test-case": "^1",
         "phpunit/phpunit": "^6"
     },
@@ -66,6 +66,11 @@
         }
     },
     "bin": ["bin/aerys"],
+    "config": {
+        "platform": {
+            "php": "7.0.0"
+        }
+    },
     "repositories": [
         {
             "type": "package",
