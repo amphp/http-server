@@ -572,7 +572,7 @@ class Server implements Monitor {
     }
 
     private function onReadable(string $watcherId, $socket, Client $client) {
-        $data = @\fread($socket, $this->options->ioGranularity);
+        $data = @\stream_get_contents($socket, $this->options->ioGranularity);
         if ($data == "") {
             if (!\is_resource($socket) || @\feof($socket)) {
                 if ($client->isDead == Client::CLOSED_WR || $client->pendingResponses == 0) {
