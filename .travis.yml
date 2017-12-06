@@ -16,9 +16,6 @@ matrix:
 env:
   - AMP_DEBUG=true
 
-before_install:
-  - phpenv config-rm xdebug.ini || echo "No xdebug config."
-
 install:
   - composer update -n --prefer-dist
 
