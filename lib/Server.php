@@ -431,10 +431,10 @@ class Server implements Monitor {
             $this->stopDeferred->resolve();
         } else {
             foreach ($this->clients as $client) {
-                if (empty($client->requestCycles)) {
+                if (empty($client->pendingResponses)) {
                     $this->close($client);
                 } else {
-                    $client->remainingRequests = PHP_INT_MIN;
+                    $client->remainingRequests = 0;
                 }
             }
         }
