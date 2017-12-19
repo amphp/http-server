@@ -158,7 +158,7 @@ class WebsocketTest extends TestCase {
 
             foreach ($data as $datum) {
                 list($payload, $terminated) = $datum;
-                $gateway->onParsedData($client, $payload, false, $terminated);
+                $gateway->onParsedData($client, Rfc6455Gateway::OP_TEXT, $payload, $terminated);
             }
             $this->assertFalse($ws->gen->valid());
 
@@ -222,7 +222,7 @@ class WebsocketTest extends TestCase {
     public function provideErrorEvent() {
         return [
             ["onOpen", null],
-            ["onData", ["onParsedData", ["data", false, true]]],
+            ["onData", ["onParsedData", [Rfc6455Gateway::OP_TEXT, "data", true]]],
             ["onClose", ["onParsedControlFrame", [Rfc6455Gateway::OP_CLOSE, "\xFF\xFF"]]],
             ["onClose", ["onParsedError", [Websocket\Code::PROTOCOL_ERROR, ""]]]
         ];
@@ -399,7 +399,7 @@ class WebsocketTest extends TestCase {
                 }
             });
             $gateway->setOption("autoFrameSize", 10 + (1 << 20));
-            $gateway->onParsedData($client, "start...", true, true);
+            $gateway->onParsedData($client, Rfc6455Gateway::OP_BIN, "start...", true);
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_PING, "pingpong");
             stream_set_blocking($sock, false);
             $data = "";

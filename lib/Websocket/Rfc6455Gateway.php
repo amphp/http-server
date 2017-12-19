@@ -221,12 +221,11 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         $client->socket = new ServerSocket($ireq->client->socket);
         $client->serverRefClearer = ($ireq->client->exporter)($ireq->client);
 
-        $client->parser = self::parser($this, $client, $options = [
+        $client->parser = $this->parser($client, $options = [
             "max_msg_size" => $this->maxMsgSize,
             "max_frame_size" => $this->maxFrameSize,
             "validate_utf8" => $this->validateUtf8,
             "text_only" => $this->textOnly,
-            "threshold" => $this->autoFrameSize,
         ]);
 
         if ($ireq->client->writeBuffer !== "") {
@@ -276,19 +275,14 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
         if (!$client->closedAt) {
             $client->closedAt = $this->now;
-            $code = Code::ABNORMAL_CLOSE;
-            $reason = "Client closed underlying TCP connection";
-            Promise\rethrow(new Coroutine($this->tryAppOnClose($client->id, $code, $reason)));
+            $client->closeCode = Code::ABNORMAL_CLOSE;
+            $client->closeReason = "Client closed underlying TCP connection";
+            Promise\rethrow(new Coroutine($this->tryAppOnClose($client->id, $client->closeCode, $client->closeReason)));
         }
 
         $this->unloadClient($client);
     }
 
-    /**
-     * Any subgenerator delegations here can safely use `yield from` because this
-     * generator is invoked from the main import() function which is wrapped in a
-     * Coroutine at the HTTP server layer.
-     */
     private function tryAppOnOpen(int $clientId, $onHandshakeResult): \Generator {
         try {
             yield call([$this->application, "onOpen"], $clientId, $onHandshakeResult);
@@ -311,6 +305,9 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         if ($client->closedAt) {
             return 0;
         }
+
+        $client->closeCode = $code;
+        $client->closeReason = $reason;
 
         $bytes = 0;
 
@@ -353,14 +350,17 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         $client->serverRefClearer = null;
 
         $id = $client->id;
-        if ($this->clients[$id]->rateDeferred) { // otherwise we may pile up circular references in read()
-            unset($this->clients[$id]->rateDeferred, $this->highFramesPerSecondClients[$id], $this->lowCapacityClients[$id]);
+        if ($client->rateDeferred) { // otherwise we may pile up circular references in read()
+            $client->rateDeferred->resolve();
+            unset($client->rateDeferred, $this->highFramesPerSecondClients[$id], $this->lowCapacityClients[$id]);
         }
         unset($this->clients[$id], $this->heartbeatTimeouts[$id], $this->closeTimeouts[$id]);
 
         // fail not yet terminated message streams; they *must not* be failed before client is removed
         if ($client->msgEmitter) {
-            $client->msgEmitter->fail(new ClientException);
+            $emitter = $client->msgEmitter;
+            $client->msgEmitter = null;
+            $emitter->fail(new ClientException);
         }
     }
 
@@ -375,12 +375,24 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 if ($client->closedAt) {
                     $this->unloadClient($client);
                 } else {
-                    if (\strlen($data) < 2) {
+                    $length = \strlen($data);
+                    if ($length === 0) {
                         $code = Code::NONE;
-                        $reason = "";
+                        $reason = '';
+                    } elseif ($length < 2) {
+                        $code = Code::PROTOCOL_ERROR;
+                        $reason = 'Close code must be two bytes';
                     } else {
                         $code = current(unpack('n', substr($data, 0, 2)));
                         $reason = substr($data, 2);
+
+                        if ($code < 1000 || $code > 1015) {
+                            $code = Code::PROTOCOL_ERROR;
+                            $reason = 'Invalid close code';
+                        } elseif ($this->validateUtf8 && !\preg_match('//u', $reason)) {
+                            $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
+                            $reason = 'Close reason must be valid UTF-8';
+                        }
                     }
 
                     Promise\rethrow(new Coroutine($this->doClose($client, $code, $reason)));
@@ -398,26 +410,39 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    public function onParsedData(Rfc6455Client $client, string $data, bool $binary, bool $terminated) {
-        // something went that wrong that we had to close... if parser has anything left, we don't care!
-        if ($client->parser === null || $this->state === Server::STOPPING) {
-            return;
-        }
-
+    public function onParsedData(Rfc6455Client $client, int $opcode, string $data, bool $terminated) {
         $client->lastDataReadAt = $this->now;
 
         if (!$client->msgEmitter) {
-            $client->msgEmitter = new Emitter;
-            $msg = new Message($client->msgEmitter->iterate(), $binary);
-            Promise\rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
-
-            // something went that wrong that we had to close... emitter has been failed.
-            if ($client->parser === null) {
+            if ($opcode === self::OP_CONT) {
+                $this->onParsedError(
+                    $client,
+                    Code::PROTOCOL_ERROR,
+                    'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY'
+                );
                 return;
             }
+
+            $client->msgEmitter = new Emitter;
+            $msg = new Message($client->msgEmitter->iterate(), $opcode === self::OP_BIN);
+
+            Promise\rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
+
+            // Something went wrong and the client has been closed and emitter failed.
+            if (!$client->msgEmitter) {
+                return;
+            }
+        } elseif ($opcode !== self::OP_CONT) {
+            $this->onParsedError(
+                $client,
+                Code::PROTOCOL_ERROR,
+                'Illegal data type opcode after unfinished previous data type frame; opcode MUST be CONTINUATION'
+            );
+            return;
         }
 
         $client->msgEmitter->emit($data);
+
         if ($terminated) {
             $client->msgEmitter->complete();
             $client->msgEmitter = null;
@@ -440,9 +465,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             return;
         }
 
-        if ($code) {
-            Promise\rethrow(new Coroutine($this->doClose($client, $code, $msg)));
-        }
+        Promise\rethrow(new Coroutine($this->doClose($client, $code, $msg)));
     }
 
     private function compile(Rfc6455Client $client, string $msg, int $opcode, bool $fin): string {
@@ -497,7 +520,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         try {
             $bytes = 0;
 
-            if (\strlen($data) > 1.5 * $this->autoFrameSize) {
+            if (\strlen($data) > $this->autoFrameSize) {
                 $len = \strlen($data);
                 $slices = \ceil($len / $this->autoFrameSize);
                 $chunks = \str_split($data, \ceil($len / $slices));
@@ -567,6 +590,8 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             'messages_sent' => $client->messagesSent,
             'connected_at'  => $client->connectedAt,
             'closed_at'     => $client->closedAt,
+            'close_code'    => $client->closeCode,
+            'close_reason'  => $client->closeReason,
             'last_read_at'  => $client->lastReadAt,
             'last_sent_at'  => $client->lastSentAt,
             'last_data_read_at'  => $client->lastDataReadAt,
@@ -681,21 +706,18 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     /**
      * A stateful generator websocket frame parser.
      *
-     * @param \Aerys\Websocket\Rfc6455Endpoint $endpoint Endpoint to receive parser event emissions
      * @param \Aerys\Websocket\Rfc6455Client $client Client associated with event emissions.
      * @param array $options Optional parser settings
      * @return \Generator
      */
-    public static function parser(self $endpoint, Rfc6455Client $client, array $options = []): \Generator {
-        $emitThreshold = $options["threshold"] ?? 32768;
+    public function parser(Rfc6455Client $client, array $options = []): \Generator {
         $maxFrameSize = $options["max_frame_size"] ?? PHP_INT_MAX;
         $maxMsgSize = $options["max_msg_size"] ?? PHP_INT_MAX;
         $textOnly = $options["text_only"] ?? false;
         $doUtf8Validation = $validateUtf8 = $options["validate_utf8"] ?? false;
 
         $dataMsgBytesRecd = 0;
-        $nextEmit = $emitThreshold;
-        $dataArr = [];
+        $savedBuffer = '';
 
         $buffer = yield;
         $offset = 0;
@@ -704,7 +726,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
         while (1) {
             if ($bufferSize < 2) {
-                $buffer = substr($buffer, $offset);
+                $buffer = \substr($buffer, $offset);
                 $offset = 0;
                 do {
                     $buffer .= yield $frames;
@@ -713,18 +735,33 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 } while ($bufferSize < 2);
             }
 
-            $firstByte = ord($buffer[$offset]);
-            $secondByte = ord($buffer[$offset + 1]);
+            $firstByte = \ord($buffer[$offset]);
+            $secondByte = \ord($buffer[$offset + 1]);
 
             $offset += 2;
             $bufferSize -= 2;
 
             $fin = (bool) ($firstByte & 0b10000000);
-            // $rsv = ($firstByte & 0b01110000) >> 4; // unused (let's assume the bits are all zero)
+            $rsv = ($firstByte & 0b01110000) >> 4; // unused (let's assume the bits are all zero)
             $opcode = $firstByte & 0b00001111;
             $isMasked = (bool) ($secondByte & 0b10000000);
             $maskingKey = null;
             $frameLength = $secondByte & 0b01111111;
+
+            if ($rsv !== 0) {
+                $this->onParsedError($client, Code::PROTOCOL_ERROR, 'RSV must be 0 if no extensions are negotiated');
+                return;
+            }
+
+            if ($opcode >= 3 && $opcode <= 7) {
+                $this->onParsedError($client, Code::PROTOCOL_ERROR, 'Use of reserved non-control frame opcode');
+                return;
+            }
+
+            if ($opcode >= 11 && $opcode <= 15) {
+                $this->onParsedError($client, Code::PROTOCOL_ERROR, 'Use of reserved control frame opcode');
+                return;
+            }
 
             $isControlFrame = $opcode >= 0x08;
             if ($validateUtf8 && $opcode !== self::OP_CONT && !$isControlFrame) {
@@ -733,7 +770,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
             if ($frameLength === 0x7E) {
                 if ($bufferSize < 2) {
-                    $buffer = substr($buffer, $offset);
+                    $buffer = \substr($buffer, $offset);
                     $offset = 0;
                     do {
                         $buffer .= yield $frames;
@@ -742,12 +779,12 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                     } while ($bufferSize < 2);
                 }
 
-                $frameLength = unpack('n', $buffer[$offset] . $buffer[$offset + 1])[1];
+                $frameLength = \unpack('n', $buffer[$offset] . $buffer[$offset + 1])[1];
                 $offset += 2;
                 $bufferSize -= 2;
             } elseif ($frameLength === 0x7F) {
                 if ($bufferSize < 8) {
-                    $buffer = substr($buffer, $offset);
+                    $buffer = \substr($buffer, $offset);
                     $offset = 0;
                     do {
                         $buffer .= yield $frames;
@@ -756,16 +793,16 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                     } while ($bufferSize < 8);
                 }
 
-                $lengthLong32Pair = unpack('N2', substr($buffer, $offset, 8));
+                $lengthLong32Pair = \unpack('N2', \substr($buffer, $offset, 8));
                 $offset += 8;
                 $bufferSize -= 8;
 
                 if (PHP_INT_MAX === 0x7fffffff) {
                     if ($lengthLong32Pair[1] !== 0 || $lengthLong32Pair[2] < 0) {
-                        $endpoint->onParsedError(
+                        $this->onParsedError(
                             $client,
                             Code::MESSAGE_TOO_LARGE,
-                            'Payload exceeds maximum allowable size'
+                            'Received payload exceeds maximum allowable size'
                         );
                         return;
                     }
@@ -773,7 +810,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 } else {
                     $frameLength = ($lengthLong32Pair[1] << 32) | $lengthLong32Pair[2];
                     if ($frameLength < 0) {
-                        $endpoint->onParsedError(
+                        $this->onParsedError(
                             $client,
                             Code::PROTOCOL_ERROR,
                             'Most significant bit of 64-bit length field set'
@@ -784,7 +821,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             }
 
             if ($frameLength > 0 && !$isMasked) {
-                $endpoint->onParsedError(
+                $this->onParsedError(
                     $client,
                     Code::PROTOCOL_ERROR,
                     'Payload mask required'
@@ -794,7 +831,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
             if ($isControlFrame) {
                 if (!$fin) {
-                    $endpoint->onParsedError(
+                    $this->onParsedError(
                         $client,
                         Code::PROTOCOL_ERROR,
                         'Illegal control frame fragmentation'
@@ -803,45 +840,35 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 }
 
                 if ($frameLength > 125) {
-                    $endpoint->onParsedError(
+                    $this->onParsedError(
                         $client,
                         Code::PROTOCOL_ERROR,
                         'Control frame payload must be of maximum 125 bytes or less'
                     );
                     return;
                 }
-            } elseif (($opcode === 0x00) === ($dataMsgBytesRecd === 0)) {
-                // We deliberately do not accept a non-fin empty initial text frame
-                $code = Code::PROTOCOL_ERROR;
-                if ($opcode === 0x00) {
-                    $errorMsg = 'Illegal CONTINUATION opcode; initial message payload frame must be TEXT or BINARY';
-                } else {
-                    $errorMsg = 'Illegal data type opcode after unfinished previous data type frame; opcode MUST be CONTINUATION';
-                }
-                $endpoint->onParsedError($client, $code, $errorMsg);
-                return;
             }
 
             if ($maxFrameSize && $frameLength > $maxFrameSize) {
-                $endpoint->onParsedError(
+                $this->onParsedError(
                     $client,
                     Code::MESSAGE_TOO_LARGE,
-                    'Payload exceeds maximum allowable size'
+                    'Received payload exceeds maximum allowable size'
                 );
                 return;
             }
 
             if ($maxMsgSize && ($frameLength + $dataMsgBytesRecd) > $maxMsgSize) {
-                $endpoint->onParsedError(
+                $this->onParsedError(
                     $client,
                     Code::MESSAGE_TOO_LARGE,
-                    'Payload exceeds maximum allowable size'
+                    'Received payload exceeds maximum allowable size'
                 );
                 return;
             }
 
             if ($textOnly && $opcode === 0x02) {
-                $endpoint->onParsedError(
+                $this->onParsedError(
                     $client,
                     Code::UNACCEPTABLE_TYPE,
                     'BINARY opcodes (0x02) not accepted'
@@ -865,86 +892,20 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 $bufferSize -= 4;
             }
 
-            if ($bufferSize >= $frameLength) {
-                if (!$isControlFrame) {
-                    $dataMsgBytesRecd += $frameLength;
-                }
-
-                $payload = substr($buffer, $offset, $frameLength);
-                $offset += $frameLength;
-                $bufferSize -= $frameLength;
-            } else {
-                if (!$isControlFrame) {
-                    $dataMsgBytesRecd += $bufferSize;
-                }
-                $frameBytesRecd = $bufferSize;
-
-                $payload = substr($buffer, $offset);
-
-                do {
-                    // if we want to validate UTF8, we must *not* send incremental mid-frame updates because the message might be broken in the middle of an utf-8 sequence
-                    // also, control frames always are <= 125 bytes, so we never will need this as per https://tools.ietf.org/html/rfc6455#section-5.5
-                    if (!$isControlFrame && $dataMsgBytesRecd >= $nextEmit) {
-                        if ($isMasked) {
-                            $payload ^= str_repeat($maskingKey, ($frameBytesRecd + 3) >> 2);
-                            // Shift the mask so that the next data where the mask is used on has correct offset.
-                            $maskingKey = substr($maskingKey . $maskingKey, $frameBytesRecd % 4, 4);
-                        }
-
-                        if ($dataArr) {
-                            $dataArr[] = $payload;
-                            $payload = implode($dataArr);
-                            $dataArr = [];
-                        }
-
-                        if ($doUtf8Validation) {
-                            $string = $payload;
-                            /* @TODO: check how many bits are set to 1 instead of multiple (slow) preg_match()es and substr()s */
-                            for ($i = 0; !preg_match('//u', $payload) && $i < 8; $i++) {
-                                $payload = substr($payload, 0, -1);
-                            }
-                            if ($i === 8) {
-                                $endpoint->onParsedError(
-                                    $client,
-                                    Code::INCONSISTENT_FRAME_DATA_TYPE,
-                                    'Invalid TEXT data; UTF-8 required'
-                                );
-                                return;
-                            }
-
-                            $endpoint->onParsedData($client, $payload, $opcode === self::OP_BIN, false);
-                            $payload = $i > 0 ? substr($string, -$i) : '';
-                        } else {
-                            $endpoint->onParsedData($client, $payload, $opcode === self::OP_BIN, false);
-                            $payload = '';
-                        }
-
-                        $frameLength -= $frameBytesRecd;
-                        $nextEmit = $dataMsgBytesRecd + $emitThreshold;
-                        $frameBytesRecd = 0;
-                    }
-
-                    $buffer = yield $frames;
-                    $bufferSize = \strlen($buffer);
-                    $frames = 0;
-
-                    if ($bufferSize + $frameBytesRecd >= $frameLength) {
-                        $dataLen = $frameLength - $frameBytesRecd;
-                    } else {
-                        $dataLen = $bufferSize;
-                    }
-
-                    if (!$isControlFrame) {
-                        $dataMsgBytesRecd += $dataLen;
-                    }
-
-                    $payload .= substr($buffer, 0, $dataLen);
-                    $frameBytesRecd += $dataLen;
-                } while ($frameBytesRecd !== $frameLength);
-
-                $offset = $dataLen;
-                $bufferSize -= $dataLen;
+            while ($bufferSize < $frameLength) {
+                $chunk = yield $frames;
+                $buffer .= $chunk;
+                $bufferSize += \strlen($chunk);
+                $frames = 0;
             }
+
+            if (!$isControlFrame) {
+                $dataMsgBytesRecd += $frameLength;
+            }
+
+            $payload = \substr($buffer, $offset, $frameLength);
+            $offset += $frameLength;
+            $bufferSize -= $frameLength;
 
             if ($isMasked) {
                 // This is memory hungry but it's ~70x faster than iterating byte-by-byte
@@ -952,50 +913,44 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
                 $payload ^= str_repeat($maskingKey, ($frameLength + 3) >> 2);
             }
 
-            if ($fin || $dataMsgBytesRecd >= $emitThreshold) {
-                if ($isControlFrame) {
-                    $endpoint->onParsedControlFrame($client, $opcode, $payload);
-                } else {
-                    if ($dataArr) {
-                        $dataArr[] = $payload;
-                        $payload = implode($dataArr);
-                        $dataArr = [];
-                    }
-
-                    if ($doUtf8Validation) {
-                        if ($fin) {
-                            $i = preg_match('//u', $payload) ? 0 : 8;
-                        } else {
-                            $string = $payload;
-                            for ($i = 0; !preg_match('//u', $payload) && $i < 8; $i++) {
-                                $payload = substr($payload, 0, -1);
-                            }
-                            if ($i > 0) {
-                                $dataArr[] = substr($string, -$i);
-                            }
-                        }
-                        if ($i === 8) {
-                            $endpoint->onParsedError(
-                                $client,
-                                Code::INCONSISTENT_FRAME_DATA_TYPE,
-                                'Invalid TEXT data; UTF-8 required'
-                            );
-                            return;
-                        }
-                    }
-
-                    if ($fin) {
-                        $dataMsgBytesRecd = 0;
-                    }
-                    $nextEmit = $dataMsgBytesRecd + $emitThreshold;
-
-                    $endpoint->onParsedData($client, $payload, $opcode === self::OP_BIN, $fin);
-                }
+            if ($isControlFrame) {
+                $this->onParsedControlFrame($client, $opcode, $payload);
             } else {
-                $dataArr[] = $payload;
+                if ($savedBuffer !== '') {
+                    $payload = $savedBuffer . $payload;
+                    $savedBuffer = '';
+                }
+
+                if ($doUtf8Validation) {
+                    if ($fin) {
+                        $i = \preg_match('//u', $payload) ? 0 : 8;
+                    } else {
+                        $string = $payload;
+                        for ($i = 0; !\preg_match('//u', $payload) && $i < 8; $i++) {
+                            $payload = \substr($payload, 0, -1);
+                        }
+                        if ($i > 0) {
+                            $savedBuffer = \substr($string, -$i);
+                        }
+                    }
+                    if ($i === 8) {
+                        $this->onParsedError(
+                            $client,
+                            Code::INCONSISTENT_FRAME_DATA_TYPE,
+                            'Invalid TEXT data; UTF-8 required'
+                        );
+                        return;
+                    }
+                }
+
+                if ($fin) {
+                    $dataMsgBytesRecd = 0;
+                }
+
+                $this->onParsedData($client, $opcode, $payload, $fin);
             }
 
-            ++$frames;
+            $frames++;
         }
     }
 

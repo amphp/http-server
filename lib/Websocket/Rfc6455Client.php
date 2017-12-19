@@ -34,6 +34,8 @@ class Rfc6455Client {
     // getInfo() properties
     public $connectedAt;
     public $closedAt = 0;
+    public $closeCode;
+    public $closeReason;
     public $lastReadAt = 0;
     public $lastSentAt = 0;
     public $lastDataReadAt = 0;
