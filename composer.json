@@ -35,7 +35,7 @@
     "require": {
         "php": ">=7",
         "amphp/amp": "^2",
-        "amphp/file": "^0.2",
+        "amphp/file": "^0.2 || ^0.3",
         "amphp/byte-stream": "^1",
         "amphp/socket": "^0.10",
         "league/climate": "^3",
