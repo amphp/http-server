@@ -4,8 +4,8 @@ namespace Aerys\Internal;
 
 use Aerys\Bootable;
 use Aerys\Console;
+use Aerys\Filter;
 use Aerys\Host;
-use Aerys\Middleware;
 use Aerys\Monitor;
 use Aerys\Options;
 use Aerys\Request;
@@ -201,9 +201,9 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
             } elseif (is_array($action) && $action[0] instanceof Bootable) {
                 $bootLoader($action[0]);
             }
-            if ($action instanceof Middleware) {
+            if ($action instanceof Filter) {
                 $middlewares[] = [$action, "do"];
-            } elseif (is_array($action) && $action[0] instanceof Middleware) {
+            } elseif (is_array($action) && $action[0] instanceof Filter) {
                 $middlewares[] = [$action[0], "do"];
             }
             if ($action instanceof Monitor) {

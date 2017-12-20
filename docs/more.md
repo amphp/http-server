@@ -2,7 +2,7 @@
 title: Additions
 permalink: /more
 ---
-Aerys has a powerful responder callable mechanism, coupled to middlewares with routing based upon promises and non-blocking I/O. Beyond that ...
+Aerys has a powerful responder callable mechanism, coupled to filters with routing based upon promises and non-blocking I/O. Beyond that ...
 
 It has HTTP/1 and HTTP/2 drivers. It provides a possibility to define a custom driver, see the [`HttpDriver` class docs](classes/httpdriver.md).
 

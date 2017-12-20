@@ -4,9 +4,9 @@ const AERYS_OPTIONS = [
     "shutdownTimeout" => 5000
 ];
 
-class OurMiddleware implements \Aerys\Middleware {
+class OurFilter implements \Aerys\Filter {
     public function do(\Aerys\InternalRequest $ireq) {
-        // We have a middleware
+        // We have a filter
     }
 
     public function __invoke(\Aerys\Request $req, \Aerys\Response $res) {
@@ -26,7 +26,7 @@ return (function () {
         ->name("example.com")
         ->use(new class implements \Aerys\Bootable {
             public function boot(\Aerys\Server $server, \Psr\Log\LoggerInterface $logger) {
-                return new OurMiddleware;
+                return new OurFilter;
             }
         });
 

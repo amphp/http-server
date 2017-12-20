@@ -9,11 +9,11 @@ Aerys provides a set of classes and interfaces, as well as [functions](functions
 - [`Client`](client.md) &mdash; Client connection related information
 - [`CommandClient`](commandclient.md) &mdash; Controls the server master process
 - [`FieldBody`](fieldbody.md) &mdash; Field body message container (via [`BodyParser`](bodyparser.md))
+- [`Filter`](filter.md) &mdash; Defines a filter callable in `do()` method
 - [`Host`](host.md) &mdash; Registers a virtual host
 - [`HttpDriver`](httpdriver.md) &mdash; Driver for interaction with the raw socket
 - [`InternalRequest`](internalrequest.md) &mdash; Request related information
 - [`Logger`](logger.md) &mdash; PSR-3 compatible logger
-- [`Middleware`](middleware.md) &mdash; Defines a middleware callable in `do()` method
 - [`Options`](options.md) &mdash; Accessor of options
 - [`ParsedBody`](parsedbody.md) &mdash; Holds request body data in parsed form
 - [`Request`](request.md) &mdash; General request interface for responder callables

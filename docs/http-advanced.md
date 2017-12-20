@@ -61,8 +61,8 @@ $realRouter = Aerys\router()
 return (new Aerys\Host)->use($realRouter);
 ```
 
-A `Router` can also `use()` `Bootable`s, `callable`s, `Middleware`s _and_ other `Router` instances.
+A `Router` can also `use()` `Bootable`s, `callable`s, `Filters`s _and_ other `Router` instances.
 
-This gives a certain flexibility allowing merging router definitions, easy definition of a common fallback callable or middleware for a group of routes.
+This gives a certain flexibility allowing merging router definitions, easy definition of a common fallback callable or filter for a group of routes.
 
 For that purpose `Router::prefix($prefix)` exists, it allows to prefix all the routes with a certain `$prefix`.

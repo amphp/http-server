@@ -40,7 +40,7 @@ class HostTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Aerys\Host::use requires a callable action or Bootable or Middleware or HttpDriver instance
+     * @expectedExceptionMessage Aerys\Host::use requires a callable action or Bootable or Filter or HttpDriver instance
      */
     public function testBadUse() {
         $this->getHost()->use(1);

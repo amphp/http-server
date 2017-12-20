@@ -2,6 +2,6 @@
 
 namespace Aerys;
 
-interface Middleware {
+interface Filter {
     public function do(InternalRequest $ireq);
 }

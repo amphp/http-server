@@ -20,8 +20,8 @@ use Amp\Socket;
 // @TODO test communication on half-closed streams (both ways) [also with yield message] (also with HTTP/1 pipelining...)
 
 class ServerTest extends TestCase {
-    public function tryRequest($emit, $responder, $middlewares = []) {
-        $gen = $this->tryIterativeRequest($responder, $middlewares);
+    public function tryRequest($emit, $responder, $filters = []) {
+        $gen = $this->tryIterativeRequest($responder, $filters);
         foreach ($emit as $part) {
             $gen->send($part);
         }
@@ -29,7 +29,7 @@ class ServerTest extends TestCase {
     }
 
 
-    public function tryIterativeRequest($responder, $middlewares = []) {
+    public function tryIterativeRequest($responder, $filters = []) {
         $vhosts = new VhostContainer($driver = new class($this) implements HttpDriver {
             private $test;
             private $emitters;
@@ -83,7 +83,7 @@ class ServerTest extends TestCase {
                 }
             }
         });
-        $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));
+        $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $filters));
 
         $logger = new class extends Logger {
             protected function output(string $message) { /* /dev/null */

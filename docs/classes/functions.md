@@ -52,13 +52,13 @@ Parses a `Cookie` header string into an associative array of format `$name => $v
 
 ## `responseFilter(array $filters, InternalRequest $ireq): \Generator`
 
-Returns a [middleware](middleware.md) Generator managing multiple filters. Can be `yield from` from another middleware or passed into the `responseCodec()` function.
+Returns a [filter](filter.md) Generator managing multiple filters. Can be `yield from` from another filter or passed into the `responseCodec()` function.
 
 ## `responseCodec(\Generator $filter, InternalRequest $ireq): \Generator`
 
 Returns a Generator which can be used to construct a `StandardResponse` object (its signature is `__construct(\Generator $codec, Client)` and implements [`Response`](response.md)).
 
-This function may be useful for testing the combination of application callable and middlewares via a custom `InternalRequest->responseWriter.
+This function may be useful for testing the combination of application callable and filters via a custom `InternalRequest->responseWriter.
 
 ## `initServer(\Psr\Log\LoggerInterface, array<Host>, array $options = []): Server`
 

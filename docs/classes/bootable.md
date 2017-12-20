@@ -12,7 +12,7 @@ permalink: /classes/bootable
 
 This method is called exactly once when the [`Server`](server.md) is in `Server::STARTING` state.
 
-You may return a [`Middleware`](middleware.md) and/or responder callable in order to use an alternate instance for middleware/responder.
+You may return a [`Filter`](filter.md) and/or responder callable in order to use an alternate instance for filter/responder.
 
 {:.note}
 > It is a bad idea to rely on the order in which the `boot()` methods of the `Bootable`s are called

@@ -11,7 +11,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 use function FastRoute\simpleDispatcher;
 
-class Router implements Bootable, Middleware, Monitor, ServerObserver {
+class Router implements Bootable, Filter, Monitor, ServerObserver {
     private $state = Server::STOPPED;
     private $bootLoader;
     private $routeDispatcher;
@@ -69,7 +69,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
     }
 
     /**
-     * Execute router middleware functionality.
+     * Execute router filter functionality.
      * @param InternalRequest $ireq
      */
     public function do(InternalRequest $ireq) {
@@ -77,16 +77,16 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
 
         if (isset($this->cache[$toMatch])) {
             list($args, $routeArgs) = $cache = $this->cache[$toMatch];
-            list($action, $middlewares) = $args;
+            list($action, $filters) = $args;
             $ireq->locals["aerys.routeArgs"] = $routeArgs;
             // Keep the most recently used entry at the back of the LRU cache
             unset($this->cache[$toMatch]);
             $this->cache[$toMatch] = $cache;
 
             $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
-            if (!empty($middlewares)) {
+            if (!empty($filters)) {
                 try {
-                    return yield from responseFilter($middlewares, $ireq);
+                    return yield from responseFilter($filters, $ireq);
                 } catch (FilterException $e) {
                     end($ireq->badFilterKeys);
                     unset($ireq->badFilterKeys[key($ireq->badFilterKeys)]);
@@ -102,16 +102,16 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         switch ($match[0]) {
             case Dispatcher::FOUND:
                 list(, $args, $routeArgs) = $match;
-                list($action, $middlewares) = $args;
+                list($action, $filters) = $args;
                 $ireq->locals["aerys.routeArgs"] = $routeArgs;
                 if ($this->maxCacheEntries > 0) {
                     $this->cacheDispatchResult($toMatch, $routeArgs, $args);
                 }
 
                 $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
-                if (!empty($middlewares)) {
+                if (!empty($filters)) {
                     try {
-                        return yield from responseFilter($middlewares, $ireq);
+                        return yield from responseFilter($filters, $ireq);
                     } catch (FilterException $e) {
                         end($ireq->badFilterKeys);
                         unset($ireq->badFilterKeys[key($ireq->badFilterKeys)]);
@@ -137,16 +137,17 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
     }
 
     /**
-     * Import a router or attach a callable, Middleware or Bootable.
+     * Import a router or attach a callable, Filter or Bootable.
      * Router imports do *not* import the options.
      *
-     * @param callable|Middleware|Bootable|Monitor $action
+     * @param callable|Filter|Bootable|Monitor $action
+     *
      * @return self
      */
     public function use($action) {
-        if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable || $action instanceof Monitor)) {
+        if (!(is_callable($action) || $action instanceof Filter || $action instanceof Bootable || $action instanceof Monitor)) {
             throw new \Error(
-                __METHOD__ . " requires a callable action or Middleware instance"
+                __METHOD__ . " requires a callable action or Filter instance"
             );
         }
 
@@ -218,7 +219,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
      *
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
-     * @param Bootable|Middleware|Monitor|callable ...$actions The action(s) to invoke upon matching this route
+     * @param Bootable|Filter|Monitor|callable ...$actions The action(s) to invoke upon matching this route
      * @throws \Error on invalid empty parameters
      * @return self
      */
@@ -235,7 +236,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         }
         if (empty($actions)) {
             throw new \Error(
-                __METHOD__ . " requires at least one callable route action or middleware at Argument 3"
+                __METHOD__ . " requires at least one callable route action or filter at Argument 3"
             );
         }
 
@@ -277,15 +278,15 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
         $server->attach($this);
         $this->bootLoader = static function (Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
-            if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
-                throw new \Error("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Middleware and/or be callable');
+            if ($booted !== null && !$booted instanceof Filter && !is_callable($booted)) {
+                throw new \Error("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Filter and/or be callable');
             }
             return $booted ?? $bootable;
         };
     }
 
     private function bootRouteTarget($actions): array {
-        $middlewares = [];
+        $filters = [];
         $applications = [];
         $booted = [];
         $monitors = [];
@@ -305,10 +306,10 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
                     $booted[$hash] = ($this->bootLoader)($action[0]);
                 }
             }
-            if ($action instanceof Middleware) {
-                $middlewares[] = [$action, "do"];
-            } elseif (is_array($action) && $action[0] instanceof Middleware) {
-                $middlewares[] = [$action[0], "do"];
+            if ($action instanceof Filter) {
+                $filters[] = [$action, "do"];
+            } elseif (is_array($action) && $action[0] instanceof Filter) {
+                $filters[] = [$action[0], "do"];
             }
             if ($action instanceof Monitor) {
                 $monitors[get_class($action)][] = $action;
@@ -322,10 +323,10 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
 
         if (empty($applications[1])) {
             if (empty($applications[0])) {
-                // in order to specify only middlewares (in combination with e.g. a fallback handler)
-                return [[function () {}, $middlewares], $monitors];
+                // in order to specify only filters (in combination with e.g. a fallback handler)
+                return [[function () {}, $filters], $monitors];
             }
-            return [[$applications[0], $middlewares], $monitors];
+            return [[$applications[0], $filters], $monitors];
         }
 
         return [
@@ -336,7 +337,7 @@ class Router implements Bootable, Middleware, Monitor, ServerObserver {
                         return;
                     }
                 }
-            }, $middlewares],
+            }, $filters],
             $monitors
         ];
     }

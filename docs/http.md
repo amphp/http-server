@@ -184,7 +184,7 @@ return (new Aerys\Host)
     });
 ```
 
-A router is instantiated by `Aerys\router()`. To define routes: `->route($method, $location, $callable[, ...$callableOrMiddleware[, ...]])`, e.g. `->route('GET', '/foo', $callable)` or `->put('/foo', $callable, $middleware)`.
+A router is instantiated by `Aerys\router()`. To define routes: `->route($method, $location, $callable[, ...$callableOrFilter[, ...]])`, e.g. `->route('GET', '/foo', $callable)` or `->put('/foo', $callable, $filter)`.
 
 Alternate callables can be defined as fallback to have e.g. a static files handler or a custom `404 Not Found` page (precise: when no response was _started_ in the callable(s) before). Or even as a primary check for e.g. CSRF tokens to prevent execution of the main responder callable.
 

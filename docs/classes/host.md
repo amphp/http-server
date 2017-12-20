@@ -8,19 +8,19 @@ permalink: /classes/host
 
 Hosts are the most fundamental entity of configuration; they describe how Aerys can be reached and what it dispatches to. Its functions in general return $this, so one can easily chain calls.
 
-## `use(Middleware | Bootable | callable(Request, Response) | Monitor | HttpDriver)`
+## `use(Filter | Bootable | callable(Request, Response) | Monitor | HttpDriver)`
 
-The way everything is attached to the Host. Currently it accepts `Bootable`s, `Middleware`s, callables (the passed argument can also be all three at the same time) and `Monitor`s or a `HttpDriver` instance.
+The way everything is attached to the Host. Currently it accepts `Bootable`s, `Filter`s, callables (the passed argument can also be all three at the same time) and `Monitor`s or a `HttpDriver` instance.
 
-When the server is run `Bootable`s, `Middleware`s and callables are called in the order they are passed to `use()`. The `Bootable`s are all called extacly once right before the Server is started. `Middleware`s are all invoked each time before the callables are invoked. Then the callables are invoked one after the other *until* the response has been started - the remaining callables are ignored.
+When the server is run `Bootable`s, `Filter`s and callables are called in the order they are passed to `use()`. The `Bootable`s are all called extacly once right before the Server is started. `Filter`s are all invoked each time before the callables are invoked. Then the callables are invoked one after the other *until* the response has been started - the remaining callables are ignored.
 
 {:.note}
-> Be careful with `Middleware`s, only use them if you really need them. They are expensive as they're called at **each** request. You also can use route-specific `Middleware`s to only invoke them when needed.
+> Be careful with `Filter`s, only use them if you really need them. They are expensive as they're called at **each** request. You also can use route-specific `Filter`s to only invoke them when needed.
 
 {:.note}
 > There can be only **one** HttpDriver instance per **port** (or UNIX domain socket). That means, if you have multiple `Host` instances listening on the same port, they all need to share the same `HttpDriver` instance!
 
-See also the documentation for [`Middleware`s](middleware.md) and [`Bootable`s](bootable.md).
+See also the documentation for [`Filter`s](filter.md) and [`Bootable`s](bootable.md).
 
 ## `name(string)`
 

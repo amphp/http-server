@@ -33,7 +33,7 @@ Depending on the callback type, different signatures are expected:
 
 ## `filters(InternalRequest $ireq, array<callable> $userFilters): array<callable>`
 
-Returns an array of callables working according to the [`Middleware`](middleware.md) protocol. [Not actual `Middleware` instances, but only the direct `callable`!]
+Returns an array of callables working according to the [`Filter`](filter.md) protocol. [Not actual `Filter` instances, but only the direct `callable`!]
 
 ## `writer(InternalRequest $ireq): \Generator`
 

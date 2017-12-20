@@ -3,8 +3,8 @@
 namespace Aerys\Test;
 
 use Aerys\Client;
+use Aerys\Filter;
 use Aerys\InternalRequest;
-use Aerys\Middleware;
 
 use Aerys\Options;
 use Aerys\Response;
@@ -97,7 +97,7 @@ class RouterTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Aerys\Router::route requires at least one callable route action or middleware at Argument 3
+     * @expectedExceptionMessage Aerys\Router::route requires at least one callable route action or filter at Argument 3
      */
     public function testRouteThrowsOnEmptyActionsArray() {
         $router = new Router;
@@ -192,11 +192,11 @@ class RouterTest extends TestCase {
         $this->assertSame(["name" => "daniel", "age" => "32"], $ireq->locals["aerys.routeArgs"]);
     }
 
-    public function testCachedMiddlewareRoute() {
-        $middleware = new class implements Middleware {
+    public function testCachedFilterRoute() {
+        $filter = new class implements Filter {
             public function do(InternalRequest $ireq) {
                 $data = yield;
-                $data = "middleware + " . yield $data;
+                $data = "filter + " . yield $data;
                 while (true) {
                     $data = yield $data;
                 }
@@ -207,7 +207,7 @@ class RouterTest extends TestCase {
         };
 
         $router = new Router;
-        $router->route("GET", "/", $middleware, $action);
+        $router->route("GET", "/", $filter, $action);
         $mock = $this->mockServer(Server::STARTING);
         $router->update($mock);
 
@@ -232,7 +232,7 @@ class RouterTest extends TestCase {
 
             $router($request, $response);
 
-            $this->assertEquals("middleware + action", $received);
+            $this->assertEquals("filter + action", $received);
         }
     }
 }

@@ -84,21 +84,22 @@ class Host {
     }
 
     /**
-     * Use a callable request action or Middleware.
+     * Use a callable request action or Filter.
      *
      * Host actions are invoked to service requests in the order in which they are added.
      *
-     * @param callable|Middleware|Bootable|Monitor $action
+     * @param callable|Filter|Bootable|Monitor $action
+     *
      * @throws \Error on invalid $action parameter
      * @return self
      */
     public function use($action): Host {
-        $isAction = is_callable($action) || $action instanceof Middleware || $action instanceof Bootable || $action instanceof Monitor;
+        $isAction = is_callable($action) || $action instanceof Filter || $action instanceof Bootable || $action instanceof Monitor;
         $isDriver = $action instanceof HttpDriver;
 
         if (!$isAction && !$isDriver) {
             throw new \Error(
-                __METHOD__ . " requires a callable action or Bootable or Middleware or HttpDriver instance"
+                __METHOD__ . " requires a callable action or Bootable or Filter or HttpDriver instance"
             );
         }
 

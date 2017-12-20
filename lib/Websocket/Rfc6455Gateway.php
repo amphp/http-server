@@ -3,8 +3,8 @@
 namespace Aerys\Websocket;
 
 use Aerys\ClientException;
+use Aerys\Filter;
 use Aerys\InternalRequest;
-use Aerys\Middleware;
 use Aerys\Monitor;
 use Aerys\NullBody;
 use Aerys\Request;
@@ -27,7 +27,7 @@ use const Aerys\HTTP_STATUS;
 use function Aerys\makeGenericBody;
 use function Amp\call;
 
-class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
+class Rfc6455Gateway implements Filter, Monitor, ServerObserver {
     use CallableMaker;
 
     /** @var \Psr\Log\LoggerInterface */

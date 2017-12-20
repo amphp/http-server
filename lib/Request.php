@@ -112,7 +112,7 @@ interface Request {
      * Retrieve a variable from the request's mutable local storage.
      *
      * Each request has its own mutable local storage to which application
-     * callables and middleware may read and write data. Other callables
+     * callables and filter may read and write data. Other callables
      * which are aware of this data can then access it without the server
      * being tightly coupled to specific implementations.
      *
@@ -125,7 +125,7 @@ interface Request {
      * Assign a variable to the request's mutable local storage.
      *
      * Each request has its own mutable local storage to which application
-     * callables and middleware may read and write data. Other callables
+     * callables and filter may read and write data. Other callables
      * which are aware of this data can then access it without the server
      * being tightly coupled to specific implementations.
      *
