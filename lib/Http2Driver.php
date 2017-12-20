@@ -248,52 +248,66 @@ class Http2Driver implements HttpDriver {
         $client = $ireq->client;
         $id = $ireq->streamId;
 
-        $headers = yield;
-        unset($headers[":reason"], $headers["connection"]); // obsolete in HTTP/2.0
-        $headers = HPack::encode($headers);
+        try {
+            $headers = yield;
+            unset($headers[":reason"], $headers["connection"]); // obsolete in HTTP/2.0
+            $headers = HPack::encode($headers);
 
-        // @TODO decide whether to use max-frame size
+            // @TODO decide whether to use max-frame size
 
-        if (\strlen($headers) > 16384) {
-            $split = str_split($headers, 16384);
-            $headers = array_shift($split);
-            $this->writeFrame($client, $headers, self::HEADERS, self::NOFLAG, $id);
+            if (\strlen($headers) > 16384) {
+                $split = str_split($headers, 16384);
+                $headers = array_shift($split);
+                $this->writeFrame($client, $headers, self::HEADERS, self::NOFLAG, $id);
 
-            $headers = array_pop($split);
-            foreach ($split as $msgPart) {
-                $this->writeFrame($client, $msgPart, self::CONTINUATION, self::NOFLAG, $id);
-            }
-            $this->writeFrame($client, $headers, self::CONTINUATION, self::END_HEADERS, $id);
-        } else {
-            $this->writeFrame($client, $headers, self::HEADERS, self::END_HEADERS, $id);
-        }
-
-        $msgs = "";
-
-        while (($msgPart = yield) !== null) {
-            $msgs .= $msgPart;
-
-            if ($msgPart === false || \strlen($msgs) >= $client->options->outputBufferSize) {
-                $this->writeData($client, $msgs, $id, false);
-                $msgs = "";
+                $headers = array_pop($split);
+                foreach ($split as $msgPart) {
+                    $this->writeFrame($client, $msgPart, self::CONTINUATION, self::NOFLAG, $id);
+                }
+                $this->writeFrame($client, $headers, self::CONTINUATION, self::END_HEADERS, $id);
+            } else {
+                $this->writeFrame($client, $headers, self::HEADERS, self::END_HEADERS, $id);
             }
 
-            if ($client->isDead & Client::CLOSED_WR) {
-                while (true) {
-                    yield;
+            $msgs = "";
+
+            while (($msgPart = yield) !== null) {
+                $msgs .= $msgPart;
+
+                if ($msgPart === false || \strlen($msgs) >= $client->options->outputBufferSize) {
+                    $this->writeData($client, $msgs, $id, false);
+                    $msgs = "";
+                }
+
+                if ($client->isDead & Client::CLOSED_WR) {
+                    while (true) {
+                        yield;
+                    }
                 }
             }
-        }
+            $this->writeData($client, $msgs, $id, true);
+        } finally {
+            if ((!isset($headers) || $msgPart !== null) && !($client->isDead & Client::CLOSED_WR)) {
+                if (($msgs ?? "") != "") {
+                    $this->writeData($client, $msgs, $id, false);
+                }
 
-        $this->writeData($client, $msgs, $id, true);
+                $this->writeFrame($client, pack("N", self::INTERNAL_ERROR), self::RST_STREAM, self::NOFLAG, $id);
 
-        if ($client->bufferDeferred) {
-            $keepAlives = &$client->remainingRequests; // avoid cyclic reference
-            $client->bufferDeferred->onResolve(static function () use (&$keepAlives) {
-                $keepAlives++;
-            });
-        } else {
-            $client->remainingRequests++;
+                if (isset($client->bodyEmitters[$id])) {
+                    $client->bodyEmitters[$id]->fail(new ClientException);
+                    unset($client->bodyEmitters[$id]);
+                }
+            }
+
+            if ($client->bufferDeferred) {
+                $keepAlives = &$client->remainingRequests; // avoid cyclic reference
+                $client->bufferDeferred->onResolve(static function () use (&$keepAlives) {
+                    $keepAlives++;
+                });
+            } else {
+                $client->remainingRequests++;
+            }
         }
     }
 
@@ -306,7 +320,7 @@ class Http2Driver implements HttpDriver {
                 $client->streamEnd[$stream] = true;
             }
             $client->bufferSize += $len;
-            if ($client->bufferSize > $client->options->softStreamCap) {
+            if ($client->bufferSize > $client->options->softStreamCap && !$client->bufferDeferred) {
                 $client->bufferDeferred = new Deferred;
             }
             $this->tryDataSend($client, $stream);
@@ -377,7 +391,7 @@ class Http2Driver implements HttpDriver {
         $new = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
         $client->writeBuffer .= $new;
         $client->bufferSize += \strlen($new);
-        if ($client->bufferSize > $client->options->softStreamCap) {
+        if ($client->bufferSize > $client->options->softStreamCap && !$client->bufferDeferred) {
             $client->bufferDeferred = new Deferred;
         }
         ($this->write)($client, $type == self::DATA && ($flags & self::END_STREAM) != "\0");

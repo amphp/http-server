@@ -103,6 +103,14 @@ interface Response extends \Amp\ByteStream\OutputStream {
     public function end(string $finalBodyChunk = ""): \Amp\Promise;
 
     /**
+     * Signal an extraordinary response end.
+     *
+     * It fails an eventual pending request body message and will reset the
+     * active HTTP stream.
+     */
+    public function abort();
+
+    /**
      * Indicate resources which a client likely needs to fetch. (e.g. Link: preload or HTTP/2 Server Push).
      *
      * @param string $url The URL this request should be dispatched to

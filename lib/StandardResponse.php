@@ -143,14 +143,8 @@ class StandardResponse implements Response {
     }
 
     /**
-     * Stream partial entity body data.
-     *
-     * If response output has not yet started headers will also be sent
-     * when this method is invoked.
-     *
-     * @param string $partialBody
+     * {@inheritDoc}
      * @throws \Error If response output already complete
-     * @return \Amp\Promise to be succeeded whenever local buffers aren't full
      */
     public function write(string $partialBody): \Amp\Promise {
         if ($this->state & self::ENDED) {
@@ -181,11 +175,7 @@ class StandardResponse implements Response {
     }
 
     /**
-     * Request that any buffered data be flushed to the client.
-     *
-     * This method only makes sense when streaming output via Response::write().
-     * Invoking it before calling write() or after write()/end() is a logic error.
-     *
+     * {@inheritDoc}
      * @throws \Error If invoked before write() or after write()/end()
      */
     public function flush() {
@@ -203,17 +193,8 @@ class StandardResponse implements Response {
     }
 
     /**
-     * Signify the end of streaming response output.
-     *
-     * User applications are NOT required to call Response::end() as the server
-     * will handle this automatically as needed.
-     *
-     * Passing the optional $finalBody is equivalent to the following:
-     *
-     *     $response->write($finalBody);
-     *     $response->end();
-     *
-     * @param string $finalBody Optional final body data to send
+     * {@inheritDoc}
+     * @throws \Error If output already ended
      */
     public function end(string $finalBody = ""): \Amp\Promise {
         if ($this->state & self::ENDED) {
@@ -245,6 +226,15 @@ class StandardResponse implements Response {
         $this->state = self::ENDED | self::STARTED;
 
         return $this->client->bufferDeferred ? $this->client->bufferDeferred->promise() : new \Amp\Success;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function abort() {
+        $this->state = self::ENDED | self::STARTED;
+        $this->codec->valid(); // start the generator if not started yet
+        $this->codec = null;
     }
 
     private function setCookies() {
