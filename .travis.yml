@@ -1,6 +1,9 @@
-sudo: false
+sudo: required
 
 language: php
+
+services:
+  - docker
 
 php:
   - 7.0
@@ -16,6 +19,10 @@ matrix:
 env:
   - AMP_DEBUG=true
 
+before_install:
+  - docker pull php:7.1
+  - docker pull crossbario/autobahn-testsuite
+
 install:
   - composer update -n --prefer-dist
 
@@ -25,6 +32,9 @@ install:
 script:
   - vendor/bin/phpunit --coverage-text --coverage-clover build/logs/clover.xml
   - PHP_CS_FIXER_IGNORE_ENV=1 php vendor/bin/php-cs-fixer --diff --dry-run -v fix
+  - docker run -d --rm -v ${PWD}:/app --net="host" --name aerys php:7.1 php /app/bin/aerys -c /app/test-autobahn/server.php
+  - docker run -ti --rm -v ${PWD}/test-autobahn/config:/config -v ${PWD}/test-autobahn/reports:/reports --net="host" --name fuzzingclient crossbario/autobahn-testsuite wstest -m fuzzingclient -s config/fuzzingclient.json
+  - php test-autobahn/report.php
 
 after_script:
   - ./coveralls.phar -v

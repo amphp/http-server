@@ -1,0 +1,12 @@
+{
+    "servers": [
+        {
+            "agent": "Aerys",
+            "url": "ws://127.0.0.1:9001/ws"
+        }
+    ],
+    "outdir": "./reports/servers",
+    "cases": ["*"],
+    "exclude-cases": ["7.*", "12.*", "13.*"],
+    "exclude-agent-cases": {}
+}
