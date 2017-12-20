@@ -283,14 +283,6 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         $this->unloadClient($client);
     }
 
-    private function tryAppOnOpen(int $clientId, $onHandshakeResult): \Generator {
-        try {
-            yield call([$this->application, "onOpen"], $clientId, $onHandshakeResult);
-        } catch (\Throwable $e) {
-            yield from $this->onAppError($clientId, $e);
-        }
-    }
-
     private function onAppError(int $clientId, \Throwable $e): \Generator {
         $this->logger->error((string) $e);
         $code = Code::UNEXPECTED_SERVER_ERROR;
@@ -335,6 +327,22 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         return $promise;
     }
 
+    private function tryAppOnOpen(int $clientId, $onHandshakeResult): \Generator {
+        try {
+            yield call([$this->application, "onOpen"], $clientId, $onHandshakeResult);
+        } catch (\Throwable $e) {
+            yield from $this->onAppError($clientId, $e);
+        }
+    }
+
+    private function tryAppOnData(Rfc6455Client $client, Message $msg): \Generator {
+        try {
+            yield call([$this->application, "onData"], $client->id, $msg);
+        } catch (\Throwable $e) {
+            yield from $this->onAppError($client->id, $e);
+        }
+    }
+
     private function tryAppOnClose(int $clientId, int $code, string $reason): \Generator {
         try {
             yield call([$this->application, "onClose"], $clientId, $code, $reason);
@@ -366,7 +374,7 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
 
     public function onParsedControlFrame(Rfc6455Client $client, int $opcode, string $data) {
         // something went that wrong that we had to close... if parser has anything left, we don't care!
-        if ($client->parser === null) {
+        if ($client->closedAt) {
             return;
         }
 
@@ -411,6 +419,11 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
     }
 
     public function onParsedData(Rfc6455Client $client, int $opcode, string $data, bool $terminated) {
+        // something went that wrong that we had to close... if parser has anything left, we don't care!
+        if ($client->closedAt) {
+            return;
+        }
+
         $client->lastDataReadAt = $this->now;
 
         if (!$client->msgEmitter) {
@@ -450,17 +463,8 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
         }
     }
 
-    private function tryAppOnData(Rfc6455Client $client, Message $msg): \Generator {
-        try {
-            yield call([$this->application, "onData"], $client->id, $msg);
-        } catch (ClientException $e) {
-        } catch (\Throwable $e) {
-            yield from $this->onAppError($client->id, $e);
-        }
-    }
-
     public function onParsedError(Rfc6455Client $client, int $code, string $msg) {
-        // something went that wrong that we had to shutdown our readWatcher... if parser has anything left, we don't care!
+        // something went that wrong that we had to close... if parser has anything left, we don't care!
         if ($client->closedAt) {
             return;
         }
