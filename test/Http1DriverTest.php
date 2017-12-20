@@ -733,7 +733,7 @@ class Http1DriverTest extends TestCase {
 
     public function testWriterAbortBeforeHeaders() {
         $driver = new Http1Driver;
-        $driver->setup([], function(Client $client, $final) use (&$invoked) {
+        $driver->setup([], function (Client $client, $final) use (&$invoked) {
             $this->assertTrue($final);
             $this->assertTrue($client->shouldClose);
             $this->assertEquals("", $client->writeBuffer);
@@ -752,7 +752,7 @@ class Http1DriverTest extends TestCase {
 
     public function testWriterAbortAfterHeaders() {
         $driver = new Http1Driver;
-        $driver->setup([], function(Client $client, $final) use (&$invoked) {
+        $driver->setup([], function (Client $client, $final) use (&$invoked) {
             $this->assertTrue($final);
             $this->assertTrue($client->shouldClose);
             $this->assertEquals("HTTP/1.1 200 OK\r\n\r\nfoo", $client->writeBuffer);

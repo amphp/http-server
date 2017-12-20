@@ -2,7 +2,8 @@
 
 namespace Aerys;
 
-use Amp\Socket\{ Certificate, ServerTlsContext };
+use Amp\Socket\Certificate;
+use Amp\Socket\ServerTlsContext;
 
 class Host {
     private $name = "*";

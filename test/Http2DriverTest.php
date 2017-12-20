@@ -182,7 +182,7 @@ class Http2DriverTest extends TestCase {
 
     public function testWriterAbortBeforeHeaders() {
         $driver = new Http2Driver;
-        $driver->setup([], function(Client $client, $final) use (&$invoked) {
+        $driver->setup([], function (Client $client, $final) use (&$invoked) {
             // HTTP/2 shall only reset streams, not abort the connection
             $this->assertFalse($final);
             $this->assertFalse($client->shouldClose);
@@ -191,7 +191,7 @@ class Http2DriverTest extends TestCase {
         });
 
         $bodyEmitter = new \Amp\Emitter;
-        $bodyEmitter->iterate()->advance()->onResolve(function($e) use (&$promiseResolved) {
+        $bodyEmitter->iterate()->advance()->onResolve(function ($e) use (&$promiseResolved) {
             $this->assertInstanceOf(ClientException::class, $e);
             $promiseResolved = true;
         });
@@ -215,7 +215,7 @@ class Http2DriverTest extends TestCase {
     public function testWriterAbortAfterHeaders() {
         $driver = new Http2Driver;
         $invoked = 0;
-        $driver->setup([], function(Client $client, $final) {
+        $driver->setup([], function (Client $client, $final) {
             // HTTP/2 shall only reset streams, not abort the connection
             $this->assertFalse($final);
             $this->assertFalse($client->shouldClose);
