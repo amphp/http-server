@@ -72,7 +72,7 @@ class Router implements Bootable, Filter, Monitor, ServerObserver {
      * Execute router filter functionality.
      * @param InternalRequest $ireq
      */
-    public function do(InternalRequest $ireq) {
+    public function filter(InternalRequest $ireq) {
         $toMatch = "{$ireq->method}\0{$ireq->uriPath}";
 
         if (isset($this->cache[$toMatch])) {
@@ -307,9 +307,9 @@ class Router implements Bootable, Filter, Monitor, ServerObserver {
                 }
             }
             if ($action instanceof Filter) {
-                $filters[] = [$action, "do"];
+                $filters[] = [$action, "filter"];
             } elseif (is_array($action) && $action[0] instanceof Filter) {
-                $filters[] = [$action[0], "do"];
+                $filters[] = [$action[0], "filter"];
             }
             if ($action instanceof Monitor) {
                 $monitors[get_class($action)][] = $action;

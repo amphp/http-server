@@ -198,7 +198,7 @@ class Rfc6455Gateway implements Filter, Monitor, ServerObserver {
         $handshaker->end();
     }
 
-    public function do(InternalRequest $ireq): \Generator {
+    public function filter(InternalRequest $ireq): \Generator {
         $headers = yield;
         if ($headers[":status"] === 101) {
             $yield = yield $headers;

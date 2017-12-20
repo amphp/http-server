@@ -133,7 +133,7 @@ class RouterTest extends TestCase {
         $ireq->uri = $ireq->uriPath = "/mediocre-dev/bob/19/";
         $response = $this->mockResponse();
 
-        $this->assertFalse($router->do($ireq)->valid());
+        $this->assertFalse($router->filter($ireq)->valid());
         $multiAction = $router($request, $response);
 
         if ($multiAction) {
@@ -151,7 +151,7 @@ class RouterTest extends TestCase {
         $ireq->uriPath = "/mediocre-dev/bob/19";
         $response = $this->mockResponse();
 
-        $this->assertFalse($router->do($ireq)->valid());
+        $this->assertFalse($router->filter($ireq)->valid());
         $multiAction = $router($request, $response);
 
         if ($multiAction) {
@@ -183,7 +183,7 @@ class RouterTest extends TestCase {
         $ireq->uriPath = "/genius/daniel/32";
         $response = $this->mockResponse();
 
-        $this->assertFalse($router->do($ireq)->valid());
+        $this->assertFalse($router->filter($ireq)->valid());
         $multiAction = $router($request, $response);
 
         Promise\wait(new Coroutine($multiAction));
@@ -194,7 +194,7 @@ class RouterTest extends TestCase {
 
     public function testCachedFilterRoute() {
         $filter = new class implements Filter {
-            public function do(InternalRequest $ireq) {
+            public function filter(InternalRequest $ireq) {
                 $data = yield;
                 $data = "filter + " . yield $data;
                 while (true) {
@@ -226,7 +226,7 @@ class RouterTest extends TestCase {
             })();
 
             $request = new StandardRequest($ireq);
-            $filter = \Aerys\responseFilter([[$router, "do"]], $ireq);
+            $filter = \Aerys\responseFilter([[$router, "filter"]], $ireq);
             $filter->current();
             $response = new StandardResponse(\Aerys\responseCodec($filter, $ireq), new Client);
 

@@ -75,7 +75,7 @@ class bootServerTest extends TestCase {
         $this->assertInternalType('callable', $vhosts["localhost:443:0.0.0.0:443"]->getApplication());
         $filter = current($vhosts["example.com:80:127.0.0.1:80"]->getFilters());
         $this->assertInstanceOf("OurFilter", $filter[0]);
-        $this->assertEquals("do", $filter[1]);
+        $this->assertEquals("filter", $filter[1]);
         $this->assertInstanceOf("OurFilter", $vhosts["example.com:80:127.0.0.1:80"]->getApplication());
         $this->assertEquals(2, count($vhosts["foo.bar:80:127.0.0.1:80"]->getApplication()->__debugInfo()["applications"]));
         $vhosts["foo.bar:80:127.0.0.1:80"]->getApplication()(new StandardRequest($ireq = new InternalRequest), new StandardResponse((function () {yield;})(), new Client))->next();

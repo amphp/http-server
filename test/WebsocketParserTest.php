@@ -316,7 +316,7 @@ class WebsocketParserTest extends TestCase {
 
             $responder = $ws->boot($server, $logger);
             $this->assertInstanceOf(Filter::class, $responder);
-            $filters = [[$responder, "do"]];
+            $filters = [[$responder, "filter"]];
             $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $filters));
 
             $driver->emit();

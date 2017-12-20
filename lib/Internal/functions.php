@@ -191,7 +191,7 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
         $name = $hostExport["name"];
         $actions = $hostExport["actions"];
 
-        $middlewares = [];
+        $filters = [];
         $applications = [];
         $monitors = [];
 
@@ -202,9 +202,9 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
                 $bootLoader($action[0]);
             }
             if ($action instanceof Filter) {
-                $middlewares[] = [$action, "do"];
+                $filters[] = [$action, "filter"];
             } elseif (is_array($action) && $action[0] instanceof Filter) {
-                $middlewares[] = [$action[0], "do"];
+                $filters[] = [$action[0], "filter"];
             }
             if ($action instanceof Monitor) {
                 $monitors[get_class($action)][] = $action;
@@ -267,7 +267,7 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
             });
         }
 
-        $vhost = new Vhost($name, $interfaces, $application, $middlewares, $monitors, $hostExport["httpdriver"]);
+        $vhost = new Vhost($name, $interfaces, $application, $filters, $monitors, $hostExport["httpdriver"]);
         if ($crypto = $hostExport["crypto"]) {
             $vhost->setCrypto($crypto);
         }

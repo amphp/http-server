@@ -3,5 +3,5 @@
 namespace Aerys;
 
 interface Filter {
-    public function do(InternalRequest $ireq);
+    public function filter(InternalRequest $ireq);
 }
