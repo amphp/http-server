@@ -543,7 +543,6 @@ class Rfc6455Gateway implements Middleware, Monitor, ServerObserver {
             throw $exception;
         }
 
-        $client->lastWrite = null;
         return $bytes;
     }
 
