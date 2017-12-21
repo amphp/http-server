@@ -584,5 +584,11 @@ function selectConfigFile(string $configFile): string {
         );
     }
 
-    return realpath(is_dir($configFile) ? rtrim($configFile, "/") . "/config.php" : $configFile);
+    $path = realpath(is_dir($configFile) ? rtrim($configFile, "/") . "/config.php" : $configFile);
+
+    if ($path === false) {
+        throw new \Error("No config file found at " . $configFile);
+    }
+
+    return $path;
 }

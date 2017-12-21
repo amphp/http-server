@@ -17,7 +17,6 @@ use Amp\InvalidYieldError;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
-use React\Promise\PromiseInterface as ReactPromise;
 use const Aerys\HTTP_STATUS;
 use function Aerys\initServer;
 use function Aerys\makeGenericBody;
@@ -91,25 +90,11 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
     $configFile = selectConfigFile((string) $console->getArg("config"));
 
     // may return Promise or Generator for async I/O inside config file
-    $hosts = (function () use (&$logger, $console, $configFile) {
+    $hosts = yield call(function () use (&$logger, $console, $configFile) {
         return include $configFile;
-    })();
-
-    if ($hosts === false) {
-        throw new \Error(
-            "Config file inclusion failure: $configFile"
-        );
-    }
+    });
 
     $logger->info("Using config file found at $configFile");
-
-    if ($hosts instanceof \Generator) {
-        $hosts = yield from $hosts;
-    }
-
-    if ($hosts instanceof Promise || $hosts instanceof ReactPromise) {
-        $hosts = yield $hosts;
-    }
 
     if (!\is_array($hosts)) {
         $hosts = [$hosts];
