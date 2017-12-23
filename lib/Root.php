@@ -89,9 +89,10 @@ class Root implements ServerObserver {
         // We specifically break the lookup generator out into its own method
         // so that we can potentially avoid forcing the server to resolve a
         // coroutine when the file is already cached.
-        return ($fileInfo = $this->fetchCachedStat($path, $request))
+        return new Coroutine(($fileInfo = $this->fetchCachedStat($path, $request))
             ? $this->respond($fileInfo, $request)
-            : $this->respondWithLookup($this->root . $path, $path, $request);
+            : $this->respondWithLookup($this->root . $path, $path, $request)
+        );
     }
 
     /**
@@ -238,11 +239,7 @@ class Root implements ServerObserver {
             $this->cacheTimeouts[$reqPath] = $this->now + $this->cacheEntryTtl;
         }
 
-        $result = $this->respond($fileInfo, $request);
-        if ($result instanceof \Generator) {
-            $result = yield from $result;
-        }
-        return $result;
+        return yield from $this->respond($fileInfo, $request);
     }
 
     private function lookup(string $path): \Generator {
@@ -299,7 +296,7 @@ class Root implements ServerObserver {
         }
     }
 
-    private function respond($fileInfo, Request $request) {  /* : ?Response */
+    private function respond($fileInfo, Request $request): \Generator {
         // If the file doesn't exist don't bother to do anything else so the
         // HTTP server can send a 404 and/or allow handlers further down the chain
         // a chance to respond.
@@ -332,28 +329,27 @@ class Root implements ServerObserver {
                 $lastModifiedHttpDate = \gmdate('D, d M Y H:i:s', $fileInfo->mtime) . " GMT";
                 $response = new Response\EmptyResponse(["Last-Modified" => $lastModifiedHttpDate], HTTP_STATUS["NOT_MODIFIED"]);
                 if ($fileInfo->etag) {
-                    $response = $response->withHeader("Etag", $fileInfo->etag);
+                    $response->setHeader("Etag", $fileInfo->etag);
                 }
                 return $response;
             case self::PRECOND_FAILED:
                 return new Response\EmptyResponse([], HTTP_STATUS["PRECONDITION_FAILED"]);
             case self::PRECOND_IF_RANGE_FAILED:
                 // Return this so the resulting generator will be auto-resolved
-                return $this->doNonRangeResponse($fileInfo, $request);
+                return yield from $this->doNonRangeResponse($fileInfo, $request);
         }
 
         if (!$rangeHeader = $request->getHeader("Range")) {
             // Return this so the resulting generator will be auto-resolved
-            return $this->doNonRangeResponse($fileInfo, $request);
+            return yield from $this->doNonRangeResponse($fileInfo, $request);
         }
 
         if ($range = $this->normalizeByteRanges($fileInfo->size, $rangeHeader)) {
             // Return this so the resulting generator will be auto-resolved
-            return $this->doRangeResponse($range, $fileInfo, $request);
+            return yield from $this->doRangeResponse($range, $fileInfo, $request);
         }
 
         // If we're still here this is the only remaining response we can send
-        $status = HTTP_STATUS["REQUESTED_RANGE_NOT_SATISFIABLE"];
         return new Response\EmptyResponse(
             ["Content-Range" => "*/{$fileInfo->size}"],
             HTTP_STATUS["REQUESTED_RANGE_NOT_SATISFIABLE"]
@@ -404,16 +400,16 @@ class Root implements ServerObserver {
         return ($etag === $ifRange) ? self::PRECOND_IF_RANGE_OK : self::PRECOND_IF_RANGE_FAILED;
     }
 
-    private function doNonRangeResponse($fileInfo, Request $request): Response {
+    private function doNonRangeResponse($fileInfo, Request $request): \Generator {
         $headers = $this->makeCommonHeaders($fileInfo);
         $headers["Content-Length"] = (string) $fileInfo->size;
         $headers["Content-Type"] = $this->selectMimeTypeFromPath($fileInfo->path);
 
-        if ($fileInfo) {
+        if (isset($fileInfo->buffer)) {
             return new Response(new InMemoryStream($fileInfo->buffer), $headers);
         }
 
-        $handle = $this->filesystem->open($fileInfo->path, "r");
+        $handle = yield $this->filesystem->open($fileInfo->path, "r");
         $request->onClose([$handle, "close"]);
 
         return new Response($handle, $headers);
