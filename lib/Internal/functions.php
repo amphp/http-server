@@ -4,9 +4,7 @@ namespace Aerys\Internal;
 
 use Aerys\Bootable;
 use Aerys\Console;
-use Aerys\Filter;
 use Aerys\Host;
-use Aerys\InternalRequest;
 use Aerys\Monitor;
 use Aerys\Options;
 use Aerys\Request;
@@ -24,143 +22,6 @@ use function Aerys\initServer;
 use function Aerys\makeGenericBody;
 use function Aerys\selectConfigFile;
 use function Amp\call;
-
-/**
- * Apply negotiated gzip deflation to outgoing response bodies.
- *
- * @param \Aerys\InternalRequest $ireq
- * @return \Generator
- */
-function deflateResponseFilter(InternalRequest $ireq): \Generator {
-    if (empty($ireq->headers["accept-encoding"])) {
-        return;
-    }
-
-    // @TODO Perform a more sophisticated check for gzip acceptance.
-    // This check isn't technically correct as the gzip parameter
-    // could have a q-value of zero indicating "never accept gzip."
-    do {
-        foreach ($ireq->headers["accept-encoding"] as $value) {
-            if (stripos($value, "gzip") !== false) {
-                break 2;
-            }
-        }
-        return;
-    } while (0);
-
-    $headers = yield;
-
-    // We can't deflate if we don't know the content-type
-    if (empty($headers["content-type"])) {
-        return $headers;
-    }
-
-    $options = $ireq->client->options;
-
-    // Match and cache Content-Type
-    if (!$doDeflate = $options->_dynamicCache->deflateContentTypes[$headers["content-type"][0]] ?? null) {
-        if ($doDeflate === 0) {
-            return $headers;
-        }
-
-        if (count($options->_dynamicCache->deflateContentTypes) == Options::MAX_DEFLATE_ENABLE_CACHE_SIZE) {
-            unset($options->_dynamicCache->deflateContentTypes[key($options->_dynamicCache->deflateContentTypes)]);
-        }
-
-        $contentType = $headers["content-type"][0];
-        $doDeflate = preg_match($options->deflateContentTypes, trim(strstr($contentType, ";", true) ?: $contentType));
-        $options->_dynamicCache->deflateContentTypes[$contentType] = $doDeflate;
-
-        if ($doDeflate === 0) {
-            return $headers;
-        }
-    }
-
-    $minBodySize = $options->deflateMinimumLength;
-    $contentLength = $headers["content-length"][0] ?? null;
-    $bodyBuffer = "";
-
-    if (!isset($contentLength)) {
-        // Wait until we know there's enough stream data to compress before proceeding.
-        // If we receive a FLUSH or an END signal before we have enough then we won't
-        // use any compression.
-        do {
-            $bodyBuffer .= ($tmp = yield);
-            if ($tmp === false || $tmp === null) {
-                $bodyBuffer .= yield $headers;
-                return $bodyBuffer;
-            }
-        } while (!isset($bodyBuffer[$minBodySize]));
-    } elseif (empty($contentLength) || $contentLength < $minBodySize) {
-        // If the Content-Length is too small we can't compress it.
-        return $headers;
-    }
-
-    // @TODO We have the ability to support DEFLATE and RAW encoding as well. Should we?
-    $mode = \ZLIB_ENCODING_GZIP;
-    if (($resource = \deflate_init($mode)) === false) {
-        throw new \RuntimeException(
-            "Failed initializing deflate context"
-        );
-    }
-
-    // Once we decide to compress output we no longer know what the
-    // final Content-Length will be. We need to update our headers
-    // according to the HTTP protocol in use to reflect this.
-    unset($headers["content-length"]);
-    if ($ireq->protocol === "1.1") {
-        $headers["transfer-encoding"] = ["chunked"];
-    } else {
-        $headers["connection"] = ["close"];
-    }
-    $headers["content-encoding"] = ["gzip"];
-    $minFlushOffset = $options->deflateBufferSize;
-    $deflated = $headers;
-
-    while (($uncompressed = yield $deflated) !== null) {
-        $bodyBuffer .= $uncompressed;
-        if ($uncompressed === false) {
-            if ($bodyBuffer === "") {
-                $deflated = null;
-            } elseif (($deflated = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) === false) {
-                throw new \RuntimeException(
-                    "Failed adding data to deflate context"
-                );
-            } else {
-                $bodyBuffer = "";
-            }
-        } elseif (!isset($bodyBuffer[$minFlushOffset])) {
-            $deflated = null;
-        } elseif (($deflated = \deflate_add($resource, $bodyBuffer)) === false) {
-            throw new \RuntimeException(
-                "Failed adding data to deflate context"
-            );
-        } else {
-            $bodyBuffer = "";
-        }
-    }
-
-    if (($deflated = \deflate_add($resource, $bodyBuffer, \ZLIB_FINISH)) === false) {
-        throw new \RuntimeException(
-            "Failed adding data to deflate context"
-        );
-    }
-
-    return $deflated;
-}
-
-/**
- * Filter out entity body data from a response stream.
- *
- * @param \Aerys\InternalRequest $ireq
- * @return \Generator
- */
-function nullBodyResponseFilter(InternalRequest $ireq): \Generator {
-    // Receive headers and defer send them back.
-    yield yield;
-    // Yield null (need more data) for all subsequent body data
-    while (yield !== null);
-}
 
 function validateFilterHeaders(\Generator $generator, array $headers): bool {
     if (!isset($headers[":status"])) {
@@ -315,7 +176,8 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
         $name = $hostExport["name"];
         $actions = $hostExport["actions"];
 
-        $filters = [];
+        $requestFilters = [];
+        $responseFilters = [];
         $applications = [];
         $monitors = [];
 
@@ -325,16 +187,21 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
             } elseif (is_array($action) && $action[0] instanceof Bootable) {
                 $bootLoader($action[0]);
             }
-            if ($action instanceof Filter) {
-                $filters[] = [$action, "filter"];
-            } elseif (is_array($action) && $action[0] instanceof Filter) {
-                $filters[] = [$action[0], "filter"];
+
+            if ($action instanceof RequestFilter) {
+                $requestFilters[] = $action;
             }
+
+            if ($action instanceof ResponseFilter) {
+                $responseFilters[] = $action;
+            }
+
             if ($action instanceof Monitor) {
                 $monitors[get_class($action)][] = $action;
             } elseif (is_array($action) && $action[0] instanceof Monitor) {
                 $monitors[get_class($action[0])][] = $action[0];
             }
+
             if (is_callable($action)) {
                 $applications[] = $action;
             }
@@ -394,7 +261,7 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
             });
         }
 
-        $vhost = new Vhost($name, $interfaces, $application, $filters, $monitors, $hostExport["httpdriver"]);
+        $vhost = new Vhost($name, $interfaces, $application, $requestFilters, $responseFilters, $monitors, $hostExport["httpdriver"]);
         if ($crypto = $hostExport["crypto"]) {
             $vhost->setCrypto($crypto);
         }

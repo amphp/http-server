@@ -9,7 +9,7 @@ namespace Aerys;
 use Amp\Deferred;
 use Amp\Loop;
 
-class Http2Driver implements HttpDriver {
+class Http2Driver implements HttpDriver, Internal\ResponseFilter {
     const NOFLAG = "\x00";
     const ACK = "\x01";
     const END_STREAM = "\x01";
@@ -62,6 +62,15 @@ class Http2Driver implements HttpDriver {
     private $errorEmitter;
     private $write;
 
+    private $deflateFilter;
+    private $nullFilter;
+
+    public function __construct() {
+        $this->deflateFilter = new Internal\DeflateResponseFilter;
+        $this->chunkedFilter = new Internal\ChunkedResponseFilter;
+        $this->nullFilter = new Internal\NullBodyFilter;
+    }
+
     public function setup(array $parseEmitters, callable $write) {
         $map = [
             self::RESULT => "resultEmitter",
@@ -81,77 +90,76 @@ class Http2Driver implements HttpDriver {
         $this->write = $write;
     }
 
-    public function filters(InternalRequest $ireq, array $userFilters): array {
-        $filters = [
-            [$this, "responseInitFilter"],
-        ];
+    public function filters(Internal\Request $ireq, array $userFilters): array {
+        $filters = [$this];
+
         if ($userFilters) {
             $filters = array_merge($filters, $userFilters);
         }
+
         if ($ireq->client->options->deflateEnable) {
-            $filters[] = __NAMESPACE__ . '\Internal\deflateResponseFilter';
+            $filters[] = $this->deflateFilter;
         }
+
         if ($ireq->method === "HEAD") {
-            $filters[] = __NAMESPACE__ . '\Internal\nullBodyResponseFilter';
+            $filters[] = $this->nullFilter;
         }
+
         return $filters;
     }
 
-    public function responseInitFilter(InternalRequest $ireq) {
+    public function filterResponse(Internal\Request $ireq, Internal\Response $ires) {
         if (isset($ireq->headers[":authority"])) {
             $ireq->headers["host"] = $ireq->headers[":authority"];
         }
         unset($ireq->headers[":authority"], $ireq->headers[":scheme"], $ireq->headers[":method"], $ireq->headers[":path"]);
 
         $options = $ireq->client->options;
-        $headers = yield;
 
         if ($options->sendServerToken) {
-            $headers["server"] = [SERVER_TOKEN];
+            $ires->headers["server"] = [SERVER_TOKEN];
         }
 
-        if (!empty($headers[":aerys-push"])) {
-            foreach ($headers[":aerys-push"] as $url => $pushHeaders) {
+        if (!empty($ires->headers[":aerys-push"])) {
+            foreach ($ires->headers[":aerys-push"] as $url => $pushHeaders) {
                 if ($ireq->client->allowsPush) {
                     $this->dispatchInternalRequest($ireq, $url, $pushHeaders);
                 } else {
-                    $headers["link"][] = "<$url>; rel=preload";
+                    $ires->headers["Link"][] = "<$url>; rel=preload";
                 }
             }
-            unset($headers[":aerys-push"]);
+            unset($ires->headers[":aerys-push"]);
         }
 
-        $status = $headers[":status"];
-        $contentLength = $headers[":aerys-entity-length"];
-        unset($headers[":aerys-entity-length"], $headers["transfer-encoding"] /* obsolete in HTTP/2 */);
+        $status = $ires->headers[":status"];
+        $contentLength = $ires->headers[":aerys-entity-length"];
+        unset($ires->headers[":aerys-entity-length"], $ires->headers["transfer-encoding"] /* obsolete in HTTP/2 */);
 
         if ($contentLength === "@") {
             $hasContent = false;
             if (($status >= 200 && $status != 204 && $status != 304)) {
-                $headers["content-length"] = ["0"];
+                $ires->headers["content-length"] = ["0"];
             }
         } elseif ($contentLength !== "*") {
             $hasContent = true;
-            $headers["content-length"] = [$contentLength];
+            $ires->headers["content-length"] = [$contentLength];
         } else {
             $hasContent = true;
-            unset($headers["content-length"]);
+            unset($ires->headers["content-length"]);
         }
 
         if ($hasContent) {
-            $type = $headers["content-type"][0] ?? $options->defaultContentType;
+            $type = $ires->headers["content-type"][0] ?? $options->defaultContentType;
             if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
                 $type .= "; charset={$options->defaultTextCharset}";
             }
-            $headers["content-type"] = [$type];
+            $ires->headers["content-type"] = [$type];
         }
 
-        $headers["date"] = [$ireq->httpDate];
-
-        return $headers;
+        $ires->headers["date"] = [$ireq->httpDate];
     }
 
-    protected function dispatchInternalRequest(InternalRequest $ireq, string $url, array $pushHeaders = null) {
+    public function dispatchInternalRequest(Internal\Request $ireq, string $url, array $pushHeaders = null) {
         $client = $ireq->client;
         $id = $client->streamId += 2;
 
@@ -208,7 +216,7 @@ class Http2Driver implements HttpDriver {
             }
         }
 
-        $new_ireq = new InternalRequest;
+        $new_ireq = new Internal\Request;
         $new_ireq->client = $client;
         $new_ireq->streamId = $id;
         $new_ireq->trace = $headerList;
@@ -244,13 +252,13 @@ class Http2Driver implements HttpDriver {
         ($this->resultEmitter)($ireq);
     }
 
-    public function writer(InternalRequest $ireq): \Generator {
+    public function writer(Internal\Request $ireq, Internal\Response $response): \Generator {
         $client = $ireq->client;
         $id = $ireq->streamId;
 
         try {
-            $headers = yield;
-            unset($headers[":reason"], $headers["connection"]); // obsolete in HTTP/2.0
+            $headers = $response->headers;
+            unset($headers["connection"]); // obsolete in HTTP/2.0
             $headers = HPack::encode($headers);
 
             // @TODO decide whether to use max-frame size
@@ -397,7 +405,7 @@ class Http2Driver implements HttpDriver {
         ($this->write)($client, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
 
-    public function upgradeBodySize(InternalRequest $ireq) {
+    public function upgradeBodySize(Internal\Request $ireq) {
         $client = $ireq->client;
         $id = $ireq->streamId;
         if (isset($client->bodyEmitters[$id])) {
@@ -905,7 +913,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                     $headerArray[$name][] = $value;
                 }
 
-                $ireq = new InternalRequest;
+                $ireq = new Internal\Request;
                 $ireq->client = $client;
                 $ireq->streamId = $id;
                 $ireq->trace = $headerList;

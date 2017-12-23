@@ -4,7 +4,7 @@ namespace Aerys\Test;
 
 use Aerys\Client;
 use Aerys\Filter;
-use Aerys\InternalRequest;
+use Aerys\Internal\Request;
 
 use Aerys\Options;
 use Aerys\Request;
@@ -126,7 +126,7 @@ class RouterTest extends TestCase {
         $mock = $this->mockServer(Server::STARTING);
         $router->update($mock);
 
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $request = new Request($ireq);
         $ireq->locals = [];
         $ireq->method = "GET";
@@ -144,7 +144,7 @@ class RouterTest extends TestCase {
         $this->assertEquals("/mediocre-dev/bob/19", $response->headers["location"]);
         $this->assertSame(["name" => "bob", "age" => "19"], $ireq->locals["aerys.routeArgs"]);
 
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $request = new Request($ireq);
         $ireq->locals = [];
         $ireq->method = "GET";
@@ -176,7 +176,7 @@ class RouterTest extends TestCase {
         $mock = $this->mockServer(Server::STARTING);
         $router->update($mock);
 
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $request = new Request($ireq);
         $ireq->locals = [];
         $ireq->method = "GET";
@@ -194,7 +194,7 @@ class RouterTest extends TestCase {
 
     public function testCachedFilterRoute() {
         $filter = new class implements Filter {
-            public function filter(InternalRequest $ireq) {
+            public function filter(Internal\Request $ireq) {
                 $data = yield;
                 $data = "filter + " . yield $data;
                 while (true) {
@@ -214,7 +214,7 @@ class RouterTest extends TestCase {
         for ($i = 0; $i < 2; $i++) {
             $received = "";
 
-            $ireq = new InternalRequest;
+            $ireq = new Internal\Request;
             $ireq->locals = [];
             $ireq->method = "GET";
             $ireq->uriPath = "/";

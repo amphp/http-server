@@ -6,7 +6,7 @@ use Aerys\Bootable;
 use Aerys\Client;
 use Aerys\Filter;
 use Aerys\HttpDriver;
-use Aerys\InternalRequest;
+use Aerys\Internal\Request;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
@@ -264,11 +264,11 @@ class WebsocketParserTest extends TestCase {
                     $this->emit = $parseEmitters[HttpDriver::RESULT];
                 }
 
-                public function filters(InternalRequest $ireq, array $filters): array {
+                public function filters(Internal\Request $ireq, array $filters): array {
                     return $filters;
                 }
 
-                public function writer(InternalRequest $ireq): \Generator {
+                public function writer(Internal\Request $ireq): \Generator {
                     $this->headers = yield;
                     $this->body = "";
                     do {
@@ -281,7 +281,7 @@ class WebsocketParserTest extends TestCase {
                 }
 
                 public function emit() {
-                    $ireq = new InternalRequest;
+                    $ireq = new Internal\Request;
                     $ireq->client = $this->client;
                     $ireq->protocol = "1.1";
                     $ireq->method = "GET";
@@ -293,7 +293,7 @@ class WebsocketParserTest extends TestCase {
                     ($this->emit)($ireq);
                 }
 
-                public function upgradeBodySize(InternalRequest $ireq) {
+                public function upgradeBodySize(Internal\Request $ireq) {
                 }
             });
             $logger = new class extends Logger {

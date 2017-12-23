@@ -7,7 +7,7 @@ use Aerys\ClientException;
 use Aerys\HPack;
 use Aerys\Http2Driver;
 use Aerys\HttpDriver;
-use Aerys\InternalRequest;
+use Aerys\Internal\Request;
 use Aerys\Options;
 use Amp\PHPUnit\TestCase;
 
@@ -199,7 +199,7 @@ class Http2DriverTest extends TestCase {
         $client = new Client;
         $client->options = new Options;
         $client->bodyEmitters[2] = $bodyEmitter;
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = $client;
         $ireq->streamId = 2;
         $writer = $driver->writer($ireq);
@@ -225,7 +225,7 @@ class Http2DriverTest extends TestCase {
         $client->options = new Options;
         $client->streamWindow[2] = 65536;
         $client->streamWindowBuffer[2] = "";
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = $client;
         $ireq->streamId = 2;
         $writer = $driver->writer($ireq);
@@ -289,7 +289,7 @@ class Http2DriverTest extends TestCase {
         ];
         $parser->send($this->packHeader($headers));
 
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = $client;
         $ireq->streamId = 1;
         $writer = $driver->writer($ireq);
@@ -345,7 +345,7 @@ class Http2DriverTest extends TestCase {
 
         $parser->send($this->packHeader($headers, false, 3));
 
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = $client;
         $ireq->streamId = 3;
         $writer = $driver->writer($ireq);

@@ -10,9 +10,9 @@ class Request {
     private $body;
 
     /**
-     * @param \Aerys\InternalRequest $internalRequest
+     * @param \Aerys\Internal\Request $internalRequest
      */
-    public function __construct(InternalRequest $internalRequest) {
+    public function __construct(Internal\Request $internalRequest) {
         $this->internalRequest = $internalRequest;
     }
 
@@ -40,7 +40,7 @@ class Request {
     /**
      * {@inheritdoc}
      */
-    public function getHeader(string $field) {
+    public function getHeader(string $field) { /* : ?string */
         return $this->internalRequest->headers[strtolower($field)][0] ?? null;
     }
 
@@ -88,7 +88,7 @@ class Request {
     /**
      * {@inheritdoc}
      */
-    public function getParam(string $name) {
+    public function getParam(string $name) { /* : ?string */
         return ($this->queryParams ?? $this->queryParams = $this->parseParams())[$name][0] ?? null;
     }
 

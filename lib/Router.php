@@ -11,9 +11,11 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 use function FastRoute\simpleDispatcher;
 
-class Router implements Bootable, Filter, Monitor, ServerObserver {
+class Router implements Bootable, Monitor, ServerObserver, Internal\RequestFilter {
     private $state = Server::STOPPED;
     private $bootLoader;
+
+    /** @var \FastRoute\Dispatcher */
     private $routeDispatcher;
     private $routes = [];
     private $actions = [];
@@ -60,12 +62,12 @@ class Router implements Bootable, Filter, Monitor, ServerObserver {
             return;
         }
 
-        list($isMethodAllowed, $data) = $preRoute;
+        list($isMethodAllowed, $action) = $preRoute;
         if ($isMethodAllowed) {
-            return $data($request, $request->getLocalVar("aerys.routeArgs"));
+            return $action($request, $request->getLocalVar("aerys.routeArgs"));
         }
 
-        $allowedMethods = implode(",", $data);
+        $allowedMethods = implode(",", $action);
         $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
         $body = makeGenericBody($status);
         $response = new Response\HtmlResponse($body, ["Allow" => $allowedMethods], $status);
@@ -74,30 +76,20 @@ class Router implements Bootable, Filter, Monitor, ServerObserver {
 
     /**
      * Execute router filter functionality.
-     * @param InternalRequest $ireq
+     * @param Internal\Request $ireq
      */
-    public function filter(InternalRequest $ireq) {
+    public function filterRequest(Internal\Request $ireq) {
         $toMatch = "{$ireq->method}\0{$ireq->uriPath}";
 
         if (isset($this->cache[$toMatch])) {
             list($args, $routeArgs) = $cache = $this->cache[$toMatch];
-            list($action, $filters) = $args;
+            list($action) = $args;
             $ireq->locals["aerys.routeArgs"] = $routeArgs;
             // Keep the most recently used entry at the back of the LRU cache
             unset($this->cache[$toMatch]);
             $this->cache[$toMatch] = $cache;
 
             $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
-            if (!empty($filters)) {
-                try {
-                    return yield from responseFilter($filters, $ireq);
-                } catch (FilterException $e) {
-                    end($ireq->badFilterKeys);
-                    unset($ireq->badFilterKeys[key($ireq->badFilterKeys)]);
-                    $ireq->filterErrorFlag = false;
-                    throw $e->getPrevious();
-                }
-            }
             return;
         }
 
@@ -106,23 +98,14 @@ class Router implements Bootable, Filter, Monitor, ServerObserver {
         switch ($match[0]) {
             case Dispatcher::FOUND:
                 list(, $args, $routeArgs) = $match;
-                list($action, $filters) = $args;
+                list($action) = $args;
                 $ireq->locals["aerys.routeArgs"] = $routeArgs;
+
                 if ($this->maxCacheEntries > 0) {
                     $this->cacheDispatchResult($toMatch, $routeArgs, $args);
                 }
 
                 $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
-                if (!empty($filters)) {
-                    try {
-                        return yield from responseFilter($filters, $ireq);
-                    } catch (FilterException $e) {
-                        end($ireq->badFilterKeys);
-                        unset($ireq->badFilterKeys[key($ireq->badFilterKeys)]);
-                        $ireq->filterErrorFlag = false;
-                        throw $e->getPrevious();
-                    }
-                }
                 break;
             case Dispatcher::NOT_FOUND:
                 // Do nothing; allow actions further down the chain a chance to respond.

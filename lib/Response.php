@@ -13,7 +13,7 @@ class Response {
     private $headers = [];
 
     /** @var \Amp\ByteStream\InputStream  */
-    private $stream;
+    private $body;
 
     /** @var int HTTP status code. */
     private $status;
@@ -26,6 +26,9 @@ class Response {
 
     /** @var array */
     private $push = [];
+
+    /** @var array|null */
+    private $detach;
 
     /**
      * @param int $code Status code.
@@ -43,18 +46,18 @@ class Response {
     ) {
         $this->status = $this->validateStatusCode($code);
         $this->reason = $reason === null
-            ? (HTTP_STATUS[$this->status] ?? "Unknown reason")
+            ? (HTTP_REASON[$this->status] ?? "Unknown reason")
             : $this->filterReason($reason);
 
         if (!empty($headers)) {
             $this->setHeaders($headers);
         }
 
-        if (isset($this->headers['set-cookie'])) {
+        if (isset($this->headers['Set-Cookie'])) {
             $this->setCookiesFromHeaders();
         }
 
-        $this->stream = $stream ?: new NullBody;
+        $this->body = $stream ?: new NullBody;
     }
 
     /**
@@ -67,45 +70,22 @@ class Response {
     /**
      * {@inheritdoc}
      */
-    public function hasHeader(string $name): bool {
-        return isset($this->headerNameMap[strtolower($name)]);
+    public function getHeaderArray(string $name): array {
+        return $this->headers[\strtolower($name)] ?? [];
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getHeaderAsArray(string $name): array {
-        $name = strtolower($name);
-
-        if (!isset($this->headerNameMap[$name])) {
-            return [];
-        }
-
-        $name = $this->headerNameMap[$name];
-
-        return $this->headers[$name];
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getHeader(string $name): string {
-        $name = strtolower($name);
-
-        if (!isset($this->headerNameMap[$name])) {
-            return '';
-        }
-
-        $name = $this->headerNameMap[$name];
-
-        return isset($this->headers[$name][0]) ? $this->headers[$name][0] : '';
+    public function getHeader(string $name) {
+        return $this->headers[\strtolower($name)][0] ?? null;
     }
 
     /**
      * {@inheritdoc}
      */
     public function getBody(): InputStream {
-        return $this->stream;
+        return $this->body;
     }
 
     /**
@@ -135,12 +115,13 @@ class Response {
      * @throws \Error If the header name or value is invalid.
      */
     public function setHeader(string $name, $value) {
-        \assert($this->isHeaderNameValid($name), "Header name is invalid");
+        \assert($this->isNameValid($name), "Header name is invalid");
+        \assert($this->isValueValid($name), "Header value is invalid");
 
-        $name = strtolower($name);
-        $this->headers[$name] = $this->filterHeader($value);
+        $name = \strtolower($name);
+        $this->headers[$name] = [$value];
 
-        if ('set-cookie' === $name) {
+        if ('Set-Cookie' === $name) {
             $this->setCookiesFromHeaders();
         }
     }
@@ -154,16 +135,17 @@ class Response {
      * @throws \Error If the header name or value is invalid.
      */
     public function addHeader(string $name, $value) {
-        \assert($this->isHeaderNameValid($name), "Header name is invalid");
+        \assert($this->isNameValid($name), "Header name is invalid");
+        \assert($this->isValueValid($name), "Header value is invalid");
 
-        $name = strtolower($name);
+        $name = \strtolower($name);
         if (isset($this->headers[$name])) {
-            $this->headers[$name] = \array_merge($this->headers[$name], $this->filterHeader($value));
+            $this->headers[$name][] = $value;
         } else {
-            $this->headers = $this->filterHeader($value);
+            $this->headers = [$value];
         }
 
-        if ('set-cookie' === $name) {
+        if ('Set-Cookie' === $name) {
             $this->setCookiesFromHeaders();
         }
     }
@@ -174,10 +156,10 @@ class Response {
      * @param string $name
      */
     public function removeHeader(string $name) {
-        $name = strtolower($name);
+        $name = \strtolower($name);
         unset($this->headers[$name]);
 
-        if ('set-cookie' === $name) {
+        if ('Set-Cookie' === $name) {
             $this->cookies = [];
         }
     }
@@ -187,42 +169,38 @@ class Response {
      *
      * @return bool
      */
-    private function isHeaderNameValid(string $name): bool {
+    private function isNameValid(string $name): bool {
         return (bool) preg_match('/^[A-Za-z0-9`~!#$%^&_|\'\-]+$/', $name);
     }
 
     /**
-     * Converts a given header value to an integer-indexed array of strings.
+     * Determines if the given value is a valid header value.
      *
      * @param mixed|mixed[] $values
      *
-     * @return string[]
+     * @return bool
      *
      * @throws \Error If the given value cannot be converted to a string and is not an array of values that can be
      *     converted to strings.
      */
-    private function filterHeader($values): array {
+    private function isValueValid($values): bool {
         if (!is_array($values)) {
             $values = [$values];
         }
-
-        $lines = [];
 
         foreach ($values as $value) {
             if (is_numeric($value) || is_null($value) || (is_object($value) && method_exists($value, '__toString'))) {
                 $value = (string) $value;
             } elseif (!is_string($value)) {
-                throw new \Error('Header values must be strings or an array of strings.');
+                return false;
             }
 
             if (preg_match("/[^\t\r\n\x20-\x7e\x80-\xfe]|\r\n/", $value)) {
-                throw new \Error('Invalid character(s) in header value.');
+                return false;
             }
-
-            $lines[] = $value;
         }
 
-        return $lines;
+        return true;
     }
 
     /**
@@ -240,7 +218,7 @@ class Response {
             return $this->reason;
         }
 
-        return isset(HTTP_STATUS[$this->status]) ? HTTP_REASON[$this->status] : '';
+        return HTTP_REASON[$this->status] ?? '';
     }
 
     /**
@@ -319,7 +297,7 @@ class Response {
      * @return string
      */
     protected function filterReason(string $reason = null): string {
-        return $reason ?? (HTTP_STATUS[$this->status] ?? "Unknown reason");
+        return $reason ?? (HTTP_REASON[$this->status] ?? "Unknown reason");
     }
 
     /**
@@ -330,7 +308,7 @@ class Response {
     private function setCookiesFromHeaders() {
         $this->cookies = [];
 
-        $headers = $this->getHeaderAsArray('set-cookie');
+        $headers = $this->getHeaderArray('Set-Cookie');
 
         foreach ($headers as $line) {
             $cookie = MetaCookie::fromHeader($line);
@@ -348,7 +326,7 @@ class Response {
             $values[] = $cookie->toHeader();
         }
 
-        $this->setHeader('set-cookie', $values);
+        $this->setHeader('Set-Cookie', $values);
     }
 
     /**
@@ -377,5 +355,30 @@ class Response {
         })($headers), "Headers must not contain colon prefixed headers or a Host header. Use a full URL if necessary, the method is always GET.");
 
         $this->push[$url] = $headers;
+    }
+
+    public function isDetached(): bool {
+        return $this->detach === null;
+    }
+
+    public function detach(callable $detach, ...$args) {
+        $this->detach = [$detach, $args];
+    }
+
+    /**
+     * @internal
+     *
+     * @return \Aerys\Internal\Response
+     */
+    public function export(): Internal\Response {
+        $ires = new Internal\Response;
+        $ires->headers = $this->headers;
+        $ires->status = $this->status;
+        $ires->reason = $this->reason;
+        $ires->push = $this->push;
+        $ires->body = $this->body;
+        $ires->detach = $this->detach;
+
+        return $ires;
     }
 }

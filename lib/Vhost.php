@@ -10,7 +10,8 @@ class Vhost implements Monitor {
     private $addressMap;
     private $name;
     private $ids;
-    private $filters = [];
+    private $requestFilters = [];
+    private $responseFilters = [];
     private $monitors = [];
     private $httpDriver;
     private $tlsContextArr = [];
@@ -32,7 +33,7 @@ class Vhost implements Monitor {
     ];
 
     /** @Note Vhosts do not allow wildcards, only separate 0.0.0.0 and :: */
-    public function __construct(string $name, array $interfaces, callable $application, array $filters, array $monitors = [], HttpDriver $driver = null) {
+    public function __construct(string $name, array $interfaces, callable $application, array $requestFilters, array $responseFilters, array $monitors = [], HttpDriver $driver = null) {
         $this->name = strtolower($name);
         if (!$interfaces) {
             throw new \Error(
@@ -43,7 +44,8 @@ class Vhost implements Monitor {
             $this->addInterface($interface);
         }
         $this->application = $application;
-        $this->filters = array_values($filters);
+        $this->requestFilters = array_values($requestFilters);
+        $this->responseFilters = array_values($responseFilters);
         $this->monitors = $monitors;
         $this->httpDriver = $driver;
 
@@ -332,12 +334,21 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Retrieve filters registered for this host.
+     * Retrieve request filters registered for this host.
      *
-     * @return array
+     * @return \Aerys\Internal\RequestFilter[]
      */
-    public function getFilters(): array {
-        return $this->filters;
+    public function getRequestFilters(): array {
+        return $this->requestFilters;
+    }
+
+    /**
+     * Retrieve response filters registered for this host.
+     *
+     * @return \Aerys\Internal\ResponseFilter[]
+     */
+    public function getResponseFilters(): array {
+        return $this->responseFilters;
     }
 
     /**

@@ -1,13 +1,13 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Internal;
 
 use Amp\Struct;
 
-class InternalRequest {
+class Request {
     use Struct;
 
-    /** @var Client */
+    /** @var \Aerys\Client */
     public $client;
     /** @var \Generator */
     public $responseWriter;

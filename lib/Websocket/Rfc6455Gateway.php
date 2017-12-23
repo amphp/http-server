@@ -3,8 +3,6 @@
 namespace Aerys\Websocket;
 
 use Aerys\ClientException;
-use Aerys\Filter;
-use Aerys\InternalRequest;
 use Aerys\Monitor;
 use Aerys\NullBody;
 use Aerys\Request;
@@ -21,14 +19,14 @@ use Amp\Emitter;
 use Amp\Failure;
 use Amp\Loop;
 use Amp\Promise;
-use Amp\Socket\ServerSocket;
+use Amp\Socket\Socket;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 use const Aerys\HTTP_STATUS;
 use function Aerys\makeGenericBody;
 use function Amp\call;
 
-class Rfc6455Gateway implements Filter, Monitor, ServerObserver {
+class Rfc6455Gateway implements Monitor, ServerObserver {
     use CallableMaker;
 
     /** @var \Psr\Log\LoggerInterface */
@@ -182,33 +180,23 @@ class Rfc6455Gateway implements Filter, Monitor, ServerObserver {
         }
 
         $response = new Handshake($acceptKey);
-        $onHandshakeResult = yield call([$this->application, "onHandshake"], $request, $response, ...$args);
-        $request->setLocalVar("aerys.websocket", $onHandshakeResult);
+        $onHandshakeResult = yield call([$this->application, "onHandshake"], $request, ...$args);
+
+        if ($onHandshakeResult instanceof Response) {
+            return $response;
+        }
+
+        $response->detach($this->reapClient, $onHandshakeResult);
         return $response;
     }
 
-    public function filter(InternalRequest $ireq): \Generator {
-        $headers = yield;
-        if ($headers[":status"] === 101) {
-            $yield = yield $headers;
-        } else {
-            return $headers; // detach if we don't want to establish websocket connection
-        }
-
-        while ($yield !== null) {
-            $yield = yield $yield;
-        }
-
-        Loop::defer($this->reapClient, $ireq);
-    }
-
-    public function reapClient(string $watcherId, InternalRequest $ireq): Rfc6455Client {
+    public function reapClient(Socket $socket, callable $clearer, $data = null) {
         $client = new Rfc6455Client;
         $client->capacity = $this->maxBytesPerMinute;
         $client->connectedAt = $this->now;
-        $client->id = $ireq->client->id;
-        $client->socket = new ServerSocket($ireq->client->socket);
-        $client->serverRefClearer = ($ireq->client->exporter)($ireq->client);
+        $client->id = (int) $socket->getResource();
+        $client->socket = $socket;
+        $client->serverRefClearer = $clearer;
 
         $client->parser = $this->parser($client, $options = [
             "max_msg_size" => $this->maxMsgSize,
@@ -217,18 +205,12 @@ class Rfc6455Gateway implements Filter, Monitor, ServerObserver {
             "text_only" => $this->textOnly,
         ]);
 
-        if ($ireq->client->writeBuffer !== "") {
-            $client->socket->write($ireq->client->writeBuffer);
-        }
-
         $this->clients[$client->id] = $client;
         $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
 
-        Promise\rethrow(new Coroutine($this->tryAppOnOpen($client->id, $ireq->locals["aerys.websocket"])));
+        Promise\rethrow(new Coroutine($this->tryAppOnOpen($client->id, $data)));
 
         Promise\rethrow(new Coroutine($this->read($client)));
-
-        return $client;
     }
 
     private function read(Rfc6455Client $client): \Generator {

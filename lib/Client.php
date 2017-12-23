@@ -18,8 +18,13 @@ class Client {
     public $serverPort;
     public $isEncrypted;
     public $cryptoInfo;
+
+    /** @var \Generator */
     public $requestParser;
+    /** @var string */
     public $readWatcher;
+
+    /** @var string */
     public $writeWatcher;
 
     public $writeBuffer = "";
@@ -40,7 +45,6 @@ class Client {
 
     /** @var \Aerys\HttpDriver */
     public $httpDriver;
-    public $exporter; // Requires Client object as first argument // @TODO cyclic reference to Server object
 
     /** @var \Amp\Emitter[] */
     public $bodyEmitters = [];

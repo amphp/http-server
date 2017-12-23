@@ -5,7 +5,7 @@ const AERYS_OPTIONS = [
 ];
 
 class OurFilter implements \Aerys\Filter {
-    public function filter(\Aerys\InternalRequest $ireq) {
+    public function filter(\Aerys\Internal\Request $ireq) {
         // We have a filter
     }
 

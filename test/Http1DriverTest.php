@@ -5,7 +5,7 @@ namespace Aerys\Test;
 use Aerys\Client;
 use Aerys\Http1Driver;
 use Aerys\HttpDriver;
-use Aerys\InternalRequest;
+use Aerys\Internal\Request;
 use Aerys\Options;
 use Amp\Artax\Internal\Parser;
 use Amp\Loop;
@@ -574,7 +574,7 @@ class Http1DriverTest extends TestCase {
         $driver = new Http1Driver;
         $driver->setup($emitCallbacks, $this->createCallback(0));
         $parser = $driver->parser($client);
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = $client;
         $client->bodyEmitters = ["set"];
         $client->requestParser = $parser;
@@ -643,7 +643,7 @@ class Http1DriverTest extends TestCase {
         $client->requestParser = $parser;
 
         $getWriter = function () use ($client, $driver) {
-            $ireq = new InternalRequest;
+            $ireq = new Internal\Request;
             $ireq->client = $client;
             $ireq->protocol = "1.1";
             $ireq->responseWriter = $driver->writer($ireq);
@@ -712,7 +712,7 @@ class Http1DriverTest extends TestCase {
         foreach (["connectionTimeout" => 60, "defaultContentType" => "text/html", "defaultTextCharset" => "utf-8", "deflateEnable" => false, "sendServerToken" => false] as $k => $v) {
             $client->options->$k = $v;
         }
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = $client;
         $ireq->protocol = "1.1";
         $ireq->responseWriter = $driver->writer($ireq);
@@ -740,7 +740,7 @@ class Http1DriverTest extends TestCase {
             $invoked = true;
         });
 
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = new Client;
         $writer = $driver->writer($ireq);
         $writer->valid(); // start generator
@@ -761,7 +761,7 @@ class Http1DriverTest extends TestCase {
 
         $client = new Client;
         $client->options = new Options;
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = $client;
         $ireq->protocol = "1.1";
         $writer = $driver->writer($ireq);
@@ -775,7 +775,7 @@ class Http1DriverTest extends TestCase {
     }
 
     public function testHttp2Upgrade() {
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->protocol = "1.1";
         $ireq->headers = ["upgrade" => ["h2c"], "http2-settings" => [strtr(base64_encode("somesettings"), "+/", "-_")], "host" => ["foo.bar"]];
         $ireq->responseWriter = (function () use (&$headers) {
@@ -790,12 +790,12 @@ class Http1DriverTest extends TestCase {
         $http2 = new class implements HttpDriver {
             public function setup(array $parseEmitters, callable $responseWriter) {
             }
-            public function upgradeBodySize(InternalRequest $ireq) {
+            public function upgradeBodySize(Internal\Request $ireq) {
             }
-            public function filters(InternalRequest $ireq, array $filters): array {
+            public function filters(Internal\Request $ireq, array $filters): array {
                 return $filters;
             }
-            public function writer(InternalRequest $ireq): \Generator {
+            public function writer(Internal\Request $ireq): \Generator {
                 yield;
             }
 
@@ -825,12 +825,12 @@ class Http1DriverTest extends TestCase {
         $http2 = new class implements HttpDriver {
             public function setup(array $parseEmitters, callable $responseWriter) {
             }
-            public function upgradeBodySize(InternalRequest $ireq) {
+            public function upgradeBodySize(Internal\Request $ireq) {
             }
-            public function filters(InternalRequest $ireq, array $filters): array {
+            public function filters(Internal\Request $ireq, array $filters): array {
                 return $filters;
             }
-            public function writer(InternalRequest $ireq): \Generator {
+            public function writer(Internal\Request $ireq): \Generator {
                 yield;
             }
 

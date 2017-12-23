@@ -3,7 +3,6 @@
 namespace Aerys\Test;
 
 use Aerys\Client;
-use Aerys\InternalRequest;
 use Aerys\Options;
 use PHPUnit\Framework\TestCase;
 
@@ -11,7 +10,7 @@ class deflateResponseFilterTest extends TestCase {
     public function testNoDeflate() {
         $longData = str_repeat("10", 1000);
         $shortData = str_repeat("10", 10);
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = new Client;
         $ireq->client->options = new Options;
         $ireq->client->options->deflateContentTypes = "#^text/.*$#";
@@ -64,7 +63,7 @@ class deflateResponseFilterTest extends TestCase {
 
     public function testSuccessfulDeflate() {
         $try = function ($header = []) {
-            $ireq = new InternalRequest;
+            $ireq = new Internal\Request;
             $ireq->client = new Client;
             $ireq->client->options = new Options;
             $ireq->headers["accept-encoding"] = ["compress", "identity, gzip"];

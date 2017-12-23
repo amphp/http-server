@@ -3,7 +3,6 @@
 namespace Aerys\Test;
 
 use Aerys\Client;
-use Aerys\InternalRequest;
 use Aerys\Vhost;
 use Aerys\VhostContainer;
 use Amp\Socket\Certificate;
@@ -60,7 +59,7 @@ class VhostTest extends TestCase {
 
         $this->assertEquals(6, $vhosts->count());
 
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = new Client;
         $ireq->client->serverAddr = $addr;
         $ireq->client->serverPort = $port;

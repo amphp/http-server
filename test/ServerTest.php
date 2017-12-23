@@ -4,7 +4,7 @@ namespace Aerys\Test;
 
 use Aerys\Client;
 use Aerys\HttpDriver;
-use Aerys\InternalRequest;
+use Aerys\Internal\Request;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
@@ -48,11 +48,11 @@ class ServerTest extends TestCase {
                 $this->emitters = $parseEmitters;
             }
 
-            public function filters(InternalRequest $ireq, array $filters): array {
+            public function filters(Internal\Request $ireq, array $filters): array {
                 return $filters;
             }
 
-            public function writer(InternalRequest $ireq): \Generator {
+            public function writer(Internal\Request $ireq): \Generator {
                 $this->test->assertSame($this->client, $ireq->client);
 
                 $this->headers = yield;
@@ -62,7 +62,7 @@ class ServerTest extends TestCase {
                 } while ($part !== null);
             }
 
-            public function upgradeBodySize(InternalRequest $ireq) {
+            public function upgradeBodySize(Internal\Request $ireq) {
             }
 
             public function parser(Client $client): \Generator {
@@ -73,7 +73,7 @@ class ServerTest extends TestCase {
                 $type = array_shift($emit);
                 foreach ($this->emitters as $key => $emitter) {
                     if ($key & $type) {
-                        if ($emit[0] instanceof InternalRequest) {
+                        if ($emit[0] instanceof Internal\Request) {
                             $emit[0]->client = $this->client;
                             $emitter(...$emit);
                         } else {
@@ -99,7 +99,7 @@ class ServerTest extends TestCase {
     }
 
     public function newIreq() {
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->streamId = 2;
         $ireq->trace = [["host", "localhost"]];
         $ireq->protocol = "2.0";
@@ -127,7 +127,7 @@ class ServerTest extends TestCase {
             $res->setHeader("FOO", "bar");
             $res->end("message");
             $this->assertEquals(4, ++$order);
-        }, [function (InternalRequest $ireq) use (&$order) {
+        }, [function (Internal\Request $ireq) use (&$order) {
             $this->assertEquals(1, ++$order);
             $this->assertEquals(2, $ireq->streamId);
             $headers = yield;
@@ -154,7 +154,7 @@ class ServerTest extends TestCase {
                 $res->write($chunk);
             }
             $res->end();
-        }, [function (InternalRequest $ireq) {
+        }, [function (Internal\Request $ireq) {
             $headers = yield;
             $this->assertEquals("fooBar", yield $headers);
             $this->assertEquals("BAZ!", yield "fooBar");
@@ -174,7 +174,7 @@ class ServerTest extends TestCase {
             $res->write("fooBar");
             $res->write("BAZ!");
             $res->end();
-        }, [function (InternalRequest $ireq) {
+        }, [function (Internal\Request $ireq) {
             $this->assertSame("POST", $ireq->method);
             $headers = yield;
             $this->assertEquals("fooBar", yield);
@@ -196,7 +196,7 @@ class ServerTest extends TestCase {
             $res->flush();
             $res->write(" ");
             $res->end("19!");
-        }, [function (InternalRequest $ireq) {
+        }, [function (Internal\Request $ireq) {
             $headers = yield;
             $this->assertEquals("Bob", yield);
             $this->assertFalse(yield);
@@ -286,11 +286,11 @@ class ServerTest extends TestCase {
                 $this->write = $write;
             }
 
-            public function filters(InternalRequest $ireq, array $filters): array {
+            public function filters(Internal\Request $ireq, array $filters): array {
                 return $filters;
             }
 
-            public function writer(InternalRequest $ireq): \Generator {
+            public function writer(Internal\Request $ireq): \Generator {
                 $this->test->fail("We shouldn't be invoked the writer when not dispatching requests");
             }
 
@@ -298,7 +298,7 @@ class ServerTest extends TestCase {
                 yield from ($this->parser)($client, $this->write);
             }
 
-            public function upgradeBodySize(InternalRequest $ireq) {
+            public function upgradeBodySize(Internal\Request $ireq) {
             }
         };
 
@@ -315,7 +315,7 @@ class ServerTest extends TestCase {
             public function getTlsBindingsByAddress(): array {
                 return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER]] : [];
             }
-            public function selectHost(InternalRequest $ireq): Vhost {
+            public function selectHost(Internal\Request $ireq): Vhost {
                 $this->test->fail("We should never get to dispatching requests here...");
             }
             public function selectHttpDriver($addr, $port) {

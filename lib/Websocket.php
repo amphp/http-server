@@ -28,13 +28,13 @@ interface Websocket {
      * handshake it doesn't have to do anything in this method and all handshakes will
      * be automatically accepted.
      *
-     * The return value from onHandshake() invocation (which may be the eventual generator
+     * Return an instance of \Aerys\Response to reject the websocket connection request.
+     * Other values returned from onHandshake() invocation (which may be the eventual generator
      * return expression) is passed as the second parameter to onOpen().
      *
      * @param \Aerys\Request $request The HTTP request that instigated the handshake
-     * @param \Aerys\Response $response Used to set headers and/or reject the handshake
      */
-    public function onHandshake(Request $request, Response $response);
+    public function onHandshake(Request $request);
 
     /**
      * Invoked when the full two-way websocket upgrade completes.

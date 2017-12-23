@@ -5,7 +5,7 @@ namespace Aerys\Test;
 use Aerys\ClientException;
 use Aerys\Http1Driver;
 use Aerys\Http2Driver;
-use Aerys\InternalRequest;
+use Aerys\Internal\Request;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
@@ -101,7 +101,7 @@ class ClientTest extends TestCase {
                 } catch (\Throwable $e) {
                     $deferred->fail($e);
                 }
-            }, [function (InternalRequest $ireq) {
+            }, [function (Internal\Request $ireq) {
                 $ireq->protocol = "1.0"; // fake it in order to enforce identity transfer
 
                 $headers = yield;

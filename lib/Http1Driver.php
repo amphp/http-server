@@ -5,7 +5,7 @@ namespace Aerys;
 use Amp\Deferred;
 use Amp\Loop;
 
-class Http1Driver implements HttpDriver {
+class Http1Driver implements HttpDriver, Internal\ResponseFilter {
     const HEADER_REGEX = "(
         ([^()<>@,;:\\\"/[\]?={}\x01-\x20\x7F]+):[\x20\x09]*
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
@@ -19,6 +19,16 @@ class Http1Driver implements HttpDriver {
     private $sizeWarningEmitter;
     private $errorEmitter;
     private $responseWriter;
+
+    private $deflateFilter;
+    private $chunkedFilter;
+    private $nullFilter;
+
+    public function __construct() {
+        $this->deflateFilter = new Internal\DeflateResponseFilter;
+        $this->chunkedFilter = new Internal\ChunkedResponseFilter;
+        $this->nullFilter = new Internal\NullBodyFilter;
+    }
 
     public function setup(array $parseEmitters, callable $responseWriter) {
         $map = [
@@ -41,7 +51,7 @@ class Http1Driver implements HttpDriver {
         $this->http2->setup($parseEmitters, $responseWriter);
     }
 
-    public function filters(InternalRequest $ireq, array $userFilters): array {
+    public function filters(Internal\Request $ireq, array $userFilters): array {
         // We need this in filters to be able to return HTTP/2.0 filters; if we allow HTTP/1.1 filters to be returned, we have lost
         if (isset($ireq->headers["upgrade"][0]) &&
             $ireq->headers["upgrade"][0] === "h2c" &&
@@ -50,13 +60,16 @@ class Http1Driver implements HttpDriver {
             false !== $h2cSettings = base64_decode(strtr($ireq->headers["http2-settings"][0], "-_", "+/"), true)
         ) {
             // Send upgrading response
-            $ireq->responseWriter->send([
-                ":status" => HTTP_STATUS["SWITCHING_PROTOCOLS"],
-                ":reason" => "Switching Protocols",
+            $ires = new Internal\Response;
+            $ires->status = HTTP_STATUS["SWITCHING_PROTOCOLS"];
+            $ires->reason = HTTP_REASON[$ires->status];
+            $ires->headers = [
                 "connection" => ["Upgrade"],
                 "upgrade" => ["h2c"],
-            ]);
-            $ireq->responseWriter->send(false); // flush before replacing
+            ];
+
+            $responseWriter = $this->writer($ireq, $ires);
+            $responseWriter->send(null); // flush before replacing
 
             // internal upgrade
             $client = $ireq->client;
@@ -65,7 +78,6 @@ class Http1Driver implements HttpDriver {
 
             $client->requestParser->valid(); // start generator
 
-            $ireq->responseWriter = $client->httpDriver->writer($ireq);
             $ireq->streamId = 1;
             $client->streamWindow = [];
             $client->streamWindow[$ireq->streamId] = $client->window;
@@ -89,31 +101,34 @@ class Http1Driver implements HttpDriver {
             return $client->httpDriver->filters($ireq, $userFilters);
         }
 
-        $filters = [
-            [$this, "responseInitFilter"],
-        ];
+        $filters = [$this];
+
         if ($userFilters) {
             $filters = array_merge($filters, $userFilters);
         }
-        if ($ireq->client->options->deflateEnable) {
-            $filters[] = __NAMESPACE__ . '\Internal\deflateResponseFilter';
-        }
-        if ($ireq->protocol === "1.1") {
-            $filters[] = [$this, "chunkedResponseFilter"];
-        }
+
         if ($ireq->method === "HEAD") {
-            $filters[] = __NAMESPACE__ . '\Internal\nullBodyResponseFilter';
+            $filters[] = $this->nullFilter;
+            return $filters; // No further filters needed.
+        }
+
+        if ($ireq->client->options->deflateEnable) {
+            $filters[] = $this->deflateFilter;
+        }
+
+        if ($ireq->protocol === "1.1") {
+            $filters[] = $this->chunkedFilter;
         }
 
         return $filters;
     }
 
-    public function writer(InternalRequest $ireq): \Generator {
+    public function writer(Internal\Request $ireq, Internal\Response $response): \Generator {
         $client = $ireq->client;
         $msgs = "";
 
         try {
-            $headers = yield;
+            $headers = $response->headers;
 
             if (!empty($headers["connection"])) {
                 foreach ($headers["connection"] as $connection) {
@@ -123,8 +138,7 @@ class Http1Driver implements HttpDriver {
                 }
             }
 
-            $lines = ["HTTP/{$ireq->protocol} {$headers[":status"]} {$headers[":reason"]}"];
-            unset($headers[":status"], $headers[":reason"]);
+            $lines = ["HTTP/{$ireq->protocol} {$response->status} {$response->reason}"];
             foreach ($headers as $headerField => $headerLines) {
                 if ($headerField[0] !== ":") {
                     foreach ($headerLines as $headerLine) {
@@ -140,7 +154,7 @@ class Http1Driver implements HttpDriver {
             do {
                 $msgs .= $msgPart;
 
-                if ($msgPart === false || \strlen($msgs) >= $client->options->outputBufferSize) {
+                if (\strlen($msgs) >= $client->options->outputBufferSize) {
                     $client->writeBuffer .= $msgs;
                     ($this->responseWriter)($client);
                     $msgs = "";
@@ -182,7 +196,7 @@ class Http1Driver implements HttpDriver {
         }
     }
 
-    public function upgradeBodySize(InternalRequest $ireq) {
+    public function upgradeBodySize(Internal\Request $ireq) {
         $client = $ireq->client;
         if ($client->bodyEmitters) {
             $client->streamWindow = $ireq->maxBodySize;
@@ -309,7 +323,7 @@ class Http1Driver implements HttpDriver {
                 $hasBody = $isChunked || $contentLength;
             }
 
-            $ireq = new InternalRequest;
+            $ireq = new Internal\Request;
             $ireq->client = $client;
             $ireq->headers = $headers;
             $ireq->method = $method;
@@ -553,41 +567,37 @@ class Http1Driver implements HttpDriver {
         } while (true);
     }
 
-    public static function responseInitFilter(InternalRequest $ireq) {
-        $headers = yield;
-        $status = $headers[":status"];
+    public function filterResponse(Internal\Request $ireq, Internal\Response $ires) {
+        $headers = $ires->headers;
         $options = $ireq->client->options;
 
         if ($options->sendServerToken) {
-            $headers["server"] = [SERVER_TOKEN];
+            $ires->headers["server"] = [SERVER_TOKEN];
         }
 
-        if (!empty($headers[":aerys-push"])) {
-            foreach ($headers[":aerys-push"] as $url => $pushHeaders) {
-                $headers["link"][] = "<$url>; rel=preload";
-            }
-            unset($headers[":aerys-push"]);
+        if ($ires->status < 200) {
+            return;
         }
 
-        $contentLength = $headers[":aerys-entity-length"];
-        unset($headers[":aerys-entity-length"]);
-
-        if ($contentLength === "@") {
-            $hasContent = false;
-            $shouldClose = $ireq->protocol === "1.0";
-            if (($status >= 200 && $status != 204 && $status != 304)) {
-                $headers["content-length"] = ["0"];
+        if (!empty($ires->push)) {
+            $ires->headers["link"] = [];
+            foreach ($ires->push as $url => $pushHeaders) {
+                $ires->headers["link"][] = "<$url>; rel=preload";
             }
-        } elseif ($contentLength !== "*") {
+        }
+
+        $contentLength = $ires->headers["content-length"][0] ?? null;
+        $shouldClose = isset($ireq->headers["connection"]) && \in_array("close", $ireq->headers["connection"]);
+
+        if ($contentLength !== null) {
             $hasContent = true;
-            $shouldClose = $ireq->protocol === "1.0";
-            $headers["content-length"] = [$contentLength];
-            unset($headers["transfer-encoding"]);
+            $shouldClose = $shouldClose || $ireq->protocol === "1.0";
+            unset($ires->headers["transfer-encoding"]);
         } elseif ($ireq->protocol === "1.1") {
             $hasContent = true;
-            $shouldClose = false;
-            $headers["transfer-encoding"] = ["chunked"];
-            unset($headers["content-length"]);
+            $shouldClose = $shouldClose || false;
+            $ires->headers["transfer-encoding"] = ["chunked"];
+            unset($ires->headers["content-length"]);
         } else {
             $hasContent = true;
             $shouldClose = true;
@@ -598,59 +608,22 @@ class Http1Driver implements HttpDriver {
             if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
                 $type .= "; charset={$options->defaultTextCharset}";
             }
-            $headers["content-type"] = [$type];
+            $ires->headers["content-type"] = [$type];
         }
 
         $remainingRequests = $ireq->client->remainingRequests;
         if ($shouldClose || $remainingRequests <= 0) {
-            $headers["connection"] = ["close"];
+            $ires->headers["connection"] = ["close"];
         } elseif ($remainingRequests < (PHP_INT_MAX >> 1)) {
+            $ires->headers["connection"] = ["keep-alive"];
             $keepAlive = "timeout={$options->connectionTimeout}, max={$remainingRequests}";
-            $headers["keep-alive"] = [$keepAlive];
+            $ires->headers["keep-alive"] = [$keepAlive];
         } else {
+            $ires->headers["connection"] = ["keep-alive"];
             $keepAlive = "timeout={$options->connectionTimeout}";
-            $headers["keep-alive"] = [$keepAlive];
+            $ires->headers["keep-alive"] = [$keepAlive];
         }
 
-        $headers["date"] = [$ireq->httpDate];
-
-        return $headers;
-    }
-
-    /**
-     * Apply chunk encoding to response entity bodies.
-     *
-     * @param \Aerys\InternalRequest $ireq
-     * @return \Generator
-     */
-    public static function chunkedResponseFilter(InternalRequest $ireq): \Generator {
-        $headers = yield;
-
-        if (empty($headers["transfer-encoding"])) {
-            return $headers;
-        }
-        if (!\in_array("chunked", $headers["transfer-encoding"])) {
-            return $headers;
-        }
-
-        $bodyBuffer = "";
-        $bufferSize = $ireq->client->options->chunkBufferSize ?? 8192;
-        $unchunked = yield $headers;
-
-        do {
-            $bodyBuffer .= $unchunked;
-            if (isset($bodyBuffer[$bufferSize]) || ($unchunked === false && $bodyBuffer != "")) {
-                $chunk = \dechex(\strlen($bodyBuffer)) . "\r\n{$bodyBuffer}\r\n";
-                $bodyBuffer = "";
-            } else {
-                $chunk = null;
-            }
-        } while (($unchunked = yield $chunk) !== null);
-
-        $chunk = ($bodyBuffer != "")
-            ? (\dechex(\strlen($bodyBuffer)) . "\r\n{$bodyBuffer}\r\n0\r\n\r\n")
-            : "0\r\n\r\n";
-
-        return $chunk;
+        $ires->headers["date"] = [$ireq->httpDate];
     }
 }

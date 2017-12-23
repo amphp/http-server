@@ -3,7 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Client;
-use Aerys\InternalRequest;
+use Aerys\Internal\Request;
 use Aerys\Logger;
 use Aerys\NullBody;
 use Aerys\Request;
@@ -71,7 +71,7 @@ class WebsocketTest extends TestCase {
     }
 
     public function initEndpoint($ws, $timeoutTest = false) {
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = $client = new Client;
         $ireq->locals["aerys.websocket"] = true;
         list($sock, $client->socket) = stream_socket_pair(\stripos(PHP_OS, "win") === 0 ? STREAM_PF_INET : STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
@@ -255,7 +255,7 @@ class WebsocketTest extends TestCase {
         $return = [];
 
         // 0 ----- valid Handshake request -------------------------------------------------------->
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = new Client;
         $ireq->method = "GET";
         $ireq->protocol = "1.1";

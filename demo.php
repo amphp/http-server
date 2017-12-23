@@ -22,8 +22,8 @@ const AERYS_OPTIONS = [
 /* --- http://localhost:1337/ ------------------------------------------------------------------- */
 
 $router = Aerys\router()
-    ->route("GET", "/", function(Request $req): string {
-        return "<html><body><h1>Hello, world.</h1></body></html>";
+    ->route("GET", "/", function(Request $req): Response {
+        return new Response\HtmlResponse("<html><body><h1>Hello, world.</h1></body></html>");
     })
     ->route("GET", "/router/{myarg}", function(Request $req, array $routeArgs): Response {
         $body = "<html><body><h1>Route Args at param 3</h1>".print_r($routeArgs, true)."</body></html>";
@@ -70,12 +70,12 @@ $websocket = Aerys\websocket(new class implements Websocket {
         $this->endpoint = $endpoint;
     }
 
-    public function onHandshake(Request $request, Response $response) { /* check origin header here */ }
+    public function onHandshake(Request $request) { /* check origin header here */ }
     public function onOpen(int $clientId, $handshakeData) { }
 
-    public function onData(int $clientId, Websocket\Message $msg) {
+    public function onData(int $clientId, Websocket\Message $message) {
         // broadcast to all connected clients
-        $this->endpoint->broadcast(yield $msg);
+        $this->endpoint->broadcast(yield $message->buffer());
     }
 
     public function onClose(int $clientId, int $code, string $reason) { }

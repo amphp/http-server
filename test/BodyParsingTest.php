@@ -3,7 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Client;
-use Aerys\InternalRequest;
+use Aerys\Internal\Request;
 use Aerys\Options;
 use Aerys\Request;
 use Amp\ByteStream\IteratorStream;
@@ -17,7 +17,7 @@ class BodyParsingTest extends TestCase {
      */
     public function testDecoding($header, $data, $fields, $metadata) {
         $emitter = new \Amp\Emitter;
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->headers["content-type"][0] = $header;
         $ireq->body = new Message(new IteratorStream($emitter->iterate()));
         $ireq->client = new Client;
@@ -40,7 +40,7 @@ class BodyParsingTest extends TestCase {
      */
     public function testImmediateWatch($header, $data, $fields, $metadata) {
         $emitter = new \Amp\Emitter;
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->headers["content-type"][0] = $header;
         $ireq->body = new Message(new IteratorStream($emitter->iterate()));
         $ireq->client = new Client;
@@ -71,7 +71,7 @@ class BodyParsingTest extends TestCase {
      */
     public function testIncrementalWatch($header, $data, $fields, $metadata) {
         $emitter = new \Amp\Emitter;
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->headers["content-type"][0] = $header;
         $ireq->body = new Message(new IteratorStream($emitter->iterate()));
         $ireq->client = new Client;
@@ -103,7 +103,7 @@ class BodyParsingTest extends TestCase {
         $data = "a=ba%66g&&&be=c&d=f%6&gh&j";
 
         $emitter = new \Amp\Emitter;
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->headers["content-type"][0] = $header;
         $ireq->body = new Message(new IteratorStream($emitter->iterate()));
         $ireq->client = new Client;

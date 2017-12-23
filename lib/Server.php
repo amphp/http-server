@@ -3,9 +3,7 @@
 namespace Aerys;
 
 use Amp\ByteStream\InMemoryStream;
-use Amp\ByteStream\InputStream;
 use Amp\ByteStream\IteratorStream;
-use Amp\ByteStream\Message;
 use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
@@ -13,6 +11,7 @@ use Amp\Emitter;
 use Amp\Failure;
 use Amp\Loop;
 use Amp\Promise;
+use Amp\Socket\ServerSocket;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
@@ -80,7 +79,6 @@ class Server implements Monitor {
     private $stopDeferred;
 
     // private callables that we pass to external code //
-    private $exporter;
     private $onAcceptable;
     private $onUnixSocketAcceptable;
     private $negotiateCrypto;
@@ -104,7 +102,6 @@ class Server implements Monitor {
         $this->nullBody = new NullBody;
 
         // private callables that we pass to external code //
-        $this->exporter = $this->callableFromInstanceMethod("export");
         $this->onAcceptable = $this->callableFromInstanceMethod("onAcceptable");
         $this->onUnixSocketAcceptable = $this->callableFromInstanceMethod("onUnixSocketAcceptable");
         $this->negotiateCrypto = $this->callableFromInstanceMethod("negotiateCrypto");
@@ -455,7 +452,6 @@ class Server implements Monitor {
         $client->id = (int) $socket;
         $client->socket = $socket;
         $client->options = $this->options;
-        $client->exporter = $this->exporter;
         $client->remainingRequests = $this->options->maxRequestsPerConnection;
 
         $client->clientAddr = $ip;
@@ -598,7 +594,7 @@ class Server implements Monitor {
         $client->requestParser->send($data);
     }
 
-    private function onParsedMessage(InternalRequest $ireq) {
+    private function onParsedMessage(Internal\Request $ireq) {
         if ($this->options->normalizeMethodCase) {
             $ireq->method = strtoupper($ireq->method);
         }
@@ -630,7 +626,7 @@ class Server implements Monitor {
         $this->respond($ireq);
     }
 
-    private function onParsedEntityHeaders(InternalRequest $ireq) {
+    private function onParsedEntityHeaders(Internal\Request $ireq) {
         $ireq->client->bodyEmitters[$ireq->streamId] = $bodyEmitter = new Emitter;
         $ireq->body = new DefaultBody(new IteratorStream($bodyEmitter->iterate()));
 
@@ -667,21 +663,23 @@ class Server implements Monitor {
 
         $client->pendingResponses++;
 
-        $ireq = new InternalRequest;
+        $ireq = new Internal\Request;
         $ireq->client = $client;
         $ireq->time = $this->ticker->currentTime;
         $ireq->httpDate = $this->ticker->currentHttpDate;
 
-        $this->tryApplication($ireq, static function (Request $request) use ($status, $message) {
+        $generator = $this->tryApplication($ireq, static function (Request $request) use ($status, $message) {
             $body = makeGenericBody($status, [
                 "msg" => $message,
             ]);
             $headers = ["Connection" => "close"];
             return new Response\HtmlResponse($body, $headers, $status);
-        }, []);
+        });
+
+        Promise\rethrow(new Coroutine($generator));
     }
 
-    private function setTrace(InternalRequest $ireq) {
+    private function setTrace(Internal\Request $ireq) {
         if (\is_string($ireq->trace)) {
             $ireq->locals['aerys.trace'] = $ireq->trace;
         } else {
@@ -693,23 +691,30 @@ class Server implements Monitor {
         }
     }
 
-    private function respond(InternalRequest $ireq) {
+    private function respond(Internal\Request $ireq) {
         $ireq->client->pendingResponses++;
 
         if ($this->stopDeferred) {
-            $this->tryApplication($ireq, $this->sendPreAppServiceUnavailableResponse, []);
+            $generator = $this->tryApplication($ireq, $this->sendPreAppServiceUnavailableResponse);
         } elseif (!in_array($ireq->method, $this->options->allowedMethods)) {
-            $this->tryApplication($ireq, $this->sendPreAppMethodNotAllowedResponse, []);
+            $generator = $this->tryApplication($ireq, $this->sendPreAppMethodNotAllowedResponse);
         } elseif (!$vhost = $this->vhosts->selectHost($ireq)) {
-            $this->tryApplication($ireq, $this->sendPreAppInvalidHostResponse, []);
+            $generator = $this->tryApplication($ireq, $this->sendPreAppInvalidHostResponse);
         } elseif ($ireq->method === "TRACE") {
             $this->setTrace($ireq);
-            $this->tryApplication($ireq, $this->sendPreAppTraceResponse, []);
+            $generator = $this->tryApplication($ireq, $this->sendPreAppTraceResponse);
         } elseif ($ireq->method === "OPTIONS" && $ireq->uri === "*") {
-            $this->tryApplication($ireq, $this->sendPreAppOptionsResponse, []);
+            $generator = $this->tryApplication($ireq, $this->sendPreAppOptionsResponse);
         } else {
-            $this->tryApplication($ireq, $vhost->getApplication(), $vhost->getFilters());
+            $generator = $this->tryApplication(
+                $ireq,
+                $vhost->getApplication(),
+                $vhost->getRequestFilters(),
+                $vhost->getResponseFilters()
+            );
         }
+
+        Promise\rethrow(new Coroutine($generator));
     }
 
     private function sendPreAppServiceUnavailableResponse(Request $request): Response {
@@ -750,85 +755,79 @@ class Server implements Monitor {
         return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->allowedMethods)]);
     }
 
-    private function tryApplication(InternalRequest $ireq, callable $application, array $filters) {
+    /**
+     * @param \Aerys\Internal\Request $ireq
+     * @param callable $application
+     * @param \Aerys\Internal\RequestFilter[] $requestFilters
+     * @param \Aerys\Internal\ResponseFilter[] $responseFilters
+     *
+     * @return \Generator
+     */
+    private function tryApplication(Internal\Request $ireq, callable $application, array $requestFilters = [], array $responseFilters = []) {
         $request = new Request($ireq);
 
-        $ireq->responseWriter = $ireq->client->httpDriver->writer($ireq);
-        $filters = $ireq->client->httpDriver->filters($ireq, $filters);
-        if ($ireq->badFilterKeys) {
-            $filters = array_diff_key($filters, array_flip($ireq->badFilterKeys));
-        }
-        $filter = responseFilter($filters, $ireq);
-        $filter->current(); // initialize filters
-        $codec = responseCodec($filter, $ireq->responseWriter);
-
-        call($application, $request)->onResolve(function ($error, $response) use ($ireq, $codec) {
-            if ($error) {
-                $this->logger->error($error);
-                // @TODO ClientExceptions?
-                $response = $this->makeErrorResponse($error, $ireq);
+        try {
+            foreach ($requestFilters as $filter) {
+                $filter->filterRequest($ireq);
             }
 
-            if ($ireq->client->isExported) {
-                return;
-            }
-
-            if (\is_string($response)) {
-                $headers[":status"] = HTTP_STATUS["OK"];
-                $headers[":reason"] = HTTP_REASON[HTTP_STATUS["OK"]];
-                $headers[":aerys-entity-length"] = \strlen($response);
-
-                $codec->send($headers);
-                $codec->send($response);
-                $codec->send(null);
-                return;
-            }
+            $response = yield call($application, $request);
 
             if (!$response instanceof Response) {
-                $error = new \Error("Request handlers must return an instance of " . Response::class);
-                $this->logger->error($error);
-                $response = $this->makeErrorResponse($error, $ireq);
+                throw new \Error("Request handlers must return a string or an instance of " . Response::class);
             }
 
-            $headers = $response->getHeaders();
-            $headers[":status"] = $response->getStatus();
-            $headers[":reason"] = $response->getReason();
-            $headers[":aerys-entity-length"] = "*";
+            $ires = $response->export();
 
-            if (!empty($push = $response->getPush())) {
-                $headers[':aerys-push'] = $push;
+            $filters = $ireq->client->httpDriver->filters($ireq, $responseFilters);
+
+            foreach ($filters as $filter) {
+                $result = $filter->filterResponse($ireq, $ires);
+                if ($result instanceof \Generator) {
+                    yield from $result;
+                }
             }
+        } catch (\Throwable $error) {
+            $this->logger->error($error);
+            // @TODO ClientExceptions?
+            $response = $this->makeErrorResponse($error, $ireq);
+            $ires = $response->export();
+        }
 
-            $codec->send($headers);
+        $responseWriter = $ireq->client->httpDriver->writer($ireq, $ires);
 
-            Promise\rethrow(new Coroutine($this->sendResponse($response->getBody(), $codec, $ireq)));
-        });
-    }
-
-    private function sendResponse(InputStream $body, \Generator $codec, InternalRequest $ireq): \Generator {
         try {
+            if ($ires->detach) {
+                list($exporter, $args) = $ires->detach;
+                $responseWriter->send(null);
+
+                $this->export($ireq->client, $exporter, $args);
+                return;
+            }
+
             do {
-                $chunk = yield $body->read();
+                $chunk = yield $ires->body->read();
 
                 if ($ireq->client->isDead & Client::CLOSED_WR) {
                     foreach ($ireq->onClose as $onClose) {
                         $onClose();
                     }
 
-                    $codec->send(null);
-                    while (null !== yield $body->read()); // Consume remaining body.
+                    $responseWriter->send(null);
+                    while (null !== yield $ires->body->read()); // Consume remaining body.
                     return;
                 }
 
-                $codec->send($chunk);
+                $responseWriter->send($chunk); // Sends null when stream closes.
             } while ($chunk !== null);
         } catch (\Throwable $exception) {
             // Reading response body failed, abort writing the response to the client.
-            $codec->send(null);
+            $this->logger->error($exception);
+            $responseWriter->send(null);
         }
     }
 
-    private function makeErrorResponse(\Throwable $error, InternalRequest $ireq): Response {
+    private function makeErrorResponse(\Throwable $error, Internal\Request $ireq): Response {
         $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
         $msg = ($this->options->debug) ? "<pre>" . htmlspecialchars($error) . "</pre>" : "<p>Something went wrong ...</p>";
         $body = makeGenericBody($status, [
@@ -841,8 +840,9 @@ class Server implements Monitor {
 
     private function close(Client $client) {
         $this->clear($client);
-        assert($client->isDead != Client::CLOSED_RDWR);
-        @\stream_socket_shutdown($client->socket, \STREAM_SHUT_RDWR); // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
+        assert($client->isDead !== Client::CLOSED_RDWR);
+        // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
+        @\stream_socket_shutdown($client->socket, \STREAM_SHUT_RDWR);
         @fclose($client->socket);
         $client->isDead = Client::CLOSED_RDWR;
 
@@ -883,7 +883,7 @@ class Server implements Monitor {
         }
     }
 
-    private function export(Client $client): \Closure {
+    private function export(Client $client, callable $exporter, array $args = []) {
         $client->isExported = true;
         $this->clear($client);
 
@@ -900,18 +900,18 @@ class Server implements Monitor {
             $clientCount--;
             $clientsPerIP--;
         };
-        assert($closer = (function () use ($client, &$clientCount, &$clientsPerIP) {
+        assert($closer = (function () use ($client, $closer, &$clientCount, &$clientsPerIP) {
             $logger = $this->logger;
             $message = "close {$client->clientAddr}:{$client->clientPort}";
-            return static function () use (&$clientCount, &$clientsPerIP, $logger, $message) {
-                $clientCount--;
-                $clientsPerIP--;
+            return static function () use ($closer, &$clientCount, &$clientsPerIP, $logger, $message) {
+                $closer();
                 assert($clientCount >= 0);
                 assert($clientsPerIP >= 0);
                 $logger->log(Logger::DEBUG, $message);
             };
         })());
-        return $closer;
+
+        $exporter(new ServerSocket($client->socket), $closer, ...$args);
     }
 
     private function dropPrivileges() {

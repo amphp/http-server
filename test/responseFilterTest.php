@@ -3,13 +3,12 @@
 namespace Aerys\Test;
 
 use Aerys\FilterException;
-use Aerys\InternalRequest;
 use PHPUnit\Framework\TestCase;
 use function Aerys\responseFilter;
 
 class responseFilterTest extends TestCase {
-    private function getFilter(array $filters, InternalRequest $ireq = null) {
-        $ireq = $ireq ?: new InternalRequest;
+    private function getFilter(array $filters, Internal\Request $ireq = null) {
+        $ireq = $ireq ?: new Internal\Request;
         return responseFilter($filters, $ireq);
     }
 
