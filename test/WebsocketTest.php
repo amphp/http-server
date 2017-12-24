@@ -7,9 +7,9 @@ use Aerys\InternalRequest;
 use Aerys\Logger;
 use Aerys\NullBody;
 use Aerys\Request;
+use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;
-use Aerys\StandardRequest;
 use Aerys\StandardResponse;
 use Aerys\Websocket;
 use Aerys\Websocket\Rfc6455Gateway;
@@ -240,7 +240,7 @@ class WebsocketTest extends TestCase {
         $ws->expects($expected[":status"] === 101 ? $this->once() : $this->never())
             ->method("onHandshake");
         $gateway = new Rfc6455Gateway($logger, $ws);
-        $gateway(new StandardRequest($ireq), new StandardResponse((function () use (&$headers, &$body) {
+        $gateway(new Request($ireq), new StandardResponse((function () use (&$headers, &$body) {
             $headers = yield;
             $body = yield;
         })(), $ireq->client))->next();

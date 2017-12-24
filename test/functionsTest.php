@@ -3,7 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Client;
-use Aerys\StandardRequest;
+use Aerys\Request;
 use Aerys\StandardResponse;
 use PHPUnit\Framework\TestCase;
 
@@ -42,7 +42,7 @@ class functionsTest extends TestCase {
 
     public function testSuccessfulRedirect() {
         $action = \Aerys\redirect("http://localhost", 301);
-        $req = new class extends StandardRequest {
+        $req = new class extends Request {
             public function __construct() {
             }
             public function getUri(): string {

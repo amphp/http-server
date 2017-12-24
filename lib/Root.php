@@ -2,8 +2,14 @@
 
 namespace Aerys;
 
+use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\InputStream;
+use Amp\ByteStream\IteratorStream;
+use Amp\Coroutine;
+use Amp\Emitter;
 use Amp\File;
 use Amp\Loop;
+use function Amp\call;
 
 class Root implements ServerObserver {
     const PRECOND_NOT_MODIFIED = 1;
@@ -73,7 +79,7 @@ class Root implements ServerObserver {
     /**
      * Respond to HTTP requests for filesystem resources.
      */
-    public function __invoke(Request $request, Response $response) {
+    public function __invoke(Request $request) {
         $uri = $request->getLocalVar("aerys.sendfile") ?: $request->getUri();
         $path = ($qPos = \strpos($uri, "?")) ? \substr($uri, 0, $qPos) : $uri;
         // IMPORTANT! Do NOT remove this. If this is left in, we'll be able to use /path\..\../outsideDocRoot defeating the removeDotPathSegments() function! (on Windows at least)
@@ -84,8 +90,8 @@ class Root implements ServerObserver {
         // so that we can potentially avoid forcing the server to resolve a
         // coroutine when the file is already cached.
         return ($fileInfo = $this->fetchCachedStat($path, $request))
-            ? $this->respond($fileInfo, $request, $response)
-            : $this->respondWithLookup($this->root . $path, $path, $request, $response);
+            ? $this->respond($fileInfo, $request)
+            : $this->respondWithLookup($this->root . $path, $path, $request);
     }
 
     /**
@@ -217,7 +223,7 @@ class Root implements ServerObserver {
         return true;
     }
 
-    private function respondWithLookup(string $realPath, string $reqPath, Request $request, Response $response): \Generator {
+    private function respondWithLookup(string $realPath, string $reqPath, Request $request): \Generator {
         // We don't catch any potential exceptions from this yield because they represent
         // a legitimate error from some sort of disk failure. Just let them bubble up to
         // the server where they'll turn into a 500 response.
@@ -232,10 +238,11 @@ class Root implements ServerObserver {
             $this->cacheTimeouts[$reqPath] = $this->now + $this->cacheEntryTtl;
         }
 
-        $result = $this->respond($fileInfo, $request, $response);
+        $result = $this->respond($fileInfo, $request);
         if ($result instanceof \Generator) {
-            yield from $result;
+            $result = yield from $result;
         }
+        return $result;
     }
 
     private function lookup(string $path): \Generator {
@@ -292,7 +299,7 @@ class Root implements ServerObserver {
         }
     }
 
-    private function respond($fileInfo, Request $request, Response $response) {
+    private function respond($fileInfo, Request $request) {  /* : ?Response */
         // If the file doesn't exist don't bother to do anything else so the
         // HTTP server can send a 404 and/or allow handlers further down the chain
         // a chance to respond.
@@ -305,53 +312,52 @@ class Root implements ServerObserver {
             case "HEAD":
                 break;
             case "OPTIONS":
-                $response->setStatus(HTTP_STATUS["OK"]);
-                $response->setHeader("Allow", "GET, HEAD, OPTIONS");
-                $response->setHeader("Accept-Ranges", "bytes");
-                $response->write(makeGenericBody(HTTP_STATUS["OK"]));
-                return;
+                return new Response\HtmlResponse(
+                    makeGenericBody(HTTP_STATUS["OK"]),
+                    ["Allow" => "GET, HEAD, OPTIONS", "Accept-Ranges" => "bytes"]
+                );
             default:
-                $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
-                $response->setHeader("Allow", "GET, HEAD, OPTIONS");
-                $response->write(makeGenericBody(HTTP_STATUS["METHOD_NOT_ALLOWED"]));
-                return;
+                $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
+                return new Response\HtmlResponse(
+                    makeGenericBody($status),
+                    ["Allow" => "GET, HEAD, OPTIONS"],
+                    $status
+                );
         }
 
         $precondition = $this->checkPreconditions($request, $fileInfo->mtime, $fileInfo->etag);
 
         switch ($precondition) {
             case self::PRECOND_NOT_MODIFIED:
-                $response->setStatus(HTTP_STATUS["NOT_MODIFIED"]);
                 $lastModifiedHttpDate = \gmdate('D, d M Y H:i:s', $fileInfo->mtime) . " GMT";
-                $response->setHeader("Last-Modified", $lastModifiedHttpDate);
+                $response = new Response\EmptyResponse(["Last-Modified" => $lastModifiedHttpDate], HTTP_STATUS["NOT_MODIFIED"]);
                 if ($fileInfo->etag) {
-                    $response->setHeader("Etag", $fileInfo->etag);
+                    $response = $response->withHeader("Etag", $fileInfo->etag);
                 }
-                $response->end();
-                return;
+                return $response;
             case self::PRECOND_FAILED:
-                $response->setStatus(HTTP_STATUS["PRECONDITION_FAILED"]);
-                $response->end();
-                return;
+                return new Response\EmptyResponse([], HTTP_STATUS["PRECONDITION_FAILED"]);
             case self::PRECOND_IF_RANGE_FAILED:
                 // Return this so the resulting generator will be auto-resolved
-                return $this->doNonRangeResponse($fileInfo, $response);
+                return $this->doNonRangeResponse($fileInfo, $request);
         }
 
         if (!$rangeHeader = $request->getHeader("Range")) {
             // Return this so the resulting generator will be auto-resolved
-            return $this->doNonRangeResponse($fileInfo, $response);
+            return $this->doNonRangeResponse($fileInfo, $request);
         }
 
         if ($range = $this->normalizeByteRanges($fileInfo->size, $rangeHeader)) {
             // Return this so the resulting generator will be auto-resolved
-            return $this->doRangeResponse($range, $fileInfo, $response);
+            return $this->doRangeResponse($range, $fileInfo, $request);
         }
 
         // If we're still here this is the only remaining response we can send
-        $response->setStatus(HTTP_STATUS["REQUESTED_RANGE_NOT_SATISFIABLE"]);
-        $response->setHeader("Content-Range", "*/{$fileInfo->size}");
-        $response->end();
+        $status = HTTP_STATUS["REQUESTED_RANGE_NOT_SATISFIABLE"];
+        return new Response\EmptyResponse(
+            ["Content-Range" => "*/{$fileInfo->size}"],
+            HTTP_STATUS["REQUESTED_RANGE_NOT_SATISFIABLE"]
+        );
     }
 
     private function checkPreconditions(Request $request, int $mtime, string $etag): int {
@@ -398,21 +404,28 @@ class Root implements ServerObserver {
         return ($etag === $ifRange) ? self::PRECOND_IF_RANGE_OK : self::PRECOND_IF_RANGE_FAILED;
     }
 
-    private function doNonRangeResponse($fileInfo, Response $response) {
-        $this->assignCommonHeaders($fileInfo, $response);
-        $response->setHeader("Content-Length", (string) $fileInfo->size);
-        $response->setHeader("Content-Type", $this->selectMimeTypeFromPath($fileInfo->path));
+    private function doNonRangeResponse($fileInfo, Request $request): Response {
+        $headers = $this->makeCommonHeaders($fileInfo);
+        $headers["Content-Length"] = (string) $fileInfo->size;
+        $headers["Content-Type"] = $this->selectMimeTypeFromPath($fileInfo->path);
 
-        return isset($fileInfo->buffer)
-            ? $response->end($fileInfo->buffer)
-            : $this->finalizeResponse($response, $fileInfo);
+        if ($fileInfo) {
+            return new Response(new InMemoryStream($fileInfo->buffer), $headers);
+        }
+
+        $handle = $this->filesystem->open($fileInfo->path, "r");
+        $request->onClose([$handle, "close"]);
+
+        return new Response($handle, $headers);
     }
 
-    private function assignCommonHeaders($fileInfo, Response $response) {
-        $response->setHeader("Accept-Ranges", "bytes");
-        $response->setHeader("Cache-Control", "public");
-        $response->setHeader("Etag", $fileInfo->etag);
-        $response->setHeader("Last-Modified", \gmdate('D, d M Y H:i:s', $fileInfo->mtime) . " GMT");
+    private function makeCommonHeaders($fileInfo): array {
+        $headers = [
+            "Accept-Ranges" => "bytes",
+            "Cache-Control" => "public",
+            "Etag" => $fileInfo->etag,
+            "Last-Modified" => \gmdate('D, d M Y H:i:s', $fileInfo->mtime) . " GMT",
+        ];
 
         $canCache = ($this->expiresPeriod > 0);
         if ($canCache && $this->useAggressiveCacheHeaders) {
@@ -420,13 +433,15 @@ class Root implements ServerObserver {
             $preCheck = $this->expiresPeriod - $postCheck;
             $expiry = $this->expiresPeriod;
             $value = "post-check={$postCheck}, pre-check={$preCheck}, max-age={$expiry}";
-            $response->setHeader("Cache-Control", $value);
+            $headers["Cache-Control"] = $value;
         } elseif ($canCache) {
             $expiry =  $this->now + $this->expiresPeriod;
-            $response->setHeader("Expires", \gmdate('D, d M Y H:i:s', $expiry) . " GMT");
+            $headers["Expires"] = \gmdate('D, d M Y H:i:s', $expiry) . " GMT";
         } else {
-            $response->setHeader("Expires", "0");
+            $headers["Expires"] = "0";
         }
+
+        return $headers;
     }
 
     private function selectMimeTypeFromPath(string $path): string {
@@ -505,36 +520,29 @@ class Root implements ServerObserver {
         return $range;
     }
 
-    private function doRangeResponse($range, $fileInfo, Response $response): \Generator {
-        $this->assignCommonHeaders($fileInfo, $response);
+    private function doRangeResponse($range, $fileInfo, Request $request): \Generator {
+        $headers = $this->makeCommonHeaders($fileInfo);
         $range->contentType = $mime = $this->selectMimeTypeFromPath($fileInfo->path);
 
         if (isset($range->ranges[1])) {
-            $response->setHeader("Content-Type", "multipart/byteranges; boundary={$range->boundary}");
+            $headers["Content-Type"] = "multipart/byteranges; boundary={$range->boundary}";
         } else {
             list($startPos, $endPos) = $range->ranges[0];
-            $response->setHeader("Content-Length", (string) ($endPos - $startPos + 1));
-            $response->setHeader("Content-Range", "bytes {$startPos}-{$endPos}/{$fileInfo->size}");
-            $response->setHeader("Content-Type", $mime);
+            $headers["Content-Length"] = (string) ($endPos - $startPos + 1);
+            $headers["Content-Range"] = "bytes {$startPos}-{$endPos}/{$fileInfo->size}";
+            $headers["Content-Type"] = $mime;
         }
 
-        $response->setStatus(HTTP_STATUS["PARTIAL_CONTENT"]);
-
-        return $this->finalizeResponse($response, $fileInfo, $range);
-    }
-
-    private function finalizeResponse(Response $response, $fileInfo, $range = null): \Generator {
         $handle = yield $this->filesystem->open($fileInfo->path, "r");
 
-        if (empty($range)) {
-            yield from $this->sendNonRange($handle, $response);
-        } elseif (empty($range->ranges[1])) {
+        if (empty($range->ranges[1])) {
             list($startPos, $endPos) = $range->ranges[0];
-            yield from $this->sendSingleRange($handle, $response, $startPos, $endPos);
+            $stream = $this->sendSingleRange($handle, $startPos, $endPos);
         } else {
-            yield from $this->sendMultiRange($handle, $response, $fileInfo, $range);
+            $stream = $this->sendMultiRange($handle, $fileInfo, $range);
         }
-        $response->end();
+
+        return new Response($stream, $headers, HTTP_STATUS["PARTIAL_CONTENT"]);
     }
 
     private function sendNonRange(File\Handle $handle, Response $response): \Generator {
@@ -543,32 +551,63 @@ class Root implements ServerObserver {
         }
     }
 
-    private function sendSingleRange(File\Handle $handle, Response $response, int $startPos, int $endPos): \Generator {
+    private function sendSingleRange(File\Handle $handle, int $startPos, int $endPos): InputStream {
+        $emitter = new Emitter;
+        $stream = new IteratorStream($emitter->iterate());
+
+        $coroutine = new Coroutine($this->readRangeFromHandle($handle, $emitter, $startPos, $endPos));
+        $coroutine->onResolve(function ($error) use ($emitter) {
+            if ($error) {
+                $emitter->fail($error);
+                return;
+            }
+
+            $emitter->complete();
+        });
+
+        return $stream;
+    }
+
+    private function sendMultiRange($handle, $fileInfo, $range): InputStream {
+        $emitter = new Emitter;
+        $stream = new IteratorStream($emitter->iterate());
+
+        call(function () use ($handle, $range, $emitter, $fileInfo) {
+            foreach ($range->ranges as list($startPos, $endPos)) {
+                $header = sprintf(
+                    "--%s\r\nContent-Type: %s\r\nContent-Range: bytes %d-%d/%d\r\n\r\n",
+                    $range->boundary,
+                    $range->contentType,
+                    $startPos,
+                    $endPos,
+                    $fileInfo->size
+                );
+                yield $emitter->emit($header);
+                yield from $this->readRangeFromHandle($handle, $emitter, $startPos, $endPos);
+                $emitter->emit("\r\n");
+            }
+            $emitter->emit("--{$range->boundary}--");
+        })->onResolve(function ($error) use ($emitter) {
+            if ($error) {
+                $emitter->fail($error);
+                return;
+            }
+
+            $emitter->complete();
+        });
+
+        return $stream;
+    }
+
+    private function readRangeFromHandle(File\Handle $handle, Emitter $emitter, int $startPos, int $endPos): \Generator {
         $bytesRemaining = $endPos - $startPos + 1;
         $handle->seek($startPos);
         while ($bytesRemaining) {
             $toBuffer = ($bytesRemaining > 8192) ? 8192 : $bytesRemaining;
             $chunk = yield $handle->read($toBuffer);
             $bytesRemaining -= \strlen($chunk);
-            yield $response->write($chunk);
+            yield $emitter->emit($chunk);
         }
-    }
-
-    private function sendMultiRange($handle, Response $response, $fileInfo, $range): \Generator {
-        foreach ($range->ranges as list($startPos, $endPos)) {
-            $header = sprintf(
-                "--%s\r\nContent-Type: %s\r\nContent-Range: bytes %d-%d/%d\r\n\r\n",
-                $range->boundary,
-                $range->contentType,
-                $startPos,
-                $endPos,
-                $fileInfo->size
-            );
-            yield $response->write($header);
-            yield from $this->sendSingleRange($handle, $response, $startPos, $endPos);
-            $response->write("\r\n");
-        }
-        $response->write("--{$range->boundary}--");
     }
 
     /**

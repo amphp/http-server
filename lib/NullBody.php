@@ -2,11 +2,15 @@
 
 namespace Aerys;
 
-use Amp\ByteStream\InMemoryStream;
-use Amp\ByteStream\Message;
+use Amp\Promise;
+use Amp\Success;
 
-final class NullBody extends Message {
-    public function __construct() {
-        parent::__construct(new InMemoryStream);
+final class NullBody implements Body {
+    public function read(): Promise {
+        return new Success;
+    }
+
+    public function buffer(): Promise {
+        return new Success('');
     }
 }

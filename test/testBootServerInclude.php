@@ -9,7 +9,7 @@ class OurFilter implements \Aerys\Filter {
         // We have a filter
     }
 
-    public function __invoke(\Aerys\Request $req, \Aerys\Response $res) {
+    public function __invoke(\Aerys\Request $req) {
         $req->setLocalVar("responder", $req->getLocalVar("responder") + 1);
     }
 }

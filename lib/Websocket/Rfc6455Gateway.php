@@ -12,6 +12,7 @@ use Aerys\Response;
 use Aerys\Server;
 use Aerys\ServerObserver;
 use Aerys\Websocket;
+use Amp\ByteStream\IteratorStream;
 use Amp\ByteStream\StreamException;
 use Amp\CallableMaker;
 use Amp\Coroutine;
@@ -122,27 +123,21 @@ class Rfc6455Gateway implements Filter, Monitor, ServerObserver {
         $this->{$option} = $value;
     }
 
-    public function __invoke(Request $request, Response $response, ...$args) {
+    public function __invoke(Request $request, ...$args): \Generator {
         if ($request->getMethod() !== "GET") {
-            $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
-            $response->setHeader("Allow", "GET");
-            $response->end(makeGenericBody(HTTP_STATUS["METHOD_NOT_ALLOWED"]));
-            return;
+            $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
+            return new Response\HtmlResponse(makeGenericBody($status), ["Allow" => "GET"], $status);
         }
 
         if ($request->getProtocolVersion() !== "1.1") {
-            $response->setStatus(HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]);
-            $response->end(makeGenericBody(HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]));
-            return;
+            $status = HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"];
+            return new Response\HtmlResponse(makeGenericBody($status), [], $status);
         }
 
         $body = $request->getBody();
         if (!$body instanceof NullBody) {
-            $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
-            $response->setReason("Bad Request: Entity body disallowed for websocket endpoint");
-            $response->setHeader("Connection", "close");
-            $response->end(makeGenericBody(HTTP_STATUS["BAD_REQUEST"]));
-            return;
+            $status = HTTP_STATUS["BAD_REQUEST"];
+            return new Response\HtmlResponse(makeGenericBody($status), ["Connection" => "close"], $status);
         }
 
         $hasUpgradeWebsocket = false;
@@ -153,9 +148,8 @@ class Rfc6455Gateway implements Filter, Monitor, ServerObserver {
             }
         }
         if (empty($hasUpgradeWebsocket)) {
-            $response->setStatus(HTTP_STATUS["UPGRADE_REQUIRED"]);
-            $response->end(makeGenericBody(HTTP_STATUS["UPGRADE_REQUIRED"]));
-            return;
+            $status = HTTP_STATUS["UPGRADE_REQUIRED"];
+            return new Response\HtmlResponse(makeGenericBody($status), [], $status);
         }
 
         $hasConnectionUpgrade = false;
@@ -170,32 +164,27 @@ class Rfc6455Gateway implements Filter, Monitor, ServerObserver {
             }
         }
         if (empty($hasConnectionUpgrade)) {
-            $response->setStatus(HTTP_STATUS["UPGRADE_REQUIRED"]);
-            $response->setReason("Bad Request: \"Connection: Upgrade\" header required");
-            $response->setHeader("Upgrade", "websocket");
-            $response->end(makeGenericBody(HTTP_STATUS["UPGRADE_REQUIRED"]));
-            return;
+            $status = HTTP_STATUS["UPGRADE_REQUIRED"];
+            $reason = "Bad Request: \"Connection: Upgrade\" header required";
+            return new Response\HtmlResponse(makeGenericBody($status), ["Upgrade" => "websocket"], $status, $reason);
         }
 
         if (!$acceptKey = $request->getHeader("Sec-Websocket-Key")) {
-            $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
-            $response->setReason("Bad Request: \"Sec-Websocket-Key\" header required");
-            $response->end(makeGenericBody(HTTP_STATUS["BAD_REQUEST"]));
-            return;
+            $status = HTTP_STATUS["BAD_REQUEST"];
+            $reason = "Bad Request: \"Sec-Websocket-Key\" header required";
+            return new Response\HtmlResponse(makeGenericBody($status), [], $status, $reason);
         }
 
         if (!in_array("13", $request->getHeaderArray("Sec-Websocket-Version"))) {
-            $response->setStatus(HTTP_STATUS["BAD_REQUEST"]);
-            $response->setReason("Bad Request: Requested Websocket version unavailable");
-            $response->setHeader("Sec-WebSocket-Version", "13");
-            $response->end(makeGenericBody(HTTP_STATUS["BAD_REQUEST"]));
-            return;
+            $status = HTTP_STATUS["BAD_REQUEST"];
+            $reason = "Bad Request: Requested Websocket version unavailable";
+            return new Response\HtmlResponse(makeGenericBody($status), [], $status, $reason);
         }
 
-        $handshaker = new Handshake($response, $acceptKey);
-        $onHandshakeResult = yield call([$this->application, "onHandshake"], $request, $handshaker, ...$args);
+        $response = new Handshake($acceptKey);
+        $onHandshakeResult = yield call([$this->application, "onHandshake"], $request, $response, ...$args);
         $request->setLocalVar("aerys.websocket", $onHandshakeResult);
-        $handshaker->end();
+        return $response;
     }
 
     public function filter(InternalRequest $ireq): \Generator {
@@ -437,7 +426,7 @@ class Rfc6455Gateway implements Filter, Monitor, ServerObserver {
             }
 
             $client->msgEmitter = new Emitter;
-            $msg = new Message($client->msgEmitter->iterate(), $opcode === self::OP_BIN);
+            $msg = new Message(new IteratorStream($client->msgEmitter->iterate()), $opcode === self::OP_BIN);
 
             Promise\rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
 

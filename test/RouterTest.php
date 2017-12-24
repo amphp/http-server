@@ -7,10 +7,10 @@ use Aerys\Filter;
 use Aerys\InternalRequest;
 
 use Aerys\Options;
+use Aerys\Request;
 use Aerys\Response;
 use Aerys\Router;
 use Aerys\Server;
-use Aerys\StandardRequest;
 use Aerys\StandardResponse;
 use Amp\ Coroutine;
 use Amp\ Promise;
@@ -127,7 +127,7 @@ class RouterTest extends TestCase {
         $router->update($mock);
 
         $ireq = new InternalRequest;
-        $request = new StandardRequest($ireq);
+        $request = new Request($ireq);
         $ireq->locals = [];
         $ireq->method = "GET";
         $ireq->uri = $ireq->uriPath = "/mediocre-dev/bob/19/";
@@ -145,7 +145,7 @@ class RouterTest extends TestCase {
         $this->assertSame(["name" => "bob", "age" => "19"], $ireq->locals["aerys.routeArgs"]);
 
         $ireq = new InternalRequest;
-        $request = new StandardRequest($ireq);
+        $request = new Request($ireq);
         $ireq->locals = [];
         $ireq->method = "GET";
         $ireq->uriPath = "/mediocre-dev/bob/19";
@@ -177,7 +177,7 @@ class RouterTest extends TestCase {
         $router->update($mock);
 
         $ireq = new InternalRequest;
-        $request = new StandardRequest($ireq);
+        $request = new Request($ireq);
         $ireq->locals = [];
         $ireq->method = "GET";
         $ireq->uriPath = "/genius/daniel/32";
@@ -225,7 +225,7 @@ class RouterTest extends TestCase {
                 }
             })();
 
-            $request = new StandardRequest($ireq);
+            $request = new Request($ireq);
             $filter = \Aerys\responseFilter([[$router, "filter"]], $ireq);
             $filter->current();
             $response = new StandardResponse(\Aerys\responseCodec($filter, $ireq), new Client);

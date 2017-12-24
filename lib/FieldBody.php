@@ -3,10 +3,9 @@
 namespace Aerys;
 
 use Amp\ByteStream\InputStream;
-use Amp\ByteStream\Message;
 use Amp\Promise;
 
-class FieldBody extends Message {
+class FieldBody extends DefaultBody {
     private $metadata;
 
     public function __construct(InputStream $stream, Promise $metadata) {

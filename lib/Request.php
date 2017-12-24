@@ -2,161 +2,179 @@
 
 namespace Aerys;
 
-interface Request {
-    /**
-     * Retrieve the HTTP method used to make this request.
-     *
-     * @return string
-     */
-    public function getMethod(): string;
+use Amp\ByteStream\IteratorStream;
+
+class Request {
+    private $internalRequest;
+    private $queryParams;
+    private $body;
 
     /**
-     * Retrieve the request URI in the form /some/resource/foo?bar=1&baz=2.
-     *
-     * @return string
+     * @param \Aerys\InternalRequest $internalRequest
      */
-    public function getUri(): string;
+    public function __construct(InternalRequest $internalRequest) {
+        $this->internalRequest = $internalRequest;
+    }
 
     /**
-     * Retrieve the HTTP protocol version number used by this request.
-     *
-     * This method returns the HTTP protocol version (e.g. "1.0", "1.1", "2.0") in use;
-     * it has nothing to do with URI schemes like http:// or https:// ...
-     *
-     * @return string
+     * {@inheritdoc}
      */
-    public function getProtocolVersion(): string;
+    public function getMethod(): string {
+        return $this->internalRequest->method;
+    }
 
     /**
-     * Retrieve the first occurrence of specified header in the message.
-     *
-     * If multiple headers were received for the specified field only the
-     * value of the first header is returned. Applications may use
-     * Request::getHeaderArray() to retrieve a list of all header values
-     * received for a given field.
-     *
-     * All header $field names are treated case-insensitively.
-     *
-     * A null return indicates the requested header field was not present.
-     *
-     * @param string $field
-     * @return string|null
+     * {@inheritdoc}
      */
-    public function getHeader(string $field);
+    public function getUri(): string {
+        return $this->internalRequest->uri;
+    }
 
     /**
-     * Retrieve the specified header as an array of each of its occurrences in the request.
-     *
-     * All header $field names are treated case-insensitively.
-     *
-     * An empty return array indicates that the header was not present in the request.
-     *
-     * @param string $field
-     * @return array
+     * {@inheritdoc}
      */
-    public function getHeaderArray(string $field): array;
+    public function getProtocolVersion(): string {
+        return $this->internalRequest->protocol;
+    }
 
     /**
-     * Retrieve an array of all headers in the message.
-     *
-     * The returned array uses header names normalized to all-lowercase for
-     * simplified querying via isset().
-     *
-     * @return array
+     * {@inheritdoc}
      */
-    public function getAllHeaders(): array;
+    public function getHeader(string $field) {
+        return $this->internalRequest->headers[strtolower($field)][0] ?? null;
+    }
 
     /**
-     * Retrieve the streaming request entity body.
-     *
-     * @TODO add documentation for how the body object is used
-     *
-     * @param int $bodySize maximum body size
-     *
-     * @return \Amp\ByteStream\Message
+     * {@inheritdoc}
      */
-    public function getBody(int $bodySize = -1): \Amp\ByteStream\Message;
+    public function getHeaderArray(string $field): array {
+        return $this->internalRequest->headers[strtolower($field)] ?? [];
+    }
 
     /**
-     * Retrieve one query string value of that name.
-     *
-     * @param string $name
-     * @return string|null
+     * {@inheritdoc}
      */
-    public function getParam(string $name);
+    public function getAllHeaders(): array {
+        return $this->internalRequest->headers;
+    }
 
     /**
-     * Retrieve a array of query string values.
-     *
-     * @param string $name
-     * @return array
+     * {@inheritdoc}
      */
-    public function getParamArray(string $name): array;
+    public function getBody(int $bodySize = -1): Body {
+        $ireq = $this->internalRequest;
+        if ($bodySize > -1) {
+            if ($bodySize > ($ireq->maxBodySize ?? $ireq->client->options->maxBodySize)) {
+                $ireq->maxBodySize = $bodySize;
+                $ireq->client->httpDriver->upgradeBodySize($this->internalRequest);
+            }
+        }
+
+        if ($ireq->body !== $this->body) {
+            $this->body = $ireq->body;
+            $ireq->body->buffer()->onResolve(function ($e, $data) {
+                if ($e instanceof ClientSizeException) {
+                    $ireq = $this->internalRequest;
+                    $bodyEmitter = $ireq->client->bodyEmitters[$ireq->streamId];
+                    $ireq->body = new DefaultBody(new IteratorStream($bodyEmitter->iterate()));
+                    $bodyEmitter->emit($data);
+                }
+            });
+        }
+
+        return $ireq->body;
+    }
 
     /**
-     * Retrieve an associative array of an array of query string values.
-     *
-     * @return array
+     * {@inheritdoc}
      */
-    public function getAllParams(): array;
+    public function getParam(string $name) {
+        return ($this->queryParams ?? $this->queryParams = $this->parseParams())[$name][0] ?? null;
+    }
 
     /**
-     * Retrieve a cookie.
-     *
-     * @param string $name
-     * @return string|null
+     * {@inheritdoc}
      */
-    public function getCookie(string $name);
+    public function getParamArray(string $name): array {
+        return ($this->queryParams ?? $this->queryParams = $this->parseParams())[$name] ?? [];
+    }
 
     /**
-     * Retrieve a variable from the request's mutable local storage.
-     *
-     * Each request has its own mutable local storage to which application
-     * callables and filter may read and write data. Other callables
-     * which are aware of this data can then access it without the server
-     * being tightly coupled to specific implementations.
-     *
-     * @param string $key
-     * @return mixed
+     * {@inheritdoc}
      */
-    public function getLocalVar(string $key);
+    public function getAllParams(): array {
+        return $this->queryParams ?? $this->queryParams = $this->parseParams();
+    }
+
+    private function parseParams() {
+        if (empty($this->internalRequest->uriQuery)) {
+            return $this->queryParams = [];
+        }
+
+        $pairs = explode("&", $this->internalRequest->uriQuery);
+        if (count($pairs) > $this->internalRequest->client->options->maxInputVars) {
+            throw new ClientSizeException;
+        }
+
+        $this->queryParams = [];
+        foreach ($pairs as $pair) {
+            $pair = explode("=", $pair, 2);
+            // maxFieldLen should not be important here ... if it ever is, create an issue...
+            $this->queryParams[urldecode($pair[0])][] = urldecode($pair[1] ?? "");
+        }
+
+        return $this->queryParams;
+    }
 
     /**
-     * Assign a variable to the request's mutable local storage.
-     *
-     * Each request has its own mutable local storage to which application
-     * callables and filter may read and write data. Other callables
-     * which are aware of this data can then access it without the server
-     * being tightly coupled to specific implementations.
-     *
-     * @param string $key
-     * @param mixed $value
-     * @return void
+     * {@inheritdoc}
      */
-    public function setLocalVar(string $key, $value);
+    public function getCookie(string $name) {
+        $ireq = $this->internalRequest;
+
+        return $ireq->cookies[$name] ?? null;
+    }
 
     /**
-     * Retrieve an associative array of extended information about the underlying connection.
-     *
-     * Keys:
-     *      - client_port
-     *      - client_addr
-     *      - server_port
-     *      - server_addr
-     *      - is_encrypted
-     *      - crypto_info = [protocol, cipher_name, cipher_bits, cipher_version]
-     *
-     * If the underlying connection is not encrypted the crypto_info array is empty.
-     *
-     * @return array
+     * {@inheritdoc}
      */
-    public function getConnectionInfo(): array;
+    public function getLocalVar(string $key) {
+        return $this->internalRequest->locals[$key] ?? null;
+    }
 
     /**
-     * Retrieve a server option value.
-     *
-     * @param string $option The option to retrieve
-     * @throws \Error on unknown option
+     * {@inheritdoc}
      */
-    public function getOption(string $option);
+    public function setLocalVar(string $key, $value) {
+        $this->internalRequest->locals[$key] = $value;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getConnectionInfo(): array {
+        $client = $this->internalRequest->client;
+        return [
+            "client_port" => $client->clientPort,
+            "client_addr" => $client->clientAddr,
+            "server_port" => $client->serverPort,
+            "server_addr" => $client->serverAddr,
+            "is_encrypted"=> $client->isEncrypted,
+            "crypto_info" => $client->cryptoInfo,
+        ];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getOption(string $option) {
+        return $this->internalRequest->client->options->{$option};
+    }
+
+    /**
+     * @param callable $onClose
+     */
+    public function onClose(callable $onClose) {
+        $this->internalRequest->onClose[] = $onClose;
+    }
 }

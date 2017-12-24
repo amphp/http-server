@@ -25,7 +25,7 @@ class InternalRequest {
     public $method;
     /** @var array */
     public $headers;
-    /** @var \Amp\ByteStream\Message */
+    /** @var \Aerys\Body */
     public $body;
     /** @var int */
     public $maxBodySize;
@@ -49,4 +49,6 @@ class InternalRequest {
     public $httpDate;
     /** @var array */
     public $locals = [];
+    /** @var callable[] */
+    public $onClose = [];
 }

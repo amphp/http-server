@@ -8,7 +8,7 @@ use Aerys\Host;
 use Aerys\Internal;
 use Aerys\InternalRequest;
 use Aerys\Logger;
-use Aerys\StandardRequest;
+use Aerys\Request;
 use Aerys\StandardResponse;
 use Amp\Coroutine;
 use League\CLImate\CLImate;
@@ -78,7 +78,7 @@ class bootServerTest extends TestCase {
         $this->assertEquals("filter", $filter[1]);
         $this->assertInstanceOf("OurFilter", $vhosts["example.com:80:127.0.0.1:80"]->getApplication());
         $this->assertEquals(2, count($vhosts["foo.bar:80:127.0.0.1:80"]->getApplication()->__debugInfo()["applications"]));
-        $vhosts["foo.bar:80:127.0.0.1:80"]->getApplication()(new StandardRequest($ireq = new InternalRequest), new StandardResponse((function () {yield;})(), new Client))->next();
+        $vhosts["foo.bar:80:127.0.0.1:80"]->getApplication()(new Request($ireq = new InternalRequest), new StandardResponse((function () {yield;})(), new Client))->next();
         $this->assertEquals(["responder" => 1, "foo.bar" => 1], $ireq->locals);
     }
 

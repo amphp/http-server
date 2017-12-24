@@ -89,10 +89,10 @@ class Http2Driver implements HttpDriver {
             $filters = array_merge($filters, $userFilters);
         }
         if ($ireq->client->options->deflateEnable) {
-            $filters[] = '\Aerys\deflateResponseFilter';
+            $filters[] = __NAMESPACE__ . '\Internal\deflateResponseFilter';
         }
         if ($ireq->method === "HEAD") {
-            $filters[] = '\Aerys\nullBodyResponseFilter';
+            $filters[] = __NAMESPACE__ . '\Internal\nullBodyResponseFilter';
         }
         return $filters;
     }

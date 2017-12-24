@@ -52,20 +52,24 @@ class Router implements Bootable, Filter, Monitor, ServerObserver {
      *
      * @param \Aerys\Request $request
      * @param \Aerys\Response $response
+     *
+     * @return \Aerys\Response|null
      */
-    public function __invoke(Request $request, Response $response) {
+    public function __invoke(Request $request) { /* : ?Response */
         if (!$preRoute = $request->getLocalVar("aerys.routed")) {
             return;
         }
 
         list($isMethodAllowed, $data) = $preRoute;
         if ($isMethodAllowed) {
-            return $data($request, $response, $request->getLocalVar("aerys.routeArgs"));
+            return $data($request, $request->getLocalVar("aerys.routeArgs"));
         }
+
         $allowedMethods = implode(",", $data);
-        $response->setStatus(HTTP_STATUS["METHOD_NOT_ALLOWED"]);
-        $response->setHeader("Allow", $allowedMethods);
-        $response->end(makeGenericBody(HTTP_STATUS["METHOD_NOT_ALLOWED"]));
+        $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
+        $body = makeGenericBody($status);
+        $response = new Response\HtmlResponse($body, ["Allow" => $allowedMethods], $status);
+        return $response;
     }
 
     /**
@@ -253,7 +257,7 @@ class Router implements Bootable, Filter, Monitor, ServerObserver {
             $canonicalUri = substr($uri, 0, -2);
             $redirectUri = substr($uri, 0, -1);
             $this->routes[] = [$method, $canonicalUri, $actions];
-            $this->routes[] = [$method, $redirectUri, [static function (Request $request, Response $response) {
+            $this->routes[] = [$method, $redirectUri, [static function (Request $request): Response {
                 $uri = $request->getUri();
                 if (stripos($uri, "?")) {
                     list($path, $query) = explode("?", $uri, 2);
@@ -262,10 +266,12 @@ class Router implements Bootable, Filter, Monitor, ServerObserver {
                 } else {
                     $redirectTo = $path = substr($uri, 0, -1);
                 }
-                $response->setStatus(HTTP_STATUS["FOUND"]);
-                $response->setHeader("Location", $redirectTo);
-                $response->setHeader("Content-Type", "text/plain; charset=utf-8");
-                $response->end("Canonical resource URI: {$path}");
+
+                return new Response\TextResponse(
+                    "Canonical resource URI: {$path}",
+                    ["Location" => $redirectTo],
+                    HTTP_STATUS["FOUND"]
+                );
             }]];
         } else {
             $this->routes[] = [$method, $uri, $actions];
@@ -330,13 +336,15 @@ class Router implements Bootable, Filter, Monitor, ServerObserver {
         }
 
         return [
-            [static function (Request $request, Response $response, array $args) use ($applications) {
+            [static function (Request $request, array $args) use ($applications) {
                 foreach ($applications as $application) {
-                    yield call($application, $request, $response, $args);
-                    if ($response->state() & Response::STARTED) {
-                        return;
+                    $response = yield call($application, $request, $args);
+                    if ($response) {
+                        return $response;
                     }
                 }
+
+                throw new \Error("No applications returned a response");
             }, $filters],
             $monitors
         ];

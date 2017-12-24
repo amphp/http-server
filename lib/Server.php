@@ -2,6 +2,8 @@
 
 namespace Aerys;
 
+use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\InputStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\ByteStream\Message;
 use Amp\CallableMaker;
@@ -510,7 +512,7 @@ class Server implements Monitor {
     private function onWritable(string $watcherId, $socket, Client $client) {
         $bytesWritten = @\fwrite($socket, $client->writeBuffer);
         if ($bytesWritten === false || ($bytesWritten === 0 && (!\is_resource($socket) || @\feof($socket)))) {
-            if ($client->isDead == Client::CLOSED_RD) {
+            if ($client->isDead === Client::CLOSED_RD) {
                 $this->close($client);
             } else {
                 $client->isDead = Client::CLOSED_WR;
@@ -575,7 +577,7 @@ class Server implements Monitor {
         $data = @\stream_get_contents($socket, $this->options->ioGranularity);
         if ($data == "") {
             if (!\is_resource($socket) || @\feof($socket)) {
-                if ($client->isDead == Client::CLOSED_WR || $client->pendingResponses == 0) {
+                if ($client->isDead === Client::CLOSED_WR || $client->pendingResponses == 0) {
                     $this->close($client);
                 } else {
                     $client->isDead = Client::CLOSED_RD;
@@ -630,7 +632,7 @@ class Server implements Monitor {
 
     private function onParsedEntityHeaders(InternalRequest $ireq) {
         $ireq->client->bodyEmitters[$ireq->streamId] = $bodyEmitter = new Emitter;
-        $ireq->body = new Message(new IteratorStream($bodyEmitter->iterate()));
+        $ireq->body = new DefaultBody(new IteratorStream($bodyEmitter->iterate()));
 
         $this->onParsedMessage($ireq);
     }
@@ -670,13 +672,12 @@ class Server implements Monitor {
         $ireq->time = $this->ticker->currentTime;
         $ireq->httpDate = $this->ticker->currentHttpDate;
 
-        $this->tryApplication($ireq, static function (Request $request, Response $response) use ($status, $message) {
+        $this->tryApplication($ireq, static function (Request $request) use ($status, $message) {
             $body = makeGenericBody($status, [
                 "msg" => $message,
             ]);
-            $response->setStatus($status);
-            $response->setHeader("Connection", "close");
-            $response->end($body);
+            $headers = ["Connection" => "close"];
+            return new Response\HtmlResponse($body, $headers, $status);
         }, []);
     }
 
@@ -711,73 +712,47 @@ class Server implements Monitor {
         }
     }
 
-    private function sendPreAppServiceUnavailableResponse(Request $request, Response $response) {
+    private function sendPreAppServiceUnavailableResponse(Request $request): Response {
         $status = HTTP_STATUS["SERVICE_UNAVAILABLE"];
-        $body = makeGenericBody($status);
-        $response->setStatus($status);
-        $response->setHeader("Connection", "close");
-        $response->end($body);
+        $headers = [
+            "Connection" => "close",
+        ];
+
+        return new Response\HtmlResponse(makeGenericBody($status), $headers, $status);
     }
 
-    private function sendPreAppInvalidHostResponse(Request $request, Response $response) {
+    private function sendPreAppInvalidHostResponse(Request $request): Response {
         $status = HTTP_STATUS["BAD_REQUEST"];
-        $body = makeGenericBody($status);
-        $response->setStatus($status);
-        $response->setReason("Bad Request: Invalid Host");
-        $response->setHeader("Connection", "close");
-        $response->end($body);
+        $reason = "Bad Request: Invalid Host";
+        $headers = [
+            "Connection" => "close",
+        ];
+
+        return new Response\HtmlResponse(makeGenericBody($status), $headers, $status, $reason);
     }
 
-    private function sendPreAppMethodNotAllowedResponse(Request $request, Response $response) {
+    private function sendPreAppMethodNotAllowedResponse(Request $request): Response {
         $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
-        $body = makeGenericBody($status);
-        $response->setStatus($status);
-        $response->setHeader("Connection", "close");
-        $response->setHeader("Allow", implode(", ", $this->options->allowedMethods));
-        $response->end($body);
+        $headers = [
+            "Connection" => "close",
+            "Allow", implode(", ", $this->options->allowedMethods),
+        ];
+
+        return new Response\HtmlResponse(makeGenericBody($status), $headers, $status);
     }
 
-    private function sendPreAppTraceResponse(Request $request, Response $response) {
-        $response->setStatus(HTTP_STATUS["OK"]);
-        $response->setHeader("Content-Type", "message/http");
-        $response->end($request->getLocalVar('aerys.trace'));
+    private function sendPreAppTraceResponse(Request $request): Response {
+        $stream = new InMemoryStream($request->getLocalVar('aerys.trace'));
+        return new Response($stream, ["Content-Type" => "message/http"]);
     }
 
-    private function sendPreAppOptionsResponse(Request $request, Response $response) {
-        $response->setStatus(HTTP_STATUS["OK"]);
-        $response->setHeader("Allow", implode(", ", $this->options->allowedMethods));
-        $response->end();
+    private function sendPreAppOptionsResponse(Request $request): Response {
+        return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->allowedMethods)]);
     }
 
     private function tryApplication(InternalRequest $ireq, callable $application, array $filters) {
-        $response = $this->initializeResponse($ireq, $filters);
-        $request = new StandardRequest($ireq);
+        $request = new Request($ireq);
 
-        call($application, $request, $response)->onResolve(function ($error) use ($ireq, $response, $filters) {
-            if ($error) {
-                if (!$error instanceof ClientException) {
-                    // Ignore uncaught ClientException -- applications aren't required to catch this
-                    $this->onApplicationError($error, $ireq, $response, $filters);
-                }
-                return;
-            }
-
-            if ($ireq->client->isExported || ($ireq->client->isDead & Client::CLOSED_WR)) {
-                return;
-            } elseif ($response->state() & Response::STARTED) {
-                $response->end();
-            } else {
-                $status = HTTP_STATUS["NOT_FOUND"];
-                $body = makeGenericBody($status, [
-                    "sub_heading" => "Requested: {$ireq->uri}",
-                ]);
-                $response->setStatus($status);
-                $response->end($body);
-            }
-        });
-    }
-
-    private function initializeResponse(InternalRequest $ireq, array $filters): Response {
         $ireq->responseWriter = $ireq->client->httpDriver->writer($ireq);
         $filters = $ireq->client->httpDriver->filters($ireq, $filters);
         if ($ireq->badFilterKeys) {
@@ -785,71 +760,83 @@ class Server implements Monitor {
         }
         $filter = responseFilter($filters, $ireq);
         $filter->current(); // initialize filters
-        $codec = responseCodec($filter, $ireq);
+        $codec = responseCodec($filter, $ireq->responseWriter);
 
-        return new StandardResponse($codec, $ireq->client);
-    }
+        call($application, $request)->onResolve(function ($error, $response) use ($ireq, $codec) {
+            if ($error) {
+                $this->logger->error($error);
+                // @TODO ClientExceptions?
+                $response = $this->makeErrorResponse($error, $ireq);
+            }
 
-    private function onApplicationError(\Throwable $error, InternalRequest $ireq, Response $response, array $filters) {
-        $this->logger->error($error);
-
-        if (($ireq->client->isDead & Client::CLOSED_WR) || $ireq->client->isExported) {
-            // Responder actions may catch an initial ClientException and continue
-            // doing further work. If an error arises at this point our only option
-            // is to log the error (which we just did above).
-            return;
-        } elseif ($response->state() & Response::STARTED) {
-            $this->close($ireq->client);
-        } elseif (empty($ireq->filterErrorFlag)) {
-            $this->tryErrorResponse($error, $ireq, $response, $filters);
-        } else {
-            $this->tryFilterErrorResponse($error, $ireq, $filters);
-        }
-    }
-
-    /**
-     * When an uncaught exception is thrown by a filter we enable the $ireq->filterErrorFlag
-     * and add the offending filter's key to $ireq->badFilterKeys. Each time we initialize
-     * a response the bad filters are removed from the chain in an effort to invoke all possible
-     * filters. To handle the scenario where multiple filters error we need to continue looping
-     * until $ireq->filterErrorFlag no longer reports as true.
-     */
-    private function tryFilterErrorResponse(\Throwable $error, InternalRequest $ireq, array $filters) {
-        while ($ireq->filterErrorFlag) {
-            try {
-                $ireq->filterErrorFlag = false;
-                $response = $this->initializeResponse($ireq, $filters);
-                $this->tryErrorResponse($error, $ireq, $response, $filters);
-            } catch (ClientException $error) {
+            if ($ireq->client->isExported) {
                 return;
-            } catch (\Throwable $error) {
-                $this->logger->error($error);
-                $this->close($ireq->client);
             }
+
+            if (\is_string($response)) {
+                $headers[":status"] = HTTP_STATUS["OK"];
+                $headers[":reason"] = HTTP_REASON[HTTP_STATUS["OK"]];
+                $headers[":aerys-entity-length"] = \strlen($response);
+
+                $codec->send($headers);
+                $codec->send($response);
+                $codec->send(null);
+                return;
+            }
+
+            if (!$response instanceof Response) {
+                $error = new \Error("Request handlers must return an instance of " . Response::class);
+                $this->logger->error($error);
+                $response = $this->makeErrorResponse($error, $ireq);
+            }
+
+            $headers = $response->getHeaders();
+            $headers[":status"] = $response->getStatus();
+            $headers[":reason"] = $response->getReason();
+            $headers[":aerys-entity-length"] = "*";
+
+            if (!empty($push = $response->getPush())) {
+                $headers[':aerys-push'] = $push;
+            }
+
+            $codec->send($headers);
+
+            Promise\rethrow(new Coroutine($this->sendResponse($response->getBody(), $codec, $ireq)));
+        });
+    }
+
+    private function sendResponse(InputStream $body, \Generator $codec, InternalRequest $ireq): \Generator {
+        try {
+            do {
+                $chunk = yield $body->read();
+
+                if ($ireq->client->isDead & Client::CLOSED_WR) {
+                    foreach ($ireq->onClose as $onClose) {
+                        $onClose();
+                    }
+
+                    $codec->send(null);
+                    while (null !== yield $body->read()); // Consume remaining body.
+                    return;
+                }
+
+                $codec->send($chunk);
+            } while ($chunk !== null);
+        } catch (\Throwable $exception) {
+            // Reading response body failed, abort writing the response to the client.
+            $codec->send(null);
         }
     }
 
-    private function tryErrorResponse(\Throwable $error, InternalRequest $ireq, Response $response, array $filters) {
-        try {
-            $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
-            $msg = ($this->options->debug) ? "<pre>" . htmlspecialchars($error) . "</pre>" : "<p>Something went wrong ...</p>";
-            $body = makeGenericBody($status, [
-                "sub_heading" =>"Requested: {$ireq->uri}",
-                "msg" => $msg,
-            ]);
-            $response->setStatus(HTTP_STATUS["INTERNAL_SERVER_ERROR"]);
-            $response->setHeader("Connection", "close");
-            $response->end($body);
-        } catch (ClientException $error) {
-            return;
-        } catch (\Throwable $error) {
-            if ($ireq->filterErrorFlag) {
-                $this->tryFilterErrorResponse($error, $ireq, $filters);
-            } else {
-                $this->logger->error($error);
-                $this->close($ireq->client);
-            }
-        }
+    private function makeErrorResponse(\Throwable $error, InternalRequest $ireq): Response {
+        $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
+        $msg = ($this->options->debug) ? "<pre>" . htmlspecialchars($error) . "</pre>" : "<p>Something went wrong ...</p>";
+        $body = makeGenericBody($status, [
+            "sub_heading" =>"Requested: {$ireq->uri}",
+            "msg" => $msg,
+        ]);
+
+        return new Response\HtmlResponse($body, [], $status);
     }
 
     private function close(Client $client) {
@@ -897,7 +884,6 @@ class Server implements Monitor {
     }
 
     private function export(Client $client): \Closure {
-        $client->isDead = Client::CLOSED_RDWR;
         $client->isExported = true;
         $this->clear($client);
 
@@ -909,7 +895,8 @@ class Server implements Monitor {
         }
         $clientCount = &$this->clientCount;
         $clientsPerIP = &$this->clientsPerIP[$net];
-        $closer = static function () use (&$clientCount, &$clientsPerIP) {
+        $closer = static function () use ($client, &$clientCount, &$clientsPerIP) {
+            $client->isDead = Client::CLOSED_RDWR;
             $clientCount--;
             $clientsPerIP--;
         };

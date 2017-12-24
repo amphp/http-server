@@ -2,134 +2,380 @@
 
 namespace Aerys;
 
-interface Response extends \Amp\ByteStream\OutputStream {
-    const NONE      = 0b000;
-    const STARTED   = 0b001;
-    const STREAMING = 0b010;
-    const ENDED     = 0b100;
+use Aerys\Cookie\MetaCookie;
+use Amp\ByteStream\InputStream;
+
+class Response {
+    /**  @var string[] */
+    private $headerNameMap = [];
+
+    /** @var string[][] */
+    private $headers = [];
+
+    /** @var \Amp\ByteStream\InputStream  */
+    private $stream;
+
+    /** @var int HTTP status code. */
+    private $status;
+
+    /** @var string Response reason. */
+    private $reason;
+
+    /** @var \Aerys\Cookie\MetaCookie[] */
+    private $cookies = [];
+
+    /** @var array */
+    private $push = [];
 
     /**
-     * Set the numeric HTTP status code.
+     * @param int $code Status code.
+     * @param string[][] $headers
+     * @param \Amp\ByteStream\InputStream|null $stream
+     * @param string|null $reason Status code reason.
      *
-     * If not assigned this value defaults to 200.
-     *
-     * @param int $code An integer in the range [100-599]
-     * @return self
+     * @throws \Error If one of the arguments is invalid.
      */
-    public function setStatus(int $code): Response;
+    public function __construct(
+        InputStream $stream = null,
+        array $headers = [],
+        int $code = 200,
+        string $reason = null
+    ) {
+        $this->status = $this->validateStatusCode($code);
+        $this->reason = $reason === null
+            ? (HTTP_STATUS[$this->status] ?? "Unknown reason")
+            : $this->filterReason($reason);
+
+        if (!empty($headers)) {
+            $this->setHeaders($headers);
+        }
+
+        if (isset($this->headers['set-cookie'])) {
+            $this->setCookiesFromHeaders();
+        }
+
+        $this->stream = $stream ?: new NullBody;
+    }
 
     /**
-     * Set the optional HTTP reason phrase.
-     *
-     * @param string $phrase A human readable string describing the status code
-     * @return self
+     * {@inheritdoc}
      */
-    public function setReason(string $phrase): Response;
+    public function getHeaders(): array {
+        return $this->headers;
+    }
 
     /**
-     * Append the specified header.
-     *
-     * @param string $field
-     * @param string $value
-     * @return self
+     * {@inheritdoc}
      */
-    public function addHeader(string $field, string $value): Response;
+    public function hasHeader(string $name): bool {
+        return isset($this->headerNameMap[strtolower($name)]);
+    }
 
     /**
-     * Set the specified header.
-     *
-     * This method will replace any existing headers for the specified field.
-     *
-     * @param string $field
-     * @param string $value
-     * @return self
+     * {@inheritdoc}
      */
-    public function setHeader(string $field, string $value): Response;
+    public function getHeaderAsArray(string $name): array {
+        $name = strtolower($name);
+
+        if (!isset($this->headerNameMap[$name])) {
+            return [];
+        }
+
+        $name = $this->headerNameMap[$name];
+
+        return $this->headers[$name];
+    }
 
     /**
-     * Provides an easy API to set cookie headers
-     * Those who prefer using addHeader() may do so.
+     * {@inheritdoc}
+     */
+    public function getHeader(string $name): string {
+        $name = strtolower($name);
+
+        if (!isset($this->headerNameMap[$name])) {
+            return '';
+        }
+
+        $name = $this->headerNameMap[$name];
+
+        return isset($this->headers[$name][0]) ? $this->headers[$name][0] : '';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getBody(): InputStream {
+        return $this->stream;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function setBody(InputStream $stream) {
+        $this->body = $stream;
+    }
+
+    /**
+     * Sets the headers from the given array.
+     *
+     * @param string[] $headers
+     */
+    public function setHeaders(array $headers) {
+        foreach ($headers as $name => $value) {
+            $this->setHeader($name, $value);
+        }
+    }
+
+    /**
+     * Sets the named header to the given value.
      *
      * @param string $name
-     * @param string $value
-     * @param array $flags Shall be an array of key => value pairs and/or unkeyed values as per https://tools.ietf.org/html/rfc6265#section-5.2.1
-     * @return self
+     * @param string|string[] $value
+     *
+     * @throws \Error If the header name or value is invalid.
      */
-    public function setCookie(string $name, string $value, array $flags = []): Response;
+    public function setHeader(string $name, $value) {
+        \assert($this->isHeaderNameValid($name), "Header name is invalid");
+
+        $name = strtolower($name);
+        $this->headers[$name] = $this->filterHeader($value);
+
+        if ('set-cookie' === $name) {
+            $this->setCookiesFromHeaders();
+        }
+    }
 
     /**
-     * Incrementally stream parts of the response entity body.
+     * Adds the value to the named header, or creates the header with the given value if it did not exist.
      *
-     * This method may be repeatedly called to stream the response body.
-     * Applications that can afford to buffer an entire response in memory or
-     * can wait for all body data to generate may use Response::end() to output
-     * the entire response in a single call.
+     * @param string $name
+     * @param string|string[] $value
      *
-     * Note: Headers are sent upon the first invocation of Response::write().
-     *
-     * @param string $partialBodyChunk A portion of the response entity body
-     * @return \Amp\Promise to be succeeded whenever local buffers aren't full
+     * @throws \Error If the header name or value is invalid.
      */
-    public function write(string $partialBodyChunk): \Amp\Promise;
+    public function addHeader(string $name, $value) {
+        \assert($this->isHeaderNameValid($name), "Header name is invalid");
+
+        $name = strtolower($name);
+        if (isset($this->headers[$name])) {
+            $this->headers[$name] = \array_merge($this->headers[$name], $this->filterHeader($value));
+        } else {
+            $this->headers = $this->filterHeader($value);
+        }
+
+        if ('set-cookie' === $name) {
+            $this->setCookiesFromHeaders();
+        }
+    }
 
     /**
-     * Request that buffered stream data be flushed to the client.
+     * Removes the given header if it exists.
      *
-     * This method only makes sense when streaming output via Response::write().
-     * Invoking it before calling write() or after end() is a logic error.
+     * @param string $name
      */
-    public function flush();
+    public function removeHeader(string $name) {
+        $name = strtolower($name);
+        unset($this->headers[$name]);
+
+        if ('set-cookie' === $name) {
+            $this->cookies = [];
+        }
+    }
 
     /**
-     * Signify the end of streaming response output.
+     * @param string $name
      *
-     * User applications are NOT required to call Response::end() after streaming
-     * or sending response data (though it's not incorrect to do so) -- the server
-     * will automatically call end() as needed.
-     *
-     * Passing the optional $finalBodyChunk parameter is a shortcut equivalent to
-     * the following:
-     *
-     *     $response->write($finalBodyChunk);
-     *     $response->end();
-     *
-     * Note: Invoking Response::end() with a non-empty $finalBodyChunk parameter
-     * without having previously invoked Response::write() is equivalent to calling
-     * Response::send($finalBodyChunk).
-     *
-     * @param string $finalBodyChunk Optional final body data to send
-     * @return \Amp\Promise to be succeeded whenever local buffers aren't full
+     * @return bool
      */
-    public function end(string $finalBodyChunk = ""): \Amp\Promise;
+    private function isHeaderNameValid(string $name): bool {
+        return (bool) preg_match('/^[A-Za-z0-9`~!#$%^&_|\'\-]+$/', $name);
+    }
 
     /**
-     * Signal an extraordinary response end.
+     * Converts a given header value to an integer-indexed array of strings.
      *
-     * It fails an eventual pending request body message and will reset the
-     * active HTTP stream.
+     * @param mixed|mixed[] $values
+     *
+     * @return string[]
+     *
+     * @throws \Error If the given value cannot be converted to a string and is not an array of values that can be
+     *     converted to strings.
      */
-    public function abort();
+    private function filterHeader($values): array {
+        if (!is_array($values)) {
+            $values = [$values];
+        }
+
+        $lines = [];
+
+        foreach ($values as $value) {
+            if (is_numeric($value) || is_null($value) || (is_object($value) && method_exists($value, '__toString'))) {
+                $value = (string) $value;
+            } elseif (!is_string($value)) {
+                throw new \Error('Header values must be strings or an array of strings.');
+            }
+
+            if (preg_match("/[^\t\r\n\x20-\x7e\x80-\xfe]|\r\n/", $value)) {
+                throw new \Error('Invalid character(s) in header value.');
+            }
+
+            $lines[] = $value;
+        }
+
+        return $lines;
+    }
 
     /**
-     * Indicate resources which a client likely needs to fetch. (e.g. Link: preload or HTTP/2 Server Push).
-     *
-     * @param string $url The URL this request should be dispatched to
-     * @param array $headers Optional custom headers, else the server will try to reuse headers from the last request
-     * @return Response
+     * {@inheritdoc}
      */
-    public function push(string $url, array $headers = null): Response;
+    public function getStatus(): int {
+        return $this->status;
+    }
 
     /**
-     * Retrieve the current response state.
-     *
-     * The response state is a bitmask of the following flags:
-     *
-     *  - Response::NONE
-     *  - Response::STARTED
-     *  - Response::STREAMING
-     *  - Response::ENDED
+     * {@inheritdoc}
+     */
+    public function getReason(): string {
+        if ('' !== $this->reason) {
+            return $this->reason;
+        }
+
+        return isset(HTTP_STATUS[$this->status]) ? HTTP_REASON[$this->status] : '';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function setStatus(int $code, string $reason = null) {
+        $this->status = $this->validateStatusCode($code);
+        $this->reason = $this->filterReason($reason);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getCookies(): array {
+        return $this->cookies;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function hasCookie(string $name): bool {
+        return isset($this->cookies[$name]);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getCookie(string $name) {
+        return $this->cookies[$name] ?? null;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function setCookie(
+        string $name,
+        $value = '',
+        int $expires = 0,
+        string $path = null,
+        string $domain = null,
+        bool $secure = false,
+        bool $httpOnly = false
+    ) {
+        $this->cookies[$name] = new MetaCookie($name, $value, $expires, $path, $domain, $secure, $httpOnly);
+        $this->setHeadersFromCookies();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function removeCookie(string $name) {
+        unset($this->cookies[$name]);
+        $this->setHeadersFromCookies();
+    }
+
+    /**
+     * @param string|int $code
      *
      * @return int
+     *
+     * @throws \Error
      */
-    public function state(): int;
+    protected function validateStatusCode(int $code): int {
+        if ($code < 100 || $code > 599) {
+            throw new \Error(
+                'Invalid status code. Must be an integer between 100 and 599, inclusive.'
+            );
+        }
+
+        return $code;
+    }
+
+    /**
+     * @param string|null $reason
+     *
+     * @return string
+     */
+    protected function filterReason(string $reason = null): string {
+        return $reason ?? (HTTP_STATUS[$this->status] ?? "Unknown reason");
+    }
+
+    /**
+     * Sets cookies based on headers.
+     *
+     * @throws \Error
+     */
+    private function setCookiesFromHeaders() {
+        $this->cookies = [];
+
+        $headers = $this->getHeaderAsArray('set-cookie');
+
+        foreach ($headers as $line) {
+            $cookie = MetaCookie::fromHeader($line);
+            $this->cookies[$cookie->getName()] = $cookie;
+        }
+    }
+
+    /**
+     * Sets headers based on cookie values.
+     */
+    private function setHeadersFromCookies() {
+        $values = [];
+
+        foreach ($this->cookies as $cookie) {
+            $values[] = $cookie->toHeader();
+        }
+
+        $this->setHeader('set-cookie', $values);
+    }
+
+    /**
+     * @return string[][]
+     */
+    public function getPush(): array {
+        return $this->push;
+    }
+
+    /**
+     */
+    public function push(string $url, array $headers = null) {
+        \assert((function ($headers) {
+            foreach ($headers ?? [] as $name => $header) {
+                if (\is_int($name)) {
+                    if (count($header) != 2) {
+                        return false;
+                    }
+                    list($name) = $header;
+                }
+                if ($name[0] == ":" || !strncasecmp("host", $name, 4)) {
+                    return false;
+                }
+            }
+            return true;
+        })($headers), "Headers must not contain colon prefixed headers or a Host header. Use a full URL if necessary, the method is always GET.");
+
+        $this->push[$url] = $headers;
+    }
 }

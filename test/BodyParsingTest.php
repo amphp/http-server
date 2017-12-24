@@ -5,7 +5,7 @@ namespace Aerys\Test;
 use Aerys\Client;
 use Aerys\InternalRequest;
 use Aerys\Options;
-use Aerys\StandardRequest;
+use Aerys\Request;
 use Amp\ByteStream\IteratorStream;
 use Amp\ByteStream\Message;
 use Amp\Loop;
@@ -27,7 +27,7 @@ class BodyParsingTest extends TestCase {
         $emitter->complete();
 
         Loop::run(function () use ($ireq, &$result) {
-            $parsedBody = yield \Aerys\parseBody(new StandardRequest($ireq));
+            $parsedBody = yield \Aerys\parseBody(new Request($ireq));
             $result = $parsedBody->getAll();
         });
 
@@ -52,7 +52,7 @@ class BodyParsingTest extends TestCase {
         Loop::run(function () use ($ireq, $fields, $metadata) {
             $fieldlist = $fields;
 
-            $body = \Aerys\parseBody(new StandardRequest($ireq));
+            $body = \Aerys\parseBody(new Request($ireq));
 
             while (($field = yield $body->read()) !== null) {
                 $this->assertArrayHasKey($field, $fieldlist);
@@ -85,7 +85,7 @@ class BodyParsingTest extends TestCase {
                 $emitter->complete();
             });
 
-            $body = \Aerys\parseBody(new StandardRequest($ireq));
+            $body = \Aerys\parseBody(new Request($ireq));
             while (($field = yield $body->read()) !== null) {
                 $this->assertArrayHasKey($field, $fieldlist);
                 array_pop($fieldlist[$field]);
@@ -109,7 +109,7 @@ class BodyParsingTest extends TestCase {
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
-        $body = new \Aerys\BodyParser(new StandardRequest($ireq));
+        $body = new \Aerys\BodyParser(new Request($ireq));
         $a = $body->stream("a");
         $b = $body->stream("b");
         $be = $body->stream("be");

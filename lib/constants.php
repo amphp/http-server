@@ -3,8 +3,11 @@
 namespace Aerys;
 
 const SERVER_NAME = "aerys";
+
 define(__NAMESPACE__ . "\\SERVER_VERSION", \str_replace([".9999999", "9999999-"], "", \PackageVersions\Versions::getVersion('amphp/aerys')));
+
 const SERVER_TOKEN = SERVER_NAME . "/" . SERVER_VERSION;
+
 const HTTP_REASON = [
     100 => "Continue",
     101 => "Switching Protocols",
@@ -53,6 +56,7 @@ const HTTP_REASON = [
     505 => "HTTP Version Not Supported",
     511 => "Network Authentication Required",
 ];
+
 const HTTP_STATUS = [
     "ACCEPTED" => 202,
     "BAD_GATEWAY" => 502,

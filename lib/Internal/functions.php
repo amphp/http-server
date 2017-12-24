@@ -6,6 +6,7 @@ use Aerys\Bootable;
 use Aerys\Console;
 use Aerys\Filter;
 use Aerys\Host;
+use Aerys\InternalRequest;
 use Aerys\Monitor;
 use Aerys\Options;
 use Aerys\Request;
@@ -17,11 +18,149 @@ use Amp\InvalidYieldError;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
+use React\Promise\PromiseInterface as ReactPromise;
 use const Aerys\HTTP_STATUS;
 use function Aerys\initServer;
 use function Aerys\makeGenericBody;
 use function Aerys\selectConfigFile;
 use function Amp\call;
+
+/**
+ * Apply negotiated gzip deflation to outgoing response bodies.
+ *
+ * @param \Aerys\InternalRequest $ireq
+ * @return \Generator
+ */
+function deflateResponseFilter(InternalRequest $ireq): \Generator {
+    if (empty($ireq->headers["accept-encoding"])) {
+        return;
+    }
+
+    // @TODO Perform a more sophisticated check for gzip acceptance.
+    // This check isn't technically correct as the gzip parameter
+    // could have a q-value of zero indicating "never accept gzip."
+    do {
+        foreach ($ireq->headers["accept-encoding"] as $value) {
+            if (stripos($value, "gzip") !== false) {
+                break 2;
+            }
+        }
+        return;
+    } while (0);
+
+    $headers = yield;
+
+    // We can't deflate if we don't know the content-type
+    if (empty($headers["content-type"])) {
+        return $headers;
+    }
+
+    $options = $ireq->client->options;
+
+    // Match and cache Content-Type
+    if (!$doDeflate = $options->_dynamicCache->deflateContentTypes[$headers["content-type"][0]] ?? null) {
+        if ($doDeflate === 0) {
+            return $headers;
+        }
+
+        if (count($options->_dynamicCache->deflateContentTypes) == Options::MAX_DEFLATE_ENABLE_CACHE_SIZE) {
+            unset($options->_dynamicCache->deflateContentTypes[key($options->_dynamicCache->deflateContentTypes)]);
+        }
+
+        $contentType = $headers["content-type"][0];
+        $doDeflate = preg_match($options->deflateContentTypes, trim(strstr($contentType, ";", true) ?: $contentType));
+        $options->_dynamicCache->deflateContentTypes[$contentType] = $doDeflate;
+
+        if ($doDeflate === 0) {
+            return $headers;
+        }
+    }
+
+    $minBodySize = $options->deflateMinimumLength;
+    $contentLength = $headers["content-length"][0] ?? null;
+    $bodyBuffer = "";
+
+    if (!isset($contentLength)) {
+        // Wait until we know there's enough stream data to compress before proceeding.
+        // If we receive a FLUSH or an END signal before we have enough then we won't
+        // use any compression.
+        do {
+            $bodyBuffer .= ($tmp = yield);
+            if ($tmp === false || $tmp === null) {
+                $bodyBuffer .= yield $headers;
+                return $bodyBuffer;
+            }
+        } while (!isset($bodyBuffer[$minBodySize]));
+    } elseif (empty($contentLength) || $contentLength < $minBodySize) {
+        // If the Content-Length is too small we can't compress it.
+        return $headers;
+    }
+
+    // @TODO We have the ability to support DEFLATE and RAW encoding as well. Should we?
+    $mode = \ZLIB_ENCODING_GZIP;
+    if (($resource = \deflate_init($mode)) === false) {
+        throw new \RuntimeException(
+            "Failed initializing deflate context"
+        );
+    }
+
+    // Once we decide to compress output we no longer know what the
+    // final Content-Length will be. We need to update our headers
+    // according to the HTTP protocol in use to reflect this.
+    unset($headers["content-length"]);
+    if ($ireq->protocol === "1.1") {
+        $headers["transfer-encoding"] = ["chunked"];
+    } else {
+        $headers["connection"] = ["close"];
+    }
+    $headers["content-encoding"] = ["gzip"];
+    $minFlushOffset = $options->deflateBufferSize;
+    $deflated = $headers;
+
+    while (($uncompressed = yield $deflated) !== null) {
+        $bodyBuffer .= $uncompressed;
+        if ($uncompressed === false) {
+            if ($bodyBuffer === "") {
+                $deflated = null;
+            } elseif (($deflated = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) === false) {
+                throw new \RuntimeException(
+                    "Failed adding data to deflate context"
+                );
+            } else {
+                $bodyBuffer = "";
+            }
+        } elseif (!isset($bodyBuffer[$minFlushOffset])) {
+            $deflated = null;
+        } elseif (($deflated = \deflate_add($resource, $bodyBuffer)) === false) {
+            throw new \RuntimeException(
+                "Failed adding data to deflate context"
+            );
+        } else {
+            $bodyBuffer = "";
+        }
+    }
+
+    if (($deflated = \deflate_add($resource, $bodyBuffer, \ZLIB_FINISH)) === false) {
+        throw new \RuntimeException(
+            "Failed adding data to deflate context"
+        );
+    }
+
+    return $deflated;
+}
+
+/**
+ * Filter out entity body data from a response stream.
+ *
+ * @param \Aerys\InternalRequest $ireq
+ * @return \Generator
+ */
+function nullBodyResponseFilter(InternalRequest $ireq): \Generator {
+    // Receive headers and defer send them back.
+    yield yield;
+    // Yield null (need more data) for all subsequent body data
+    while (yield !== null);
+}
 
 function validateFilterHeaders(\Generator $generator, array $headers): bool {
     if (!isset($headers[":status"])) {
@@ -202,8 +341,8 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
         }
 
         if (empty($applications)) {
-            $application = static function (Request $request, Response $response) {
-                $response->end("<html><body><h1>It works!</h1></body></html>");
+            $application = static function (): string {
+                return "<html><body><h1>It works!</h1></body></html>";
             };
         } elseif (count($applications) === 1) {
             $application = current($applications);
@@ -231,19 +370,22 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
                     return new Success;
                 }
 
-                public function __invoke(Request $request, Response $response) {
+                public function __invoke(Request $request): \Generator {
                     foreach ($this->applications as $action) {
-                        yield call($action, $request, $response);
-                        if ($response->state() & Response::STARTED) {
-                            return;
-                        }
+                        $response = yield call($action, $request);
+
                         if ($this->isStopping) {
-                            $response->setStatus(HTTP_STATUS["SERVICE_UNAVAILABLE"]);
-                            $response->setReason("Server shutting down");
-                            $response->end(makeGenericBody(HTTP_STATUS["SERVICE_UNAVAILABLE"]));
-                            return;
+                            $status = HTTP_STATUS["SERVICE_UNAVAILABLE"];
+                            $reason = "Server shutting down";
+                            return new Response\HtmlResponse(makeGenericBody($status), [], $status, $reason);
+                        }
+
+                        if ($response) {
+                            return $response;
                         }
                     }
+
+                    throw new \Error("No application returned a response");
                 }
 
                 public function __debugInfo() {
