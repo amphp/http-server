@@ -61,35 +61,53 @@ class Response {
     }
 
     /**
-     * {@inheritdoc}
+     * Returns the response headers as a string-indexed array of arrays of strings or an empty array if no headers
+     * have been set.
+     *
+     * @return string[][]
      */
     public function getHeaders(): array {
         return $this->headers;
     }
 
     /**
-     * {@inheritdoc}
+     * Returns the array of values for the given header or an empty array if the header does not exist.
+     *
+     * @param string $name
+     *
+     * @return string[]
      */
     public function getHeaderArray(string $name): array {
         return $this->headers[\strtolower($name)] ?? [];
     }
 
     /**
-     * {@inheritdoc}
+     * Returns the value of the given header. If multiple headers were present for the named header, only the first
+     * header value will be returned. Use getHeaderArray() to return an array of all values for the particular header.
+     * Returns null if the header does not exist.
+     *
+     * @param string $name
+     *
+     * @return string|null
      */
     public function getHeader(string $name) {
         return $this->headers[\strtolower($name)][0] ?? null;
     }
 
+
     /**
-     * {@inheritdoc}
+     * Returns the stream for the message body.
+     *
+     * @return \Amp\ByteStream\InputStream
      */
     public function getBody(): InputStream {
         return $this->body;
     }
 
     /**
-     * {@inheritdoc}
+     * Sets the stream for the message body.
+     *
+     * @param \Amp\ByteStream\InputStream $stream
      */
     public function setBody(InputStream $stream) {
         $this->body = $stream;
@@ -204,14 +222,18 @@ class Response {
     }
 
     /**
-     * {@inheritdoc}
+     * Returns the response status code.
+     *
+     * @return int
      */
     public function getStatus(): int {
         return $this->status;
     }
 
     /**
-     * {@inheritdoc}
+     * Returns the reason phrase describing the status code.
+     *
+     * @return string
      */
     public function getReason(): string {
         if ('' !== $this->reason) {
@@ -222,7 +244,11 @@ class Response {
     }
 
     /**
-     * {@inheritdoc}
+     * Sets the response status code and reason phrase. Use null for the reason phrase to use the default phrase
+     * associated with the status code.
+     *
+     * @param int $code 100 - 599
+     * @param string|null $reason
      */
     public function setStatus(int $code, string $reason = null) {
         $this->status = $this->validateStatusCode($code);
@@ -230,28 +256,29 @@ class Response {
     }
 
     /**
-     * {@inheritdoc}
+     * @return \Aerys\Cookie\MetaCookie[]
      */
     public function getCookies(): array {
         return $this->cookies;
     }
 
     /**
-     * {@inheritdoc}
-     */
-    public function hasCookie(string $name): bool {
-        return isset($this->cookies[$name]);
-    }
-
-    /**
-     * {@inheritdoc}
+     * @return \Aerys\Cookie\MetaCookie|null
      */
     public function getCookie(string $name) {
         return $this->cookies[$name] ?? null;
     }
 
     /**
-     * {@inheritdoc}
+     * Adds a cookie to the response.
+     *
+     * @param string $name
+     * @param mixed $value
+     * @param int $expires Unix timestamp of expiration.
+     * @param string|null $path Optional path.
+     * @param string|null $domain Optional domain.
+     * @param bool $secure Send only on secure requests.
+     * @param bool $httpOnly Send only on http requests.
      */
     public function setCookie(
         string $name,
@@ -267,7 +294,9 @@ class Response {
     }
 
     /**
-     * {@inheritdoc}
+     * Removes a cookie from the response.
+     *
+     * @param string $name
      */
     public function removeCookie(string $name) {
         unset($this->cookies[$name]);
@@ -357,10 +386,18 @@ class Response {
         $this->push[$url] = $headers;
     }
 
+    /**
+     * @return bool True if a detach callback has been set, false if none.
+     */
     public function isDetached(): bool {
         return $this->detach === null;
     }
 
+    /**
+     * @param callable $detach Callback invoked once the response has been written to the client. The callback is given
+     *     an instance of \Amp\Socket\ServerSocket as the first parameter, followed by the given arguments.
+     * @param array ...$args Arguments to pass to the detach callback.
+     */
     public function detach(callable $detach, ...$args) {
         $this->detach = [$detach, $args];
     }

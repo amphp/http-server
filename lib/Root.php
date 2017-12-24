@@ -80,7 +80,7 @@ class Root implements ServerObserver {
      * Respond to HTTP requests for filesystem resources.
      */
     public function __invoke(Request $request) {
-        $uri = $request->getLocalVar("aerys.sendfile") ?: $request->getUri();
+        $uri = $request->getAttribute("aerys.sendfile") ?: $request->getUri();
         $path = ($qPos = \strpos($uri, "?")) ? \substr($uri, 0, $qPos) : $uri;
         // IMPORTANT! Do NOT remove this. If this is left in, we'll be able to use /path\..\../outsideDocRoot defeating the removeDotPathSegments() function! (on Windows at least)
         $path = \str_replace("\\", "/", $path);

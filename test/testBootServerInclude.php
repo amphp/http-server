@@ -10,7 +10,7 @@ class OurFilter implements \Aerys\Filter {
     }
 
     public function __invoke(\Aerys\Request $req) {
-        $req->setLocalVar("responder", $req->getLocalVar("responder") + 1);
+        $req->setAttribute("responder", $req->getAttribute("responder") + 1);
     }
 }
 
@@ -33,7 +33,7 @@ return (function () {
     ($hosts[] = clone end($hosts))
         ->name("foo.bar")
         ->use(function (\Aerys\Request $req, \Aerys\Response $res) {
-            $req->setLocalVar("foo.bar", $req->getLocalVar("foo.bar") + 1);
+            $req->setAttribute("foo.bar", $req->getAttribute("foo.bar") + 1);
             $res->end();
         });
 

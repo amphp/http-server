@@ -58,13 +58,13 @@ class Router implements Bootable, Monitor, ServerObserver, Internal\RequestFilte
      * @return \Aerys\Response|null
      */
     public function __invoke(Request $request) { /* : ?Response */
-        if (!$preRoute = $request->getLocalVar("aerys.routed")) {
+        if (!$preRoute = $request->getAttribute("aerys.routed")) {
             return;
         }
 
         list($isMethodAllowed, $action) = $preRoute;
         if ($isMethodAllowed) {
-            return $action($request, $request->getLocalVar("aerys.routeArgs"));
+            return $action($request, $request->getAttribute("aerys.routeArgs"));
         }
 
         $allowedMethods = implode(",", $action);

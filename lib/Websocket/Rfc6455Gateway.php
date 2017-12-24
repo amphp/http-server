@@ -190,13 +190,12 @@ class Rfc6455Gateway implements Monitor, ServerObserver {
         return $response;
     }
 
-    public function reapClient(Socket $socket, callable $clearer, $data = null) {
+    public function reapClient(Socket $socket, $data = null) {
         $client = new Rfc6455Client;
         $client->capacity = $this->maxBytesPerMinute;
         $client->connectedAt = $this->now;
         $client->id = (int) $socket->getResource();
         $client->socket = $socket;
-        $client->serverRefClearer = $clearer;
 
         $client->parser = $this->parser($client, $options = [
             "max_msg_size" => $this->maxMsgSize,
@@ -324,9 +323,6 @@ class Rfc6455Gateway implements Monitor, ServerObserver {
 
     private function unloadClient(Rfc6455Client $client) {
         $client->parser = null;
-
-        ($client->serverRefClearer)();
-        $client->serverRefClearer = null;
 
         $id = $client->id;
         if ($client->rateDeferred) { // otherwise we may pile up circular references in read()

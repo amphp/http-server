@@ -2,6 +2,7 @@
 
 namespace Aerys;
 
+use Aerys\Cookie\Cookie;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\CallableMaker;
@@ -201,7 +202,7 @@ class Server implements Monitor {
      */
     public function start(callable $bindSockets = null): Promise {
         try {
-            if ($this->state == self::STOPPED) {
+            if ($this->state === self::STOPPED) {
                 if ($this->vhosts->count() === 0) {
                     return new Failure(new \Error(
                         "Cannot start: no virtual hosts registered in composed VhostContainer"
@@ -215,11 +216,11 @@ class Server implements Monitor {
                     }
                     return $serverSockets;
                 })));
-            } else {
-                return new Failure(new \Error(
-                    "Cannot start server: already ".self::STATES[$this->state]
-                ));
             }
+
+            return new Failure(new \Error(
+                "Cannot start server: already ".self::STATES[$this->state]
+            ));
         } catch (\Throwable $uncaught) {
             return new Failure($uncaught);
         }
@@ -252,6 +253,7 @@ class Server implements Monitor {
 
             return $socket;
         };
+
         $this->boundServers = yield $bindSockets($this->generateBindableAddressContextMap(), $socketBinder);
 
         $this->state = self::STARTING;
@@ -571,27 +573,28 @@ class Server implements Monitor {
 
     private function onReadable(string $watcherId, $socket, Client $client) {
         $data = @\stream_get_contents($socket, $this->options->ioGranularity);
-        if ($data == "") {
-            if (!\is_resource($socket) || @\feof($socket)) {
-                if ($client->isDead === Client::CLOSED_WR || $client->pendingResponses == 0) {
-                    $this->close($client);
-                } else {
-                    $client->isDead = Client::CLOSED_RD;
-                    Loop::cancel($watcherId);
-                    if ($client->bodyEmitters) {
-                        $ex = new ClientException;
-                        foreach ($client->bodyEmitters as $key => $emitter) {
-                            $emitter->fail($ex);
-                            $client->bodyEmitters[$key] = new Emitter;
-                        }
-                    }
-                }
-            }
+        if ($data !== "") {
+            $this->renewConnectionTimeout($client);
+            $client->requestParser->send($data);
             return;
         }
 
-        $this->renewConnectionTimeout($client);
-        $client->requestParser->send($data);
+        if (!\is_resource($socket) || @\feof($socket)) {
+            if ($client->isDead === Client::CLOSED_WR || $client->pendingResponses == 0) {
+                $this->close($client);
+                return;
+            }
+
+            $client->isDead = Client::CLOSED_RD;
+            Loop::cancel($watcherId);
+            if ($client->bodyEmitters) {
+                $ex = new ClientException;
+                foreach ($client->bodyEmitters as $key => $emitter) {
+                    $emitter->fail($ex);
+                    $client->bodyEmitters[$key] = new Emitter;
+                }
+            }
+        }
     }
 
     private function onParsedMessage(Internal\Request $ireq) {
@@ -613,6 +616,7 @@ class Server implements Monitor {
 
         $ireq->time = $this->ticker->currentTime;
         $ireq->httpDate = $this->ticker->currentHttpDate;
+
         if (!isset($ireq->body)) {
             $ireq->body = $this->nullBody;
         }
@@ -620,7 +624,7 @@ class Server implements Monitor {
         if (empty($ireq->headers["cookie"])) {
             $ireq->cookies = [];
         } else { // @TODO delay initialization
-            $ireq->cookies = array_merge(...array_map('\Aerys\parseCookie', $ireq->headers["cookie"]));
+            $ireq->cookies = \array_map([Cookie::class, "fromHeader"], $ireq->headers["cookie"]);
         }
 
         $this->respond($ireq);
@@ -747,7 +751,7 @@ class Server implements Monitor {
     }
 
     private function sendPreAppTraceResponse(Request $request): Response {
-        $stream = new InMemoryStream($request->getLocalVar('aerys.trace'));
+        $stream = new InMemoryStream($request->getAttribute('aerys.trace'));
         return new Response($stream, ["Content-Type" => "message/http"]);
     }
 
@@ -797,14 +801,6 @@ class Server implements Monitor {
         $responseWriter = $ireq->client->httpDriver->writer($ireq, $ires);
 
         try {
-            if ($ires->detach) {
-                list($exporter, $args) = $ires->detach;
-                $responseWriter->send(null);
-
-                $this->export($ireq->client, $exporter, $args);
-                return;
-            }
-
             do {
                 $chunk = yield $ires->body->read();
 
@@ -820,10 +816,27 @@ class Server implements Monitor {
 
                 $responseWriter->send($chunk); // Sends null when stream closes.
             } while ($chunk !== null);
+
         } catch (\Throwable $exception) {
             // Reading response body failed, abort writing the response to the client.
             $this->logger->error($exception);
             $responseWriter->send(null);
+        }
+
+        try {
+            foreach ($ireq->onClose as $onClose) {
+                $onClose();
+            }
+
+            if ($ires->detach) {
+                list($exporter, $args) = $ires->detach;
+                $responseWriter->send(null);
+
+                $this->export($ireq->client, $exporter, $args);
+                return;
+            }
+        } catch (\Throwable $exception) {
+            $this->logger->error($exception);
         }
     }
 
@@ -865,6 +878,7 @@ class Server implements Monitor {
                 $client->bodyEmitters[$key] = new Emitter;
             }
         }
+
         if ($client->bufferDeferred) {
             $ex = $ex ?? new ClientException;
             $client->bufferDeferred->fail($ex);
@@ -884,7 +898,6 @@ class Server implements Monitor {
     }
 
     private function export(Client $client, callable $exporter, array $args = []) {
-        $client->isExported = true;
         $this->clear($client);
 
         assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
@@ -893,13 +906,15 @@ class Server implements Monitor {
         if (isset($net[4])) {
             $net = substr($net, 0, 7 /* /56 block */);
         }
+
         $clientCount = &$this->clientCount;
         $clientsPerIP = &$this->clientsPerIP[$net];
-        $closer = static function () use ($client, &$clientCount, &$clientsPerIP) {
-            $client->isDead = Client::CLOSED_RDWR;
+
+        $closer = static function () use (&$clientCount, &$clientsPerIP) {
             $clientCount--;
             $clientsPerIP--;
         };
+
         assert($closer = (function () use ($client, $closer, &$clientCount, &$clientsPerIP) {
             $logger = $this->logger;
             $message = "close {$client->clientAddr}:{$client->clientPort}";
@@ -911,7 +926,7 @@ class Server implements Monitor {
             };
         })());
 
-        $exporter(new ServerSocket($client->socket), $closer, ...$args);
+        $exporter(new Internal\DetachedSocket($closer, $client->socket), ...$args);
     }
 
     private function dropPrivileges() {
@@ -925,7 +940,10 @@ class Server implements Monitor {
                 throw new \RuntimeException("Posix extension must be enabled to switch to user '{$user}'!");
             }
             $this->logger->warning("Posix extension not enabled, be sure not to run your server as root!");
-        } elseif (posix_geteuid() === 0) {
+            return;
+        }
+
+        if (posix_geteuid() === 0) {
             if ($user === null) {
                 $this->logger->warning("Running as privileged user is discouraged! Use the 'user' option to switch to another user after startup!");
                 return;

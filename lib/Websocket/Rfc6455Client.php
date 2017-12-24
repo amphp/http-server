@@ -13,9 +13,6 @@ class Rfc6455Client {
     /** @var \Amp\Socket\ServerSocket */
     public $socket;
 
-    /** @var callable */
-    public $serverRefClearer;
-
     /** @var \Generator */
     public $parser;
 
