@@ -64,8 +64,8 @@ class Router implements Bootable, Monitor, ServerObserver {
         $toMatch = "{$method}\0{$path}";
 
         if (isset($this->cache[$toMatch])) {
-            list($args, $routeArgs) = $cache = $this->cache[$toMatch];
-            list($action) = $args;
+            list($actions, $routeArgs) = $cache = $this->cache[$toMatch];
+            list($action, $middlewares) = $actions;
             // Keep the most recently used entry at the back of the LRU cache
             unset($this->cache[$toMatch]);
             $this->cache[$toMatch] = $cache;
@@ -74,11 +74,11 @@ class Router implements Bootable, Monitor, ServerObserver {
 
             switch ($match[0]) {
                 case Dispatcher::FOUND:
-                    list(, $args, $routeArgs) = $match;
-                    list($action) = $args;
+                    list(, $actions, $routeArgs) = $match;
+                    list($action, $middlewares) = $actions;
 
                     if ($this->maxCacheEntries > 0) {
-                        $this->cacheDispatchResult($toMatch, $routeArgs, $args);
+                        $this->cacheDispatchResult($toMatch, $routeArgs, $actions);
                     }
                     break;
                 case Dispatcher::NOT_FOUND:
@@ -99,11 +99,17 @@ class Router implements Bootable, Monitor, ServerObserver {
             }
         }
 
-        return $action($request, $routeArgs);
+        $response = $action($request, $routeArgs);
+
+        foreach ($middlewares as $middleware) {
+            $response = $middleware($request, $response, $routeArgs);
+        }
+
+        return $response;
     }
 
     /**
-     * Import a router or attach a callable, Filter or Bootable.
+     * Import a router or attach a callable, Middleware, or Bootable.
      * Router imports do *not* import the options.
      *
      * @param callable|Middleware|Bootable|Monitor $action
@@ -153,7 +159,7 @@ class Router implements Bootable, Monitor, ServerObserver {
         return $this;
     }
 
-    private function cacheDispatchResult(string $toMatch, array $routeArgs, array $action) {
+    private function cacheDispatchResult(string $toMatch, array $routeArgs, array $actions) {
         if ($this->cacheEntryCount < $this->maxCacheEntries) {
             $this->cacheEntryCount++;
         } else {
@@ -163,7 +169,7 @@ class Router implements Bootable, Monitor, ServerObserver {
         }
 
         $cacheKey = $toMatch;
-        $this->cache[$cacheKey] = [$action, $routeArgs];
+        $this->cache[$cacheKey] = [$actions, $routeArgs];
     }
 
     /**

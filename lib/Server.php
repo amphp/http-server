@@ -772,7 +772,7 @@ class Server implements Monitor {
             $response = yield call($application, $request);
 
             if (!$response instanceof Response) {
-                throw new \Error("Request handlers must return a string or an instance of " . Response::class);
+                throw new \Error("Request handlers must return an instance of " . Response::class);
             }
 
             $middlewares = $ireq->client->httpDriver->middlewares($ireq, $middlewares);
@@ -781,6 +781,10 @@ class Server implements Monitor {
                 $response = $middleware->process($request, $response);
                 if ($response instanceof \Generator) {
                     $response = yield from $response;
+                }
+
+                if (!$response instanceof Response) {
+                    throw new \Error("Middlewares must return an instance of " . Response::class);
                 }
             }
         } catch (\Throwable $error) {
