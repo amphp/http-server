@@ -409,8 +409,8 @@ function initServer(PsrLogger $logger, array $hosts, array $options = []): Serve
 
     $bootLoader = static function (Bootable $bootable) use ($server, $logger) {
         $booted = $bootable->boot($server, $logger);
-        if ($booted !== null && !$booted instanceof Filter && !is_callable($booted)) {
-            throw new \Error("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Filter and/or be callable, got ' . gettype($booted) . ".");
+        if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
+            throw new \Error("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Middleware and/or be callable, got ' . gettype($booted) . ".");
         }
         return $booted ?? $bootable;
     };

@@ -5,6 +5,8 @@ namespace Aerys\Internal;
 use Aerys\Bootable;
 use Aerys\Console;
 use Aerys\Host;
+use Aerys\Filter;
+use Aerys\Middleware;
 use Aerys\Monitor;
 use Aerys\Options;
 use Aerys\Request;
@@ -16,7 +18,6 @@ use Amp\InvalidYieldError;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
-use React\Promise\PromiseInterface as ReactPromise;
 use const Aerys\HTTP_STATUS;
 use function Aerys\initServer;
 use function Aerys\makeGenericBody;
@@ -176,8 +177,7 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
         $name = $hostExport["name"];
         $actions = $hostExport["actions"];
 
-        $requestFilters = [];
-        $responseFilters = [];
+        $middlewares = [];
         $applications = [];
         $monitors = [];
 
@@ -188,12 +188,8 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
                 $bootLoader($action[0]);
             }
 
-            if ($action instanceof RequestFilter) {
-                $requestFilters[] = $action;
-            }
-
-            if ($action instanceof ResponseFilter) {
-                $responseFilters[] = $action;
+            if ($action instanceof Middleware) {
+                $middlewares[] = $action;
             }
 
             if ($action instanceof Monitor) {
@@ -252,7 +248,7 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
                         }
                     }
 
-                    throw new \Error("No application returned a response");
+                    throw new \Error("No application returned a response"); // @TODO Error fallback handler
                 }
 
                 public function __debugInfo() {
@@ -261,7 +257,7 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
             });
         }
 
-        $vhost = new Vhost($name, $interfaces, $application, $requestFilters, $responseFilters, $monitors, $hostExport["httpdriver"]);
+        $vhost = new Vhost($name, $interfaces, $application, $middlewares, $monitors, $hostExport["httpdriver"]);
         if ($crypto = $hostExport["crypto"]) {
             $vhost->setCrypto($crypto);
         }

@@ -4,8 +4,9 @@ namespace Aerys;
 
 use Amp\Deferred;
 use Amp\Loop;
+use Amp\Uri\Uri;
 
-class Http1Driver implements HttpDriver, Internal\ResponseFilter {
+class Http1Driver implements HttpDriver, Middleware {
     const HEADER_REGEX = "(
         ([^()<>@,;:\\\"/[\]?={}\x01-\x20\x7F]+):[\x20\x09]*
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
@@ -20,14 +21,14 @@ class Http1Driver implements HttpDriver, Internal\ResponseFilter {
     private $errorEmitter;
     private $responseWriter;
 
-    private $deflateFilter;
-    private $chunkedFilter;
-    private $nullFilter;
+    private $deflateMiddleware;
+    private $chunkedMiddleware;
+    private $nullBodyFilter;
 
     public function __construct() {
-        $this->deflateFilter = new Internal\DeflateResponseFilter;
-        $this->chunkedFilter = new Internal\ChunkedResponseFilter;
-        $this->nullFilter = new Internal\NullBodyFilter;
+        $this->deflateMiddleware = new Internal\DeflateMiddleware;
+        $this->chunkedMiddleware = new Internal\ChunkedMiddleware;
+        $this->nullBodyFilter = new Internal\NullBodyFilter;
     }
 
     public function setup(array $parseEmitters, callable $responseWriter) {
@@ -51,8 +52,8 @@ class Http1Driver implements HttpDriver, Internal\ResponseFilter {
         $this->http2->setup($parseEmitters, $responseWriter);
     }
 
-    public function filters(Internal\Request $ireq, array $userFilters): array {
-        // We need this in filters to be able to return HTTP/2.0 filters; if we allow HTTP/1.1 filters to be returned, we have lost
+    public function middlewares(Internal\Request $ireq, array $userMiddlewares): array {
+        // We need this in middlewares to be able to return HTTP/2.0 middlewares; if we allow HTTP/1.1 middlewares to be returned, we have lost
         if (isset($ireq->headers["upgrade"][0]) &&
             $ireq->headers["upgrade"][0] === "h2c" &&
             $ireq->protocol === "1.1" &&
@@ -60,15 +61,12 @@ class Http1Driver implements HttpDriver, Internal\ResponseFilter {
             false !== $h2cSettings = base64_decode(strtr($ireq->headers["http2-settings"][0], "-_", "+/"), true)
         ) {
             // Send upgrading response
-            $ires = new Internal\Response;
-            $ires->status = HTTP_STATUS["SWITCHING_PROTOCOLS"];
-            $ires->reason = HTTP_REASON[$ires->status];
-            $ires->headers = [
+            $response = new Response(new NullBody, [
                 "connection" => ["Upgrade"],
                 "upgrade" => ["h2c"],
-            ];
+            ], HTTP_STATUS["SWITCHING_PROTOCOLS"]);
 
-            $responseWriter = $this->writer($ireq, $ires);
+            $responseWriter = $this->writer($ireq, $response);
             $responseWriter->send(null); // flush before replacing
 
             // internal upgrade
@@ -98,37 +96,37 @@ class Http1Driver implements HttpDriver, Internal\ResponseFilter {
             unset($ireq->headers["host"]);
             */
 
-            return $client->httpDriver->filters($ireq, $userFilters);
+            return $client->httpDriver->middlewares($ireq, $userMiddlewares);
         }
 
-        $filters = [$this];
+        $middlewares = [$this];
 
-        if ($userFilters) {
-            $filters = array_merge($filters, $userFilters);
+        if ($userMiddlewares) {
+            $middlewares = array_merge($middlewares, $userMiddlewares);
         }
 
         if ($ireq->method === "HEAD") {
-            $filters[] = $this->nullFilter;
-            return $filters; // No further filters needed.
+            $middlewares[] = $this->nullBodyFilter;
+            return $middlewares; // No further middlewares needed.
         }
 
         if ($ireq->client->options->deflateEnable) {
-            $filters[] = $this->deflateFilter;
+            $middlewares[] = $this->deflateMiddleware;
         }
 
         if ($ireq->protocol === "1.1") {
-            $filters[] = $this->chunkedFilter;
+            $middlewares[] = $this->chunkedMiddleware;
         }
 
-        return $filters;
+        return $middlewares;
     }
 
-    public function writer(Internal\Request $ireq, Internal\Response $response): \Generator {
+    public function writer(Internal\Request $ireq, Response $response): \Generator {
         $client = $ireq->client;
         $msgs = "";
 
         try {
-            $headers = $response->headers;
+            $headers = $response->getHeaders();
 
             if (!empty($headers["connection"])) {
                 foreach ($headers["connection"] as $connection) {
@@ -138,7 +136,7 @@ class Http1Driver implements HttpDriver, Internal\ResponseFilter {
                 }
             }
 
-            $lines = ["HTTP/{$ireq->protocol} {$response->status} {$response->reason}"];
+            $lines = ["HTTP/{$ireq->protocol} {$response->getStatus()} {$response->getReason()}"];
             foreach ($headers as $headerField => $headerLines) {
                 if ($headerField[0] !== ":") {
                     foreach ($headerLines as $headerLine) {
@@ -329,30 +327,24 @@ class Http1Driver implements HttpDriver, Internal\ResponseFilter {
             $ireq->method = $method;
             $ireq->protocol = $protocol;
             $ireq->trace = $startLineAndHeaders;
-            if (($schemepos = \strpos($uri, "://")) !== false && $schemepos < \strpos($uri, "/")) {
-                $uri = \parse_url($uri);
-                $ireq->uriScheme = $uri["scheme"];
-                $host = $uri["host"];
-                $ireq->uriPort = isset($uri["port"]) ? (int) $uri["port"] : $client->serverPort;
-                $ireq->uriQuery = $uri["query"] ?? "";
-                $uri = empty($uri["path"]) ? "/" : $uri["path"];
-                $ireq->uri = $ireq->uriQuery == "" ? $uri : "$uri?{$ireq->uriQuery}";
+            $ireq->target = $uri;
+
+            if ($uri === "*") {
+                $ireq->uri = new Uri($headers["host"][0] ?? "" . ":" . $client->serverPort);
+            } elseif (($schemepos = \strpos($uri, "://")) !== false && $schemepos < \strpos($uri, "/")) {
+                $ireq->uri = new Uri($uri);
             } else {
-                $ireq->uri = $uri;
-                $ireq->uriScheme = $client->isEncrypted ? "https" : "http";
+                $scheme = $client->isEncrypted ? "https" : "http";
                 $host = $headers["host"][0] ?? "";
                 if (($colon = \strrpos($host, ":")) !== false) {
-                    $ireq->uriPort = (int) \substr($host, $colon + 1);
+                    $port = (int) \substr($host, $colon + 1);
                     $host = \substr($host, 0, $colon);
                 } else {
-                    $ireq->uriPort = $client->serverPort;
+                    $port = $client->serverPort;
                 }
-                if (\strpos($uri, '?') !== false) {
-                    list($uri, $ireq->uriQuery) = \explode("?", $uri, 2);
-                }
+                $uri = $scheme . "://" . $host . ":" . $port . $uri;
+                $ireq->uri = new Uri($uri);
             }
-            $ireq->uriHost = \rawurldecode($host);
-            $ireq->uriPath = \rawurldecode($uri);
 
             if (!$hasBody) {
                 ($this->resultEmitter)($ireq);
@@ -567,63 +559,66 @@ class Http1Driver implements HttpDriver, Internal\ResponseFilter {
         } while (true);
     }
 
-    public function filterResponse(Internal\Request $ireq, Internal\Response $ires) {
-        $headers = $ires->headers;
-        $options = $ireq->client->options;
+    public function process(Request $request, Response $response): Response {
+        $headers = $response->getHeaders();
 
-        if ($options->sendServerToken) {
-            $ires->headers["server"] = [SERVER_TOKEN];
+        if ($request->getOption("sendServerToken")) {
+            $response->setHeader("server", SERVER_TOKEN);
         }
 
-        if ($ires->status < 200) {
-            return;
-        }
-
-        if (!empty($ires->push)) {
-            $ires->headers["link"] = [];
-            foreach ($ires->push as $url => $pushHeaders) {
-                $ires->headers["link"][] = "<$url>; rel=preload";
+        if (!empty($push = $response->getPush())) {
+            $link = [];
+            foreach ($push as $url => $pushHeaders) {
+                $link[] = "<$url>; rel=preload";
             }
+            $response->setHeader("link", $link);
         }
 
-        $contentLength = $ires->headers["content-length"][0] ?? null;
-        $shouldClose = isset($ireq->headers["connection"]) && \in_array("close", $ireq->headers["connection"]);
+        if ($response->getStatus() < 200) {
+            return $response;
+        }
+
+        $connection = $request->getHeaderArray("connection");
+        $contentLength = $headers["content-length"][0] ?? null;
+        $shouldClose = $connection && \in_array("close", $connection);
 
         if ($contentLength !== null) {
             $hasContent = true;
-            $shouldClose = $shouldClose || $ireq->protocol === "1.0";
-            unset($ires->headers["transfer-encoding"]);
-        } elseif ($ireq->protocol === "1.1") {
+            $shouldClose = $shouldClose || $request->getProtocolVersion() === "1.0";
+            $response->removeHeader("transfer-encoding");
+        } elseif ($request->getProtocolVersion() === "1.1") {
             $hasContent = true;
             $shouldClose = $shouldClose || false;
-            $ires->headers["transfer-encoding"] = ["chunked"];
-            unset($ires->headers["content-length"]);
+            $response->setHeader("transfer-encoding", "chunked");
+            $response->removeHeader("content-length");
         } else {
             $hasContent = true;
             $shouldClose = true;
         }
 
         if ($hasContent) {
-            $type = $headers["content-type"][0] ?? $options->defaultContentType;
+            $type = $headers["content-type"][0] ?? $request->getOption("defaultContentType");
             if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-                $type .= "; charset={$options->defaultTextCharset}";
+                $type .= "; charset=" . $request->getOption("defaultTextCharset");
             }
-            $ires->headers["content-type"] = [$type];
+            $response->setHeader("content-type", $type);
         }
 
-        $remainingRequests = $ireq->client->remainingRequests;
+        $remainingRequests = $request->remainingRequests();
         if ($shouldClose || $remainingRequests <= 0) {
-            $ires->headers["connection"] = ["close"];
+            $response->setHeader("connection", "close");
         } elseif ($remainingRequests < (PHP_INT_MAX >> 1)) {
-            $ires->headers["connection"] = ["keep-alive"];
-            $keepAlive = "timeout={$options->connectionTimeout}, max={$remainingRequests}";
-            $ires->headers["keep-alive"] = [$keepAlive];
+            $response->setHeader("connection", "keep-alive");
+            $keepAlive = "timeout=" . $request->getOption("connectionTimeout") . ", max={$remainingRequests}";
+            $response->setHeader("keep-alive", $keepAlive);
         } else {
-            $ires->headers["connection"] = ["keep-alive"];
-            $keepAlive = "timeout={$options->connectionTimeout}";
-            $ires->headers["keep-alive"] = [$keepAlive];
+            $response->setHeader("connection", "keep-alive");
+            $keepAlive = "timeout=" . $request->getOption("connectionTimeout");
+            $response->setHeader("keep-alive", $keepAlive);
         }
 
-        $ires->headers["date"] = [$ireq->httpDate];
+        $response->setHeader("date", $request->getTime());
+
+        return $response;
     }
 }

@@ -14,21 +14,21 @@ interface HttpDriver {
 
     /**
      * @param \Aerys\Internal\Request $ireq
-     * @param \Aerys\Internal\ResponseFilter[] $userFilters
+     * @param \Aerys\Middleware[] $userMiddlewares
      *
-     * @return \Aerys\Internal\ResponseFilter[]
+     * @return \Aerys\Middleware[]
      */
-    public function filters(Internal\Request $ireq, array $userFilters): array;
+    public function middlewares(Internal\Request $ireq, array $userMiddlewares): array;
 
     /**
      * Returns a generator used to write the response body.
      *
      * @param \Aerys\Internal\Request $ireq
-     * @param \Aerys\Internal\Response $response
+     * @param \Aerys\Response $response
      *
      * @return \Generator
      */
-    public function writer(Internal\Request $ireq, Internal\Response $response): \Generator;
+    public function writer(Internal\Request $ireq, Response $response): \Generator;
 
     public function upgradeBodySize(Internal\Request $ireq);
 

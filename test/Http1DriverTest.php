@@ -718,7 +718,7 @@ class Http1DriverTest extends TestCase {
         $ireq->responseWriter = $driver->writer($ireq);
         $ireq->httpDate = "date";
         $ireq->method = "GET";
-        $writer = \Aerys\responseCodec(\Aerys\responseFilter($driver->filters($ireq, []), $ireq), $ireq);
+        $writer = \Aerys\responseCodec(\Aerys\responseFilter($driver->middlewares($ireq, []), $ireq), $ireq);
         $writer->send($rawHeaders);
         foreach (str_split($data) as $c) {
             $writer->send($c);
@@ -809,7 +809,7 @@ class Http1DriverTest extends TestCase {
         (function () use ($http2) {
             $this->http2 = $http2;
         })->call($driver);
-        $driver->filters($ireq, []);
+        $driver->middlewares($ireq, []);
 
         $this->assertEquals([
             ":status" => \Aerys\HTTP_STATUS["SWITCHING_PROTOCOLS"],

@@ -707,14 +707,13 @@ class Server implements Monitor {
         } elseif ($ireq->method === "TRACE") {
             $this->setTrace($ireq);
             $generator = $this->tryApplication($ireq, $this->sendPreAppTraceResponse);
-        } elseif ($ireq->method === "OPTIONS" && $ireq->uri === "*") {
+        } elseif ($ireq->method === "OPTIONS" && $ireq->target === "*") {
             $generator = $this->tryApplication($ireq, $this->sendPreAppOptionsResponse);
         } else {
             $generator = $this->tryApplication(
                 $ireq,
                 $vhost->getApplication(),
-                $vhost->getRequestFilters(),
-                $vhost->getResponseFilters()
+                $vhost->getMiddlewares()
             );
         }
 
@@ -762,47 +761,40 @@ class Server implements Monitor {
     /**
      * @param \Aerys\Internal\Request $ireq
      * @param callable $application
-     * @param \Aerys\Internal\RequestFilter[] $requestFilters
-     * @param \Aerys\Internal\ResponseFilter[] $responseFilters
+     * @param \Aerys\Middleware[] $middlewares
      *
      * @return \Generator
      */
-    private function tryApplication(Internal\Request $ireq, callable $application, array $requestFilters = [], array $responseFilters = []) {
+    private function tryApplication(Internal\Request $ireq, callable $application, array $middlewares = []) {
         $request = new Request($ireq);
 
         try {
-            foreach ($requestFilters as $filter) {
-                $filter->filterRequest($ireq);
-            }
-
             $response = yield call($application, $request);
 
             if (!$response instanceof Response) {
                 throw new \Error("Request handlers must return a string or an instance of " . Response::class);
             }
 
-            $ires = $response->export();
+            $middlewares = $ireq->client->httpDriver->middlewares($ireq, $middlewares);
 
-            $filters = $ireq->client->httpDriver->filters($ireq, $responseFilters);
-
-            foreach ($filters as $filter) {
-                $result = $filter->filterResponse($ireq, $ires);
-                if ($result instanceof \Generator) {
-                    yield from $result;
+            foreach ($middlewares as $middleware) {
+                $response = $middleware->process($request, $response);
+                if ($response instanceof \Generator) {
+                    $response = yield from $response;
                 }
             }
         } catch (\Throwable $error) {
             $this->logger->error($error);
             // @TODO ClientExceptions?
             $response = $this->makeErrorResponse($error, $ireq);
-            $ires = $response->export();
         }
 
-        $responseWriter = $ireq->client->httpDriver->writer($ireq, $ires);
+        $responseWriter = $ireq->client->httpDriver->writer($ireq, $response);
+        $body = $response->getBody();
 
         try {
             do {
-                $chunk = yield $ires->body->read();
+                $chunk = yield $body->read();
 
                 if ($ireq->client->isDead & Client::CLOSED_WR) {
                     foreach ($ireq->onClose as $onClose) {
@@ -810,7 +802,6 @@ class Server implements Monitor {
                     }
 
                     $responseWriter->send(null);
-                    while (null !== yield $ires->body->read()); // Consume remaining body.
                     return;
                 }
 
@@ -828,11 +819,10 @@ class Server implements Monitor {
                 $onClose();
             }
 
-            if ($ires->detach) {
-                list($exporter, $args) = $ires->detach;
+            if ($response->isDetached()) {
                 $responseWriter->send(null);
 
-                $this->export($ireq->client, $exporter, $args);
+                $this->export($ireq->client, $response);
                 return;
             }
         } catch (\Throwable $exception) {
@@ -897,7 +887,7 @@ class Server implements Monitor {
         }
     }
 
-    private function export(Client $client, callable $exporter, array $args = []) {
+    private function export(Client $client, Response $response) {
         $this->clear($client);
 
         assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
@@ -926,7 +916,7 @@ class Server implements Monitor {
             };
         })());
 
-        $exporter(new Internal\DetachedSocket($closer, $client->socket), ...$args);
+        $response->detach(new Internal\DetachedSocket($closer, $client->socket));
     }
 
     private function dropPrivileges() {

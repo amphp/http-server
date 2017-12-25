@@ -129,17 +129,21 @@ class VhostContainer implements \Countable, Monitor {
         $client = $ireq->client;
         $serverId = ":{$client->serverAddr}:{$client->serverPort}";
 
-        $explicitHostId = "{$ireq->uriHost}:{$ireq->uriPort}{$serverId}";
+        $uri = $ireq->uri;
+        $host = $uri->getHost();
+        $port = $uri->getPort();
+
+        $explicitHostId = "{$host}:{$port}{$serverId}";
         if (isset($this->vhosts[$explicitHostId])) {
             return $this->vhosts[$explicitHostId];
         }
 
-        $addressWildcardHost = "*:{$ireq->uriPort}{$serverId}";
+        $addressWildcardHost = "*:{$port}{$serverId}";
         if (isset($this->vhosts[$addressWildcardHost])) {
             return $this->vhosts[$addressWildcardHost];
         }
 
-        $portWildcardHostId = "{$ireq->uriHost}:0{$serverId}";
+        $portWildcardHostId = "{$host}:0{$serverId}";
         if (isset($this->vhosts[$portWildcardHostId])) {
             return $this->vhosts[$portWildcardHostId];
         }
@@ -157,17 +161,17 @@ class VhostContainer implements \Countable, Monitor {
         $wildcardIP = \strpos($client->serverAddr, ":") === false ? "0.0.0.0" : "[::]";
         $serverId = ":$wildcardIP:{$client->serverPort}";
 
-        $explicitHostId = "{$ireq->uriHost}:{$ireq->uriPort}{$serverId}";
+        $explicitHostId = "{$host}:{$port}{$serverId}";
         if (isset($this->vhosts[$explicitHostId])) {
             return $this->vhosts[$explicitHostId];
         }
 
-        $addressWildcardHost = "*:{$ireq->uriPort}{$serverId}";
+        $addressWildcardHost = "*:{$port}{$serverId}";
         if (isset($this->vhosts[$addressWildcardHost])) {
             return $this->vhosts[$addressWildcardHost];
         }
 
-        $portWildcardHostId = "{$ireq->uriHost}:0{$serverId}";
+        $portWildcardHostId = "{$host}:0{$serverId}";
         if (isset($this->vhosts[$portWildcardHostId])) {
             return $this->vhosts[$portWildcardHostId];
         }

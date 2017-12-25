@@ -2,16 +2,20 @@
 
 namespace Aerys\Internal;
 
+use Aerys\Middleware;
+use Aerys\Request;
+use Aerys\Response;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\Coroutine;
 use Amp\Promise;
 
-class NullBodyFilter implements ResponseFilter {
-    public function filterResponse(Request $ireq, Response $ires) {
-        Promise\rethrow(new Coroutine($this->consume($ires->body)));
-        unset($ires->headers["transfer-encoding"]);
-        $ires->body = new InMemoryStream;
+class NullBodyFilter implements Middleware {
+    public function process(Request $request, Response $response): Response {
+        Promise\rethrow(new Coroutine($this->consume($response->getBody())));
+        $response->removeHeader("transfer-encoding");
+        $response->setBody(new InMemoryStream);
+        return $response;
     }
 
     private function consume(InputStream $stream): \Generator {

@@ -29,20 +29,12 @@ class Request {
     public $body;
     /** @var int */
     public $maxBodySize;
-    /** @var string */
+    /** @var \Amp\Uri\Uri */
     public $uri;
-    /** @var string */
-    public $uriScheme;
-    /** @var string */
-    public $uriHost;
-    /** @var integer */
-    public $uriPort;
-    /** @var string */
-    public $uriPath;
-    /** @var string */
-    public $uriQuery;
+    /** string */
+    public $target;
     /** @var array */
-    public $cookies;
+    public $cookies = [];
     /** @var int */
     public $time;
     /** @var string */

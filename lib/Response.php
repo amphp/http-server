@@ -4,6 +4,7 @@ namespace Aerys;
 
 use Aerys\Cookie\MetaCookie;
 use Amp\ByteStream\InputStream;
+use Amp\Socket\Socket;
 
 class Response {
     /**  @var string[] */
@@ -53,7 +54,7 @@ class Response {
             $this->setHeaders($headers);
         }
 
-        if (isset($this->headers['Set-Cookie'])) {
+        if (isset($this->headers['set-cookie'])) {
             $this->setCookiesFromHeaders();
         }
 
@@ -139,7 +140,7 @@ class Response {
         $name = \strtolower($name);
         $this->headers[$name] = [$value];
 
-        if ('Set-Cookie' === $name) {
+        if ('set-cookie' === $name) {
             $this->setCookiesFromHeaders();
         }
     }
@@ -163,7 +164,7 @@ class Response {
             $this->headers = [$value];
         }
 
-        if ('Set-Cookie' === $name) {
+        if ('set-cookie' === $name) {
             $this->setCookiesFromHeaders();
         }
     }
@@ -177,7 +178,7 @@ class Response {
         $name = \strtolower($name);
         unset($this->headers[$name]);
 
-        if ('Set-Cookie' === $name) {
+        if ('set-cookie' === $name) {
             $this->cookies = [];
         }
     }
@@ -337,7 +338,7 @@ class Response {
     private function setCookiesFromHeaders() {
         $this->cookies = [];
 
-        $headers = $this->getHeaderArray('Set-Cookie');
+        $headers = $this->getHeaderArray('set-cookie');
 
         foreach ($headers as $line) {
             $cookie = MetaCookie::fromHeader($line);
@@ -355,7 +356,7 @@ class Response {
             $values[] = $cookie->toHeader();
         }
 
-        $this->setHeader('Set-Cookie', $values);
+        $this->setHeader('set-cookie', $values);
     }
 
     /**
@@ -390,7 +391,7 @@ class Response {
      * @return bool True if a detach callback has been set, false if none.
      */
     public function isDetached(): bool {
-        return $this->detach === null;
+        return $this->detach !== null;
     }
 
     /**
@@ -398,24 +399,26 @@ class Response {
      *     an instance of \Amp\Socket\ServerSocket as the first parameter, followed by the given arguments.
      * @param array ...$args Arguments to pass to the detach callback.
      */
-    public function detach(callable $detach, ...$args) {
+    public function setDetach(callable $detach, ...$args) {
         $this->detach = [$detach, $args];
     }
 
     /**
      * @internal
      *
-     * @return \Aerys\Internal\Response
+     * Invokes the detach method.
+     *
+     * @param \Amp\Socket\Socket $socket
+     *
+     * @throws \Error If no detach callback was given.
      */
-    public function export(): Internal\Response {
-        $ires = new Internal\Response;
-        $ires->headers = $this->headers;
-        $ires->status = $this->status;
-        $ires->reason = $this->reason;
-        $ires->push = $this->push;
-        $ires->body = $this->body;
-        $ires->detach = $this->detach;
+    public function detach(Socket $socket) {
+        if (!$this->detach) {
+            throw new \Error("No detach callback given");
+        }
 
-        return $ires;
+        list($callback, $args) = $this->detach;
+
+        $callback($socket, ...$args);
     }
 }

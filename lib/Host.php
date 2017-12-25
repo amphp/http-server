@@ -89,13 +89,13 @@ class Host {
      *
      * Host actions are invoked to service requests in the order in which they are added.
      *
-     * @param callable|Filter|Bootable|Monitor $action
+     * @param callable|Middleware|Bootable|Monitor $action
      *
      * @throws \Error on invalid $action parameter
      * @return self
      */
     public function use($action): Host {
-        $isAction = is_callable($action) || $action instanceof Filter || $action instanceof Bootable || $action instanceof Monitor;
+        $isAction = is_callable($action) || $action instanceof Middleware || $action instanceof Bootable || $action instanceof Monitor;
         $isDriver = $action instanceof HttpDriver;
 
         if (!$isAction && !$isDriver) {

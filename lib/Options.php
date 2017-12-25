@@ -42,16 +42,10 @@ class Options {
 
     private $shutdownTimeout = 3000; // milliseconds
 
-    private $_dynamicCache;
-
     private $__initialized = false;
 
     public function __construct() {
         $this->deflateEnable = \extension_loaded("zlib");
-
-        $this->_dynamicCache = new class {
-            public $deflateContentTypes = [];
-        };
     }
 
     /**

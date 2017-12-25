@@ -186,7 +186,7 @@ class Rfc6455Gateway implements Monitor, ServerObserver {
             return $response;
         }
 
-        $response->detach($this->reapClient, $onHandshakeResult);
+        $response->setDetach($this->reapClient, $onHandshakeResult);
         return $response;
     }
 

@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Amp\ByteStream\IteratorStream;
+use Amp\Uri\Uri;
 
 class Request {
     private $internalRequest;
@@ -28,9 +29,9 @@ class Request {
     /**
      * Retrieve the request URI in the form /some/resource/foo?bar=1&baz=2.
      *
-     * @return string
+     * @return \Amp\Uri\Uri
      */
-    public function getUri(): string {
+    public function getUri(): Uri {
         return $this->internalRequest->uri;
     }
 
@@ -87,7 +88,7 @@ class Request {
      *
      * @return array
      */
-    public function getAllHeaders(): array {
+    public function getHeaders(): array {
         return $this->internalRequest->headers;
     }
 
@@ -261,5 +262,19 @@ class Request {
      */
     public function onClose(callable $onClose) {
         $this->internalRequest->onClose[] = $onClose;
+    }
+
+    /**
+     * @return string Request time.
+     */
+    public function getTime(): string {
+        return $this->internalRequest->httpDate;
+    }
+
+    /**
+     * @return int The number of requ
+     */
+    public function remainingRequests(): int {
+        return $this->internalRequest->client->remainingRequests;
     }
 }

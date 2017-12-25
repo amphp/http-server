@@ -11,7 +11,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 use function FastRoute\simpleDispatcher;
 
-class Router implements Bootable, Monitor, ServerObserver, Internal\RequestFilter {
+class Router implements Bootable, Monitor, ServerObserver {
     private $state = Server::STOPPED;
     private $bootLoader;
 
@@ -58,81 +58,60 @@ class Router implements Bootable, Monitor, ServerObserver, Internal\RequestFilte
      * @return \Aerys\Response|null
      */
     public function __invoke(Request $request) { /* : ?Response */
-        if (!$preRoute = $request->getAttribute("aerys.routed")) {
-            return;
-        }
+        $method = $request->getMethod();
+        $path = $request->getUri()->getPath();
 
-        list($isMethodAllowed, $action) = $preRoute;
-        if ($isMethodAllowed) {
-            return $action($request, $request->getAttribute("aerys.routeArgs"));
-        }
-
-        $allowedMethods = implode(",", $action);
-        $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
-        $body = makeGenericBody($status);
-        $response = new Response\HtmlResponse($body, ["Allow" => $allowedMethods], $status);
-        return $response;
-    }
-
-    /**
-     * Execute router filter functionality.
-     * @param Internal\Request $ireq
-     */
-    public function filterRequest(Internal\Request $ireq) {
-        $toMatch = "{$ireq->method}\0{$ireq->uriPath}";
+        $toMatch = "{$method}\0{$path}";
 
         if (isset($this->cache[$toMatch])) {
             list($args, $routeArgs) = $cache = $this->cache[$toMatch];
             list($action) = $args;
-            $ireq->locals["aerys.routeArgs"] = $routeArgs;
             // Keep the most recently used entry at the back of the LRU cache
             unset($this->cache[$toMatch]);
             $this->cache[$toMatch] = $cache;
+        } else {
+            $match = $this->routeDispatcher->dispatch($method, $path);
 
-            $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
-            return;
+            switch ($match[0]) {
+                case Dispatcher::FOUND:
+                    list(, $args, $routeArgs) = $match;
+                    list($action) = $args;
+
+                    if ($this->maxCacheEntries > 0) {
+                        $this->cacheDispatchResult($toMatch, $routeArgs, $args);
+                    }
+                    break;
+                case Dispatcher::NOT_FOUND:
+                    // Do nothing; allow actions further down the chain a chance to respond.
+                    // If no other registered host actions respond the server will send a
+                    // 404 automatically anyway.
+                    return;
+                case Dispatcher::METHOD_NOT_ALLOWED:
+                    $allowedMethods = implode(",", $match[1]);
+                    $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
+                    $body = makeGenericBody($status);
+                    $response = new Response\HtmlResponse($body, ["Allow" => $allowedMethods], $status);
+                    return $response;
+                default:
+                    throw new \UnexpectedValueException(
+                        "Encountered unexpected Dispatcher code"
+                    );
+            }
         }
 
-        $match = $this->routeDispatcher->dispatch($ireq->method, $ireq->uriPath);
-
-        switch ($match[0]) {
-            case Dispatcher::FOUND:
-                list(, $args, $routeArgs) = $match;
-                list($action) = $args;
-                $ireq->locals["aerys.routeArgs"] = $routeArgs;
-
-                if ($this->maxCacheEntries > 0) {
-                    $this->cacheDispatchResult($toMatch, $routeArgs, $args);
-                }
-
-                $ireq->locals["aerys.routed"] = [$isMethodAllowed = true, $action];
-                break;
-            case Dispatcher::NOT_FOUND:
-                // Do nothing; allow actions further down the chain a chance to respond.
-                // If no other registered host actions respond the server will send a
-                // 404 automatically anyway.
-                return;
-            case Dispatcher::METHOD_NOT_ALLOWED:
-                $allowedMethods = $match[1];
-                $ireq->locals["aerys.routed"] = [$isMethodAllowed = false, $allowedMethods];
-                break;
-            default:
-                throw new \UnexpectedValueException(
-                    "Encountered unexpected Dispatcher code"
-                );
-        }
+        return $action($request, $routeArgs);
     }
 
     /**
      * Import a router or attach a callable, Filter or Bootable.
      * Router imports do *not* import the options.
      *
-     * @param callable|Filter|Bootable|Monitor $action
+     * @param callable|Middleware|Bootable|Monitor $action
      *
      * @return self
      */
     public function use($action) {
-        if (!(is_callable($action) || $action instanceof Filter || $action instanceof Bootable || $action instanceof Monitor)) {
+        if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable || $action instanceof Monitor)) {
             throw new \Error(
                 __METHOD__ . " requires a callable action or Filter instance"
             );
@@ -206,7 +185,7 @@ class Router implements Bootable, Monitor, ServerObserver, Internal\RequestFilte
      *
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
-     * @param Bootable|Filter|Monitor|callable ...$actions The action(s) to invoke upon matching this route
+     * @param Bootable|Middleware|Monitor|callable ...$actions The action(s) to invoke upon matching this route
      * @throws \Error on invalid empty parameters
      * @return self
      */
@@ -267,8 +246,8 @@ class Router implements Bootable, Monitor, ServerObserver, Internal\RequestFilte
         $server->attach($this);
         $this->bootLoader = static function (Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
-            if ($booted !== null && !$booted instanceof Filter && !is_callable($booted)) {
-                throw new \Error("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Filter and/or be callable');
+            if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
+                throw new \Error("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Middleware and/or be callable');
             }
             return $booted ?? $bootable;
         };
@@ -295,10 +274,10 @@ class Router implements Bootable, Monitor, ServerObserver, Internal\RequestFilte
                     $booted[$hash] = ($this->bootLoader)($action[0]);
                 }
             }
-            if ($action instanceof Filter) {
-                $filters[] = [$action, "filter"];
-            } elseif (is_array($action) && $action[0] instanceof Filter) {
-                $filters[] = [$action[0], "filter"];
+            if ($action instanceof Middleware) {
+                $filters[] = [$action, "process"];
+            } elseif (is_array($action) && $action[0] instanceof Middleware) {
+                $filters[] = [$action[0], "process"];
             }
             if ($action instanceof Monitor) {
                 $monitors[get_class($action)][] = $action;

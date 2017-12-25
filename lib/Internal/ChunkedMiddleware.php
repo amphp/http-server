@@ -2,30 +2,31 @@
 
 namespace Aerys\Internal;
 
+use Aerys\Middleware;
+use Aerys\Request;
+use Aerys\Response;
 use Amp\ByteStream\IteratorStream;
 use Amp\Producer;
 
-class ChunkedResponseFilter implements ResponseFilter {
+class ChunkedMiddleware implements Middleware {
     const DEFAULT_BUFFER_SIZE = 8192;
 
-    public function filterResponse(Request $ireq, Response $ires) {
-        if ($ires->status < 200) {
-            return;
+    public function process(Request $request, Response $response): Response {
+        $headers = $response->getHeaders();
+
+        if (isset($headers["content-length"])) {
+            return $response;
         }
 
-        if (isset($ires->headers["content-length"])) {
-            return;
+        if (empty($headers["transfer-encoding"])) {
+            return $response;
         }
 
-        if (empty($ires->headers["transfer-encoding"])) {
-            return;
+        if (!\in_array("chunked", $headers["transfer-encoding"])) {
+            return $response;
         }
 
-        if (!\in_array("chunked", $ires->headers["transfer-encoding"])) {
-            return;
-        }
-
-        $body = $ires->body;
+        $body = $response->getBody();
         $stream = new IteratorStream(new Producer(function (callable $emit) use ($body) {
             $bodyBuffer = '';
             $bufferSize = $ireq->client->options->chunkBufferSize ?? self::DEFAULT_BUFFER_SIZE;
@@ -45,6 +46,8 @@ class ChunkedResponseFilter implements ResponseFilter {
             }
         }));
 
-        $ires->body = $stream;
+        $response->setBody($stream);
+
+        return $response;
     }
 }
