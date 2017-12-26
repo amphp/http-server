@@ -22,6 +22,7 @@ use function Aerys\initServer;
 use function Aerys\makeGenericBody;
 use function Aerys\selectConfigFile;
 use function Amp\call;
+use function Amp\coroutine;
 
 function validateFilterHeaders(\Generator $generator, array $headers): bool {
     if (!isset($headers[":status"])) {
@@ -183,17 +184,19 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
         foreach ($actions as $key => $action) {
             if ($action instanceof Bootable) {
                 $action = $bootLoader($action);
-            } elseif (is_array($action) && $action[0] instanceof Bootable) {
+            } elseif (is_array($action) && isset($action[0]) && $action[0] instanceof Bootable) {
                 $bootLoader($action[0]);
             }
 
             if ($action instanceof Middleware) {
-                $middlewares[] = $action;
+                $middlewares[] = [$action, "process"];
+            } elseif (\is_array($action) && isset($action[0]) && $action[0] instanceof Middleware) {
+                $middlewares[] = [$action[0], "process"];
             }
 
             if ($action instanceof Monitor) {
                 $monitors[get_class($action)][] = $action;
-            } elseif (is_array($action) && $action[0] instanceof Monitor) {
+            } elseif (is_array($action) && isset($action[0]) && $action[0] instanceof Monitor) {
                 $monitors[get_class($action[0])][] = $action[0];
             }
 
@@ -269,4 +272,23 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
             $previousException
         );
     }
+}
+
+function makeMiddlewareHandler(callable $application, array $middlewares): callable {
+    return $next = coroutine(function (Request $request) use (&$next, &$middlewares, $application) {
+        if (empty($middlewares)) {
+            $response = yield call($application, $request);
+            if (!$response instanceof Response) {
+                throw new \Error("Applications must return an instance of " . Response::class);
+            }
+            return $response;
+        }
+
+        $middleware = \array_shift($middlewares);
+        $response = yield call($middleware, $request, $next);
+        if (!$response instanceof Response) {
+            throw new \Error("Middlewares must return an instance of " . Response::class);
+        }
+        return $response;
+    });
 }

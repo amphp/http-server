@@ -5,9 +5,9 @@ namespace Aerys;
 interface Middleware {
     /**
      * @param \Aerys\Request $request
-     * @param \Aerys\Response $response
+     * @param callable $next Next request handler.
      *
      * @return \Aerys\Response|\Amp\Promise<\Aerys\Response>|\Generator
      */
-    public function process(Request $request, Response $response);
+    public function process(Request $request, callable $next);
 }

@@ -334,7 +334,7 @@ class Vhost implements Monitor {
     /**
      * Retrieve response filters registered for this host.
      *
-     * @return \Aerys\Middleware[]
+     * @return callable[]
      */
     public function getMiddlewares(): array {
         return $this->middlewares;

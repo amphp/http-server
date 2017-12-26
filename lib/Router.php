@@ -99,13 +99,14 @@ class Router implements Bootable, Monitor, ServerObserver {
             }
         }
 
-        $response = $action($request, $routeArgs);
-
-        foreach ($middlewares as $middleware) {
-            $response = $middleware($request, $response, $routeArgs);
+        if (!empty($middlewares)) {
+            $action = Internal\makeMiddlewareHandler(static function (Request $request) use ($action, $routeArgs) {
+                return $action($request, $routeArgs);
+            }, $middlewares);
+            return $action($request);
         }
 
-        return $response;
+        return $action($request, $routeArgs);
     }
 
     /**
@@ -306,7 +307,7 @@ class Router implements Bootable, Monitor, ServerObserver {
         return [
             [static function (Request $request, array $args) use ($applications) {
                 foreach ($applications as $application) {
-                    $response = yield call($application, $request, $args);
+                    $response = yield call($application, $request, ...$args);
                     if ($response) {
                         return $response;
                     }

@@ -768,17 +768,14 @@ class Server implements Monitor {
         $request = new Request($ireq);
 
         try {
+            if (!empty($middlewares)) {
+                $application = Internal\makeMiddlewareHandler($application, $middlewares);
+            }
+
             $response = yield call($application, $request);
 
             if (!$response instanceof Response) {
                 throw new \Error("Request handlers must return an instance of " . Response::class);
-            }
-
-            foreach ($middlewares as $middleware) {
-                $response = yield call($middleware, $request, $response);
-                if (!$response instanceof Response) {
-                    throw new \Error("Middlewares must return an instance of " . Response::class);
-                }
             }
         } catch (\Throwable $error) {
             $this->logger->error($error);
