@@ -556,7 +556,6 @@ class Http1Driver implements HttpDriver, Internal\Filter {
     }
 
     public function filter(Internal\Request $request, Internal\Response $response) {
-        $headers = $request->headers;
         $options = $request->client->options;
 
         if ($options->sendServerToken) {
@@ -578,26 +577,18 @@ class Http1Driver implements HttpDriver, Internal\Filter {
         $shouldClose = isset($request->headers["connection"]) && \in_array("close", $request->headers["connection"]);
 
         if ($contentLength !== null) {
-            $hasContent = true;
             $shouldClose = $shouldClose || $request->protocol === "1.0";
             unset($response->headers["transfer-encoding"]);
         } elseif ($request->protocol === "1.1") {
-            $hasContent = true;
-            $shouldClose = $shouldClose || false;
             $response->headers["transfer-encoding"] = ["chunked"];
             unset($response->headers["content-length"]);
-        } else {
-            $hasContent = true;
-            $shouldClose = true;
         }
 
-        if ($hasContent) {
-            $type = $headers["content-type"][0] ?? $options->defaultContentType;
-            if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-                $type .= "; charset={$options->defaultTextCharset}";
-            }
-            $response->headers["content-type"] = [$type];
+        $type = $response->headers["content-type"][0] ?? $options->defaultContentType;
+        if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
+            $type .= "; charset={$options->defaultTextCharset}";
         }
+        $response->headers["content-type"] = [$type];
 
         $remainingRequests = $request->client->remainingRequests;
         if ($shouldClose || $remainingRequests <= 0) {
