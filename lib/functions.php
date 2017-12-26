@@ -116,10 +116,8 @@ function redirect(string $absoluteUri, int $redirectCode = 307): callable {
         throw new \Error("Invalid redirect code; code in the range 300..399 required");
     }
 
-    return function (Request $req, Response $res) use ($absoluteUri, $redirectCode) {
-        $res->setStatus($redirectCode);
-        $res->setHeader("location", $absoluteUri . $req->getUri());
-        $res->end();
+    return function (Request $req) use ($absoluteUri, $redirectCode) {
+        return new Response\RedirectResponse($absoluteUri . $req->getUri(), $redirectCode);
     };
 }
 
