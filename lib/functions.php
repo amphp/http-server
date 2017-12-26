@@ -138,19 +138,17 @@ function parseBody(Request $req, $size = 0): BodyParser {
  * Parses cookies into an array.
  *
  * @param string $cookies
- * @return array with name => value pairs
+ *
+ * @return \Aerys\Cookie\Cookie[]
  */
 function parseCookie(string $cookies): array {
-    $arr = [];
+    $cookies = [];
 
-    foreach (explode("; ", $cookies) as $cookie) {
-        if (strpos($cookie, "=") !== false) { // do not trigger notices for malformed cookies...
-            list($name, $val) = explode("=", $cookie, 2);
-            $arr[$name] = $val;
-        }
+    foreach (\explode("; ", $cookies) as $cookie) {
+        $cookies[] = Cookie\Cookie::fromHeader($cookie);
     }
 
-    return $arr;
+    return $cookies;
 }
 
 /**

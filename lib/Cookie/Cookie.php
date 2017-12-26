@@ -20,11 +20,11 @@ class Cookie {
      *
      * @throws \Error Thrown if the string format is invalid.
      */
-    public static function fromHeader(string $string): Cookie {
+    public static function fromHeader(string $string) { /* : ?self */
         $parts = array_map('trim', explode('=', $string, 2));
 
         if (2 !== count($parts)) {
-            throw new \Error("Invalid cookie header format");
+            return null;
         }
 
         list($name, $value) = $parts;
@@ -33,8 +33,11 @@ class Cookie {
     }
 
     public function __construct(string $name, $value = '') {
-        $this->name = $this->filterValue($name);
-        $this->value = $this->filterValue($value);
+        \assert($this->isValueValid($name), "Invalid cookie name");
+        \assert($this->isValueValid($value), "Invalid cookie value");
+
+        $this->name = $this->decode($name);
+        $this->value = $this->decode($value);
     }
 
     /**
@@ -67,18 +70,14 @@ class Cookie {
 
     /**
      * @param string $value
-     * @return string mixed
-     *
-     * @throws \Error If the value is invalid.
+     * @return bool
      */
-    protected function filterValue($value): string {
-        $value = (string) $value;
-
+    protected function isValueValid(string $value): bool {
         if (preg_match("/[^\x21\x23-\x23\x2d-\x3a\x3c-\x5b\x5d-\x7e]/", $value)) {
-            throw new \Error('Invalid cookie header value.');
+            return false;
         }
 
-        return $this->decode($value);
+        return true;
     }
 
     /**
@@ -88,7 +87,7 @@ class Cookie {
      *
      * @return string
      */
-    private function encode(string $value): string {
+    protected function encode(string $value): string {
         return preg_replace_callback(
             '/(?:[^A-Za-z0-9_\-\.~!\'\(\)\*]+|%(?![A-Fa-f0-9]{2}))/',
             function (array $matches) {
@@ -104,7 +103,7 @@ class Cookie {
      *
      * @return string
      */
-    private function decode(string $string): string {
+    protected function decode(string $string): string {
         return rawurldecode($string);
     }
 }

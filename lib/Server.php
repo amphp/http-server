@@ -623,7 +623,7 @@ class Server implements Monitor {
         if (empty($ireq->headers["cookie"])) {
             $ireq->cookies = [];
         } else { // @TODO delay initialization
-            $ireq->cookies = \array_map([Cookie::class, "fromHeader"], $ireq->headers["cookie"]);
+            $ireq->cookies = \array_filter(\array_map([Cookie::class, "fromHeader"], $ireq->headers["cookie"]));
         }
 
         $this->respond($ireq);

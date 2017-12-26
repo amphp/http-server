@@ -35,11 +35,11 @@ class MetaCookie extends Cookie {
      *
      * @throws \Error Thrown if the string format is invalid.
      */
-    public static function fromHeader(string $string): Cookie {
+    public static function fromHeader(string $string) { /* : ?self */
         $parts = array_filter(array_map('trim', explode(';', $string)));
 
         if (empty($parts) || !strpos($parts[0], '=')) {
-            throw new \Error("Invalid cookie format");
+            return null;
         }
 
         list($name, $value) = array_map('trim', explode('=', array_shift($parts), 2));
@@ -118,11 +118,14 @@ class MetaCookie extends Cookie {
         bool $secure = false,
         bool $httpOnly = false
     ) {
+        \assert($this->isValueValid($path), "Invalid path");
+        \assert($this->isValueValid($domain), "Invalid domain");
+
         parent::__construct($name, $value);
 
         $this->expires = $expires;
-        $this->path = $this->filterValue($path);
-        $this->domain = $this->filterValue($domain);
+        $this->path = $this->decode($path);
+        $this->domain = $this->decode($domain);
         $this->secure = $secure;
         $this->httpOnly = $httpOnly;
     }

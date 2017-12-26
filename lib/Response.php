@@ -266,14 +266,15 @@ class Response {
     /**
      * @return \Aerys\Cookie\MetaCookie|null
      */
-    public function getCookie(string $name) {
+    public function getCookie(string $name) { /* : ?MetaCookie */
         return $this->cookies[$name] ?? null;
     }
 
     /**
      * Adds a cookie to the response.
      *
-     * @param string $name
+     * @param string|\Aerys\Cookie\MetaCookie $nameOrCookie If an instance of MetaCookie is provided, all other
+     *     parameters are ignored.
      * @param mixed $value
      * @param int $expires Unix timestamp of expiration.
      * @param string|null $path Optional path.
@@ -282,7 +283,7 @@ class Response {
      * @param bool $httpOnly Send only on http requests.
      */
     public function setCookie(
-        string $name,
+        $nameOrCookie,
         $value = '',
         int $expires = 0,
         string $path = null,
@@ -290,17 +291,37 @@ class Response {
         bool $secure = false,
         bool $httpOnly = false
     ) {
-        $this->cookies[$name] = new MetaCookie($name, $value, $expires, $path, $domain, $secure, $httpOnly);
+        if ($nameOrCookie instanceof MetaCookie) {
+            $this->cookies[$nameOrCookie->getName()] = $nameOrCookie;
+            $this->setHeadersFromCookies();
+            return;
+        }
+
+        if (!\is_string($nameOrCookie)) {
+            throw new \TypeError(\sprintf("Must provide an instance of %s or a cookie name", MetaCookie::class));
+        }
+
+        $this->cookies[$nameOrCookie] = new MetaCookie($nameOrCookie, $value, $expires, $path, $domain, $secure, $httpOnly);
         $this->setHeadersFromCookies();
     }
 
     /**
      * Removes a cookie from the response.
      *
-     * @param string $name
+     * @param string|\Aerys\Cookie\MetaCookie $nameOrCookie
      */
-    public function removeCookie(string $name) {
-        unset($this->cookies[$name]);
+    public function removeCookie($nameOrCookie) {
+        if ($nameOrCookie instanceof MetaCookie) {
+            unset($this->cookies[$nameOrCookie->getName()]);
+            $this->setHeadersFromCookies();
+            return;
+        }
+
+        if (!\is_string($nameOrCookie)) {
+            throw new \TypeError(\sprintf("Must provide an instance of %s or a cookie name", MetaCookie::class));
+        }
+
+        unset($this->cookies[$nameOrCookie]);
         $this->setHeadersFromCookies();
     }
 
