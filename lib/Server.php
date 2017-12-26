@@ -12,7 +12,6 @@ use Amp\Emitter;
 use Amp\Failure;
 use Amp\Loop;
 use Amp\Promise;
-use Amp\Socket\ServerSocket;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
@@ -811,7 +810,6 @@ class Server implements Monitor {
 
                 $responseWriter->send($chunk); // Sends null when stream closes.
             } while ($chunk !== null);
-
         } catch (\Throwable $exception) {
             // Reading response body failed, abort writing the response to the client.
             $this->logger->error($exception);

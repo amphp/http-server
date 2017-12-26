@@ -5,7 +5,6 @@ namespace Aerys\Internal;
 use Aerys\Bootable;
 use Aerys\Console;
 use Aerys\Host;
-use Aerys\Filter;
 use Aerys\Middleware;
 use Aerys\Monitor;
 use Aerys\Options;

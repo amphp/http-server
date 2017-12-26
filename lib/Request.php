@@ -256,7 +256,8 @@ class Request {
     }
 
     /**
-     * Adds a callback that is invoked if the client closes the connection before the
+     * Adds a callback that is invoked when the client connection is closed or the response to the request has been
+     * fully written.
      *
      * @param callable $onClose
      */

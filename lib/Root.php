@@ -89,7 +89,8 @@ class Root implements ServerObserver {
         // We specifically break the lookup generator out into its own method
         // so that we can potentially avoid forcing the server to resolve a
         // coroutine when the file is already cached.
-        return new Coroutine(($fileInfo = $this->fetchCachedStat($path, $request))
+        return new Coroutine(
+            ($fileInfo = $this->fetchCachedStat($path, $request))
             ? $this->respond($fileInfo, $request)
             : $this->respondWithLookup($this->root . $path, $path, $request)
         );

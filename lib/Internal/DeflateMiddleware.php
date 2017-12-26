@@ -13,7 +13,7 @@ use Amp\Producer;
 class DeflateMiddleware implements Middleware {
     /** @var array */
     private $deflateContentTypes = [];
-    
+
     public function process(Request $request, Response $response) {
         $accept = $request->getHeaderArray("accept-encoding");
 
