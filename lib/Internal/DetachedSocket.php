@@ -18,7 +18,15 @@ class DetachedSocket extends ServerSocket {
         $this->clearer = $clearer;
     }
 
-    public function __destruct() {
+    public function close() {
+        parent::close();
         ($this->clearer)();
+        $this->clearer = null;
+    }
+
+    public function __destruct() {
+        if ($this->clearer) {
+            ($this->clearer)();
+        }
     }
 }
