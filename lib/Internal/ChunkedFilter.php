@@ -9,19 +9,20 @@ class ChunkedFilter implements Filter {
     const DEFAULT_BUFFER_SIZE = 8192;
 
     public function filter(Request $request, Response $response) {
-        $headers = $response->headers;
-
-        if (isset($headers["content-length"])) {
-            return $response;
+        if (isset($response->headers["content-length"])) {
+            return;
         }
 
-        if (empty($headers["transfer-encoding"])) {
-            return $response;
+        if ($request->protocol === "1.0") {
+            $response->headers["connection"] = ["close"]; // Cannot chunk, close instead.
+            return;
         }
 
-        if (!\in_array("chunked", $headers["transfer-encoding"])) {
-            return $response;
+        if (!isset($response->headers["connection"]) || !\in_array("keep-alive", $response->headers["connection"])) {
+            return;
         }
+
+        $response->headers["transfer-encoding"] = ["chunked"];
 
         $body = $response->body;
         $stream = new IteratorStream(new Producer(function (callable $emit) use ($body) {

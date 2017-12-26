@@ -574,14 +574,16 @@ class Http1Driver implements HttpDriver, Internal\Filter {
         }
 
         $contentLength = $response->headers["content-length"][0] ?? null;
-        $shouldClose = isset($request->headers["connection"]) && \in_array("close", $request->headers["connection"]);
+        $shouldClose = (isset($request->headers["connection"]) && \in_array("close", $request->headers["connection"]))
+            || (isset($response->headers["connection"]) && \in_array("close", $response->headers["connection"]));
 
         if ($contentLength !== null) {
             $shouldClose = $shouldClose || $request->protocol === "1.0";
             unset($response->headers["transfer-encoding"]);
         } elseif ($request->protocol === "1.1") {
-            $response->headers["transfer-encoding"] = ["chunked"];
             unset($response->headers["content-length"]);
+        } else {
+            $shouldClose = true;
         }
 
         $type = $response->headers["content-type"][0] ?? $options->defaultContentType;

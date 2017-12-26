@@ -112,9 +112,7 @@ class DeflateFilter implements Filter {
         // final Content-Length will be. We need to update our headers
         // according to the HTTP protocol in use to reflect this.
         unset($response->headers["content-length"]);
-        if ($request->protocol === "1.1") {
-            $response->headers["transfer-encoding"] = ["chunked"];
-        } else {
+        if ($request->protocol !== "1.1") {
             $response->headers["connection"] = ["close"];
         }
         $response->headers["content-encoding"] = [$encoding];
