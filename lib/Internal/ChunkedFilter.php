@@ -2,17 +2,14 @@
 
 namespace Aerys\Internal;
 
-use Aerys\Middleware;
-use Aerys\Request;
-use Aerys\Response;
 use Amp\ByteStream\IteratorStream;
 use Amp\Producer;
 
-class ChunkedMiddleware implements Middleware {
+class ChunkedFilter implements Filter {
     const DEFAULT_BUFFER_SIZE = 8192;
 
-    public function process(Request $request, Response $response): Response {
-        $headers = $response->getHeaders();
+    public function filter(Request $request, Response $response) {
+        $headers = $response->headers;
 
         if (isset($headers["content-length"])) {
             return $response;
@@ -26,7 +23,7 @@ class ChunkedMiddleware implements Middleware {
             return $response;
         }
 
-        $body = $response->getBody();
+        $body = $response->body;
         $stream = new IteratorStream(new Producer(function (callable $emit) use ($body) {
             $bodyBuffer = '';
             $bufferSize = $ireq->client->options->chunkBufferSize ?? self::DEFAULT_BUFFER_SIZE;
@@ -46,8 +43,6 @@ class ChunkedMiddleware implements Middleware {
             }
         }));
 
-        $response->setBody($stream);
-
-        return $response;
+        $response->body = $stream;
     }
 }

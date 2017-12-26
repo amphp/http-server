@@ -16,9 +16,9 @@ interface HttpDriver {
      * @param \Aerys\Internal\Request $ireq
      * @param \Aerys\Middleware[] $userMiddlewares
      *
-     * @return \Aerys\Middleware[]
+     * @return \Aerys\Internal\Filter[]
      */
-    public function middlewares(Internal\Request $ireq, array $userMiddlewares): array;
+    public function filters(Internal\Request $ireq): array;
 
     /**
      * Returns a generator used to write the response body.
@@ -28,7 +28,7 @@ interface HttpDriver {
      *
      * @return \Generator
      */
-    public function writer(Internal\Request $ireq, Response $response): \Generator;
+    public function writer(Internal\Request $ireq, Internal\Response $ires): \Generator;
 
     public function upgradeBodySize(Internal\Request $ireq);
 

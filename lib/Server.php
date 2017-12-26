@@ -764,7 +764,7 @@ class Server implements Monitor {
      *
      * @return \Generator
      */
-    private function tryApplication(Internal\Request $ireq, callable $application, array $middlewares = []) {
+    private function tryApplication(Internal\Request $ireq, callable $application, array $middlewares = []): \Generator {
         $request = new Request($ireq);
 
         try {
@@ -774,14 +774,8 @@ class Server implements Monitor {
                 throw new \Error("Request handlers must return an instance of " . Response::class);
             }
 
-            $middlewares = $ireq->client->httpDriver->middlewares($ireq, $middlewares);
-
             foreach ($middlewares as $middleware) {
-                $response = $middleware->process($request, $response);
-                if ($response instanceof \Generator) {
-                    $response = yield from $response;
-                }
-
+                $response = yield call($middleware, $request, $response);
                 if (!$response instanceof Response) {
                     throw new \Error("Middlewares must return an instance of " . Response::class);
                 }
@@ -792,10 +786,22 @@ class Server implements Monitor {
             $response = $this->makeErrorResponse($error, $ireq);
         }
 
-        $responseWriter = $ireq->client->httpDriver->writer($ireq, $response);
-        $body = $response->getBody();
+        $filters = $ireq->client->httpDriver->filters($ireq);
+        $ires = $response->export();
+        $responseWriter = $ireq->client->httpDriver->writer($ireq, $ires);
 
         try {
+            foreach ($filters as $filter) {
+                $result = $filter->filter($ireq, $ires);
+                if ($result instanceof \Generator) {
+                    yield from $result;
+                } elseif ($result instanceof Promise) {
+                    yield $result;
+                }
+            }
+
+            $body = $ires->body;
+
             do {
                 $chunk = yield $body->read();
 
@@ -821,11 +827,14 @@ class Server implements Monitor {
                 $onClose();
             }
 
-            if ($response->isDetached()) {
+            if ($ires->detach) {
                 $responseWriter->send(null);
 
-                $this->export($ireq->client, $response);
-                return;
+                \assert(\is_array($ires->detach));
+
+                list($callback, $args) = $ires->detach;
+
+                $this->export($ireq->client, $callback, $args);
             }
         } catch (\Throwable $exception) {
             $this->logger->error($exception);
@@ -889,7 +898,7 @@ class Server implements Monitor {
         }
     }
 
-    private function export(Client $client, Response $response) {
+    private function export(Client $client, callable $detach, array $args = []) {
         $this->clear($client);
 
         assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
@@ -918,7 +927,7 @@ class Server implements Monitor {
             };
         })());
 
-        $response->detach(new Internal\DetachedSocket($closer, $client->socket));
+        $detach(new Internal\DetachedSocket($closer, $client->socket), ...$args);
     }
 
     private function dropPrivileges() {

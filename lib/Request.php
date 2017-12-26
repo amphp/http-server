@@ -271,11 +271,4 @@ class Request {
     public function getTime(): string {
         return $this->internalRequest->httpDate;
     }
-
-    /**
-     * @return int The number of requ
-     */
-    public function remainingRequests(): int {
-        return $this->internalRequest->client->remainingRequests;
-    }
 }

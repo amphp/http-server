@@ -399,26 +399,23 @@ class Response {
      *     an instance of \Amp\Socket\ServerSocket as the first parameter, followed by the given arguments.
      * @param array ...$args Arguments to pass to the detach callback.
      */
-    public function setDetach(callable $detach, ...$args) {
+    public function detach(callable $detach, ...$args) {
         $this->detach = [$detach, $args];
     }
 
     /**
      * @internal
      *
-     * Invokes the detach method.
-     *
-     * @param \Amp\Socket\Socket $socket
-     *
-     * @throws \Error If no detach callback was given.
+     * @return \Aerys\Internal\Response
      */
-    public function detach(Socket $socket) {
-        if (!$this->detach) {
-            throw new \Error("No detach callback given");
-        }
-
-        list($callback, $args) = $this->detach;
-
-        $callback($socket, ...$args);
+    public function export(): Internal\Response {
+        $ires = new Internal\Response;
+        $ires->headers = $this->headers;
+        $ires->status = $this->status;
+        $ires->reason = $this->reason;
+        $ires->push = $this->push;
+        $ires->body = $this->body;
+        $ires->detach = $this->detach;
+        return $ires;
     }
 }

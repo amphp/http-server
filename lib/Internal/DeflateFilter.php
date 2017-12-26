@@ -2,33 +2,28 @@
 
 namespace Aerys\Internal;
 
-use Aerys\Middleware;
 use Aerys\Options;
-use Aerys\Request;
-use Aerys\Response;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Producer;
 
-class DeflateMiddleware implements Middleware {
+class DeflateFilter implements Filter {
     /** @var array */
     private $deflateContentTypes = [];
 
-    public function process(Request $request, Response $response) {
-        $accept = $request->getHeaderArray("accept-encoding");
-
-        if (empty($accept)) {
-            return $response;
+    public function filter(Request $request, Response $response) { /* : ?\Generator */
+        if (empty($request->headers["accept-encoding"])) {
+            return;
         }
 
-        $headers = $response->getHeaders();
+        $headers = $response->headers;
 
-        $minBodySize = $request->getOption("deflateMinimumLength");
+        $minBodySize = $request->client->options->deflateMinimumLength;
         $contentLength = $headers["content-length"][0] ?? null;
 
         if ($contentLength !== null) {
             if ($contentLength < $minBodySize) {
-                return $response; // Content-Length too small, no need to compress.
+                return; // Content-Length too small, no need to compress.
             }
         }
 
@@ -36,24 +31,24 @@ class DeflateMiddleware implements Middleware {
         // This check isn't technically correct as the gzip parameter
         // could have a q-value of zero indicating "never accept gzip."
         do {
-            foreach ($accept as $value) {
+            foreach ($request->headers["accept-encoding"] as $value) {
                 if (\preg_match('/gzip|deflate/i', $value, $matches)) {
                     $encoding = \strtolower($matches[0]);
                     break 2;
                 }
             }
-            return $response;
+            return;
         } while (false);
 
         // We can't deflate if we don't know the content-type
         if (empty($headers["content-type"])) {
-            return $response;
+            return;
         }
 
         // Match and cache Content-Type
         if (!$doDeflate = $this->deflateContentTypes[$headers["content-type"][0]] ?? null) {
             if ($doDeflate === 0) {
-                return $response;
+                return;
             }
 
             if (\count($this->deflateContentTypes) === Options::MAX_DEFLATE_ENABLE_CACHE_SIZE) {
@@ -61,11 +56,11 @@ class DeflateMiddleware implements Middleware {
             }
 
             $contentType = $headers["content-type"][0];
-            $doDeflate = \preg_match($request->getOption("deflateContentTypes"), \trim(\strstr($contentType, ";", true) ?: $contentType));
+            $doDeflate = \preg_match($request->client->options->deflateContentTypes, \trim(\strstr($contentType, ";", true) ?: $contentType));
             $this->deflateContentTypes[$contentType] = $doDeflate;
 
             if ($doDeflate === 0) {
-                return $response;
+                return;
             }
         }
 
@@ -73,8 +68,8 @@ class DeflateMiddleware implements Middleware {
     }
 
     private function deflate(Request $request, Response $response, string $encoding, bool $examineBody): \Generator {
-        $minBodySize = $request->getOption("deflateMinimumLength");
-        $body = $response->getBody();
+        $minBodySize = $request->client->options->deflateMinimumLength;
+        $body = $response->body;
         $bodyBuffer = '';
 
         if ($examineBody) {
@@ -87,9 +82,9 @@ class DeflateMiddleware implements Middleware {
 
                 if ($chunk === null) {
                     // Body is not large enough to compress.
-                    $response->setHeader("content-length", \strlen($bodyBuffer));
-                    $response->setBody(new InMemoryStream($bodyBuffer));
-                    return $response;
+                    $response->headers["content-length"] = [(string) \strlen($bodyBuffer)];
+                    $response->body = new InMemoryStream($bodyBuffer);
+                    return;
                 }
             } while (true);
         }
@@ -116,14 +111,14 @@ class DeflateMiddleware implements Middleware {
         // Once we decide to compress output we no longer know what the
         // final Content-Length will be. We need to update our headers
         // according to the HTTP protocol in use to reflect this.
-        $response->removeHeader("content-length");
-        if ($request->getProtocolVersion() === "1.1") {
-            $response->setHeader("transfer-encoding", "chunked");
+        unset($response->headers["content-length"]);
+        if ($request->protocol === "1.1") {
+            $response->headers["transfer-encoding"] = ["chunked"];
         } else {
-            $response->setHeader("connection", "close");
+            $response->headers["connection"] = ["close"];
         }
-        $response->setHeader("content-encoding", $encoding);
-        $minFlushOffset = $request->getOption("deflateBufferSize");
+        $response->headers["content-encoding"] = [$encoding];
+        $minFlushOffset = $request->client->options->deflateBufferSize;
 
         $iterator = new Producer(function (callable $emit) use ($resource, $body, $bodyBuffer, $minFlushOffset) {
             do {
@@ -146,8 +141,6 @@ class DeflateMiddleware implements Middleware {
             $emit($data);
         });
 
-        $response->setBody(new IteratorStream($iterator));
-
-        return $response;
+        $response->body = new IteratorStream($iterator);
     }
 }

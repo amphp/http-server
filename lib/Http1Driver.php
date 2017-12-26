@@ -6,7 +6,7 @@ use Amp\Deferred;
 use Amp\Loop;
 use Amp\Uri\Uri;
 
-class Http1Driver implements HttpDriver, Middleware {
+class Http1Driver implements HttpDriver, Internal\Filter {
     const HEADER_REGEX = "(
         ([^()<>@,;:\\\"/[\]?={}\x01-\x20\x7F]+):[\x20\x09]*
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
@@ -21,13 +21,13 @@ class Http1Driver implements HttpDriver, Middleware {
     private $errorEmitter;
     private $responseWriter;
 
-    private $deflateMiddleware;
-    private $chunkedMiddleware;
+    private $deflateFilter;
+    private $chunkedFilter;
     private $nullBodyFilter;
 
     public function __construct() {
-        $this->deflateMiddleware = new Internal\DeflateMiddleware;
-        $this->chunkedMiddleware = new Internal\ChunkedMiddleware;
+        $this->deflateFilter = new Internal\DeflateFilter;
+        $this->chunkedFilter = new Internal\ChunkedFilter;
         $this->nullBodyFilter = new Internal\NullBodyFilter;
     }
 
@@ -52,7 +52,7 @@ class Http1Driver implements HttpDriver, Middleware {
         $this->http2->setup($parseEmitters, $responseWriter);
     }
 
-    public function middlewares(Internal\Request $ireq, array $userMiddlewares): array {
+    public function filters(Internal\Request $ireq): array {
         // We need this in middlewares to be able to return HTTP/2.0 middlewares; if we allow HTTP/1.1 middlewares to be returned, we have lost
         if (isset($ireq->headers["upgrade"][0]) &&
             $ireq->headers["upgrade"][0] === "h2c" &&
@@ -66,7 +66,7 @@ class Http1Driver implements HttpDriver, Middleware {
                 "upgrade" => ["h2c"],
             ], HTTP_STATUS["SWITCHING_PROTOCOLS"]);
 
-            $responseWriter = $this->writer($ireq, $response);
+            $responseWriter = $this->writer($ireq, $response->export());
             $responseWriter->send(null); // flush before replacing
 
             // internal upgrade
@@ -96,37 +96,33 @@ class Http1Driver implements HttpDriver, Middleware {
             unset($ireq->headers["host"]);
             */
 
-            return $client->httpDriver->middlewares($ireq, $userMiddlewares);
+            return $client->httpDriver->filters($ireq);
         }
 
-        $middlewares = [$this];
-
-        if ($userMiddlewares) {
-            $middlewares = array_merge($middlewares, $userMiddlewares);
-        }
+        $filters = [$this];
 
         if ($ireq->method === "HEAD") {
-            $middlewares[] = $this->nullBodyFilter;
-            return $middlewares; // No further middlewares needed.
+            $filters[] = $this->nullBodyFilter;
+            return $filters; // No further filters needed.
         }
 
         if ($ireq->client->options->deflateEnable) {
-            $middlewares[] = $this->deflateMiddleware;
+            $filters[] = $this->deflateFilter;
         }
 
         if ($ireq->protocol === "1.1") {
-            $middlewares[] = $this->chunkedMiddleware;
+            $filters[] = $this->chunkedFilter;
         }
 
-        return $middlewares;
+        return $filters;
     }
 
-    public function writer(Internal\Request $ireq, Response $response): \Generator {
+    public function writer(Internal\Request $ireq, Internal\Response $ires): \Generator {
         $client = $ireq->client;
         $msgs = "";
 
         try {
-            $headers = $response->getHeaders();
+            $headers = $ires->headers;
 
             if (!empty($headers["connection"])) {
                 foreach ($headers["connection"] as $connection) {
@@ -136,7 +132,7 @@ class Http1Driver implements HttpDriver, Middleware {
                 }
             }
 
-            $lines = ["HTTP/{$ireq->protocol} {$response->getStatus()} {$response->getReason()}"];
+            $lines = ["HTTP/{$ireq->protocol} {$ires->status} {$ires->reason}"];
             foreach ($headers as $headerField => $headerLines) {
                 if ($headerField[0] !== ":") {
                     foreach ($headerLines as $headerLine) {
@@ -559,66 +555,63 @@ class Http1Driver implements HttpDriver, Middleware {
         } while (true);
     }
 
-    public function process(Request $request, Response $response): Response {
-        $headers = $response->getHeaders();
+    public function filter(Internal\Request $request, Internal\Response $response) {
+        $headers = $request->headers;
+        $options = $request->client->options;
 
-        if ($request->getOption("sendServerToken")) {
-            $response->setHeader("server", SERVER_TOKEN);
+        if ($options->sendServerToken) {
+            $response->headers["server"] = [SERVER_TOKEN];
         }
 
-        if (!empty($push = $response->getPush())) {
-            $link = [];
-            foreach ($push as $url => $pushHeaders) {
-                $link[] = "<$url>; rel=preload";
+        if ($response->status < 200) {
+            return;
+        }
+
+        if (!empty($response->push)) {
+            $response->headers["link"] = [];
+            foreach ($response->push as $url => $pushHeaders) {
+                $response->headers["link"][] = "<$url>; rel=preload";
             }
-            $response->setHeader("link", $link);
         }
 
-        if ($response->getStatus() < 200) {
-            return $response;
-        }
-
-        $connection = $request->getHeaderArray("connection");
-        $contentLength = $headers["content-length"][0] ?? null;
-        $shouldClose = $connection && \in_array("close", $connection);
+        $contentLength = $response->headers["content-length"][0] ?? null;
+        $shouldClose = isset($request->headers["connection"]) && \in_array("close", $request->headers["connection"]);
 
         if ($contentLength !== null) {
             $hasContent = true;
-            $shouldClose = $shouldClose || $request->getProtocolVersion() === "1.0";
-            $response->removeHeader("transfer-encoding");
-        } elseif ($request->getProtocolVersion() === "1.1") {
+            $shouldClose = $shouldClose || $request->protocol === "1.0";
+            unset($response->headers["transfer-encoding"]);
+        } elseif ($request->protocol === "1.1") {
             $hasContent = true;
             $shouldClose = $shouldClose || false;
-            $response->setHeader("transfer-encoding", "chunked");
-            $response->removeHeader("content-length");
+            $response->headers["transfer-encoding"] = ["chunked"];
+            unset($response->headers["content-length"]);
         } else {
             $hasContent = true;
             $shouldClose = true;
         }
 
         if ($hasContent) {
-            $type = $headers["content-type"][0] ?? $request->getOption("defaultContentType");
+            $type = $headers["content-type"][0] ?? $options->defaultContentType;
             if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-                $type .= "; charset=" . $request->getOption("defaultTextCharset");
+                $type .= "; charset={$options->defaultTextCharset}";
             }
-            $response->setHeader("content-type", $type);
+            $response->headers["content-type"] = [$type];
         }
 
-        $remainingRequests = $request->remainingRequests();
+        $remainingRequests = $request->client->remainingRequests;
         if ($shouldClose || $remainingRequests <= 0) {
-            $response->setHeader("connection", "close");
+            $response->headers["connection"] = ["close"];
         } elseif ($remainingRequests < (PHP_INT_MAX >> 1)) {
-            $response->setHeader("connection", "keep-alive");
-            $keepAlive = "timeout=" . $request->getOption("connectionTimeout") . ", max={$remainingRequests}";
-            $response->setHeader("keep-alive", $keepAlive);
+            $response->headers["connection"] = ["keep-alive"];
+            $keepAlive = "timeout={$options->connectionTimeout}, max={$remainingRequests}";
+            $response->headers["keep-alive"] = [$keepAlive];
         } else {
-            $response->setHeader("connection", "keep-alive");
-            $keepAlive = "timeout=" . $request->getOption("connectionTimeout");
-            $response->setHeader("keep-alive", $keepAlive);
+            $response->headers["connection"] = ["keep-alive"];
+            $keepAlive = "timeout={$options->connectionTimeout}";
+            $response->headers["keep-alive"] = [$keepAlive];
         }
 
-        $response->setHeader("date", $request->getTime());
-
-        return $response;
+        $response->headers["date"] = [$request->httpDate];
     }
 }

@@ -9,7 +9,7 @@ namespace Aerys;
 use Amp\Deferred;
 use Amp\Loop;
 
-class Http2Driver implements HttpDriver, Middleware {
+class Http2Driver implements HttpDriver, Internal\Filter {
     const NOFLAG = "\x00";
     const ACK = "\x01";
     const END_STREAM = "\x01";
@@ -66,7 +66,7 @@ class Http2Driver implements HttpDriver, Middleware {
     private $nullBodyFilter;
 
     public function __construct() {
-        $this->deflateMiddleware = new Internal\DeflateMiddleware;
+        $this->deflateMiddleware = new Internal\DeflateFilter;
         $this->nullBodyFilter = new Internal\NullBodyFilter;
     }
 
@@ -89,12 +89,8 @@ class Http2Driver implements HttpDriver, Middleware {
         $this->write = $write;
     }
 
-    public function middlewares(Internal\Request $ireq, array $userMiddlewares): array {
+    public function filters(Internal\Request $ireq): array {
         $middlewares = [$this];
-
-        if ($userMiddlewares) {
-            $middlewares = array_merge($middlewares, $userMiddlewares);
-        }
 
         if ($ireq->method === "HEAD") {
             $middlewares[] = $this->nullBodyFilter;
@@ -108,7 +104,7 @@ class Http2Driver implements HttpDriver, Middleware {
         return $middlewares;
     }
 
-    public function process(Request $request, Response $response) {
+    public function filter(Internal\Request $request, Internal\Response $response) {
         if (isset($request->headers[":authority"])) {
             $request->headers["host"] = $request->headers[":authority"];
         }
@@ -252,12 +248,12 @@ class Http2Driver implements HttpDriver, Middleware {
         ($this->resultEmitter)($ireq);
     }
 
-    public function writer(Internal\Request $ireq, Response $response): \Generator {
+    public function writer(Internal\Request $ireq, Internal\Response $response): \Generator {
         $client = $ireq->client;
         $id = $ireq->streamId;
 
         try {
-            $headers = $response->getHeaders();
+            $headers = $response->headers;
             unset($headers["connection"]); // obsolete in HTTP/2.0
             $headers = HPack::encode($headers);
 
