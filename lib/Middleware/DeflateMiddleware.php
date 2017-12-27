@@ -1,90 +1,96 @@
 <?php
 
-namespace Aerys\Internal;
+namespace Aerys\Middleware;
 
-use Aerys\Options;
+use Aerys\Middleware;
+use Aerys\Request;
+use Aerys\Response;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Producer;
 
-class DeflateFilter implements Filter {
-    /** @var array */
-    private $deflateContentTypes = [];
+class DeflateMiddleware implements Middleware {
+    const MAX_CACHE_SIZE = 1024;
 
-    public function filter(Request $request, Response $response) { /* : ?\Generator */
-        if (empty($request->headers["accept-encoding"])) {
-            return;
-        }
+    private $minimumLength = 860;
 
-        $headers = $response->headers;
+    private $contentRegex = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
 
-        $minBodySize = $request->client->options->deflateMinimumLength;
+    private $chunkSize;
+
+    /** @var int[] */
+    private $contentTypeCache = [];
+
+    public function process(Request $request, callable $next): \Generator {
+        /** @var \Aerys\Response $response */
+        $response = yield $next($request);
+
+        $headers = $response->getHeaders();
         $contentLength = $headers["content-length"][0] ?? null;
 
         if ($contentLength !== null) {
-            if ($contentLength < $minBodySize) {
-                return; // Content-Length too small, no need to compress.
+            if ($contentLength < $this->minimumLength) {
+                return $response; // Content-Length too small, no need to compress.
             }
+        }
+
+        // We can't deflate if we don't know the content-type
+        if (empty($headers["content-type"])) {
+            return $response;
         }
 
         // @TODO Perform a more sophisticated check for gzip acceptance.
         // This check isn't technically correct as the gzip parameter
         // could have a q-value of zero indicating "never accept gzip."
         do {
-            foreach ($request->headers["accept-encoding"] as $value) {
+            foreach ($request->getHeaderArray("accept-encoding") as $value) {
                 if (\preg_match('/gzip|deflate/i', $value, $matches)) {
                     $encoding = \strtolower($matches[0]);
                     break 2;
                 }
             }
-            return;
+            return $response;
         } while (false);
 
-        // We can't deflate if we don't know the content-type
-        if (empty($headers["content-type"])) {
-            return;
-        }
-
         // Match and cache Content-Type
-        if (!$doDeflate = $this->deflateContentTypes[$headers["content-type"][0]] ?? null) {
+        if (!$doDeflate = $this->contentTypeCache[$headers["content-type"][0]] ?? null) {
             if ($doDeflate === 0) {
-                return;
+                return $response;
             }
 
-            if (\count($this->deflateContentTypes) === Options::MAX_DEFLATE_ENABLE_CACHE_SIZE) {
-                unset($this->deflateContentTypes[\key($this->deflateContentTypes)]);
+            if (\count($this->contentTypeCache) === self::MAX_CACHE_SIZE) {
+                unset($this->contentTypeCache[\key($this->contentTypeCache)]);
             }
 
             $contentType = $headers["content-type"][0];
-            $doDeflate = \preg_match($request->client->options->deflateContentTypes, \trim(\strstr($contentType, ";", true) ?: $contentType));
-            $this->deflateContentTypes[$contentType] = $doDeflate;
+            $doDeflate = \preg_match($this->contentRegex, \trim(\strstr($contentType, ";", true) ?: $contentType));
+            $this->contentTypeCache[$contentType] = $doDeflate;
 
             if ($doDeflate === 0) {
-                return;
+                return $response;
             }
         }
 
-        return $this->deflate($request, $response, $encoding, $contentLength === null);
+        return yield from $this->deflate($request, $response, $encoding, $contentLength === null);
     }
 
     private function deflate(Request $request, Response $response, string $encoding, bool $examineBody): \Generator {
-        $minBodySize = $request->client->options->deflateMinimumLength;
-        $body = $response->body;
+        $body = $response->getBody();
         $bodyBuffer = '';
 
         if ($examineBody) {
             do {
                 $bodyBuffer .= $chunk = yield $body->read();
 
-                if (isset($bodyBuffer[$minBodySize])) {
+                if (isset($bodyBuffer[$this->minimumLength])) {
                     break;
                 }
 
                 if ($chunk === null) {
                     // Body is not large enough to compress.
-                    $response->headers["content-length"] = [(string) \strlen($bodyBuffer)];
-                    $response->body = new InMemoryStream($bodyBuffer);
-                    return;
+                    $response->setHeader("content-length", \strlen($bodyBuffer));
+                    $response->setBody(new InMemoryStream($bodyBuffer));
+                    return $response;
                 }
             } while (true);
         }
@@ -111,16 +117,15 @@ class DeflateFilter implements Filter {
         // Once we decide to compress output we no longer know what the
         // final Content-Length will be. We need to update our headers
         // according to the HTTP protocol in use to reflect this.
-        unset($response->headers["content-length"]);
-        if ($request->protocol !== "1.1") {
-            $response->headers["connection"] = ["close"];
+        $response->removeHeader("content-length");
+        if ($request->getProtocolVersion() === "1.0") { // Cannot chunk 1.0 responses.
+            $response->setHeader("connection", "close");
         }
-        $response->headers["content-encoding"] = [$encoding];
-        $minFlushOffset = $request->client->options->deflateBufferSize;
+        $response->setHeader("content-encoding", $encoding);
 
-        $iterator = new Producer(function (callable $emit) use ($resource, $body, $bodyBuffer, $minFlushOffset) {
+        $iterator = new Producer(function (callable $emit) use ($resource, $body, $bodyBuffer) {
             do {
-                if (isset($bodyBuffer[$minFlushOffset])) {
+                if (isset($bodyBuffer[$this->chunkSize])) {
                     if (false === $data = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) {
                         throw new \RuntimeException("Failed adding data to deflate context");
                     }
@@ -139,6 +144,8 @@ class DeflateFilter implements Filter {
             $emit($data);
         });
 
-        $response->body = new IteratorStream($iterator);
+        $response->setBody(new IteratorStream($iterator));
+
+        return $response;
     }
 }

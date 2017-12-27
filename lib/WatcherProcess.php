@@ -265,6 +265,14 @@ class WatcherProcess extends Process {
                 "or enable debug mode (-d) to hide this warning."
             );
         }
+
+        if (\extension_loaded("xdebug")) {
+            $this->logger->warning(
+                "Running aerys in production with the xdebug extension loaded is not recommended; " .
+                "remove zend_extension=xdebug.so in php.ini for best performance " .
+                "or enable debug mode (-d) to hide this warning."
+            );
+        }
     }
 
     protected function recommendLogLevel(Console $console) {

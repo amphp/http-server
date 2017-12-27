@@ -8,8 +8,9 @@ namespace Aerys;
 
 use Amp\Deferred;
 use Amp\Loop;
+use Amp\Uri\Uri;
 
-class Http2Driver implements HttpDriver, Internal\Filter {
+class Http2Driver implements HttpDriver {
     const NOFLAG = "\x00";
     const ACK = "\x01";
     const END_STREAM = "\x01";
@@ -62,14 +63,6 @@ class Http2Driver implements HttpDriver, Internal\Filter {
     private $errorEmitter;
     private $write;
 
-    private $deflateMiddleware;
-    private $nullBodyFilter;
-
-    public function __construct() {
-        $this->deflateMiddleware = new Internal\DeflateFilter;
-        $this->nullBodyFilter = new Internal\NullBodyFilter;
-    }
-
     public function setup(array $parseEmitters, callable $write) {
         $map = [
             self::RESULT => "resultEmitter",
@@ -87,21 +80,6 @@ class Http2Driver implements HttpDriver, Internal\Filter {
             }
         }
         $this->write = $write;
-    }
-
-    public function filters(Internal\Request $ireq): array {
-        $middlewares = [$this];
-
-        if ($ireq->method === "HEAD") {
-            $middlewares[] = $this->nullBodyFilter;
-            return $middlewares; // No further middlewares needed.
-        }
-
-        if ($ireq->client->options->deflateEnable) {
-            $middlewares[] = $this->deflateMiddleware;
-        }
-
-        return $middlewares;
     }
 
     public function filter(Internal\Request $request, Internal\Response $response) {
@@ -178,12 +156,16 @@ class Http2Driver implements HttpDriver, Internal\Filter {
 
         $headerArray = $headerList = [];
 
-        $url = \parse_url($url);
-        $scheme = $url["scheme"] ?? ($ireq->client->isEncrypted ? "https" : "http");
-        $host = $url["host"] ?? $ireq->uriHost;
-        $port = $url["port"] ?? $ireq->uriPort;
-        $authority = \rawurlencode($host) . ":" . $port;
-        $path = $url["path"] . ($url["query"] ?? "");
+        $url = new Uri($url);
+        $host = $url->getHost() ?: $ireq->uri->getHost();
+        $port = $url->getPort() ?: $ireq->uri->getPort();
+        $authority = $authority = \rawurlencode($host) . ":" . $port;
+        $scheme = $url->getScheme() ?: ($ireq->client->isEncrypted ? "https" : "http");
+        $path = $url->getPath();
+
+        if ($query = $url->getQuery()) {
+            $path .= "?" . $query;
+        }
 
         $headerArray[":authority"][0] = $authority;
         $headerList[] = [":authority", $authority];
@@ -212,19 +194,14 @@ class Http2Driver implements HttpDriver, Internal\Filter {
             }
         }
 
-        $new_ireq = new Internal\Request;
-        $new_ireq->client = $client;
-        $new_ireq->streamId = $id;
-        $new_ireq->trace = $headerList;
-        $new_ireq->protocol = "2.0";
-        $new_ireq->method = "GET";
-        $new_ireq->uri = $path;
-        $new_ireq->uriScheme = $scheme;
-        $new_ireq->uriHost = $host;
-        $new_ireq->uriPort = $port;
-        $new_ireq->uriPath = $url["path"];
-        $new_ireq->uriQuery = $url["query"] ?? "";
-        $new_ireq->headers = $headerArray;
+        $request = new Internal\Request;
+        $request->client = $client;
+        $request->streamId = $id;
+        $request->trace = $headerList;
+        $request->protocol = "2.0";
+        $request->method = "GET";
+        $request->uri = clone $url;
+        $request->headers = $headerArray;
         // server_push = $ireq->uri
 
         $client->streamWindow[$id] = $client->initialWindowSize;
@@ -273,27 +250,30 @@ class Http2Driver implements HttpDriver, Internal\Filter {
                 $this->writeFrame($client, $headers, self::HEADERS, self::END_HEADERS, $id);
             }
 
-            $msgs = "";
+            if ($ireq->method === "HEAD") {
+                $this->writeData($client, "", $id, true);
+                while (null !== yield); // Ignore body portions written.
+            } else {
+                $buffer = "";
 
-            while (($msgPart = yield) !== null) {
-                $msgs .= $msgPart;
+                while (null !== $part = yield) {
+                    $buffer .= $part;
 
-                if ($msgPart === false || \strlen($msgs) >= $client->options->outputBufferSize) {
-                    $this->writeData($client, $msgs, $id, false);
-                    $msgs = "";
-                }
+                    if (\strlen($buffer) >= $client->options->outputBufferSize) {
+                        $this->writeData($client, $buffer, $id, false);
+                        $buffer = "";
+                    }
 
-                if ($client->isDead & Client::CLOSED_WR) {
-                    while (true) {
-                        yield;
+                    if ($client->isDead & Client::CLOSED_WR) {
+                        return;
                     }
                 }
+                $this->writeData($client, $buffer, $id, true);
             }
-            $this->writeData($client, $msgs, $id, true);
         } finally {
-            if ((!isset($headers) || $msgPart !== null) && !($client->isDead & Client::CLOSED_WR)) {
-                if (($msgs ?? "") != "") {
-                    $this->writeData($client, $msgs, $id, false);
+            if ((!isset($headers) || $part !== null) && !($client->isDead & Client::CLOSED_WR)) {
+                if (($buffer ?? "") !== "") {
+                    $this->writeData($client, $buffer, $id, false);
                 }
 
                 $this->writeFrame($client, pack("N", self::INTERNAL_ERROR), self::RST_STREAM, self::NOFLAG, $id);
@@ -393,12 +373,7 @@ class Http2Driver implements HttpDriver, Internal\Filter {
         assert(!\defined("Aerys\\DEBUG_HTTP2") || print "OUT: ");
         assert(!\defined("Aerys\\DEBUG_HTTP2") || var_dump(bin2hex(substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data)) || 1);
         $new = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
-        $client->writeBuffer .= $new;
-        $client->bufferSize += \strlen($new);
-        if ($client->bufferSize > $client->options->softStreamCap && !$client->bufferDeferred) {
-            $client->bufferDeferred = new Deferred;
-        }
-        ($this->write)($client, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
+        ($this->write)($client, $new, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
 
     public function upgradeBodySize(Internal\Request $ireq) {
@@ -916,21 +891,28 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                 $ireq->headers = $headerArray;
                 $ireq->protocol = "2.0";
                 $ireq->method = $headerArray[":method"][0];
-                $ireq->uri = $headerArray[":path"][0];
-                $ireq->uriScheme = $headerArray[":scheme"][0] ?? ($client->isEncrypted ? "https" : "http");
+
+                $uri = $headerArray[":path"][0];
+                $scheme = $headerArray[":scheme"][0] ?? ($client->isEncrypted ? "https" : "http");
                 $host = $headerArray[":authority"][0] ?? "";
+
+                if ($host === "") {
+                    $error = self::PROTOCOL_ERROR;
+                    goto connection_error;
+                }
+
                 if (($colon = \strrpos($host, ":")) !== false) {
-                    $ireq->uriPort = (int) \substr($host, $colon + 1);
+                    $port = (int) \substr($host, $colon + 1);
                     $host = \substr($host, 0, $colon);
                 } else {
-                    $ireq->uriPort = $client->serverPort;
+                    $port = $client->serverPort;
                 }
-                $ireq->uriHost = \rawurldecode($host);
-                $uri = $headerArray[":path"][0];
-                if (\strpos($uri, '?') !== false) {
-                    list($uri, $ireq->uriQuery) = \explode("?", $uri, 2);
+
+                if ($host !== null) {
+                    $uri = $scheme . "://" . \rawurldecode($host) . ":" . $port . $uri;
                 }
-                $ireq->uriPath = \rawurldecode($uri);
+
+                $ireq->uri = new Uri($uri);
 
                 if (!isset($client->streamWindow[$id])) {
                     $client->streamWindow[$id] = $client->initialWindowSize;

@@ -484,14 +484,26 @@ class Server implements Monitor {
         $this->renewConnectionTimeout($client);
     }
 
-    private function writeResponse(Client $client, bool $final = false) {
-        $this->onWritable($client->writeWatcher, $client->socket, $client);
+    private function writeResponse(Client $client, string $data, bool $final = false) {
+        $client->writeBuffer .= $data;
 
-        if (empty($final)) {
+        if (!$final && \strlen($client->writeBuffer) < $client->options->outputBufferSize) {
             return;
         }
 
-        if ($client->writeBuffer == "") {
+        $this->onWritable($client->writeWatcher, $client->socket, $client);
+
+        $length = \strlen($client->writeBuffer);
+
+        if ($length > $client->options->softStreamCap) {
+            $client->bufferDeferred = new Deferred;
+        }
+
+        if (!$final) {
+            return;
+        }
+
+        if ($length === 0) {
             $this->onResponseDataDone($client);
         } else {
             $client->onWriteDrain = $this->onResponseDataDone;
@@ -516,7 +528,6 @@ class Server implements Monitor {
                 Loop::cancel($watcherId);
             }
         } else {
-            $client->bufferSize -= $bytesWritten;
             if ($bytesWritten === \strlen($client->writeBuffer)) {
                 $client->writeBuffer = "";
                 Loop::disable($watcherId);
@@ -527,7 +538,7 @@ class Server implements Monitor {
                 $client->writeBuffer = \substr($client->writeBuffer, $bytesWritten);
                 Loop::enable($watcherId);
             }
-            if ($client->bufferDeferred && $client->bufferSize <= $client->options->softStreamCap) {
+            if ($client->bufferDeferred && \strlen($client->writeBuffer) <= $client->options->softStreamCap) {
                 $deferred = $client->bufferDeferred;
                 $client->bufferDeferred = null;
                 $deferred->resolve();
@@ -783,24 +794,12 @@ class Server implements Monitor {
             $response = $this->makeErrorResponse($error, $ireq);
         }
 
-        $filters = $ireq->client->httpDriver->filters($ireq);
         $ires = $response->export();
         $responseWriter = $ireq->client->httpDriver->writer($ireq, $ires);
 
         try {
-            foreach ($filters as $filter) {
-                $result = $filter->filter($ireq, $ires);
-                if ($result instanceof \Generator) {
-                    yield from $result;
-                } elseif ($result instanceof Promise) {
-                    yield $result;
-                }
-            }
-
-            $body = $ires->body;
-
             do {
-                $chunk = yield $body->read();
+                $chunk = yield $ires->body->read();
 
                 if ($ireq->client->isDead & Client::CLOSED_WR) {
                     foreach ($ireq->onClose as $onClose) {

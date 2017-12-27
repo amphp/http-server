@@ -10,15 +10,11 @@ interface HttpDriver {
     const SIZE_WARNING = 16;
     const ERROR = 32;
 
-    public function setup(array $parseEmitters, callable $responseWriter);
-
     /**
-     * @param \Aerys\Internal\Request $ireq
-     * @param \Aerys\Middleware[] $userMiddlewares
-     *
-     * @return \Aerys\Internal\Filter[]
+     * @param \Amp\Emitter[] $parseEmitters
+     * @param callable $responseWriter
      */
-    public function filters(Internal\Request $ireq): array;
+    public function setup(array $parseEmitters, callable $responseWriter);
 
     /**
      * Returns a generator used to write the response body.
@@ -30,6 +26,9 @@ interface HttpDriver {
      */
     public function writer(Internal\Request $ireq, Internal\Response $ires): \Generator;
 
+    /**
+     * @param \Aerys\Internal\Request $ireq
+     */
     public function upgradeBodySize(Internal\Request $ireq);
 
     /**

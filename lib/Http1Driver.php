@@ -2,17 +2,18 @@
 
 namespace Aerys;
 
-use Amp\Deferred;
 use Amp\Loop;
 use Amp\Uri\Uri;
 
-class Http1Driver implements HttpDriver, Internal\Filter {
+class Http1Driver implements HttpDriver {
     const HEADER_REGEX = "(
         ([^()<>@,;:\\\"/[\]?={}\x01-\x20\x7F]+):[\x20\x09]*
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
     )x";
 
+    /** @var \Aerys\Http2Driver */
     private $http2;
+
     private $resultEmitter;
     private $entityHeaderEmitter;
     private $entityPartEmitter;
@@ -20,16 +21,6 @@ class Http1Driver implements HttpDriver, Internal\Filter {
     private $sizeWarningEmitter;
     private $errorEmitter;
     private $responseWriter;
-
-    private $deflateFilter;
-    private $chunkedFilter;
-    private $nullBodyFilter;
-
-    public function __construct() {
-        $this->deflateFilter = new Internal\DeflateFilter;
-        $this->chunkedFilter = new Internal\ChunkedFilter;
-        $this->nullBodyFilter = new Internal\NullBodyFilter;
-    }
 
     public function setup(array $parseEmitters, callable $responseWriter) {
         $map = [
@@ -52,8 +43,8 @@ class Http1Driver implements HttpDriver, Internal\Filter {
         $this->http2->setup($parseEmitters, $responseWriter);
     }
 
-    public function filters(Internal\Request $ireq): array {
-        // We need this in middlewares to be able to return HTTP/2.0 middlewares; if we allow HTTP/1.1 middlewares to be returned, we have lost
+    public function writer(Internal\Request $ireq, Internal\Response $ires): \Generator {
+        // We need this in here to be able to return HTTP/2.0 writer; if we allow HTTP/1.1 writer to be returned, we have lost
         if (isset($ireq->headers["upgrade"][0]) &&
             $ireq->headers["upgrade"][0] === "h2c" &&
             $ireq->protocol === "1.1" &&
@@ -66,7 +57,7 @@ class Http1Driver implements HttpDriver, Internal\Filter {
                 "upgrade" => ["h2c"],
             ], HTTP_STATUS["SWITCHING_PROTOCOLS"]);
 
-            $responseWriter = $this->writer($ireq, $response->export());
+            $responseWriter = $this->send($ireq, $response->export());
             $responseWriter->send(null); // flush before replacing
 
             // internal upgrade
@@ -96,88 +87,76 @@ class Http1Driver implements HttpDriver, Internal\Filter {
             unset($ireq->headers["host"]);
             */
 
-            return $client->httpDriver->filters($ireq);
+            return $this->http2->writer($ireq, $ires);
         }
 
-        $filters = [$this];
-
-        if ($ireq->method === "HEAD") {
-            $filters[] = $this->nullBodyFilter;
-            return $filters; // No further filters needed.
-        }
-
-        if ($ireq->client->options->deflateEnable) {
-            $filters[] = $this->deflateFilter;
-        }
-
-        if ($ireq->protocol === "1.1") {
-            $filters[] = $this->chunkedFilter;
-        }
-
-        return $filters;
+        return $this->send($ireq, $ires);
     }
 
-    public function writer(Internal\Request $ireq, Internal\Response $ires): \Generator {
+    private function send(Internal\Request $ireq, Internal\Response $ires): \Generator {
         $client = $ireq->client;
-        $msgs = "";
 
-        try {
-            $headers = $ires->headers;
+        $this->filter($ireq, $ires);
 
-            if (!empty($headers["connection"])) {
-                foreach ($headers["connection"] as $connection) {
-                    if (\strcasecmp($connection, "close") === 0) {
-                        $client->shouldClose = true;
-                    }
+        $chunked = !isset($ires->headers["content-length"]) && $ireq->protocol === "1.1";
+
+        if ($chunked) {
+            $ires->headers["transfer-encoding"] = ["chunked"];
+        }
+
+        $headers = $ires->headers;
+
+        if (!empty($headers["connection"])) {
+            foreach ($headers["connection"] as $connection) {
+                if (\strcasecmp($connection, "close") === 0) {
+                    $client->shouldClose = true;
                 }
             }
+        }
 
-            $lines = ["HTTP/{$ireq->protocol} {$ires->status} {$ires->reason}"];
-            foreach ($headers as $headerField => $headerLines) {
-                if ($headerField[0] !== ":") {
-                    foreach ($headerLines as $headerLine) {
-                        /* verify header fields (per RFC) and header values against containing \n */
-                        \assert(strpbrk($headerField, "\n\t ()<>@,;:\\\"/[]?={}") === false && strpbrk((string) $headerLine, "\n") === false);
-                        $lines[] = "{$headerField}: {$headerLine}";
-                    }
+        $lines = ["HTTP/{$ireq->protocol} {$ires->status} {$ires->reason}"];
+        foreach ($headers as $headerField => $headerLines) {
+            if ($headerField[0] !== ":") {
+                foreach ($headerLines as $headerLine) {
+                    /* verify header fields (per RFC) and header values against containing \n */
+                    \assert(strpbrk($headerField, "\n\t ()<>@,;:\\\"/[]?={}") === false && strpbrk((string) $headerLine, "\n") === false);
+                    $lines[] = "{$headerField}: {$headerLine}";
                 }
             }
-            $lines[] = "\r\n";
-            $msgPart = \implode("\r\n", $lines);
+        }
+        $lines[] = "\r\n";
+        $buffer = \implode("\r\n", $lines);
 
+        if ($ireq->method === "HEAD") {
+            ($this->responseWriter)($client, $buffer, true);
+            while (null !== yield); // Ignore body portions written.
+        } else {
             do {
-                $msgs .= $msgPart;
-
-                if (\strlen($msgs) >= $client->options->outputBufferSize) {
-                    $client->writeBuffer .= $msgs;
-                    ($this->responseWriter)($client);
-                    $msgs = "";
+                if (\strlen($buffer) >= $client->options->outputBufferSize) {
+                    ($this->responseWriter)($client, $buffer);
+                    $buffer = "";
 
                     if ($client->isDead & Client::CLOSED_WR) {
-                        while (true) {
-                            yield;
-                        }
-                    }
-
-                    $client->bufferSize = \strlen($client->writeBuffer);
-                    if ($client->bufferDeferred) {
-                        if ($client->bufferSize <= $client->options->softStreamCap) {
-                            $client->bufferDeferred->resolve();
-                        }
-                    } elseif ($client->bufferSize > $client->options->softStreamCap) {
-                        $client->bufferDeferred = new Deferred;
+                        return;
                     }
                 }
-            } while (($msgPart = yield) !== null);
-        } finally {
-            $client->writeBuffer .= $msgs;
 
-            if (!isset($headers) || $msgPart !== null) { // request was aborted
-                $client->shouldClose = true;
-                // bodyEmitters are failed by the Server when releasing the client
+                if (null === $part = yield) {
+                    break;
+                }
+
+                if ($chunked && \strlen($part)) {
+                    $buffer .= \sprintf("%x\r\n%s\r\n", \strlen($part), $part);
+                } else {
+                    $buffer .= $part;
+                }
+            } while (true);
+
+            if ($chunked) {
+                $buffer .= "0\r\n\r\n";
             }
 
-            ($this->responseWriter)($client, $final = true);
+            ($this->responseWriter)($client, $buffer, true);
         }
 
         // parserEmitLock check is required to prevent recursive continuation of the parser
@@ -325,19 +304,25 @@ class Http1Driver implements HttpDriver, Internal\Filter {
             $ireq->trace = $startLineAndHeaders;
             $ireq->target = $uri;
 
+            $host = $headers["host"][0] ?? ""; // Host header may be set but empty.
+            if ($host === "") {
+                ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: Invalid host header");
+                return;
+            }
+
             if ($uri === "*") {
-                $ireq->uri = new Uri($headers["host"][0] ?? "" . ":" . $client->serverPort);
+                $ireq->uri = new Uri($host . ":" . $client->serverPort);
             } elseif (($schemepos = \strpos($uri, "://")) !== false && $schemepos < \strpos($uri, "/")) {
                 $ireq->uri = new Uri($uri);
             } else {
                 $scheme = $client->isEncrypted ? "https" : "http";
-                $host = $headers["host"][0] ?? "";
                 if (($colon = \strrpos($host, ":")) !== false) {
                     $port = (int) \substr($host, $colon + 1);
                     $host = \substr($host, 0, $colon);
                 } else {
                     $port = $client->serverPort;
                 }
+
                 $uri = $scheme . "://" . $host . ":" . $port . $uri;
                 $ireq->uri = new Uri($uri);
             }
@@ -555,7 +540,7 @@ class Http1Driver implements HttpDriver, Internal\Filter {
         } while (true);
     }
 
-    public function filter(Internal\Request $request, Internal\Response $response) {
+    private function filter(Internal\Request $request, Internal\Response $response) {
         $options = $request->client->options;
 
         if ($options->sendServerToken) {
