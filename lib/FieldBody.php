@@ -5,7 +5,7 @@ namespace Aerys;
 use Amp\ByteStream\InputStream;
 use Amp\Promise;
 
-class FieldBody extends DefaultBody {
+class FieldBody extends Body {
     private $metadata;
 
     public function __construct(InputStream $stream, Promise $metadata) {

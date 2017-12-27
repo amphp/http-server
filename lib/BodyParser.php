@@ -22,7 +22,7 @@ class BodyParser implements InputStream, Promise {
     /** @var \Aerys\Request */
     private $req;
 
-    /** @var \Aerys\DefaultBody */
+    /** @var \Aerys\Body */
     private $body;
 
     private $boundary = null;

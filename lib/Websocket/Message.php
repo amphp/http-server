@@ -2,10 +2,10 @@
 
 namespace Aerys\Websocket;
 
-use Aerys\DefaultBody;
+use Aerys\Body;
 use Amp\ByteStream\InputStream;
 
-final class Message extends DefaultBody {
+final class Message extends Body {
     /** @var bool */
     private $binary;
 

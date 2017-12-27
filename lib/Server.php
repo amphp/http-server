@@ -631,7 +631,7 @@ class Server implements Monitor {
 
     private function onParsedEntityHeaders(Internal\Request $ireq) {
         $ireq->client->bodyEmitters[$ireq->streamId] = $bodyEmitter = new Emitter;
-        $ireq->body = new DefaultBody(new IteratorStream($bodyEmitter->iterate()));
+        $ireq->body = new Body(new IteratorStream($bodyEmitter->iterate()));
 
         $this->onParsedMessage($ireq);
     }

@@ -99,7 +99,7 @@ class Request {
      *
      * @param int $bodySize maximum body size
      *
-     * @return \Amp\ByteStream\Message
+     * @return \Aerys\Body
      */
     public function getBody(int $bodySize = -1): Body {
         $ireq = $this->internalRequest;
@@ -108,18 +108,6 @@ class Request {
                 $ireq->maxBodySize = $bodySize;
                 $ireq->client->httpDriver->upgradeBodySize($this->internalRequest);
             }
-        }
-
-        if ($ireq->body !== $this->body) {
-            $this->body = $ireq->body;
-            $ireq->body->buffer()->onResolve(function ($e, $data) {
-                if ($e instanceof ClientSizeException) {
-                    $ireq = $this->internalRequest;
-                    $bodyEmitter = $ireq->client->bodyEmitters[$ireq->streamId];
-                    $ireq->body = new DefaultBody(new IteratorStream($bodyEmitter->iterate()));
-                    $bodyEmitter->emit($data);
-                }
-            });
         }
 
         return $ireq->body;
