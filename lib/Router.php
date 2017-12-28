@@ -11,7 +11,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 use function FastRoute\simpleDispatcher;
 
-class Router implements Bootable, Monitor, ServerObserver {
+class Router implements Bootable, Monitor, Responder, ServerObserver {
     private $state = Server::STOPPED;
     private $bootLoader;
 
@@ -100,7 +100,7 @@ class Router implements Bootable, Monitor, ServerObserver {
         }
 
         if (!empty($middlewares)) {
-            $action = Internal\makeMiddlewareHandler(static function (Request $request) use ($action, $routeArgs) {
+            $action = Internal\makeMiddlewareResponder(static function (Request $request) use ($action, $routeArgs) {
                 return $action($request, $routeArgs);
             }, $middlewares);
             return $action($request);

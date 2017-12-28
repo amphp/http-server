@@ -11,7 +11,7 @@ use Amp\File;
 use Amp\Loop;
 use function Amp\call;
 
-class Root implements ServerObserver {
+class Root implements ServerObserver, Responder {
     const PRECOND_NOT_MODIFIED = 1;
     const PRECOND_FAILED = 2;
     const PRECOND_IF_RANGE_OK = 3;

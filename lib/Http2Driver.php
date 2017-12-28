@@ -82,7 +82,7 @@ class Http2Driver implements HttpDriver {
         $this->write = $write;
     }
 
-    public function filter(Internal\Request $request, Internal\Response $response) {
+    private function filter(Internal\Request $request, array $headers, array $push): array {
         if (isset($request->headers[":authority"])) {
             $request->headers["host"] = $request->headers[":authority"];
         }
@@ -91,46 +91,47 @@ class Http2Driver implements HttpDriver {
         $options = $request->client->options;
 
         if ($options->sendServerToken) {
-            $response->headers["server"] = [SERVER_TOKEN];
+            $headers["server"] = [SERVER_TOKEN];
         }
 
-        if (!empty($response->headers[":aerys-push"])) {
-            foreach ($response->headers[":aerys-push"] as $url => $pushHeaders) {
+        if (!empty($push)) {
+            foreach ($push as $url => $pushHeaders) {
                 if ($request->client->allowsPush) {
                     $this->dispatchInternalRequest($request, $url, $pushHeaders);
                 } else {
-                    $response->headers["Link"][] = "<$url>; rel=preload";
+                    $headers["Link"][] = "<$url>; rel=preload";
                 }
             }
-            unset($response->headers[":aerys-push"]);
         }
 
-        $status = $response->headers[":status"];
-        $contentLength = $response->headers[":aerys-entity-length"];
-        unset($response->headers[":aerys-entity-length"], $response->headers["transfer-encoding"] /* obsolete in HTTP/2 */);
+        $status = $headers[":status"];
+        $contentLength = $headers[":aerys-entity-length"];
+        unset($headers[":aerys-entity-length"], $headers["transfer-encoding"] /* obsolete in HTTP/2 */);
 
         if ($contentLength === "@") {
             $hasContent = false;
             if (($status >= 200 && $status != 204 && $status != 304)) {
-                $response->headers["content-length"] = ["0"];
+                $headers["content-length"] = ["0"];
             }
         } elseif ($contentLength !== "*") {
             $hasContent = true;
-            $response->headers["content-length"] = [$contentLength];
+            $headers["content-length"] = [$contentLength];
         } else {
             $hasContent = true;
-            unset($response->headers["content-length"]);
+            unset($headers["content-length"]);
         }
 
         if ($hasContent) {
-            $type = $response->headers["content-type"][0] ?? $options->defaultContentType;
+            $type = $headers["content-type"][0] ?? $options->defaultContentType;
             if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
                 $type .= "; charset={$options->defaultTextCharset}";
             }
-            $response->headers["content-type"] = [$type];
+            $headers["content-type"] = [$type];
         }
 
-        $response->headers["date"] = [$request->httpDate];
+        $headers["date"] = [$request->httpDate];
+
+        return $headers;
     }
 
     public function dispatchInternalRequest(Internal\Request $ireq, string $url, array $pushHeaders = null) {
@@ -225,12 +226,12 @@ class Http2Driver implements HttpDriver {
         ($this->resultEmitter)($ireq);
     }
 
-    public function writer(Internal\Request $ireq, Internal\Response $response): \Generator {
-        $client = $ireq->client;
-        $id = $ireq->streamId;
+    public function writer(Internal\Request $request, Response $response): \Generator {
+        $client = $request->client;
+        $id = $request->streamId;
 
         try {
-            $headers = $response->headers;
+            $headers = $this->filter($request, $response->getHeaders(), $response->getPush());
             unset($headers["connection"]); // obsolete in HTTP/2.0
             $headers = HPack::encode($headers);
 
@@ -250,7 +251,7 @@ class Http2Driver implements HttpDriver {
                 $this->writeFrame($client, $headers, self::HEADERS, self::END_HEADERS, $id);
             }
 
-            if ($ireq->method === "HEAD") {
+            if ($request->method === "HEAD") {
                 $this->writeData($client, "", $id, true);
                 while (null !== yield); // Ignore body portions written.
             } else {

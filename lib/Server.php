@@ -780,7 +780,7 @@ class Server implements Monitor {
 
         try {
             if (!empty($middlewares)) {
-                $application = Internal\makeMiddlewareHandler($application, $middlewares);
+                $application = Internal\makeMiddlewareResponder($application, $middlewares);
             }
 
             $response = yield call($application, $request);
@@ -794,12 +794,12 @@ class Server implements Monitor {
             $response = $this->makeErrorResponse($error, $ireq);
         }
 
-        $ires = $response->export();
-        $responseWriter = $ireq->client->httpDriver->writer($ireq, $ires);
+        $responseWriter = $ireq->client->httpDriver->writer($ireq, $response);
+        $body = $response->getBody();
 
         try {
             do {
-                $chunk = yield $ires->body->read();
+                $chunk = yield $body->read();
 
                 if ($ireq->client->isDead & Client::CLOSED_WR) {
                     foreach ($ireq->onClose as $onClose) {
@@ -823,14 +823,10 @@ class Server implements Monitor {
                 $onClose();
             }
 
-            if ($ires->detach) {
+            if ($response->isDetached()) {
                 $responseWriter->send(null);
 
-                \assert(\is_array($ires->detach));
-
-                list($callback, $args) = $ires->detach;
-
-                $this->export($ireq->client, $callback, $args);
+                $this->export($ireq->client, $response);
             }
         } catch (\Throwable $exception) {
             $this->logger->error($exception);
@@ -894,7 +890,7 @@ class Server implements Monitor {
         }
     }
 
-    private function export(Client $client, callable $detach, array $args = []) {
+    private function export(Client $client, Response $response) {
         $this->clear($client);
 
         assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
@@ -923,7 +919,7 @@ class Server implements Monitor {
             };
         })());
 
-        $detach(new Internal\DetachedSocket($closer, $client->socket), ...$args);
+        $response->export(new Internal\DetachedSocket($closer, $client->socket));
     }
 
     private function dropPrivileges() {

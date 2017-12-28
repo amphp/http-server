@@ -427,16 +427,12 @@ class Response {
     /**
      * @internal
      *
-     * @return \Aerys\Internal\Response
+     * @param \Amp\Socket\Socket $socket
      */
-    public function export(): Internal\Response {
-        $ires = new Internal\Response;
-        $ires->headers = $this->headers;
-        $ires->status = $this->status;
-        $ires->reason = $this->reason;
-        $ires->push = $this->push;
-        $ires->body = $this->body;
-        $ires->detach = $this->detach;
-        return $ires;
+    public function export(Socket $socket) {
+        \assert(\is_array($this->detach));
+
+        list($detch, $args) = $this->detach;
+        $detch($socket, ...$args);
     }
 }

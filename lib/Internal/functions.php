@@ -9,6 +9,7 @@ use Aerys\Middleware;
 use Aerys\Monitor;
 use Aerys\Options;
 use Aerys\Request;
+use Aerys\Responder;
 use Aerys\Response;
 use Aerys\Server;
 use Aerys\ServerObserver;
@@ -274,21 +275,26 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
     }
 }
 
-function makeMiddlewareHandler(callable $application, array $middlewares): callable {
-    return $next = coroutine(function (Request $request) use (&$next, &$middlewares, $application) {
-        if (empty($middlewares)) {
-            $response = yield call($application, $request);
-            if (!$response instanceof Response) {
-                throw new \Error("Applications must return an instance of " . Response::class);
-            }
-            return $response;
+function makeMiddlewareResponder(callable $application, array $middlewares): Responder {
+    return new class($application, $middlewares) implements Responder {
+        /** @var callable */
+        private $application;
+
+        /** @var \Aerys\Middleware[] */
+        private $middlewares;
+
+        public function __construct($application, $middlewares) {
+            $this->application = $application;
+            $this->middlewares = $middlewares;
         }
 
-        $middleware = \array_shift($middlewares);
-        $response = yield call($middleware, $request, $next);
-        if (!$response instanceof Response) {
-            throw new \Error("Middlewares must return an instance of " . Response::class);
+        public function __invoke(Request $request): Promise {
+            if (empty($this->middlewares)) {
+                return call($this->application, $request);
+            }
+
+            $middleware = \array_shift($this->middlewares);
+            return call($middleware, $request, $this);
         }
-        return $response;
-    });
+    };
 }

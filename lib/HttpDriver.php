@@ -19,12 +19,12 @@ interface HttpDriver {
     /**
      * Returns a generator used to write the response body.
      *
-     * @param \Aerys\Internal\Request $ireq
+     * @param \Aerys\Internal\Request $request
      * @param \Aerys\Response $response
      *
      * @return \Generator
      */
-    public function writer(Internal\Request $ireq, Internal\Response $ires): \Generator;
+    public function writer(Internal\Request $request, Response $response): \Generator;
 
     /**
      * @param \Aerys\Internal\Request $ireq

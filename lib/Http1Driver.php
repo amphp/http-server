@@ -43,35 +43,33 @@ class Http1Driver implements HttpDriver {
         $this->http2->setup($parseEmitters, $responseWriter);
     }
 
-    public function writer(Internal\Request $ireq, Internal\Response $ires): \Generator {
+    public function writer(Internal\Request $request, Response $response): \Generator {
         // We need this in here to be able to return HTTP/2.0 writer; if we allow HTTP/1.1 writer to be returned, we have lost
-        if (isset($ireq->headers["upgrade"][0]) &&
-            $ireq->headers["upgrade"][0] === "h2c" &&
-            $ireq->protocol === "1.1" &&
-            isset($ireq->headers["http2-settings"][0]) &&
-            false !== $h2cSettings = base64_decode(strtr($ireq->headers["http2-settings"][0], "-_", "+/"), true)
+        if (isset($request->headers["upgrade"][0]) &&
+            $request->headers["upgrade"][0] === "h2c" &&
+            $request->protocol === "1.1" &&
+            isset($request->headers["http2-settings"][0]) &&
+            false !== $h2cSettings = base64_decode(strtr($request->headers["http2-settings"][0], "-_", "+/"), true)
         ) {
             // Send upgrading response
-            $response = new Response(new NullBody, [
+            $responseWriter = $this->send($request, new Response(new NullBody, [
                 "connection" => ["Upgrade"],
                 "upgrade" => ["h2c"],
-            ], HTTP_STATUS["SWITCHING_PROTOCOLS"]);
-
-            $responseWriter = $this->send($ireq, $response->export());
+            ], HTTP_STATUS["SWITCHING_PROTOCOLS"]));
             $responseWriter->send(null); // flush before replacing
 
             // internal upgrade
-            $client = $ireq->client;
+            $client = $request->client;
             $client->httpDriver = $this->http2;
             $client->requestParser = $client->httpDriver->parser($client, $h2cSettings);
 
             $client->requestParser->valid(); // start generator
 
-            $ireq->streamId = 1;
+            $request->streamId = 1;
             $client->streamWindow = [];
-            $client->streamWindow[$ireq->streamId] = $client->window;
-            $client->streamWindowBuffer[$ireq->streamId] = "";
-            $ireq->protocol = "2.0";
+            $client->streamWindow[$request->streamId] = $client->window;
+            $client->streamWindowBuffer[$request->streamId] = "";
+            $request->protocol = "2.0";
 
             /* unnecessary:
             // Make request look HTTP/2 compatible
@@ -87,24 +85,24 @@ class Http1Driver implements HttpDriver {
             unset($ireq->headers["host"]);
             */
 
-            return $this->http2->writer($ireq, $ires);
+            return $this->http2->writer($request, $response);
         }
 
-        return $this->send($ireq, $ires);
+        return $this->send($request, $response);
     }
 
-    private function send(Internal\Request $ireq, Internal\Response $ires): \Generator {
-        $client = $ireq->client;
+    private function send(Internal\Request $request, Response $response): \Generator {
+        $client = $request->client;
 
-        $this->filter($ireq, $ires);
+        $status = $response->getStatus();
+        $reason = $response->getReason();
+        $headers = $this->filter($request, $response->getHeaders(), $response->getPush(), $status);
 
-        $chunked = !isset($ires->headers["content-length"]) && $ireq->protocol === "1.1";
+        $chunked = !isset($headers["content-length"]) && $request->protocol === "1.1";
 
         if ($chunked) {
-            $ires->headers["transfer-encoding"] = ["chunked"];
+            $headers["transfer-encoding"] = ["chunked"];
         }
-
-        $headers = $ires->headers;
 
         if (!empty($headers["connection"])) {
             foreach ($headers["connection"] as $connection) {
@@ -114,7 +112,7 @@ class Http1Driver implements HttpDriver {
             }
         }
 
-        $lines = ["HTTP/{$ireq->protocol} {$ires->status} {$ires->reason}"];
+        $lines = ["HTTP/{$request->protocol} {$status} {$reason}"];
         foreach ($headers as $headerField => $headerLines) {
             if ($headerField[0] !== ":") {
                 foreach ($headerLines as $headerLine) {
@@ -127,7 +125,7 @@ class Http1Driver implements HttpDriver {
         $lines[] = "\r\n";
         $buffer = \implode("\r\n", $lines);
 
-        if ($ireq->method === "HEAD") {
+        if ($request->method === "HEAD") {
             ($this->responseWriter)($client, $buffer, true);
             while (null !== yield); // Ignore body portions written.
         } else {
@@ -540,56 +538,58 @@ class Http1Driver implements HttpDriver {
         } while (true);
     }
 
-    private function filter(Internal\Request $request, Internal\Response $response) {
+    private function filter(Internal\Request $request, array $headers, array $push, int $status): array {
         $options = $request->client->options;
 
         if ($options->sendServerToken) {
-            $response->headers["server"] = [SERVER_TOKEN];
+            $headers["server"] = [SERVER_TOKEN];
         }
 
-        if ($response->status < 200) {
-            return;
+        if ($status < 200) {
+            return $headers;
         }
 
-        if (!empty($response->push)) {
-            $response->headers["link"] = [];
-            foreach ($response->push as $url => $pushHeaders) {
-                $response->headers["link"][] = "<$url>; rel=preload";
+        if (!empty($push)) {
+            $headers["link"] = [];
+            foreach ($push as $url => $pushHeaders) {
+                $headers["link"][] = "<$url>; rel=preload";
             }
         }
 
-        $contentLength = $response->headers["content-length"][0] ?? null;
+        $contentLength = $headers["content-length"][0] ?? null;
         $shouldClose = (isset($request->headers["connection"]) && \in_array("close", $request->headers["connection"]))
-            || (isset($response->headers["connection"]) && \in_array("close", $response->headers["connection"]));
+            || (isset($headers["connection"]) && \in_array("close", $headers["connection"]));
 
         if ($contentLength !== null) {
             $shouldClose = $shouldClose || $request->protocol === "1.0";
-            unset($response->headers["transfer-encoding"]);
+            unset($headers["transfer-encoding"]);
         } elseif ($request->protocol === "1.1") {
-            unset($response->headers["content-length"]);
+            unset($headers["content-length"]);
         } else {
             $shouldClose = true;
         }
 
-        $type = $response->headers["content-type"][0] ?? $options->defaultContentType;
+        $type = $headers["content-type"][0] ?? $options->defaultContentType;
         if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
             $type .= "; charset={$options->defaultTextCharset}";
         }
-        $response->headers["content-type"] = [$type];
+        $headers["content-type"] = [$type];
 
         $remainingRequests = $request->client->remainingRequests;
         if ($shouldClose || $remainingRequests <= 0) {
-            $response->headers["connection"] = ["close"];
+            $headers["connection"] = ["close"];
         } elseif ($remainingRequests < (PHP_INT_MAX >> 1)) {
-            $response->headers["connection"] = ["keep-alive"];
+            $headers["connection"] = ["keep-alive"];
             $keepAlive = "timeout={$options->connectionTimeout}, max={$remainingRequests}";
-            $response->headers["keep-alive"] = [$keepAlive];
+            $headers["keep-alive"] = [$keepAlive];
         } else {
-            $response->headers["connection"] = ["keep-alive"];
+            $headers["connection"] = ["keep-alive"];
             $keepAlive = "timeout={$options->connectionTimeout}";
-            $response->headers["keep-alive"] = [$keepAlive];
+            $headers["keep-alive"] = [$keepAlive];
         }
 
-        $response->headers["date"] = [$request->httpDate];
+        $headers["date"] = [$request->httpDate];
+
+        return $headers;
     }
 }
