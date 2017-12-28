@@ -31,7 +31,7 @@ class Host {
      * @param int $port The port number on which to listen (0 for unix domain sockets)
      * @return self
      */
-    public function expose(string $address, int $port = 0): Host {
+    public function expose(string $address, int $port = 0): self {
         $isPath = $address[0] == "/";
 
         if ($isPath) {
@@ -78,7 +78,7 @@ class Host {
      * @param string $name
      * @return self
      */
-    public function name(string $name): Host {
+    public function name(string $name): self {
         $this->name = $name === "" ? "*" : $name;
 
         return $this;
@@ -94,27 +94,25 @@ class Host {
      * @throws \Error on invalid $action parameter
      * @return self
      */
-    public function use($action): Host {
-        $isAction = is_callable($action) || $action instanceof Middleware || $action instanceof Bootable || $action instanceof Monitor;
-        $isDriver = $action instanceof HttpDriver;
+    public function use($action): self {
+        $isAction = is_callable($action)
+            || $action instanceof Middleware
+            || $action instanceof Bootable
+            || $action instanceof Monitor;
 
-        if (!$isAction && !$isDriver) {
+        if (!$isAction) {
             throw new \Error(
-                __METHOD__ . " requires a callable action or Bootable or Filter or HttpDriver instance"
+                \sprintf(
+                    "%s requires a callable action, %s, %s, or %s instance",
+                    __METHOD__,
+                    Bootable::class,
+                    Monitor::class,
+                    Middleware::class
+                )
             );
         }
 
-        if ($isAction) {
-            $this->actions[] = $action;
-        }
-        if ($isDriver) {
-            if ($this->httpDriver) {
-                throw new \Error(
-                    "Impossible to define two HttpDriver instances for one same Host; an instance of " . get_class($this->httpDriver) . " has already been defined as driver"
-                );
-            }
-            $this->httpDriver = $action;
-        }
+        $this->actions[] = $action;
 
         return $this;
     }
@@ -122,10 +120,11 @@ class Host {
     /**
      * Define TLS encryption settings for this host.
      *
-     * @param string|Certificate|ServerTlsContext $certificate A string path pointing to your SSL/TLS certificate, a Certificate object, or a ServerTlsContext object
+     * @param string|Certificate|ServerTlsContext $certificate A string path pointing to your SSL/TLS certificate, a
+     *     Certificate object, or a ServerTlsContext object
      * @return self
      */
-    public function encrypt($certificate): Host {
+    public function encrypt($certificate): self {
         if (!$certificate instanceof ServerTlsContext) {
             if (!$certificate instanceof Certificate) {
                 $certificate = new Certificate($certificate);

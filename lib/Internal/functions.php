@@ -207,11 +207,9 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
         }
 
         if (empty($applications)) {
-            $application = static function (): string {
-                return "<html><body><h1>It works!</h1></body></html>";
+            $application = static function (): Response {
+                return new Response\HtmlResponse("<html><body><h1>It works!</h1></body></html>");
             };
-        } elseif (count($applications) === 1) {
-            $application = current($applications);
         } else {
             // Observe the Server in our stateful multi-responder so if a shutdown triggers
             // while we're iterating over our coroutines we can send a 503 response. This
@@ -251,7 +249,7 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
                         }
                     }
 
-                    throw new \Error("No application returned a response"); // @TODO Error fallback handler
+                    throw new \Error("No responder returned a response"); // @TODO Error fallback handler
                 }
 
                 public function __debugInfo() {
@@ -260,7 +258,7 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
             });
         }
 
-        $vhost = new Vhost($name, $interfaces, $application, $middlewares, $monitors, $hostExport["httpdriver"]);
+        $vhost = new Vhost($name, $interfaces, $application, $middlewares, $monitors);
         if ($crypto = $hostExport["crypto"]) {
             $vhost->setCrypto($crypto);
         }
@@ -275,26 +273,39 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
     }
 }
 
-function makeMiddlewareResponder(callable $application, array $middlewares): Responder {
-    return new class($application, $middlewares) implements Responder {
+function makeMiddlewareResponder(callable $responder, array $middlewares): Responder {
+    return new class($responder, $middlewares) implements Responder {
         /** @var callable */
-        private $application;
+        private $responder;
 
         /** @var \Aerys\Middleware[] */
         private $middlewares;
 
-        public function __construct($application, $middlewares) {
-            $this->application = $application;
+        /** @var callable|null */
+        private $next;
+
+        public function __construct($responder, $middlewares) {
+            $this->responder = $responder;
             $this->middlewares = $middlewares;
+            $this->next = coroutine($this);
         }
 
-        public function __invoke(Request $request): Promise {
+        public function __invoke(Request $request): \Generator {
             if (empty($this->middlewares)) {
-                return call($this->application, $request);
+                $this->next = null;
+                $response = yield call($this->responder, $request);
+                if (!$response instanceof Response) {
+                    throw new \Error("Responders must return or resolve to an instance of " . Response::class);
+                }
+                return $response;
             }
 
             $middleware = \array_shift($this->middlewares);
-            return call($middleware, $request, $this);
+            $response = yield call($middleware, $request, $this->next);
+            if (!$response instanceof Response) {
+                throw new \Error("Middlewares must return or resolve to an instance of " . Response::class);
+            }
+            return $response;
         }
     };
 }

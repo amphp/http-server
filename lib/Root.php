@@ -302,7 +302,7 @@ class Root implements ServerObserver, Responder {
         // HTTP server can send a 404 and/or allow handlers further down the chain
         // a chance to respond.
         if (empty($fileInfo->exists)) {
-            return;
+            return null;
         }
 
         switch ($request->getMethod()) {

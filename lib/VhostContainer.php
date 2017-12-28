@@ -63,7 +63,7 @@ class VhostContainer implements \Countable, Monitor {
     }
 
     private function addHttpDriver(Vhost $vhost) {
-        $driver = $vhost->getHttpDriver() ?? $this->defaultHttpDriver;
+        $driver = $this->defaultHttpDriver;
         foreach ($vhost->getInterfaces() as list($address, $port)) {
             $defaultDriver = $this->httpDrivers[$port][$address[0] == "/" ? "" : \strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"] ?? $driver;
             if (($this->httpDrivers[$port][$address] ?? $defaultDriver) !== $driver) {

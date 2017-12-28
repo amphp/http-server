@@ -12,7 +12,6 @@ class Vhost implements Monitor {
     private $ids;
     private $middlewares = [];
     private $monitors = [];
-    private $httpDriver;
     private $tlsContextArr = [];
     private $tlsDefaults = [
         "local_cert"            => null,
@@ -32,7 +31,7 @@ class Vhost implements Monitor {
     ];
 
     /** @Note Vhosts do not allow wildcards, only separate 0.0.0.0 and :: */
-    public function __construct(string $name, array $interfaces, callable $application, array $middlewares, array $monitors = [], HttpDriver $driver = null) {
+    public function __construct(string $name, array $interfaces, callable $application, array $middlewares, array $monitors = []) {
         $this->name = strtolower($name);
         if (!$interfaces) {
             throw new \Error(
@@ -45,7 +44,6 @@ class Vhost implements Monitor {
         $this->application = $application;
         $this->middlewares = array_values($middlewares);
         $this->monitors = $monitors;
-        $this->httpDriver = $driver;
 
         if (self::hasAlpnSupport()) {
             $this->tlsDefaults["alpn_protocols"] = "h2";
@@ -197,10 +195,6 @@ class Vhost implements Monitor {
             return $this->addressMap[$wildcard];
         }
         return array_merge($this->addressMap[$packedAddress], $this->addressMap[$wildcard]);
-    }
-
-    public function getHttpDriver() {
-        return $this->httpDriver;
     }
 
     /**

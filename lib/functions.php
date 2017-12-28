@@ -116,7 +116,15 @@ function redirect(string $absoluteUri, int $redirectCode = 307): callable {
     }
 
     return function (Request $req) use ($absoluteUri, $redirectCode) {
-        return new Response\RedirectResponse($absoluteUri . $req->getUri(), $redirectCode);
+        $uri = $req->getUri();
+        $path = $uri->getPath();
+        $query = $uri->getQuery();
+
+        if ($query) {
+            $path .= "?" . $query;
+        }
+
+        return new Response\RedirectResponse($absoluteUri . $path, $redirectCode);
     };
 }
 
@@ -204,8 +212,8 @@ function initServer(PsrLogger $logger, array $hosts, array $options = []): Serve
 
     $bootLoader = static function (Bootable $bootable) use ($server, $logger) {
         $booted = $bootable->boot($server, $logger);
-        if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
-            throw new \Error("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Middleware and/or be callable, got ' . gettype($booted) . ".");
+        if ($booted !== null && !is_callable($booted)) {
+            throw new \Error("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Responder and/or be callable, got ' . gettype($booted) . ".");
         }
         return $booted ?? $bootable;
     };

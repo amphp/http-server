@@ -12,11 +12,17 @@ use Amp\Producer;
 class DeflateMiddleware implements Middleware {
     const MAX_CACHE_SIZE = 1024;
 
+    /**
+     * @var int Minimum body length before body is compressed.
+     * @link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits
+     */
     private $minimumLength = 860;
 
+    /** @var string */
     private $contentRegex = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
 
-    private $chunkSize;
+    /** @var int Minimum chunk size before being compressed. */
+    private $chunkSize = 8192;
 
     /** @var int[] */
     private $contentTypeCache = [];

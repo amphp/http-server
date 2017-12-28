@@ -85,7 +85,7 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
                     // Do nothing; allow actions further down the chain a chance to respond.
                     // If no other registered host actions respond the server will send a
                     // 404 automatically anyway.
-                    return;
+                    return null;
                 case Dispatcher::METHOD_NOT_ALLOWED:
                     $allowedMethods = implode(",", $match[1]);
                     $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
