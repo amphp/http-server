@@ -2,6 +2,7 @@
 
 namespace Aerys;
 
+use Aerys\Cookie\Cookie;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 /**
@@ -39,9 +40,9 @@ function websocket($app, array $options = []): Bootable {
                 ? $this->app->boot($server, $logger)
                 : $this->app;
             if (!$app instanceof Websocket) {
-                $type = is_object($app) ? get_class($app) : gettype($app);
-                throw new \Error(
-                    "Cannot boot websocket handler; Aerys\\Websocket required, {$type} provided"
+                $type = \is_object($app) ? \get_class($app) : \gettype($app);
+                throw new \TypeError(
+                    \sprintf("Cannot boot websocket handler; %s required, %s provided", Websocket::class, $type)
                 );
             }
             $gateway = new Websocket\Rfc6455Gateway($logger, $app);
@@ -150,13 +151,13 @@ function parseBody(Request $req, $size = 0): BodyParser {
  * @return \Aerys\Cookie\Cookie[]
  */
 function parseCookie(string $cookies): array {
-    $cookies = [];
+    $result = [];
 
     foreach (\explode("; ", $cookies) as $cookie) {
-        $cookies[] = Cookie\Cookie::fromHeader($cookie);
+        $result[] = Cookie::fromHeader($cookie);
     }
 
-    return $cookies;
+    return $result;
 }
 
 /**
@@ -171,7 +172,7 @@ function makeGenericBody(int $status, array $options = []): string {
     $subhead = isset($options["sub_heading"]) ? "<h3>{$options["sub_heading"]}</h3>" : "";
     $server = empty($options["server_token"]) ? "" : (SERVER_TOKEN . " @ ");
     $date = $options["http_date"] ?? gmdate("D, d M Y H:i:s") . " GMT";
-    $msg = isset($options["msg"]) ? "{$options["msg"]}\n" : "";
+    $msg = isset($options["message"]) ? "{$options["message"]}\n" : "";
 
     return sprintf(
         "<html>\n<body>\n<h1>%d %s</h1>\n%s\n<hr/>\n<em>%s%s</em>\n<br/><br/>\n%s</body>\n</html>",
@@ -212,7 +213,7 @@ function initServer(PsrLogger $logger, array $hosts, array $options = []): Serve
 
     $bootLoader = static function (Bootable $bootable) use ($server, $logger) {
         $booted = $bootable->boot($server, $logger);
-        if ($booted !== null && !is_callable($booted)) {
+        if ($booted !== null && !$booted instanceof ErrorHandler && !is_callable($booted)) {
             throw new \Error("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Responder and/or be callable, got ' . gettype($booted) . ".");
         }
         return $booted ?? $bootable;

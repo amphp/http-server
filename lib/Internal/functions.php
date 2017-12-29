@@ -214,7 +214,7 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
             // Observe the Server in our stateful multi-responder so if a shutdown triggers
             // while we're iterating over our coroutines we can send a 503 response. This
             // obviates the need for applications to pay attention to server state themselves.
-            $application = $bootLoader(new class($applications) implements Bootable, ServerObserver {
+            $application = $bootLoader(new class($applications) implements Bootable, Responder, ServerObserver {
                 private $applications;
                 private $isStopping = false;
 
@@ -249,7 +249,8 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
                         }
                     }
 
-                    throw new \Error("No responder returned a response"); // @TODO Error fallback handler
+                    $status = HTTP_STATUS["NOT_FOUND"];
+                    return new Response\HtmlResponse(makeGenericBody($status), [], $status);
                 }
 
                 public function __debugInfo() {

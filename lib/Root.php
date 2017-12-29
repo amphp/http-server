@@ -310,16 +310,13 @@ class Root implements ServerObserver, Responder {
             case "HEAD":
                 break;
             case "OPTIONS":
-                return new Response\HtmlResponse(
-                    makeGenericBody(HTTP_STATUS["OK"]),
+                return new Response\EmptyResponse(
                     ["Allow" => "GET, HEAD, OPTIONS", "Accept-Ranges" => "bytes"]
                 );
             default:
-                $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
-                return new Response\HtmlResponse(
-                    makeGenericBody($status),
+                return new Response\EmptyResponse(
                     ["Allow" => "GET, HEAD, OPTIONS"],
-                    $status
+                    HTTP_STATUS["METHOD_NOT_ALLOWED"]
                 );
         }
 

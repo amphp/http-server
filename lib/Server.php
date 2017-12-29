@@ -85,11 +85,6 @@ class Server implements Monitor {
     private $onReadable;
     private $onWritable;
     private $onResponseDataDone;
-    private $sendPreAppServiceUnavailableResponse;
-    private $sendPreAppMethodNotAllowedResponse;
-    private $sendPreAppInvalidHostResponse;
-    private $sendPreAppTraceResponse;
-    private $sendPreAppOptionsResponse;
 
     public function __construct(Options $options, VhostContainer $vhosts, PsrLogger $logger, Ticker $ticker) {
         $this->options = $options;
@@ -108,11 +103,6 @@ class Server implements Monitor {
         $this->onReadable = $this->callableFromInstanceMethod("onReadable");
         $this->onWritable = $this->callableFromInstanceMethod("onWritable");
         $this->onResponseDataDone = $this->callableFromInstanceMethod("onResponseDataDone");
-        $this->sendPreAppServiceUnavailableResponse = $this->callableFromInstanceMethod("sendPreAppServiceUnavailableResponse");
-        $this->sendPreAppMethodNotAllowedResponse = $this->callableFromInstanceMethod("sendPreAppMethodNotAllowedResponse");
-        $this->sendPreAppInvalidHostResponse = $this->callableFromInstanceMethod("sendPreAppInvalidHostResponse");
-        $this->sendPreAppTraceResponse = $this->callableFromInstanceMethod("sendPreAppTraceResponse");
-        $this->sendPreAppOptionsResponse = $this->callableFromInstanceMethod("sendPreAppOptionsResponse");
     }
 
     /**
@@ -682,13 +672,10 @@ class Server implements Monitor {
         $ireq->time = $this->ticker->currentTime;
         $ireq->httpDate = $this->ticker->currentHttpDate;
 
-        $generator = $this->tryApplication($ireq, static function (Request $request) use ($status, $message) {
-            $body = makeGenericBody($status, [
-                "msg" => $message,
-            ]);
-            $headers = ["Connection" => "close"];
-            return new Response\HtmlResponse($body, $headers, $status);
-        });
+        $headers = ["Connection" => "close"];
+        $response = new Response\EmptyResponse($headers, $status);
+
+        $generator = $this->sendResponse($ireq, $response);
 
         Promise\rethrow(new Coroutine($generator));
     }
@@ -709,74 +696,69 @@ class Server implements Monitor {
         $ireq->client->pendingResponses++;
 
         if ($this->stopDeferred) {
-            $generator = $this->tryApplication($ireq, $this->sendPreAppServiceUnavailableResponse);
-        } elseif (!in_array($ireq->method, $this->options->allowedMethods)) {
-            $generator = $this->tryApplication($ireq, $this->sendPreAppMethodNotAllowedResponse);
+            $generator = $this->sendResponse($ireq, $this->sendPreAppServiceUnavailableResponse());
+        } elseif (!\in_array($ireq->method, $this->options->allowedMethods)) {
+            $generator = $this->sendResponse($ireq, $this->sendPreAppMethodNotAllowedResponse());
         } elseif (!$vhost = $this->vhosts->selectHost($ireq)) {
-            $generator = $this->tryApplication($ireq, $this->sendPreAppInvalidHostResponse);
+            $generator = $this->sendResponse($ireq, $this->sendPreAppInvalidHostResponse());
         } elseif ($ireq->method === "TRACE") {
             $this->setTrace($ireq);
-            $generator = $this->tryApplication($ireq, $this->sendPreAppTraceResponse);
+            $generator = $this->sendResponse($ireq, $this->sendPreAppTraceResponse($ireq));
         } elseif ($ireq->method === "OPTIONS" && $ireq->target === "*") {
-            $generator = $this->tryApplication($ireq, $this->sendPreAppOptionsResponse);
+            $generator = $this->sendResponse($ireq, $this->sendPreAppOptionsResponse());
         } else {
-            $generator = $this->tryApplication(
-                $ireq,
-                $vhost->getApplication(),
-                $vhost->getMiddlewares()
-            );
+            $generator = $this->tryApplication($vhost, $ireq);
         }
 
         Promise\rethrow(new Coroutine($generator));
     }
 
-    private function sendPreAppServiceUnavailableResponse(Request $request): Response {
+    private function sendPreAppServiceUnavailableResponse(): Response {
         $status = HTTP_STATUS["SERVICE_UNAVAILABLE"];
         $headers = [
             "Connection" => "close",
         ];
-
-        return new Response\HtmlResponse(makeGenericBody($status), $headers, $status);
+        return new Response\EmptyResponse($headers, $status);
     }
 
-    private function sendPreAppInvalidHostResponse(Request $request): Response {
+    private function sendPreAppInvalidHostResponse(): Response {
         $status = HTTP_STATUS["BAD_REQUEST"];
         $reason = "Bad Request: Invalid Host";
         $headers = [
             "Connection" => "close",
         ];
-
-        return new Response\HtmlResponse(makeGenericBody($status), $headers, $status, $reason);
+        return new Response\EmptyResponse($headers, $status, $reason);
     }
 
-    private function sendPreAppMethodNotAllowedResponse(Request $request): Response {
+    private function sendPreAppMethodNotAllowedResponse(): Response {
         $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
         $headers = [
             "Connection" => "close",
-            "Allow", implode(", ", $this->options->allowedMethods),
+            "Allow" => implode(", ", $this->options->allowedMethods),
         ];
-
-        return new Response\HtmlResponse(makeGenericBody($status), $headers, $status);
+        return new Response\EmptyResponse($headers, $status);
     }
 
-    private function sendPreAppTraceResponse(Request $request): Response {
-        $stream = new InMemoryStream($request->getAttribute('aerys.trace'));
+    private function sendPreAppTraceResponse(Internal\Request $request): Response {
+        $stream = new InMemoryStream($request->locals['aerys.trace']);
         return new Response($stream, ["Content-Type" => "message/http"]);
     }
 
-    private function sendPreAppOptionsResponse(Request $request): Response {
+    private function sendPreAppOptionsResponse(): Response {
         return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->allowedMethods)]);
     }
 
     /**
+     * @param \Aerys\Vhost $vhost
      * @param \Aerys\Internal\Request $ireq
-     * @param callable $application
-     * @param \Aerys\Middleware[] $middlewares
      *
      * @return \Generator
      */
-    private function tryApplication(Internal\Request $ireq, callable $application, array $middlewares = []): \Generator {
+    private function tryApplication(Vhost $vhost, Internal\Request $ireq): \Generator {
         $request = new Request($ireq);
+
+        $application = $vhost->getApplication();
+        $middlewares = $vhost->getMiddlewares();
 
         try {
             if (!empty($middlewares)) {
@@ -791,9 +773,19 @@ class Server implements Monitor {
         } catch (\Throwable $error) {
             $this->logger->error($error);
             // @TODO ClientExceptions?
-            $response = $this->makeErrorResponse($error, $ireq);
+            $response = $this->makeErrorResponse($error, $request);
         }
 
+        yield from $this->sendResponse($ireq, $response);
+    }
+
+    /**
+     * @param \Aerys\Internal\Request $ireq
+     * @param \Aerys\Response $response
+     *
+     * @return \Generator
+     */
+    private function sendResponse(Internal\Request $ireq, Response $response): \Generator {
         $responseWriter = $ireq->client->httpDriver->writer($ireq, $response);
         $body = $response->getBody();
 
@@ -833,12 +825,15 @@ class Server implements Monitor {
         }
     }
 
-    private function makeErrorResponse(\Throwable $error, Internal\Request $ireq): Response {
+    private function makeErrorResponse(\Throwable $error, Request $request): Response {
         $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
-        $msg = ($this->options->debug) ? "<pre>" . htmlspecialchars($error) . "</pre>" : "<p>Something went wrong ...</p>";
+        $message = ($this->options->debug)
+            ? "<pre>" . \htmlspecialchars($error) . "</pre>"
+            : "<p>Something went wrong ...</p>";
+
         $body = makeGenericBody($status, [
-            "sub_heading" =>"Requested: {$ireq->uri}",
-            "msg" => $msg,
+            "sub_heading" =>"Requested: " . $request->getUri(),
+            "message" => $message,
         ]);
 
         return new Response\HtmlResponse($body, [], $status);

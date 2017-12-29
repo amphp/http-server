@@ -57,7 +57,7 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
      *
      * @return \Aerys\Response|null
      */
-    public function __invoke(Request $request) { /* : ?Response */
+    public function __invoke(Request $request) {
         $method = $request->getMethod();
         $path = $request->getUri()->getPath();
 

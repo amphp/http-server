@@ -10,7 +10,6 @@ class Host {
     private $interfaces = null;
     private $crypto = [];
     private $actions = [];
-    private $httpDriver;
 
     /**
      * Assign the IP or unix domain socket and port on which to listen.
@@ -95,7 +94,7 @@ class Host {
      * @return self
      */
     public function use($action): self {
-        $isAction = is_callable($action)
+        $isAction = \is_callable($action)
             || $action instanceof Middleware
             || $action instanceof Bootable
             || $action instanceof Monitor;
@@ -103,7 +102,7 @@ class Host {
         if (!$isAction) {
             throw new \Error(
                 \sprintf(
-                    "%s requires a callable action, %s, %s, or %s instance",
+                    "%s requires a callable action, %s, %s, %s, or %s instance",
                     __METHOD__,
                     Bootable::class,
                     Monitor::class,
@@ -173,7 +172,6 @@ class Host {
             "name"       => $this->name,
             "crypto"     => $this->crypto,
             "actions"    => $this->actions,
-            "httpdriver" => $this->httpDriver,
         ];
     }
 }
