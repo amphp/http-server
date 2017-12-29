@@ -1,14 +1,18 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Internal;
 
 // @TODO trailer headers??
 // @TODO add ServerObserver for properly sending GOAWAY frames
 // @TODO maybe display a real HTML error page for artificial limits exceeded
 
+use Aerys\ClientException;
+use Aerys\Response;
 use Amp\Deferred;
 use Amp\Loop;
 use Amp\Uri\Uri;
+use const Aerys\HTTP_STATUS;
+use const Aerys\SERVER_TOKEN;
 
 class Http2Driver implements HttpDriver {
     const NOFLAG = "\x00";
@@ -82,7 +86,7 @@ class Http2Driver implements HttpDriver {
         $this->write = $write;
     }
 
-    private function filter(Internal\Request $request, array $headers, array $push): array {
+    private function filter(Request $request, array $headers, array $push): array {
         if (isset($request->headers[":authority"])) {
             $request->headers["host"] = $request->headers[":authority"];
         }
@@ -134,7 +138,7 @@ class Http2Driver implements HttpDriver {
         return $headers;
     }
 
-    public function dispatchInternalRequest(Internal\Request $ireq, string $url, array $pushHeaders = null) {
+    public function dispatchInternalRequest(Request $ireq, string $url, array $pushHeaders = null) {
         $client = $ireq->client;
         $id = $client->streamId += 2;
 
@@ -195,7 +199,7 @@ class Http2Driver implements HttpDriver {
             }
         }
 
-        $request = new Internal\Request;
+        $request = new Request;
         $request->client = $client;
         $request->streamId = $id;
         $request->trace = $headerList;
@@ -226,7 +230,7 @@ class Http2Driver implements HttpDriver {
         ($this->resultEmitter)($ireq);
     }
 
-    public function writer(Internal\Request $request, Response $response): \Generator {
+    public function writer(Request $request, Response $response): \Generator {
         $client = $request->client;
         $id = $request->streamId;
 
@@ -377,7 +381,7 @@ class Http2Driver implements HttpDriver {
         ($this->write)($client, $new, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
 
-    public function upgradeBodySize(Internal\Request $ireq) {
+    public function upgradeBodySize(Request $ireq) {
         $client = $ireq->client;
         $id = $ireq->streamId;
         if (isset($client->bodyEmitters[$id])) {

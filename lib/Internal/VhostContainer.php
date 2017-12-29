@@ -1,23 +1,26 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Internal;
+
+use Aerys\Monitor;
 
 class VhostContainer implements \Countable, Monitor {
+    /** @var \Aerys\Internal\Vhost[] */
     private $vhosts = [];
+
+    /** @var int */
     private $cachedVhostCount = 0;
+
+    /** @var \Aerys\Internal\HttpDriver[] */
     private $httpDrivers = [];
-    private $defaultHttpDriver;
+
     private $setupHttpDrivers = [];
     private $setupArgs;
-
-    public function __construct(HttpDriver $driver) {
-        $this->defaultHttpDriver = $driver;
-    }
 
     /**
      * Add a virtual host to the collection.
      *
-     * @param \Aerys\Vhost $vhost
+     * @param \Aerys\Internal\Vhost $vhost
      * @return void
      */
     public function use(Vhost $vhost) {
@@ -63,7 +66,7 @@ class VhostContainer implements \Countable, Monitor {
     }
 
     private function addHttpDriver(Vhost $vhost) {
-        $driver = $this->defaultHttpDriver;
+        $driver = new Http1Driver;
         foreach ($vhost->getInterfaces() as list($address, $port)) {
             $defaultDriver = $this->httpDrivers[$port][$address[0] == "/" ? "" : \strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"] ?? $driver;
             if (($this->httpDrivers[$port][$address] ?? $defaultDriver) !== $driver) {
@@ -125,7 +128,7 @@ class VhostContainer implements \Countable, Monitor {
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.6.1.1
      */
-    public function selectHost(Internal\Request $ireq) {
+    public function selectHost(Request $ireq) {
         $client = $ireq->client;
         $serverId = ":{$client->serverAddr}:{$client->serverPort}";
 
@@ -190,7 +193,7 @@ class VhostContainer implements \Countable, Monitor {
      * @return array Returns an array of unique host addresses in the form: tcp://ip:port
      */
     public function getBindableAddresses(): array {
-        return array_unique(array_merge(...array_values(array_map(function ($vhost) {
+        return array_unique(array_merge(...array_values(array_map(function (Vhost $vhost) {
             return $vhost->getBindableAddresses();
         }, $this->vhosts))));
     }
@@ -240,6 +243,6 @@ class VhostContainer implements \Countable, Monitor {
     }
 
     public function monitor(): array {
-        return array_map(function ($vhost) { return $vhost->monitor(); }, $this->vhosts);
+        return array_map(function (Vhost $vhost) { return $vhost->monitor(); }, $this->vhosts);
     }
 }

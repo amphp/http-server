@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Websocket;
+namespace Aerys\Websocket\Internal;
 
 use Aerys\ClientException;
 use Aerys\Monitor;
@@ -11,6 +11,7 @@ use Aerys\Response;
 use Aerys\Server;
 use Aerys\ServerObserver;
 use Aerys\Websocket;
+use Aerys\Websocket\Code;
 use Amp\ByteStream\IteratorStream;
 use Amp\ByteStream\StreamException;
 use Amp\CallableMaker;
@@ -42,13 +43,13 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
     /** @var int */
     private $state;
 
-    /** @var \Aerys\Websocket\Rfc6455Client[] */
+    /** @var \Aerys\Websocket\Internal\Rfc6455Client[] */
     private $clients = [];
 
-    /** @var \Aerys\Websocket\Rfc6455Client[] */
+    /** @var \Aerys\Websocket\Internal\Rfc6455Client[] */
     private $lowCapacityClients = [];
 
-    /** @var \Aerys\Websocket\Rfc6455Client[] */
+    /** @var \Aerys\Websocket\Internal\Rfc6455Client[] */
     private $highFramesPerSecondClients = [];
 
     /** @var int[] */
@@ -91,7 +92,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         $this->logger = $logger;
         $this->application = $application;
         $this->now = time();
-        $this->endpoint = new Rfc6455Endpoint($this);
+        $this->endpoint = new Websocket\Rfc6455Endpoint($this);
 
         $this->reapClient = $this->callableFromInstanceMethod("reapClient");
     }
@@ -184,7 +185,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
             return new Response\HtmlResponse(makeGenericBody($status), [], $status, $reason);
         }
 
-        $response = new Handshake($acceptKey);
+        $response = new Websocket\Handshake($acceptKey);
         $onHandshakeResult = yield call([$this->application, "onHandshake"], $request);
 
         if ($onHandshakeResult instanceof Response) {
@@ -310,7 +311,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         }
     }
 
-    private function tryAppOnData(Rfc6455Client $client, Message $msg): \Generator {
+    private function tryAppOnData(Rfc6455Client $client, Websocket\Message $msg): \Generator {
         try {
             yield call([$this->application, "onData"], $client->id, $msg);
         } catch (\Throwable $e) {
@@ -409,7 +410,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
             }
 
             $client->msgEmitter = new Emitter;
-            $msg = new Message(new IteratorStream($client->msgEmitter->iterate()), $opcode === self::OP_BIN);
+            $msg = new Websocket\Message(new IteratorStream($client->msgEmitter->iterate()), $opcode === self::OP_BIN);
 
             Promise\rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
 
@@ -681,7 +682,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
     /**
      * A stateful generator websocket frame parser.
      *
-     * @param \Aerys\Websocket\Rfc6455Client $client Client associated with event emissions.
+     * @param \Aerys\Websocket\Internal\Rfc6455Client $client Client associated with event emissions.
      * @param array $options Optional parser settings
      * @return \Generator
      */

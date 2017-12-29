@@ -19,10 +19,10 @@ class DelegateCollection implements Responder {
     }
 
     public function respond(Request $request): Promise {
-        return new Coroutine($this->do($request));
+        return new Coroutine($this->delegate($request));
     }
 
-    public function do(Request $request): \Generator {
+    public function delegate(Request $request): \Generator {
         foreach ($this->delegates as $delegate) {
             $result = yield $delegate->delegate($request);
 

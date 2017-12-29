@@ -1,7 +1,9 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Internal;
 
+use Aerys\Monitor;
+use Aerys\Responder;
 use Amp\Socket\ServerTlsContext;
 
 class Vhost implements Monitor {
@@ -43,7 +45,7 @@ class Vhost implements Monitor {
             $this->addInterface($interface);
         }
 
-        $this->responder = Internal\makeMiddlewareResponder($responder, $middlewares);
+        $this->responder = makeMiddlewareResponder($responder, $middlewares);
         $this->monitors = $monitors;
 
         if (self::hasAlpnSupport()) {
@@ -356,7 +358,7 @@ class Vhost implements Monitor {
     public function monitor(): array {
         $handlers = [];
         foreach ($this->monitors as $class => $monitors) {
-            $handlers[$class] = array_map(function ($monitor) { return $monitor->monitor(); }, $monitors);
+            $handlers[$class] = array_map(function (Monitor $monitor) { return $monitor->monitor(); }, $monitors);
         }
         return [
             "interfaces" => $this->interfaces,

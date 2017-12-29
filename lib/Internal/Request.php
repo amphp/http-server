@@ -7,7 +7,7 @@ use Amp\Struct;
 class Request {
     use Struct;
 
-    /** @var \Aerys\Client */
+    /** @var \Aerys\Internal\Client */
     public $client;
     /** @var \Generator */
     public $responseWriter;

@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Aerys\Cookie\Cookie;
+use Aerys\Internal\Client;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\CallableMaker;
@@ -38,13 +39,13 @@ class Server implements Monitor {
     /** @var \Aerys\Options */
     private $options;
 
-    /** @var \Aerys\VhostContainer */
+    /** @var \Aerys\Internal\VhostContainer */
     private $vhosts;
 
     /** @var \Psr\Log\LoggerInterface */
     private $logger;
 
-    /** @var \Aerys\Ticker */
+    /** @var \Aerys\Internal\Ticker */
     private $ticker;
 
     /** @var \SplObjectStorage */
@@ -59,7 +60,7 @@ class Server implements Monitor {
     /** @var resource[] */
     private $pendingTlsStreams = [];
 
-    /** @var \Aerys\Client[] */
+    /** @var \Aerys\Internal\Client[] */
     private $clients = [];
 
     /** @var int */
@@ -85,7 +86,15 @@ class Server implements Monitor {
     private $onWritable;
     private $onResponseDataDone;
 
-    public function __construct(Options $options, VhostContainer $vhosts, PsrLogger $logger, Ticker $ticker) {
+    /**
+     * @internal Use the \Aerys\initServer() function to create a server instance.
+     *
+     * @param \Aerys\Options $options
+     * @param \Aerys\Internal\VhostContainer $vhosts
+     * @param \Psr\Log\LoggerInterface $logger
+     * @param \Aerys\Internal\Ticker $ticker
+     */
+    public function __construct(Options $options, Internal\VhostContainer $vhosts, PsrLogger $logger, Internal\Ticker $ticker) {
         $this->options = $options;
         $this->vhosts = $vhosts;
         $this->logger = $logger;
@@ -216,12 +225,12 @@ class Server implements Monitor {
 
     private function createHttpDriverHandlers() {
         return [
-            HttpDriver::RESULT => $this->callableFromInstanceMethod("onParsedMessage"),
-            HttpDriver::ENTITY_HEADERS => $this->callableFromInstanceMethod("onParsedEntityHeaders"),
-            HttpDriver::ENTITY_PART => $this->callableFromInstanceMethod("onParsedEntityPart"),
-            HttpDriver::ENTITY_RESULT => $this->callableFromInstanceMethod("onParsedMessageWithEntity"),
-            HttpDriver::SIZE_WARNING => $this->callableFromInstanceMethod("onEntitySizeWarning"),
-            HttpDriver::ERROR => $this->callableFromInstanceMethod("onParseError"),
+            Internal\HttpDriver::RESULT => $this->callableFromInstanceMethod("onParsedMessage"),
+            Internal\HttpDriver::ENTITY_HEADERS => $this->callableFromInstanceMethod("onParsedEntityHeaders"),
+            Internal\HttpDriver::ENTITY_PART => $this->callableFromInstanceMethod("onParsedEntityPart"),
+            Internal\HttpDriver::ENTITY_RESULT => $this->callableFromInstanceMethod("onParsedMessageWithEntity"),
+            Internal\HttpDriver::SIZE_WARNING => $this->callableFromInstanceMethod("onEntitySizeWarning"),
+            Internal\HttpDriver::ERROR => $this->callableFromInstanceMethod("onParseError"),
         ];
     }
 

@@ -11,7 +11,6 @@ use Aerys\Monitor;
 use Aerys\Options;
 use Aerys\Responder;
 use Aerys\Response;
-use Aerys\Vhost;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Aerys\initServer;
 use function Aerys\selectConfigFile;

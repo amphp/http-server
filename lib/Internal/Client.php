@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Internal;
 
 use Amp\Struct;
 
@@ -10,6 +10,7 @@ class Client {
     const CLOSED_RDWR = 3;
 
     use Struct;
+
     public $id;
     public $socket;
     public $clientAddr;
@@ -21,6 +22,7 @@ class Client {
 
     /** @var \Generator */
     public $requestParser;
+
     /** @var string */
     public $readWatcher;
 
@@ -43,7 +45,7 @@ class Client {
     /** @var \Aerys\Options */
     public $options;
 
-    /** @var \Aerys\HttpDriver */
+    /** @var \Aerys\Internal\HttpDriver */
     public $httpDriver;
 
     /** @var \Amp\Emitter[] */

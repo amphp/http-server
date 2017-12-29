@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Internal;
 
 class HPack {
     const HUFFMAN_CODE = [

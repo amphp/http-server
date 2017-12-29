@@ -1,9 +1,14 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Internal;
 
+use Aerys\ClientException;
+use Aerys\NullBody;
+use Aerys\Response;
 use Amp\Loop;
 use Amp\Uri\Uri;
+use const Aerys\HTTP_STATUS;
+use const Aerys\SERVER_TOKEN;
 
 class Http1Driver implements HttpDriver {
     const HEADER_REGEX = "(
@@ -11,7 +16,7 @@ class Http1Driver implements HttpDriver {
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
     )x";
 
-    /** @var \Aerys\Http2Driver */
+    /** @var \Aerys\Internal\Http2Driver */
     private $http2;
 
     private $resultEmitter;
@@ -43,7 +48,7 @@ class Http1Driver implements HttpDriver {
         $this->http2->setup($parseEmitters, $responseWriter);
     }
 
-    public function writer(Internal\Request $request, Response $response): \Generator {
+    public function writer(Request $request, Response $response): \Generator {
         // We need this in here to be able to return HTTP/2.0 writer; if we allow HTTP/1.1 writer to be returned, we have lost
         if (isset($request->headers["upgrade"][0]) &&
             $request->headers["upgrade"][0] === "h2c" &&
@@ -91,7 +96,7 @@ class Http1Driver implements HttpDriver {
         return $this->send($request, $response);
     }
 
-    private function send(Internal\Request $request, Response $response): \Generator {
+    private function send(Request $request, Response $response): \Generator {
         $client = $request->client;
 
         $status = $response->getStatus();
@@ -169,7 +174,7 @@ class Http1Driver implements HttpDriver {
         }
     }
 
-    public function upgradeBodySize(Internal\Request $ireq) {
+    public function upgradeBodySize(Request $ireq) {
         $client = $ireq->client;
         if ($client->bodyEmitters) {
             $client->streamWindow = $ireq->maxBodySize;
@@ -296,7 +301,7 @@ class Http1Driver implements HttpDriver {
                 $hasBody = $isChunked || $contentLength;
             }
 
-            $ireq = new Internal\Request;
+            $ireq = new Request;
             $ireq->client = $client;
             $ireq->headers = $headers;
             $ireq->method = $method;
@@ -540,7 +545,7 @@ class Http1Driver implements HttpDriver {
         } while (true);
     }
 
-    private function filter(Internal\Request $request, array $headers, array $push, int $status): array {
+    private function filter(Request $request, array $headers, array $push, int $status): array {
         $options = $request->client->options;
 
         if ($options->sendServerToken) {

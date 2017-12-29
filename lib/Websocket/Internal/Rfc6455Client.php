@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Websocket;
+namespace Aerys\Websocket\Internal;
 
 use Amp\Struct;
 

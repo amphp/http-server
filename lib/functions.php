@@ -45,7 +45,7 @@ function websocket($app, array $options = []): Bootable {
                     \sprintf("Cannot boot websocket handler; %s required, %s provided", Websocket::class, $type)
                 );
             }
-            $gateway = new Websocket\Rfc6455Gateway($logger, $app);
+            $gateway = new Websocket\Internal\Rfc6455Gateway($logger, $app);
             foreach ($this->options as $key => $value) {
                 $gateway->setOption($key, $value);
             }
@@ -207,8 +207,8 @@ function initServer(PsrLogger $logger, array $hosts, array $options = []): Serve
     }
 
     $options = Internal\generateOptionsObjFromArray($options);
-    $vhosts = new VhostContainer(new Http1Driver);
-    $ticker = new Ticker($logger);
+    $vhosts = new Internal\VhostContainer;
+    $ticker = new Internal\Ticker($logger);
     $server = new Server($options, $vhosts, $logger, $ticker);
 
     $bootLoader = static function (Bootable $bootable) use ($server, $logger) {

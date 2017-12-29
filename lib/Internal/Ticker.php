@@ -1,7 +1,9 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Internal;
 
+use Aerys\Server;
+use Aerys\ServerObserver;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Struct;
