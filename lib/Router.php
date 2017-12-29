@@ -2,6 +2,7 @@
 
 namespace Aerys;
 
+use Amp\Coroutine;
 use Amp\Failure;
 use Amp\Promise;
 use Amp\Success;
@@ -11,7 +12,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 use function FastRoute\simpleDispatcher;
 
-class Router implements Bootable, Monitor, Responder, ServerObserver {
+class Router implements Bootable, Delegate, Monitor, ServerObserver {
     private $state = Server::STOPPED;
     private $bootLoader;
 
@@ -53,33 +54,53 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
      * Route a request.
      *
      * @param \Aerys\Request $request
-     * @param \Aerys\Response $response
+     * @param callable $next
      *
-     * @return \Aerys\Response|null
+     * @return \Amp\Promise<\Aerys\Response>
      */
-    public function __invoke(Request $request) {
+    public function delegate(Request $request): Promise {
+        return new Coroutine($this->dispatch($request));
+    }
+
+    private function dispatch(Request $request) {
         $method = $request->getMethod();
         $path = $request->getUri()->getPath();
 
         $toMatch = "{$method}\0{$path}";
 
         if (isset($this->cache[$toMatch])) {
-            list($actions, $routeArgs) = $cache = $this->cache[$toMatch];
-            list($action, $middlewares) = $actions;
+            $responder = $this->cache[$toMatch];
             // Keep the most recently used entry at the back of the LRU cache
             unset($this->cache[$toMatch]);
-            $this->cache[$toMatch] = $cache;
+            $this->cache[$toMatch] = $responder;
         } else {
             $match = $this->routeDispatcher->dispatch($method, $path);
 
             switch ($match[0]) {
                 case Dispatcher::FOUND:
                     list(, $actions, $routeArgs) = $match;
-                    list($action, $middlewares) = $actions;
+                    list($responder, $middlewares) = $actions;
 
-                    if ($this->maxCacheEntries > 0) {
-                        $this->cacheDispatchResult($toMatch, $routeArgs, $actions);
+                    if (!$responder instanceof Responder) {
+                        $responder = new class($responder, $routeArgs) implements Responder {
+                            private $callable;
+                            private $args;
+
+                            public function __construct(callable $callable, array $args) {
+                                $this->callable = $callable;
+                                $this->args = $args;
+                            }
+
+                            public function respond(Request $request): Promise {
+                                return call($this->callable, $request, $this->args);
+                            }
+                        };
                     }
+
+                    if (!empty($middlewares)) {
+                        $responder = Internal\makeMiddlewareResponder($responder, $middlewares);
+                    }
+
                     break;
                 case Dispatcher::NOT_FOUND:
                     // Do nothing; allow actions further down the chain a chance to respond.
@@ -90,23 +111,19 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
                     $allowedMethods = implode(",", $match[1]);
                     $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
                     $body = makeGenericBody($status);
-                    $response = new Response\HtmlResponse($body, ["Allow" => $allowedMethods], $status);
-                    return $response;
+                    return new Response\HtmlResponse($body, ["Allow" => $allowedMethods], $status);
                 default:
                     throw new \UnexpectedValueException(
                         "Encountered unexpected Dispatcher code"
                     );
             }
+
+            if ($this->maxCacheEntries > 0) {
+                $this->cacheDispatchResult($toMatch, $responder);
+            }
         }
 
-        if (!empty($middlewares)) {
-            $action = Internal\makeMiddlewareResponder(static function (Request $request) use ($action, $routeArgs) {
-                return $action($request, $routeArgs);
-            }, $middlewares);
-            return $action($request);
-        }
-
-        return $action($request, $routeArgs);
+        return yield $responder->respond($request);
     }
 
     /**
@@ -127,13 +144,13 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
         if ($action instanceof self) {
             /* merge routes in for better performance */
             foreach ($action->routes as $route) {
-                $route[2] = array_merge($this->actions, $route[2]);
+                $route[3] = array_merge($this->actions, $route[3]);
                 $this->routes[] = $route;
             }
         } else {
             $this->actions[] = $action;
             foreach ($this->routes as &$route) {
-                $route[2][] = $action;
+                $route[3][] = $action;
             }
         }
 
@@ -160,7 +177,7 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
         return $this;
     }
 
-    private function cacheDispatchResult(string $toMatch, array $routeArgs, array $actions) {
+    private function cacheDispatchResult(string $toMatch, Responder $responder) {
         if ($this->cacheEntryCount < $this->maxCacheEntries) {
             $this->cacheEntryCount++;
         } else {
@@ -170,7 +187,7 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
         }
 
         $cacheKey = $toMatch;
-        $this->cache[$cacheKey] = [$actions, $routeArgs];
+        $this->cache[$cacheKey] = $responder;
     }
 
     /**
@@ -192,11 +209,12 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
      *
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
+     * @param Bootable|Responder|callable $responder
      * @param Bootable|Middleware|Monitor|callable ...$actions The action(s) to invoke upon matching this route
      * @throws \Error on invalid empty parameters
      * @return self
      */
-    public function route(string $method, string $uri, ...$actions): Router {
+    public function route(string $method, string $uri, $responder, ...$actions): Router {
         if ($this->state !== Server::STOPPED) {
             throw new \Error(
                 "Cannot add routes once the server has started"
@@ -205,11 +223,6 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
         if ($method === "") {
             throw new \Error(
                 __METHOD__ . " requires a non-empty string HTTP method at Argument 1"
-            );
-        }
-        if (empty($actions)) {
-            throw new \Error(
-                __METHOD__ . " requires at least one callable route action or filter at Argument 3"
             );
         }
 
@@ -225,8 +238,8 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
         if (substr($uri, -2) === "/?") {
             $canonicalUri = substr($uri, 0, -2);
             $redirectUri = substr($uri, 0, -1);
-            $this->routes[] = [$method, $canonicalUri, $actions];
-            $this->routes[] = [$method, $redirectUri, [static function (Request $request): Response {
+            $this->routes[] = [$method, $canonicalUri, $responder, $actions];
+            $this->routes[] = [$method, $redirectUri, static function (Request $request): Response {
                 $uri = $request->getUri();
                 if (stripos($uri, "?")) {
                     list($path, $query) = explode("?", $uri, 2);
@@ -237,13 +250,13 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
                 }
 
                 return new Response\TextResponse(
-                    "Canonical resource URI: {$path}",
-                    ["Location" => $redirectTo],
-                    HTTP_STATUS["FOUND"]
-                );
-            }]];
+                        "Canonical resource URI: {$path}",
+                        ["Location" => $redirectTo],
+                        HTTP_STATUS["FOUND"]
+                    );
+            }, $actions];
         } else {
-            $this->routes[] = [$method, $uri, $actions];
+            $this->routes[] = [$method, $uri, $responder, $actions];
         }
 
         return $this;
@@ -253,16 +266,26 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
         $server->attach($this);
         $this->bootLoader = static function (Bootable $bootable) use ($server, $logger) {
             $booted = $bootable->boot($server, $logger);
-            if ($booted !== null && !$booted instanceof Middleware && !is_callable($booted)) {
-                throw new \Error("Any return value of ".get_class($bootable).'::boot() must return an instance of Aerys\Middleware and/or be callable');
+            if ($booted !== null
+                && !$booted instanceof Responder
+                && !$booted instanceof Middleware
+                && !$booted instanceof Monitor
+                && !is_callable($booted)
+            ) {
+                throw new \Error(\sprintf(
+                    "Any return value of %s::boot() must be callable or an instance of %s, %s, or %s",
+                    \get_class($bootable),
+                    Responder::class,
+                    Middleware::class,
+                    Monitor::class
+                ));
             }
             return $booted ?? $bootable;
         };
     }
 
-    private function bootRouteTarget($actions): array {
-        $filters = [];
-        $applications = [];
+    private function bootRouteTarget($responder, array $actions): array {
+        $middlewares = [];
         $booted = [];
         $monitors = [];
 
@@ -274,49 +297,26 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
                     $booted[$hash] = ($this->bootLoader)($action);
                 }
                 $action = $booted[$hash];
-            } elseif (is_array($action) && $action[0] instanceof Bootable) {
-                /* don't ever boot a Bootable twice */
-                $hash = spl_object_hash($action[0]);
-                if (!array_key_exists($hash, $booted)) {
-                    $booted[$hash] = ($this->bootLoader)($action[0]);
-                }
             }
+
             if ($action instanceof Middleware) {
-                $filters[] = [$action, "process"];
-            } elseif (is_array($action) && $action[0] instanceof Middleware) {
-                $filters[] = [$action[0], "process"];
+                $middlewares[] = $action;
             }
+
             if ($action instanceof Monitor) {
-                $monitors[get_class($action)][] = $action;
-            } elseif (is_array($action) && $action[0] instanceof Monitor) {
-                $monitors[get_class($action[0])][] = $action[0];
-            }
-            if (is_callable($action)) {
-                $applications[] = $action;
+                $monitors[\get_class($action)][] = $action;
             }
         }
 
-        if (empty($applications[1])) {
-            if (empty($applications[0])) {
-                // in order to specify only filters (in combination with e.g. a fallback handler)
-                return [[function () {}, $filters], $monitors];
-            }
-            return [[$applications[0], $filters], $monitors];
+        if ($responder instanceof Bootable) {
+            $responder = ($this->bootLoader)($responder);
         }
 
-        return [
-            [static function (Request $request, array $args) use ($applications) {
-                foreach ($applications as $application) {
-                    $response = yield call($application, $request, ...$args);
-                    if ($response) {
-                        return $response;
-                    }
-                }
+        if (!\is_callable($responder) && !$responder instanceof Responder) {
+            throw new \Error("Responder must be callable or an instance of " . Responder::class);
+        }
 
-                throw new \Error("No applications returned a response");
-            }, $filters],
-            $monitors
-        ];
+        return [$responder, $middlewares, $monitors];
     }
 
     /**
@@ -339,6 +339,11 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
                         "Router start failure: no routes registered"
                     ));
                 }
+                if (empty($this->bootLoader)) {
+                    return new Failure(new \Error(
+                        "Router has not been booted"
+                    ));
+                }
                 $this->routeDispatcher = simpleDispatcher(function ($rc) use ($server) {
                     $this->buildRouter($rc, $server);
                 });
@@ -350,10 +355,10 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
 
     private function buildRouter(RouteCollector $rc, Server $server) {
         $allowedMethods = [];
-        foreach ($this->routes as list($method, $uri, $actions)) {
+        foreach ($this->routes as list($method, $uri, $responder, $actions)) {
             $allowedMethods[] = $method;
-            list($app, $monitors) = $this->bootRouteTarget($actions);
-            $rc->addRoute($method, $uri, $app);
+            list($responder, $middlewares, $monitors) = $this->bootRouteTarget($responder, $actions);
+            $rc->addRoute($method, $uri, [$responder, $middlewares]);
             $this->monitors[$method][$uri] = $monitors;
         }
         $originalMethods = $server->getOption("allowedMethods");

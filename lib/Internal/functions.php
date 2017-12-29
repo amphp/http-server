@@ -4,82 +4,18 @@ namespace Aerys\Internal;
 
 use Aerys\Bootable;
 use Aerys\Console;
+use Aerys\Delegate;
 use Aerys\Host;
 use Aerys\Middleware;
 use Aerys\Monitor;
 use Aerys\Options;
-use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Response;
-use Aerys\Server;
-use Aerys\ServerObserver;
 use Aerys\Vhost;
-use Amp\InvalidYieldError;
-use Amp\Promise;
-use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
-use const Aerys\HTTP_STATUS;
 use function Aerys\initServer;
-use function Aerys\makeGenericBody;
 use function Aerys\selectConfigFile;
 use function Amp\call;
-use function Amp\coroutine;
-
-function validateFilterHeaders(\Generator $generator, array $headers): bool {
-    if (!isset($headers[":status"])) {
-        throw new InvalidYieldError(
-            $generator,
-            "Missing :status key in yielded filter array"
-        );
-    }
-    if (!is_int($headers[":status"])) {
-        throw new InvalidYieldError(
-            $generator,
-            "Non-integer :status key in yielded filter array"
-        );
-    }
-    if ($headers[":status"] < 100 || $headers[":status"] > 599) {
-        throw new InvalidYieldError(
-            $generator,
-            ":status value must be in the range 100..599 in yielded filter array"
-        );
-    }
-    if (isset($headers[":reason"]) && !is_string($headers[":reason"])) {
-        throw new InvalidYieldError(
-            $generator,
-            "Non-string :reason value in yielded filter array"
-        );
-    }
-
-    foreach ($headers as $headerField => $headerArray) {
-        if (!is_string($headerField)) {
-            throw new InvalidYieldError(
-                $generator,
-                "Invalid numeric header field index in yielded filter array"
-            );
-        }
-        if ($headerField[0] === ":") {
-            continue;
-        }
-        if (!is_array($headerArray)) {
-            throw new InvalidYieldError(
-                $generator,
-                "Invalid non-array header entry at key {$headerField} in yielded filter array"
-            );
-        }
-        foreach ($headerArray as $key => $headerValue) {
-            if (!is_scalar($headerValue)) {
-                throw new InvalidYieldError(
-                    $generator,
-                    "Invalid non-scalar header value at index {$key} of " .
-                    "{$headerField} array in yielded filter array"
-                );
-            }
-        }
-    }
-
-    return true;
-}
 
 /**
  * Bootstrap a server from command line options.
@@ -178,88 +114,45 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
         $name = $hostExport["name"];
         $actions = $hostExport["actions"];
 
+        $delegates = [];
         $middlewares = [];
-        $applications = [];
         $monitors = [];
 
         foreach ($actions as $key => $action) {
             if ($action instanceof Bootable) {
                 $action = $bootLoader($action);
-            } elseif (is_array($action) && isset($action[0]) && $action[0] instanceof Bootable) {
-                $bootLoader($action[0]);
             }
 
             if ($action instanceof Middleware) {
-                $middlewares[] = [$action, "process"];
-            } elseif (\is_array($action) && isset($action[0]) && $action[0] instanceof Middleware) {
-                $middlewares[] = [$action[0], "process"];
+                $middlewares[] = $action;
             }
 
             if ($action instanceof Monitor) {
-                $monitors[get_class($action)][] = $action;
-            } elseif (is_array($action) && isset($action[0]) && $action[0] instanceof Monitor) {
-                $monitors[get_class($action[0])][] = $action[0];
+                $monitors[\get_class($action)][] = $action;
             }
 
-            if (is_callable($action)) {
-                $applications[] = $action;
+            if (\is_callable($action)) {
+                $action = new CallableResponder($action);
+            }
+
+            if ($action instanceof Responder) {
+                $action = new ConstantDelegate($action);
+            }
+
+            if ($action instanceof Delegate) {
+                $delegates[] = $action;
             }
         }
 
-        if (empty($applications)) {
-            $application = static function (): Response {
-                return new Response\HtmlResponse("<html><body><h1>It works!</h1></body></html>");
-            };
-        } else {
-            // Observe the Server in our stateful multi-responder so if a shutdown triggers
-            // while we're iterating over our coroutines we can send a 503 response. This
-            // obviates the need for applications to pay attention to server state themselves.
-            $application = $bootLoader(new class($applications) implements Bootable, Responder, ServerObserver {
-                private $applications;
-                private $isStopping = false;
-
-                public function __construct(array $applications) {
-                    $this->applications = $applications;
-                }
-
-                public function boot(Server $server, PsrLogger $logger) {
-                    $server->attach($this);
-                }
-
-                public function update(Server $server): Promise {
-                    if ($server->state() === Server::STOPPING) {
-                        $this->isStopping = true;
-                    }
-
-                    return new Success;
-                }
-
-                public function __invoke(Request $request): \Generator {
-                    foreach ($this->applications as $action) {
-                        $response = yield call($action, $request);
-
-                        if ($this->isStopping) {
-                            $status = HTTP_STATUS["SERVICE_UNAVAILABLE"];
-                            $reason = "Server shutting down";
-                            return new Response\HtmlResponse(makeGenericBody($status), [], $status, $reason);
-                        }
-
-                        if ($response) {
-                            return $response;
-                        }
-                    }
-
-                    $status = HTTP_STATUS["NOT_FOUND"];
-                    return new Response\HtmlResponse(makeGenericBody($status), [], $status);
-                }
-
-                public function __debugInfo() {
-                    return ["applications" => $this->applications];
-                }
+        if (empty($delegates)) {
+            $responder = new CallableResponder(static function (): Response {
+                return new Response\HtmlResponse("<html><body><h1>It works!</h1></body>");
             });
+        } else {
+            $responder = new DelegateCollection($delegates);
         }
 
-        $vhost = new Vhost($name, $interfaces, $application, $middlewares, $monitors);
+        $vhost = new Vhost($name, $interfaces, $responder, $middlewares, $monitors);
         if ($crypto = $hostExport["crypto"]) {
             $vhost->setCrypto($crypto);
         }
@@ -274,39 +167,17 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
     }
 }
 
-function makeMiddlewareResponder(callable $responder, array $middlewares): Responder {
-    return new class($responder, $middlewares) implements Responder {
-        /** @var callable */
-        private $responder;
+function makeMiddlewareResponder(Responder $responder, array $middlewares): Responder {
+    if (empty($middlewares)) {
+        return $responder;
+    }
 
-        /** @var \Aerys\Middleware[] */
-        private $middlewares;
+    $current = \end($middlewares);
 
-        /** @var callable|null */
-        private $next;
+    while ($current) {
+        $responder = new MiddlewareResponder($current, $responder);
+        $current = \prev($middlewares);
+    }
 
-        public function __construct($responder, $middlewares) {
-            $this->responder = $responder;
-            $this->middlewares = $middlewares;
-            $this->next = coroutine($this);
-        }
-
-        public function __invoke(Request $request): \Generator {
-            if (empty($this->middlewares)) {
-                $this->next = null;
-                $response = yield call($this->responder, $request);
-                if (!$response instanceof Response) {
-                    throw new \Error("Responders must return or resolve to an instance of " . Response::class);
-                }
-                return $response;
-            }
-
-            $middleware = \array_shift($this->middlewares);
-            $response = yield call($middleware, $request, $this->next);
-            if (!$response instanceof Response) {
-                throw new \Error("Middlewares must return or resolve to an instance of " . Response::class);
-            }
-            return $response;
-        }
-    };
+    return $responder;
 }

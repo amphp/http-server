@@ -4,10 +4,13 @@ namespace Aerys\Middleware;
 
 use Aerys\Middleware;
 use Aerys\Request;
+use Aerys\Responder;
 use Aerys\Response;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
+use Amp\Coroutine;
 use Amp\Producer;
+use Amp\Promise;
 
 class DeflateMiddleware implements Middleware {
     const MAX_CACHE_SIZE = 1024;
@@ -27,9 +30,13 @@ class DeflateMiddleware implements Middleware {
     /** @var int[] */
     private $contentTypeCache = [];
 
-    public function process(Request $request, callable $next): \Generator {
+    public function process(Request $request, Responder $responder): Promise {
+        return new Coroutine($this->do($request, $responder));
+    }
+
+    public function do(Request $request, Responder $responder): \Generator {
         /** @var \Aerys\Response $response */
-        $response = yield $next($request);
+        $response = yield $responder->respond($request);
 
         $headers = $response->getHeaders();
         $contentLength = $headers["content-length"][0] ?? null;

@@ -2,12 +2,14 @@
 
 namespace Aerys;
 
+use Amp\Promise;
+
 interface Middleware {
     /**
      * @param \Aerys\Request $request
-     * @param callable $next Next request handler.
+     * @param Responder $responder Request responder.
      *
-     * @return \Aerys\Response|\Amp\Promise<\Aerys\Response>|\Generator
+     * @return \Amp\Promise<\Aerys\Response>
      */
-    public function process(Request $request, callable $next);
+    public function process(Request $request, Responder $responder): Promise;
 }

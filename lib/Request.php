@@ -2,7 +2,6 @@
 
 namespace Aerys;
 
-use Amp\ByteStream\IteratorStream;
 use Amp\Uri\Uri;
 
 class Request {

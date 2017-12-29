@@ -35,7 +35,7 @@ function websocket($app, array $options = []): Bootable {
             $this->app = $app;
             $this->options = $options;
         }
-        public function boot(Server $server, PsrLogger $logger): callable {
+        public function boot(Server $server, PsrLogger $logger): Responder {
             $app = ($this->app instanceof Bootable)
                 ? $this->app->boot($server, $logger)
                 : $this->app;
@@ -74,7 +74,7 @@ function root(string $docroot, array $options = []): Bootable {
             $this->docroot = $docroot;
             $this->options = $options;
         }
-        public function boot(Server $server, PsrLogger $logger): callable {
+        public function boot(Server $server, PsrLogger $logger): Root {
             $root = new Root($this->docroot);
             $options = $this->options;
             $defaultMimeFile = __DIR__ ."/../etc/mime";
@@ -213,8 +213,21 @@ function initServer(PsrLogger $logger, array $hosts, array $options = []): Serve
 
     $bootLoader = static function (Bootable $bootable) use ($server, $logger) {
         $booted = $bootable->boot($server, $logger);
-        if ($booted !== null && !$booted instanceof ErrorHandler && !is_callable($booted)) {
-            throw new \Error("Any return value of " . get_class($bootable) . '::boot() must return an instance of Aerys\Responder and/or be callable, got ' . gettype($booted) . ".");
+        if ($booted !== null
+            && !$booted instanceof Responder
+            && !$booted instanceof Delegate
+            && !$booted instanceof Middleware
+            && !$booted instanceof Monitor
+            && !is_callable($booted)
+        ) {
+            throw new \Error(\sprintf(
+                "Any return value of %s::boot() must be callable or an instance of %s, %s, %s, or %s",
+                \str_replace("\0", "@", \get_class($bootable)),
+                Responder::class,
+                Delegate::class,
+                Middleware::class,
+                Monitor::class
+            ));
         }
         return $booted ?? $bootable;
     };

@@ -6,6 +6,7 @@ use Aerys\ClientException;
 use Aerys\Monitor;
 use Aerys\NullBody;
 use Aerys\Request;
+use Aerys\Responder;
 use Aerys\Response;
 use Aerys\Server;
 use Aerys\ServerObserver;
@@ -26,7 +27,7 @@ use const Aerys\HTTP_STATUS;
 use function Aerys\makeGenericBody;
 use function Amp\call;
 
-class Rfc6455Gateway implements Monitor, ServerObserver {
+class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
     use CallableMaker;
 
     /** @var \Psr\Log\LoggerInterface */
@@ -121,7 +122,11 @@ class Rfc6455Gateway implements Monitor, ServerObserver {
         $this->{$option} = $value;
     }
 
-    public function __invoke(Request $request, ...$args): \Generator {
+    public function respond(Request $request): Promise {
+        return new Coroutine($this->do($request));
+    }
+
+    public function do(Request $request): \Generator {
         if ($request->getMethod() !== "GET") {
             $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
             return new Response\HtmlResponse(makeGenericBody($status), ["Allow" => "GET"], $status);
@@ -180,7 +185,7 @@ class Rfc6455Gateway implements Monitor, ServerObserver {
         }
 
         $response = new Handshake($acceptKey);
-        $onHandshakeResult = yield call([$this->application, "onHandshake"], $request, ...$args);
+        $onHandshakeResult = yield call([$this->application, "onHandshake"], $request);
 
         if ($onHandshakeResult instanceof Response) {
             return $response;

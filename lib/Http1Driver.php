@@ -98,7 +98,9 @@ class Http1Driver implements HttpDriver {
         $reason = $response->getReason();
         $headers = $this->filter($request, $response->getHeaders(), $response->getPush(), $status);
 
-        $chunked = !isset($headers["content-length"]) && $request->protocol === "1.1";
+        $chunked = !isset($headers["content-length"])
+            && $request->protocol === "1.1"
+            && $status >= 200;
 
         if ($chunked) {
             $headers["transfer-encoding"] = ["chunked"];

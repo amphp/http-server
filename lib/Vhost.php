@@ -5,12 +5,11 @@ namespace Aerys;
 use Amp\Socket\ServerTlsContext;
 
 class Vhost implements Monitor {
-    private $application;
+    private $responder;
     private $interfaces;
     private $addressMap;
     private $name;
     private $ids;
-    private $middlewares = [];
     private $monitors = [];
     private $tlsContextArr = [];
     private $tlsDefaults = [
@@ -31,18 +30,20 @@ class Vhost implements Monitor {
     ];
 
     /** @Note Vhosts do not allow wildcards, only separate 0.0.0.0 and :: */
-    public function __construct(string $name, array $interfaces, callable $application, array $middlewares, array $monitors = []) {
+    public function __construct(string $name, array $interfaces, Responder $responder, array $middlewares, array $monitors = []) {
         $this->name = strtolower($name);
+
         if (!$interfaces) {
             throw new \Error(
                 "At least one interface must be passed, an empty interfaces array is not allowed"
             );
         }
+
         foreach ($interfaces as $interface) {
             $this->addInterface($interface);
         }
-        $this->application = $application;
-        $this->middlewares = array_values($middlewares);
+
+        $this->responder = Internal\makeMiddlewareResponder($responder, $middlewares);
         $this->monitors = $monitors;
 
         if (self::hasAlpnSupport()) {
@@ -160,12 +161,12 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Retrieve the host's callable application.
+     * Retrieve the Responder instance for this virtual host.
      *
      * @return callable
      */
-    public function getApplication(): callable {
-        return $this->application;
+    public function getResponder(): Responder {
+        return $this->responder;
     }
 
     /**
@@ -326,15 +327,6 @@ class Vhost implements Monitor {
     }
 
     /**
-     * Retrieve response filters registered for this host.
-     *
-     * @return callable[]
-     */
-    public function getMiddlewares(): array {
-        return $this->middlewares;
-    }
-
-    /**
      * Returns the host name.
      *
      * @return string
@@ -349,9 +341,9 @@ class Vhost implements Monitor {
      * @return array
      */
     public function __debugInfo(): array {
-        $appType = is_object($this->application)
-            ? get_class($this->application)
-            : gettype($this->application);
+        $appType = is_object($this->responder)
+            ? get_class($this->responder)
+            : gettype($this->responder);
 
         return [
             "interfaces" => $this->interfaces,

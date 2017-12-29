@@ -14,7 +14,6 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\call;
 use function Amp\Promise\all;
 use function Amp\Promise\any;
 use function Amp\Promise\timeout;
@@ -696,24 +695,24 @@ class Server implements Monitor {
         $ireq->client->pendingResponses++;
 
         if ($this->stopDeferred) {
-            $generator = $this->sendResponse($ireq, $this->sendPreAppServiceUnavailableResponse());
+            $generator = $this->sendResponse($ireq, $this->makePreAppServiceUnavailableResponse());
         } elseif (!\in_array($ireq->method, $this->options->allowedMethods)) {
-            $generator = $this->sendResponse($ireq, $this->sendPreAppMethodNotAllowedResponse());
+            $generator = $this->sendResponse($ireq, $this->makePreAppMethodNotAllowedResponse());
         } elseif (!$vhost = $this->vhosts->selectHost($ireq)) {
-            $generator = $this->sendResponse($ireq, $this->sendPreAppInvalidHostResponse());
+            $generator = $this->sendResponse($ireq, $this->makePreAppInvalidHostResponse());
         } elseif ($ireq->method === "TRACE") {
             $this->setTrace($ireq);
-            $generator = $this->sendResponse($ireq, $this->sendPreAppTraceResponse($ireq));
+            $generator = $this->sendResponse($ireq, $this->makePreAppTraceResponse($ireq));
         } elseif ($ireq->method === "OPTIONS" && $ireq->target === "*") {
-            $generator = $this->sendResponse($ireq, $this->sendPreAppOptionsResponse());
+            $generator = $this->sendResponse($ireq, $this->makePreAppOptionsResponse());
         } else {
-            $generator = $this->tryApplication($vhost, $ireq);
+            $generator = $this->tryResponder($ireq, $vhost->getResponder());
         }
 
         Promise\rethrow(new Coroutine($generator));
     }
 
-    private function sendPreAppServiceUnavailableResponse(): Response {
+    private function makePreAppServiceUnavailableResponse(): Response {
         $status = HTTP_STATUS["SERVICE_UNAVAILABLE"];
         $headers = [
             "Connection" => "close",
@@ -721,7 +720,7 @@ class Server implements Monitor {
         return new Response\EmptyResponse($headers, $status);
     }
 
-    private function sendPreAppInvalidHostResponse(): Response {
+    private function makePreAppInvalidHostResponse(): Response {
         $status = HTTP_STATUS["BAD_REQUEST"];
         $reason = "Bad Request: Invalid Host";
         $headers = [
@@ -730,7 +729,7 @@ class Server implements Monitor {
         return new Response\EmptyResponse($headers, $status, $reason);
     }
 
-    private function sendPreAppMethodNotAllowedResponse(): Response {
+    private function makePreAppMethodNotAllowedResponse(): Response {
         $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
         $headers = [
             "Connection" => "close",
@@ -739,36 +738,29 @@ class Server implements Monitor {
         return new Response\EmptyResponse($headers, $status);
     }
 
-    private function sendPreAppTraceResponse(Internal\Request $request): Response {
+    private function makePreAppTraceResponse(Internal\Request $request): Response {
         $stream = new InMemoryStream($request->locals['aerys.trace']);
         return new Response($stream, ["Content-Type" => "message/http"]);
     }
 
-    private function sendPreAppOptionsResponse(): Response {
+    private function makePreAppOptionsResponse(): Response {
         return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->allowedMethods)]);
     }
 
     /**
-     * @param \Aerys\Vhost $vhost
      * @param \Aerys\Internal\Request $ireq
+     * @param \Aerys\Responder $responder
      *
      * @return \Generator
      */
-    private function tryApplication(Vhost $vhost, Internal\Request $ireq): \Generator {
+    private function tryResponder(Internal\Request $ireq, Responder $responder): \Generator {
         $request = new Request($ireq);
 
-        $application = $vhost->getApplication();
-        $middlewares = $vhost->getMiddlewares();
-
         try {
-            if (!empty($middlewares)) {
-                $application = Internal\makeMiddlewareResponder($application, $middlewares);
-            }
-
-            $response = yield call($application, $request);
+            $response = yield $responder->respond($request);
 
             if (!$response instanceof Response) {
-                throw new \Error("Request handlers must return an instance of " . Response::class);
+                throw new \Error("At least one request handler must return an instance of " . Response::class);
             }
         } catch (\Throwable $error) {
             $this->logger->error($error);

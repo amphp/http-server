@@ -2,11 +2,13 @@
 
 namespace Aerys;
 
+use Amp\Promise;
+
 interface Responder {
     /**
      * @param \Aerys\Request $request
      *
-     * @return \Aerys\Response|\Amp\Promise<\Aerys\Response>|\Generator|null
+     * @return \Amp\Promise<\Aerys\Response>
      */
-    public function __invoke(Request $request);
+    public function respond(Request $request): Promise;
 }

@@ -9,9 +9,10 @@ use Amp\Coroutine;
 use Amp\Emitter;
 use Amp\File;
 use Amp\Loop;
+use Amp\Promise;
 use function Amp\call;
 
-class Root implements ServerObserver, Responder {
+class Root implements Delegate, ServerObserver {
     const PRECOND_NOT_MODIFIED = 1;
     const PRECOND_FAILED = 2;
     const PRECOND_IF_RANGE_OK = 3;
@@ -79,7 +80,7 @@ class Root implements ServerObserver, Responder {
     /**
      * Respond to HTTP requests for filesystem resources.
      */
-    public function __invoke(Request $request) {
+    public function delegate(Request $request): Promise {
         $uri = $request->getAttribute("aerys.sendfile") ?: $request->getUri()->getPath();
         $path = ($qPos = \strpos($uri, "?")) ? \substr($uri, 0, $qPos) : $uri;
         // IMPORTANT! Do NOT remove this. If this is left in, we'll be able to use /path\..\../outsideDocRoot defeating the removeDotPathSegments() function! (on Windows at least)
@@ -91,7 +92,7 @@ class Root implements ServerObserver, Responder {
         // coroutine when the file is already cached.
         return new Coroutine(
             ($fileInfo = $this->fetchCachedStat($path, $request))
-            ? $this->respond($fileInfo, $request)
+            ? $this->respondFromFileInfo($fileInfo, $request)
             : $this->respondWithLookup($this->root . $path, $path, $request)
         );
     }
@@ -240,7 +241,7 @@ class Root implements ServerObserver, Responder {
             $this->cacheTimeouts[$reqPath] = $this->now + $this->cacheEntryTtl;
         }
 
-        return yield from $this->respond($fileInfo, $request);
+        return yield from $this->respondFromFileInfo($fileInfo, $request);
     }
 
     private function lookup(string $path): \Generator {
@@ -297,7 +298,7 @@ class Root implements ServerObserver, Responder {
         }
     }
 
-    private function respond($fileInfo, Request $request): \Generator {
+    private function respondFromFileInfo($fileInfo, Request $request): \Generator {
         // If the file doesn't exist don't bother to do anything else so the
         // HTTP server can send a 404 and/or allow handlers further down the chain
         // a chance to respond.
