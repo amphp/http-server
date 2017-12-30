@@ -2,29 +2,26 @@
 
 namespace Aerys\Test;
 
-use Aerys\Client;
-use Aerys\Filter;
-use Aerys\Internal\Request;
-
+use Aerys\Internal;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\Router;
 use Aerys\Server;
-use Aerys\StandardResponse;
-use Amp\ Coroutine;
-use Amp\ Promise;
-use Amp\ Success;
+use Amp\Promise;
+use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class RouterTest extends TestCase {
     public function mockServer($state) {
-        return new class($state) extends Server {
+        return new class($state, $this->createMock(Internal\VhostContainer::class), $this->createMock(PsrLogger::class)) extends Server {
             private $state;
             private $options;
-            public function __construct($state) {
+            public function __construct($state, $vhostContainer, $logger) {
                 $this->state = $state;
                 $this->options = new Options;
+                parent::__construct($this->options, $vhostContainer, $logger, new Internal\Ticker($logger));
             }
             public function state(): int {
                 return $this->state;
@@ -34,54 +31,6 @@ class RouterTest extends TestCase {
             }
             public function setOption(string $opt, $val) {
                 return $this->options->$opt = $val;
-            }
-        };
-    }
-
-    public function mockResponse($state = Response::NONE) {
-        return new class($state) implements Response {
-            private $state;
-            public $headers = [];
-            public $status = 200;
-            public function __construct($state) {
-                $this->state = $state;
-            }
-            public function setStatus(int $code): Response {
-                $this->status = $code;
-                return $this;
-            }
-            public function setReason(string $phrase): Response {
-                return $this;
-            }
-            public function addHeader(string $field, string $value): Response {
-                $this->headers[strtolower($field)] = $value;
-                return $this;
-            }
-            public function setHeader(string $field, string $value): Response {
-                $this->headers[strtolower($field)] = $value;
-                return $this;
-            }
-            public function setCookie(string $field, string $value, array $flags = []): Response {
-                return $this;
-            }
-            public function send(string $body) {
-                $this->state = self::ENDED;
-            }
-            public function write(string $partialBodyChunk): Promise {
-                return new Success;
-            }
-            public function flush() {
-            }
-            public function end(string $finalBodyChunk = ""): Promise {
-                return new Success;
-            }
-            public function abort() {
-            }
-            public function push(string $url, array $headers = null): Response {
-                return $this;
-            }
-            public function state(): int {
-                return $this->state;
             }
         };
     }
@@ -97,11 +46,11 @@ class RouterTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Aerys\Router::route requires at least one callable route action or filter at Argument 3
+     * @expectedExceptionMessage Responder at Argument 3 must be callable or an instance of
      */
-    public function testRouteThrowsOnEmptyActionsArray() {
+    public function testRouteThrowsOnInvalidResponder() {
         $router = new Router;
-        $router->route("GET", "/uri");
+        $router->route("GET", "/uri", 1);
     }
 
     public function testUpdateFailsIfStartedWithoutAnyRoutes() {
@@ -120,119 +69,34 @@ class RouterTest extends TestCase {
 
     public function testUseCanonicalRedirector() {
         $router = new Router;
-        $router->route("GET", "/{name}/{age}/?", function ($req, $res) { $res->send("OK"); });
+        $router->route("GET", "/{name}/{age}/?", function (Request $req, array $args) use (&$routeArgs) {
+            $routeArgs = $args;
+            return new Response\EmptyResponse;
+        });
         $router->prefix("/mediocre-dev");
-        $router = (new Router)->use($router);
         $mock = $this->mockServer(Server::STARTING);
+        $router->boot($mock, $this->createMock(PsrLogger::class));
         $router->update($mock);
 
         $ireq = new Internal\Request;
         $request = new Request($ireq);
-        $ireq->locals = [];
         $ireq->method = "GET";
-        $ireq->uri = $ireq->uriPath = "/mediocre-dev/bob/19/";
-        $response = $this->mockResponse();
+        $ireq->uri = new Uri("/mediocre-dev/bob/19/");
 
-        $this->assertFalse($router->filter($ireq)->valid());
-        $multiAction = $router($request, $response);
+        /** @var \Aerys\Response $response */
+        $response = Promise\wait($router->delegate($request));
 
-        if ($multiAction) {
-            Promise\wait(new Coroutine($multiAction));
-        }
-
-        $this->assertEquals(\Aerys\HTTP_STATUS["FOUND"], $response->status);
-        $this->assertEquals("/mediocre-dev/bob/19", $response->headers["location"]);
-        $this->assertSame(["name" => "bob", "age" => "19"], $ireq->locals["aerys.routeArgs"]);
+        $this->assertEquals(\Aerys\HTTP_STATUS["FOUND"], $response->getStatus());
+        $this->assertEquals("/mediocre-dev/bob/19", $response->getHeader("location"));
 
         $ireq = new Internal\Request;
         $request = new Request($ireq);
-        $ireq->locals = [];
         $ireq->method = "GET";
-        $ireq->uriPath = "/mediocre-dev/bob/19";
-        $response = $this->mockResponse();
+        $ireq->uri = new Uri("/mediocre-dev/bob/19");
 
-        $this->assertFalse($router->filter($ireq)->valid());
-        $multiAction = $router($request, $response);
+        $response = Promise\wait($router->delegate($request));
 
-        if ($multiAction) {
-            Promise\wait(new Coroutine($multiAction));
-        }
-
-        $this->assertEquals(\Aerys\Response::ENDED, $response->state());
-        $this->assertEquals(\Aerys\HTTP_STATUS["OK"], $response->status);
-    }
-
-    public function testMultiActionRouteInvokesEachCallableUntilResponseIsStarted() {
-        $i = 0;
-        $foo = function () use (&$i) { $i++; };
-        $bar = function ($request, $response) use (&$i) {
-            $i++;
-            $response->send("test");
-        };
-
-        $router = new Router;
-        $router->route("GET", "/{name}/{age}", $foo, $bar, $foo);
-        $router->prefix("/genius");
-        $mock = $this->mockServer(Server::STARTING);
-        $router->update($mock);
-
-        $ireq = new Internal\Request;
-        $request = new Request($ireq);
-        $ireq->locals = [];
-        $ireq->method = "GET";
-        $ireq->uriPath = "/genius/daniel/32";
-        $response = $this->mockResponse();
-
-        $this->assertFalse($router->filter($ireq)->valid());
-        $multiAction = $router($request, $response);
-
-        Promise\wait(new Coroutine($multiAction));
-
-        $this->assertSame(3, $i);
-        $this->assertSame(["name" => "daniel", "age" => "32"], $ireq->locals["aerys.routeArgs"]);
-    }
-
-    public function testCachedFilterRoute() {
-        $filter = new class implements Filter {
-            public function filter(Internal\Request $ireq) {
-                $data = yield;
-                $data = "filter + " . yield $data;
-                while (true) {
-                    $data = yield $data;
-                }
-            }
-        };
-        $action = function ($req, $res) {
-            $res->end("action");
-        };
-
-        $router = new Router;
-        $router->route("GET", "/", $filter, $action);
-        $mock = $this->mockServer(Server::STARTING);
-        $router->update($mock);
-
-        for ($i = 0; $i < 2; $i++) {
-            $received = "";
-
-            $ireq = new Internal\Request;
-            $ireq->locals = [];
-            $ireq->method = "GET";
-            $ireq->uriPath = "/";
-            $ireq->responseWriter = (function () use (&$headers, &$received) {
-                $headers = yield;
-                while (true) {
-                    $received .= yield;
-                }
-            })();
-
-            $request = new Request($ireq);
-            $filter = \Aerys\responseFilter([[$router, "filter"]], $ireq);
-            $filter->current();
-            $response = new StandardResponse(\Aerys\responseCodec($filter, $ireq), new Client);
-
-            $router($request, $response);
-
-            $this->assertEquals("filter + action", $received);
-        }
+        $this->assertEquals(\Aerys\HTTP_STATUS["OK"], $response->getStatus());
+        $this->assertSame(["name" => "bob", "age" => "19"], $routeArgs);
     }
 }

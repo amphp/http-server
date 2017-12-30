@@ -2,12 +2,11 @@
 
 namespace Aerys\Test;
 
-use Aerys\Client;
-use Aerys\Internal\Request;
+use Aerys\Body;
+use Aerys\Internal;
 use Aerys\Options;
 use Aerys\Request;
 use Amp\ByteStream\IteratorStream;
-use Amp\ByteStream\Message;
 use Amp\Loop;
 use PHPUnit\Framework\TestCase;
 
@@ -19,9 +18,10 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new Internal\Request;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Message(new IteratorStream($emitter->iterate()));
-        $ireq->client = new Client;
+        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
+        $ireq->client = new Internal\Client;
         $ireq->client->options = new Options;
+        $ireq->client->httpDriver = new Internal\Http1Driver;
 
         $emitter->emit($data);
         $emitter->complete();
@@ -42,9 +42,10 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new Internal\Request;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Message(new IteratorStream($emitter->iterate()));
-        $ireq->client = new Client;
+        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
+        $ireq->client = new Internal\Client;
         $ireq->client->options = new Options;
+        $ireq->client->httpDriver = new Internal\Http1Driver;
 
         $emitter->emit($data);
         $emitter->complete();
@@ -73,9 +74,10 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new Internal\Request;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Message(new IteratorStream($emitter->iterate()));
-        $ireq->client = new Client;
+        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
+        $ireq->client = new Internal\Client;
         $ireq->client->options = new Options;
+        $ireq->client->httpDriver = new Internal\Http1Driver;
 
         Loop::run(function () use ($emitter, $data, $ireq, $fields, $metadata) {
             $fieldlist = $fields;
@@ -105,9 +107,10 @@ class BodyParsingTest extends TestCase {
         $emitter = new \Amp\Emitter;
         $ireq = new Internal\Request;
         $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Message(new IteratorStream($emitter->iterate()));
-        $ireq->client = new Client;
+        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
+        $ireq->client = new Internal\Client;
         $ireq->client->options = new Options;
+        $ireq->client->httpDriver = new Internal\Http1Driver;
 
         $body = new \Aerys\BodyParser(new Request($ireq));
         $a = $body->stream("a");
@@ -124,12 +127,12 @@ class BodyParsingTest extends TestCase {
                 }
                 $emitter->complete();
             });
-            $this->assertEquals("bafg", yield $a);
-            $this->assertEquals("", yield $b); // not existing
-            $this->assertEquals("c", yield $be);
-            $this->assertEquals("f%6", yield $d);
-            $this->assertEquals("", yield $gh);
-            $this->assertEquals("", yield $j);
+            $this->assertEquals("bafg", yield $a->buffer());
+            $this->assertEquals("", yield $b->buffer()); // not existing
+            $this->assertEquals("c", yield $be->buffer());
+            $this->assertEquals("f%6", yield $d->buffer());
+            $this->assertEquals("", yield $gh->buffer());
+            $this->assertEquals("", yield $j->buffer());
         });
         $body->onResolve(function ($e) { print $e; });
     }

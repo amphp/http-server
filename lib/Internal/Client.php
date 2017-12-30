@@ -38,7 +38,7 @@ class Client {
     public $onWriteDrain;
     public $shouldClose = false;
     public $isDead = 0;
-    public $isExported;
+    public $isExported = false;
     public $remainingRequests;
     public $pendingResponses = 0;
 

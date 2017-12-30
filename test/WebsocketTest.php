@@ -2,24 +2,22 @@
 
 namespace Aerys\Test;
 
-use Aerys\Client;
-use Aerys\Internal\Request;
+use Aerys\Body;
+use Aerys\Internal;
 use Aerys\Logger;
 use Aerys\NullBody;
 use Aerys\Request;
-use Aerys\Request;
-use Aerys\Response;
 use Aerys\Server;
-use Aerys\StandardResponse;
 use Aerys\Websocket;
-use Aerys\Websocket\Rfc6455Gateway;
+use Aerys\Websocket\Internal\Rfc6455Gateway;
 use Amp\ByteStream\IteratorStream;
-use Amp\ByteStream\Message;
 use Amp\Deferred;
 use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
+use Amp\Promise;
+use Amp\Socket\ClientSocket;
 use const Aerys\HTTP_STATUS;
 
 class NullWebsocket implements Websocket {
@@ -31,7 +29,7 @@ class NullWebsocket implements Websocket {
     public function onStart(Websocket\Endpoint $endpoint) {
         $this->endpoint = $endpoint;
     }
-    public function onHandshake(Request $request, Response $response) {
+    public function onHandshake(Request $request) {
     }
     public function onOpen(int $clientId, $handshakeData) {
     }
@@ -71,11 +69,8 @@ class WebsocketTest extends TestCase {
     }
 
     public function initEndpoint($ws, $timeoutTest = false) {
-        $ireq = new Internal\Request;
-        $ireq->client = $client = new Client;
-        $ireq->locals["aerys.websocket"] = true;
-        list($sock, $client->socket) = stream_socket_pair(\stripos(PHP_OS, "win") === 0 ? STREAM_PF_INET : STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
-        stream_set_blocking($client->socket, false);
+        list($socket, $client) = stream_socket_pair(\stripos(PHP_OS, "win") === 0 ? STREAM_PF_INET : STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        stream_set_blocking($client, false);
         $server = new class extends Server {
             public $state;
             public function __construct() {
@@ -83,15 +78,6 @@ class WebsocketTest extends TestCase {
             public function state(): int {
                 return $this->state;
             }
-        };
-        $client->id = (int) $client->socket;
-        $client->exporter = function ($_client) use ($client, $server) {
-            $this->assertSame($client, $_client);
-            $callback = $this->createCallback(1);
-            return function () use ($callback, $client) {
-                @fclose($client->socket);
-                $callback();
-            };
         };
 
         $logger = new class extends Logger {
@@ -111,9 +97,9 @@ class WebsocketTest extends TestCase {
         yield $gateway->update($server);
         $server->state = Server::STARTED;
         yield $gateway->update($server);
-        $client = $gateway->reapClient("idiotic parameter...", $ireq);
+        $client = $gateway->reapClient(new ClientSocket($client));
 
-        return [$gateway, $client, $sock, $server];
+        return [$gateway, $client, $socket, $server];
     }
 
     public function waitOnRead($sock) {
@@ -122,16 +108,6 @@ class WebsocketTest extends TestCase {
         $promise = $deferred->promise();
         $promise->onResolve(function () use ($watcher) { Loop::cancel($watcher); });
         return $promise;
-    }
-
-    public function testFullSequence() {
-        Loop::run(function () {
-            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
-            $server->state = Server::STOPPING;
-            yield $gateway->update($server);
-            $server->state = Server::STOPPED;
-            yield $gateway->update($server);
-        });
     }
 
     /**
@@ -231,23 +207,20 @@ class WebsocketTest extends TestCase {
     /**
      * @dataProvider provideHandshakes
      */
-    public function testHandshake($ireq, $expected) {
+    public function testHandshake(Internal\Request $ireq, int $status, array $expected = []) {
         $logger = new class extends Logger {
             protected function output(string $message) { /* /dev/null */
             }
         };
         $ws = $this->createMock('Aerys\Websocket');
-        $ws->expects($expected[":status"] === 101 ? $this->once() : $this->never())
+        $ws->expects($status === 101 ? $this->once() : $this->never())
             ->method("onHandshake");
         $gateway = new Rfc6455Gateway($logger, $ws);
-        $gateway(new Request($ireq), new StandardResponse((function () use (&$headers, &$body) {
-            $headers = yield;
-            $body = yield;
-        })(), $ireq->client))->next();
+        $response = Promise\wait($gateway->respond(new Request($ireq)));
 
-        $this->assertEquals($expected, array_intersect_key($headers, $expected));
-        if ($expected[":status"] === 101) {
-            $this->assertNull($body);
+        $this->assertEquals($expected, array_intersect_key($response->getHeaders(), $expected));
+        if ($status === 101) {
+            $this->assertNull(Promise\wait($response->getBody()->read()));
         }
     }
 
@@ -256,7 +229,7 @@ class WebsocketTest extends TestCase {
 
         // 0 ----- valid Handshake request -------------------------------------------------------->
         $ireq = new Internal\Request;
-        $ireq->client = new Client;
+        $ireq->client = new Internal\Client;
         $ireq->method = "GET";
         $ireq->protocol = "1.1";
         $ireq->headers = [
@@ -267,49 +240,49 @@ class WebsocketTest extends TestCase {
             "connection" => ["upgrade"]
         ];
         $ireq->body = new NullBody;
-        $return[] = [$ireq, [":status" => \Aerys\HTTP_STATUS["SWITCHING_PROTOCOLS"], "upgrade" => ["websocket"], "connection" => ["upgrade"], "sec-websocket-accept" => ["HSmrc0sMlYUkAGmm5OPpG2HaGWk="]]];
+        $return[] = [$ireq, HTTP_STATUS["SWITCHING_PROTOCOLS"], ["upgrade" => ["websocket"], "connection" => ["upgrade"], "sec-websocket-accept" => ["HSmrc0sMlYUkAGmm5OPpG2HaGWk="]]];
 
         // 1 ----- error conditions: Handshake with POST method ----------------------------------->
 
         $_ireq = clone $ireq;
         $_ireq->method = "POST";
-        $return[] = [$_ireq, [":status" => HTTP_STATUS["METHOD_NOT_ALLOWED"], "allow" => ["GET"]]];
+        $return[] = [$_ireq, HTTP_STATUS["METHOD_NOT_ALLOWED"], ["allow" => ["GET"]]];
 
         // 2 ----- error conditions: Handshake with 1.0 protocol ---------------------------------->
 
         $_ireq = clone $ireq;
         $_ireq->protocol = "1.0";
-        $return[] = [$_ireq, [":status" => HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]]];
+        $return[] = [$_ireq, HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]];
 
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
 
         $_ireq = clone $ireq;
-        $_ireq->body = new Message(new IteratorStream((new Emitter)->iterate()));
-        $return[] = [$_ireq, [":status" => HTTP_STATUS["BAD_REQUEST"]]];
+        $_ireq->body = new Body(new IteratorStream((new Emitter)->iterate()));
+        $return[] = [$_ireq, HTTP_STATUS["BAD_REQUEST"]];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->
 
         $_ireq = clone $ireq;
         $_ireq->headers["upgrade"] = ["no websocket!"];
-        $return[] = [$_ireq, [":status" => HTTP_STATUS["UPGRADE_REQUIRED"]]];
+        $return[] = [$_ireq, HTTP_STATUS["UPGRADE_REQUIRED"]];
 
         // 5 ----- error conditions: Connection: Upgrade header required -------------------------->
 
         $_ireq = clone $ireq;
         $_ireq->headers["connection"] = ["no upgrade!"];
-        $return[] = [$_ireq, [":status" => HTTP_STATUS["UPGRADE_REQUIRED"]]];
+        $return[] = [$_ireq, HTTP_STATUS["UPGRADE_REQUIRED"]];
 
         // 6 ----- error conditions: Sec-Websocket-Key header required ---------------------------->
 
         $_ireq = clone $ireq;
         unset($_ireq->headers["sec-websocket-key"]);
-        $return[] = [$_ireq, [":status" => HTTP_STATUS["BAD_REQUEST"]]];
+        $return[] = [$_ireq, HTTP_STATUS["BAD_REQUEST"]];
 
         // 7 ----- error conditions: Sec-Websocket-Version header must be 13 ---------------------->
 
         $_ireq = clone $ireq;
         $_ireq->headers["sec-websocket-version"] = ["12"];
-        $return[] = [$_ireq, [":status" => HTTP_STATUS["BAD_REQUEST"]]];
+        $return[] = [$_ireq, HTTP_STATUS["BAD_REQUEST"]];
 
         // x -------------------------------------------------------------------------------------->
 

@@ -14,8 +14,18 @@ class VhostContainer implements \Countable, Monitor {
     /** @var \Aerys\Internal\HttpDriver[] */
     private $httpDrivers = [];
 
+    /** @var \Aerys\Internal\HttpDriver  */
+    private $defaultHttpDriver;
+
     private $setupHttpDrivers = [];
     private $setupArgs;
+
+    /**
+     * @param \Aerys\Internal\HttpDriver|null $driver Optional HttpDriver instance.
+     */
+    public function __construct(HttpDriver $driver = null) {
+        $this->defaultHttpDriver = $driver ?? new Http1Driver;
+    }
 
     /**
      * Add a virtual host to the collection.
@@ -66,7 +76,7 @@ class VhostContainer implements \Countable, Monitor {
     }
 
     private function addHttpDriver(Vhost $vhost) {
-        $driver = new Http1Driver;
+        $driver = $this->defaultHttpDriver;
         foreach ($vhost->getInterfaces() as list($address, $port)) {
             $defaultDriver = $this->httpDrivers[$port][$address[0] == "/" ? "" : \strlen(inet_pton($address)) === 4 ? "0.0.0.0" : "::"] ?? $driver;
             if (($this->httpDrivers[$port][$address] ?? $defaultDriver) !== $driver) {
@@ -112,7 +122,7 @@ class VhostContainer implements \Countable, Monitor {
     /**
      * Select the suited HttpDriver instance, filtered by address and port pair.
      */
-    public function selectHttpDriver($address, $port) {
+    public function selectHttpDriver($address, $port): HttpDriver {
         return $this->httpDrivers[$port][$address] ??
             $this->httpDrivers[$port][\strpos($address, ":") === false ? "0.0.0.0" : "::"];
     }
@@ -128,7 +138,7 @@ class VhostContainer implements \Countable, Monitor {
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.6.1.1
      */
-    public function selectHost(Request $ireq) {
+    public function selectHost(Request $ireq) { /* ?Vhost */
         $client = $ireq->client;
         $serverId = ":{$client->serverAddr}:{$client->serverPort}";
 
@@ -232,7 +242,7 @@ class VhostContainer implements \Countable, Monitor {
         return $bindMap;
     }
 
-    public function count() {
+    public function count(): int {
         return $this->cachedVhostCount;
     }
 

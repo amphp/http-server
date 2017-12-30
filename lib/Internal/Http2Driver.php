@@ -86,11 +86,12 @@ class Http2Driver implements HttpDriver {
         $this->write = $write;
     }
 
-    private function filter(Request $request, array $headers, array $push): array {
-        if (isset($request->headers[":authority"])) {
-            $request->headers["host"] = $request->headers[":authority"];
-        }
-        unset($request->headers[":authority"], $request->headers[":scheme"], $request->headers[":method"], $request->headers[":path"]);
+    private function filter(Request $request, Response $response): array {
+        $headers = $response->getHeaders();
+        $push = $response->getPush();
+
+        $headers[":status"] = $response->getStatus();
+        $headers[":reason"] = $response->getReason();
 
         $options = $request->client->options;
 
@@ -103,35 +104,16 @@ class Http2Driver implements HttpDriver {
                 if ($request->client->allowsPush) {
                     $this->dispatchInternalRequest($request, $url, $pushHeaders);
                 } else {
-                    $headers["Link"][] = "<$url>; rel=preload";
+                    $headers["link"][] = "<$url>; rel=preload";
                 }
             }
         }
 
-        $status = $headers[":status"];
-        $contentLength = $headers[":aerys-entity-length"];
-        unset($headers[":aerys-entity-length"], $headers["transfer-encoding"] /* obsolete in HTTP/2 */);
-
-        if ($contentLength === "@") {
-            $hasContent = false;
-            if (($status >= 200 && $status != 204 && $status != 304)) {
-                $headers["content-length"] = ["0"];
-            }
-        } elseif ($contentLength !== "*") {
-            $hasContent = true;
-            $headers["content-length"] = [$contentLength];
-        } else {
-            $hasContent = true;
-            unset($headers["content-length"]);
+        $type = $headers["content-type"][0] ?? $options->defaultContentType;
+        if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
+            $type .= "; charset={$options->defaultTextCharset}";
         }
-
-        if ($hasContent) {
-            $type = $headers["content-type"][0] ?? $options->defaultContentType;
-            if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-                $type .= "; charset={$options->defaultTextCharset}";
-            }
-            $headers["content-type"] = [$type];
-        }
+        $headers["content-type"] = [$type];
 
         $headers["date"] = [$request->httpDate];
 
@@ -235,7 +217,7 @@ class Http2Driver implements HttpDriver {
         $id = $request->streamId;
 
         try {
-            $headers = $this->filter($request, $response->getHeaders(), $response->getPush());
+            $headers = $this->filter($request, $response);
             unset($headers["connection"]); // obsolete in HTTP/2.0
             $headers = HPack::encode($headers);
 
@@ -276,7 +258,7 @@ class Http2Driver implements HttpDriver {
                 $this->writeData($client, $buffer, $id, true);
             }
         } finally {
-            if ((!isset($headers) || $part !== null) && !($client->isDead & Client::CLOSED_WR)) {
+            if ((!isset($headers) || isset($part)) && !($client->isDead & Client::CLOSED_WR)) {
                 if (($buffer ?? "") !== "") {
                     $this->writeData($client, $buffer, $id, false);
                 }
@@ -889,7 +871,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                     $headerArray[$name][] = $value;
                 }
 
-                $ireq = new Internal\Request;
+                $ireq = new Request;
                 $ireq->client = $client;
                 $ireq->streamId = $id;
                 $ireq->trace = $headerList;

@@ -2,11 +2,13 @@
 
 namespace Aerys\Test;
 
-use Aerys\Client;
-use Aerys\Vhost;
-use Aerys\VhostContainer;
+use Aerys\Internal;
+use Aerys\Internal\CallableResponder;
+use Aerys\Internal\Vhost;
+use Aerys\Internal\VhostContainer;
 use Amp\Socket\Certificate;
 use Amp\Socket\ServerTlsContext;
+use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
 
 class VhostTest extends TestCase {
@@ -28,7 +30,7 @@ class VhostTest extends TestCase {
             9 => ["foobar", 80, "127.0.0.1", 80, "*"],
             10 => ["localhost", 8080, "[::1]", 8080, "local"],
             11 => ["localhost", 80, self::socketPath(), 0, "unix:80"],
-            12 => ["localhost", 0, self::socketPath(), 0, "unix"],
+            12 => ["localhost", 0, self::socketPath(), 0, "unix:80"],
             13 => ["localhost", 8080, self::socketPath(), 0, "unix"],
             14 => ["localhost", 0, "/foo", 0, null],
         ];
@@ -38,33 +40,39 @@ class VhostTest extends TestCase {
      * @dataProvider provideVhostRequests
      */
     public function testVhostSelection($uriHost, $uriPort, $addr, $port, $expected) {
-        $vhosts = new VhostContainer($this->createMock('Aerys\HttpDriver'));
-        $localvhost = new Vhost("localhost", [["127.0.0.1", 80], ["::", 8080]], function () {}, [function () {yield;}]);
+        $responder = new CallableResponder(function () {});
+
+        $vhosts = new VhostContainer($this->createMock(Internal\HttpDriver::class));
+        $localvhost = new Vhost("localhost", [["127.0.0.1", 80], ["::", 8080]], $responder, []);
         $vhosts->use($localvhost);
 
-        $vhost = new Vhost("*", [["127.0.0.1", 80], ["::", 80]], function () {}, [function () {yield;}]);
+        $vhost = new Vhost("*", [["127.0.0.1", 80], ["::", 80]], $responder, []);
         $vhosts->use($vhost);
 
-        $portvhost = new Vhost("localhost:*", [["127.0.0.1", 80], ["::", 80]], function () {}, [function () {yield;}]);
+        $portvhost = new Vhost("localhost:*", [["127.0.0.1", 80], ["::", 80]], $responder, []);
         $vhosts->use($portvhost);
 
-        $concreteportvhost = new Vhost("localhost:4444", [["127.0.0.1", 80]], function () {}, [function () {yield;}]);
+        $concreteportvhost = new Vhost("localhost:4444", [["127.0.0.1", 80]], $responder, []);
         $vhosts->use($concreteportvhost);
 
-        $unixvhost = new Vhost("localhost", [[self::socketPath(), 0]], function () {}, [function () {yield;}]);
+        $unixvhost = new Vhost("localhost", [[self::socketPath(), 0]], $responder, []);
         $vhosts->use($unixvhost);
 
-        $unixportvhost = new Vhost("*:80", [[self::socketPath(), 0]], function () {}, [function () {yield;}]);
+        $unixportvhost = new Vhost("*:80", [[self::socketPath(), 0]], $responder, []);
         $vhosts->use($unixportvhost);
 
-        $this->assertEquals(6, $vhosts->count());
+        $this->assertSame(6, $vhosts->count());
 
         $ireq = new Internal\Request;
-        $ireq->client = new Client;
+        $ireq->client = new Internal\Client;
         $ireq->client->serverAddr = $addr;
         $ireq->client->serverPort = $port;
-        $ireq->uriHost = $uriHost;
-        $ireq->uriPort = $uriPort;
+
+        if ($uriPort) {
+            $ireq->uri = new Uri(\sprintf("http://%s:%s", $uriHost, $uriPort));
+        } else {
+            $ireq->uri = new Uri("http://" . $uriHost);
+        }
 
         $this->assertEquals([
             "*" => $vhost,
@@ -91,21 +99,21 @@ class VhostTest extends TestCase {
     public function testCryptoResolutionFailure($plaintextInterfaces, $encryptedInterfaces, $msg) {
         $this->expectExceptionMessage($msg);
 
-        $vhosts = new VhostContainer($this->createMock('Aerys\HttpDriver'));
-        $vhost = new Vhost("*", [["127.0.0.1", 80], ["::", 80]], function () {}, [function () {yield;}]);
+        $vhosts = new VhostContainer($this->createMock(Internal\HttpDriver::class));
+        $vhost = new Vhost("*", [["127.0.0.1", 80], ["::", 80]], new CallableResponder(function () {}), []);
         $vhosts->use($vhost);
-        $vhost = new Vhost("localhost", [["127.0.0.1", 80]], function () {}, [function () {yield;}]);
+        $vhost = new Vhost("localhost", [["127.0.0.1", 80]], new CallableResponder(function () {}), []);
         $vhost->setCrypto((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
         $vhosts->use($vhost);
     }
 
     public function testCryptoVhost() {
-        $vhosts = new VhostContainer($this->createMock('Aerys\HttpDriver'));
-        $vhost = new Vhost("*", [["127.0.0.1", 80], ["::", 80]], function () {}, []);
+        $vhosts = new VhostContainer($this->createMock(Internal\HttpDriver::class));
+        $vhost = new Vhost("*", [["127.0.0.1", 80], ["::", 80]], new CallableResponder(function () {}), []);
         $vhosts->use($vhost);
-        $vhost = new Vhost("localhost", [["127.0.0.1", 80]], function () {}, []);
+        $vhost = new Vhost("localhost", [["127.0.0.1", 80]], new CallableResponder(function () {}), []);
         $vhosts->use($vhost);
-        $vhost = new Vhost("localhost", [["127.0.0.1", 8080]], function () {}, []);
+        $vhost = new Vhost("localhost", [["127.0.0.1", 8080]], new CallableResponder(function () {}), []);
         $vhost->setCrypto((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
         $vhosts->use($vhost);
 
@@ -118,7 +126,7 @@ class VhostTest extends TestCase {
      * @expectedExceptionMessage At least one interface must be passed, an empty interfaces array is not allowed
      */
     public function testNoInterfaces() {
-        new Vhost("*", [], function () {}, []);
+        new Vhost("*", [], new CallableResponder(function () {}), []);
     }
 
     /**
@@ -126,7 +134,7 @@ class VhostTest extends TestCase {
      * @expectedExceptionMessage Invalid host port: 0; integer in the range [1-65535] required
      */
     public function testBadPort() {
-        new Vhost("*", [["127.0.0.1", 0]], function () {}, []);
+        new Vhost("*", [["127.0.0.1", 0]], new CallableResponder(function () {}), []);
     }
 
     /**
@@ -134,7 +142,7 @@ class VhostTest extends TestCase {
      * @expectedExceptionMessage IPv4 or IPv6 address or unix domain socket path required: rd.lo.wr.ey
      */
     public function testBadInterface() {
-        new Vhost("*", [["rd.lo.wr.ey", 1025]], function () {}, []);
+        new Vhost("*", [["rd.lo.wr.ey", 1025]], new CallableResponder(function () {}), []);
     }
 
     /**
@@ -142,10 +150,10 @@ class VhostTest extends TestCase {
      * @expectedExceptionMessage Cannot have two hosts with the same name (localhost) on the same interface (127.0.0.1:80)
      */
     public function testMultipleSameHosts() {
-        $vhosts = new VhostContainer($this->createMock('Aerys\HttpDriver'));
-        $vhost = new Vhost("localhost", [["::", 80], ["127.0.0.1", 80]], function () {}, []);
+        $vhosts = new VhostContainer($this->createMock(Internal\HttpDriver::class));
+        $vhost = new Vhost("localhost", [["::", 80], ["127.0.0.1", 80]], new CallableResponder(function () {}), []);
         $vhosts->use($vhost);
-        $vhost = new Vhost("localhost", [["127.0.0.1", 80]], function () {}, []);
+        $vhost = new Vhost("localhost", [["127.0.0.1", 80]], new CallableResponder(function () {}), []);
         $vhosts->use($vhost);
     }
 
@@ -154,10 +162,10 @@ class VhostTest extends TestCase {
      * @expectedExceptionMessage Cannot have two default hosts on the same interface (127.0.0.1:80)
      */
     public function testMultipleSameDefaultHostsOnSameInterface() {
-        $vhosts = new VhostContainer($this->createMock('Aerys\HttpDriver'));
-        $vhost = new Vhost("*", [["::", 80], ["127.0.0.1", 80]], function () {}, []);
+        $vhosts = new VhostContainer($this->createMock(Internal\HttpDriver::class));
+        $vhost = new Vhost("*", [["::", 80], ["127.0.0.1", 80]], new CallableResponder(function () {}), []);
         $vhosts->use($vhost);
-        $vhost = new Vhost("*", [["127.0.0.1", 80]], function () {}, []);
+        $vhost = new Vhost("*", [["127.0.0.1", 80]], new CallableResponder(function () {}), []);
         $vhosts->use($vhost);
     }
 }

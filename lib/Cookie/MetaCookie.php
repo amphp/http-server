@@ -113,8 +113,8 @@ class MetaCookie extends Cookie {
         string $name,
         $value = '',
         int $expires = 0,
-        string $path = null,
-        string $domain = null,
+        string $path = '',
+        string $domain = '',
         bool $secure = false,
         bool $httpOnly = false
     ) {

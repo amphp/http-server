@@ -220,11 +220,21 @@ class Router implements Bootable, Delegate, Monitor, ServerObserver {
                 "Cannot add routes once the server has started"
             );
         }
+
         if ($method === "") {
             throw new \Error(
                 __METHOD__ . " requires a non-empty string HTTP method at Argument 1"
             );
         }
+
+        if (!\is_callable($responder) && !$responder instanceof Responder && !$responder instanceof Bootable) {
+            throw new \Error(\sprintf(
+                "Responder at Argument 3 must be callable or an instance of %s or %s",
+                Responder::class,
+                Bootable::class
+            ));
+        }
+
 
         $actions = array_merge($this->actions, $actions);
 
@@ -297,6 +307,14 @@ class Router implements Bootable, Delegate, Monitor, ServerObserver {
                     $booted[$hash] = ($this->bootLoader)($action);
                 }
                 $action = $booted[$hash];
+            }
+
+            if ($action instanceof Responder) {
+                throw new \Error("Responders cannot be route actions");
+            }
+
+            if ($action instanceof Delegate) {
+                throw new \Error("Delegates cannot be route actions");
             }
 
             if ($action instanceof Middleware) {

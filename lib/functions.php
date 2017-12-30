@@ -154,7 +154,8 @@ function parseCookie(string $cookies): array {
     $result = [];
 
     foreach (\explode("; ", $cookies) as $cookie) {
-        $result[] = Cookie::fromHeader($cookie);
+        $cookie = Cookie::fromHeader($cookie);
+        $result[$cookie->getName()] = $cookie;
     }
 
     return $result;

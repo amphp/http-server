@@ -58,8 +58,8 @@ class Http1Driver implements HttpDriver {
         ) {
             // Send upgrading response
             $responseWriter = $this->send($request, new Response(new NullBody, [
-                "connection" => ["Upgrade"],
-                "upgrade" => ["h2c"],
+                "connection" => "Upgrade",
+                "upgrade" => "h2c",
             ], HTTP_STATUS["SWITCHING_PROTOCOLS"]));
             $responseWriter->send(null); // flush before replacing
 
@@ -119,7 +119,9 @@ class Http1Driver implements HttpDriver {
             }
         }
 
-        $lines = ["HTTP/{$request->protocol} {$status} {$reason}"];
+        $protocol = $request->protocol ?? "1.1";
+
+        $lines = ["HTTP/{$protocol} {$status} {$reason}"];
         foreach ($headers as $headerField => $headerLines) {
             if ($headerField[0] !== ":") {
                 foreach ($headerLines as $headerLine) {

@@ -8,7 +8,7 @@ use Amp\ByteStream\InMemoryStream;
 class EmptyResponse extends Response {
     public function __construct(array $headers = [], int $code = 200, string $reason = null) {
         $headers = \array_merge($headers, [
-            "content-type" => "text/plain; charset=utf8",
+            "content-type" => "text/plain; charset=utf-8",
             "content-length" => 0,
         ]);
         parent::__construct(new InMemoryStream, $headers, $code, $reason);

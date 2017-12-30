@@ -11,7 +11,7 @@ class NullBodyTest extends TestCase {
         Loop::run(function () {
             $body = new NullBody;
             $this->assertEquals("", yield $body->read());
-            $this->assertSame("", yield $body);
+            $this->assertSame("", yield $body->buffer());
         });
     }
 }

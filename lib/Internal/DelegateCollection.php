@@ -7,6 +7,7 @@ use Aerys\Responder;
 use Aerys\Response;
 use Amp\Coroutine;
 use Amp\Promise;
+use Amp\Success;
 use const Aerys\HTTP_STATUS;
 use function Aerys\makeGenericBody;
 
@@ -22,7 +23,7 @@ class DelegateCollection implements Responder {
         return new Coroutine($this->delegate($request));
     }
 
-    public function delegate(Request $request): \Generator {
+    private function delegate(Request $request): \Generator {
         foreach ($this->delegates as $delegate) {
             $result = yield $delegate->delegate($request);
 
@@ -39,7 +40,11 @@ class DelegateCollection implements Responder {
             return $result;
         }
 
+        return yield $this->error($request);
+    }
+
+    protected function error(Request $request): Promise {
         $status = HTTP_STATUS["NOT_FOUND"];
-        return new Response\HtmlResponse(makeGenericBody($status), [], $status);
+        return new Success(new Response\HtmlResponse(makeGenericBody($status), [], $status));
     }
 }

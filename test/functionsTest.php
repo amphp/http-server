@@ -2,9 +2,8 @@
 
 namespace Aerys\Test;
 
-use Aerys\Client;
 use Aerys\Request;
-use Aerys\StandardResponse;
+use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
 
 class functionsTest extends TestCase {
@@ -41,20 +40,19 @@ class functionsTest extends TestCase {
     }
 
     public function testSuccessfulRedirect() {
-        $action = \Aerys\redirect("http://localhost", 301);
-        $req = new class extends Request {
+        $action = \Aerys\redirect("https://localhost", 301);
+        $request = new class extends Request {
             public function __construct() {
             }
-            public function getUri(): string {
-                return "/foo";
+            public function getUri(): Uri {
+                return new Uri("http://test.local/foo");
             }
         };
-        $action($req, new StandardResponse((function () use (&$body) {
-            $headers = yield;
-            $this->assertEquals("http://localhost/foo", $headers["location"][0]);
-            $this->assertEquals(301, $headers[":status"]);
-            $body = yield === null;
-        })(), new Client));
-        $this->assertTrue($body);
+
+        /** @var \Aerys\Response $response */
+        $response = $action($request);
+
+        $this->assertSame(301, $response->getStatus());
+        $this->assertSame("https://localhost/foo", $response->getHeader("location"));
     }
 }

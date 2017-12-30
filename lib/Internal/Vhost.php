@@ -32,7 +32,7 @@ class Vhost implements Monitor {
     ];
 
     /** @Note Vhosts do not allow wildcards, only separate 0.0.0.0 and :: */
-    public function __construct(string $name, array $interfaces, Responder $responder, array $middlewares, array $monitors = []) {
+    public function __construct(string $name, array $interfaces, Responder $responder, array $middlewares = [], array $monitors = []) {
         $this->name = strtolower($name);
 
         if (!$interfaces) {

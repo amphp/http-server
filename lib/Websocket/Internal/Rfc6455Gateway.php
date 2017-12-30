@@ -196,7 +196,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         return $response;
     }
 
-    public function reapClient(Socket $socket, $data = null) {
+    public function reapClient(Socket $socket, $data = null): Rfc6455Client {
         $client = new Rfc6455Client;
         $client->capacity = $this->maxBytesPerMinute;
         $client->connectedAt = $this->now;
@@ -216,6 +216,8 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         Promise\rethrow(new Coroutine($this->tryAppOnOpen($client->id, $data)));
 
         Promise\rethrow(new Coroutine($this->read($client)));
+
+        return $client;
     }
 
     private function read(Rfc6455Client $client): \Generator {
@@ -254,6 +256,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
             $client->closeCode = Code::ABNORMAL_CLOSE;
             $client->closeReason = "Client closed underlying TCP connection";
             Promise\rethrow(new Coroutine($this->tryAppOnClose($client->id, $client->closeCode, $client->closeReason)));
+            $client->socket->close();
         }
 
         $this->unloadClient($client);

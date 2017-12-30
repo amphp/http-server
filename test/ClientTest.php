@@ -2,27 +2,27 @@
 
 namespace Aerys\Test;
 
-use Aerys\ClientException;
-use Aerys\Http1Driver;
-use Aerys\Http2Driver;
-use Aerys\Internal\Request;
+use Aerys\Internal;
 use Aerys\Logger;
+use Aerys\Middleware;
 use Aerys\Options;
 use Aerys\Request;
+use Aerys\Responder;
 use Aerys\Response;
 use Aerys\Server;
-use Aerys\Ticker;
-use Aerys\Vhost;
-use Aerys\VhostContainer;
 use Amp\Artax\DefaultClient;
+use Amp\ByteStream\InMemoryStream;
 use Amp\Loop;
+use Amp\Promise;
+use Amp\Socket;
 use Amp\Socket\Certificate;
 use Amp\Socket\ClientTlsContext;
 use Amp\Socket\ServerTlsContext;
 use PHPUnit\Framework\TestCase;
+use function Amp\call;
 
 class ClientTest extends TestCase {
-    public function startServer($handler, $filters = []) {
+    public function startServer(callable $handler, array $middlewares = []) {
         if (!$server = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
             $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
         }
@@ -30,8 +30,10 @@ class ClientTest extends TestCase {
         fclose($server);
         $port = parse_url($address, PHP_URL_PORT);
 
-        $vhosts = new VhostContainer(new Http2Driver);
-        $vhost = new Vhost("localhost", [["127.0.0.1", $port]], $handler, $filters, [], new Http1Driver);
+        $handler = new Internal\CallableResponder($handler);
+
+        $vhosts = new Internal\VhostContainer;
+        $vhost = new Internal\Vhost("localhost", [["127.0.0.1", $port]], $handler, $middlewares, []);
         $vhost->setCrypto((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
         $vhosts->use($vhost);
 
@@ -39,27 +41,31 @@ class ClientTest extends TestCase {
             protected function output(string $message) { /* /dev/null */
             }
         };
-        $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
+        $options = new Options;
+        $options->debug = true;
+        $server = new Server($options, $vhosts, $logger, new Internal\Ticker($logger));
         yield $server->start();
         return [$address, $server];
     }
 
     public function testTrivialHttpRequest() {
         Loop::run(function () {
-            list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) {
+            list($address, $server) = yield from $this->startServer(function (Request $req) {
                 $this->assertEquals("GET", $req->getMethod());
-                $this->assertEquals("/uri", explode("?", $req->getUri())[0]);
-                $this->assertEquals(["foo" => ["bar"], "baz" => ["1", "2"]], $req->getAllParams());
+                $this->assertEquals("/uri", $req->getUri()->getPath());
+                $this->assertEquals(["foo" => ["bar"], "baz" => ["1", "2"]], $req->getUri()->getAllQueryParameters());
                 $this->assertEquals(["header"], $req->getHeaderArray("custom"));
                 $this->assertEquals("value", $req->getCookie("test"));
 
-                $res->setCookie("cookie", "with value");
+                $data = \str_repeat("*", 100000);
+                $stream = new InMemoryStream("data/" . $data . "/data");
+
+                $res = new Response($stream);
+
+                $res->setCookie("cookie", "with-value");
                 $res->setHeader("custom", "header");
 
-                $res->write("data");
-                yield $res->write(str_repeat("*", 100000));
-                $res->flush();
-                $res->end("data");
+                return $res;
             });
 
             $cookies = new \Amp\Artax\Cookie\ArrayCookieJar;
@@ -75,8 +81,8 @@ class ClientTest extends TestCase {
             $this->assertEquals(200, $res->getStatus());
             $this->assertEquals(["header"], $res->getHeaderArray("custom"));
             $body = yield $res->getBody();
-            $this->assertEquals("data".str_repeat("*", 100000)."data", $body);
-            $this->assertEquals("with value", $cookies->get("localhost", "/", "cookie")[0]->getValue());
+            $this->assertEquals("data/" . str_repeat("*", 100000) . "/data", $body);
+            $this->assertEquals("with-value", $cookies->get("localhost", "/", "cookie")[0]->getValue());
 
             Loop::stop();
         });
@@ -84,59 +90,41 @@ class ClientTest extends TestCase {
 
     public function testClientDisconnect() {
         Loop::run(function () {
-            $deferred = new \Amp\Deferred;
-            list($address, $server) = yield from $this->startServer(function (Request $req, Response $res) use ($deferred, &$server) {
+            list($address, $server) = yield from $this->startServer(function (Request $req) use (&$server) {
                 $this->assertEquals("POST", $req->getMethod());
-                $this->assertEquals("/", $req->getUri());
+                $this->assertEquals("/", $req->getUri()->getPath());
                 $this->assertEquals([], $req->getAllParams());
-                $this->assertEquals("body", yield $req->getBody());
+                $this->assertEquals("body", yield $req->getBody()->buffer());
 
-                try {
-                    $res->write("data");
-                    $res->flush();
-                    yield $res->write(str_repeat("_", $server->getOption("outputBufferSize") + 1));
-                    $this->fail("Should not be reached");
-                } catch (ClientException $e) {
-                    $deferred->resolve();
-                } catch (\Throwable $e) {
-                    $deferred->fail($e);
+                $data = "data";
+                $data .= \str_repeat("_", $server->getOption("outputBufferSize") + 1);
+
+                return new Response(new InMemoryStream($data));
+            }, [new class($this) implements Middleware {
+                private $test;
+                public function __construct(TestCase $test) {
+                    $this->test = $test;
                 }
-            }, [function (Internal\Request $ireq) {
-                $ireq->protocol = "1.0"; // fake it in order to enforce identity transfer
-
-                $headers = yield;
-
-                $data = yield $headers;
-                $this->assertEquals("data", $data);
-
-                $flush = yield $data;
-                $this->assertFalse($flush);
-
-                do {
-                    $end = yield;
-                } while ($end === false);
-                $this->assertEquals("_", $end[0]);
-
-                // now shut the socket down (fake disconnect)
-                fclose($ireq->client->socket);
-
-                return $end;
+                public function process(Request $request, Responder $responder): Promise {
+                    return call(function () use ($request, $responder) {
+                        $this->test->assertSame("1.0", $request->getProtocolVersion());
+                        return $responder->respond($request);
+                    });
+                }
             }]);
 
-            $context = (new ClientTlsContext)->withoutPeerVerification();
-            $client = new DefaultClient(null, null, $context);
             $port = parse_url($address, PHP_URL_PORT);
-            $promise = $client->request(
-                (new \Amp\Artax\Request("https://localhost:$port/", "POST"))->withBody("body")
-            );
+            $context = (new ClientTlsContext)->withoutPeerVerification();
+            $socket = yield Socket\cryptoConnect("tcp://localhost:$port/", null, $context);
 
-            $response = yield $promise;
-            $body = yield $response->getBody();
+            $request = "POST / HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 4\r\n\r\nbody";
+            yield $socket->write($request);
 
-            $this->assertEquals("data", $body);
+            $socket->close();
 
-            yield $deferred->promise();
-            Loop::stop();
+            Loop::delay(100, function () use ($socket) {
+                Loop::stop();
+            });
         });
     }
 }

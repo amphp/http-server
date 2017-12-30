@@ -3,8 +3,6 @@
 namespace Aerys\Test;
 
 use Aerys\Host;
-use Aerys\Http1Driver;
-use Aerys\Http2Driver;
 use PHPUnit\Framework\TestCase;
 
 class HostTest extends TestCase {
@@ -40,17 +38,9 @@ class HostTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Aerys\Host::use requires a callable action or Bootable or Filter or HttpDriver instance
+     * @expectedExceptionMessage Aerys\Host::use() requires a callable action
      */
     public function testBadUse() {
         $this->getHost()->use(1);
-    }
-
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Impossible to define two HttpDriver instances for one same Host; an instance of Aerys\Http1Driver has already been defined as driver
-     */
-    public function testDriverRedefine() {
-        $this->getHost()->use(new Http1Driver)->use(new Http2Driver);
     }
 }

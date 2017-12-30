@@ -2,7 +2,7 @@
 
 namespace Aerys\Test;
 
-use Aerys\HPack;
+use Aerys\Internal\HPack;
 use PHPUnit\Framework\TestCase;
 
 class HPackTest extends TestCase {

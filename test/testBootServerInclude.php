@@ -1,12 +1,20 @@
 <?php
 
+use Aerys\Host;
+use Aerys\Middleware;
+use Aerys\Request;
+use Aerys\Responder;
+use Aerys\Response;
+use Amp\Promise;
+use Amp\Success;
+
 const AERYS_OPTIONS = [
     "shutdownTimeout" => 5000
 ];
 
-class OurFilter implements \Aerys\Filter {
-    public function filter(\Aerys\Internal\Request $ireq) {
-        // We have a filter
+class OurMiddleware implements Middleware {
+    public function process(Request $request, Responder $responder): Promise {
+        return $responder->respond($request);
     }
 
     public function __invoke(\Aerys\Request $req) {
@@ -15,27 +23,27 @@ class OurFilter implements \Aerys\Filter {
 }
 
 return (function () {
-    yield new Amp\Success('test boot config');
+    yield new Success('test boot config');
 
-    ($hosts[] = new Aerys\Host)
+    ($hosts[] = new Host)
         ->name("localhost")
         ->encrypt(__DIR__."/server.pem");
 
-    ($hosts[] = new Aerys\Host)
+    ($hosts[] = new Host)
         ->expose("127.0.0.1", 80)
         ->name("example.com")
         ->use(new class implements \Aerys\Bootable {
             public function boot(\Aerys\Server $server, \Psr\Log\LoggerInterface $logger) {
-                return new OurFilter;
+                return new OurMiddleware;
             }
         });
 
     ($hosts[] = clone end($hosts))
         ->name("foo.bar")
-        ->use(function (\Aerys\Request $req, \Aerys\Response $res) {
+        ->use(function (Request $req) {
             $req->setAttribute("foo.bar", $req->getAttribute("foo.bar") + 1);
-            $res->end();
+            return new Response\EmptyResponse;
         });
 
-    return new Amp\Success($hosts);
+    return new Success($hosts);
 })();

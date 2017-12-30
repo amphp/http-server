@@ -138,7 +138,7 @@ class Response {
         \assert($this->isValueValid($name), "Header value is invalid");
 
         $name = \strtolower($name);
-        $this->headers[$name] = [$value];
+        $this->headers[$name] = \is_array($value) ? $value : [$value];
 
         if ('set-cookie' === $name) {
             $this->setCookiesFromHeaders();
@@ -286,8 +286,8 @@ class Response {
         $nameOrCookie,
         $value = '',
         int $expires = 0,
-        string $path = null,
-        string $domain = null,
+        string $path = '',
+        string $domain = '',
         bool $secure = false,
         bool $httpOnly = false
     ) {
@@ -389,7 +389,7 @@ class Response {
 
     /**
      */
-    public function push(string $url, array $headers = null) {
+    public function push(string $url, array $headers = []) {
         \assert((function ($headers) {
             foreach ($headers ?? [] as $name => $header) {
                 if (\is_int($name)) {

@@ -81,7 +81,7 @@ class BodyParser implements InputStream, Promise {
 
             \Amp\asyncCall(function () {
                 try {
-                    $this->deferred->resolve($this->end(yield $this->body));
+                    $this->deferred->resolve($this->end(yield $this->body->buffer()));
                 } catch (\Throwable $exception) {
                     if ($exception instanceof ClientSizeException) {
                         $exception = new ClientException("", 0, $exception);
@@ -162,7 +162,7 @@ class BodyParser implements InputStream, Promise {
 
         foreach ($this->bodies as $key => $bodies) {
             foreach ($bodies as $body) {
-                $body->onResolve($when);
+                $body->buffer()->onResolve($when);
                 $body->getMetadata()->onResolve($metawhen);
             }
             $metadata[$key] = array_filter($metadata[$key]);

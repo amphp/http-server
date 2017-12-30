@@ -629,10 +629,11 @@ class Server implements Monitor {
             $ireq->body = $this->nullBody;
         }
 
-        if (empty($ireq->headers["cookie"])) {
-            $ireq->cookies = [];
-        } else { // @TODO delay initialization
-            $ireq->cookies = \array_filter(\array_map([Cookie::class, "fromHeader"], $ireq->headers["cookie"]));
+        if (!empty($ireq->headers["cookie"])) { // @TODO delay initialization
+            $cookies = \array_filter(\array_map([Cookie::class, "fromHeader"], $ireq->headers["cookie"]));
+            foreach ($cookies as $cookie) {
+                $ireq->cookies[$cookie->getName()] = $cookie;
+            }
         }
 
         $this->respond($ireq);
@@ -888,6 +889,7 @@ class Server implements Monitor {
 
     private function export(Client $client, Response $response) {
         $this->clear($client);
+        $client->isExported = true;
 
         assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
 
@@ -909,8 +911,6 @@ class Server implements Monitor {
             $message = "close {$client->clientAddr}:{$client->clientPort}";
             return static function () use ($closer, &$clientCount, &$clientsPerIP, $logger, $message) {
                 $closer();
-                assert($clientCount >= 0);
-                assert($clientsPerIP >= 0);
                 $logger->log(Logger::DEBUG, $message);
             };
         })());

@@ -24,11 +24,11 @@ class Request {
     /** @var string */
     public $method;
     /** @var array */
-    public $headers;
+    public $headers = [];
     /** @var \Aerys\Body */
     public $body;
     /** @var int */
-    public $maxBodySize;
+    public $maxBodySize = 0;
     /** @var \Amp\Uri\Uri */
     public $uri;
     /** string */
@@ -36,7 +36,7 @@ class Request {
     /** @var array */
     public $cookies = [];
     /** @var int */
-    public $time;
+    public $time = 0;
     /** @var string */
     public $httpDate;
     /** @var array */

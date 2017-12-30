@@ -2,14 +2,17 @@
 
 namespace Aerys\Test;
 
-use Aerys\Client;
-use Aerys\Http1Driver;
-use Aerys\HttpDriver;
-use Aerys\Internal\Request;
+use Aerys\Internal;
+use Aerys\Internal\Client;
+use Aerys\Internal\Http1Driver;
+use Aerys\Internal\HttpDriver;
 use Aerys\Options;
+use Aerys\Response;
 use Amp\Artax\Internal\Parser;
+use Amp\ByteStream\InMemoryStream;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
+use Amp\Uri\Uri;
 
 class Http1DriverTest extends TestCase {
     const HTTP_HEADER_EMITTERS = HttpDriver::RESULT | HttpDriver::ENTITY_HEADERS;
@@ -87,7 +90,7 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideParsableRequests
      */
-    public function testBufferedRequestParse($msg, $expectations) {
+    public function testBufferedRequestParse(string $msg, array $expectations) {
         $invoked = 0;
         $parseResult = null;
         $body = "";
@@ -107,7 +110,13 @@ class Http1DriverTest extends TestCase {
         $client = new Client;
         $client->options = new Options;
         $driver = new Http1Driver;
-        $driver->setup([self::HTTP_HEADER_EMITTERS => $headerEmitCallback, HttpDriver::ENTITY_PART => $dataEmitCallback, HttpDriver::ENTITY_RESULT => $invokedCallback], $this->createCallback(0));
+        $driver->setup([
+            self::HTTP_HEADER_EMITTERS => $headerEmitCallback,
+            HttpDriver::ENTITY_PART => $dataEmitCallback,
+            HttpDriver::ENTITY_RESULT => $invokedCallback,
+            HttpDriver::ERROR => $this->createCallback(0),
+        ], $this->createCallback(0));
+
         $parser = $driver->parser($client);
         $parser->send($msg);
 
@@ -115,7 +124,7 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($expectations["trace"], $ireq->trace, "trace mismatch");
         $this->assertSame($expectations["protocol"], $ireq->protocol, "protocol mismatch");
         $this->assertSame($expectations["method"], $ireq->method, "method mismatch");
-        $this->assertSame($expectations["uri"], $ireq->uri, "uri mismatch");
+        $this->assertSame($expectations["uri"], $ireq->uri->getPath(), "uri mismatch");
         $this->assertSame($expectations["headers"], $ireq->headers, "headers mismatch");
         $this->assertSame($expectations["body"], $body, "body mismatch");
     }
@@ -144,7 +153,13 @@ class Http1DriverTest extends TestCase {
         $client->options = new Options;
         $client->serverPort = 80;
         $driver = new Http1Driver;
-        $driver->setup([self::HTTP_HEADER_EMITTERS => $headerEmitCallback, HttpDriver::ENTITY_PART => $dataEmitCallback, HttpDriver::ENTITY_RESULT => $invokedCallback], $this->createCallback(0));
+        $driver->setup([
+            self::HTTP_HEADER_EMITTERS => $headerEmitCallback,
+            HttpDriver::ENTITY_PART => $dataEmitCallback,
+            HttpDriver::ENTITY_RESULT => $invokedCallback,
+            HttpDriver::ERROR => $this->createCallback(0),
+        ], $this->createCallback(0));
+
         $parser = $driver->parser($client);
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
@@ -154,10 +169,10 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($expectations["trace"], $ireq->trace, "trace mismatch");
         $this->assertSame($expectations["protocol"], $ireq->protocol, "protocol mismatch");
         $this->assertSame($expectations["method"], $ireq->method, "method mismatch");
-        $this->assertSame($expectations["uri"], $ireq->uri, "uri mismatch");
+        $this->assertSame($expectations["uri"], $ireq->uri->getPath(), "uri mismatch");
         $this->assertSame($expectations["headers"], $ireq->headers, "headers mismatch");
         $this->assertSame($expectations["body"], $body, "body mismatch");
-        $this->assertSame(80, $ireq->uriPort);
+        $this->assertSame(80, $ireq->uri->getPort());
     }
 
     public function testIdentityBodyParseEmit() {
@@ -202,8 +217,8 @@ class Http1DriverTest extends TestCase {
         $emitCallbacks = [
             HttpDriver::ENTITY_HEADERS => function ($ireq) use (&$invoked) {
                 $this->assertSame(++$invoked, 1);
-                $this->assertSame("localhost", $ireq->uriHost);
-                $this->assertSame(1337, $ireq->uriPort);
+                $this->assertSame("localhost", $ireq->uri->getHost());
+                $this->assertSame(1337, $ireq->uri->getPort());
             },
             HttpDriver::ENTITY_PART => function ($client, $body) use (&$invoked) {
                 if (++$invoked == 2) {
@@ -258,9 +273,9 @@ class Http1DriverTest extends TestCase {
         $emitCallbacks = [
             HttpDriver::ENTITY_HEADERS => function ($ireq) use (&$invoked) {
                 $this->assertSame(++$invoked, 1);
-                $this->assertSame("https", $ireq->uriScheme);
-                $this->assertSame("test.local", $ireq->uriHost);
-                $this->assertSame(1337, $ireq->uriPort);
+                $this->assertSame("https", $ireq->uri->getScheme());
+                $this->assertSame("test.local", $ireq->uri->getHost());
+                $this->assertSame(1337, $ireq->uri->getPort());
             },
             HttpDriver::ENTITY_PART => function ($client, $bodyData) use (&$invoked, &$body) {
                 $invoked++;
@@ -343,15 +358,15 @@ class Http1DriverTest extends TestCase {
 
         // 2 --- OPTIONS request ------------------------------------------------------------------>
 
-        $msg = "OPTIONS * HTTP/1.0\r\n\r\n";
+        $msg = "OPTIONS * HTTP/1.1\r\nHost: http://localhost\r\n\r\n";
         $trace = substr($msg, 0, -2);
 
         $expectations = [
             "trace"       => $trace,
-            "protocol"    => "1.0",
+            "protocol"    => "1.1",
             "method"      => "OPTIONS",
-            "uri"         => "*",
-            "headers"     => [],
+            "uri"         => "",
+            "headers"     => ["host" => ["http://localhost"]],
             "body"        => "",
             "invocations" => 1,
         ];
@@ -645,14 +660,13 @@ class Http1DriverTest extends TestCase {
         $getWriter = function () use ($client, $driver) {
             $ireq = new Internal\Request;
             $ireq->client = $client;
+            $ireq->client->remainingRequests = \PHP_INT_MAX;
             $ireq->protocol = "1.1";
-            $ireq->responseWriter = $driver->writer($ireq);
+            $ireq->responseWriter = $driver->writer($ireq, new Response\EmptyResponse);
             $ireq->httpDate = "date";
             $ireq->method = "GET";
-            return $ireq->responseWriter;//\Aerys\responseCodec(\Aerys\responseFilter($driver->filters($ireq, []), $ireq), $ireq);
+            return $ireq->responseWriter;
         };
-
-        $rawHeaders = [":status" => 200, ":reason" => "OK"];
 
         $parser->send($payloads[0] . $payloads[1]);
 
@@ -660,14 +674,12 @@ class Http1DriverTest extends TestCase {
         $this->assertSame(1 /* first req */, $partInvoked);
 
         $writer = $getWriter();
-        $writer->send($rawHeaders);
         $writer->send(null);
 
         $this->assertSame(2 /* second req */, $partInvoked);
         $this->assertSame($results[1], $body);
 
         $writer = $getWriter();
-        $writer->send($rawHeaders);
         $writer->send(null);
 
         $parser->send($payloads[0]);
@@ -676,7 +688,6 @@ class Http1DriverTest extends TestCase {
         $this->assertSame(3 /* third req */, $partInvoked);
 
         $writer = $getWriter();
-        $writer->send($rawHeaders);
         $writer->send(null);
 
         $this->assertSame(3 /* once per request */, $partInvoked);
@@ -701,61 +712,57 @@ class Http1DriverTest extends TestCase {
     public function testWriter() {
         $headers = ["test" => ["successful"]];
         $status = 200;
-        $rawHeaders = $headers + [":status" => $status, ":reason" => "OK", ":aerys-entity-length" => "*", ":aerys-push" => ["/foo" => []]];
         $data = "foobar";
 
         $driver = new Http1Driver;
-        $driver->setup([], function ($client, $final = false) use (&$fin) { $fin = $final; });
+        $driver->setup([], function (Client $client, string $data, bool $final = false) use (&$buffer, &$fin) {
+            $buffer = $data;
+            $fin = $final;
+        });
         $client = new Client;
         $client->options = new Options;
         $client->remainingRequests = PHP_INT_MAX;
-        foreach (["connectionTimeout" => 60, "defaultContentType" => "text/html", "defaultTextCharset" => "utf-8", "deflateEnable" => false, "sendServerToken" => false] as $k => $v) {
+        foreach ([
+            "connectionTimeout" => 60,
+            "defaultContentType" => "text/plain",
+            "defaultTextCharset" => "utf-8",
+            "deflateEnable" => false,
+            "sendServerToken" => false
+        ] as $k => $v) {
             $client->options->$k = $v;
         }
         $ireq = new Internal\Request;
         $ireq->client = $client;
         $ireq->protocol = "1.1";
-        $ireq->responseWriter = $driver->writer($ireq);
+        $ireq->responseWriter = $writer = $driver->writer($ireq, $response = new Response(new InMemoryStream, $headers)); // Use same body to set prop
         $ireq->httpDate = "date";
         $ireq->method = "GET";
-        $writer = \Aerys\responseCodec(\Aerys\responseFilter($driver->middlewares($ireq, []), $ireq), $ireq);
-        $writer->send($rawHeaders);
+        $response->push("/foo");
+
         foreach (str_split($data) as $c) {
             $writer->send($c);
-            $writer->send(false);
         }
         $writer->send(null);
 
         $this->assertTrue($fin);
-        $this->verifyWrite($client->writeBuffer, $status, $headers + ["transfer-encoding" => ["chunked"], "link" => ["</foo>; rel=preload"], "content-type" => ["text/html; charset=utf-8"], "keep-alive" => ["timeout=60"], "date" => ["date"]], $data);
+        $this->verifyWrite($buffer, $status, $headers + [
+                "link" => ["</foo>; rel=preload"],
+                "content-type" => ["text/plain; charset=utf-8"],
+                "connection" => ["keep-alive"],
+                "keep-alive" => ["timeout=60"],
+                "date" => ["date"],
+                "transfer-encoding" => ["chunked"],
+            ], $data);
         $this->assertNotTrue($client->shouldClose);
-    }
-
-    public function testWriterAbortBeforeHeaders() {
-        $driver = new Http1Driver;
-        $driver->setup([], function (Client $client, $final) use (&$invoked) {
-            $this->assertTrue($final);
-            $this->assertTrue($client->shouldClose);
-            $this->assertEquals("", $client->writeBuffer);
-            $invoked = true;
-        });
-
-        $ireq = new Internal\Request;
-        $ireq->client = new Client;
-        $writer = $driver->writer($ireq);
-        $writer->valid(); // start generator
-
-        $this->assertNull($invoked);
-        unset($writer);
-        $this->assertTrue($invoked);
     }
 
     public function testWriterAbortAfterHeaders() {
         $driver = new Http1Driver;
-        $driver->setup([], function (Client $client, $final) use (&$invoked) {
+        $driver->setup([], function (Client $client, string $data, bool $final) use (&$invoked) {
             $this->assertTrue($final);
             $this->assertTrue($client->shouldClose);
-            $this->assertEquals("HTTP/1.1 200 OK\r\n\r\nfoo", $client->writeBuffer);
+            $expected = "HTTP/1.1 200 OK";
+            $this->assertEquals($expected, \substr($data, 0, \strlen($expected)));
             $invoked = true;
         });
 
@@ -764,13 +771,12 @@ class Http1DriverTest extends TestCase {
         $ireq = new Internal\Request;
         $ireq->client = $client;
         $ireq->protocol = "1.1";
-        $writer = $driver->writer($ireq);
+        $writer = $driver->writer($ireq, new Response\EmptyResponse);
 
-        $writer->send([":status" => 200, ":reason" => "OK"]);
         $writer->send("foo");
 
         $this->assertNull($invoked);
-        unset($writer);
+        $writer->send(null);
         $this->assertTrue($invoked);
     }
 
@@ -778,25 +784,28 @@ class Http1DriverTest extends TestCase {
         $ireq = new Internal\Request;
         $ireq->protocol = "1.1";
         $ireq->headers = ["upgrade" => ["h2c"], "http2-settings" => [strtr(base64_encode("somesettings"), "+/", "-_")], "host" => ["foo.bar"]];
-        $ireq->responseWriter = (function () use (&$headers) {
-            $headers = yield;
-        })();
-        $ireq->uriPath = "/path";
+        $ireq->responseWriter = $responseWriter = function ($res) use (&$response) {
+            $response = $res;
+        };
+        $ireq->uri = new Uri("http://localhost/path");
         $ireq->method = "GET";
         $ireq->client = new Client;
         $ireq->client->options = new Options;
 
         $driver = new Http1Driver;
+        $driver->setup([], $this->createCallback(1));
+
         $http2 = new class implements HttpDriver {
+            /** @var \Generator */
+            private $responseWriter;
             public function setup(array $parseEmitters, callable $responseWriter) {
+                $this->responseWriter = $responseWriter;
             }
             public function upgradeBodySize(Internal\Request $ireq) {
             }
-            public function filters(Internal\Request $ireq, array $filters): array {
-                return $filters;
-            }
-            public function writer(Internal\Request $ireq): \Generator {
-                yield;
+            public function writer(Internal\Request $ireq, Response $response): \Generator {
+                ($this->responseWriter)($response);
+                return (function () { yield; })();
             }
 
             public $received = "";
@@ -806,17 +815,17 @@ class Http1DriverTest extends TestCase {
                 }
             }
         };
+        $http2->setup([], $responseWriter);
+
+        // Set HTTP/2 driver with bound closure.
         (function () use ($http2) {
             $this->http2 = $http2;
         })->call($driver);
-        $driver->middlewares($ireq, []);
 
-        $this->assertEquals([
-            ":status" => \Aerys\HTTP_STATUS["SWITCHING_PROTOCOLS"],
-            ":reason" => "Switching Protocols",
-            "connection" => ["Upgrade"],
-            "upgrade" => ["h2c"]
-        ], $headers);
+        $writer = $driver->writer($ireq, $sent = new Response\EmptyResponse);
+
+        $this->assertSame($sent, $response);
+
         $this->assertEquals("", $http2->received);
     }
 
@@ -827,10 +836,7 @@ class Http1DriverTest extends TestCase {
             }
             public function upgradeBodySize(Internal\Request $ireq) {
             }
-            public function filters(Internal\Request $ireq, array $filters): array {
-                return $filters;
-            }
-            public function writer(Internal\Request $ireq): \Generator {
+            public function writer(Internal\Request $ireq, Response $response): \Generator {
                 yield;
             }
 
