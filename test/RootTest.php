@@ -5,6 +5,7 @@ namespace Aerys\Test;
 use Aerys\Root;
 use Aerys\Server;
 use Aerys\ServerObserver;
+use Amp\File\BlockingDriver;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Uri\Uri;
@@ -402,8 +403,6 @@ class RootTest extends TestCase {
      * @dataProvider provideValidRanges
      */
     public function testValidRange(string $range, callable $validator) {
-        $this->markTestSkipped("Hanging");
-
         Loop::run(function () use ($range, $validator) {
             $root = new Root(self::fixturePath());
             $root->setOption("useEtagInode", false);
@@ -428,7 +427,14 @@ class RootTest extends TestCase {
 
             $this->assertSame(HTTP_STATUS["PARTIAL_CONTENT"], $response->getStatus());
 
-            $validator($response->getHeaders(), yield $response->getBody()->read());
+            $body = "";
+            while (null !== $chunk = yield $response->getBody()->read()) {
+                $body .= $chunk;
+            }
+
+            $validator($response->getHeaders(), $body);
+
+            Loop::stop();
         });
     }
 

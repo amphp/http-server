@@ -579,7 +579,7 @@ class Root implements Delegate, ServerObserver {
                 );
                 yield $emitter->emit($header);
                 yield from $this->readRangeFromHandle($handle, $emitter, $startPos, $endPos);
-                $emitter->emit("\r\n");
+                yield $emitter->emit("\r\n");
             }
             $emitter->emit("--{$range->boundary}--");
         })->onResolve(function ($error) use ($emitter) {
@@ -596,7 +596,7 @@ class Root implements Delegate, ServerObserver {
 
     private function readRangeFromHandle(File\Handle $handle, Emitter $emitter, int $startPos, int $endPos): \Generator {
         $bytesRemaining = $endPos - $startPos + 1;
-        $handle->seek($startPos);
+        yield $handle->seek($startPos);
         while ($bytesRemaining) {
             $toBuffer = ($bytesRemaining > 8192) ? 8192 : $bytesRemaining;
             $chunk = yield $handle->read($toBuffer);
