@@ -29,10 +29,11 @@ interface Websocket {
      * be automatically accepted.
      *
      * Return an instance of \Aerys\Response to reject the websocket connection request.
-     * Other values returned from onHandshake() invocation (which may be the eventual generator
-     * return expression) is passed as the second parameter to onOpen().
      *
      * @param \Aerys\Request $request The HTTP request that instigated the handshake
+     *
+     * @return \Aerys\Response|null Return a response object to deny the connection.
+     *     May also return a promise or generator to run as a coroutine.
      */
     public function onHandshake(Request $request);
 
@@ -40,17 +41,17 @@ interface Websocket {
      * Invoked when the full two-way websocket upgrade completes.
      *
      * @param int $clientId A unique (to the current process) identifier for this client
-     * @param mixed $handshakeData The return value from onHandshake() for this client
+     * @param Request $request The HTTP request the instigated the connection.
      */
-    public function onOpen(int $clientId, $handshakeData);
+    public function onOpen(int $clientId, Request $request);
 
     /**
      * Invoked when data messages arrive from the client.
      *
      * @param int $clientId A unique (to the current process) identifier for this client
-     * @param \Aerys\Websocket\Message $msg A stream of data received from the client
+     * @param \Aerys\Websocket\Message $message A stream of data received from the client
      */
-    public function onData(int $clientId, Websocket\Message $msg);
+    public function onData(int $clientId, Websocket\Message $message);
 
     /**
      * Invoked when the close handshake completes.

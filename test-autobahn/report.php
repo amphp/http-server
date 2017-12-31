@@ -12,7 +12,13 @@ if (!file_exists(REPORT_PATH)) {
 }
 
 $report = file_get_contents(REPORT_PATH);
-$report = json_decode($report, true)["Aerys"];
+$report = json_decode($report, true);
+
+if (!isset($report["Aerys"])) {
+    $climate->red("Could not find result set for Aerys");
+}
+
+$report = $report["Aerys"];
 
 $climate->out("Autobahn test report:");
 
@@ -35,9 +41,9 @@ foreach ($report as $testNumber => $result) {
             $climate->yellow($message);
             break;
 
-        case "FAIL":
-            $climate->red($message);
+        case "FAILED":
             $failed++;
+            $climate->red($message);
             break;
 
         default:
@@ -52,11 +58,11 @@ $total = $passed + $nonstrict + $failed;
 $counts = \sprintf("%d Total / %d Passed / %d Non-strict / %d Failed", $total, $passed, $nonstrict, $failed);
 
 if ($failed) {
-    $climate->backgroundRed(\sprintf(" Tests failed: %s ", $counts));
+    $climate->backgroundRed()->black(\sprintf(" Tests failed: %s ", $counts));
 } elseif ($nonstrict) {
-    $climate->backgroundYellow(\sprintf(" Tests passed: %s ", $counts));
+    $climate->backgroundYellow()->black(\sprintf(" Tests passed: %s ", $counts));
 } else {
-    $climate->backgroundGreen(\sprintf(" Tests passed: %s ", $counts));
+    $climate->backgroundGreen()->black(\sprintf(" Tests passed: %s ", $counts));
 }
 
 exit($failed === 0 ? 0 : 1);

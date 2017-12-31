@@ -15,7 +15,6 @@ use Aerys\Websocket;
 
 const AERYS_OPTIONS = [
     "connectionTimeout" => 60,
-    //"deflateMinimumLength" => 0,
     "sendServerToken" => true,
 ];
 
@@ -71,7 +70,7 @@ $websocket = Aerys\websocket(new class implements Websocket {
     }
 
     public function onHandshake(Request $request) { /* check origin header here */ }
-    public function onOpen(int $clientId, $handshakeData) { }
+    public function onOpen(int $clientId, Request $request) { }
 
     public function onData(int $clientId, Websocket\Message $message) {
         // broadcast to all connected clients

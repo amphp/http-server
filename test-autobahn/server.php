@@ -2,15 +2,16 @@
 
 // Ignore this if-statement, it serves only to prevent running this file directly.
 if (!class_exists(Aerys\Process::class, false)) {
-    echo "This file is not supposed to be invoked directly. To run it, use `php bin/aerys -c demo.php`.\n";
+    echo "This file is not supposed to be invoked directly.\n";
     exit(1);
 }
 
-use Aerys\{ Host, Request, Response, Websocket, function root, function router, function websocket };
+use Aerys\Request;
+use Aerys\Websocket;
 
 /* --- http://localhost:9001/ ------------------------------------------------------------------- */
 
-$websocket = websocket(new class implements Websocket {
+$websocket = Aerys\websocket(new class implements Websocket {
     /** @var \Aerys\Websocket\Endpoint */
     private $endpoint;
 
@@ -18,14 +19,14 @@ $websocket = websocket(new class implements Websocket {
         $this->endpoint = $endpoint;
     }
 
-    public function onHandshake(Request $request, Response $response) { }
-    public function onOpen(int $clientId, $handshakeData) { }
+    public function onHandshake(Request $request) { }
+    public function onOpen(int $clientId, Request $request) { }
 
-    public function onData(int $clientId, Websocket\Message $msg) {
-        if ($msg->isBinary()) {
-            $this->endpoint->broadcastBinary(yield $msg);
+    public function onData(int $clientId, Websocket\Message $message) {
+        if ($message->isBinary()) {
+            $this->endpoint->broadcastBinary(yield $message->buffer());
         } else {
-            $this->endpoint->broadcast(yield $msg);
+            $this->endpoint->broadcast(yield $message->buffer());
         }
     }
 
@@ -39,9 +40,6 @@ $websocket = websocket(new class implements Websocket {
     "validateUtf8" => true
 ]);
 
-$router = router()->route("GET", "/ws", $websocket);
+$router = Aerys\router()->route("GET", "/ws", $websocket);
 
-// If none of our routes match try to serve a static file
-$root = root($docrootPath = __DIR__);
-
-return (new Host)->expose("127.0.0.1", 9001)->use($router);
+return (new Aerys\Host)->expose("127.0.0.1", 9001)->use($router);

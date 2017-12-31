@@ -192,11 +192,12 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
             return $response;
         }
 
-        $response->detach($this->reapClient, $onHandshakeResult);
+        $response->detach($this->reapClient, $request);
+
         return $response;
     }
 
-    public function reapClient(Socket $socket, $data = null): Rfc6455Client {
+    public function reapClient(Socket $socket, Request $request): Rfc6455Client {
         $client = new Rfc6455Client;
         $client->capacity = $this->maxBytesPerMinute;
         $client->connectedAt = $this->now;
@@ -213,7 +214,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         $this->clients[$client->id] = $client;
         $this->heartbeatTimeouts[$client->id] = $this->now + $this->heartbeatPeriod;
 
-        Promise\rethrow(new Coroutine($this->tryAppOnOpen($client->id, $data)));
+        Promise\rethrow(new Coroutine($this->tryAppOnOpen($client->id, $request)));
 
         Promise\rethrow(new Coroutine($this->read($client)));
 
@@ -306,9 +307,9 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         return $promise;
     }
 
-    private function tryAppOnOpen(int $clientId, $onHandshakeResult): \Generator {
+    private function tryAppOnOpen(int $clientId, Request $request): \Generator {
         try {
-            yield call([$this->application, "onOpen"], $clientId, $onHandshakeResult);
+            yield call([$this->application, "onOpen"], $clientId, $request);
         } catch (\Throwable $e) {
             yield from $this->onAppError($clientId, $e);
         }
@@ -370,7 +371,13 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
                         $code = current(unpack('n', substr($data, 0, 2)));
                         $reason = substr($data, 2);
 
-                        if ($code < 1000 || $code > 1015) {
+                        if ($code < 1000 // Reserved and unused.
+                            || ($code >= 1004 && $code <= 1006) // Should not be sent over wire.
+                            || ($code >= 1014 && $code <= 1016) // Should only be sent by server.
+                            || ($code >= 1017 && $code <= 1999) // Reserved for future use
+                            || ($code >= 2000 && $code <= 2999) // Reserved for WebSocket extensions.
+                            || $code >= 5000 // 3000-3999 for libraries, 4000-4999 for applications, >= 5000 invalid.
+                        ) {
                             $code = Code::PROTOCOL_ERROR;
                             $reason = 'Invalid close code';
                         } elseif ($this->validateUtf8 && !\preg_match('//u', $reason)) {
@@ -684,9 +691,9 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
 
     /**
      * A stateful generator websocket frame parser.
-     *
      * @param \Aerys\Websocket\Internal\Rfc6455Client $client Client associated with event emissions.
      * @param array $options Optional parser settings
+     *
      * @return \Generator
      */
     public function parser(Rfc6455Client $client, array $options = []): \Generator {
@@ -902,17 +909,17 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
 
                 if ($doUtf8Validation) {
                     if ($fin) {
-                        $i = \preg_match('//u', $payload) ? 0 : 8;
+                        $i = \preg_match('//u', $payload) ? 0 : 3;
                     } else {
                         $string = $payload;
-                        for ($i = 0; !\preg_match('//u', $payload) && $i < 8; $i++) {
+                        for ($i = 0; !\preg_match('//u', $payload) && $i < 3; $i++) {
                             $payload = \substr($payload, 0, -1);
                         }
                         if ($i > 0) {
                             $savedBuffer = \substr($string, -$i);
                         }
                     }
-                    if ($i === 8) {
+                    if ($i === 3) {
                         $this->onParsedError(
                             $client,
                             Code::INCONSISTENT_FRAME_DATA_TYPE,
