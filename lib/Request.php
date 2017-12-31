@@ -5,9 +5,8 @@ namespace Aerys;
 use Amp\Uri\Uri;
 
 class Request {
+    /** @var \Aerys\Internal\Request */
     private $internalRequest;
-    private $queryParams;
-    private $body;
 
     /**
      * @param \Aerys\Internal\Request $internalRequest
@@ -26,7 +25,7 @@ class Request {
     }
 
     /**
-     * Retrieve the request URI in the form /some/resource/foo?bar=1&baz=2.
+     * Retrieve the request URI.
      *
      * @return \Amp\Uri\Uri
      */
@@ -110,55 +109,6 @@ class Request {
         }
 
         return $ireq->body;
-    }
-
-    /**
-     * Retrieve one query string value of that name.
-     *
-     * @param string $name
-     * @return string|null
-     */
-    public function getParam(string $name) { /* : ?string */
-        return ($this->queryParams ?? $this->queryParams = $this->parseParams())[$name][0] ?? null;
-    }
-
-    /**
-     * Retrieve a array of query string values.
-     *
-     * @param string $name
-     * @return array
-     */
-    public function getParamArray(string $name): array {
-        return ($this->queryParams ?? $this->queryParams = $this->parseParams())[$name] ?? [];
-    }
-
-    /**
-     * Retrieve an associative array of an array of query string values.
-     *
-     * @return array
-     */
-    public function getAllParams(): array {
-        return $this->queryParams ?? $this->queryParams = $this->parseParams();
-    }
-
-    private function parseParams() {
-        if (empty($this->internalRequest->uriQuery)) {
-            return $this->queryParams = [];
-        }
-
-        $pairs = explode("&", $this->internalRequest->uriQuery);
-        if (count($pairs) > $this->internalRequest->client->options->maxInputVars) {
-            throw new ClientSizeException;
-        }
-
-        $this->queryParams = [];
-        foreach ($pairs as $pair) {
-            $pair = explode("=", $pair, 2);
-            // maxFieldLen should not be important here ... if it ever is, create an issue...
-            $this->queryParams[urldecode($pair[0])][] = urldecode($pair[1] ?? "");
-        }
-
-        return $this->queryParams;
     }
 
     /**
