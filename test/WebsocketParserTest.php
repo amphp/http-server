@@ -69,7 +69,7 @@ class WebsocketParserTest extends TestCase {
                 public function onHandshake(Request $request) {
                 }
 
-                public function onOpen(int $clientId, $handshakeData) {
+                public function onOpen(int $clientId, Request $request) {
                 }
 
                 public function onData(int $clientId, Websocket\Message $msg) {

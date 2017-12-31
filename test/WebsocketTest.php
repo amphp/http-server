@@ -31,7 +31,7 @@ class NullWebsocket implements Websocket {
     }
     public function onHandshake(Request $request) {
     }
-    public function onOpen(int $clientId, $handshakeData) {
+    public function onOpen(int $clientId, Request $request) {
     }
     public function onData(int $clientId, Websocket\Message $msg) {
     }
@@ -97,7 +97,7 @@ class WebsocketTest extends TestCase {
         yield $gateway->update($server);
         $server->state = Server::STARTED;
         yield $gateway->update($server);
-        $client = $gateway->reapClient(new ClientSocket($client));
+        $client = $gateway->reapClient(new ClientSocket($client), $this->createMock(Request::class));
 
         return [$gateway, $client, $socket, $server];
     }
