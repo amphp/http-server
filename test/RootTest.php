@@ -5,7 +5,6 @@ namespace Aerys\Test;
 use Aerys\Root;
 use Aerys\Server;
 use Aerys\ServerObserver;
-use Amp\File\BlockingDriver;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Uri\Uri;
