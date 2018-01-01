@@ -107,32 +107,32 @@ class Http1Driver implements HttpDriver {
             && $request->protocol === "1.1"
             && $status >= 200;
 
-        if ($chunked) {
-            $headers["transfer-encoding"] = ["chunked"];
-        }
-
         if (!empty($headers["connection"])) {
             foreach ($headers["connection"] as $connection) {
                 if (\strcasecmp($connection, "close") === 0) {
                     $client->shouldClose = true;
+                    $chunked = false;
                 }
             }
         }
 
+        if ($chunked) {
+            $headers["transfer-encoding"] = ["chunked"];
+        }
+
         $protocol = $request->protocol ?? "1.1";
 
-        $lines = ["HTTP/{$protocol} {$status} {$reason}"];
+        $buffer = "HTTP/{$protocol} {$status} {$reason}\r\n";
         foreach ($headers as $headerField => $headerLines) {
             if ($headerField[0] !== ":") {
                 foreach ($headerLines as $headerLine) {
                     /* verify header fields (per RFC) and header values against containing \n */
                     \assert(strpbrk($headerField, "\n\t ()<>@,;:\\\"/[]?={}") === false && strpbrk((string) $headerLine, "\n") === false);
-                    $lines[] = "{$headerField}: {$headerLine}";
+                    $buffer .= "{$headerField}: {$headerLine}\r\n";
                 }
             }
         }
-        $lines[] = "\r\n";
-        $buffer = \implode("\r\n", $lines);
+        $buffer .= "\r\n";
 
         if ($request->method === "HEAD") {
             ($this->responseWriter)($client, $buffer, true);
@@ -152,8 +152,8 @@ class Http1Driver implements HttpDriver {
                     break;
                 }
 
-                if ($chunked && \strlen($part)) {
-                    $buffer .= \sprintf("%x\r\n%s\r\n", \strlen($part), $part);
+                if ($chunked && $length = \strlen($part)) {
+                    $buffer .= \sprintf("%x\r\n%s\r\n", $length, $part);
                 } else {
                     $buffer .= $part;
                 }
