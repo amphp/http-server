@@ -7,9 +7,6 @@ use Amp\ByteStream\InputStream;
 use Amp\Socket\Socket;
 
 class Response {
-    /**  @var string[] */
-    private $headerNameMap = [];
-
     /** @var string[][] */
     private $headers = [];
 
@@ -161,7 +158,7 @@ class Response {
         if (isset($this->headers[$name])) {
             $this->headers[$name][] = $value;
         } else {
-            $this->headers = [$value];
+            $this->headers[$name] = [$value];
         }
 
         if ('set-cookie' === $name) {

@@ -135,6 +135,7 @@ class DeflateMiddleware implements Middleware {
             $response->setHeader("connection", "close");
         }
         $response->setHeader("content-encoding", $encoding);
+        $response->addHeader("vary", "accept-encoding");
 
         $iterator = new Producer(function (callable $emit) use ($resource, $body, $bodyBuffer) {
             do {
