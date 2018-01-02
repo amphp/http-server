@@ -47,7 +47,13 @@ foreach ($report as $testNumber => $result) {
             $climate->red($message);
             break;
 
+        case "UNIMPLEMENTED":
+            $total++;
+            $climate->darkGray($message);
+            break;
+
         default:
+            $total++;
             $climate->blue($message);
             break;
     }
@@ -55,8 +61,16 @@ foreach ($report as $testNumber => $result) {
 
 $climate->br();
 
-$total = $passed + $nonstrict + $failed;
-$counts = \sprintf("%d Total / %d Passed / %d Non-strict / %d Failed", $total, $passed, $nonstrict, $failed);
+$other = $total;
+$total += $passed + $nonstrict + $failed;
+$counts = \sprintf(
+    "%d Total / %d Passed / %d Non-strict / %d Failed / %d Unimplemented or Informational",
+    $total,
+    $passed,
+    $nonstrict,
+    $failed,
+    $other
+);
 
 if ($failed) {
     $climate->backgroundRed()->black(\sprintf(" Tests failed: %s ", $counts));

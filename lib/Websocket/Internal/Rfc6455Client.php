@@ -28,6 +28,9 @@ class Rfc6455Client {
     public $pingCount = 0;
     public $pongCount = 0;
 
+    /** @var \Aerys\Websocket\Internal\Rfc7692Compression|null */
+    public $compressionContext;
+
     // getInfo() properties
     public $connectedAt;
     public $closedAt = 0;
