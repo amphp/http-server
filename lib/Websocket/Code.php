@@ -2,7 +2,7 @@
 
 namespace Aerys\Websocket;
 
-class Code {
+final class Code {
     const NORMAL_CLOSE = 1000;
     const GOING_AWAY = 1001;
     const PROTOCOL_ERROR = 1002;
@@ -15,4 +15,8 @@ class Code {
     const EXPECTED_EXTENSION_MISSING = 1010;
     const UNEXPECTED_SERVER_ERROR = 1011;
     const TLS_HANDSHAKE_FAILURE = 1015;
-};
+
+    private function __construct() {
+        // forbid instances
+    }
+}

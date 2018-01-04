@@ -71,6 +71,10 @@ final class HttpStatus {
     const NOT_EXTENDED = 510;
     const NETWORK_AUTHENTICATION_REQUIRED = 511;
 
+    private function __construct() {
+        // forbid instances
+    }
+
     public static function getReason(int $code): string {
         return [
             100 => 'Continue',
