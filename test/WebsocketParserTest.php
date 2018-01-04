@@ -3,6 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Bootable;
+use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Internal\Client;
 use Aerys\Internal\HttpDriver;
@@ -313,7 +314,7 @@ class WebsocketParserTest extends TestCase {
 
             /** @var \Aerys\Response $response */
             $response = $driver->response;
-            $this->assertSame(\Aerys\HTTP_STATUS["SWITCHING_PROTOCOLS"], $response->getStatus());
+            $this->assertSame(HttpStatus::SWITCHING_PROTOCOLS, $response->getStatus());
             $this->assertSame("websocket", $response->getHeader("upgrade"));
             $this->assertSame("upgrade", $response->getHeader("connection"));
             $this->assertSame("HSmrc0sMlYUkAGmm5OPpG2HaGWk=", $response->getHeader("sec-websocket-accept"));

@@ -3,11 +3,11 @@
 namespace Aerys\Internal;
 
 use Aerys\ClientException;
+use Aerys\HttpStatus;
 use Aerys\NullBody;
 use Aerys\Response;
 use Amp\Loop;
 use Amp\Uri\Uri;
-use const Aerys\HTTP_STATUS;
 use const Aerys\SERVER_TOKEN;
 
 class Http1Driver implements HttpDriver {
@@ -60,7 +60,7 @@ class Http1Driver implements HttpDriver {
             $responseWriter = $this->send($request, new Response(new NullBody, [
                 "connection" => "Upgrade",
                 "upgrade" => "h2c",
-            ], HTTP_STATUS["SWITCHING_PROTOCOLS"]));
+            ], HttpStatus::SWITCHING_PROTOCOLS));
             $responseWriter->send(null); // flush before replacing
 
             // internal upgrade
@@ -226,7 +226,7 @@ class Http1Driver implements HttpDriver {
                     $buffer = (string) \substr($buffer, $headerPos + 4);
                     break;
                 } elseif (\strlen($buffer) > $maxHeaderSize) {
-                    ($this->errorEmitter)($client, HTTP_STATUS["REQUEST_HEADER_FIELDS_TOO_LARGE"], "Bad Request: header size violation");
+                    ($this->errorEmitter)($client, HttpStatus::REQUEST_HEADER_FIELDS_TOO_LARGE, "Bad Request: header size violation");
                     return;
                 }
 
@@ -238,19 +238,19 @@ class Http1Driver implements HttpDriver {
             $rawHeaders = \substr($startLineAndHeaders, $startLineEndPos + 1);
 
             if (!$method = \strtok($startLine, " ")) {
-                ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: invalid request line");
+                ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: invalid request line");
                 return;
             }
 
             $uri = \strtok(" ");
             if (!$uri) {
-                ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: invalid request line");
+                ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: invalid request line");
                 return;
             }
 
             $protocol = \strtok(" ");
             if (!is_string($protocol) || stripos($protocol, "HTTP/") !== 0) {
-                ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: invalid request line");
+                ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: invalid request line");
                 return;
             }
 
@@ -265,18 +265,18 @@ class Http1Driver implements HttpDriver {
                     $client->requestParser->send("$startLineAndHeaders\r\n$buffer");
                     return;
                 }
-                ($this->errorEmitter)($client, HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"], "Unsupported version {$protocol}");
+                ($this->errorEmitter)($client, HttpStatus::HTTP_VERSION_NOT_SUPPORTED, "Unsupported version {$protocol}");
                 break;
             }
 
             if ($rawHeaders) {
                 if (\strpos($rawHeaders, "\n\x20") || \strpos($rawHeaders, "\n\t")) {
-                    ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: multi-line headers deprecated by RFC 7230");
+                    ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: multi-line headers deprecated by RFC 7230");
                     return;
                 }
 
                 if (!\preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches, \PREG_SET_ORDER)) {
-                    ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: header syntax violation");
+                    ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: header syntax violation");
                     return;
                 }
 
@@ -313,7 +313,7 @@ class Http1Driver implements HttpDriver {
 
             $host = $headers["host"][0] ?? ""; // Host header may be set but empty.
             if ($host === "") {
-                ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: Invalid host header");
+                ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: Invalid host header");
                 return;
             }
 
@@ -355,7 +355,7 @@ class Http1Driver implements HttpDriver {
                     $chunkLenRemaining = \hexdec($hex);
 
                     if ($lineEndPos === 0 || $hex != \dechex($chunkLenRemaining)) {
-                        ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: hex chunk size expected");
+                        ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
                         return;
                     }
 
@@ -379,18 +379,18 @@ class Http1Driver implements HttpDriver {
                                 $trailers = null;
                             }
                             if ($maxHeaderSize > 0 && $trailerSize > $maxHeaderSize) {
-                                ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Trailer headers too large");
+                                ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Trailer headers too large");
                                 return;
                             }
                         } while (!isset($trailers));
 
                         if (\strpos($trailers, "\n\x20") || \strpos($trailers, "\n\t")) {
-                            ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: multi-line trailers deprecated by RFC 7230");
+                            ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: multi-line trailers deprecated by RFC 7230");
                             return;
                         }
 
                         if (!\preg_match_all(self::HEADER_REGEX, $trailers, $matches)) {
-                            ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], "Bad Request: trailer syntax violation");
+                            ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: trailer syntax violation");
                             return;
                         }
 

@@ -304,7 +304,7 @@ class Root implements Responder, ServerObserver {
         // HTTP server can send a 404 and/or allow handlers further down the chain
         // a chance to respond.
         if (empty($fileInfo->exists)) {
-            $status = HTTP_STATUS["NOT_FOUND"];
+            $status = HttpStatus::NOT_FOUND;
             return new Response\HtmlResponse(makeGenericBody($status), [], $status);
         }
 
@@ -319,7 +319,7 @@ class Root implements Responder, ServerObserver {
             default:
                 return new Response\EmptyResponse(
                     ["Allow" => "GET, HEAD, OPTIONS"],
-                    HTTP_STATUS["METHOD_NOT_ALLOWED"]
+                    HttpStatus::METHOD_NOT_ALLOWED
                 );
         }
 
@@ -328,13 +328,13 @@ class Root implements Responder, ServerObserver {
         switch ($precondition) {
             case self::PRECOND_NOT_MODIFIED:
                 $lastModifiedHttpDate = \gmdate('D, d M Y H:i:s', $fileInfo->mtime) . " GMT";
-                $response = new Response\EmptyResponse(["Last-Modified" => $lastModifiedHttpDate], HTTP_STATUS["NOT_MODIFIED"]);
+                $response = new Response\EmptyResponse(["Last-Modified" => $lastModifiedHttpDate], HttpStatus::NOT_MODIFIED);
                 if ($fileInfo->etag) {
                     $response->setHeader("Etag", $fileInfo->etag);
                 }
                 return $response;
             case self::PRECOND_FAILED:
-                return new Response\EmptyResponse([], HTTP_STATUS["PRECONDITION_FAILED"]);
+                return new Response\EmptyResponse([], HttpStatus::PRECONDITION_FAILED);
             case self::PRECOND_IF_RANGE_FAILED:
                 // Return this so the resulting generator will be auto-resolved
                 return yield from $this->doNonRangeResponse($fileInfo, $request);
@@ -353,7 +353,7 @@ class Root implements Responder, ServerObserver {
         // If we're still here this is the only remaining response we can send
         return new Response\EmptyResponse(
             ["Content-Range" => "*/{$fileInfo->size}"],
-            HTTP_STATUS["REQUESTED_RANGE_NOT_SATISFIABLE"]
+            HttpStatus::RANGE_NOT_SATISFIABLE
         );
     }
 
@@ -539,7 +539,7 @@ class Root implements Responder, ServerObserver {
             $stream = $this->sendMultiRange($handle, $fileInfo, $range);
         }
 
-        return new Response($stream, $headers, HTTP_STATUS["PARTIAL_CONTENT"]);
+        return new Response($stream, $headers, HttpStatus::PARTIAL_CONTENT);
     }
 
     private function sendNonRange(File\Handle $handle, Response $response): \Generator {

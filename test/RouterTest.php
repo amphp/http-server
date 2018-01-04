@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Options;
 use Aerys\Request;
@@ -86,7 +87,7 @@ class RouterTest extends TestCase {
         /** @var \Aerys\Response $response */
         $response = Promise\wait($router->respond($request));
 
-        $this->assertEquals(\Aerys\HTTP_STATUS["FOUND"], $response->getStatus());
+        $this->assertEquals(HttpStatus::FOUND, $response->getStatus());
         $this->assertEquals("/mediocre-dev/bob/19", $response->getHeader("location"));
 
         $ireq = new Internal\Request;
@@ -96,7 +97,7 @@ class RouterTest extends TestCase {
 
         $response = Promise\wait($router->respond($request));
 
-        $this->assertEquals(\Aerys\HTTP_STATUS["OK"], $response->getStatus());
+        $this->assertEquals(HttpStatus::OK, $response->getStatus());
         $this->assertSame(["name" => "bob", "age" => "19"], $routeArgs);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\HttpStatus;
 use Aerys\Root;
 use Aerys\Server;
 use Aerys\ServerObserver;
@@ -9,7 +10,6 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
-use const Aerys\HTTP_STATUS;
 
 class RootTest extends TestCase {
     /** @var \Amp\Loop\Driver */
@@ -171,7 +171,7 @@ class RootTest extends TestCase {
         $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
-        $this->assertSame(HTTP_STATUS["NOT_FOUND"], $response->getStatus());
+        $this->assertSame(HttpStatus::NOT_FOUND, $response->getStatus());
     }
 
     public function provideUnavailablePathsAboveRoot() {
@@ -308,7 +308,7 @@ class RootTest extends TestCase {
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
-        $this->assertSame(HTTP_STATUS["PRECONDITION_FAILED"], $response->getStatus());
+        $this->assertSame(HttpStatus::PRECONDITION_FAILED, $response->getStatus());
     }
 
     public function testPreconditionNotModified() {
@@ -336,7 +336,7 @@ class RootTest extends TestCase {
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
-        $this->assertSame(HTTP_STATUS["NOT_MODIFIED"], $response->getStatus());
+        $this->assertSame(HttpStatus::NOT_MODIFIED, $response->getStatus());
         $this->assertSame(gmdate("D, d M Y H:i:s", filemtime($diskPath))." GMT", $response->getHeader("last-modified"));
         $this->assertSame($etag, $response->getHeader("etag"));
     }
@@ -394,7 +394,7 @@ class RootTest extends TestCase {
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
-        $this->assertSame(HTTP_STATUS["REQUESTED_RANGE_NOT_SATISFIABLE"], $response->getStatus());
+        $this->assertSame(HttpStatus::RANGE_NOT_SATISFIABLE, $response->getStatus());
         $this->assertSame("*/4", $response->getHeader("content-range"));
     }
 
@@ -424,7 +424,7 @@ class RootTest extends TestCase {
             /** @var \Aerys\Response $response */
             $response = yield $root->respond($request);
 
-            $this->assertSame(HTTP_STATUS["PARTIAL_CONTENT"], $response->getStatus());
+            $this->assertSame(HttpStatus::PARTIAL_CONTENT, $response->getStatus());
 
             $body = "";
             while (null !== $chunk = yield $response->getBody()->read()) {

@@ -20,7 +20,7 @@ class TryResponder implements Responder {
 
     private function dispatch(Request $request): \Generator {
         if (empty($this->responders)) {
-            $status = HTTP_STATUS["NOT_FOUND"];
+            $status = HttpStatus::NOT_FOUND;
             return new Response\HtmlResponse(makeGenericBody($status), [], $status);
         }
 
@@ -31,7 +31,7 @@ class TryResponder implements Responder {
                 throw new \Error("Responders must return an instance of " . Response::class);
             }
 
-            if ($response->getStatus() !== HTTP_STATUS["NOT_FOUND"]) {
+            if ($response->getStatus() !== HttpStatus::NOT_FOUND) {
                 return $response;
             }
         }

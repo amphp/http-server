@@ -103,11 +103,11 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
 
                     break;
                 case Dispatcher::NOT_FOUND:
-                    $status = HTTP_STATUS["NOT_FOUND"];
+                    $status = HttpStatus::NOT_FOUND;
                     return new Response\HtmlResponse(makeGenericBody($status), [], $status);
                 case Dispatcher::METHOD_NOT_ALLOWED:
                     $allowedMethods = implode(",", $match[1]);
-                    $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
+                    $status = HttpStatus::METHOD_NOT_ALLOWED;
                     $body = makeGenericBody($status);
                     return new Response\HtmlResponse($body, ["Allow" => $allowedMethods], $status);
                 default:
@@ -260,7 +260,7 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
                 return new Response\TextResponse(
                         "Canonical resource URI: {$path}",
                         ["Location" => $redirectTo],
-                        HTTP_STATUS["FOUND"]
+                        HttpStatus::FOUND
                     );
             }, $actions];
         } else {

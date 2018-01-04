@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Internal\HttpDriver;
 use Aerys\Internal\Ticker;
@@ -19,8 +20,6 @@ use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Socket;
 use Amp\Uri\Uri;
-use const Aerys\HTTP_REASON;
-use const Aerys\HTTP_STATUS;
 
 // @TODO test communication on half-closed streams (both ways) [also with yield message] (also with HTTP/1 pipelining...)
 
@@ -156,9 +155,9 @@ class ServerTest extends TestCase {
             return new Response(new InMemoryStream($buffer));
         });
 
-        $status = HTTP_STATUS["OK"];
+        $status = HttpStatus::OK;
         $this->assertSame($status, $response->getStatus());
-        $this->assertSame(HTTP_REASON[$status], $response->getReason());
+        $this->assertSame(HttpStatus::getReason($status), $response->getReason());
 
         $this->assertSame("fooBarBUZZ!", $body);
     }
@@ -182,8 +181,8 @@ class ServerTest extends TestCase {
 
     public function providePreResponderHeaders() {
         return [
-            [["headers" => ["host" => "undefined"], "uri" => new Uri("http://undefined")], \Aerys\HTTP_STATUS["BAD_REQUEST"]],
-            [["method" => "NOT_ALLOWED"], HTTP_STATUS["METHOD_NOT_ALLOWED"]],
+            [["headers" => ["host" => "undefined"], "uri" => new Uri("http://undefined")], HttpStatus::BAD_REQUEST],
+            [["method" => "NOT_ALLOWED"], HttpStatus::METHOD_NOT_ALLOWED],
         ];
     }
 
@@ -199,7 +198,7 @@ class ServerTest extends TestCase {
             $this->fail("We should already have failed and never invoke the responder...");
         });
 
-        $this->assertSame(HTTP_STATUS["OK"], $response->getStatus());
+        $this->assertSame(HttpStatus::OK, $response->getStatus());
         $this->assertSame(implode(", ", (new Options)->allowedMethods), $response->getHeader("allow"));
     }
 
@@ -211,7 +210,7 @@ class ServerTest extends TestCase {
             throw new \Exception;
         });
 
-        $this->assertSame(HTTP_STATUS["INTERNAL_SERVER_ERROR"], $response->getStatus());
+        $this->assertSame(HttpStatus::INTERNAL_SERVER_ERROR, $response->getStatus());
     }
 
     public function testNotFound() {
@@ -220,7 +219,7 @@ class ServerTest extends TestCase {
         /** @var \Aerys\Response $response */
         list($response) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], new TryResponder);
 
-        $this->assertSame(HTTP_STATUS["NOT_FOUND"], $response->getStatus());
+        $this->assertSame(HttpStatus::NOT_FOUND, $response->getStatus());
     }
 
     public function startServer($parser, $tls, $unixSocket = false) {

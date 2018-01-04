@@ -7,11 +7,11 @@ namespace Aerys\Internal;
 // @TODO maybe display a real HTML error page for artificial limits exceeded
 
 use Aerys\ClientException;
+use Aerys\HttpStatus;
 use Aerys\Response;
 use Amp\Deferred;
 use Amp\Loop;
 use Amp\Uri\Uri;
-use const Aerys\HTTP_STATUS;
 use const Aerys\SERVER_TOKEN;
 
 class Http2Driver implements HttpDriver {
@@ -440,7 +440,7 @@ class Http2Driver implements HttpDriver {
             $start = \strpos($buffer, "HTTP/") + 5;
             if ($start < \strlen($buffer)) {
                 $protocol = \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start);
-                ($this->errorEmitter)($client, HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"], "Unsupported version {$protocol}");
+                ($this->errorEmitter)($client, HttpStatus::HTTP_VERSION_NOT_SUPPORTED, "Unsupported version {$protocol}");
             }
             return;
         }
@@ -773,7 +773,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "RST_STREAM: $error\n");
                     }
 
                     if ($error !== 0) {
-                        // ($this->errorEmitter)($client, HTTP_STATUS["BAD_REQUEST"], $error);
+                        // ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, $error);
                     }
 
 assert(!defined("Aerys\\DEBUG_HTTP2") || print "GOAWAY($error): ".substr($buffer, 0, $length)."\n");

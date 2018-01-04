@@ -723,7 +723,7 @@ class Server implements Monitor {
     }
 
     private function makePreAppServiceUnavailableResponse(): Response {
-        $status = HTTP_STATUS["SERVICE_UNAVAILABLE"];
+        $status = HttpStatus::SERVICE_UNAVAILABLE;
         $headers = [
             "Connection" => "close",
         ];
@@ -731,7 +731,7 @@ class Server implements Monitor {
     }
 
     private function makePreAppInvalidHostResponse(): Response {
-        $status = HTTP_STATUS["BAD_REQUEST"];
+        $status = HttpStatus::BAD_REQUEST;
         $reason = "Bad Request: Invalid Host";
         $headers = [
             "Connection" => "close",
@@ -740,7 +740,7 @@ class Server implements Monitor {
     }
 
     private function makePreAppMethodNotAllowedResponse(): Response {
-        $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
+        $status = HttpStatus::METHOD_NOT_ALLOWED;
         $headers = [
             "Connection" => "close",
             "Allow" => implode(", ", $this->options->allowedMethods),
@@ -828,8 +828,8 @@ class Server implements Monitor {
     }
 
     private function makeErrorResponse(\Throwable $error, Request $request): Response {
-        $status = HTTP_STATUS["INTERNAL_SERVER_ERROR"];
-        $message = ($this->options->debug)
+        $status = HttpStatus::INTERNAL_SERVER_ERROR;
+        $message = $this->options->debug
             ? "<pre>" . \htmlspecialchars($error) . "</pre>"
             : "<p>Something went wrong ...</p>";
 

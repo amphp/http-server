@@ -3,6 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Body;
+use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Logger;
 use Aerys\NullBody;
@@ -18,7 +19,6 @@ use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Socket\ClientSocket;
-use const Aerys\HTTP_STATUS;
 
 class NullWebsocket implements Websocket {
     public $test;
@@ -240,49 +240,49 @@ class WebsocketTest extends TestCase {
             "connection" => ["upgrade"]
         ];
         $ireq->body = new NullBody;
-        $return[] = [$ireq, HTTP_STATUS["SWITCHING_PROTOCOLS"], ["upgrade" => ["websocket"], "connection" => ["upgrade"], "sec-websocket-accept" => ["HSmrc0sMlYUkAGmm5OPpG2HaGWk="]]];
+        $return[] = [$ireq, HttpStatus::SWITCHING_PROTOCOLS, ["upgrade" => ["websocket"], "connection" => ["upgrade"], "sec-websocket-accept" => ["HSmrc0sMlYUkAGmm5OPpG2HaGWk="]]];
 
         // 1 ----- error conditions: Handshake with POST method ----------------------------------->
 
         $_ireq = clone $ireq;
         $_ireq->method = "POST";
-        $return[] = [$_ireq, HTTP_STATUS["METHOD_NOT_ALLOWED"], ["allow" => ["GET"]]];
+        $return[] = [$_ireq, HttpStatus::METHOD_NOT_ALLOWED, ["allow" => ["GET"]]];
 
         // 2 ----- error conditions: Handshake with 1.0 protocol ---------------------------------->
 
         $_ireq = clone $ireq;
         $_ireq->protocol = "1.0";
-        $return[] = [$_ireq, HTTP_STATUS["HTTP_VERSION_NOT_SUPPORTED"]];
+        $return[] = [$_ireq, HttpStatus::HTTP_VERSION_NOT_SUPPORTED];
 
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
 
         $_ireq = clone $ireq;
         $_ireq->body = new Body(new IteratorStream((new Emitter)->iterate()));
-        $return[] = [$_ireq, HTTP_STATUS["BAD_REQUEST"]];
+        $return[] = [$_ireq, HttpStatus::BAD_REQUEST];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->
 
         $_ireq = clone $ireq;
         $_ireq->headers["upgrade"] = ["no websocket!"];
-        $return[] = [$_ireq, HTTP_STATUS["UPGRADE_REQUIRED"]];
+        $return[] = [$_ireq, HttpStatus::UPGRADE_REQUIRED];
 
         // 5 ----- error conditions: Connection: Upgrade header required -------------------------->
 
         $_ireq = clone $ireq;
         $_ireq->headers["connection"] = ["no upgrade!"];
-        $return[] = [$_ireq, HTTP_STATUS["UPGRADE_REQUIRED"]];
+        $return[] = [$_ireq, HttpStatus::UPGRADE_REQUIRED];
 
         // 6 ----- error conditions: Sec-Websocket-Key header required ---------------------------->
 
         $_ireq = clone $ireq;
         unset($_ireq->headers["sec-websocket-key"]);
-        $return[] = [$_ireq, HTTP_STATUS["BAD_REQUEST"]];
+        $return[] = [$_ireq, HttpStatus::BAD_REQUEST];
 
         // 7 ----- error conditions: Sec-Websocket-Version header must be 13 ---------------------->
 
         $_ireq = clone $ireq;
         $_ireq->headers["sec-websocket-version"] = ["12"];
-        $return[] = [$_ireq, HTTP_STATUS["BAD_REQUEST"]];
+        $return[] = [$_ireq, HttpStatus::BAD_REQUEST];
 
         // x -------------------------------------------------------------------------------------->
 
