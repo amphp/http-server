@@ -165,7 +165,7 @@ function parseCookie(string $cookies): array {
  * @return string
  */
 function makeGenericBody(int $status, array $options = []): string {
-    $reason = $options["reason"] ?? (HTTP_REASON[$status] ?? "");
+    $reason = $options["reason"] ?? HttpStatus::getReason($status);
     $subhead = isset($options["sub_heading"]) ? "<h3>{$options["sub_heading"]}</h3>" : "";
     $server = empty($options["server_token"]) ? "" : (SERVER_TOKEN . " @ ");
     $date = $options["http_date"] ?? gmdate("D, d M Y H:i:s") . " GMT";

@@ -44,7 +44,7 @@ class Response {
     ) {
         $this->status = $this->validateStatusCode($code);
         $this->reason = $reason === null
-            ? (HTTP_REASON[$this->status] ?? "Unknown reason")
+            ? HttpStatus::getReason($code)
             : $this->filterReason($reason);
 
         if (!empty($headers)) {
@@ -238,7 +238,7 @@ class Response {
             return $this->reason;
         }
 
-        return HTTP_REASON[$this->status] ?? '';
+        return HttpStatus::getReason($this->status);
     }
 
     /**
@@ -345,7 +345,7 @@ class Response {
      * @return string
      */
     protected function filterReason(string $reason = null): string {
-        return $reason ?? (HTTP_REASON[$this->status] ?? "Unknown reason");
+        return $reason ?? HttpStatus::getReason($this->status);
     }
 
     /**
