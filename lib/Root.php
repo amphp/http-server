@@ -19,6 +19,8 @@ class Root implements Delegate, ServerObserver {
     const PRECOND_IF_RANGE_FAILED = 4;
     const PRECOND_OK = 5;
 
+    const DEFAULT_MIME_TYPE_FILE = __DIR__ . "/../etc/mime";
+
     private $root;
     private $debug;
     private $filesystem;
@@ -254,7 +256,6 @@ class Root implements Delegate, ServerObserver {
             public $inode;
             public $buffer;
             public $etag;
-            public $handle;
         };
 
         $fileInfo->exists = false;
@@ -786,7 +787,9 @@ class Root implements Delegate, ServerObserver {
     public function update(Server $server): \Amp\Promise {
         switch ($server->state()) {
             case Server::STARTING:
-                $this->loadMimeFileTypes(__DIR__."/../etc/mime");
+                if (empty($this->mimeFileTypes)) {
+                    $this->loadMimeFileTypes(self::DEFAULT_MIME_TYPE_FILE);
+                }
                 break;
             case Server::STARTED:
                 $this->debug = $server->getOption("debug");

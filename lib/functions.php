@@ -77,10 +77,6 @@ function root(string $docroot, array $options = []): Bootable {
         public function boot(Server $server, PsrLogger $logger): Root {
             $root = new Root($this->docroot);
             $options = $this->options;
-            $defaultMimeFile = __DIR__ ."/../etc/mime";
-            if (!array_key_exists("mimeFile", $options) && file_exists($defaultMimeFile)) {
-                $options["mimeFile"] = $defaultMimeFile;
-            }
             foreach ($options as $key => $value) {
                 $root->setOption($key, $value);
             }
