@@ -84,7 +84,7 @@ class RouterTest extends TestCase {
         $ireq->uri = new Uri("/mediocre-dev/bob/19/");
 
         /** @var \Aerys\Response $response */
-        $response = Promise\wait($router->delegate($request));
+        $response = Promise\wait($router->respond($request));
 
         $this->assertEquals(\Aerys\HTTP_STATUS["FOUND"], $response->getStatus());
         $this->assertEquals("/mediocre-dev/bob/19", $response->getHeader("location"));
@@ -94,7 +94,7 @@ class RouterTest extends TestCase {
         $ireq->method = "GET";
         $ireq->uri = new Uri("/mediocre-dev/bob/19");
 
-        $response = Promise\wait($router->delegate($request));
+        $response = Promise\wait($router->respond($request));
 
         $this->assertEquals(\Aerys\HTTP_STATUS["OK"], $response->getStatus());
         $this->assertSame(["name" => "bob", "age" => "19"], $routeArgs);

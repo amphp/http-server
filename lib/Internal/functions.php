@@ -4,13 +4,13 @@ namespace Aerys\Internal;
 
 use Aerys\Bootable;
 use Aerys\Console;
-use Aerys\Delegate;
 use Aerys\Host;
 use Aerys\Middleware;
 use Aerys\Monitor;
 use Aerys\Options;
 use Aerys\Responder;
 use Aerys\Response;
+use Aerys\TryResponder;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Aerys\initServer;
 use function Aerys\selectConfigFile;
@@ -113,7 +113,7 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
         $name = $hostExport["name"];
         $actions = $hostExport["actions"];
 
-        $delegates = [];
+        $responders = [];
         $middlewares = [];
         $monitors = [];
 
@@ -135,20 +135,21 @@ function buildVhost(Host $host, callable $bootLoader): Vhost {
             }
 
             if ($action instanceof Responder) {
-                $action = new ConstantDelegate($action);
-            }
-
-            if ($action instanceof Delegate) {
-                $delegates[] = $action;
+                $responders[] = $action;
             }
         }
 
-        if (empty($delegates)) {
+        if (empty($responders)) {
             $responder = new CallableResponder(static function (): Response {
                 return new Response\HtmlResponse("<html><body><h1>It works!</h1></body>");
             });
+        } elseif (\count($responders) === 1) {
+            $responder = $responders[0];
         } else {
-            $responder = new DelegateCollection($delegates);
+            $responder = new TryResponder;
+            foreach ($responders as $action) {
+                $responder->addResponder($action);
+            }
         }
 
         $vhost = new Vhost($name, $interfaces, $responder, $middlewares, $monitors);

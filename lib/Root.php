@@ -12,7 +12,7 @@ use Amp\Loop;
 use Amp\Promise;
 use function Amp\call;
 
-class Root implements Delegate, ServerObserver {
+class Root implements Responder, ServerObserver {
     const PRECOND_NOT_MODIFIED = 1;
     const PRECOND_FAILED = 2;
     const PRECOND_IF_RANGE_OK = 3;
@@ -82,7 +82,7 @@ class Root implements Delegate, ServerObserver {
     /**
      * Respond to HTTP requests for filesystem resources.
      */
-    public function delegate(Request $request): Promise {
+    public function respond(Request $request): Promise {
         $uri = $request->getAttribute("aerys.sendfile") ?: $request->getUri()->getPath();
         $path = ($qPos = \strpos($uri, "?")) ? \substr($uri, 0, $qPos) : $uri;
         // IMPORTANT! Do NOT remove this. If this is left in, we'll be able to use /path\..\../outsideDocRoot defeating the removeDotPathSegments() function! (on Windows at least)
@@ -304,7 +304,8 @@ class Root implements Delegate, ServerObserver {
         // HTTP server can send a 404 and/or allow handlers further down the chain
         // a chance to respond.
         if (empty($fileInfo->exists)) {
-            return null;
+            $status = HTTP_STATUS["NOT_FOUND"];
+            return new Response\HtmlResponse(makeGenericBody($status), [], $status);
         }
 
         switch ($request->getMethod()) {

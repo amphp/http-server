@@ -115,7 +115,7 @@ class RootTest extends TestCase {
                 ->method("getMethod")
                 ->will($this->returnValue("GET"));
 
-            $promise = $root->delegate($request);
+            $promise = $root->respond($request);
             /** @var \Aerys\Response $response */
             $response = Promise\wait($promise);
 
@@ -141,7 +141,7 @@ class RootTest extends TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
         $stream = $response->getBody();
@@ -168,10 +168,10 @@ class RootTest extends TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
-        $this->assertNull($response);
+        $this->assertSame(HTTP_STATUS["NOT_FOUND"], $response->getStatus());
     }
 
     public function provideUnavailablePathsAboveRoot() {
@@ -193,7 +193,7 @@ class RootTest extends TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
@@ -233,7 +233,7 @@ class RootTest extends TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
@@ -259,7 +259,7 @@ class RootTest extends TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
@@ -280,7 +280,7 @@ class RootTest extends TestCase {
             ->method("getMethod")
             ->will($this->returnValue("OPTIONS"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
@@ -304,7 +304,7 @@ class RootTest extends TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
@@ -332,7 +332,7 @@ class RootTest extends TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
@@ -361,7 +361,7 @@ class RootTest extends TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
@@ -390,7 +390,7 @@ class RootTest extends TestCase {
             ->method("getMethod")
             ->will($this->returnValue("GET"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 
@@ -422,7 +422,7 @@ class RootTest extends TestCase {
                 ->will($this->returnValue("GET"));
 
             /** @var \Aerys\Response $response */
-            $response = yield $root->delegate($request);
+            $response = yield $root->respond($request);
 
             $this->assertSame(HTTP_STATUS["PARTIAL_CONTENT"], $response->getStatus());
 
@@ -477,7 +477,7 @@ PART;
             ->method("getMethod")
             ->will($this->returnValue("GET"));
 
-        $promise = $root->delegate($request);
+        $promise = $root->respond($request);
         /** @var \Aerys\Response $response */
         $response = Promise\wait($promise);
 

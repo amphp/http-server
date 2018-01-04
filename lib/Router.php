@@ -12,7 +12,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 use function FastRoute\simpleDispatcher;
 
-class Router implements Bootable, Delegate, Monitor, ServerObserver {
+class Router implements Bootable, Monitor, Responder, ServerObserver {
     private $state = Server::STOPPED;
     private $bootLoader;
 
@@ -58,7 +58,7 @@ class Router implements Bootable, Delegate, Monitor, ServerObserver {
      *
      * @return \Amp\Promise<\Aerys\Response>
      */
-    public function delegate(Request $request): Promise {
+    public function respond(Request $request): Promise {
         return new Coroutine($this->dispatch($request));
     }
 
@@ -103,10 +103,8 @@ class Router implements Bootable, Delegate, Monitor, ServerObserver {
 
                     break;
                 case Dispatcher::NOT_FOUND:
-                    // Do nothing; allow actions further down the chain a chance to respond.
-                    // If no other registered host actions respond the server will send a
-                    // 404 automatically anyway.
-                    return null;
+                    $status = HTTP_STATUS["NOT_FOUND"];
+                    return new Response\HtmlResponse(makeGenericBody($status), [], $status);
                 case Dispatcher::METHOD_NOT_ALLOWED:
                     $allowedMethods = implode(",", $match[1]);
                     $status = HTTP_STATUS["METHOD_NOT_ALLOWED"];
@@ -311,10 +309,6 @@ class Router implements Bootable, Delegate, Monitor, ServerObserver {
 
             if ($action instanceof Responder) {
                 throw new \Error("Responders cannot be route actions");
-            }
-
-            if ($action instanceof Delegate) {
-                throw new \Error("Delegates cannot be route actions");
             }
 
             if ($action instanceof Middleware) {

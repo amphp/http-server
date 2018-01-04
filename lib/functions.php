@@ -212,16 +212,14 @@ function initServer(PsrLogger $logger, array $hosts, array $options = []): Serve
         $booted = $bootable->boot($server, $logger);
         if ($booted !== null
             && !$booted instanceof Responder
-            && !$booted instanceof Delegate
             && !$booted instanceof Middleware
             && !$booted instanceof Monitor
             && !is_callable($booted)
         ) {
             throw new \Error(\sprintf(
-                "Any return value of %s::boot() must be callable or an instance of %s, %s, %s, or %s",
+                "Any return value of %s::boot() must be callable or an instance of %s, %s, or %s",
                 \str_replace("\0", "@", \get_class($bootable)),
                 Responder::class,
-                Delegate::class,
                 Middleware::class,
                 Monitor::class
             ));

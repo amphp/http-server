@@ -13,6 +13,7 @@ use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Response;
 use Aerys\Server;
+use Aerys\TryResponder;
 use Amp\ByteStream\InMemoryStream;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
@@ -217,7 +218,7 @@ class ServerTest extends TestCase {
         $ireq = $this->newIreq();
 
         /** @var \Aerys\Response $response */
-        list($response) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], new Internal\DelegateCollection([]));
+        list($response) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], new TryResponder);
 
         $this->assertSame(HTTP_STATUS["NOT_FOUND"], $response->getStatus());
     }

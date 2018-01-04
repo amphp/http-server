@@ -88,14 +88,13 @@ class Host {
      *
      * Host actions are invoked to service requests in the order in which they are added.
      *
-     * @param callable|Responder|Delegate|Middleware|Bootable|Monitor $action
+     * @param callable|Responder|Middleware|Bootable|Monitor $action
      *
      * @throws \Error on invalid $action parameter
      * @return self
      */
     public function use($action): self {
         $isAction = \is_callable($action)
-            || $action instanceof Delegate
             || $action instanceof Responder
             || $action instanceof Middleware
             || $action instanceof Bootable
@@ -104,9 +103,8 @@ class Host {
         if (!$isAction) {
             throw new \Error(
                 \sprintf(
-                    "%s() requires a callable action or an instance of %s, %s, %s, %s, or %s",
+                    "%s() requires a callable action or an instance of %s, %s, %s, or %s",
                     __METHOD__,
-                    Delegate::class,
                     Responder::class,
                     Bootable::class,
                     Monitor::class,
