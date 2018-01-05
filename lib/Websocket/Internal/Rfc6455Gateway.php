@@ -11,7 +11,10 @@ use Aerys\Responder;
 use Aerys\Response;
 use Aerys\Server;
 use Aerys\ServerObserver;
-use Aerys\Websocket;
+use Aerys\Websocket\Handshake;
+use Aerys\Websocket\Message;
+use Aerys\Websocket\Rfc6455Endpoint;
+use Aerys\Websocket\Websocket;
 use Aerys\Websocket\Code;
 use Amp\ByteStream\IteratorStream;
 use Amp\ByteStream\StreamException;
@@ -31,25 +34,25 @@ use function Amp\call;
 class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
     use CallableMaker;
 
-    /** @var \Psr\Log\LoggerInterface */
+    /** @var PsrLogger */
     private $logger;
 
-    /** @var \Aerys\Websocket */
+    /** @var Websocket */
     private $application;
 
-    /** @var \Aerys\Websocket\Rfc6455Endpoint */
+    /** @var Rfc6455Endpoint */
     private $endpoint;
 
     /** @var int */
     private $state;
 
-    /** @var \Aerys\Websocket\Internal\Rfc6455Client[] */
+    /** @var Rfc6455Client[] */
     private $clients = [];
 
-    /** @var \Aerys\Websocket\Internal\Rfc6455Client[] */
+    /** @var Rfc6455Client[] */
     private $lowCapacityClients = [];
 
-    /** @var \Aerys\Websocket\Internal\Rfc6455Client[] */
+    /** @var Rfc6455Client[] */
     private $highFramesPerSecondClients = [];
 
     /** @var int[] */
@@ -75,10 +78,10 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
     private $queuedPingLimit = 3;
     private $maxFramesPerSecond = 100; // do not bother with setting it too low, fread(8192) may anyway include up to 2700 frames
 
-    // private callables that we pass to external code //
+    // private callables that we pass to external code
     private $reapClient;
 
-    /* Frame control bits */
+    // Frame control bits
     const FIN      = 0b1;
     const RSV_NONE = 0b000;
     const OP_CONT  = 0x00;
@@ -92,7 +95,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         $this->logger = $logger;
         $this->application = $application;
         $this->now = time();
-        $this->endpoint = new Websocket\Rfc6455Endpoint($this);
+        $this->endpoint = new Rfc6455Endpoint($this);
 
         $this->reapClient = $this->callableFromInstanceMethod("reapClient");
     }
@@ -127,7 +130,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         return new Coroutine($this->do($request));
     }
 
-    public function do(Request $request): \Generator {
+    private function do(Request $request): \Generator {
         if ($request->getMethod() !== "GET") {
             $status = HttpStatus::METHOD_NOT_ALLOWED;
             return new Response\HtmlResponse(makeGenericBody($status), ["Allow" => "GET"], $status);
@@ -139,7 +142,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         }
 
         $body = $request->getBody();
-        if (!$body instanceof NullBody) {
+        if (!$body instanceof NullBody) { // FIXME: This relies on an implementation detail
             $status = HttpStatus::BAD_REQUEST;
             return new Response\HtmlResponse(makeGenericBody($status), ["Connection" => "close"], $status);
         }
@@ -151,7 +154,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
                 break;
             }
         }
-        if (empty($hasUpgradeWebsocket)) {
+        if (!$hasUpgradeWebsocket) {
             $status = HttpStatus::UPGRADE_REQUIRED;
             return new Response\HtmlResponse(makeGenericBody($status), [], $status);
         }
@@ -167,7 +170,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
                 }
             }
         }
-        if (empty($hasConnectionUpgrade)) {
+        if (!$hasConnectionUpgrade) {
             $status = HttpStatus::UPGRADE_REQUIRED;
             $reason = "Bad Request: \"Connection: Upgrade\" header required";
             return new Response\HtmlResponse(makeGenericBody($status), ["Upgrade" => "websocket"], $status, $reason);
@@ -179,13 +182,13 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
             return new Response\HtmlResponse(makeGenericBody($status), [], $status, $reason);
         }
 
-        if (!in_array("13", $request->getHeaderArray("Sec-Websocket-Version"))) {
+        if (!\in_array("13", $request->getHeaderArray("Sec-Websocket-Version"), true)) {
             $status = HttpStatus::BAD_REQUEST;
             $reason = "Bad Request: Requested Websocket version unavailable";
             return new Response\HtmlResponse(makeGenericBody($status), [], $status, $reason);
         }
 
-        $response = new Websocket\Handshake($acceptKey);
+        $response = new Handshake($acceptKey);
         $onHandshakeResult = yield call([$this->application, "onHandshake"], $request);
 
         if ($onHandshakeResult instanceof Response) {
@@ -301,7 +304,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
     }
 
     private function sendCloseFrame(Rfc6455Client $client, int $code, string $msg): Promise {
-        \assert($code !== Code::NONE || $msg == "");
+        \assert($code !== Code::NONE || $msg === "");
         $promise = $this->write($client, $code !== Code::NONE ? pack('n', $code) . $msg : "", self::OP_CLOSE);
         $client->closedAt = $this->now;
         return $promise;
@@ -315,7 +318,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         }
     }
 
-    private function tryAppOnData(Rfc6455Client $client, Websocket\Message $msg): \Generator {
+    private function tryAppOnData(Rfc6455Client $client, Message $msg): \Generator {
         try {
             yield call([$this->application, "onData"], $client->id, $msg);
         } catch (\Throwable $e) {
@@ -420,7 +423,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
             }
 
             $client->msgEmitter = new Emitter;
-            $msg = new Websocket\Message(new IteratorStream($client->msgEmitter->iterate()), $opcode === self::OP_BIN);
+            $msg = new Message(new IteratorStream($client->msgEmitter->iterate()), $opcode === self::OP_BIN);
 
             Promise\rethrow(new Coroutine($this->tryAppOnData($client, $msg)));
 
@@ -455,7 +458,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         Promise\rethrow(new Coroutine($this->doClose($client, $code, $msg)));
     }
 
-    private function compile(Rfc6455Client $client, string $msg, int $opcode, bool $fin): string {
+    private function compile(string $msg, int $opcode, bool $fin): string {
         $rsv = 0b000; // @TODO Add filter mechanism based on $client (e.g. gzip)
 
         $len = \strlen($msg);
@@ -477,7 +480,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
             return new Failure(new ClientException);
         }
 
-        $frame = $this->compile($client, $msg, $opcode, $fin);
+        $frame = $this->compile($msg, $opcode, $fin);
 
         ++$client->framesSent;
         $client->bytesSent += \strlen($frame);
@@ -494,7 +497,8 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
         $client = $this->clients[$clientId];
         ++$client->messagesSent;
         $opcode = $binary ? self::OP_BIN : self::OP_TEXT;
-        assert($binary || preg_match("//u", $data), "non-binary data needs to be UTF-8 compatible");
+
+        \assert($binary || preg_match("//u", $data), "non-binary data needs to be UTF-8 compatible");
 
         return $client->lastWrite = new Coroutine($this->doSend($client, $data, $opcode));
     }
@@ -516,7 +520,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
                     $bytes += yield $this->write($client, $chunk, $opcode, false);
                     $opcode = self::OP_CONT;
                 }
-                $bytes += yield $this->write($client, $final, $opcode, true);
+                $bytes += yield $this->write($client, $final, $opcode);
             } else {
                 $bytes = yield $this->write($client, $data, $opcode);
             }
@@ -620,7 +624,8 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
             case Server::STOPPED:
                 $promises = [];
 
-                // we are not going to wait for a proper self::OP_CLOSE answer (because else we'd need to timeout for 3 seconds, not worth it), but we will ensure to at least *have written* it
+                // we are not going to wait for a proper self::OP_CLOSE answer (because else we'd need to timeout for
+                // 3 seconds, not worth it), but we will ensure to at least *have written* it
                 foreach ($this->clients as $client) {
                     // only if we couldn't successfully send it in STOPPING
                     $code = Code::GOING_AWAY;
@@ -673,7 +678,7 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
             if ($client->capacity > $this->maxBytesPerMinute) {
                 unset($this->lowCapacityClients[$id]);
             }
-            if ($client->capacity > 0 && !isset($this->highFramesPerSecondClients[$id]) && !$client->closedAt && $client->rateDeferred) {
+            if (!$client->closedAt && $client->capacity > 0 && $client->rateDeferred && !isset($this->highFramesPerSecondClients[$id])) {
                 $client->rateDeferred->resolve();
             }
         }
@@ -691,8 +696,9 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
 
     /**
      * A stateful generator websocket frame parser.
-     * @param \Aerys\Websocket\Internal\Rfc6455Client $client Client associated with event emissions.
-     * @param array $options Optional parser settings
+     *
+     * @param Rfc6455Client $client Client associated with event emissions.
+     * @param array         $options Optional parser settings
      *
      * @return \Generator
      */
@@ -942,8 +948,8 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
 
     public function monitor(): array {
         return [
-            "handler" => [get_class($this->application), $this->application instanceof Monitor ? $this->application->monitor() : null],
-            "clients" => array_map(function ($client) { return $this->getInfo($client->id); }, $this->clients),
+            "handler" => [\get_class($this->application), $this->application instanceof Monitor ? $this->application->monitor() : null],
+            "clients" => \array_map(function ($client) { return $this->getInfo($client->id); }, $this->clients),
         ];
     }
 }

@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Aerys\Cookie\Cookie;
+use Aerys\Websocket;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 /**
@@ -23,7 +24,7 @@ function router(array $options = []): Router {
 /**
  * Create a Websocket application for use in a Host instance.
  *
- * @param \Aerys\Websocket|\Aerys\Bootable $app The websocket app to use
+ * @param \Aerys\Websocket\Websocket|\Aerys\Bootable $app The websocket app to use
  * @param array $options Endpoint options
  * @return \Aerys\Bootable Returns a Bootable to manufacture an Aerys\Websocket\Endpoint
  */
@@ -39,10 +40,10 @@ function websocket($app, array $options = []): Bootable {
             $app = ($this->app instanceof Bootable)
                 ? $this->app->boot($server, $logger)
                 : $this->app;
-            if (!$app instanceof Websocket) {
+            if (!$app instanceof Websocket\Websocket) {
                 $type = \is_object($app) ? \get_class($app) : \gettype($app);
                 throw new \TypeError(
-                    \sprintf("Cannot boot websocket handler; %s required, %s provided", Websocket::class, $type)
+                    \sprintf("Cannot boot websocket handler; %s required, %s provided", Websocket\Websocket::class, $type)
                 );
             }
             $gateway = new Websocket\Internal\Rfc6455Gateway($logger, $app);

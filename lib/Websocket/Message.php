@@ -11,6 +11,7 @@ final class Message extends Body {
 
     public function __construct(InputStream $stream, bool $binary) {
         parent::__construct($stream);
+
         $this->binary = $binary;
     }
 

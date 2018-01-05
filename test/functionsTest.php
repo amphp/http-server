@@ -3,6 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Request;
+use function Amp\Promise\wait;
 use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
 
@@ -50,7 +51,7 @@ class functionsTest extends TestCase {
         };
 
         /** @var \Aerys\Response $response */
-        $response = $action($request);
+        $response = wait($action->respond($request));
 
         $this->assertSame(301, $response->getStatus());
         $this->assertSame("https://localhost/foo", $response->getHeader("location"));

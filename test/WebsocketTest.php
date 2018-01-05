@@ -9,8 +9,11 @@ use Aerys\Logger;
 use Aerys\NullBody;
 use Aerys\Request;
 use Aerys\Server;
-use Aerys\Websocket;
+use Aerys\Websocket\Code;
+use Aerys\Websocket\Endpoint;
 use Aerys\Websocket\Internal\Rfc6455Gateway;
+use Aerys\Websocket\Message;
+use Aerys\Websocket\Websocket;
 use Amp\ByteStream\IteratorStream;
 use Amp\Deferred;
 use Amp\Delayed;
@@ -26,14 +29,14 @@ class NullWebsocket implements Websocket {
     public function __construct($test = null) {
         $this->test = $test;
     }
-    public function onStart(Websocket\Endpoint $endpoint) {
+    public function onStart(Endpoint $endpoint) {
         $this->endpoint = $endpoint;
     }
     public function onHandshake(Request $request) {
     }
     public function onOpen(int $clientId, Request $request) {
     }
-    public function onData(int $clientId, Websocket\Message $msg) {
+    public function onData(int $clientId, Message $msg) {
     }
     public function onClose(int $clientId, int $code, string $reason) {
     }
@@ -46,20 +49,20 @@ class WebsocketTest extends TestCase {
         while ($expected = array_shift($expectations)) {
             $op = $expected[0];
             $content = $expected[1] ?? null;
-            $this->assertGreaterThanOrEqual(2, strlen($data));
-            $this->assertEquals($op, ord($data) & 0xF);
-            $len = ord($data[1]);
-            if ($len == 0x7E) {
+            $this->assertGreaterThanOrEqual(2, \strlen($data));
+            $this->assertEquals($op, \ord($data) & 0xF);
+            $len = \ord($data[1]);
+            if ($len === 0x7E) {
                 $len = unpack('n', $data[2] . $data[3])[1];
                 $data = substr($data, 4);
-            } elseif ($len == 0x7F) {
+            } elseif ($len === 0x7F) {
                 $len = unpack('J', substr($data, 2, 8))[1];
                 $data = substr($data, 10);
             } else {
                 $data = substr($data, 2);
             }
             if (!$expectations) {
-                $this->assertEquals($len, strlen($data));
+                $this->assertEquals($len, \strlen($data));
             }
             if ($content !== null) {
                 $this->assertEquals($content, substr($data, 0, $len));
@@ -122,7 +125,7 @@ class WebsocketTest extends TestCase {
                     parent::__construct($test);
                     $this->func = $func;
                 }
-                public function onData(int $clientId, Websocket\Message $msg) {
+                public function onData(int $clientId, Message $msg) {
                     $this->gen = ($this->func)($clientId, $msg);
                     if ($this->gen instanceof \Generator) {
                         yield from $this->gen;
@@ -175,7 +178,7 @@ class WebsocketTest extends TestCase {
      */
     public function testAppError($method, $call) {
         Loop::run(function () use ($method, $call) {
-            $ws = $this->createMock('Aerys\Websocket');
+            $ws = $this->createMock(Websocket::class);
             $ws->expects($this->once())
                 ->method($method)
                 ->willReturnCallback(function () {
@@ -200,7 +203,7 @@ class WebsocketTest extends TestCase {
             ["onOpen", null],
             ["onData", ["onParsedData", [Rfc6455Gateway::OP_TEXT, "data", true]]],
             ["onClose", ["onParsedControlFrame", [Rfc6455Gateway::OP_CLOSE, "\xFF\xFF"]]],
-            ["onClose", ["onParsedError", [Websocket\Code::PROTOCOL_ERROR, ""]]]
+            ["onClose", ["onParsedError", [Code::PROTOCOL_ERROR, ""]]]
         ];
     }
 
@@ -212,7 +215,7 @@ class WebsocketTest extends TestCase {
             protected function output(string $message) { /* /dev/null */
             }
         };
-        $ws = $this->createMock('Aerys\Websocket');
+        $ws = $this->createMock(Websocket::class);
         $ws->expects($status === 101 ? $this->once() : $this->never())
             ->method("onHandshake");
         $gateway = new Rfc6455Gateway($logger, $ws);
@@ -306,17 +309,17 @@ class WebsocketTest extends TestCase {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, "");
             yield new Delayed(10); // Time to read, write, and close.
-            $this->assertEquals(Websocket\Code::NONE, $ws->closed);
+            $this->assertEquals(Code::NONE, $ws->closed);
             $this->assertSocket([[Rfc6455Gateway::OP_CLOSE, ""]], stream_get_contents($sock));
         });
     }
 
     public function testCloseWithStatus() {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
-            $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY));
+            $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, pack("n", Code::GOING_AWAY));
             yield new Delayed(10); // Time to read, write, and close.
-            $this->assertEquals(Websocket\Code::GOING_AWAY, $ws->closed);
-            $this->assertSocket([[Rfc6455Gateway::OP_CLOSE, pack("n", Websocket\Code::GOING_AWAY)]], stream_get_contents($sock));
+            $this->assertEquals(Code::GOING_AWAY, $ws->closed);
+            $this->assertSocket([[Rfc6455Gateway::OP_CLOSE, pack("n", Code::GOING_AWAY)]], stream_get_contents($sock));
         });
     }
 
@@ -327,7 +330,7 @@ class WebsocketTest extends TestCase {
             stream_socket_shutdown($sock, STREAM_SHUT_WR);
             stream_get_contents($sock, $bytes);
             yield new Delayed(10); // Time to read, write, and close.
-            $this->assertEquals(Websocket\Code::NONE, $ws->closed);
+            $this->assertEquals(Code::NONE, $ws->closed);
             $this->assertSocket([[Rfc6455Gateway::OP_CLOSE, ""]], stream_get_contents($sock));
         });
     }
@@ -336,7 +339,7 @@ class WebsocketTest extends TestCase {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
             stream_socket_shutdown($sock, STREAM_SHUT_WR);
             yield new Delayed(10); // Time to read, write, and close.
-            $this->assertEquals(Websocket\Code::ABNORMAL_CLOSE, $ws->closed);
+            $this->assertEquals(Code::ABNORMAL_CLOSE, $ws->closed);
             $this->assertEquals("", stream_get_contents($sock));
         });
     }
@@ -345,7 +348,7 @@ class WebsocketTest extends TestCase {
         $this->runClose(function ($gateway, $sock, $ws, $client) {
             fclose($sock);
             yield new Delayed(10); // Time to read, write, and close.
-            $this->assertEquals(Websocket\Code::ABNORMAL_CLOSE, $ws->closed);
+            $this->assertEquals(Code::ABNORMAL_CLOSE, $ws->closed);
         });
     }
 
@@ -364,7 +367,7 @@ class WebsocketTest extends TestCase {
     public function testMultiWrite() {
         Loop::run(function () {
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
-                public function onData(int $clientId, Websocket\Message $msg) {
+                public function onData(int $clientId, Message $msg) {
                     $this->endpoint->broadcast("foo".str_repeat("*", 1 << 20 /* fill buffer */));
                     $this->endpoint->send("bar", $clientId);
                     yield $this->endpoint->multicast("baz", [$clientId]);

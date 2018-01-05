@@ -15,9 +15,12 @@ use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;
-use Aerys\Websocket;
 use Aerys\Websocket\Code;
+use Aerys\Websocket\Endpoint;
+use Aerys\Websocket\Internal\Rfc6455Client;
 use Aerys\Websocket\Internal\Rfc6455Gateway;
+use Aerys\Websocket\Message;
+use Aerys\Websocket\Websocket;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Socket\Socket;
@@ -64,7 +67,7 @@ class WebsocketParserTest extends TestCase {
                     $this->binary = $isBinary;
                 }
 
-                public function onStart(Websocket\Endpoint $endpoint) {
+                public function onStart(Endpoint $endpoint) {
                 }
 
                 public function onHandshake(Request $request) {
@@ -73,7 +76,7 @@ class WebsocketParserTest extends TestCase {
                 public function onOpen(int $clientId, Request $request) {
                 }
 
-                public function onData(int $clientId, Websocket\Message $msg) {
+                public function onData(int $clientId, Message $msg) {
                     $this->test->assertSame($this->data, yield $msg);
                     $this->test->assertSame($this->binary, $msg->isBinary());
                 }
@@ -92,7 +95,7 @@ class WebsocketParserTest extends TestCase {
 
         $gateway = new Rfc6455Gateway($this->createMock(PsrLogger::class), $websocket);
 
-        $client = new Websocket\Internal\Rfc6455Client;
+        $client = new Rfc6455Client;
         $client->id = 1;
         $client->socket = $this->createMock(Socket::class);
         $parser = $gateway->parser($client, ['validate_utf8' => true]);
@@ -218,7 +221,7 @@ class WebsocketParserTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Cannot boot websocket handler; Aerys\Websocket required, boolean provided
+     * @expectedExceptionMessage Cannot boot websocket handler; Aerys\Websocket\Websocket required, boolean provided
      */
     public function testBadWebsocketClass() {
         \Aerys\websocket(
@@ -231,7 +234,7 @@ class WebsocketParserTest extends TestCase {
             ->boot(new class extends Server {
                 public function __construct() {
                 }
-            }, new class extends \Aerys\Logger {
+            }, new class extends Logger {
                 protected function output(string $message) {
                 }
             });

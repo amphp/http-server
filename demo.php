@@ -9,7 +9,9 @@ if (!class_exists(Aerys\Process::class, false)) {
 use Aerys\Host;
 use Aerys\Request;
 use Aerys\Response;
-use Aerys\Websocket;
+use Aerys\Websocket\Endpoint;
+use Aerys\Websocket\Message;
+use Aerys\Websocket\Websocket;
 
 /* --- Global server options -------------------------------------------------------------------- */
 
@@ -63,16 +65,17 @@ $router = Aerys\router()
     });
 
 $websocket = Aerys\websocket(new class implements Websocket {
+    /** @var Endpoint */
     private $endpoint;
 
-    public function onStart(Websocket\Endpoint $endpoint) {
+    public function onStart(Endpoint $endpoint) {
         $this->endpoint = $endpoint;
     }
 
     public function onHandshake(Request $request) { /* check origin header here */ }
     public function onOpen(int $clientId, Request $request) { }
 
-    public function onData(int $clientId, Websocket\Message $message) {
+    public function onData(int $clientId, Message $message) {
         // broadcast to all connected clients
         $this->endpoint->broadcast(yield $message->buffer());
     }

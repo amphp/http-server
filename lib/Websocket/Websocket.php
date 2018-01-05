@@ -1,6 +1,9 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Websocket;
+
+use Aerys\Request;
+use Aerys\Response;
 
 interface Websocket {
     /**
@@ -19,7 +22,7 @@ interface Websocket {
      *
      * @param \Aerys\Websocket\Endpoint $endpoint
      */
-    public function onStart(Websocket\Endpoint $endpoint);
+    public function onStart(Endpoint $endpoint);
 
     /**
      * Respond to websocket handshake requests.
@@ -30,9 +33,9 @@ interface Websocket {
      *
      * Return an instance of \Aerys\Response to reject the websocket connection request.
      *
-     * @param \Aerys\Request $request The HTTP request that instigated the handshake
+     * @param Request $request The HTTP request that instigated the handshake
      *
-     * @return \Aerys\Response|null Return a response object to deny the connection.
+     * @return Response|null Return a response object to deny the connection.
      *     May also return a promise or generator to run as a coroutine.
      */
     public function onHandshake(Request $request);
@@ -48,10 +51,10 @@ interface Websocket {
     /**
      * Invoked when data messages arrive from the client.
      *
-     * @param int $clientId A unique (to the current process) identifier for this client
-     * @param \Aerys\Websocket\Message $message A stream of data received from the client
+     * @param int     $clientId A unique (to the current process) identifier for this client
+     * @param Message $message A stream of data received from the client
      */
-    public function onData(int $clientId, Websocket\Message $message);
+    public function onData(int $clientId, Message $message);
 
     /**
      * Invoked when the close handshake completes.

@@ -480,9 +480,9 @@ class Root implements Responder, ServerObserver {
      * @param int    $size Total size of the file in bytes.
      * @param string $rawRanges Ranges as provided by the client.
      *
-     * @return ByteRange
+     * @return ByteRange|null
      */
-    private function normalizeByteRanges(int $size, string $rawRanges): ByteRange {
+    private function normalizeByteRanges(int $size, string $rawRanges) {
         $rawRanges = \str_ireplace([' ', 'bytes='], '', $rawRanges);
 
         $ranges = [];

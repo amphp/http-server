@@ -14,9 +14,6 @@ use function Amp\call;
  * impossible. `Amp\ByteStream\Message` will probably be adjusted to follow this implementation in the future.
  */
 class Body implements InputStream {
-    /** @var bool */
-    private $binary;
-
     /** @var InputStream */
     private $stream;
 
