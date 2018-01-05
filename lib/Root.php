@@ -219,13 +219,15 @@ class Root implements Responder, ServerObserver {
         return $this->cache[$reqPath] ?? null;
     }
 
-    private function shouldBufferContent($fileInfo) {
+    private function shouldBufferContent($fileInfo): bool {
         if ($fileInfo->size > $this->bufferedFileMaxSize) {
             return false;
         }
+
         if ($this->bufferedFileCount >= $this->bufferedFileMaxCount) {
             return false;
         }
+
         if ($this->cacheEntryCount >= $this->cacheEntryMaxCount) {
             return false;
         }
@@ -309,19 +311,20 @@ class Root implements Responder, ServerObserver {
         // If the file doesn't exist don't bother to do anything else so the
         // HTTP server can send a 404 and/or allow handlers further down the chain
         // a chance to respond.
-        if (empty($fileInfo->exists)) {
-            $status = HttpStatus::NOT_FOUND;
-            return new Response\HtmlResponse(makeGenericBody($status), [], $status);
+        if (!$fileInfo->exists) {
+            return new Response\HtmlResponse(makeGenericBody(HttpStatus::NOT_FOUND), [], HttpStatus::NOT_FOUND);
         }
 
         switch ($request->getMethod()) {
             case "GET":
             case "HEAD":
                 break;
+
             case "OPTIONS":
                 return new Response\EmptyResponse(
                     ["Allow" => "GET, HEAD, OPTIONS", "Accept-Ranges" => "bytes"]
                 );
+
             default:
                 return new Response\EmptyResponse(
                     ["Allow" => "GET, HEAD, OPTIONS"],
@@ -559,10 +562,9 @@ class Root implements Responder, ServerObserver {
         $coroutine->onResolve(function ($error) use ($emitter) {
             if ($error) {
                 $emitter->fail($error);
-                return;
+            } else {
+                $emitter->complete();
             }
-
-            $emitter->complete();
         });
 
         return $stream;
@@ -590,10 +592,9 @@ class Root implements Responder, ServerObserver {
         })->onResolve(function ($error) use ($emitter) {
             if ($error) {
                 $emitter->fail($error);
-                return;
+            } else {
+                $emitter->complete();
             }
-
-            $emitter->complete();
         });
 
         return $stream;
@@ -602,6 +603,7 @@ class Root implements Responder, ServerObserver {
     private function readRangeFromHandle(File\Handle $handle, Emitter $emitter, int $startPos, int $endPos): \Generator {
         $bytesRemaining = $endPos - $startPos + 1;
         yield $handle->seek($startPos);
+
         while ($bytesRemaining) {
             $toBuffer = ($bytesRemaining > 8192) ? 8192 : $bytesRemaining;
             $chunk = yield $handle->read($toBuffer);
