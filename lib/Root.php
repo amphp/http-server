@@ -2,6 +2,7 @@
 
 namespace Aerys;
 
+use Aerys\Internal\ByteRange;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\ByteStream\IteratorStream;
@@ -10,14 +11,16 @@ use Amp\Emitter;
 use Amp\File;
 use Amp\Loop;
 use Amp\Promise;
+use Amp\Struct;
+use Amp\Success;
 use function Amp\call;
 
 class Root implements Responder, ServerObserver {
-    const PRECOND_NOT_MODIFIED = 1;
-    const PRECOND_FAILED = 2;
-    const PRECOND_IF_RANGE_OK = 3;
-    const PRECOND_IF_RANGE_FAILED = 4;
-    const PRECOND_OK = 5;
+    const PRECONDITION_NOT_MODIFIED = 1;
+    const PRECONDITION_FAILED = 2;
+    const PRECONDITION_IF_RANGE_OK = 3;
+    const PRECONDITION_IF_RANGE_FAILED = 4;
+    const PRECONDITION_OK = 5;
 
     const DEFAULT_MIME_TYPE_FILE = __DIR__ . "/../etc/mime";
 
@@ -47,8 +50,9 @@ class Root implements Responder, ServerObserver {
     private $bufferedFileMaxSize = 524288;
 
     /**
-     * @param string $root Document root
+     * @param string           $root Document root
      * @param \Amp\File\Driver $filesystem Optional filesystem driver
+     *
      * @throws \Error On invalid root path
      */
     public function __construct(string $root, File\Driver $filesystem = null) {
@@ -94,8 +98,8 @@ class Root implements Responder, ServerObserver {
         // coroutine when the file is already cached.
         return new Coroutine(
             ($fileInfo = $this->fetchCachedStat($path, $request))
-            ? $this->respondFromFileInfo($fileInfo, $request)
-            : $this->respondWithLookup($this->root . $path, $path, $request)
+                ? $this->respondFromFileInfo($fileInfo, $request)
+                : $this->respondWithLookup($this->root . $path, $path, $request)
         );
     }
 
@@ -106,6 +110,7 @@ class Root implements Responder, ServerObserver {
      * traverse the document root above the allowed base path.
      *
      * @param string $path
+     *
      * @return string
      */
     public static function removeDotPathSegments(string $path): string {
@@ -119,7 +124,7 @@ class Root implements Responder, ServerObserver {
         /**
          * 2.  While the input buffer is not empty, loop as follows:.
          */
-        while ($inputBuffer != '') {
+        while ($inputBuffer !== '') {
             /**
              * A.  If the input buffer begins with a prefix of "../" or "./",
              *     then remove that prefix from the input buffer; otherwise,.
@@ -160,7 +165,7 @@ class Root implements Responder, ServerObserver {
                 break;
             }
             if (substr($inputBuffer, 0, 4) === "/../") {
-                while (array_pop($outputStack) === "/");
+                while (array_pop($outputStack) === "/") ;
                 $inputBuffer = substr($inputBuffer, 3);
                 continue;
             }
@@ -179,7 +184,7 @@ class Root implements Responder, ServerObserver {
              *     any) and any subsequent characters up to, but not including,
              *     the next "/" character or the end of the input buffer.
              */
-            if (($slashPos = stripos($inputBuffer, '/', 1)) === false) {
+            if (($slashPos = \strpos($inputBuffer, '/', 1)) === false) {
                 $outputStack[] = $inputBuffer;
                 break;
             }
@@ -195,7 +200,7 @@ class Root implements Responder, ServerObserver {
         // using their browser's "force refresh" functionality. This lets us avoid the
         // annoyance of stale file representations being served for a few seconds after
         // changes have been written to disk.
-        if (empty($this->debug)) {
+        if (!$this->debug) {
             return $this->cache[$reqPath] ?? null;
         }
 
@@ -248,7 +253,8 @@ class Root implements Responder, ServerObserver {
 
     private function lookup(string $path): \Generator {
         $fileInfo = new class {
-            use \Amp\Struct;
+            use Struct;
+
             public $exists;
             public $path;
             public $size;
@@ -326,16 +332,18 @@ class Root implements Responder, ServerObserver {
         $precondition = $this->checkPreconditions($request, $fileInfo->mtime, $fileInfo->etag);
 
         switch ($precondition) {
-            case self::PRECOND_NOT_MODIFIED:
+            case self::PRECONDITION_NOT_MODIFIED:
                 $lastModifiedHttpDate = \gmdate('D, d M Y H:i:s', $fileInfo->mtime) . " GMT";
                 $response = new Response\EmptyResponse(["Last-Modified" => $lastModifiedHttpDate], HttpStatus::NOT_MODIFIED);
                 if ($fileInfo->etag) {
                     $response->setHeader("Etag", $fileInfo->etag);
                 }
                 return $response;
-            case self::PRECOND_FAILED:
+
+            case self::PRECONDITION_FAILED:
                 return new Response\EmptyResponse([], HttpStatus::PRECONDITION_FAILED);
-            case self::PRECOND_IF_RANGE_FAILED:
+
+            case self::PRECONDITION_IF_RANGE_FAILED:
                 // Return this so the resulting generator will be auto-resolved
                 return yield from $this->doNonRangeResponse($fileInfo, $request);
         }
@@ -347,7 +355,7 @@ class Root implements Responder, ServerObserver {
 
         if ($range = $this->normalizeByteRanges($fileInfo->size, $rangeHeader)) {
             // Return this so the resulting generator will be auto-resolved
-            return yield from $this->doRangeResponse($range, $fileInfo, $request);
+            return yield from $this->doRangeResponse($range, $fileInfo);
         }
 
         // If we're still here this is the only remaining response we can send
@@ -360,29 +368,29 @@ class Root implements Responder, ServerObserver {
     private function checkPreconditions(Request $request, int $mtime, string $etag): int {
         $ifMatch = $request->getHeader("If-Match");
         if ($ifMatch && \stripos($ifMatch, $etag) === false) {
-            return self::PRECOND_FAILED;
+            return self::PRECONDITION_FAILED;
         }
 
         $ifNoneMatch = $request->getHeader("If-None-Match");
         if ($ifNoneMatch && \stripos($ifNoneMatch, $etag) !== false) {
-            return self::PRECOND_NOT_MODIFIED;
+            return self::PRECONDITION_NOT_MODIFIED;
         }
 
         $ifModifiedSince = $request->getHeader("If-Modified-Since");
         $ifModifiedSince = $ifModifiedSince ? @\strtotime($ifModifiedSince) : 0;
         if ($ifModifiedSince && $mtime > $ifModifiedSince) {
-            return self::PRECOND_NOT_MODIFIED;
+            return self::PRECONDITION_NOT_MODIFIED;
         }
 
         $ifUnmodifiedSince = $request->getHeader("If-Unmodified-Since");
         $ifUnmodifiedSince = $ifUnmodifiedSince ? @\strtotime($ifUnmodifiedSince) : 0;
         if ($ifUnmodifiedSince && $mtime > $ifUnmodifiedSince) {
-            return self::PRECOND_FAILED;
+            return self::PRECONDITION_FAILED;
         }
 
         $ifRange = $request->getHeader("If-Range");
         if ($ifRange === null || !$request->getHeader("Range")) {
-            return self::PRECOND_OK;
+            return self::PRECONDITION_OK;
         }
 
         /**
@@ -394,11 +402,11 @@ class Root implements Responder, ServerObserver {
          * @link https://tools.ietf.org/html/rfc7233#section-3.2
          */
         if ($httpDate = @\strtotime($ifRange)) {
-            return ($httpDate > $mtime) ? self::PRECOND_IF_RANGE_OK : self::PRECOND_IF_RANGE_FAILED;
+            return ($httpDate > $mtime) ? self::PRECONDITION_IF_RANGE_OK : self::PRECONDITION_IF_RANGE_FAILED;
         }
 
         // If the If-Range header was not an HTTP date we assume it's an Etag
-        return ($etag === $ifRange) ? self::PRECOND_IF_RANGE_OK : self::PRECOND_IF_RANGE_FAILED;
+        return ($etag === $ifRange) ? self::PRECONDITION_IF_RANGE_OK : self::PRECONDITION_IF_RANGE_FAILED;
     }
 
     private function doNonRangeResponse($fileInfo, Request $request): \Generator {
@@ -432,7 +440,7 @@ class Root implements Responder, ServerObserver {
             $value = "post-check={$postCheck}, pre-check={$preCheck}, max-age={$expiry}";
             $headers["Cache-Control"] = $value;
         } elseif ($canCache) {
-            $expiry =  $this->now + $this->expiresPeriod;
+            $expiry = $this->now + $this->expiresPeriod;
             $headers["Expires"] = \gmdate('D, d M Y H:i:s', $expiry) . " GMT";
         } else {
             $headers["Expires"] = "0";
@@ -465,14 +473,18 @@ class Root implements Responder, ServerObserver {
 
     /**
      * @link https://tools.ietf.org/html/rfc7233#section-2.1
+     *
+     * @param int    $size Total size of the file in bytes.
+     * @param string $rawRanges Ranges as provided by the client.
+     *
+     * @return ByteRange
      */
-    private function normalizeByteRanges(int $size, string $rawRanges) {
+    private function normalizeByteRanges(int $size, string $rawRanges): ByteRange {
         $rawRanges = \str_ireplace([' ', 'bytes='], '', $rawRanges);
-        $rawRanges = explode(',', $rawRanges);
 
         $ranges = [];
 
-        foreach ($rawRanges as $range) {
+        foreach (\explode(',', $rawRanges) as $range) {
             // If a range is missing the dash separator it's malformed; pull out here.
             if (false === strpos($range, '-')) {
                 return null;
@@ -482,7 +494,9 @@ class Root implements Responder, ServerObserver {
 
             if ($startPos === '' && $endPos === '') {
                 return null;
-            } elseif ($startPos === '' && $endPos !== '') {
+            }
+
+            if ($startPos === '' && $endPos !== '') {
                 // The -1 is necessary and not a hack because byte ranges are inclusive and start
                 // at 0. DO NOT REMOVE THE -1.
                 $startPos = $size - $endPos - 1;
@@ -505,19 +519,14 @@ class Root implements Responder, ServerObserver {
             $ranges[] = [$startPos, $endPos];
         }
 
-        $range = new class {
-            use \Amp\Struct;
-            public $ranges;
-            public $boundary;
-            public $contentType;
-        };
+        $range = new ByteRange;
         $range->boundary = $this->multipartBoundary;
         $range->ranges = $ranges;
 
         return $range;
     }
 
-    private function doRangeResponse($range, $fileInfo, Request $request): \Generator {
+    private function doRangeResponse(ByteRange $range, $fileInfo): \Generator {
         $headers = $this->makeCommonHeaders($fileInfo);
         $range->contentType = $mime = $this->selectMimeTypeFromPath($fileInfo->path);
 
@@ -540,12 +549,6 @@ class Root implements Responder, ServerObserver {
         }
 
         return new Response($stream, $headers, HttpStatus::PARTIAL_CONTENT);
-    }
-
-    private function sendNonRange(File\Handle $handle, Response $response): \Generator {
-        while (($chunk = yield $handle->read()) !== null) {
-            yield $response->write($chunk);
-        }
     }
 
     private function sendSingleRange(File\Handle $handle, int $startPos, int $endPos): InputStream {
@@ -611,7 +614,8 @@ class Root implements Responder, ServerObserver {
      * Set a document root option.
      *
      * @param string $option The option key (case-insensitve)
-     * @param mixed $value The option value to assign
+     * @param mixed  $value The option value to assign
+     *
      * @throws \Error On unrecognized option key
      */
     public function setOption(string $option, $value) {
@@ -663,25 +667,25 @@ class Root implements Responder, ServerObserver {
     }
 
     private function setIndexes($indexes) {
-        if (is_string($indexes)) {
+        if (\is_string($indexes)) {
             $indexes = array_map("trim", explode(" ", $indexes));
-        } elseif (!is_array($indexes)) {
+        } elseif (!\is_array($indexes)) {
             throw new \Error(sprintf(
                 "Array or string required for root index names: %s provided",
-                gettype($indexes)
+                \gettype($indexes)
             ));
         } else {
             foreach ($indexes as $index) {
-                if (!is_string($index)) {
+                if (!\is_string($index)) {
                     throw new \Error(sprintf(
                         "Array of string index filenames required: %s provided",
-                        gettype($index)
+                        \gettype($index)
                     ));
                 }
             }
         }
 
-        $this->indexes = array_filter($indexes);
+        $this->indexes = \array_filter($indexes);
     }
 
     private function setUseEtagInode(bool $useInode) {
@@ -700,12 +704,16 @@ class Root implements Responder, ServerObserver {
                 "Failed loading mime associations from file {$mimeFile}"
             );
         }
+
+        /** @var array[] $matches */
         if (!preg_match_all('#\s*([a-z0-9]+)\s+([a-z0-9\-]+/[a-z0-9\-]+(?:\+[a-z0-9\-]+)?)#i', $mimeStr, $matches)) {
             throw new \RuntimeException(
                 "No mime associations found in file: {$mimeFile}"
             );
         }
+
         $mimeTypes = [];
+
         foreach ($matches[1] as $key => $value) {
             $mimeTypes[strtolower($value)] = $matches[2][$key];
         }
@@ -782,20 +790,20 @@ class Root implements Responder, ServerObserver {
         $this->bufferedFileMaxSize = $bytes;
     }
 
-    /**
-     * Receive notifications from the server when it starts/stops.
-     */
-    public function update(Server $server): \Amp\Promise {
+    /** @inheritdoc */
+    public function update(Server $server): Promise {
         switch ($server->state()) {
             case Server::STARTING:
                 if (empty($this->mimeFileTypes)) {
                     $this->loadMimeFileTypes(self::DEFAULT_MIME_TYPE_FILE);
                 }
                 break;
+
             case Server::STARTED:
                 $this->debug = $server->getOption("debug");
                 Loop::enable($this->cacheWatcher);
                 break;
+
             case Server::STOPPED:
                 Loop::disable($this->cacheWatcher);
                 $this->cache = [];
@@ -805,6 +813,6 @@ class Root implements Responder, ServerObserver {
                 break;
         }
 
-        return new \Amp\Success;
+        return new Success;
     }
 }
