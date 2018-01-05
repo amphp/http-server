@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\CallableResponder;
 use Aerys\Internal;
 use Aerys\Logger;
 use Aerys\Middleware;
@@ -30,7 +31,7 @@ class ClientTest extends TestCase {
         fclose($server);
         $port = parse_url($address, PHP_URL_PORT);
 
-        $handler = new Internal\CallableResponder($handler);
+        $handler = new CallableResponder($handler);
 
         $vhosts = new Internal\VhostContainer;
         $vhost = new Internal\Vhost("localhost", [["127.0.0.1", $port]], $handler, $middlewares, []);

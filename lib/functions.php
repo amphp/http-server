@@ -89,13 +89,13 @@ function root(string $docroot, array $options = []): Bootable {
 }
 
 /**
- * Create a redirect handler callable for use in a Host instance.
+ * Create a redirect responder for use in a Host instance.
  *
  * @param string $absoluteUri Absolute URI prefix to redirect to
  * @param int $redirectCode HTTP status code to set
  * @return callable Responder callable
  */
-function redirect(string $absoluteUri, int $redirectCode = 307): callable {
+function redirect(string $absoluteUri, int $redirectCode = 307): Responder {
     if (!$url = @parse_url($absoluteUri)) {
         throw new \Error("Invalid redirect URI");
     }
@@ -112,7 +112,7 @@ function redirect(string $absoluteUri, int $redirectCode = 307): callable {
         throw new \Error("Invalid redirect code; code in the range 300..399 required");
     }
 
-    return function (Request $req) use ($absoluteUri, $redirectCode) {
+    return new CallableResponder(function (Request $req) use ($absoluteUri, $redirectCode) {
         $uri = $req->getUri();
         $path = $uri->getPath();
         $query = $uri->getQuery();
@@ -122,7 +122,7 @@ function redirect(string $absoluteUri, int $redirectCode = 307): callable {
         }
 
         return new Response\RedirectResponse($absoluteUri . $path, $redirectCode);
-    };
+    });
 }
 
 /**

@@ -3,6 +3,7 @@
 namespace Aerys\Internal;
 
 use Aerys\Bootable;
+use Aerys\CallableResponder;
 use Aerys\Console;
 use Aerys\Host;
 use Aerys\Middleware;

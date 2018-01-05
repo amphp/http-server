@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\CallableResponder;
 use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Internal\HttpDriver;
@@ -26,7 +27,7 @@ use Amp\Uri\Uri;
 class ServerTest extends TestCase {
     public function tryRequest(array $emit, $responder, $middlewares = []) {
         if (!$responder instanceof Responder) {
-            $responder = new Internal\CallableResponder($responder);
+            $responder = new CallableResponder($responder);
         }
 
         $gen = $this->tryIterativeRequest($responder, $middlewares);

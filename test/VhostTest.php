@@ -3,7 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Internal;
-use Aerys\Internal\CallableResponder;
+use Aerys\CallableResponder;
 use Aerys\Internal\Vhost;
 use Aerys\Internal\VhostContainer;
 use Amp\Socket\Certificate;

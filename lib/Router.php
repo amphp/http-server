@@ -9,7 +9,6 @@ use Amp\Success;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\call;
 use function FastRoute\simpleDispatcher;
 
 class Router implements Bootable, Monitor, Responder, ServerObserver {
@@ -81,18 +80,18 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
                     list(, $actions, $routeArgs) = $match;
                     list($responder, $middlewares) = $actions;
 
-                    if (!$responder instanceof Responder) {
+                    if (!empty($routeArgs)) {
                         $responder = new class($responder, $routeArgs) implements Responder {
-                            private $callable;
+                            private $responder;
                             private $args;
 
-                            public function __construct(callable $callable, array $args) {
-                                $this->callable = $callable;
+                            public function __construct(Responder $responder, array $args) {
+                                $this->responder = $responder;
                                 $this->args = $args;
                             }
 
                             public function respond(Request $request): Promise {
-                                return call($this->callable, $request, $this->args);
+                                return $this->responder->respond($request, $this->args);
                             }
                         };
                     }
@@ -249,12 +248,11 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
             $this->routes[] = [$method, $canonicalUri, $responder, $actions];
             $this->routes[] = [$method, $redirectUri, static function (Request $request): Response {
                 $uri = $request->getUri();
-                if (stripos($uri, "?")) {
-                    list($path, $query) = explode("?", $uri, 2);
-                    $path = rtrim($path, "/");
-                    $redirectTo = "{$path}?{$query}";
+                $path = rtrim($uri->getPath(), '/');
+                if ($uri->getQuery()) {
+                    $redirectTo = $path . "?" . $uri->getQuery();
                 } else {
-                    $redirectTo = $path = substr($uri, 0, -1);
+                    $redirectTo = $path;
                 }
 
                 return new Response\TextResponse(
@@ -324,7 +322,11 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
             $responder = ($this->bootLoader)($responder);
         }
 
-        if (!\is_callable($responder) && !$responder instanceof Responder) {
+        if (is_callable($responder)) {
+            $responder = new CallableResponder($responder);
+        }
+
+        if (!$responder instanceof Responder) {
             throw new \Error("Responder must be callable or an instance of " . Responder::class);
         }
 
