@@ -194,7 +194,7 @@ class Http2DriverTest extends TestCase {
         $client->options = new Options;
         $client->streamWindow[2] = 65536;
         $client->streamWindowBuffer[2] = "";
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
         $ireq->streamId = 2;
         $writer = $driver->writer($ireq, new Response);
@@ -257,7 +257,7 @@ class Http2DriverTest extends TestCase {
         ];
         $parser->send($this->packHeader($headers));
 
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
         $client->options = new Options;
         $client->options->outputBufferSize = 1; // Force data frame when any data is written.
@@ -314,7 +314,7 @@ class Http2DriverTest extends TestCase {
 
         $parser->send($this->packHeader($headers, false, 3));
 
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
         $ireq->streamId = 3;
         $writer = $driver->writer($ireq, new Response);

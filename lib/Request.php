@@ -5,13 +5,13 @@ namespace Aerys;
 use Amp\Uri\Uri;
 
 class Request {
-    /** @var \Aerys\Internal\Request */
+    /** @var \Aerys\Internal\ServerRequest */
     private $internalRequest;
 
     /**
-     * @param \Aerys\Internal\Request $internalRequest
+     * @param \Aerys\Internal\ServerRequest $internalRequest
      */
-    public function __construct(Internal\Request $internalRequest) {
+    public function __construct(Internal\ServerRequest $internalRequest) {
         $this->internalRequest = $internalRequest;
     }
 

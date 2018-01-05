@@ -69,7 +69,7 @@ class bootServerTest extends TestCase {
 
         $vhosts = $info["vhosts"]->__debugInfo()["vhosts"];
         $this->assertEquals(["localhost:443:[::]:443", "localhost:443:0.0.0.0:443", "example.com:80:127.0.0.1:80", "foo.bar:80:127.0.0.1:80"], array_keys($vhosts));
-        $vhosts["foo.bar:80:127.0.0.1:80"]->getResponder()->respond(new Request($ireq = new Internal\Request));
+        $vhosts["foo.bar:80:127.0.0.1:80"]->getResponder()->respond(new Request($ireq = new Internal\ServerRequest));
         $this->assertEquals(["responder" => 1, "foo.bar" => 1], $ireq->locals);
     }
 

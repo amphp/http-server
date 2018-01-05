@@ -133,12 +133,13 @@ class VhostContainer implements \Countable, Monitor {
      * Note: For HTTP/1.0 requests (aka omitting a Host header), a proper Vhost will only ever be returned
      *       if there is a matching wildcard host.
      *
-     * @param \Aerys\Internal\Request $ireq
+     * @param \Aerys\Internal\ServerRequest $ireq
+     *
      * @return Vhost|null Returns a Vhost object and boolean TRUE if a valid host selected, FALSE otherwise
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.2
      * @link http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.6.1.1
      */
-    public function selectHost(Request $ireq) { /* ?Vhost */
+    public function selectHost(ServerRequest $ireq) { /* ?Vhost */
         $client = $ireq->client;
         $serverId = ":{$client->serverAddr}:{$client->serverPort}";
 

@@ -86,7 +86,7 @@ class Http2Driver implements HttpDriver {
         $this->write = $write;
     }
 
-    private function filter(Request $request, Response $response): array {
+    private function filter(ServerRequest $request, Response $response): array {
         $headers = $response->getHeaders();
         $push = $response->getPush();
 
@@ -120,7 +120,7 @@ class Http2Driver implements HttpDriver {
         return $headers;
     }
 
-    public function dispatchInternalRequest(Request $ireq, string $url, array $pushHeaders = null) {
+    public function dispatchInternalRequest(ServerRequest $ireq, string $url, array $pushHeaders = null) {
         $client = $ireq->client;
         $id = $client->streamId += 2;
 
@@ -181,7 +181,7 @@ class Http2Driver implements HttpDriver {
             }
         }
 
-        $request = new Request;
+        $request = new ServerRequest;
         $request->client = $client;
         $request->streamId = $id;
         $request->trace = $headerList;
@@ -212,7 +212,7 @@ class Http2Driver implements HttpDriver {
         ($this->resultEmitter)($ireq);
     }
 
-    public function writer(Request $request, Response $response): \Generator {
+    public function writer(ServerRequest $request, Response $response): \Generator {
         $client = $request->client;
         $id = $request->streamId;
 
@@ -363,7 +363,7 @@ class Http2Driver implements HttpDriver {
         ($this->write)($client, $new, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
 
-    public function upgradeBodySize(Request $ireq) {
+    public function upgradeBodySize(ServerRequest $ireq) {
         $client = $ireq->client;
         $id = $ireq->streamId;
         if (isset($client->bodyEmitters[$id])) {
@@ -871,7 +871,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                     $headerArray[$name][] = $value;
                 }
 
-                $ireq = new Request;
+                $ireq = new ServerRequest;
                 $ireq->client = $client;
                 $ireq->streamId = $id;
                 $ireq->trace = $headerList;

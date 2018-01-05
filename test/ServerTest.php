@@ -57,7 +57,7 @@ class ServerTest extends TestCase {
                 $this->emitters = $parseEmitters;
             }
 
-            public function writer(Internal\Request $ireq, Response $response): \Generator {
+            public function writer(Internal\ServerRequest $ireq, Response $response): \Generator {
                 $this->test->assertSame($this->client, $ireq->client);
 
                 $this->response = $response;
@@ -67,7 +67,7 @@ class ServerTest extends TestCase {
                 } while ($part !== null);
             }
 
-            public function upgradeBodySize(Internal\Request $ireq) {
+            public function upgradeBodySize(Internal\ServerRequest $ireq) {
             }
 
             public function parser(Internal\Client $client): \Generator {
@@ -78,7 +78,7 @@ class ServerTest extends TestCase {
                 $type = array_shift($emit);
                 foreach ($this->emitters as $key => $emitter) {
                     if ($key & $type) {
-                        if ($emit[0] instanceof Internal\Request) {
+                        if ($emit[0] instanceof Internal\ServerRequest) {
                             $emit[0]->client = $this->client;
                             $emitter(...$emit);
                         } else {
@@ -109,7 +109,7 @@ class ServerTest extends TestCase {
     }
 
     public function newIreq() {
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $ireq->streamId = 2;
         $ireq->trace = [["host", "localhost"]];
         $ireq->protocol = "2.0";
@@ -247,7 +247,7 @@ class ServerTest extends TestCase {
                 $this->write = $write;
             }
 
-            public function writer(Internal\Request $ireq, Response $response): \Generator {
+            public function writer(Internal\ServerRequest $ireq, Response $response): \Generator {
                 $this->test->fail("We shouldn't be invoked the writer when not dispatching requests");
                 yield;
             }
@@ -256,7 +256,7 @@ class ServerTest extends TestCase {
                 yield from ($this->parser)($client, $this->write);
             }
 
-            public function upgradeBodySize(Internal\Request $ireq) {
+            public function upgradeBodySize(Internal\ServerRequest $ireq) {
             }
         };
 
@@ -273,7 +273,7 @@ class ServerTest extends TestCase {
             public function getTlsBindingsByAddress(): array {
                 return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER]] : [];
             }
-            public function selectHost(Internal\Request $ireq): Vhost {
+            public function selectHost(Internal\ServerRequest $ireq): Vhost {
                 $this->test->fail("We should never get to dispatching requests here...");
             }
             public function selectHttpDriver($addr, $port): HttpDriver {

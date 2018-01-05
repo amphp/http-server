@@ -79,7 +79,7 @@ class RouterTest extends TestCase {
         $router->boot($mock, $this->createMock(PsrLogger::class));
         $router->update($mock);
 
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $request = new Request($ireq);
         $ireq->method = "GET";
         $ireq->uri = new Uri("/mediocre-dev/bob/19/");
@@ -90,7 +90,7 @@ class RouterTest extends TestCase {
         $this->assertEquals(HttpStatus::FOUND, $response->getStatus());
         $this->assertEquals("/mediocre-dev/bob/19", $response->getHeader("location"));
 
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $request = new Request($ireq);
         $ireq->method = "GET";
         $ireq->uri = new Uri("/mediocre-dev/bob/19");

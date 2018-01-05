@@ -605,7 +605,7 @@ class Server implements Monitor {
         }
     }
 
-    private function onParsedMessage(Internal\Request $ireq) {
+    private function onParsedMessage(Internal\ServerRequest $ireq) {
         if ($this->options->normalizeMethodCase) {
             $ireq->method = strtoupper($ireq->method);
         }
@@ -639,7 +639,7 @@ class Server implements Monitor {
         $this->respond($ireq);
     }
 
-    private function onParsedEntityHeaders(Internal\Request $ireq) {
+    private function onParsedEntityHeaders(Internal\ServerRequest $ireq) {
         $ireq->client->bodyEmitters[$ireq->streamId] = $bodyEmitter = new Emitter;
         $ireq->body = new Body(new IteratorStream($bodyEmitter->iterate()));
 
@@ -676,7 +676,7 @@ class Server implements Monitor {
 
         $client->pendingResponses++;
 
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
         $ireq->time = $this->ticker->currentTime;
         $ireq->httpDate = $this->ticker->currentHttpDate;
@@ -689,7 +689,7 @@ class Server implements Monitor {
         Promise\rethrow(new Coroutine($generator));
     }
 
-    private function setTrace(Internal\Request $ireq) {
+    private function setTrace(Internal\ServerRequest $ireq) {
         if (\is_string($ireq->trace)) {
             $ireq->locals['aerys.trace'] = $ireq->trace;
         } else {
@@ -701,7 +701,7 @@ class Server implements Monitor {
         }
     }
 
-    private function respond(Internal\Request $ireq) {
+    private function respond(Internal\ServerRequest $ireq) {
         $ireq->client->pendingResponses++;
 
         if ($this->stopDeferred) {
@@ -748,7 +748,7 @@ class Server implements Monitor {
         return new Response\EmptyResponse($headers, $status);
     }
 
-    private function makePreAppTraceResponse(Internal\Request $request): Response {
+    private function makePreAppTraceResponse(Internal\ServerRequest $request): Response {
         $stream = new InMemoryStream($request->locals['aerys.trace']);
         return new Response($stream, ["Content-Type" => "message/http"]);
     }
@@ -758,12 +758,12 @@ class Server implements Monitor {
     }
 
     /**
-     * @param \Aerys\Internal\Request $ireq
+     * @param \Aerys\Internal\ServerRequest $ireq
      * @param \Aerys\Responder $responder
      *
      * @return \Generator
      */
-    private function tryResponder(Internal\Request $ireq, Responder $responder): \Generator {
+    private function tryResponder(Internal\ServerRequest $ireq, Responder $responder): \Generator {
         $request = new Request($ireq);
 
         try {
@@ -782,12 +782,12 @@ class Server implements Monitor {
     }
 
     /**
-     * @param \Aerys\Internal\Request $ireq
+     * @param \Aerys\Internal\ServerRequest $ireq
      * @param \Aerys\Response $response
      *
      * @return \Generator
      */
-    private function sendResponse(Internal\Request $ireq, Response $response): \Generator {
+    private function sendResponse(Internal\ServerRequest $ireq, Response $response): \Generator {
         $responseWriter = $ireq->client->httpDriver->writer($ireq, $response);
         $body = $response->getBody();
 

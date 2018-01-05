@@ -266,7 +266,7 @@ class WebsocketParserTest extends TestCase {
                     $this->emit = $parseEmitters[HttpDriver::RESULT];
                 }
 
-                public function writer(Internal\Request $ireq, Response $response): \Generator {
+                public function writer(Internal\ServerRequest $ireq, Response $response): \Generator {
                     $this->response = $response;
                     $this->body = "";
                     do {
@@ -279,7 +279,7 @@ class WebsocketParserTest extends TestCase {
                 }
 
                 public function emit() {
-                    $ireq = new Internal\Request;
+                    $ireq = new Internal\ServerRequest;
                     $ireq->client = $this->client;
                     $ireq->protocol = "1.1";
                     $ireq->method = "GET";
@@ -289,7 +289,7 @@ class WebsocketParserTest extends TestCase {
                     ($this->emit)($ireq);
                 }
 
-                public function upgradeBodySize(Internal\Request $ireq) {
+                public function upgradeBodySize(Internal\ServerRequest $ireq) {
                 }
             });
             $logger = new class extends Logger {

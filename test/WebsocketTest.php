@@ -210,7 +210,7 @@ class WebsocketTest extends TestCase {
     /**
      * @dataProvider provideHandshakes
      */
-    public function testHandshake(Internal\Request $ireq, int $status, array $expected = []) {
+    public function testHandshake(Internal\ServerRequest $ireq, int $status, array $expected = []) {
         $logger = new class extends Logger {
             protected function output(string $message) { /* /dev/null */
             }
@@ -231,7 +231,7 @@ class WebsocketTest extends TestCase {
         $return = [];
 
         // 0 ----- valid Handshake request -------------------------------------------------------->
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $ireq->client = new Internal\Client;
         $ireq->method = "GET";
         $ireq->protocol = "1.1";

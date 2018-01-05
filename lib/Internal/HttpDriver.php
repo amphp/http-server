@@ -21,17 +21,17 @@ interface HttpDriver {
     /**
      * Returns a generator used to write the response body.
      *
-     * @param \Aerys\Internal\Request $request
+     * @param \Aerys\Internal\ServerRequest $request
      * @param \Aerys\Response $response
      *
      * @return \Generator
      */
-    public function writer(Request $request, Response $response): \Generator;
+    public function writer(ServerRequest $request, Response $response): \Generator;
 
     /**
-     * @param \Aerys\Internal\Request $ireq
+     * @param \Aerys\Internal\ServerRequest $ireq
      */
-    public function upgradeBodySize(Request $ireq);
+    public function upgradeBodySize(ServerRequest $ireq);
 
     /**
      * Note that you *can* rely on keep-alive timeout terminating the Body with a ClientException, when no further

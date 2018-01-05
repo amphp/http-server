@@ -589,7 +589,7 @@ class Http1DriverTest extends TestCase {
         $driver = new Http1Driver;
         $driver->setup($emitCallbacks, $this->createCallback(0));
         $parser = $driver->parser($client);
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
         $client->bodyEmitters = ["set"];
         $client->requestParser = $parser;
@@ -658,14 +658,13 @@ class Http1DriverTest extends TestCase {
         $client->requestParser = $parser;
 
         $getWriter = function () use ($client, $driver) {
-            $ireq = new Internal\Request;
+            $ireq = new Internal\ServerRequest;
             $ireq->client = $client;
             $ireq->client->remainingRequests = \PHP_INT_MAX;
             $ireq->protocol = "1.1";
-            $ireq->responseWriter = $driver->writer($ireq, new Response\EmptyResponse);
             $ireq->httpDate = "date";
             $ireq->method = "GET";
-            return $ireq->responseWriter;
+            return $driver->writer($ireq, new Response\EmptyResponse);
         };
 
         $parser->send($payloads[0] . $payloads[1]);
@@ -731,12 +730,15 @@ class Http1DriverTest extends TestCase {
         ] as $k => $v) {
             $client->options->$k = $v;
         }
-        $ireq = new Internal\Request;
+
+        $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
         $ireq->protocol = "1.1";
-        $ireq->responseWriter = $writer = $driver->writer($ireq, $response = new Response(new InMemoryStream, $headers)); // Use same body to set prop
         $ireq->httpDate = "date";
         $ireq->method = "GET";
+
+        $writer = $driver->writer($ireq, $response = new Response(new InMemoryStream, $headers)); // Use same body to set prop
+
         $response->push("/foo");
 
         foreach (str_split($data) as $c) {
@@ -768,7 +770,7 @@ class Http1DriverTest extends TestCase {
 
         $client = new Client;
         $client->options = new Options;
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
         $ireq->protocol = "1.1";
         $writer = $driver->writer($ireq, new Response\EmptyResponse);
@@ -781,16 +783,17 @@ class Http1DriverTest extends TestCase {
     }
 
     public function testHttp2Upgrade() {
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $ireq->protocol = "1.1";
         $ireq->headers = ["upgrade" => ["h2c"], "http2-settings" => [strtr(base64_encode("somesettings"), "+/", "-_")], "host" => ["foo.bar"]];
-        $ireq->responseWriter = $responseWriter = function ($res) use (&$response) {
-            $response = $res;
-        };
         $ireq->uri = new Uri("http://localhost/path");
         $ireq->method = "GET";
         $ireq->client = new Client;
         $ireq->client->options = new Options;
+
+        $responseWriter = function ($res) use (&$response) {
+            $response = $res;
+        };
 
         $driver = new Http1Driver;
         $driver->setup([], $this->createCallback(1));
@@ -801,9 +804,9 @@ class Http1DriverTest extends TestCase {
             public function setup(array $parseEmitters, callable $responseWriter) {
                 $this->responseWriter = $responseWriter;
             }
-            public function upgradeBodySize(Internal\Request $ireq) {
+            public function upgradeBodySize(Internal\ServerRequest $ireq) {
             }
-            public function writer(Internal\Request $ireq, Response $response): \Generator {
+            public function writer(Internal\ServerRequest $ireq, Response $response): \Generator {
                 ($this->responseWriter)($response);
                 return (function () { yield; })();
             }
@@ -834,9 +837,9 @@ class Http1DriverTest extends TestCase {
         $http2 = new class implements HttpDriver {
             public function setup(array $parseEmitters, callable $responseWriter) {
             }
-            public function upgradeBodySize(Internal\Request $ireq) {
+            public function upgradeBodySize(Internal\ServerRequest $ireq) {
             }
-            public function writer(Internal\Request $ireq, Response $response): \Generator {
+            public function writer(Internal\ServerRequest $ireq, Response $response): \Generator {
                 yield;
             }
 

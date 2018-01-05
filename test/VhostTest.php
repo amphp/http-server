@@ -63,7 +63,7 @@ class VhostTest extends TestCase {
 
         $this->assertSame(6, $vhosts->count());
 
-        $ireq = new Internal\Request;
+        $ireq = new Internal\ServerRequest;
         $ireq->client = new Internal\Client;
         $ireq->client->serverAddr = $addr;
         $ireq->client->serverPort = $port;

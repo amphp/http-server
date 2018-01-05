@@ -48,7 +48,7 @@ class Http1Driver implements HttpDriver {
         $this->http2->setup($parseEmitters, $responseWriter);
     }
 
-    public function writer(Request $request, Response $response): \Generator {
+    public function writer(ServerRequest $request, Response $response): \Generator {
         // We need this in here to be able to return HTTP/2.0 writer; if we allow HTTP/1.1 writer to be returned, we have lost
         if (isset($request->headers["upgrade"][0]) &&
             $request->headers["upgrade"][0] === "h2c" &&
@@ -96,7 +96,7 @@ class Http1Driver implements HttpDriver {
         return $this->send($request, $response);
     }
 
-    private function send(Request $request, Response $response): \Generator {
+    private function send(ServerRequest $request, Response $response): \Generator {
         $client = $request->client;
 
         $status = $response->getStatus();
@@ -176,7 +176,7 @@ class Http1Driver implements HttpDriver {
         }
     }
 
-    public function upgradeBodySize(Request $ireq) {
+    public function upgradeBodySize(ServerRequest $ireq) {
         $client = $ireq->client;
         if ($client->bodyEmitters) {
             $client->streamWindow = $ireq->maxBodySize;
@@ -303,7 +303,7 @@ class Http1Driver implements HttpDriver {
                 $hasBody = $isChunked || $contentLength;
             }
 
-            $ireq = new Request;
+            $ireq = new ServerRequest;
             $ireq->client = $client;
             $ireq->headers = $headers;
             $ireq->method = $method;
@@ -547,7 +547,7 @@ class Http1Driver implements HttpDriver {
         } while (true);
     }
 
-    private function filter(Request $request, array $headers, array $push, int $status): array {
+    private function filter(ServerRequest $request, array $headers, array $push, int $status): array {
         $options = $request->client->options;
 
         if ($options->sendServerToken) {

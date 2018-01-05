@@ -4,17 +4,11 @@ namespace Aerys\Internal;
 
 use Amp\Struct;
 
-class Request {
+class ServerRequest {
     use Struct;
 
     /** @var \Aerys\Internal\Client */
     public $client;
-    /** @var \Generator */
-    public $responseWriter;
-    /** @var array */
-    public $badFilterKeys = [];
-    /** @var boolean */
-    public $filterErrorFlag;
     /** @var integer */
     public $streamId = 0;
     /** @var string|array literal trace for HTTP/1, for HTTP/2 an array of [name, value] arrays in the original order */
