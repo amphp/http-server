@@ -56,8 +56,6 @@ class CommandClient {
                 $this->parser->push($chunk);
             }
 
-            $this->lastSend = null;
-
             $message = \array_shift($this->readMessages);
 
             if (isset($message["exception"])) {
@@ -127,9 +125,7 @@ class CommandClient {
                 }
             });
 
-            $this->lastSend = $deferred->promise(); // Guards second watcher on socket by blocking calls to send()
-            $this->lastSend->onResolve(function () { $this->lastSend = null; });
-            return $this->lastSend;
+            return $this->lastSend = $deferred->promise(); // Guards second watcher on socket by blocking calls to send()
         });
     }
 }

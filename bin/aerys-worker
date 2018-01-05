@@ -58,14 +58,16 @@ $climate->arguments->add([
 
 $console = new Aerys\Console($climate);
 
-$ipcUri = $console->getArg("ipc");
+Amp\Loop::run(function () use ($console) {
+    $ipcUri = $console->getArg("ipc");
 
-if (!$ipcSock = @stream_socket_client($ipcUri)) {
-    fwrite(STDERR, "Failed initializing IPC connection");
-    exit(1);
-}
+    try {
+        $ipcSock = yield Amp\Socket\connect($ipcUri);
+    } catch (\Throwable $exception) {
+        fwrite(STDERR, "Failed initializing IPC connection: " . $exception->getMessage());
+        exit(1);
+    }
 
-Amp\Loop::run(function () use ($ipcSock, $console) {
     $logger = new Aerys\IpcLogger($console, $ipcSock);
 
     ob_start(function($output) use ($logger) {
