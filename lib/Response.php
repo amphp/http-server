@@ -3,6 +3,7 @@
 namespace Aerys;
 
 use Aerys\Cookie\MetaCookie;
+use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\Socket\Socket;
 
@@ -29,23 +30,23 @@ class Response {
     private $detach;
 
     /**
-     * @param int $code Status code.
+     * @param \Amp\ByteStream\InputStream|string|null $stringOrStream
      * @param string[][] $headers
-     * @param \Amp\ByteStream\InputStream|null $stream
+     * @param int $code Status code.
      * @param string|null $reason Status code reason.
      *
      * @throws \Error If one of the arguments is invalid.
      */
     public function __construct(
-        InputStream $stream = null,
+        $stringOrStream = null,
         array $headers = [],
-        int $code = 200,
+        int $code = HttpStatus::OK,
         string $reason = null
     ) {
         $this->status = $this->validateStatusCode($code);
-        $this->reason = $reason === null
-            ? HttpStatus::getReason($code)
-            : $this->filterReason($reason);
+        $this->reason = $reason ?? HttpStatus::getReason($this->status);
+
+        $this->setBody($stringOrStream);
 
         if (!empty($headers)) {
             $this->setHeaders($headers);
@@ -54,8 +55,6 @@ class Response {
         if (isset($this->headers['set-cookie'])) {
             $this->setCookiesFromHeaders();
         }
-
-        $this->body = $stream ?: new NullBody;
     }
 
     /**
@@ -103,12 +102,30 @@ class Response {
     }
 
     /**
-     * Sets the stream for the message body.
+     * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
+     * to the length of the given string. Setting a stream will remove the Content-Length header.
      *
-     * @param \Amp\ByteStream\InputStream $stream
+     * @param \Amp\ByteStream\InputStream|string|null $stringOrStream
+     *
+     * @throws \TypeError If the body given is not a string or instance of \Amp\ByteStream\InputStream
      */
-    public function setBody(InputStream $stream) {
-        $this->body = $stream;
+    public function setBody($stringOrStream) {
+        if ($stringOrStream === null) {
+            $stringOrStream = new InMemoryStream;
+        }
+
+        if ($stringOrStream instanceof InputStream) {
+            $this->body = $stringOrStream;
+            unset($this->headers["content-length"]);
+            return;
+        }
+
+        if (!\is_string($stringOrStream)) {
+            throw new \TypeError("The response body must a string, null, or instance of " . InputStream::class);
+        }
+
+        $this->body = new InMemoryStream($stringOrStream);
+        $this->headers["content-length"] = [(string) \strlen($stringOrStream)];
     }
 
     /**
@@ -132,10 +149,17 @@ class Response {
      */
     public function setHeader(string $name, $value) {
         \assert($this->isNameValid($name), "Header name is invalid");
-        \assert($this->isValueValid($name), "Header value is invalid");
+
+        if (\is_array($value)) {
+            $value = \array_map("strval", $value);
+        } else {
+            $value = [(string) $value];
+        }
+
+        \assert($this->isValueValid($value), "Header value is invalid");
 
         $name = \strtolower($name);
-        $this->headers[$name] = \is_array($value) ? $value : [$value];
+        $this->headers[$name] = $value;
 
         if ('set-cookie' === $name) {
             $this->setCookiesFromHeaders();
@@ -152,13 +176,20 @@ class Response {
      */
     public function addHeader(string $name, $value) {
         \assert($this->isNameValid($name), "Header name is invalid");
-        \assert($this->isValueValid($name), "Header value is invalid");
+
+        if (\is_array($value)) {
+            $value = \array_map("strval", $value);
+        } else {
+            $value = [(string) $value];
+        }
+
+        \assert($this->isValueValid($value), "Header value is invalid");
 
         $name = \strtolower($name);
         if (isset($this->headers[$name])) {
-            $this->headers[$name][] = $value;
+            $this->headers[$name] = \array_merge($this->headers[$name], $value);
         } else {
-            $this->headers[$name] = [$value];
+            $this->headers[$name] = $value;
         }
 
         if ('set-cookie' === $name) {
@@ -192,25 +223,15 @@ class Response {
     /**
      * Determines if the given value is a valid header value.
      *
-     * @param mixed|mixed[] $values
+     * @param mixed[] $values
      *
      * @return bool
      *
      * @throws \Error If the given value cannot be converted to a string and is not an array of values that can be
      *     converted to strings.
      */
-    private function isValueValid($values): bool {
-        if (!is_array($values)) {
-            $values = [$values];
-        }
-
+    private function isValueValid(array $values): bool {
         foreach ($values as $value) {
-            if (is_numeric($value) || is_null($value) || (is_object($value) && method_exists($value, '__toString'))) {
-                $value = (string) $value;
-            } elseif (!is_string($value)) {
-                return false;
-            }
-
             if (preg_match("/[^\t\r\n\x20-\x7e\x80-\xfe]|\r\n/", $value)) {
                 return false;
             }
@@ -234,11 +255,7 @@ class Response {
      * @return string
      */
     public function getReason(): string {
-        if ('' !== $this->reason) {
-            return $this->reason;
-        }
-
-        return HttpStatus::getReason($this->status);
+        return $this->reason;
     }
 
     /**
@@ -250,7 +267,7 @@ class Response {
      */
     public function setStatus(int $code, string $reason = null) {
         $this->status = $this->validateStatusCode($code);
-        $this->reason = $this->filterReason($reason);
+        $this->reason = $reason ?? HttpStatus::getReason($this->status);
     }
 
     /**
@@ -329,7 +346,7 @@ class Response {
      *
      * @throws \Error
      */
-    protected function validateStatusCode(int $code): int {
+    private function validateStatusCode(int $code): int {
         if ($code < 100 || $code > 599) {
             throw new \Error(
                 'Invalid status code. Must be an integer between 100 and 599, inclusive.'
@@ -337,15 +354,6 @@ class Response {
         }
 
         return $code;
-    }
-
-    /**
-     * @param string|null $reason
-     *
-     * @return string
-     */
-    protected function filterReason(string $reason = null): string {
-        return $reason ?? HttpStatus::getReason($this->status);
     }
 
     /**
