@@ -773,7 +773,7 @@ class Http1DriverTest extends TestCase {
         $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
         $ireq->protocol = "1.1";
-        $writer = $driver->writer($ireq, new Response\EmptyResponse);
+        $writer = $driver->writer($ireq, new Response);
 
         $writer->send("foo");
 

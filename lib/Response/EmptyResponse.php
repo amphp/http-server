@@ -2,13 +2,13 @@
 
 namespace Aerys\Response;
 
+use Aerys\HttpStatus;
 use Aerys\Response;
 use Amp\ByteStream\InMemoryStream;
 
 class EmptyResponse extends Response {
-    public function __construct(array $headers = [], int $code = 200, string $reason = null) {
+    public function __construct(array $headers = [], int $code = HttpStatus::NO_CONTENT, string $reason = null) {
         $headers = \array_merge($headers, [
-            "content-type" => "text/plain; charset=utf-8",
             "content-length" => 0,
         ]);
         parent::__construct(new InMemoryStream, $headers, $code, $reason);

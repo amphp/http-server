@@ -199,7 +199,7 @@ class ServerTest extends TestCase {
             $this->fail("We should already have failed and never invoke the responder...");
         });
 
-        $this->assertSame(HttpStatus::OK, $response->getStatus());
+        $this->assertSame(HttpStatus::NO_CONTENT, $response->getStatus());
         $this->assertSame(implode(", ", (new Options)->allowedMethods), $response->getHeader("allow"));
     }
 

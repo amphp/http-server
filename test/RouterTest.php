@@ -72,7 +72,7 @@ class RouterTest extends TestCase {
         $router = new Router;
         $router->route("GET", "/{name}/{age}/?", function (Request $req, array $args) use (&$routeArgs) {
             $routeArgs = $args;
-            return new Response\EmptyResponse;
+            return new Response;
         });
         $router->prefix("/mediocre-dev");
         $mock = $this->mockServer(Server::STARTING);
