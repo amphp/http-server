@@ -12,16 +12,6 @@ const AERYS_OPTIONS = [
     "shutdownTimeout" => 5000
 ];
 
-class OurMiddleware implements Middleware {
-    public function process(Request $request, Responder $responder): Promise {
-        return $responder->respond($request);
-    }
-
-    public function __invoke(\Aerys\Request $req) {
-        $req->setAttribute("responder", $req->getAttribute("responder") + 1);
-    }
-}
-
 return (function () {
     yield new Success('test boot config');
 
@@ -32,9 +22,10 @@ return (function () {
     ($hosts[] = new Host)
         ->expose("127.0.0.1", 80)
         ->name("example.com")
-        ->use(new class implements \Aerys\Bootable {
-            public function boot(\Aerys\Server $server, \Psr\Log\LoggerInterface $logger) {
-                return new OurMiddleware;
+        ->use(new class implements Middleware {
+            public function process(Request $request, Responder $responder): Promise {
+                $request->setAttribute("responder", $request->getAttribute("responder") + 1);
+                return $responder->respond($request);
             }
         });
 
