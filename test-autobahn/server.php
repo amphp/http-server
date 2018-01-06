@@ -11,7 +11,7 @@ use Aerys\Websocket;
 
 /* --- http://localhost:9001/ ------------------------------------------------------------------- */
 
-$websocket = Aerys\websocket(new class implements Websocket {
+$websocket = Aerys\websocket(new class implements Websocket\Websocket {
     /** @var \Aerys\Websocket\Endpoint */
     private $endpoint;
 
