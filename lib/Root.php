@@ -358,7 +358,7 @@ class Root implements Responder, ServerObserver {
 
         if ($range = $this->normalizeByteRanges($fileInfo->size, $rangeHeader)) {
             // Return this so the resulting generator will be auto-resolved
-            return yield from $this->doRangeResponse($range, $fileInfo);
+            return yield from $this->doRangeResponse($range, $fileInfo, $request);
         }
 
         // If we're still here this is the only remaining response we can send
@@ -529,7 +529,7 @@ class Root implements Responder, ServerObserver {
         return $range;
     }
 
-    private function doRangeResponse(ByteRange $range, $fileInfo): \Generator {
+    private function doRangeResponse(ByteRange $range, $fileInfo, Request $request): \Generator {
         $headers = $this->makeCommonHeaders($fileInfo);
         $range->contentType = $mime = $this->selectMimeTypeFromPath($fileInfo->path);
 
@@ -543,6 +543,7 @@ class Root implements Responder, ServerObserver {
         }
 
         $handle = yield $this->filesystem->open($fileInfo->path, "r");
+        $request->onClose([$handle, "close"]);
 
         if (empty($range->ranges[1])) {
             list($startPos, $endPos) = $range->ranges[0];
