@@ -11,6 +11,7 @@ use Aerys\Monitor;
 use Aerys\Options;
 use Aerys\Responder;
 use Aerys\Response;
+use Aerys\Server;
 use Aerys\TryResponder;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Aerys\initServer;
@@ -28,19 +29,15 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
     $configFile = selectConfigFile((string) $console->getArg("config"));
 
     // may return Promise or Generator for async I/O inside config file
-    $hosts = yield call(function () use (&$logger, $console, $configFile) {
+    $host = yield call(function () use (&$logger, $console, $configFile) {
         return include $configFile;
     });
 
     $logger->info("Using config file found at $configFile");
 
-    if (!\is_array($hosts)) {
-        $hosts = [$hosts];
-    }
-
-    if (empty($hosts)) {
+    if (!$host instanceof Host) {
         throw new \Error(
-            "Config file at $configFile did not return any hosts"
+            "Config file at $configFile did not return an instance of " . Host::class
         );
     }
 
@@ -65,7 +62,7 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
     }
     $options["configPath"] = $configFile;
 
-    return initServer($logger, $hosts, $options);
+    return new Server(generateOptionsObjFromArray($options), $host, $logger);
 }
 
 function generateOptionsObjFromArray(array $optionsArray): Options {
@@ -173,11 +170,11 @@ function makeMiddlewareResponder(Responder $responder, array $middlewares): Resp
         return $responder;
     }
 
-    $current = \end($middlewares);
+    $middleware = \end($middlewares);
 
-    while ($current) {
-        $responder = new MiddlewareResponder($current, $responder);
-        $current = \prev($middlewares);
+    while ($middleware) {
+        $responder = new MiddlewareResponder($middleware, $responder);
+        $middleware = \prev($middlewares);
     }
 
     return $responder;

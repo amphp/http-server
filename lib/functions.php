@@ -184,58 +184,6 @@ function makeGenericBody(int $status, array $options = []): string {
 }
 
 /**
- * Initializes the server directly from a given set of Hosts.
- *
- * @param PsrLogger $logger
- * @param Host[] $hosts
- * @param array $options Aerys options array
- * @return Server
- */
-function initServer(PsrLogger $logger, array $hosts, array $options = []): Server {
-    foreach ($hosts as $host) {
-        if (!$host instanceof Host) {
-            throw new \TypeError(
-                "Expected an array of Hosts as second parameter, but array also contains ".(is_object($host) ? "instance of " .get_class($host) : gettype($host))
-            );
-        }
-    }
-
-    if (!array_key_exists("debug", $options)) {
-        $options["debug"] = false;
-    }
-
-    $options = Internal\generateOptionsObjFromArray($options);
-    $vhosts = new Internal\VhostContainer;
-    $ticker = new Internal\Ticker($logger);
-    $server = new Server($options, $vhosts, $logger, $ticker);
-
-    $bootLoader = static function (Bootable $bootable) use ($server, $logger) {
-        $booted = $bootable->boot($server, $logger);
-        if ($booted !== null
-            && !$booted instanceof Responder
-            && !$booted instanceof Middleware
-            && !$booted instanceof Monitor
-            && !is_callable($booted)
-        ) {
-            throw new \Error(\sprintf(
-                "Any return value of %s::boot() must be callable or an instance of %s, %s, or %s",
-                \str_replace("\0", "@", \get_class($bootable)),
-                Responder::class,
-                Middleware::class,
-                Monitor::class
-            ));
-        }
-        return $booted ?? $bootable;
-    };
-    foreach ($hosts ?: [new Host] as $host) {
-        $vhost = Internal\buildVhost($host, $bootLoader);
-        $vhosts->use($vhost);
-    }
-
-    return $server;
-}
-
-/**
  * Gives the absolute path of a config file.
  *
  * @param string $configFile path to config file used by Aerys instance
