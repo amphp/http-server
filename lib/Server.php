@@ -307,7 +307,7 @@ class Server {
     private function generateBindableAddressContextMap(): array {
         $addrCtxMap = [];
         $addresses = $this->host->getBindableAddresses();
-        $tlsBindings = $this->host->getTlsBindingsByAddress();
+        $tlsContext = $this->host->getTlsContext();
         $backlogSize = $this->options->socketBacklogSize;
         $shouldReusePort = !$this->options->debug;
 
@@ -318,8 +318,8 @@ class Server {
                 "so_reuseaddr" => stripos(PHP_OS, "WIN") === 0, // SO_REUSEADDR has SO_REUSEPORT semantics on Windows
                 "ipv6_v6only"  => true,
             ]];
-            if (isset($tlsBindings[$address])) {
-                $context["ssl"] = $tlsBindings[$address];
+            if ($tlsContext) {
+                $context["ssl"] = $tlsContext;
             }
             $addrCtxMap[$address] = $context;
         }

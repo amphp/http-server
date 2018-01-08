@@ -12,22 +12,6 @@ class HostTest extends TestCase {
         return (new \ReflectionClass('Aerys\Host'))->newInstanceWithoutConstructor();
     }
 
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Invalid port number 65536; integer in the range 1..65535 required
-     */
-    public function testThrowsWithBadPort() {
-        $this->getHost()->expose("127.0.0.1", 65536);
-    }
-
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Invalid IP address
-     */
-    public function testThrowsWithBadInterface() {
-        $this->getHost()->expose("bizzibuzzi", 1025);
-    }
-
     public function testGenericInterface() {
         $host = $this->getHost();
         $host->expose("*", 1025);
@@ -51,7 +35,7 @@ class HostTest extends TestCase {
         $host = (new Host)->expose("127.0.0.1", 8080);
         $host->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
 
-        $this->assertTrue(isset($host->getTlsBindingsByAddress()["tcp://127.0.0.1:8080"]));
+        $this->assertTrue(isset($host->getTlsContext()["local_cert"]));
         $this->assertEquals(["tcp://127.0.0.1:8080"], array_values($host->getBindableAddresses()));
     }
 

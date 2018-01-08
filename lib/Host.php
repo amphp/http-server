@@ -6,8 +6,6 @@ use Amp\Socket\Certificate;
 use Amp\Socket\ServerTlsContext;
 
 class Host {
-    private $name = "*";
-
     private $interfaces = [];
     private $actions = [];
 
@@ -18,33 +16,12 @@ class Host {
 
     /** @var \Amp\Socket\ServerTlsContext|null */
     private $tlsContext;
-    private $tlsContextArr = [];
-    private $tlsDefaults = [
-        "local_cert"            => null,
-        "passphrase"            => null,
-        "allow_self_signed"     => false,
-        "verify_peer"           => false,
-        "ciphers"               => null,
-        "cafile"                => null,
-        "capath"                => null,
-        "single_ecdh_use"       => false,
-        "ecdh_curve"            => "prime256v1",
-        "honor_cipher_order"    => true,
-        "disable_compression"   => true,
-        "reneg_limit"           => 0,
-        "reneg_limit_callback"  => null,
-        "crypto_method"         => STREAM_CRYPTO_METHOD_SSLv23_SERVER, /* means: TLS 1.0 and up */
-    ];
 
     /**
      * @param \Aerys\Internal\HttpDriver|null $httpDriver Internal parameter used for testing.
      */
     public function __construct(Internal\HttpDriver $httpDriver = null) {
         $this->httpDriver = $httpDriver ?? new Internal\Http1Driver;
-
-        if (self::hasAlpnSupport()) {
-            $this->tlsDefaults["alpn_protocols"] = "h2";
-        }
     }
 
     /**
@@ -129,25 +106,6 @@ class Host {
 
         $this->interfaces[] = [$address, $port];
         $this->addressMap[$packedAddress][] = $port;
-
-        return $this;
-    }
-
-    /**
-     * Assign a domain name (e.g. localhost or mysite.com or subdomain.mysite.com).
-     *
-     * An explicit host name is only required if a server exposes more than one host on a given
-     * interface. If a name is not defined (or "*") the server will allow any hostname.
-     *
-     * By default the port must match with the interface. It is possible to explicitly require
-     * a specific port in the hostname by appending ":port" (e.g. "localhost:8080"). It is also
-     * possible to specify a wildcard with "*" (e.g. "*:*" to accept any hostname from any port).
-     *
-     * @param string $name
-     * @return self
-     */
-    public function name(string $name): self {
-        $this->name = $name === "" ? "*" : $name;
 
         return $this;
     }
@@ -254,7 +212,7 @@ class Host {
             $certificate = (new ServerTlsContext)->withDefaultCertificate($certificate);
         }
 
-        $this->setCrypto($certificate);
+        $this->tlsContext = $certificate;
 
         return $this;
     }
@@ -293,7 +251,7 @@ class Host {
                 return "unix://$address";
             }
             if (strpos($address, ":") !== false) {
-                $address = "[$address]";
+                $address = "[" . trim($address, "[]") . "]";
             }
             return "tcp://$address:$port";
         }, $this->interfaces);
@@ -329,36 +287,22 @@ class Host {
     }
 
     /**
-     * Retrieve stream encryption settings by bind address.
+     * Retrieve stream encryption settings array.
      *
      * @return array
      */
-    public function getTlsBindingsByAddress(): array {
-        if (!$this->isEncrypted()) {
+    public function getTlsContext(): array {
+        if ($this->tlsContext === null) {
             return [];
         }
 
-        $bindMap = [];
-        $sniNameMap = [];
+        $context = $this->tlsContext->toStreamContextArray()["ssl"];
 
-        foreach ($this->getBindableAddresses() as $bindAddress) {
-            $contextArr = $this->getTlsContextArr();
-            $bindMap[$bindAddress] = $contextArr;
-
-            if ($this->hasName()) {
-                $sniNameMap[$bindAddress][$this->getName()] = $contextArr["local_cert"];
-            }
+        if (self::hasAlpnSupport()) {
+            $context["alpn_protocols"] = "h2";
         }
 
-        // If we have multiple different TLS certs on the same bind address we need to assign
-        // the "SNI_server_name" key to enable the SNI extension.
-        foreach (array_keys($bindMap) as $bindAddress) {
-            if (isset($sniNameMap[$bindAddress]) && count($sniNameMap[$bindAddress]) > 1) {
-                $bindMap[$bindAddress]["SNI_server_name"] = $sniNameMap[$bindAddress];
-            }
-        }
-
-        return $bindMap;
+        return $context;
     }
 
     /**
@@ -367,98 +311,7 @@ class Host {
      * @return bool Returns true if a TLS context is assigned, false otherwise
      */
     public function isEncrypted(): bool {
-        return (bool) $this->tlsContextArr;
-    }
-
-    /**
-     * Define TLS encryption settings for this host.
-     *
-     * @param ServerTlsContext $tls
-     * @link http://php.net/manual/en/context.ssl.php
-     * @return void
-     */
-    private function setCrypto(ServerTlsContext $tls) {
-        $this->tlsContext = $tls;
-
-        if (!extension_loaded('openssl')) {
-            throw new \Error(
-                "Cannot assign crypto settings in host `{$this}`; ext/openssl required"
-            );
-        }
-
-        $tls = $tls->toStreamContextArray()['ssl'];
-
-        $certPath = $tls['local_cert'];
-        $certBase = basename($certPath);
-        if (!$rawCert = @file_get_contents($certPath)) {
-            throw new \RuntimeException(
-                "TLS certificate path `{$certPath}` could not be read in host `{$this}`"
-            );
-        }
-
-        if (!$cert = @openssl_x509_read($rawCert)) {
-            throw new \RuntimeException(
-                "`{$certBase}` does not appear to be a valid X.509 certificate in host `{$this}`"
-            );
-        }
-
-        if (!isset($tls['local_pk']) && !preg_match("#-----BEGIN( [A-Z]+)? PRIVATE KEY-----#", $rawCert)) {
-            throw new \RuntimeException(
-                "TLS certificate `{$certBase}` appears to be missing the private key in host " .
-                "`{$this}`; encrypted hosts must concatenate their private key into the same " .
-                "file with the public key and any intermediate CA certs or use the local_pk option."
-            );
-        }
-
-        if (!$cert = openssl_x509_parse($cert)) {
-            throw new \RuntimeException(
-                "Failed parsing X.509 certificate `{$certBase}` in host `{$this}`"
-            );
-        }
-
-        $names = $this->parseNamesFromTlsCertArray($cert);
-        if ($this->hasName() && !in_array(explode(":", $this->name)[0], $names)) {
-            trigger_error(
-                "TLS certificate `{$certBase}` has no CN or SAN name match for host `{$this}`; " .
-                "web browsers will not trust the validity of your certificate :(",
-                E_USER_WARNING
-            );
-        }
-
-        if (time() > $cert['validTo_time_t']) {
-            date_default_timezone_set(@date_default_timezone_get());
-            $expiration = date('Y-m-d', $cert['validTo_time_t']);
-            trigger_error(
-                "TLS certificate `{$certBase}` for host `{$this}` expired {$expiration}; web " .
-                "browsers will not trust the validity of your certificate :(",
-                E_USER_WARNING
-            );
-        }
-
-        $tls += $this->tlsDefaults;
-        $tls = array_filter($tls, function ($value) { return isset($value); });
-
-        $this->tlsContextArr = $tls;
-    }
-
-    private function parseNamesFromTlsCertArray(array $cert): array {
-        $names = [];
-        if (!empty($cert['subject']['CN'])) {
-            $names[] = $cert['subject']['CN'];
-        }
-
-        if (empty($cert["extensions"]["subjectAltName"])) {
-            return $names;
-        }
-
-        $parts = array_map('trim', explode(',', $cert["extensions"]["subjectAltName"]));
-        foreach ($parts as $part) {
-            if (stripos($part, 'DNS:') === 0) {
-                $names[] = substr($part, 4);
-            }
-        }
-
-        return array_map('strtolower', $names);
+        return (bool) $this->tlsContext;
     }
 
     /**
@@ -471,41 +324,5 @@ class Host {
         }
 
         return \OPENSSL_VERSION_NUMBER >= 0x10002000;
-    }
-
-    /**
-     * Retrieve this host's TLS connection context options.
-     *
-     * @return array An array of stream encryption context options
-     */
-    public function getTlsContextArr(): array {
-        return $this->tlsContextArr;
-    }
-
-    /**
-     * Does this host have a name?
-     *
-     * @return bool
-     */
-    public function hasName(): bool {
-        return $this->name !== "*" && strstr($this->name, ":", true) !== "*";
-    }
-
-    /**
-     * Retrieve the host's name (may be an empty string).
-     *
-     * @return string
-     */
-    public function getName(): string {
-        return $this->name;
-    }
-
-    /**
-     * Returns the host name.
-     *
-     * @return string
-     */
-    public function __toString(): string {
-        return $this->name;
     }
 }

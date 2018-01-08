@@ -15,7 +15,6 @@ const AERYS_OPTIONS = [
 return (function () {
     ($host = new Host)
         ->expose("*", 80)
-        ->name("example.com")
         ->use(new class implements Middleware {
             public function process(Request $request, Responder $responder): Promise {
                 $request->setAttribute("responder", $request->getAttribute("responder") + 1);

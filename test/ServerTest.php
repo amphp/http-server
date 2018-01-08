@@ -273,8 +273,8 @@ class ServerTest extends TestCase {
             public function getBindableAddresses(): array {
                 return [$this->address];
             }
-            public function getTlsBindingsByAddress(): array {
-                return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER]] : [];
+            public function getTlsContext(): array {
+                return $this->tls ? ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER] : [];
             }
             public function getHttpDriver(): HttpDriver {
                 return $this->driver;
