@@ -39,9 +39,6 @@ class Server implements Monitor {
     /** @var \Aerys\Options */
     private $options;
 
-    /** @var \Aerys\Internal\VhostContainer */
-    private $vhosts;
-
     /** @var \Aerys\Host */
     private $host;
 
@@ -96,17 +93,15 @@ class Server implements Monitor {
     private $onResponseDataDone;
 
     /**
-     * @internal Use the \Aerys\initServer() function to create a server instance.
-     *
-     * @param \Aerys\Options $options
      * @param \Aerys\Host $host
-     * @param \Psr\Log\LoggerInterface $logger
+     * @param \Aerys\Options|null $options
+     * @param \Psr\Log\LoggerInterface|null $logger Null automatically uses an instance of \Aerys\ConsoleLogger.
      */
-    public function __construct(Options $options, Host $host, PsrLogger $logger) {
-        $this->options = $options;
+    public function __construct(Host $host, Options $options = null, PsrLogger $logger = null) {
         $this->host = $host;
-        $this->logger = $logger;
-        $this->ticker = new Internal\Ticker($logger);
+        $this->options = $options ?? new Options;
+        $this->logger = $logger ?? new ConsoleLogger(new Console);
+        $this->ticker = new Internal\Ticker($this->logger);
         $this->observers = new \SplObjectStorage;
         $this->observers->attach($this->ticker);
         $this->ticker->use($this->callableFromInstanceMethod("timeoutKeepAlives"));
@@ -232,12 +227,6 @@ class Server implements Monitor {
     public function start(callable $bindSockets = null): Promise {
         try {
             if ($this->state === self::STOPPED) {
-//                if ($this->vhosts->count() === 0) {
-//                    return new Failure(new \Error(
-//                        "Cannot start: no virtual hosts registered in composed VhostContainer"
-//                    ));
-//                }
-
                 return new Coroutine($this->doStart($bindSockets ?? \Amp\coroutine(function ($addrCtxMap, $socketBinder) {
                     $serverSockets = [];
                     foreach ($addrCtxMap as $address => $context) {
@@ -268,8 +257,6 @@ class Server implements Monitor {
 
     private function doStart(callable $bindSockets): \Generator {
         assert($this->logDebug("starting"));
-
-        //$this->vhosts->setupHttpDrivers($this->createHttpDriverHandlers(), $this->callableFromInstanceMethod("writeResponse"));
 
         $socketBinder = function ($address, $context) {
             if (!strncmp($address, "unix://", 7)) {
@@ -321,9 +308,7 @@ class Server implements Monitor {
 
     private function generateBindableAddressContextMap(): array {
         $addrCtxMap = [];
-        //$addresses = $this->vhosts->getBindableAddresses();
         $addresses = $this->host->getBindableAddresses();
-        //$tlsBindings = $this->vhosts->getTlsBindingsByAddress();
         $tlsBindings = $this->host->getTlsBindingsByAddress();
         $backlogSize = $this->options->socketBacklogSize;
         $shouldReusePort = !$this->options->debug;
@@ -509,7 +494,6 @@ class Server implements Monitor {
 
         $this->clients[$client->id] = $client;
 
-        //$client->httpDriver = $this->vhosts->selectHttpDriver($client->serverAddr, $client->serverPort);
         $client->httpDriver = $this->httpDriver;
         $client->requestParser = $client->httpDriver->parser($client);
         $client->requestParser->valid();
@@ -743,8 +727,6 @@ class Server implements Monitor {
             $generator = $this->sendResponse($ireq, $this->makePreAppServiceUnavailableResponse());
         } elseif (!\in_array($ireq->method, $this->options->allowedMethods)) {
             $generator = $this->sendResponse($ireq, $this->makePreAppMethodNotAllowedResponse());
-//        } elseif (!$vhost = $this->vhosts->selectHost($ireq)) {
-//            $generator = $this->sendResponse($ireq, $this->makePreAppInvalidHostResponse());
         } elseif ($ireq->method === "TRACE") {
             $this->setTrace($ireq);
             $generator = $this->sendResponse($ireq, $this->makePreAppTraceResponse($ireq));
@@ -763,15 +745,6 @@ class Server implements Monitor {
             "Connection" => "close",
         ];
         return new Response\EmptyResponse($headers, $status);
-    }
-
-    private function makePreAppInvalidHostResponse(): Response {
-        $status = HttpStatus::BAD_REQUEST;
-        $reason = "Bad Request: Invalid Host";
-        $headers = [
-            "Connection" => "close",
-        ];
-        return new Response\EmptyResponse($headers, $status, $reason);
     }
 
     private function makePreAppMethodNotAllowedResponse(): Response {
@@ -1000,7 +973,7 @@ class Server implements Monitor {
     public function __debugInfo() {
         return [
             "state" => $this->state,
-            "vhosts" => $this->vhosts,
+            "host" => $this->host,
             "ticker" => $this->ticker,
             "observers" => $this->observers,
             "acceptWatcherIds" => $this->acceptWatcherIds,
@@ -1015,11 +988,10 @@ class Server implements Monitor {
     public function monitor(): array {
         return [
             "state" => $this->state,
-            "bindings" => $this->vhosts->getBindableAddresses(),
+            "bindings" => $this->host->getBindableAddresses(),
             "clients" => count($this->clients),
             "IPs" => count($this->clientsPerIP),
             "pendingInputs" => count($this->connectionTimeouts),
-            "hosts" => $this->vhosts->monitor(),
         ];
     }
 }

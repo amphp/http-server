@@ -62,7 +62,7 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
     }
     $options["configPath"] = $configFile;
 
-    return new Server(generateOptionsObjFromArray($options), $host, $logger);
+    return new Server($host, generateOptionsObjFromArray($options), $logger);
 }
 
 function generateOptionsObjFromArray(array $optionsArray): Options {

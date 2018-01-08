@@ -13,8 +13,8 @@ class Console {
     private $climate;
     private $hasParsedArgs;
 
-    public function __construct(CLImate $climate) {
-        $this->climate = $climate;
+    public function __construct(CLImate $climate = null) {
+        $this->climate = $climate ?? new CLImate;
     }
 
     public function output(string $msg) {
