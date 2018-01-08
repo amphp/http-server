@@ -4,7 +4,6 @@ namespace Aerys\Websocket\Internal;
 
 use Aerys\ClientException;
 use Aerys\HttpStatus;
-use Aerys\Monitor;
 use Aerys\NullBody;
 use Aerys\Request;
 use Aerys\Responder;
@@ -31,7 +30,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use function Aerys\makeGenericBody;
 use function Amp\call;
 
-class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
+class Rfc6455Gateway implements Responder, ServerObserver {
     use CallableMaker;
 
     /** @var PsrLogger */
@@ -944,12 +943,5 @@ class Rfc6455Gateway implements Monitor, Responder, ServerObserver {
 
             $frames++;
         }
-    }
-
-    public function monitor(): array {
-        return [
-            "handler" => [\get_class($this->application), $this->application instanceof Monitor ? $this->application->monitor() : null],
-            "clients" => \array_map(function ($client) { return $this->getInfo($client->id); }, $this->clients),
-        ];
     }
 }

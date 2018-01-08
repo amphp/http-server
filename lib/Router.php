@@ -11,7 +11,7 @@ use FastRoute\RouteCollector;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function FastRoute\simpleDispatcher;
 
-class Router implements Bootable, Monitor, Responder, ServerObserver {
+class Router implements Bootable, Responder, ServerObserver {
     private $state = Server::STOPPED;
     private $bootLoader;
 
@@ -19,7 +19,6 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
     private $routeDispatcher;
     private $routes = [];
     private $actions = [];
-    private $monitors = [];
     private $cache = [];
     private $cacheEntryCount = 0;
     private $maxCacheEntries = 512;
@@ -127,12 +126,12 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
      * Import a router or attach a callable, Middleware, or Bootable.
      * Router imports do *not* import the options.
      *
-     * @param callable|Middleware|Bootable|Monitor $action
+     * @param callable|Middleware|Bootable $action
      *
      * @return self
      */
     public function use($action) {
-        if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable || $action instanceof Monitor)) {
+        if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable)) {
             throw new \Error(
                 __METHOD__ . " requires a callable action or Filter instance"
             );
@@ -207,7 +206,7 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
      * @param Bootable|Responder|callable $responder
-     * @param Bootable|Middleware|Monitor|callable ...$actions The action(s) to invoke upon matching this route
+     * @param Bootable|Middleware|callable ...$actions The action(s) to invoke upon matching this route
      * @throws \Error on invalid empty parameters
      * @return self
      */
@@ -275,15 +274,13 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
             if ($booted !== null
                 && !$booted instanceof Responder
                 && !$booted instanceof Middleware
-                && !$booted instanceof Monitor
                 && !is_callable($booted)
             ) {
                 throw new \Error(\sprintf(
-                    "Any return value of %s::boot() must be callable or an instance of %s, %s, or %s",
+                    "Any return value of %s::boot() must be callable or an instance of %s or %s",
                     \get_class($bootable),
                     Responder::class,
-                    Middleware::class,
-                    Monitor::class
+                    Middleware::class
                 ));
             }
             return $booted ?? $bootable;
@@ -293,7 +290,6 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
     private function bootRouteTarget($responder, array $actions): array {
         $middlewares = [];
         $booted = [];
-        $monitors = [];
 
         foreach ($actions as $key => $action) {
             if ($action instanceof Bootable) {
@@ -312,10 +308,6 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
             if ($action instanceof Middleware) {
                 $middlewares[] = $action;
             }
-
-            if ($action instanceof Monitor) {
-                $monitors[\get_class($action)][] = $action;
-            }
         }
 
         if ($responder instanceof Bootable) {
@@ -330,7 +322,7 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
             throw new \Error("Responder must be callable or an instance of " . Responder::class);
         }
 
-        return [$responder, $middlewares, $monitors];
+        return [$responder, $middlewares];
     }
 
     /**
@@ -371,9 +363,8 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
         $allowedMethods = [];
         foreach ($this->routes as list($method, $uri, $responder, $actions)) {
             $allowedMethods[] = $method;
-            list($responder, $middlewares, $monitors) = $this->bootRouteTarget($responder, $actions);
+            list($responder, $middlewares) = $this->bootRouteTarget($responder, $actions);
             $rc->addRoute($method, $uri, [$responder, $middlewares]);
-            $this->monitors[$method][$uri] = $monitors;
         }
         $originalMethods = $server->getOption("allowedMethods");
         if ($server->getOption("normalizeMethodCase")) {
@@ -382,17 +373,5 @@ class Router implements Bootable, Monitor, Responder, ServerObserver {
         $allowedMethods = array_merge($allowedMethods, $originalMethods);
         $allowedMethods = array_unique($allowedMethods);
         $server->setOption("allowedMethods", $allowedMethods);
-    }
-
-    public function monitor(): array {
-        $results = [];
-        foreach ($this->monitors as $method => $routeMonitors) {
-            foreach ($routeMonitors as $route => $classMonitors) {
-                foreach ($classMonitors as $class => $monitors) {
-                    $results[$method][$route][$class] = array_map(function ($monitor) { return $monitor->monitor(); }, $monitors);
-                }
-            }
-        }
-        return $results;
     }
 }

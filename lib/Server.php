@@ -19,7 +19,7 @@ use function Amp\Promise\all;
 use function Amp\Promise\any;
 use function Amp\Promise\timeout;
 
-class Server implements Monitor {
+class Server {
     use CallableMaker;
 
     const STOPPED  = 0;
@@ -123,15 +123,13 @@ class Server implements Monitor {
             if ($booted !== null
                 && !$booted instanceof Responder
                 && !$booted instanceof Middleware
-                && !$booted instanceof Monitor
                 && !is_callable($booted)
             ) {
                 throw new \Error(\sprintf(
-                    "Any return value of %s::boot() must be callable or an instance of %s, %s, or %s",
+                    "Any return value of %s::boot() must be callable or an instance of %s or %s",
                     \str_replace("\0", "@", \get_class($bootable)),
                     Responder::class,
-                    Middleware::class,
-                    Monitor::class
+                    Middleware::class
                 ));
             }
             return $booted ?? $bootable;
@@ -982,16 +980,6 @@ class Server implements Monitor {
             "clients" => $this->clients,
             "connectionTimeouts" => $this->connectionTimeouts,
             "stopPromise" => $this->stopDeferred ? $this->stopDeferred->promise() : null,
-        ];
-    }
-
-    public function monitor(): array {
-        return [
-            "state" => $this->state,
-            "bindings" => $this->host->getBindableAddresses(),
-            "clients" => count($this->clients),
-            "IPs" => count($this->clientsPerIP),
-            "pendingInputs" => count($this->connectionTimeouts),
         ];
     }
 }
