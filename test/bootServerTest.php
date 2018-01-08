@@ -6,7 +6,6 @@ use Aerys\Console;
 use Aerys\Host;
 use Aerys\Internal;
 use Aerys\Logger;
-use Aerys\Request;
 use Amp\Coroutine;
 use League\CLImate\CLImate;
 use PHPUnit\Framework\TestCase;

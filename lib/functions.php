@@ -3,7 +3,6 @@
 namespace Aerys;
 
 use Aerys\Cookie\Cookie;
-use Aerys\Websocket;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 /**

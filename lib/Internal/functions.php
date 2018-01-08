@@ -14,7 +14,6 @@ use Aerys\Response;
 use Aerys\Server;
 use Aerys\TryResponder;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Aerys\initServer;
 use function Aerys\selectConfigFile;
 use function Amp\call;
 

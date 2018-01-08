@@ -3,9 +3,9 @@
 namespace Aerys\Test;
 
 use Aerys\Request;
-use function Amp\Promise\wait;
 use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
+use function Amp\Promise\wait;
 
 class functionsTest extends TestCase {
     /**
