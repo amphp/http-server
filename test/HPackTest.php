@@ -5,6 +5,7 @@ namespace Aerys\Test;
 use Aerys\Internal\HPack;
 use PHPUnit\Framework\TestCase;
 
+/** @group hpack */
 class HPackTest extends TestCase {
     /**
      * @dataProvider provideDecodeCases

@@ -3,12 +3,10 @@
 namespace Aerys\Test;
 
 use Aerys\CallableResponder;
+use Aerys\Host;
 use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Internal\HttpDriver;
-use Aerys\Internal\Ticker;
-use Aerys\Internal\Vhost;
-use Aerys\Internal\VhostContainer;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
@@ -39,7 +37,7 @@ class ServerTest extends TestCase {
 
 
     public function tryIterativeRequest(Responder $responder, $middlewares = []) {
-        $vhosts = new VhostContainer($driver = new class($this) implements HttpDriver {
+        $driver = new class($this) implements HttpDriver {
             private $test;
             private $emitters;
             public $response;
@@ -87,9 +85,14 @@ class ServerTest extends TestCase {
                     }
                 }
             }
-        });
+        };
 
-        $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder, $middlewares));
+        $host = new Host($driver);
+        $host->use($responder);
+
+        foreach ($middlewares as $middleware) {
+            $host->use($middleware);
+        }
 
         $logger = new class extends Logger {
             protected function output(string $message) { /* /dev/null */
@@ -99,8 +102,7 @@ class ServerTest extends TestCase {
         $options = new Options;
         $options->debug = true;
 
-        $server = new Server($options, $vhosts, $logger, new Ticker($logger));
-        $driver->setup((function () { return $this->createHttpDriverHandlers(); })->call($server), $this->createCallback(0));
+        $server = new Server($host, $options, $logger);
         $part = yield;
         while (1) {
             $driver->emit($part);
@@ -182,7 +184,7 @@ class ServerTest extends TestCase {
 
     public function providePreResponderHeaders() {
         return [
-            [["headers" => ["host" => "undefined"], "uri" => new Uri("http://undefined")], HttpStatus::BAD_REQUEST],
+            [["method" => "OPTIONS", "target" => "*"], HttpStatus::NO_CONTENT],
             [["method" => "NOT_ALLOWED"], HttpStatus::METHOD_NOT_ALLOWED],
         ];
     }
@@ -260,8 +262,9 @@ class ServerTest extends TestCase {
             }
         };
 
-        $vhosts = new class($tls, $address, $this, $driver) extends VhostContainer {
+        $host = new class($tls, $address, $this, $driver) extends Host {
             public function __construct($tls, $address, $test, $driver) {
+                parent::__construct();
                 $this->tls = $tls;
                 $this->test = $test;
                 $this->address = $address;
@@ -273,10 +276,7 @@ class ServerTest extends TestCase {
             public function getTlsBindingsByAddress(): array {
                 return $this->tls ? [$this->address => ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER]] : [];
             }
-            public function selectHost(Internal\ServerRequest $ireq): Vhost {
-                $this->test->fail("We should never get to dispatching requests here...");
-            }
-            public function selectHttpDriver($addr, $port): HttpDriver {
+            public function getHttpDriver(): HttpDriver {
                 return $this->driver;
             }
             public function count(): int {
@@ -292,8 +292,7 @@ class ServerTest extends TestCase {
         $options = new Options;
         $options->debug = true;
 
-        $server = new Server($options, $vhosts, $logger, new Ticker($logger));
-        $driver->setup([], (new \ReflectionClass($server))->getMethod("writeResponse")->getClosure($server));
+        $server = new Server($host, $options, $logger);
         $driver->parser = $parser;
         yield $server->start();
         return [$address, $server];

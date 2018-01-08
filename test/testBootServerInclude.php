@@ -13,28 +13,19 @@ const AERYS_OPTIONS = [
 ];
 
 return (function () {
-    yield new Success('test boot config');
-
-    ($hosts[] = new Host)
-        ->name("localhost")
-        ->encrypt(__DIR__."/server.pem");
-
-    ($hosts[] = new Host)
-        ->expose("127.0.0.1", 80)
+    ($host = new Host)
+        ->expose("*", 80)
         ->name("example.com")
         ->use(new class implements Middleware {
             public function process(Request $request, Responder $responder): Promise {
                 $request->setAttribute("responder", $request->getAttribute("responder") + 1);
                 return $responder->respond($request);
             }
-        });
-
-    ($hosts[] = clone end($hosts))
-        ->name("foo.bar")
+        })
         ->use(function (Request $req) {
             $req->setAttribute("foo.bar", $req->getAttribute("foo.bar") + 1);
             return new Response\EmptyResponse;
         });
 
-    return new Success($hosts);
+    return new Success($host);
 })();

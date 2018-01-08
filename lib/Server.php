@@ -115,7 +115,7 @@ class Server implements Monitor {
         $this->onWritable = $this->callableFromInstanceMethod("onWritable");
         $this->onResponseDataDone = $this->callableFromInstanceMethod("onResponseDataDone");
 
-        $this->httpDriver = new Internal\Http1Driver;
+        $this->httpDriver = $this->host->getHttpDriver();
         $this->httpDriver->setup($this->createHttpDriverHandlers(), $this->callableFromInstanceMethod("writeResponse"));
 
         $bootLoader = function (Bootable $bootable) {

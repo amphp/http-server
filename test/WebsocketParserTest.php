@@ -3,13 +3,11 @@
 namespace Aerys\Test;
 
 use Aerys\Bootable;
+use Aerys\Host;
 use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Internal\Client;
 use Aerys\Internal\HttpDriver;
-use Aerys\Internal\Ticker;
-use Aerys\Internal\Vhost;
-use Aerys\Internal\VhostContainer;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
@@ -248,7 +246,7 @@ class WebsocketParserTest extends TestCase {
             $client->writeWatcher = 'b';
             list($sock, $client->socket) = stream_socket_pair(\stripos(PHP_OS, "win") === 0 ? STREAM_PF_INET : STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
 
-            $vhosts = new VhostContainer($driver = new class($this, $client) implements HttpDriver {
+            $host = new Host($driver = new class($this, $client) implements HttpDriver {
                 private $test;
                 private $emit;
                 public $response;
@@ -296,8 +294,6 @@ class WebsocketParserTest extends TestCase {
                 protected function output(string $message) { /* /dev/null */
                 }
             };
-            $server = new Server(new Options, $vhosts, $logger, new Ticker($logger));
-            $driver->setup((function () { return $this->createHttpDriverHandlers(); })->call($server), $this->createCallback(0));
 
             $ws = $this->createMock(Websocket::class);
             $ws->expects($this->exactly(1))
@@ -310,8 +306,12 @@ class WebsocketParserTest extends TestCase {
                 });
             $ws = \Aerys\websocket($ws);
 
-            $responder = $ws->boot($server, $logger);
-            $vhosts->use(new Vhost("localhost", [["0.0.0.0", 80], ["::", 80]], $responder));
+            $host->use($ws);
+
+            $options = new Options;
+            $options->debug = true;
+
+            $server = new Server($host, $options, $logger);
 
             $driver->emit();
 

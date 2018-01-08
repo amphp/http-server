@@ -60,29 +60,11 @@ class bootServerTest extends TestCase {
 
         $info = $server->__debugInfo();
         if (Host::separateIPv4Binding()) {
-            $this->assertEquals(["tcp://[::]:443", "tcp://0.0.0.0:443", "tcp://127.0.0.1:80"], array_values($info["vhosts"]->getBindableAddresses()));
+            $this->assertEquals(["tcp://0.0.0.0:80", "tcp://[::]:80"], array_values($info["host"]->getBindableAddresses()));
         } else {
-            $this->assertEquals(["tcp://[::]:443", "tcp://127.0.0.1:80"], array_values($info["vhosts"]->getBindableAddresses()));
+            $this->assertEquals(["tcp://[::]:80"], array_values($info["host"]->getBindableAddresses()));
         }
         $this->assertEquals(strtr($console::ARGS["config"], "\\", "/"), strtr($server->getOption("configPath"), "\\", "/"));
         $this->assertEquals(5000, $server->getOption("shutdownTimeout")); // custom option test
-
-        $vhosts = $info["vhosts"]->__debugInfo()["vhosts"];
-        $this->assertEquals(["localhost:443:[::]:443", "localhost:443:0.0.0.0:443", "example.com:80:127.0.0.1:80", "foo.bar:80:127.0.0.1:80"], array_keys($vhosts));
-        $vhosts["foo.bar:80:127.0.0.1:80"]->getResponder()->respond(new Request($ireq = new Internal\ServerRequest));
-        $this->assertEquals(["responder" => 1, "foo.bar" => 1], $ireq->locals);
-    }
-
-    // initServer() is essentially already covered by the previous test in detail, just checking if it works at all here.
-    public function testInit() {
-        $logger = new class extends Logger {
-            protected function output(string $message) {
-                // do nothing
-            }
-        };
-
-        $server = \Aerys\initServer($logger, [(new Host)->name("foo.bar")]);
-        $vhosts = $server->__debugInfo()["vhosts"]->__debugInfo()["vhosts"];
-        $this->assertEquals("foo.bar:80:[::]:80", key($vhosts));
     }
 }

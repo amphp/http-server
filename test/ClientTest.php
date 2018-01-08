@@ -3,7 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\CallableResponder;
-use Aerys\Internal;
+use Aerys\Host;
 use Aerys\Logger;
 use Aerys\Middleware;
 use Aerys\Options;
@@ -33,10 +33,10 @@ class ClientTest extends TestCase {
 
         $handler = new CallableResponder($handler);
 
-        $vhosts = new Internal\VhostContainer;
-        $vhost = new Internal\Vhost("localhost", [["127.0.0.1", $port]], $handler, $middlewares, []);
-        $vhost->setCrypto((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
-        $vhosts->use($vhost);
+        $host = new Host;
+        $host->expose("*", $port);
+        $host->use($handler);
+        $host->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
 
         $logger = new class extends Logger {
             protected function output(string $message) { /* /dev/null */
@@ -44,7 +44,7 @@ class ClientTest extends TestCase {
         };
         $options = new Options;
         $options->debug = true;
-        $server = new Server($options, $vhosts, $logger, new Internal\Ticker($logger));
+        $server = new Server($host, $options, $logger);
         yield $server->start();
         return [$address, $server];
     }

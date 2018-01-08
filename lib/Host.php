@@ -11,6 +11,9 @@ class Host {
     private $interfaces = [];
     private $actions = [];
 
+    /** @var \Aerys\Internal\HttpDriver */
+    private $httpDriver;
+
     private $addressMap = [];
 
     /** @var \Amp\Socket\ServerTlsContext|null */
@@ -33,7 +36,12 @@ class Host {
         "crypto_method"         => STREAM_CRYPTO_METHOD_SSLv23_SERVER, /* means: TLS 1.0 and up */
     ];
 
-    public function __construct() {
+    /**
+     * @param \Aerys\Internal\HttpDriver|null $httpDriver Internal parameter used for testing.
+     */
+    public function __construct(Internal\HttpDriver $httpDriver = null) {
+        $this->httpDriver = $httpDriver ?? new Internal\Http1Driver;
+
         if (self::hasAlpnSupport()) {
             $this->tlsDefaults["alpn_protocols"] = "h2";
         }
@@ -83,7 +91,7 @@ class Host {
 
         if (!$isUnixSocket && !@inet_pton($address)) {
             throw new \Error(
-                "Invalid IP address or unix domain socket path"
+                "Invalid IP address or unix domain socket path: {$address}"
             );
         }
 
@@ -109,13 +117,13 @@ class Host {
             $address = inet_ntop($packedAddress);
         } else {
             throw new \Error(
-                "IPv4 or IPv6 address or unix domain socket path required: {$address}"
+                "IPv4 or IPv6 address or unix domain socket path required: {$address} given"
             );
         }
 
         if (isset($this->addressMap[$packedAddress]) && in_array($port, $this->addressMap[$packedAddress])) {
             throw new \Error(
-                "There must be no two identical interfaces for a same host"
+                "There must be no two identical interfaces for a same host: {$address} duplicated"
             );
         }
 
@@ -225,6 +233,15 @@ class Host {
     }
 
     /**
+     * @internal
+     *
+     * @return \Aerys\Internal\HttpDriver
+     */
+    public function getHttpDriver(): Internal\HttpDriver {
+        return $this->httpDriver;
+    }
+
+    /**
      * Define TLS encryption settings for this host.
      *
      * @param string|Certificate|ServerTlsContext $certificate A string path pointing to your SSL/TLS certificate, a
@@ -265,6 +282,13 @@ class Host {
      * @return array
      */
     public function getBindableAddresses(): array {
+        if (empty($this->interfaces)) {
+            throw new \Error(\sprintf(
+                "At least one interface must be specified (see %s::expose()), an empty interfaces array is not allowed",
+                self::class
+            ));
+        }
+
         return array_map(static function ($interface) {
             list($address, $port) = $interface;
             if ($address[0] == "/") { // unix domain socket
@@ -485,30 +509,5 @@ class Host {
      */
     public function __toString(): string {
         return $this->name;
-    }
-
-    /**
-     * Retrieve an associative array summarizing the host definition.
-     *
-     * @return array
-     */
-    public function export(): array {
-        $defaultPort = $this->tlsContext ? 443 : 80;
-
-        if (isset($this->interfaces)) {
-            $interfaces = array_unique($this->interfaces, SORT_REGULAR);
-        } else {
-            $interfaces = [["::", $defaultPort]];
-            if (self::separateIPv4Binding()) {
-                $interfaces[] = ["0.0.0.0", $defaultPort];
-            }
-        }
-
-        return [
-            "interfaces" => $interfaces,
-            "name"       => $this->name,
-            "crypto"     => $this->tlsContext,
-            "actions"    => $this->actions,
-        ];
     }
 }

@@ -47,8 +47,8 @@ class WatcherProcessTest extends TestCase {
                     }
                     throw new \Error("Invalid property access");
                 }
-                public function stop(): \Generator {
-                    return parent::doStop();
+                public function stop(): Promise {
+                    return new Coroutine(parent::doStop());
                 }
             };
             if (!$proc->_sock = stream_socket_server("tcp://127.0.0.1:*")) {

@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\Host;
 use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Options;
@@ -15,14 +16,14 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class RouterTest extends TestCase {
-    public function mockServer($state) {
-        return new class($state, $this->createMock(Internal\VhostContainer::class), $this->createMock(PsrLogger::class)) extends Server {
+    public function mockServer($state): Server {
+        return new class($state, $this->createMock(Host::class), $this->createMock(PsrLogger::class)) extends Server {
             private $state;
             private $options;
-            public function __construct($state, $vhostContainer, $logger) {
+            public function __construct($state, Host $host, PsrLogger $logger) {
                 $this->state = $state;
                 $this->options = new Options;
-                parent::__construct($this->options, $vhostContainer, $logger, new Internal\Ticker($logger));
+                parent::__construct($host, $this->options, $logger);
             }
             public function state(): int {
                 return $this->state;
