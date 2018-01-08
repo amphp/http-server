@@ -5,7 +5,10 @@ namespace Aerys;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class DebugProcess extends Process {
+    /** @var \Psr\Log\LoggerInterface */
     private $logger;
+
+    /** @var \Aerys\Server|null */
     private $server;
 
     public function __construct(PsrLogger $logger) {
@@ -29,6 +32,7 @@ class DebugProcess extends Process {
             ini_set("zend.assertions", "1");
         }
 
+        /** @var \Aerys\Server $server */
         $server = yield from Internal\bootServer($this->logger, $console);
         yield $server->start();
         $this->server = $server;

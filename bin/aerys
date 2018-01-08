@@ -128,5 +128,5 @@ Amp\Loop::run(function () use ($console) {
         ? new Aerys\DebugProcess($logger)
         : new Aerys\WatcherProcess($logger)
     ;
-    yield from $process->start($console);
+    return $process->start($console);
 });

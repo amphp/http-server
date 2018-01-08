@@ -82,5 +82,5 @@ Amp\Loop::run(function () use ($console) {
 
     $process = new Aerys\WorkerProcess($logger, $ipcSock);
 
-    yield from $process->start($console);
+    return $process->start($console);
 });

@@ -75,7 +75,7 @@ class WorkerProcess extends Process {
         yield $this->ipcSock->read();
 
         if ($this->server) {
-            yield from $this->stop();
+            yield $this->stop();
         }
     }
 

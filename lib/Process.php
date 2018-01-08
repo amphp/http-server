@@ -3,15 +3,22 @@
 namespace Aerys;
 
 use Amp\Loop;
+use Amp\Promise;
 use Psr\Log\LoggerInterface as PsrLogger;
+use function Amp\call;
 
 abstract class Process {
     const STOPPED = 0;
     const STARTED = 1;
     const STOPPING = 2;
 
+    /** @var \Psr\Log\LoggerInterface */
     private $logger;
+
+    /** @var int */
     private $exitCode = 0;
+
+    /** @var int */
     private $state = self::STOPPED;
 
     abstract protected function doStart(Console $console): \Generator;
@@ -25,60 +32,65 @@ abstract class Process {
      * Start the process.
      *
      * @param \Aerys\Console $console
-     * @return \Generator
+     *
+     * @return \Amp\Promise<null>
      */
-    public function start(Console $console): \Generator {
-        try {
-            if ($this->state) {
-                throw new \Error(
-                    "A process may only be started once"
-                );
+    public function start(Console $console): Promise {
+        return call(function () use ($console) {
+            try {
+                if ($this->state) {
+                    throw new \Error(
+                        "A process may only be started once"
+                    );
+                }
+
+                $this->registerSignalHandler();
+                $this->registerShutdownHandler();
+                $this->registerErrorHandler();
+
+                $this->state = self::STARTED;
+
+                yield from $this->doStart($console);
+
+                // Once we make it this far we no longer want to terminate
+                // the process in the event of an uncaught exception inside
+                // the event loop -- log it instead.
+                Loop::setErrorHandler([$this->logger, "critical"]);
+            } catch (\Throwable $uncaught) {
+                $this->exitCode = 1;
+                $this->logger->critical($uncaught);
+                if (method_exists($this->logger, "flush")) {
+                    $this->logger->flush();
+                }
+                static::exit();
             }
-
-            $this->registerSignalHandler();
-            $this->registerShutdownHandler();
-            $this->registerErrorHandler();
-
-            $this->state = self::STARTED;
-
-            yield from $this->doStart($console);
-
-            // Once we make it this far we no longer want to terminate
-            // the process in the event of an uncaught exception inside
-            // the event loop -- log it instead.
-            Loop::setErrorHandler([$this->logger, "critical"]);
-        } catch (\Throwable $uncaught) {
-            $this->exitCode = 1;
-            $this->logger->critical($uncaught);
-            if (method_exists($this->logger, "flush")) {
-                $this->logger->flush();
-            }
-            static::exit();
-        }
+        });
     }
 
     /**
      * Stop the process.
      *
-     * @return \Generator
+     * @return \Amp\Promise<null>
      */
-    public function stop(): \Generator {
-        try {
-            switch ($this->state) {
-                case self::STOPPED:
-                case self::STOPPING:
-                    return;
-                case self::STARTED:
-                    break;
+    public function stop(): Promise {
+        return call(function () {
+            try {
+                switch ($this->state) {
+                    case self::STOPPED:
+                    case self::STOPPING:
+                        return;
+                    case self::STARTED:
+                        break;
+                }
+                $this->state = self::STOPPING;
+                yield from $this->doStop();
+            } catch (\Throwable $uncaught) {
+                $this->exitCode = 1;
+                $this->logger->critical($uncaught);
+            } finally {
+                static::exit();
             }
-            $this->state = self::STOPPING;
-            yield from $this->doStop();
-        } catch (\Throwable $uncaught) {
-            $this->exitCode = 1;
-            $this->logger->critical($uncaught);
-        } finally {
-            static::exit();
-        }
+        });
     }
 
     private function registerSignalHandler() {
@@ -128,7 +140,7 @@ abstract class Process {
                 Loop::set((new Loop\DriverFactory)->create());
                 Loop::run(function () use ($msg) {
                     $this->logger->critical($msg);
-                    yield from $this->stop();
+                    return $this->stop();
                 });
             } finally {
                 Loop::set($previous);
