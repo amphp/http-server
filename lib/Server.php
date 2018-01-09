@@ -367,7 +367,7 @@ class Server {
             }
         }
 
-        return Internal\makeMiddlewareResponder($responder, $middlewares);
+        return MiddlewareResponder::create($responder, $middlewares);
     }
 
     private function createHttpDriverHandlers() {

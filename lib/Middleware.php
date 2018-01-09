@@ -7,7 +7,7 @@ use Amp\Promise;
 interface Middleware {
     /**
      * @param \Aerys\Request $request
-     * @param Responder $responder Request responder.
+     * @param \Aerys\Responder $responder Request responder.
      *
      * @return \Amp\Promise<\Aerys\Response>
      */

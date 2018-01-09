@@ -96,7 +96,7 @@ class Router implements Bootable, Responder, ServerObserver {
                     }
 
                     if (!empty($middlewares)) {
-                        $responder = Internal\makeMiddlewareResponder($responder, $middlewares);
+                        $responder = MiddlewareResponder::create($responder, $middlewares);
                     }
 
                     break;

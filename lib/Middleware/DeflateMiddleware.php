@@ -5,7 +5,6 @@ namespace Aerys\Middleware;
 use Aerys\Middleware;
 use Aerys\Request;
 use Aerys\Responder;
-use Aerys\Response;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
@@ -31,10 +30,10 @@ class DeflateMiddleware implements Middleware {
     private $contentTypeCache = [];
 
     public function process(Request $request, Responder $responder): Promise {
-        return new Coroutine($this->do($request, $responder));
+        return new Coroutine($this->deflate($request, $responder));
     }
 
-    public function do(Request $request, Responder $responder): \Generator {
+    public function deflate(Request $request, Responder $responder): \Generator {
         /** @var \Aerys\Response $response */
         $response = yield $responder->respond($request);
 
@@ -84,14 +83,10 @@ class DeflateMiddleware implements Middleware {
             }
         }
 
-        return yield from $this->deflate($request, $response, $encoding, $contentLength === null);
-    }
-
-    private function deflate(Request $request, Response $response, string $encoding, bool $examineBody): \Generator {
         $body = $response->getBody();
         $bodyBuffer = '';
 
-        if ($examineBody) {
+        if ($contentLength === null) {
             do {
                 $bodyBuffer .= $chunk = yield $body->read();
 
