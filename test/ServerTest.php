@@ -87,13 +87,6 @@ class ServerTest extends TestCase {
             }
         };
 
-        $host = new Host($driver);
-        $host->use($responder);
-
-        foreach ($middlewares as $middleware) {
-            $host->use($middleware);
-        }
-
         $logger = new class extends Logger {
             protected function output(string $message) { /* /dev/null */
             }
@@ -102,7 +95,14 @@ class ServerTest extends TestCase {
         $options = new Options;
         $options->debug = true;
 
-        $server = new Server($host, $options, $logger);
+        $server = new Server($options, $logger, $driver);
+        $server->use($responder);
+        $server->start();
+
+        foreach ($middlewares as $middleware) {
+            $server->use($middleware);
+        }
+
         $part = yield;
         while (1) {
             $driver->emit($part);
@@ -225,14 +225,17 @@ class ServerTest extends TestCase {
         $this->assertSame(HttpStatus::NOT_FOUND, $response->getStatus());
     }
 
-    public function startServer($parser, $tls, $unixSocket = false) {
+    public function startServer(callable $parser, bool $tls, bool $unixSocket = false) {
         if ($unixSocket) {
-            $address = "unix://" . tempnam(sys_get_temp_dir(), "aerys_server_test");
+            $address = tempnam(sys_get_temp_dir(), "aerys_server_test");
+            $uri = "unix://" . $address;
+            $port = 0;
         } else {
             if (!$server = @stream_socket_server("tcp://127.0.0.1:0", $errno, $errstr)) {
                 $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
             }
-            $address = stream_socket_get_name($server, $wantPeer = false);
+            $uri = stream_socket_get_name($server, $wantPeer = false);
+            list($address, $port) = explode(':', $uri, 2);
             fclose($server);
         }
 
@@ -262,28 +265,6 @@ class ServerTest extends TestCase {
             }
         };
 
-        $host = new class($tls, $address, $this, $driver) extends Host {
-            public function __construct($tls, $address, $test, $driver) {
-                parent::__construct();
-                $this->tls = $tls;
-                $this->test = $test;
-                $this->address = $address;
-                $this->driver = $driver;
-            }
-            public function getBindableAddresses(): array {
-                return [$this->address];
-            }
-            public function getTlsContext(): array {
-                return $this->tls ? ["local_cert" => __DIR__."/server.pem", "crypto_method" => STREAM_CRYPTO_METHOD_SSLv23_SERVER] : [];
-            }
-            public function getHttpDriver(): HttpDriver {
-                return $this->driver;
-            }
-            public function count(): int {
-                return 1;
-            }
-        };
-
         $logger = new class extends Logger {
             protected function output(string $message) { /* /dev/null */
             }
@@ -292,10 +273,20 @@ class ServerTest extends TestCase {
         $options = new Options;
         $options->debug = true;
 
-        $server = new Server($host, $options, $logger);
+        $server = new Server($options, $logger, $driver);
+
+        $server->expose($address, $port);
+
+        if ($tls) {
+            $tlsContext = new Socket\ServerTlsContext;
+            $tlsContext = $tlsContext->withDefaultCertificate(new Socket\Certificate(__DIR__ . "/server.pem"));
+            $tlsContext = $tlsContext->withoutPeerVerification();
+            $server->encrypt($tlsContext);
+        }
+
         $driver->parser = $parser;
         yield $server->start();
-        return [$address, $server];
+        return [$uri, $server];
     }
 
     public function provideFalseTrueUnixDomainSocket() {
@@ -384,5 +375,13 @@ class ServerTest extends TestCase {
             yield $deferred->promise();
             Loop::stop();
         });
+    }
+
+    /**
+     * @expectedException \TypeError
+     * @expectedExceptionMessage Aerys\Server::use() requires
+     */
+    public function testBadUse() {
+        (new Server)->use(1);
     }
 }

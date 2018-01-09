@@ -17,13 +17,13 @@ use Psr\Log\LoggerInterface as PsrLogger;
 
 class RouterTest extends TestCase {
     public function mockServer($state): Server {
-        return new class($state, $this->createMock(Host::class), $this->createMock(PsrLogger::class)) extends Server {
+        return new class($state, $this->createMock(PsrLogger::class)) extends Server {
             private $state;
             private $options;
-            public function __construct($state, Host $host, PsrLogger $logger) {
+            public function __construct($state, PsrLogger $logger) {
                 $this->state = $state;
                 $this->options = new Options;
-                parent::__construct($host, $this->options, $logger);
+                parent::__construct($this->options, $logger);
             }
             public function state(): int {
                 return $this->state;

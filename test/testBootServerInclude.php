@@ -1,19 +1,15 @@
 <?php
 
-use Aerys\Host;
 use Aerys\Middleware;
 use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Response;
+use Aerys\Server;
 use Amp\Promise;
 use Amp\Success;
 
-const AERYS_OPTIONS = [
-    "shutdownTimeout" => 5000
-];
-
 return (function () {
-    ($host = new Host)
+    ($server = new Server)
         ->expose("*", 80)
         ->use(new class implements Middleware {
             public function process(Request $request, Responder $responder): Promise {
@@ -26,5 +22,5 @@ return (function () {
             return new Response\EmptyResponse;
         });
 
-    return new Success($host);
+    return new Success($server);
 })();

@@ -2,14 +2,14 @@
 
 namespace Aerys\Test;
 
-use Aerys\Host;
+use Aerys\Internal\Host;
 use Amp\Socket\Certificate;
 use Amp\Socket\ServerTlsContext;
 use PHPUnit\Framework\TestCase;
 
 class HostTest extends TestCase {
     public function getHost(): Host { // we do not want to add to definitions, that's for the Bootstrapper test.
-        return (new \ReflectionClass('Aerys\Host'))->newInstanceWithoutConstructor();
+        return (new \ReflectionClass(Host::class))->newInstanceWithoutConstructor();
     }
 
     public function testGenericInterface() {
@@ -23,16 +23,9 @@ class HostTest extends TestCase {
         }
     }
 
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Aerys\Host::use() requires a callable action
-     */
-    public function testBadUse() {
-        $this->getHost()->use(1);
-    }
-
     public function testCryptoVhost() {
-        $host = (new Host)->expose("127.0.0.1", 8080);
+        $host = new Host;
+        $host->expose("127.0.0.1", 8080);
         $host->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
 
         $this->assertTrue(isset($host->getTlsContext()["local_cert"]));

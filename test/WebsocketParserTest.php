@@ -246,7 +246,7 @@ class WebsocketParserTest extends TestCase {
             $client->writeWatcher = 'b';
             list($sock, $client->socket) = stream_socket_pair(\stripos(PHP_OS, "win") === 0 ? STREAM_PF_INET : STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
 
-            $host = new Host($driver = new class($this, $client) implements HttpDriver {
+            $driver = new class($this, $client) implements HttpDriver {
                 private $test;
                 private $emit;
                 public $response;
@@ -289,7 +289,8 @@ class WebsocketParserTest extends TestCase {
 
                 public function upgradeBodySize(Internal\ServerRequest $ireq) {
                 }
-            });
+            };
+
             $logger = new class extends Logger {
                 protected function output(string $message) { /* /dev/null */
                 }
@@ -306,12 +307,12 @@ class WebsocketParserTest extends TestCase {
                 });
             $ws = \Aerys\websocket($ws);
 
-            $host->use($ws);
-
             $options = new Options;
             $options->debug = true;
 
-            $server = new Server($host, $options, $logger);
+            $server = new Server($options, $logger, $driver);
+            $server->use($ws);
+            $server->start();
 
             $driver->emit();
 

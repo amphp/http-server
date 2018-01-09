@@ -3,7 +3,6 @@
 namespace Aerys\Test;
 
 use Aerys\CallableResponder;
-use Aerys\Host;
 use Aerys\Logger;
 use Aerys\Middleware;
 use Aerys\Options;
@@ -33,18 +32,17 @@ class ClientTest extends TestCase {
 
         $handler = new CallableResponder($handler);
 
-        $host = new Host;
-        $host->expose("*", $port);
-        $host->use($handler);
-        $host->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
-
         $logger = new class extends Logger {
             protected function output(string $message) { /* /dev/null */
             }
         };
         $options = new Options;
         $options->debug = true;
-        $server = new Server($host, $options, $logger);
+        $server = new Server($options, $logger);
+        $server->expose("*", $port);
+        $server->use($handler);
+        $server->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
+
         yield $server->start();
         return [$address, $server];
     }

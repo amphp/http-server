@@ -3,7 +3,6 @@
 namespace Aerys\Test;
 
 use Aerys\Console;
-use Aerys\Host;
 use Aerys\Internal;
 use Aerys\Logger;
 use Amp\Coroutine;
@@ -58,12 +57,10 @@ class bootServerTest extends TestCase {
         $server = wait(new Coroutine(Internal\bootServer($logger, $console)));
 
         $info = $server->__debugInfo();
-        if (Host::separateIPv4Binding()) {
+        if (Internal\Host::separateIPv4Binding()) {
             $this->assertEquals(["tcp://0.0.0.0:80", "tcp://[::]:80"], array_values($info["host"]->getBindableAddresses()));
         } else {
             $this->assertEquals(["tcp://[::]:80"], array_values($info["host"]->getBindableAddresses()));
         }
-        $this->assertEquals(strtr($console::ARGS["config"], "\\", "/"), strtr($server->getOption("configPath"), "\\", "/"));
-        $this->assertEquals(5000, $server->getOption("shutdownTimeout")); // custom option test
     }
 }

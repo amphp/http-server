@@ -39,14 +39,17 @@ class Server {
     /** @var \Aerys\Options */
     private $options;
 
-    /** @var \Aerys\Host */
+    /** @var \Aerys\Internal\Host */
     private $host;
 
     /** @var \Aerys\Internal\HttpDriver */
     private $httpDriver;
 
-    /** @var \Aerys\Responder */
+    /** @var \Aerys\Responder|null Responder instance built from given responders and middleware */
     private $responder;
+
+    /** @var mixed[] */
+    private $actions = [];
 
     /** @var \Psr\Log\LoggerInterface */
     private $logger;
@@ -93,12 +96,12 @@ class Server {
     private $onResponseDataDone;
 
     /**
-     * @param \Aerys\Host $host
      * @param \Aerys\Options|null $options
      * @param \Psr\Log\LoggerInterface|null $logger Null automatically uses an instance of \Aerys\ConsoleLogger.
+     * @param \Aerys\Internal\HttpDriver $driver Internal parameter used for testing.
      */
-    public function __construct(Host $host, Options $options = null, PsrLogger $logger = null) {
-        $this->host = $host;
+    public function __construct(Options $options = null, PsrLogger $logger = null, Internal\HttpDriver $driver = null) {
+        $this->host = new Internal\Host;
         $this->options = $options ?? new Options;
         $this->logger = $logger ?? new ConsoleLogger(new Console);
         $this->ticker = new Internal\Ticker($this->logger);
@@ -115,27 +118,90 @@ class Server {
         $this->onWritable = $this->callableFromInstanceMethod("onWritable");
         $this->onResponseDataDone = $this->callableFromInstanceMethod("onResponseDataDone");
 
-        $this->httpDriver = $this->host->getHttpDriver();
+        $this->httpDriver = $driver ?? new Internal\Http1Driver;
         $this->httpDriver->setup($this->createHttpDriverHandlers(), $this->callableFromInstanceMethod("writeResponse"));
+    }
 
-        $bootLoader = function (Bootable $bootable) {
-            $booted = $bootable->boot($this, $this->logger);
-            if ($booted !== null
-                && !$booted instanceof Responder
-                && !$booted instanceof Middleware
-                && !is_callable($booted)
-            ) {
-                throw new \Error(\sprintf(
-                    "Any return value of %s::boot() must be callable or an instance of %s or %s",
-                    \str_replace("\0", "@", \get_class($bootable)),
+    /**
+     * Use a callable request action, Responder, or Middleware.
+     *
+     * Actions are invoked to service requests in the order in which they are added.
+     *
+     * If the action is an instance of ServerObserver it is automatically attached.
+     *
+     * @param callable|Responder|Middleware|Bootable $action
+     *
+     * @return self
+     *
+     * @throws \Error If $action is not one of the types above.
+     */
+    public function use($action): self {
+        if ($this->state) {
+            throw new \Error("Cannot add actions after the server has been started");
+        }
+
+        if (!\is_callable($action)
+            && !$action instanceof Responder
+            && !$action instanceof Middleware
+            && !$action instanceof Bootable
+        ) {
+            throw new \TypeError(
+                \sprintf(
+                    "%s() requires a callable action or an instance of %s, %s, or %s",
+                    __METHOD__,
                     Responder::class,
-                    Middleware::class
-                ));
-            }
-            return $booted ?? $bootable;
-        };
+                    Middleware::class,
+                    Bootable::class
+                )
+            );
+        }
 
-        $this->responder = $host->buildResponder($bootLoader);
+        $this->actions[] = $action;
+
+        if ($action instanceof ServerObserver) {
+            $this->observers->attach($action);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Assign the IP or unix domain socket and port on which to listen. This method may be called
+     * multiple times to listen on multiple interfaces.
+     *
+     * The address may be any valid IPv4 or IPv6 address or unix domain socket path. The "0.0.0.0"
+     * indicates "all IPv4 interfaces" and is appropriate for most users. Use "::" to indicate "all
+     * IPv6 interfaces". Use a "*" wildcard character to indicate "all IPv4 *and* IPv6 interfaces".
+     *
+     * Note that "::" may also listen on some systems on IPv4 interfaces. PHP did not expose the
+     * IPV6_V6ONLY constant before PHP 7.0.1.
+     *
+     * Any valid port number [1-65535] may be used. Port numbers lower than 256 are reserved for
+     * well-known services (like HTTP on port 80) and port numbers less than 1024 require root
+     * access on UNIX-like systems. The default port for encrypted sockets (https) is 443. If you
+     * plan to use encryption with this host you'll generally want to use port 443.
+     *
+     * @param string $address The IPv4 or IPv6 interface or unix domain socket path to listen to
+     * @param int $port The port number on which to listen (0 for unix domain sockets)
+     *
+     * @return self
+     */
+    public function expose(string $address, int $port = 0): self {
+        $this->host->expose($address, $port);
+        return $this;
+    }
+
+    /**
+     * Define TLS encryption settings for this server.
+     *
+     * @param string|\Amp\Socket\Certificate|\Amp\Socket\ServerTlsContext $certificate A string path pointing to your
+     *     SSL/TLS certificate, a Certificate object, or a ServerTlsContext object
+     *
+     * @return self
+     */
+    public function encrypt($certificate): self {
+        $this->host->encrypt($certificate);
+        return $this;
     }
 
     /**
@@ -225,6 +291,8 @@ class Server {
     public function start(callable $bindSockets = null): Promise {
         try {
             if ($this->state === self::STOPPED) {
+                $this->responder = $this->buildResponder();
+
                 return new Coroutine($this->doStart($bindSockets ?? \Amp\coroutine(function ($addrCtxMap, $socketBinder) {
                     $serverSockets = [];
                     foreach ($addrCtxMap as $address => $context) {
@@ -240,6 +308,66 @@ class Server {
         } catch (\Throwable $uncaught) {
             return new Failure($uncaught);
         }
+    }
+
+    /**
+     * Returns an instance of \Aerys\Responder built from the responders and middleware used on this server.
+     *
+     * @return \Aerys\Responder
+     */
+    private function buildResponder(): Responder {
+        $bootLoader = function (Bootable $bootable) {
+            $booted = $bootable->boot($this, $this->logger);
+            if ($booted !== null
+                && !$booted instanceof Responder
+                && !$booted instanceof Middleware
+                && !is_callable($booted)
+            ) {
+                throw new \Error(\sprintf(
+                    "Any return value of %s::boot() must be callable or an instance of %s or %s",
+                    \str_replace("\0", "@", \get_class($bootable)),
+                    Responder::class,
+                    Middleware::class
+                ));
+            }
+            return $booted ?? $bootable;
+        };
+
+        $responders = [];
+        $middlewares = [];
+
+        foreach ($this->actions as $key => $action) {
+            if ($action instanceof Bootable) {
+                $action = $bootLoader($action);
+            }
+
+            if ($action instanceof Middleware) {
+                $middlewares[] = $action;
+            }
+
+            if (\is_callable($action)) {
+                $action = new CallableResponder($action);
+            }
+
+            if ($action instanceof Responder) {
+                $responders[] = $action;
+            }
+        }
+
+        if (empty($responders)) {
+            $responder = new CallableResponder(static function (): Response {
+                return new Response\HtmlResponse("<html><body><h1>It works!</h1></body>");
+            });
+        } elseif (\count($responders) === 1) {
+            $responder = $responders[0];
+        } else {
+            $responder = new TryResponder;
+            foreach ($responders as $action) {
+                $responder->addResponder($action);
+            }
+        }
+
+        return Internal\makeMiddlewareResponder($responder, $middlewares);
     }
 
     private function createHttpDriverHandlers() {

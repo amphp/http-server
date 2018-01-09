@@ -1,28 +1,19 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Internal;
 
 use Amp\Socket\Certificate;
 use Amp\Socket\ServerTlsContext;
 
 class Host {
+    /** @var mixed[][] */
     private $interfaces = [];
-    private $actions = [];
 
-    /** @var \Aerys\Internal\HttpDriver */
-    private $httpDriver;
-
+    /** @var int[][] */
     private $addressMap = [];
 
     /** @var \Amp\Socket\ServerTlsContext|null */
     private $tlsContext;
-
-    /**
-     * @param \Aerys\Internal\HttpDriver|null $httpDriver Internal parameter used for testing.
-     */
-    public function __construct(Internal\HttpDriver $httpDriver = null) {
-        $this->httpDriver = $httpDriver ?? new Internal\Http1Driver;
-    }
 
     /**
      * Assign the IP or unix domain socket and port on which to listen.
@@ -41,13 +32,12 @@ class Host {
      *
      * @param string $address The IPv4 or IPv6 interface or unix domain socket path to listen to
      * @param int $port The port number on which to listen (0 for unix domain sockets)
-     * @return self
      */
-    public function expose(string $address, int $port = 0): self {
+    public function expose(string $address, int $port = 0) {
         $isUnixSocket = $address[0] == "/";
 
         if ($isUnixSocket) {
-            if ($port != 0) {
+            if ($port !== 0) {
                 throw new \Error(
                     "Invalid port number {$port}; must be zero for an unix domain socket"
                 );
@@ -106,95 +96,6 @@ class Host {
 
         $this->interfaces[] = [$address, $port];
         $this->addressMap[$packedAddress][] = $port;
-
-        return $this;
-    }
-
-    /**
-     * Use a callable request action or Filter.
-     *
-     * Host actions are invoked to service requests in the order in which they are added.
-     *
-     * @param callable|Responder|Middleware|Bootable $action
-     *
-     * @throws \Error on invalid $action parameter
-     * @return self
-     */
-    public function use($action): self {
-        $isAction = \is_callable($action)
-            || $action instanceof Responder
-            || $action instanceof Middleware
-            || $action instanceof Bootable;
-
-        if (!$isAction) {
-            throw new \Error(
-                \sprintf(
-                    "%s() requires a callable action or an instance of %s, %s, or %s",
-                    __METHOD__,
-                    Responder::class,
-                    Bootable::class,
-                    Middleware::class
-                )
-            );
-        }
-
-        $this->actions[] = $action;
-
-        return $this;
-    }
-
-    /**
-     * Returns an instance of \Aerys\Responder built from the responders and middleware used on this host.
-     *
-     * @param callable $bootLoader
-     *
-     * @return \Aerys\Responder
-     */
-    public function buildResponder(callable $bootLoader): Responder {
-        $responders = [];
-        $middlewares = [];
-
-        foreach ($this->actions as $key => $action) {
-            if ($action instanceof Bootable) {
-                $action = $bootLoader($action);
-            }
-
-            if ($action instanceof Middleware) {
-                $middlewares[] = $action;
-            }
-
-            if (\is_callable($action)) {
-                $action = new CallableResponder($action);
-            }
-
-            if ($action instanceof Responder) {
-                $responders[] = $action;
-            }
-        }
-
-        if (empty($responders)) {
-            $responder = new CallableResponder(static function (): Response {
-                return new Response\HtmlResponse("<html><body><h1>It works!</h1></body>");
-            });
-        } elseif (\count($responders) === 1) {
-            $responder = $responders[0];
-        } else {
-            $responder = new TryResponder;
-            foreach ($responders as $action) {
-                $responder->addResponder($action);
-            }
-        }
-
-        return Internal\makeMiddlewareResponder($responder, $middlewares);
-    }
-
-    /**
-     * @internal
-     *
-     * @return \Aerys\Internal\HttpDriver
-     */
-    public function getHttpDriver(): Internal\HttpDriver {
-        return $this->httpDriver;
     }
 
     /**

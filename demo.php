@@ -6,19 +6,19 @@ if (!class_exists(Aerys\Process::class, false)) {
     exit(1);
 }
 
-use Aerys\Host;
+use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
+use Aerys\Server;
 use Aerys\Websocket\Endpoint;
 use Aerys\Websocket\Message;
 use Aerys\Websocket\Websocket;
 
 /* --- Global server options -------------------------------------------------------------------- */
 
-const AERYS_OPTIONS = [
-    "connectionTimeout" => 60,
-    "sendServerToken" => true,
-];
+$options = new Options;
+$options->connectionTimeout = 60;
+$options->sendServerToken = true;
 
 /* --- http://localhost:1337/ ------------------------------------------------------------------- */
 
@@ -94,7 +94,7 @@ $fallback = function (Request $req): Response {
     return new Response\HtmlResponse("<html><body><h1>Fallback \o/</h1></body></html>");
 };
 
-return (new Host)
+return (new Server($options))
     ->expose("*", 1337)
     ->use($router)
     ->use($root)
