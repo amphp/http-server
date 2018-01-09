@@ -33,7 +33,9 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
         $server = yield call($initializer, $logger, $console);
     } catch (\Throwable $exception) {
         throw new \Error(
-            "Callable invoked from file at $configFile threw an exception", 0, $exception
+            "Callable invoked from file at $configFile threw an exception",
+            0,
+            $exception
         );
     }
 

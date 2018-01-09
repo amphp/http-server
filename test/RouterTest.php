@@ -2,7 +2,6 @@
 
 namespace Aerys\Test;
 
-use Aerys\Host;
 use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Options;
