@@ -8,7 +8,7 @@ use Aerys\Server;
 use Amp\Promise;
 use Amp\Success;
 
-return (function () {
+return function () {
     ($server = new Server)
         ->expose("*", 80)
         ->use(new class implements Middleware {
@@ -23,4 +23,4 @@ return (function () {
         });
 
     return new Success($server);
-})();
+};

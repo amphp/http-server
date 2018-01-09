@@ -181,25 +181,3 @@ function makeGenericBody(int $status, array $options = []): string {
         $msg
     );
 }
-
-/**
- * Gives the absolute path of a config file.
- *
- * @param string $configFile path to config file used by Aerys instance
- * @return string
- */
-function selectConfigFile(string $configFile): string {
-    if ($configFile == "") {
-        throw new \Error(
-            "No config file found, specify one via the -c switch on command line"
-        );
-    }
-
-    $path = realpath(is_dir($configFile) ? rtrim($configFile, "/") . "/config.php" : $configFile);
-
-    if ($path === false) {
-        throw new \Error("No config file found at " . $configFile);
-    }
-
-    return $path;
-}
