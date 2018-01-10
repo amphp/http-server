@@ -1,11 +1,6 @@
 #!/usr/bin/env php
 <?php
 
-if (PHP_MAJOR_VERSION < 7) {
-    echo "Aerys must be run with at least PHP 7.\nUsed PHP version: ".phpversion()."\n";
-    exit(1);
-}
-
 $help = <<<EOT
       ____ _ ___   _____ __  __ _____
      / __ `// _ \ / ___// / / // ___/
@@ -40,8 +35,8 @@ error_reporting(E_ALL);
 
 (function () {
     $paths = [
-        dirname(__DIR__, 3)."/autoload.php",
-        dirname(__DIR__)."/vendor/autoload.php",
+        dirname(__DIR__, 3) . "/autoload.php",
+        dirname(__DIR__) . "/vendor/autoload.php",
     ];
 
     foreach ($paths as $path) {
@@ -52,7 +47,7 @@ error_reporting(E_ALL);
     }
 
     if (!isset($autoloadPath)) {
-        fwrite(STDERR, "Could not locate autoload.php");
+        fwrite(STDERR, "Could not locate autoload.php\n");
         exit(1);
     }
 
@@ -95,7 +90,6 @@ $climate->arguments->add([
         "prefix"       => "c",
         "longPrefix"   => "config",
         "description"  => "Define a custom server config path",
-        "required"     => true,
     ],
     "restart" => [
         "prefix"       => "r",
@@ -111,12 +105,17 @@ $climate->arguments->add([
 ]);
 
 $console = new Aerys\Console($climate);
+
 try {
     if ($console->isArgDefined("help")) {
         echo $help;
         exit(0);
     }
-} catch (Exception $e) {
+
+    if (!$console->isArgDefined("config")) {
+        throw new \Error("A config file must be defined using -c or --config");
+    }
+} catch (Throwable $e) {
     echo "Invalid arguments: " . $e->getMessage() . "\n\n";
     echo $help;
     exit(1);

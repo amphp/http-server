@@ -23,16 +23,16 @@ error_reporting(E_ALL);
     }
 
     if (!isset($autoloadPath)) {
-        fwrite(STDERR, "Could not locate autoload.php");
+        fwrite(STDERR, "Could not locate autoload.php\n");
         exit(1);
     }
 
     require $autoloadPath;
 })();
 
-if (function_exists("pcntl_signal")) {
+if (defined("SIGPIPE")) {
     // prevent worker from crashing in case something writes directly to stdout or stderr
-    pcntl_signal(SIGPIPE, SIG_IGN);
+    Amp\Loop::unreference(Amp\Loop::onSignal(SIGPIPE, function () {}));
 }
 
 $climate = new League\CLImate\CLImate;
@@ -75,9 +75,12 @@ Amp\Loop::run(function () use ($console) {
         $linebuf .= $output;
 
         if (($end = strrpos($linebuf, "\n")) !== false) {
-            $logger->warning("Data written to STDOUT in worker (PID: ".getmypid()."):\n".substr($linebuf, 0, $end));
+            $logger->warning(
+                "Data written to STDOUT in worker (PID: " . getmypid() . "):\n" . substr($linebuf, 0, $end)
+            );
             $linebuf = substr($linebuf, $end + 1);
         }
+        return '';
     }, 1, PHP_OUTPUT_HANDLER_CLEANABLE | PHP_OUTPUT_HANDLER_FLUSHABLE);
 
     $process = new Aerys\WorkerProcess($logger, $ipcSock);
