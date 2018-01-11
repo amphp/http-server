@@ -348,17 +348,17 @@ class Root implements Responder, ServerObserver {
 
             case self::PRECONDITION_IF_RANGE_FAILED:
                 // Return this so the resulting generator will be auto-resolved
-                return yield from $this->doNonRangeResponse($fileInfo, $request);
+                return yield from $this->doNonRangeResponse($fileInfo);
         }
 
         if (!$rangeHeader = $request->getHeader("Range")) {
             // Return this so the resulting generator will be auto-resolved
-            return yield from $this->doNonRangeResponse($fileInfo, $request);
+            return yield from $this->doNonRangeResponse($fileInfo);
         }
 
         if ($range = $this->normalizeByteRanges($fileInfo->size, $rangeHeader)) {
             // Return this so the resulting generator will be auto-resolved
-            return yield from $this->doRangeResponse($range, $fileInfo, $request);
+            return yield from $this->doRangeResponse($range, $fileInfo);
         }
 
         // If we're still here this is the only remaining response we can send
@@ -412,7 +412,7 @@ class Root implements Responder, ServerObserver {
         return ($etag === $ifRange) ? self::PRECONDITION_IF_RANGE_OK : self::PRECONDITION_IF_RANGE_FAILED;
     }
 
-    private function doNonRangeResponse($fileInfo, Request $request): \Generator {
+    private function doNonRangeResponse($fileInfo): \Generator {
         $headers = $this->makeCommonHeaders($fileInfo);
         $headers["Content-Length"] = (string) $fileInfo->size;
         $headers["Content-Type"] = $this->selectMimeTypeFromPath($fileInfo->path);
@@ -422,9 +422,10 @@ class Root implements Responder, ServerObserver {
         }
 
         $handle = yield $this->filesystem->open($fileInfo->path, "r");
-        $request->onClose([$handle, "close"]);
 
-        return new Response($handle, $headers);
+        $response = new Response($handle, $headers);
+        $response->onDispose([$handle, "close"]);
+        return $response;
     }
 
     private function makeCommonHeaders($fileInfo): array {
@@ -529,7 +530,7 @@ class Root implements Responder, ServerObserver {
         return $range;
     }
 
-    private function doRangeResponse(ByteRange $range, $fileInfo, Request $request): \Generator {
+    private function doRangeResponse(ByteRange $range, $fileInfo): \Generator {
         $headers = $this->makeCommonHeaders($fileInfo);
         $range->contentType = $mime = $this->selectMimeTypeFromPath($fileInfo->path);
 
@@ -543,7 +544,6 @@ class Root implements Responder, ServerObserver {
         }
 
         $handle = yield $this->filesystem->open($fileInfo->path, "r");
-        $request->onClose([$handle, "close"]);
 
         if (empty($range->ranges[1])) {
             list($startPos, $endPos) = $range->ranges[0];
@@ -552,7 +552,9 @@ class Root implements Responder, ServerObserver {
             $stream = $this->sendMultiRange($handle, $fileInfo, $range);
         }
 
-        return new Response($stream, $headers, HttpStatus::PARTIAL_CONTENT);
+        $response = new Response($stream, $headers, HttpStatus::PARTIAL_CONTENT);
+        $response->onDispose([$handle, "close"]);
+        return $response;
     }
 
     private function sendSingleRange(File\Handle $handle, int $startPos, int $endPos): InputStream {

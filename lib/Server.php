@@ -930,10 +930,6 @@ class Server {
                 $chunk = yield $body->read();
 
                 if ($ireq->client->isDead & Client::CLOSED_WR) {
-                    foreach ($ireq->onClose as $onClose) {
-                        $onClose();
-                    }
-
                     $responseWriter->send(null);
                     return;
                 }
@@ -944,16 +940,12 @@ class Server {
             // Reading response body failed, abort writing the response to the client.
             $this->logger->error($exception);
             $responseWriter->send(null);
+            return;
         }
 
         try {
-            foreach ($ireq->onClose as $onClose) {
-                $onClose();
-            }
-
             if ($response->isDetached()) {
                 $responseWriter->send(null);
-
                 $this->export($ireq->client, $response);
             }
         } catch (\Throwable $exception) {

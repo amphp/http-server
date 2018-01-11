@@ -35,6 +35,4 @@ class ServerRequest {
     public $httpDate;
     /** @var array */
     public $locals = [];
-    /** @var callable[] */
-    public $onClose = [];
 }

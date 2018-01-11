@@ -5,6 +5,7 @@ namespace Aerys;
 use Aerys\Cookie\MetaCookie;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
+use Amp\Loop;
 use Amp\Socket\Socket;
 
 class Response {
@@ -28,6 +29,9 @@ class Response {
 
     /** @var array|null */
     private $detach;
+
+    /** @var callable[] */
+    private $onDispose = [];
 
     /**
      * @param \Amp\ByteStream\InputStream|string|null $stringOrStream
@@ -54,6 +58,18 @@ class Response {
 
         if (isset($this->headers['set-cookie'])) {
             $this->setCookiesFromHeaders();
+        }
+    }
+
+    public function __destruct() {
+        foreach ($this->onDispose as $callable) {
+            try {
+                $callable();
+            } catch (\Throwable $exception) {
+                Loop::defer(function () use ($exception) {
+                    throw $exception; // Forward uncaught exceptions to the loop error handler.
+                });
+            }
         }
     }
 
@@ -427,6 +443,16 @@ class Response {
      */
     public function detach(callable $detach, ...$args) {
         $this->detach = [$detach, $args];
+    }
+
+    /**
+     * Registers a function that is invoked when the Response is discarded. A response is discarded either once it has
+     * been written to the client or if it replaced in a middleware chain.
+     *
+     * @param callable $onDispose
+     */
+    public function onDispose(callable $onDispose) {
+        $this->onDispose[] = $onDispose;
     }
 
     /**

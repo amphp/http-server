@@ -95,13 +95,13 @@ class Request {
      *
      * @TODO add documentation for how the body object is used
      *
-     * @param int $bodySize maximum body size
+     * @param int|null $bodySize Maximum body size or null to use server default.
      *
      * @return \Aerys\Body
      */
-    public function getBody(int $bodySize = -1): Body {
+    public function getBody(int $bodySize = null): Body {
         $ireq = $this->internalRequest;
-        if ($bodySize > -1) {
+        if ($bodySize !== null) {
             if ($bodySize > ($ireq->maxBodySize ?? $ireq->client->options->maxBodySize)) {
                 $ireq->maxBodySize = $bodySize;
                 $ireq->client->httpDriver->upgradeBodySize($this->internalRequest);
@@ -193,19 +193,9 @@ class Request {
     }
 
     /**
-     * Adds a callback that is invoked when the client connection is closed or the response to the request has been
-     * fully written.
-     *
-     * @param callable $onClose
+     * @return int Unix timestamp of the request time.
      */
-    public function onClose(callable $onClose) {
-        $this->internalRequest->onClose[] = $onClose;
-    }
-
-    /**
-     * @return string Request time.
-     */
-    public function getTime(): string {
-        return $this->internalRequest->httpDate;
+    public function getTime(): int {
+        return $this->internalRequest->time;
     }
 }
