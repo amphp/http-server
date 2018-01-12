@@ -19,9 +19,9 @@ return function (Aerys\Logger $logger, Aerys\Console $console): Server {
 
     /* --- Global server options -------------------------------------------------------------------- */
 
-    $options = new Options;
-    $options->connectionTimeout = 60;
-    $options->sendServerToken = true;
+    $options = (new Options)
+        ->withConnectionTimeout(60)
+        ->withSendServerToken(true);
 
     /* --- http://localhost:1337/ ------------------------------------------------------------------- */
 
@@ -30,7 +30,7 @@ return function (Aerys\Logger $logger, Aerys\Console $console): Server {
             return new Response\HtmlResponse("<html><body><h1>Hello, world.</h1></body></html>");
         })
         ->route("GET", "/router/{myarg}", function (Request $req, array $routeArgs): Response {
-            $body = "<html><body><h1>Route Args at param 3</h1>" . print_r($routeArgs, true) . "</body></html>";
+            $body = "<html><body><h1>Route Args</h1><p>myarg =&gt; " . $routeArgs['myarg'] . "</p></body></html>";
             return new Response\HtmlResponse($body);
         })
         ->route("POST", "/", function (Request $req): Response {

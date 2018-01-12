@@ -201,7 +201,7 @@ class ServerTest extends TestCase {
         });
 
         $this->assertSame(HttpStatus::NO_CONTENT, $response->getStatus());
-        $this->assertSame(implode(", ", (new Options)->allowedMethods), $response->getHeader("allow"));
+        $this->assertSame(implode(", ", (new Options)->getAllowedMethods()), $response->getHeader("allow"));
     }
 
     public function testError() {

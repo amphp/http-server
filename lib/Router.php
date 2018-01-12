@@ -351,7 +351,7 @@ class Router implements Bootable, Responder, ServerObserver {
                     ));
                 }
                 $this->routeDispatcher = simpleDispatcher(function ($rc) use ($server) {
-                    $this->buildRouter($rc, $server);
+                    $this->buildRouter($rc);
                 });
                 break;
         }
@@ -359,19 +359,10 @@ class Router implements Bootable, Responder, ServerObserver {
         return new Success;
     }
 
-    private function buildRouter(RouteCollector $rc, Server $server) {
-        $allowedMethods = [];
+    private function buildRouter(RouteCollector $rc) {
         foreach ($this->routes as list($method, $uri, $responder, $actions)) {
-            $allowedMethods[] = $method;
             list($responder, $middlewares) = $this->bootRouteTarget($responder, $actions);
             $rc->addRoute($method, $uri, [$responder, $middlewares]);
         }
-        $originalMethods = $server->getOption("allowedMethods");
-        if ($server->getOption("normalizeMethodCase")) {
-            $allowedMethods = array_map("strtoupper", $allowedMethods);
-        }
-        $allowedMethods = array_merge($allowedMethods, $originalMethods);
-        $allowedMethods = array_unique($allowedMethods);
-        $server->setOption("allowedMethods", $allowedMethods);
     }
 }

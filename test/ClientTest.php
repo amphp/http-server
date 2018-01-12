@@ -96,7 +96,7 @@ class ClientTest extends TestCase {
                 $this->assertEquals("body", yield $req->getBody()->buffer());
 
                 $data = "data";
-                $data .= \str_repeat("_", $server->getOption("outputBufferSize") + 1);
+                $data .= \str_repeat("_", $server->getOptions()->getOutputBufferSize() + 1);
 
                 return new Response(new InMemoryStream($data));
             }, [new class($this) implements Middleware {

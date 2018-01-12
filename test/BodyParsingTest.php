@@ -4,7 +4,6 @@ namespace Aerys\Test;
 
 use Aerys\Body;
 use Aerys\Internal;
-use Aerys\Options;
 use Aerys\Request;
 use Amp\ByteStream\IteratorStream;
 use Amp\Loop;
@@ -20,7 +19,7 @@ class BodyParsingTest extends TestCase {
         $ireq->headers["content-type"][0] = $header;
         $ireq->body = new Body(new IteratorStream($emitter->iterate()));
         $ireq->client = new Internal\Client;
-        $ireq->client->options = new Options;
+        $ireq->client->options = new Internal\Options;
         $ireq->client->httpDriver = new Internal\Http1Driver;
 
         $emitter->emit($data);
@@ -44,7 +43,7 @@ class BodyParsingTest extends TestCase {
         $ireq->headers["content-type"][0] = $header;
         $ireq->body = new Body(new IteratorStream($emitter->iterate()));
         $ireq->client = new Internal\Client;
-        $ireq->client->options = new Options;
+        $ireq->client->options = new Internal\Options;
         $ireq->client->httpDriver = new Internal\Http1Driver;
 
         $emitter->emit($data);
@@ -76,7 +75,7 @@ class BodyParsingTest extends TestCase {
         $ireq->headers["content-type"][0] = $header;
         $ireq->body = new Body(new IteratorStream($emitter->iterate()));
         $ireq->client = new Internal\Client;
-        $ireq->client->options = new Options;
+        $ireq->client->options = new Internal\Options;
         $ireq->client->httpDriver = new Internal\Http1Driver;
 
         Loop::run(function () use ($emitter, $data, $ireq, $fields, $metadata) {
@@ -109,7 +108,7 @@ class BodyParsingTest extends TestCase {
         $ireq->headers["content-type"][0] = $header;
         $ireq->body = new Body(new IteratorStream($emitter->iterate()));
         $ireq->client = new Internal\Client;
-        $ireq->client->options = new Options;
+        $ireq->client->options = new Internal\Options;
         $ireq->client->httpDriver = new Internal\Http1Driver;
 
         $body = new \Aerys\BodyParser(new Request($ireq));

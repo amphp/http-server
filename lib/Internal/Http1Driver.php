@@ -554,12 +554,6 @@ class Http1Driver implements HttpDriver {
             $shouldClose = true;
         }
 
-        $type = $headers["content-type"][0] ?? $options->defaultContentType;
-        if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-            $type .= "; charset={$options->defaultTextCharset}";
-        }
-        $headers["content-type"] = [$type];
-
         $remainingRequests = $request->client->remainingRequests;
         if ($shouldClose || $remainingRequests <= 0) {
             $headers["connection"] = ["close"];

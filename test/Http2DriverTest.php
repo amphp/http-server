@@ -7,7 +7,7 @@ use Aerys\Internal\Client;
 use Aerys\Internal\HPack;
 use Aerys\Internal\Http2Driver;
 use Aerys\Internal\HttpDriver;
-use Aerys\Options;
+use Aerys\Internal\Options;
 use Aerys\Response;
 use Amp\PHPUnit\TestCase;
 
@@ -69,7 +69,11 @@ class Http2DriverTest extends TestCase {
         $invokedCallback = function () use (&$invoked) {
             $invoked++;
         };
-        $driver->setup([self::HTTP_HEADER_EMITTERS => $headerEmitCallback, HttpDriver::ENTITY_PART => $dataEmitCallback, HttpDriver::ENTITY_RESULT => $invokedCallback], $this->createCallback(0));
+        $driver->setup([
+            self::HTTP_HEADER_EMITTERS => $headerEmitCallback,
+            HttpDriver::ENTITY_PART => $dataEmitCallback,
+            HttpDriver::ENTITY_RESULT => $invokedCallback
+        ], $this->createCallback(0));
 
         for ($mode = 0; $mode <= 1; $mode++) {
             $invoked = 0;
@@ -203,7 +207,11 @@ class Http2DriverTest extends TestCase {
 
         unset($writer);
 
-        $data = $this->packFrame(HPack::encode([":status" => 200, ":reason" => "OK", "content-type" => ["text/html; charset=utf-8"], "date" => [null]]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 2);
+        $data = $this->packFrame(HPack::encode([
+            ":status" => 200,
+            ":reason" => "OK",
+            "date" => [null],
+        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 2);
         $data .= $this->packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 2);
         $data .= $this->packFrame(pack("N", Http2Driver::INTERNAL_ERROR), Http2Driver::RST_STREAM, Http2Driver::NOFLAG, 2);
 
@@ -262,10 +270,15 @@ class Http2DriverTest extends TestCase {
         $client->options = new Options;
         $client->options->outputBufferSize = 1; // Force data frame when any data is written.
         $ireq->streamId = 1;
-        $writer = $driver->writer($ireq, new Response);
+        $writer = $driver->writer($ireq, new Response(null, ["content-type" => "text/html; charset=utf-8"]));
         $writer->valid(); // Start writer.
 
-        $this->assertEquals([(new HPack)->encode([":status" => 200, ":reason" => "OK", "content-type" => ["text/html; charset=utf-8"], "date" => [null]]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1], array_pop($driver->frames));
+        $this->assertEquals([(new HPack)->encode([
+            ":status" => 200,
+            ":reason" => "OK",
+            "content-type" => ["text/html; charset=utf-8"],
+            "date" => [null],
+        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1], array_pop($driver->frames));
 
         $writer->send(str_repeat("_", 66002));
         $writer->send(null);
@@ -317,10 +330,15 @@ class Http2DriverTest extends TestCase {
         $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
         $ireq->streamId = 3;
-        $writer = $driver->writer($ireq, new Response);
+        $writer = $driver->writer($ireq, new Response(null, ["content-type" => "text/html; charset=utf-8"]));
         $writer->valid(); // Start writer.
 
-        $this->assertEquals([(new HPack)->encode([":status" => 200, ":reason" => "OK", "content-type" => ["text/html; charset=utf-8"], "date" => [null]]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], array_pop($driver->frames));
+        $this->assertEquals([(new HPack)->encode([
+            ":status" => 200,
+            ":reason" => "OK",
+            "content-type" => ["text/html; charset=utf-8"],
+            "date" => [null],
+        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], array_pop($driver->frames));
 
         $writer->send("**");
 

@@ -805,7 +805,7 @@ class Root implements Responder, ServerObserver {
                 break;
 
             case Server::STARTED:
-                $this->debug = $server->getOption("debug");
+                $this->debug = $server->getOptions()->inDebug();
                 Loop::enable($this->cacheWatcher);
                 break;
 

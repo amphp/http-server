@@ -85,11 +85,10 @@ class Http2Driver implements HttpDriver {
     }
 
     private function filter(ServerRequest $request, Response $response): array {
-        $headers = $response->getHeaders();
-        $push = $response->getPush();
+        $headers = [":status" => $response->getStatus(), ":reason" => $response->getReason()];
+        $headers = \array_merge($headers, $response->getHeaders());
 
-        $headers[":status"] = $response->getStatus();
-        $headers[":reason"] = $response->getReason();
+        $push = $response->getPush();
 
         $options = $request->client->options;
 
@@ -106,12 +105,6 @@ class Http2Driver implements HttpDriver {
                 }
             }
         }
-
-        $type = $headers["content-type"][0] ?? $options->defaultContentType;
-        if (\stripos($type, "text/") === 0 && \stripos($type, "charset=") === false) {
-            $type .= "; charset={$options->defaultTextCharset}";
-        }
-        $headers["content-type"] = [$type];
 
         $headers["date"] = [$request->httpDate];
 

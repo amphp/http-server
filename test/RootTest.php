@@ -3,6 +3,8 @@
 namespace Aerys\Test;
 
 use Aerys\HttpStatus;
+use Aerys\Options;
+use Aerys\Request;
 use Aerys\Root;
 use Aerys\Server;
 use Aerys\ServerObserver;
@@ -87,27 +89,22 @@ class RootTest extends TestCase {
 
     public function testBasicFileResponse() {
         $root = new Root(self::fixturePath());
-        $server = new class extends Server {
-            public function __construct() {
-            }
-            public function attach(ServerObserver $obj) {
-            }
-            public function detach(ServerObserver $obj) {
-            }
-            public function getOption(string $option) {
-                return true;
-            }
-            public function state(): int {
-                return Server::STARTING;
-            }
-        };
+
+        $server = $this->createMock(Server::class);
+        $server->method('state')
+            ->willReturnOnConsecutiveCalls(Server::STARTING, Server::STARTED);
+        $server->method('getOptions')
+            ->willReturn((new Options)->withDebug(true));
+
         $root->update($server);
+        $root->update($server);
+
         foreach ([
             ["/", "test"],
             ["/index.htm", "test"],
             ["/dir/../dir//..//././index.htm", "test"],
         ] as list($path, $contents)) {
-            $request = $this->createMock('Aerys\Request');
+            $request = $this->createMock(Request::class);
             $request->expects($this->once())
                 ->method("getUri")
                 ->will($this->returnValue(new Uri($path)));
@@ -185,7 +182,7 @@ class RootTest extends TestCase {
      * @depends testBasicFileResponse
      */
     public function testCachedResponse(Root $root) {
-        $request = $this->createMock('Aerys\Request');
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri("/index.htm")));
@@ -206,23 +203,15 @@ class RootTest extends TestCase {
      * @depends testBasicFileResponse
      */
     public function testDebugModeIgnoresCacheIfCacheControlHeaderIndicatesToDoSo(Root $root) {
-        $server = new class extends Server {
-            public function __construct() {
-            }
-            public function attach(ServerObserver $obj) {
-            }
-            public function detach(ServerObserver $obj) {
-            }
-            public function getOption(string $option) {
-                return true;
-            }
-            public function state(): int {
-                return Server::STARTED;
-            }
-        };
+        $server = $this->createMock(Server::class);
+        $server->method('state')
+            ->willReturn(Server::STARTED);
+        $server->method('getOptions')
+            ->willReturn((new Options)->withDebug(true));
+
         $root->update($server);
 
-        $request = $this->createMock('Aerys\Request');
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri("/index.htm")));
@@ -248,7 +237,7 @@ class RootTest extends TestCase {
      * @depends testDebugModeIgnoresCacheIfCacheControlHeaderIndicatesToDoSo
      */
     public function testDebugModeIgnoresCacheIfPragmaHeaderIndicatesToDoSo(Root $root) {
-        $request = $this->createMock('Aerys\Request');
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri("/index.htm")));
@@ -272,7 +261,7 @@ class RootTest extends TestCase {
 
     public function testOptionsHeader() {
         $root = new Root(self::fixturePath());
-        $request = $this->createMock('Aerys\Request');
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri("/")));
@@ -292,7 +281,7 @@ class RootTest extends TestCase {
         $root = new Root(self::fixturePath());
         $root->setOption("useEtagInode", false);
         $diskPath = \realpath(self::fixturePath())."/index.htm";
-        $request = $this->createMock('Aerys\Request');
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri("/index.htm")));
@@ -316,7 +305,7 @@ class RootTest extends TestCase {
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
-        $request = $this->createMock('Aerys\Request');
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri("/index.htm")));
@@ -346,7 +335,7 @@ class RootTest extends TestCase {
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
-        $request = $this->createMock('Aerys\Request');
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri("/index.htm")));
@@ -374,7 +363,7 @@ class RootTest extends TestCase {
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
-        $request = $this->createMock('Aerys\Request');
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri("/index.htm")));
@@ -405,7 +394,7 @@ class RootTest extends TestCase {
         Loop::run(function () use ($range, $validator) {
             $root = new Root(self::fixturePath());
             $root->setOption("useEtagInode", false);
-            $request = $this->createMock('Aerys\Request');
+            $request = $this->createMock(Request::class);
             $request->expects($this->once())
                 ->method("getUri")
                 ->will($this->returnValue(new Uri("/index.htm")));

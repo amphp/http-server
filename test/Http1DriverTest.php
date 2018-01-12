@@ -6,7 +6,7 @@ use Aerys\Internal;
 use Aerys\Internal\Client;
 use Aerys\Internal\Http1Driver;
 use Aerys\Internal\HttpDriver;
-use Aerys\Options;
+use Aerys\Internal\Options;
 use Aerys\Response;
 use Amp\Artax\Internal\Parser;
 use Amp\ByteStream\InMemoryStream;
@@ -710,9 +710,6 @@ class Http1DriverTest extends TestCase {
         $client->remainingRequests = PHP_INT_MAX;
         foreach ([
             "connectionTimeout" => 60,
-            "defaultContentType" => "text/plain",
-            "defaultTextCharset" => "utf-8",
-            "deflateEnable" => false,
             "sendServerToken" => false
         ] as $k => $v) {
             $client->options->$k = $v;
@@ -736,7 +733,6 @@ class Http1DriverTest extends TestCase {
         $this->assertTrue($fin);
         $this->verifyWrite($buffer, $status, $headers + [
                 "link" => ["</foo>; rel=preload"],
-                "content-type" => ["text/plain; charset=utf-8"],
                 "connection" => ["keep-alive"],
                 "keep-alive" => ["timeout=60"],
                 "date" => ["date"],

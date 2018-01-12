@@ -42,7 +42,7 @@ class Client {
     public $remainingRequests;
     public $pendingResponses = 0;
 
-    /** @var \Aerys\Options */
+    /** @var \Aerys\Internal\Options */
     public $options;
 
     /** @var \Aerys\Internal\HttpDriver */

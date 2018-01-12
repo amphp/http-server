@@ -37,6 +37,9 @@ class Server {
     private $state = self::STOPPED;
 
     /** @var \Aerys\Options */
+    private $immutableOptions;
+
+    /** @var \Aerys\Internal\Options */
     private $options;
 
     /** @var \Aerys\Internal\Host */
@@ -102,7 +105,8 @@ class Server {
      */
     public function __construct(Options $options = null, PsrLogger $logger = null, Internal\HttpDriver $driver = null) {
         $this->host = new Internal\Host;
-        $this->options = $options ?? new Options;
+        $this->immutableOptions = $options ?? new Options;
+        $this->options = $this->immutableOptions->export();
         $this->logger = $logger ?? new ConsoleLogger(new Console);
         $this->ticker = new Internal\Ticker($this->logger);
         $this->observers = new \SplObjectStorage;
@@ -214,26 +218,12 @@ class Server {
     }
 
     /**
-     * Retrieve a server option value.
+     * Retrieve the server options object.
      *
-     * @param string $option The option to retrieve
-     * @throws \Error on unknown option
+     * @return \Aerys\Options
      */
-    public function getOption(string $option) {
-        return $this->options->{$option};
-    }
-
-    /**
-     * Assign a server option value.
-     *
-     * @param string $option The option to retrieve
-     * @param mixed $newValue
-     * @throws \Error on unknown option
-     * @return void
-     */
-    public function setOption(string $option, $newValue) {
-        \assert($this->state < self::STARTED);
-        $this->options->{$option} = $newValue;
+    public function getOptions(): Options {
+        return $this->immutableOptions;
     }
 
     /**
@@ -405,9 +395,6 @@ class Server {
                 "Server::STARTING observer initialization failure"
             );
         }
-
-        /* Options now shouldn't be changed as Server has been STARTED - lock them */
-        $this->options->__initialized = true;
 
         $this->dropPrivileges();
 
@@ -899,7 +886,6 @@ class Server {
 
     /**
      * @param \Aerys\Internal\ServerRequest $ireq
-     * @param \Aerys\Responder $responder
      *
      * @return \Generator
      */

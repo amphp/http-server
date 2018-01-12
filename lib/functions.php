@@ -128,14 +128,14 @@ function redirect(string $absoluteUri, int $redirectCode = 307): Responder {
 /**
  * Try parsing a the Request's body with either x-www-form-urlencoded or multipart/form-data.
  *
- * @param Request $req
+ * @param Request $request
+ * @param int $size Optional max body size.
+ *
  * @return BodyParser (returns a ParsedBody instance when yielded)
  */
-function parseBody(Request $req, $size = 0): BodyParser {
-    return new BodyParser($req, [
-        "input_vars" => $req->getOption("maxInputVars"),
-        "field_len" => $req->getOption("maxFieldLen"),
-        "size" => $size <= 0 ? $req->getOption("maxBodySize") : $size,
+function parseBody(Request $request, int $size = null): BodyParser {
+    return new BodyParser($request, [
+        "size" => $size ?? $request->getOption("maxBodySize"),
     ]);
 }
 
