@@ -28,7 +28,7 @@ class RouterTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Aerys\Router::route requires a non-empty string HTTP method at Argument 1
+     * @expectedExceptionMessage Aerys\Router::route() requires a non-empty string HTTP method at Argument 1
      */
     public function testRouteThrowsOnEmptyMethodString() {
         $router = new Router;
@@ -37,7 +37,7 @@ class RouterTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Responder at Argument 3 must be callable or an instance of
+     * @expectedExceptionMessage Aerys\Router::route() requires a callable or an instance of
      */
     public function testRouteThrowsOnInvalidResponder() {
         $router = new Router;
@@ -66,7 +66,6 @@ class RouterTest extends TestCase {
         });
         $router->prefix("/mediocre-dev");
         $mock = $this->mockServer(Server::STARTING);
-        $router->boot($mock, $this->createMock(PsrLogger::class));
         $router->update($mock);
 
         $ireq = new Internal\ServerRequest;

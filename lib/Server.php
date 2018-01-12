@@ -133,7 +133,7 @@ class Server {
      *
      * If the action is an instance of ServerObserver it is automatically attached.
      *
-     * @param callable|Responder|Middleware|Bootable $action
+     * @param callable|Responder|Middleware $action
      *
      * @return self
      *
@@ -147,15 +147,13 @@ class Server {
         if (!\is_callable($action)
             && !$action instanceof Responder
             && !$action instanceof Middleware
-            && !$action instanceof Bootable
         ) {
             throw new \TypeError(
                 \sprintf(
-                    "%s() requires a callable action or an instance of %s, %s, or %s",
+                    "%s() requires a callable action or an instance of %s or %s",
                     __METHOD__,
                     Responder::class,
-                    Middleware::class,
-                    Bootable::class
+                    Middleware::class
                 )
             );
         }
@@ -306,31 +304,10 @@ class Server {
      * @return \Aerys\Responder
      */
     private function buildResponder(): Responder {
-        $bootLoader = function (Bootable $bootable) {
-            $booted = $bootable->boot($this, $this->logger);
-            if ($booted !== null
-                && !$booted instanceof Responder
-                && !$booted instanceof Middleware
-                && !is_callable($booted)
-            ) {
-                throw new \Error(\sprintf(
-                    "Any return value of %s::boot() must be callable or an instance of %s or %s",
-                    \str_replace("\0", "@", \get_class($bootable)),
-                    Responder::class,
-                    Middleware::class
-                ));
-            }
-            return $booted ?? $bootable;
-        };
-
         $responders = [];
         $middlewares = [];
 
         foreach ($this->actions as $key => $action) {
-            if ($action instanceof Bootable) {
-                $action = $bootLoader($action);
-            }
-
             if ($action instanceof Middleware) {
                 $middlewares[] = $action;
             }

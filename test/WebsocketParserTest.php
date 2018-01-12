@@ -2,13 +2,10 @@
 
 namespace Aerys\Test;
 
-use Aerys\Bootable;
-use Aerys\Host;
 use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Internal\Client;
 use Aerys\Internal\HttpDriver;
-use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
@@ -217,27 +214,6 @@ class WebsocketParserTest extends TestCase {
         return $return;
     }
 
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Cannot boot websocket handler; Aerys\Websocket\Websocket required, boolean provided
-     */
-    public function testBadWebsocketClass() {
-        \Aerys\websocket(
-            new class implements Bootable {
-                public function boot(Server $server, PsrLogger $logger) {
-                    return false;
-                }
-            }
-        )
-            ->boot(new class extends Server {
-                public function __construct() {
-                }
-            }, new class extends Logger {
-                protected function output(string $message) {
-                }
-            });
-    }
-
     public function testUpgrading() {
         Loop::run(function () use (&$unloaded) {
             $client = new Client;
@@ -291,10 +267,7 @@ class WebsocketParserTest extends TestCase {
                 }
             };
 
-            $logger = new class extends Logger {
-                protected function output(string $message) { /* /dev/null */
-                }
-            };
+            $logger = $this->createMock(PsrLogger::class);
 
             $ws = $this->createMock(Websocket::class);
             $ws->expects($this->exactly(1))
@@ -305,7 +278,7 @@ class WebsocketParserTest extends TestCase {
                 ->willReturnCallback(function (int $clientId, $handshakeData) {
                     $this->assertEquals("foo", $handshakeData);
                 });
-            $ws = \Aerys\websocket($ws);
+            $ws = \Aerys\websocket($ws, $logger);
 
             $options = new Options;
             $options->debug = true;

@@ -7,7 +7,6 @@ use Aerys\Options;
 use Aerys\Request;
 use Aerys\Root;
 use Aerys\Server;
-use Aerys\ServerObserver;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Uri\Uri;

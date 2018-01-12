@@ -87,7 +87,7 @@ return function (Aerys\Logger $logger, Aerys\Console $console): Server {
         public function onClose(int $clientId, int $code, string $reason) { }
 
         public function onStop() { }
-    });
+    }, $logger);
 
     $router->route("GET", "/ws", $websocket);
 

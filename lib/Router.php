@@ -8,12 +8,10 @@ use Amp\Promise;
 use Amp\Success;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
-use Psr\Log\LoggerInterface as PsrLogger;
 use function FastRoute\simpleDispatcher;
 
-class Router implements Bootable, Responder, ServerObserver {
+class Router implements Responder, ServerObserver {
     private $state = Server::STOPPED;
-    private $bootLoader;
 
     /** @var \FastRoute\Dispatcher */
     private $routeDispatcher;
@@ -123,24 +121,27 @@ class Router implements Bootable, Responder, ServerObserver {
     }
 
     /**
-     * Import a router or attach a callable, Middleware, or Bootable.
+     * Import a router or attach a Middleware to all routes.
      * Router imports do *not* import the options.
      *
-     * @param callable|Middleware|Bootable $action
+     * @param Middleware|self $action
      *
      * @return self
      */
     public function use($action) {
-        if (!(is_callable($action) || $action instanceof Middleware || $action instanceof Bootable)) {
-            throw new \Error(
-                __METHOD__ . " requires a callable action or Filter instance"
-            );
+        if (!($action instanceof self || $action instanceof Middleware)) {
+            throw new \Error(\sprintf(
+                "%s requires another %s instance or an instance of %s",
+                __METHOD__,
+                self::class,
+                Responder::class
+            ));
         }
 
         if ($action instanceof self) {
             /* merge routes in for better performance */
             foreach ($action->routes as $route) {
-                $route[3] = array_merge($this->actions, $route[3]);
+                $route[3] = array_merge($route[3], $this->actions);
                 $this->routes[] = $route;
             }
         } else {
@@ -205,12 +206,12 @@ class Router implements Bootable, Responder, ServerObserver {
      *
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
-     * @param Bootable|Responder|callable $responder
-     * @param Bootable|Middleware|callable ...$actions The action(s) to invoke upon matching this route
+     * @param Responder|callable $responder
+     * @param Middleware ...$middleware The middleware to apply to this route
      * @throws \Error on invalid empty parameters
      * @return self
      */
-    public function route(string $method, string $uri, $responder, ...$actions): Router {
+    public function route(string $method, string $uri, $responder, Middleware ...$middleware): Router {
         if ($this->state !== Server::STOPPED) {
             throw new \Error(
                 "Cannot add routes once the server has started"
@@ -219,20 +220,20 @@ class Router implements Bootable, Responder, ServerObserver {
 
         if ($method === "") {
             throw new \Error(
-                __METHOD__ . " requires a non-empty string HTTP method at Argument 1"
+                __METHOD__ . "() requires a non-empty string HTTP method at Argument 1"
             );
         }
 
-        if (!\is_callable($responder) && !$responder instanceof Responder && !$responder instanceof Bootable) {
+        if (!\is_callable($responder) && !$responder instanceof Responder) {
             throw new \Error(\sprintf(
-                "Responder at Argument 3 must be callable or an instance of %s or %s",
-                Responder::class,
-                Bootable::class
+                "%s() requires a callable or an instance of %s at Argument 3",
+                __METHOD__,
+                Responder::class
             ));
         }
 
 
-        $actions = array_merge($this->actions, $actions);
+        $actions = array_merge($this->actions, $middleware);
 
         $uri = "/" . ltrim($uri, "/");
 
@@ -267,40 +268,10 @@ class Router implements Bootable, Responder, ServerObserver {
         return $this;
     }
 
-    public function boot(Server $server, PsrLogger $logger) {
-        $server->attach($this);
-        $this->bootLoader = static function (Bootable $bootable) use ($server, $logger) {
-            $booted = $bootable->boot($server, $logger);
-            if ($booted !== null
-                && !$booted instanceof Responder
-                && !$booted instanceof Middleware
-                && !is_callable($booted)
-            ) {
-                throw new \Error(\sprintf(
-                    "Any return value of %s::boot() must be callable or an instance of %s or %s",
-                    \get_class($bootable),
-                    Responder::class,
-                    Middleware::class
-                ));
-            }
-            return $booted ?? $bootable;
-        };
-    }
-
     private function bootRouteTarget($responder, array $actions): array {
         $middlewares = [];
-        $booted = [];
 
         foreach ($actions as $key => $action) {
-            if ($action instanceof Bootable) {
-                /* don't ever boot a Bootable twice */
-                $hash = spl_object_hash($action);
-                if (!array_key_exists($hash, $booted)) {
-                    $booted[$hash] = ($this->bootLoader)($action);
-                }
-                $action = $booted[$hash];
-            }
-
             if ($action instanceof Responder) {
                 throw new \Error("Responders cannot be route actions");
             }
@@ -308,10 +279,6 @@ class Router implements Bootable, Responder, ServerObserver {
             if ($action instanceof Middleware) {
                 $middlewares[] = $action;
             }
-        }
-
-        if ($responder instanceof Bootable) {
-            $responder = ($this->bootLoader)($responder);
         }
 
         if (is_callable($responder)) {
@@ -343,11 +310,6 @@ class Router implements Bootable, Responder, ServerObserver {
                 if (empty($this->routes)) {
                     return new Failure(new \Error(
                         "Router start failure: no routes registered"
-                    ));
-                }
-                if (empty($this->bootLoader)) {
-                    return new Failure(new \Error(
-                        "Router has not been booted"
                     ));
                 }
                 $this->routeDispatcher = simpleDispatcher(function ($rc) use ($server) {

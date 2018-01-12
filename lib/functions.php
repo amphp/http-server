@@ -3,13 +3,15 @@
 namespace Aerys;
 
 use Aerys\Cookie\Cookie;
+use Aerys\Websocket\Internal\Rfc6455Gateway;
+use Aerys\Websocket\Websocket;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 /**
  * Create a router for use in a Host instance.
  *
  * @param array $options Router options
- * @return \Aerys\Router Returns a Bootable Router instance
+ * @return \Aerys\Router
  */
 function router(array $options = []): Router {
     $router = new Router;
@@ -23,40 +25,18 @@ function router(array $options = []): Router {
 /**
  * Create a Websocket application for use in a Host instance.
  *
- * @param \Aerys\Websocket\Websocket|\Aerys\Bootable $app The websocket app to use
+ * @param \Aerys\Websocket\Websocket $app The websocket app to use
+ * @param \Psr\Log\LoggerInterface $logger
  * @param array $options Endpoint options
- * @return \Aerys\Bootable Returns a Bootable to manufacture an Aerys\Websocket\Endpoint
+ *
+ * @return \Aerys\Responder
  */
-function websocket($app, array $options = []): Bootable {
-    return new class($app, $options) implements Bootable {
-        private $app;
-        private $options;
-        public function __construct($app, array $options) {
-            $this->app = $app;
-            $this->options = $options;
-        }
-        public function boot(Server $server, PsrLogger $logger): Responder {
-            $app = ($this->app instanceof Bootable)
-                ? $this->app->boot($server, $logger)
-                : $this->app;
-            if (!$app instanceof Websocket\Websocket) {
-                $type = \is_object($app) ? \get_class($app) : \gettype($app);
-                throw new \TypeError(
-                    \sprintf("Cannot boot websocket handler; %s required, %s provided", Websocket\Websocket::class, $type)
-                );
-            }
-            $gateway = new Websocket\Internal\Rfc6455Gateway($logger, $app);
-            foreach ($this->options as $key => $value) {
-                $gateway->setOption($key, $value);
-            }
-            $this->app = null;
-            $this->options = null;
-
-            $server->attach($gateway);
-
-            return $gateway;
-        }
-    };
+function websocket(Websocket $app, PsrLogger $logger, array $options = []): Responder {
+    $gateway = new Rfc6455Gateway($logger, $app);
+    foreach ($options as $key => $value) {
+        $gateway->setOption($key, $value);
+    }
+    return $gateway;
 }
 
 /**
@@ -64,28 +44,15 @@ function websocket($app, array $options = []): Bootable {
  *
  * @param string $docroot The filesystem directory from which to serve documents
  * @param array $options Static file serving options
- * @return \Aerys\Bootable Returns a Bootable to manufacture an Aerys\Root
+ *
+ * @return \Aerys\Root
  */
-function root(string $docroot, array $options = []): Bootable {
-    return new class($docroot, $options) implements Bootable {
-        private $docroot;
-        private $options;
-        public function __construct(string $docroot, array $options) {
-            $this->docroot = $docroot;
-            $this->options = $options;
-        }
-        public function boot(Server $server, PsrLogger $logger): Root {
-            $root = new Root($this->docroot);
-            $options = $this->options;
-            foreach ($options as $key => $value) {
-                $root->setOption($key, $value);
-            }
-
-            $server->attach($root);
-
-            return $root;
-        }
-    };
+function root(string $docroot, array $options = []): Root {
+    $root = new Root($docroot);
+    foreach ($options as $key => $value) {
+        $root->setOption($key, $value);
+    }
+    return $root;
 }
 
 /**

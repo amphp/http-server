@@ -9,7 +9,7 @@ if (!class_exists(Aerys\Process::class, false)) {
 use Aerys\Request;
 use Aerys\Websocket;
 
-return function () {
+return function (Aerys\Logger $logger) {
     /* --- http://localhost:9001/ ------------------------------------------------------------------- */
 
     $websocket = Aerys\websocket(new class implements Websocket\Websocket {
@@ -35,7 +35,7 @@ return function () {
         public function onClose(int $clientId, int $code, string $reason) { }
 
         public function onStop() { }
-    }, [
+    }, $logger, [
         "maxBytesPerMinute"  => PHP_INT_MAX,
         "maxFrameSize"       => PHP_INT_MAX,
         "maxFramesPerSecond" => PHP_INT_MAX,
