@@ -93,7 +93,7 @@ class RootTest extends TestCase {
         $server->method('state')
             ->willReturnOnConsecutiveCalls(Server::STARTING, Server::STARTED);
         $server->method('getOptions')
-            ->willReturn((new Options)->withDebug(true));
+            ->willReturn((new Options)->withDebugMode(true));
 
         $root->update($server);
         $root->update($server);
@@ -206,7 +206,7 @@ class RootTest extends TestCase {
         $server->method('state')
             ->willReturn(Server::STARTED);
         $server->method('getOptions')
-            ->willReturn((new Options)->withDebug(true));
+            ->willReturn((new Options)->withDebugMode(true));
 
         $root->update($server);
 

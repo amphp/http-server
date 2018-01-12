@@ -17,7 +17,7 @@ final class Options {
     /**
      * @return bool True if server is in debug mode, false if in production mode.
      */
-    public function inDebug(): bool {
+    public function isInDebugMode(): bool {
         return $this->values->debug;
     }
 
@@ -26,7 +26,7 @@ final class Options {
      *
      * @return \Aerys\Options
      */
-    public function withDebug(bool $flag): self {
+    public function withDebugMode(bool $flag): self {
         $new = clone $this;
         $new->values->debug = $flag;
         return $new;
@@ -40,7 +40,7 @@ final class Options {
     }
 
     /**
-     * @param string|null $user Username to run server or null for no user.
+     * @param string|null $user Username to run server or null to not attempt to switch users. Default is null.
      *
      * @return \Aerys\Options
      */
@@ -61,7 +61,7 @@ final class Options {
      * @param int $count Maximum number of connections the server should accept at one time. Default is 10000.
      *
      * @return \Aerys\Options
-     * 
+     *
      * @throws \Error If count is less than 1.
      */
     public function withMaxConnections(int $count): self {
@@ -88,7 +88,7 @@ final class Options {
      *
      * @throws \Error If the count is less than 1.
      */
-    public function withMaxConnectionsPerIp(int $count) {
+    public function withMaxConnectionsPerIp(int $count): self {
         if ($count < 1) {
             throw new \Error(
                 "Connections per IP maximum must be greater than or equal to one"
@@ -342,12 +342,23 @@ final class Options {
         return $new;
     }
 
+    /**
+     * @return int The maximum number of bytes to read from a client per read.
+     */
     public function getIoGranularity(): int {
         return $this->values->ioGranularity;
     }
 
+    /**
+     * @param int $bytes The maximum number of bytes to read from a client per read. Larger numbers are better for
+     *     performance but can increase memory usage. Minimum recommended is 16384 (16k), default is 32768 (32k).
+     *
+     * @return \Aerys\Options
+     *
+     * @throws \Error If the number of bytes is less than 1.
+     */
     public function withIoGranularity(int $bytes): self {
-        if ($bytes <= 0) {
+        if ($bytes < 1) {
             throw new \Error(
                 "IO granularity setting must be greater than zero"
             );
