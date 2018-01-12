@@ -375,14 +375,13 @@ class Server {
             Internal\HttpDriver::RESULT => $this->callableFromInstanceMethod("onParsedMessage"),
             Internal\HttpDriver::ENTITY_HEADERS => $this->callableFromInstanceMethod("onParsedEntityHeaders"),
             Internal\HttpDriver::ENTITY_PART => $this->callableFromInstanceMethod("onParsedEntityPart"),
-            Internal\HttpDriver::ENTITY_RESULT => $this->callableFromInstanceMethod("onParsedMessageWithEntity"),
-            Internal\HttpDriver::SIZE_WARNING => $this->callableFromInstanceMethod("onEntitySizeWarning"),
+            Internal\HttpDriver::ENTITY_RESULT => $this->callableFromInstanceMethod("onParsedEntityResult"),
             Internal\HttpDriver::ERROR => $this->callableFromInstanceMethod("onParseError"),
         ];
     }
 
     private function doStart(callable $bindSockets): \Generator {
-        assert($this->logDebug("starting"));
+        assert($this->logDebug("Starting"));
 
         $socketBinder = function ($address, $context) {
             if (!strncmp($address, "unix://", 7)) {
@@ -413,7 +412,7 @@ class Server {
         $this->dropPrivileges();
 
         $this->state = self::STARTED;
-        assert($this->logDebug("started"));
+        assert($this->logDebug("Started"));
 
         foreach ($this->boundServers as $serverName => $server) {
             $onAcceptable = $this->onAcceptable;
@@ -478,7 +477,7 @@ class Server {
             return;
         }
 
-        \assert($this->logDebug("accept {$peerName} on " . stream_socket_get_name($client, false) . " #" . (int) $client));
+        \assert($this->logDebug("Accept {$peerName} on " . stream_socket_get_name($client, false) . " #" . (int) $client));
 
         \stream_set_blocking($client, false);
         $contextOptions = \stream_context_get_options($client);
@@ -496,7 +495,7 @@ class Server {
             return;
         }
 
-        \assert($this->logDebug("accept connection on " . stream_socket_get_name($client, false) . " #" . (int) $client));
+        \assert($this->logDebug("Accept connection on " . stream_socket_get_name($client, false) . " #" . (int) $client));
 
         \stream_set_blocking($client, false);
         $this->importClient($client, "", 0);
@@ -557,7 +556,7 @@ class Server {
     }
 
     private function doStop(): \Generator {
-        assert($this->logDebug("stopping"));
+        assert($this->logDebug("Stopping"));
         $this->state = self::STOPPING;
 
         foreach ($this->acceptWatcherIds as $watcherId) {
@@ -584,7 +583,7 @@ class Server {
 
         yield all([$this->stopDeferred->promise(), $this->notify()]);
 
-        assert($this->logDebug("stopped"));
+        assert($this->logDebug("Stopped"));
         $this->state = self::STOPPED;
         $this->stopDeferred = null;
 
@@ -741,10 +740,9 @@ class Server {
             $client->isDead = Client::CLOSED_RD;
             Loop::cancel($watcherId);
             if ($client->bodyEmitters) {
-                $ex = new ClientException;
-                foreach ($client->bodyEmitters as $key => $emitter) {
+                $ex = new ClientException("Client unexpectedly closed");
+                foreach ($client->bodyEmitters as $emitter) {
                     $emitter->fail($ex);
-                    $client->bodyEmitters[$key] = new Emitter;
                 }
             }
         }
@@ -765,7 +763,9 @@ class Server {
             ""//empty($parseResult["server_push"]) ? "" : " (server-push via {$parseResult["server_push"]})"
         )));
 
-        $ireq->client->remainingRequests--;
+        $client = $ireq->client;
+
+        $client->remainingRequests--;
 
         $ireq->time = $this->ticker->currentTime;
         $ireq->httpDate = $this->ticker->currentHttpDate;
@@ -776,12 +776,14 @@ class Server {
 
         if (!empty($ireq->headers["cookie"])) { // @TODO delay initialization
             $cookies = \array_filter(\array_map([Cookie::class, "fromHeader"], $ireq->headers["cookie"]));
+            /** @var \Aerys\Cookie\Cookie $cookie */
             foreach ($cookies as $cookie) {
                 $ireq->cookies[$cookie->getName()] = $cookie;
             }
         }
 
-        $this->respond($ireq);
+        $client->pendingResponses++;
+        Promise\rethrow($this->respond($ireq));
     }
 
     private function onParsedEntityHeaders(Internal\ServerRequest $ireq) {
@@ -792,10 +794,18 @@ class Server {
     }
 
     private function onParsedEntityPart(Client $client, $body, int $streamId = 0) {
+        if ($client->isDead) {
+            return;
+        }
+
         $client->bodyEmitters[$streamId]->emit($body);
     }
 
-    private function onParsedMessageWithEntity(Client $client, int $streamId = 0) {
+    private function onParsedEntityResult(Client $client, int $streamId = 0) {
+        if ($client->isDead) {
+            return;
+        }
+
         $emitter = $client->bodyEmitters[$streamId];
         unset($client->bodyEmitters[$streamId]);
         $emitter->complete();
@@ -804,21 +814,21 @@ class Server {
         // Don't respond() because we always start the response when headers arrive
     }
 
-    private function onEntitySizeWarning(Client $client, int $streamId = 0) {
-        $emitter = $client->bodyEmitters[$streamId];
-        $client->bodyEmitters[$streamId] = new Emitter;
-        $emitter->fail(new ClientSizeException);
-    }
-
     private function onParseError(Client $client, int $status, string $message) {
         $this->clearConnectionTimeout($client);
 
+        Loop::disable($client->readWatcher);
+
+        $this->logger->notice("Client parse error on {$client->clientAddr}:{$client->clientPort}: {$message}");
+
         if ($client->bodyEmitters) {
-            $client->shouldClose = true;
-            $this->writeResponse($client, true);
-            return;
+            $ex = new ClientException($message);
+            foreach ($client->bodyEmitters as $emitter) {
+                $emitter->fail($ex);
+            }
         }
 
+        $client->shouldClose = true;
         $client->pendingResponses++;
 
         $ireq = new Internal\ServerRequest;
@@ -827,11 +837,9 @@ class Server {
         $ireq->httpDate = $this->ticker->currentHttpDate;
 
         $headers = ["Connection" => "close"];
-        $response = new Response\EmptyResponse($headers, $status);
+        $response = new Response\EmptyResponse($headers, $status, $message);
 
-        $generator = $this->sendResponse($ireq, $response);
-
-        Promise\rethrow(new Coroutine($generator));
+        Promise\rethrow(new Coroutine($this->sendResponse($ireq, $response)));
     }
 
     private function setTrace(Internal\ServerRequest $ireq) {
@@ -846,9 +854,7 @@ class Server {
         }
     }
 
-    private function respond(Internal\ServerRequest $ireq) {
-        $ireq->client->pendingResponses++;
-
+    private function respond(Internal\ServerRequest $ireq): Promise {
         if ($this->stopDeferred) {
             $generator = $this->sendResponse($ireq, $this->makePreAppServiceUnavailableResponse());
         } elseif (!\in_array($ireq->method, $this->options->allowedMethods)) {
@@ -862,7 +868,7 @@ class Server {
             $generator = $this->tryResponder($ireq);
         }
 
-        Promise\rethrow(new Coroutine($generator));
+        return new Coroutine($generator);
     }
 
     private function makePreAppServiceUnavailableResponse(): Response {
@@ -907,8 +913,11 @@ class Server {
                 throw new \Error("At least one request handler must return an instance of " . Response::class);
             }
         } catch (\Throwable $error) {
+            if ($error instanceof ClientException) {
+                return; // Handled in code that generated the ClientException, response already sent.
+            }
+
             $this->logger->error($error);
-            // @TODO ClientExceptions?
             $response = $this->makeErrorResponse($error, $request);
         }
 
@@ -982,21 +991,20 @@ class Server {
                 $net = substr($net, 0, 7 /* /56 block */);
             }
             $this->clientsPerIP[$net]--;
-            assert($this->logDebug("close {$client->clientAddr}:{$client->clientPort} #{$client->id}"));
+            assert($this->logDebug("Close {$client->clientAddr}:{$client->clientPort} #{$client->id}"));
         } else {
-            assert($this->logDebug("close connection on {$client->serverAddr} #{$client->id}"));
+            assert($this->logDebug("Close connection on {$client->serverAddr} #{$client->id}"));
         }
 
         if ($client->bodyEmitters) {
-            $ex = new ClientException;
+            $ex = new ClientException("Client forcefully closed");
             foreach ($client->bodyEmitters as $key => $emitter) {
                 $emitter->fail($ex);
-                $client->bodyEmitters[$key] = new Emitter;
             }
         }
 
         if ($client->bufferDeferred) {
-            $ex = $ex ?? new ClientException;
+            $ex = $ex ?? new ClientException("Client forcefully closed");
             $client->bufferDeferred->fail($ex);
         }
     }
@@ -1017,7 +1025,7 @@ class Server {
         $this->clear($client);
         $client->isExported = true;
 
-        assert($this->logDebug("export {$client->clientAddr}:{$client->clientPort}"));
+        assert($this->logDebug("Export {$client->clientAddr}:{$client->clientPort}"));
 
         $net = @\inet_pton($client->clientAddr);
         if (isset($net[4])) {
@@ -1034,7 +1042,7 @@ class Server {
 
         assert($closer = (function () use ($client, $closer, &$clientCount, &$clientsPerIP) {
             $logger = $this->logger;
-            $message = "close {$client->clientAddr}:{$client->clientPort}";
+            $message = "Close {$client->clientAddr}:{$client->clientPort}";
             return static function () use ($closer, &$clientCount, &$clientsPerIP, $logger, $message) {
                 $closer();
                 $logger->log(Logger::DEBUG, $message);

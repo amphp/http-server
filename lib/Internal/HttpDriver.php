@@ -9,8 +9,7 @@ interface HttpDriver {
     const ENTITY_HEADERS = 2;
     const ENTITY_PART = 4;
     const ENTITY_RESULT = 8;
-    const SIZE_WARNING = 16;
-    const ERROR = 32;
+    const ERROR = 16;
 
     /**
      * @param \Amp\Emitter[] $parseEmitters
@@ -30,8 +29,9 @@ interface HttpDriver {
 
     /**
      * @param \Aerys\Internal\ServerRequest $ireq
+     * @param int $bodySize
      */
-    public function upgradeBodySize(ServerRequest $ireq);
+    public function upgradeBodySize(ServerRequest $ireq, int $bodySize);
 
     /**
      * Note that you *can* rely on keep-alive timeout terminating the Body with a ClientException, when no further

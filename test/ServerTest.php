@@ -3,7 +3,6 @@
 namespace Aerys\Test;
 
 use Aerys\CallableResponder;
-use Aerys\Host;
 use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Internal\HttpDriver;
@@ -65,7 +64,7 @@ class ServerTest extends TestCase {
                 } while ($part !== null);
             }
 
-            public function upgradeBodySize(Internal\ServerRequest $ireq) {
+            public function upgradeBodySize(Internal\ServerRequest $ireq, int $bodySize) {
             }
 
             public function parser(Internal\Client $client): \Generator {
@@ -261,7 +260,7 @@ class ServerTest extends TestCase {
                 yield from ($this->parser)($client, $this->write);
             }
 
-            public function upgradeBodySize(Internal\ServerRequest $ireq) {
+            public function upgradeBodySize(Internal\ServerRequest $ireq, int $bodySize) {
             }
         };
 

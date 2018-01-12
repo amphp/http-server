@@ -63,7 +63,6 @@ class Http2Driver implements HttpDriver {
     private $entityHeaderEmitter;
     private $entityPartEmitter;
     private $entityResultEmitter;
-    private $sizeWarningEmitter;
     private $errorEmitter;
     private $write;
 
@@ -73,7 +72,6 @@ class Http2Driver implements HttpDriver {
             self::ENTITY_HEADERS => "entityHeaderEmitter",
             self::ENTITY_PART => "entityPartEmitter",
             self::ENTITY_RESULT => "entityResultEmitter",
-            self::SIZE_WARNING => "sizeWarningEmitter",
             self::ERROR => "errorEmitter",
         ];
         foreach ($parseEmitters as $emitterType => $emitter) {
@@ -363,9 +361,16 @@ class Http2Driver implements HttpDriver {
         ($this->write)($client, $new, $type == self::DATA && ($flags & self::END_STREAM) != "\0");
     }
 
-    public function upgradeBodySize(ServerRequest $ireq) {
+    public function upgradeBodySize(ServerRequest $ireq, int $bodySize) {
         $client = $ireq->client;
         $id = $ireq->streamId;
+
+        if ($bodySize <= ($ireq->maxBodySize ?? $ireq->client->options->maxBodySize)) {
+            return;
+        }
+
+        $ireq->maxBodySize = $bodySize;
+
         if (isset($client->bodyEmitters[$id])) {
             $this->writeFrame($client, pack("N", $client->streamWindow[$id] - $ireq->maxBodySize), self::WINDOW_UPDATE, self::NOFLAG, $id);
             $client->streamWindow[$id] = $ireq->maxBodySize;
@@ -548,7 +553,8 @@ assert(!\defined("Aerys\\DEBUG_HTTP2") || print "DATA($length): $body\n");
                         $bodyLens[$id] += $length;
 
                         if ($remaining == 0 && $length) {
-                            ($this->sizeWarningEmitter)($client, $id);
+                            $error = self::ENHANCE_YOUR_CALM;
+                            goto connection_error;
                         }
                     }
 
@@ -878,6 +884,7 @@ assert(!defined("Aerys\\DEBUG_HTTP2") || print "HEADER(" . (\strlen($packed) - $
                 $ireq->headers = $headerArray;
                 $ireq->protocol = "2.0";
                 $ireq->method = $headerArray[":method"][0];
+                $ireq->maxBodySize = $maxBodySize;
 
                 $uri = $headerArray[":path"][0];
                 $scheme = $headerArray[":scheme"][0] ?? ($client->isEncrypted ? "https" : "http");

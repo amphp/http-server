@@ -102,10 +102,7 @@ class Request {
     public function getBody(int $bodySize = null): Body {
         $ireq = $this->internalRequest;
         if ($bodySize !== null) {
-            if ($bodySize > ($ireq->maxBodySize ?? $ireq->client->options->maxBodySize)) {
-                $ireq->maxBodySize = $bodySize;
-                $ireq->client->httpDriver->upgradeBodySize($this->internalRequest);
-            }
+            $ireq->client->httpDriver->upgradeBodySize($this->internalRequest, $bodySize);
         }
 
         return $ireq->body;

@@ -569,18 +569,18 @@ class Http1DriverTest extends TestCase {
         $client = new Client;
 
         $emitCallbacks = [
-            HttpDriver::ENTITY_HEADERS | HttpDriver::ENTITY_RESULT => function () use (&$invoked) {
+            HttpDriver::ENTITY_HEADERS => function (Internal\ServerRequest $ireq) use (&$invoked, &$driver) {
+                $driver->upgradeBodySize($ireq, 26);
+                $invoked++;
+            },
+            HttpDriver::ENTITY_RESULT => function () use (&$invoked) {
                 $invoked++;
             },
             HttpDriver::ENTITY_PART => function ($client, $bodyData) use (&$invoked, &$body) {
                 $client->pendingResponses = 1;
                 $invoked++;
                 $body .= $bodyData;
-            },
-            HttpDriver::SIZE_WARNING => function () use (&$expectsWarning) {
-                $this->assertTrue($expectsWarning);
-                $expectsWarning = false;
-            },
+            }
         ];
 
         $client->options = new Options;
@@ -594,24 +594,11 @@ class Http1DriverTest extends TestCase {
         $client->bodyEmitters = ["set"];
         $client->requestParser = $parser;
 
-        $expectsWarning = true;
         $parser->send($data);
-        $this->assertFalse($expectsWarning);
 
-        $this->assertEquals(4, \strlen($body));
-        $ireq->maxBodySize = 10;
-
-        $expectsWarning = true;
-        $driver->upgradeBodySize($ireq);
-        $this->assertFalse($expectsWarning);
-
-        $this->assertEquals(10, \strlen($body));
-        $ireq->maxBodySize = 26;
-
-        $driver->upgradeBodySize($ireq);
         $this->assertSame($payload, $body);
 
-        $this->assertSame($invoked, 5 /* headers + 3*part + result */);
+        $this->assertSame($invoked, 3 /* headers + part + result */);
     }
 
     public function provideUpgradeBodySizeData() {
@@ -804,7 +791,7 @@ class Http1DriverTest extends TestCase {
             public function setup(array $parseEmitters, callable $responseWriter) {
                 $this->responseWriter = $responseWriter;
             }
-            public function upgradeBodySize(Internal\ServerRequest $ireq) {
+            public function upgradeBodySize(Internal\ServerRequest $ireq, int $bodySize) {
             }
             public function writer(Internal\ServerRequest $ireq, Response $response): \Generator {
                 ($this->responseWriter)($response);
@@ -837,7 +824,7 @@ class Http1DriverTest extends TestCase {
         $http2 = new class implements HttpDriver {
             public function setup(array $parseEmitters, callable $responseWriter) {
             }
-            public function upgradeBodySize(Internal\ServerRequest $ireq) {
+            public function upgradeBodySize(Internal\ServerRequest $ireq, int $bodySize) {
             }
             public function writer(Internal\ServerRequest $ireq, Response $response): \Generator {
                 yield;

@@ -287,7 +287,7 @@ class WebsocketParserTest extends TestCase {
                     ($this->emit)($ireq);
                 }
 
-                public function upgradeBodySize(Internal\ServerRequest $ireq) {
+                public function upgradeBodySize(Internal\ServerRequest $ireq, int $bodySize) {
                 }
             };
 
