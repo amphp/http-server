@@ -74,14 +74,9 @@ class WebsocketTest extends TestCase {
     public function initEndpoint($ws, $timeoutTest = false) {
         list($socket, $client) = stream_socket_pair(\stripos(PHP_OS, "win") === 0 ? STREAM_PF_INET : STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
         stream_set_blocking($client, false);
-        $server = new class extends Server {
-            public $state;
-            public function __construct() {
-            }
-            public function state(): int {
-                return $this->state;
-            }
-        };
+        $server = $this->createMock(Server::class);
+        $server->method('state')
+            ->willReturnOnConsecutiveCalls(Server::STARTING, SERVER::STARTED, Server::STOPPING);
 
         $logger = new class extends Logger {
             protected function output(string $message) { /* /dev/null */
@@ -96,10 +91,10 @@ class WebsocketTest extends TestCase {
             })->call($gateway);
         }
 
-        $server->state = Server::STARTING;
         yield $gateway->update($server);
-        $server->state = Server::STARTED;
+
         yield $gateway->update($server);
+
         $client = $gateway->reapClient(new ClientSocket($client), $this->createMock(Request::class));
 
         return [$gateway, $client, $socket, $server];

@@ -15,6 +15,10 @@ class Router implements Responder, ServerObserver {
 
     /** @var \FastRoute\Dispatcher */
     private $routeDispatcher;
+
+    /** @var \Aerys\ErrorHandler */
+    private $errorHandler;
+
     private $routes = [];
     private $actions = [];
     private $cache = [];
@@ -100,12 +104,14 @@ class Router implements Responder, ServerObserver {
                     break;
                 case Dispatcher::NOT_FOUND:
                     $status = HttpStatus::NOT_FOUND;
-                    return new Response\HtmlResponse(makeGenericBody($status), [], $status);
+                    return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
                 case Dispatcher::METHOD_NOT_ALLOWED:
                     $allowedMethods = implode(",", $match[1]);
                     $status = HttpStatus::METHOD_NOT_ALLOWED;
-                    $body = makeGenericBody($status);
-                    return new Response\HtmlResponse($body, ["Allow" => $allowedMethods], $status);
+                    /** @var \Aerys\Response $response */
+                    $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+                    $response->setHeader("Allow", $allowedMethods);
+                    return $response;
                 default:
                     throw new \UnexpectedValueException(
                         "Encountered unexpected Dispatcher code"
@@ -129,6 +135,10 @@ class Router implements Responder, ServerObserver {
      * @return self
      */
     public function use($action) {
+        if ($this->state) {
+            throw new \Error("Cannot add actions after the server has started");
+        }
+
         if (!($action instanceof self || $action instanceof Middleware)) {
             throw new \Error(\sprintf(
                 "%s requires another %s instance or an instance of %s",
@@ -151,6 +161,22 @@ class Router implements Responder, ServerObserver {
             }
         }
 
+        return $this;
+    }
+
+    /**
+     * Set the error handler instance to be used for generating error responses.
+     *
+     * @param \Aerys\ErrorHandler $errorHandler
+     *
+     * @return \Aerys\Server
+     */
+    public function setErrorHandler(ErrorHandler $errorHandler): self {
+        if ($this->state) {
+            throw new \Error("Cannot set the error handler after the server has started");
+        }
+
+        $this->errorHandler = $errorHandler;
         return $this;
     }
 
@@ -312,9 +338,15 @@ class Router implements Responder, ServerObserver {
                         "Router start failure: no routes registered"
                     ));
                 }
+
                 $this->routeDispatcher = simpleDispatcher(function ($rc) use ($server) {
                     $this->buildRouter($rc);
                 });
+
+                if ($this->errorHandler === null) {
+                    $this->errorHandler = $server->getErrorHandler();
+                }
+
                 break;
         }
 

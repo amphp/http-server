@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\DefaultErrorHandler;
 use Aerys\HttpStatus;
 use Aerys\Options;
 use Aerys\Request;
@@ -94,6 +95,8 @@ class RootTest extends TestCase {
             ->willReturnOnConsecutiveCalls(Server::STARTING, Server::STARTED);
         $server->method('getOptions')
             ->willReturn((new Options)->withDebugMode(true));
+        $server->method('getErrorHandler')
+            ->willReturn(new DefaultErrorHandler);
 
         $root->update($server);
         $root->update($server);
@@ -129,7 +132,7 @@ class RootTest extends TestCase {
      * @dataProvider provideRelativePathsAboveRoot
      */
     public function testPathsOnRelativePathAboveRoot(string $relativePath, Root $root) {
-        $request = $this->createMock("Aerys\\Request");
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri($relativePath)));
@@ -156,7 +159,7 @@ class RootTest extends TestCase {
      * @dataProvider provideUnavailablePathsAboveRoot
      */
     public function testUnavailablePathsOnRelativePathAboveRoot(string $relativePath, Root $root) {
-        $request = $this->createMock("Aerys\\Request");
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri($relativePath)));
@@ -278,6 +281,8 @@ class RootTest extends TestCase {
 
     public function testPreconditionFailure() {
         $root = new Root(self::fixturePath());
+        $root->setErrorHandler(new DefaultErrorHandler);
+
         $root->setOption("useEtagInode", false);
         $diskPath = \realpath(self::fixturePath())."/index.htm";
         $request = $this->createMock(Request::class);
@@ -359,6 +364,8 @@ class RootTest extends TestCase {
 
     public function testBadRange() {
         $root = new Root(self::fixturePath());
+        $root->setErrorHandler(new DefaultErrorHandler);
+
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";
         $etag = md5($diskPath.filemtime($diskPath).filesize($diskPath));
@@ -457,7 +464,7 @@ PART;
      * @depends testBasicFileResponse
      */
     public function testMimetypeParsing(Root $root) {
-        $request = $this->createMock("Aerys\\Request");
+        $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
             ->will($this->returnValue(new Uri("/svg.svg")));

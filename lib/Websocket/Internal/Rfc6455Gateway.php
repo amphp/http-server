@@ -3,6 +3,7 @@
 namespace Aerys\Websocket\Internal;
 
 use Aerys\ClientException;
+use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
 use Aerys\NullBody;
 use Aerys\Request;
@@ -44,6 +45,9 @@ class Rfc6455Gateway implements Responder, ServerObserver {
 
     /** @var int */
     private $state;
+
+    /** @var \Aerys\ErrorHandler */
+    private $errorHandler;
 
     /** @var Rfc6455Client[] */
     private $clients = [];
@@ -221,6 +225,22 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         Promise\rethrow(new Coroutine($this->read($client)));
 
         return $client;
+    }
+
+    /**
+     * Set the error handler instance to be used for generating error responses.
+     *
+     * @param \Aerys\ErrorHandler $errorHandler
+     *
+     * @return \Aerys\Server
+     */
+    public function setErrorHandler(ErrorHandler $errorHandler): self {
+        if ($this->state) {
+            throw new \Error("Cannot set the error handler after the server has started");
+        }
+
+        $this->errorHandler = $errorHandler;
+        return $this;
     }
 
     private function read(Rfc6455Client $client): \Generator {
@@ -595,6 +615,10 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     public function update(Server $server): Promise {
         switch ($this->state = $server->state()) {
             case Server::STARTING:
+                if ($this->errorHandler === null) {
+                    $this->errorHandler = $server->getErrorHandler();
+                }
+
                 return call([$this->application, "onStart"], $this->endpoint);
 
             case Server::STARTED:

@@ -54,6 +54,9 @@ class Server {
     /** @var mixed[] */
     private $actions = [];
 
+    /** @var \Aerys\ErrorHandler */
+    private $errorHandler;
+
     /** @var \Psr\Log\LoggerInterface */
     private $logger;
 
@@ -113,6 +116,8 @@ class Server {
         $this->observers->attach($this->ticker);
         $this->ticker->use($this->callableFromInstanceMethod("timeoutKeepAlives"));
         $this->nullBody = new NullBody;
+
+        $this->errorHandler = new DefaultErrorHandler;
 
         // private callables that we pass to external code //
         $this->onAcceptable = $this->callableFromInstanceMethod("onAcceptable");
@@ -189,6 +194,10 @@ class Server {
      * @return self
      */
     public function expose(string $address, int $port = 0): self {
+        if ($this->state) {
+            throw new \Error("Cannot add connection interfaces after the server has started");
+        }
+
         $this->host->expose($address, $port);
         return $this;
     }
@@ -202,8 +211,35 @@ class Server {
      * @return self
      */
     public function encrypt($certificate): self {
+        if ($this->state) {
+            throw new \Error("Cannot add a certificate after the server has started");
+        }
+
         $this->host->encrypt($certificate);
         return $this;
+    }
+
+    /**
+     * Set the error handler instance to be used for generating error responses.
+     *
+     * @param \Aerys\ErrorHandler $errorHandler
+     *
+     * @return \Aerys\Server
+     */
+    public function setErrorHandler(ErrorHandler $errorHandler): self {
+        if ($this->state) {
+            throw new \Error("Cannot set the error handler after the server has started");
+        }
+
+        $this->errorHandler = $errorHandler;
+        return $this;
+    }
+
+    /**
+     * @return \Aerys\ErrorHandler
+     */
+    public function getErrorHandler(): ErrorHandler {
+        return $this->errorHandler;
     }
 
     /**
@@ -795,15 +831,19 @@ class Server {
         $client->shouldClose = true;
         $client->pendingResponses++;
 
+        Promise\rethrow(new Coroutine($this->sendErrorResponse($client, $status, $message)));
+    }
+
+    private function sendErrorResponse(Internal\Client $client, int $status, string $reason): \Generator {
+        // Minimal required request properties.
         $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
         $ireq->time = $this->ticker->currentTime;
         $ireq->httpDate = $this->ticker->currentHttpDate;
 
-        $headers = ["Connection" => "close"];
-        $response = new Response\EmptyResponse($headers, $status, $message);
+        $response = yield $this->errorHandler->handle($status, $reason);
 
-        Promise\rethrow(new Coroutine($this->sendResponse($ireq, $response)));
+        yield from $this->sendResponse($ireq, $response);
     }
 
     private function setTrace(Internal\ServerRequest $ireq) {
@@ -881,7 +921,7 @@ class Server {
             }
 
             $this->logger->error($error);
-            $response = $this->makeErrorResponse($error, $request);
+            $response = yield $this->makeErrorResponse($error, $request);
         }
 
         yield from $this->sendResponse($ireq, $response);
@@ -925,18 +965,23 @@ class Server {
         }
     }
 
-    private function makeErrorResponse(\Throwable $error, Request $request): Response {
+    private function makeErrorResponse(\Throwable $error, Request $request): Promise {
         $status = HttpStatus::INTERNAL_SERVER_ERROR;
-        $message = $this->options->debug
-            ? "<pre>" . \htmlspecialchars($error) . "</pre>"
-            : "<p>Something went wrong ...</p>";
 
-        $body = makeGenericBody($status, [
-            "sub_heading" =>"Requested: " . $request->getUri(),
-            "message" => $message,
-        ]);
+        // Return an HTML page with the exception in debug mode.
+        if ($this->options->debug) {
+            $message = "<pre>" . \htmlspecialchars($error) . "</pre>";
 
-        return new Response\HtmlResponse($body, [], $status);
+            $body = makeGenericBody($status, [
+                "sub_heading" =>"Requested: " . $request->getUri(),
+                "message" => $message,
+            ]);
+
+            return new Success(new Response\HtmlResponse($body, [], $status));
+        }
+
+        // Return a response defined by the error handler in production mode.
+        return $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
     }
 
     private function close(Client $client) {

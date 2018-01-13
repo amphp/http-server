@@ -24,6 +24,11 @@ class Root implements Responder, ServerObserver {
 
     const DEFAULT_MIME_TYPE_FILE = __DIR__ . "/../etc/mime";
 
+    private $state = Server::STOPPED;
+
+    /** @var \Aerys\ErrorHandler */
+    private $errorHandler;
+
     private $root;
     private $debug;
     private $filesystem;
@@ -81,6 +86,22 @@ class Root implements Responder, ServerObserver {
             }
         });
         Loop::disable($this->cacheWatcher);
+    }
+
+    /**
+     * Set the error handler instance to be used for generating error responses.
+     *
+     * @param \Aerys\ErrorHandler $errorHandler
+     *
+     * @return \Aerys\Server
+     */
+    public function setErrorHandler(ErrorHandler $errorHandler): self {
+        if ($this->state) {
+            throw new \Error("Cannot set the error handler after the server has started");
+        }
+
+        $this->errorHandler = $errorHandler;
+        return $this;
     }
 
     /**
@@ -312,7 +333,8 @@ class Root implements Responder, ServerObserver {
         // HTTP server can send a 404 and/or allow handlers further down the chain
         // a chance to respond.
         if (!$fileInfo->exists) {
-            return new Response\HtmlResponse(makeGenericBody(HttpStatus::NOT_FOUND), [], HttpStatus::NOT_FOUND);
+            $status = HttpStatus::NOT_FOUND;
+            return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
         }
 
         switch ($request->getMethod()) {
@@ -326,10 +348,11 @@ class Root implements Responder, ServerObserver {
                 );
 
             default:
-                return new Response\EmptyResponse(
-                    ["Allow" => "GET, HEAD, OPTIONS"],
-                    HttpStatus::METHOD_NOT_ALLOWED
-                );
+                $status = HttpStatus::METHOD_NOT_ALLOWED;
+                /** @var \Aerys\Response $response */
+                $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+                $response->setHeader("Allow", "GET, HEAD, OPTIONS");
+                return $response;
         }
 
         $precondition = $this->checkPreconditions($request, $fileInfo->mtime, $fileInfo->etag);
@@ -344,7 +367,8 @@ class Root implements Responder, ServerObserver {
                 return $response;
 
             case self::PRECONDITION_FAILED:
-                return new Response\EmptyResponse([], HttpStatus::PRECONDITION_FAILED);
+                $status = HttpStatus::PRECONDITION_FAILED;
+                return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
 
             case self::PRECONDITION_IF_RANGE_FAILED:
                 // Return this so the resulting generator will be auto-resolved
@@ -362,10 +386,11 @@ class Root implements Responder, ServerObserver {
         }
 
         // If we're still here this is the only remaining response we can send
-        return new Response\EmptyResponse(
-            ["Content-Range" => "*/{$fileInfo->size}"],
-            HttpStatus::RANGE_NOT_SATISFIABLE
-        );
+        $status = HttpStatus::RANGE_NOT_SATISFIABLE;
+        /** @var \Aerys\Response $response */
+        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+        $response->setHeader("Content-Range", "*/{$fileInfo->size}");
+        return $response;
     }
 
     private function checkPreconditions(Request $request, int $mtime, string $etag): int {
@@ -797,10 +822,13 @@ class Root implements Responder, ServerObserver {
 
     /** @inheritdoc */
     public function update(Server $server): Promise {
-        switch ($server->state()) {
+        switch ($this->state = $server->state()) {
             case Server::STARTING:
                 if (empty($this->mimeFileTypes)) {
                     $this->loadMimeFileTypes(self::DEFAULT_MIME_TYPE_FILE);
+                }
+                if ($this->errorHandler === null) {
+                    $this->errorHandler = $server->getErrorHandler();
                 }
                 break;
 
