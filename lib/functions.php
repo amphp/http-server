@@ -100,10 +100,8 @@ function redirect(string $absoluteUri, int $redirectCode = 307): Responder {
  *
  * @return BodyParser (returns a ParsedBody instance when yielded)
  */
-function parseBody(Request $request, int $size = null): BodyParser {
-    return new BodyParser($request, [
-        "size" => $size ?? $request->getOption("maxBodySize"),
-    ]);
+function parseBody(Request $request, int $size = BodyParser::DEFAULT_MAX_BODY_SIZE): BodyParser {
+    return new BodyParser($request, $size);
 }
 
 /**

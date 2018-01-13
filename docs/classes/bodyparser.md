@@ -8,27 +8,25 @@ You typically get a `BodyParser` instance by calling the `parseBody(Request, int
 
 ## `Promise::onResolve(callable(ClientException|null, string))`
 
-If an instance of this class is yielded or `onResolve()` is used, it will either throw or pass a `ClientException` as first parameter, or return an instance of [`ParsedBody`](parsedbody.md) or pass it as second parameter, when all data has been fetched.
+This class implements `Promise`, resolving to an instance of [`ParsedBody`](parsedbody.md) or failing with `ClientException` if parsing fails. Yield this instance in a coroutine to buffer and then parse the entire body. Yield this object in a coroutine to buffer and parse the entire request body at once.
 
-## `Amp\ByteStream\InputStream::read(): Promise`
+## `fetch(): Promise`
 
-The returned Promise is resolved with a field name as soon as it starts being processed.
+The returned Promise is resolved with a field name as soon as it starts being processed or `null` if no more fields remain.
 
-## `stream(string $name, int $size = 0): FieldBody`
+## `stream(string $name): FieldBody`
 
 Returns the **next** `FieldBody` for a given `$name` and sets the size limit for that field to `$size` bytes.
 
 Note the emphasis on _next_, it thus is possible to fetch multiple equally named fields by calling `stream()` repeatedly.
 
-If `$size` <= 0, the last specified size is used, if none present, it's counting toward total size; if `$size` > 0, the current field has a size limit of `$size`.
-
 ## Example
 
 ```php
-# $req being an instance of Request
-$body = Aerys\parseBody($req);
-# Note this is 2 MB *TOTAL*, for all the file fields.
-$field = $body->stream("file", 2 << 20 /* 2 MB */);
+// $request being an instance of Request
+// Note this is 2 MB *TOTAL*, for all the file fields.
+$body = Aerys\parseBody($request, 2 << 20 /* 2 MB */);
+$field = $body->stream("file");
 while (null !== $data = yield $field->read()) {
     $metadata = yield $field->getMetadata();
     if (!isset($metadata["filename"])) {

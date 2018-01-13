@@ -54,7 +54,7 @@ class BodyParsingTest extends TestCase {
 
             $body = \Aerys\parseBody(new Request($ireq));
 
-            while (($field = yield $body->read()) !== null) {
+            while (($field = yield $body->fetch()) !== null) {
                 $this->assertArrayHasKey($field, $fieldlist);
                 array_pop($fieldlist[$field]);
             }
@@ -87,7 +87,7 @@ class BodyParsingTest extends TestCase {
             });
 
             $body = \Aerys\parseBody(new Request($ireq));
-            while (($field = yield $body->read()) !== null) {
+            while (($field = yield $body->fetch()) !== null) {
                 $this->assertArrayHasKey($field, $fieldlist);
                 array_pop($fieldlist[$field]);
             }
@@ -99,7 +99,82 @@ class BodyParsingTest extends TestCase {
         });
     }
 
-    public function testNew() {
+    /**
+     * @dataProvider requestBodies
+     */
+    public function testStream($header, $data, $fields, $metadata) {
+        $emitter = new \Amp\Emitter;
+        $ireq = new Internal\ServerRequest;
+        $ireq->headers["content-type"][0] = $header;
+        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
+        $ireq->client = new Internal\Client;
+        $ireq->client->options = new Internal\Options;
+        $ireq->client->httpDriver = new Internal\Http1Driver;
+
+        Loop::run(function () use ($emitter, $data, $ireq, $fields, $metadata) {
+            Loop::defer(function () use ($emitter, $data) {
+                $emitter->emit($data);
+                $emitter->complete();
+            });
+
+            $bodies = [];
+            $body = \Aerys\parseBody(new Request($ireq));
+            while (null !== $name = yield $body->fetch()) {
+                $bodies[] = [$body->stream($name), \array_shift($fields[$name])];
+            }
+
+            foreach ($bodies as list($stream, $expected)) {
+                $this->assertEquals($expected, yield $stream->buffer());
+            }
+
+            $result = (yield $body)->getAll();
+
+            $this->assertEquals([], $result["fields"]);
+        });
+    }
+
+    /**
+     * @dataProvider requestBodies
+     */
+    public function testPartialStream($header, $data, $fields, $metadata) {
+        $emitter = new \Amp\Emitter;
+        $ireq = new Internal\ServerRequest;
+        $ireq->headers["content-type"][0] = $header;
+        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
+        $ireq->client = new Internal\Client;
+        $ireq->client->options = new Internal\Options;
+        $ireq->client->httpDriver = new Internal\Http1Driver;
+
+        Loop::run(function () use ($emitter, $data, $ireq, $fields, $metadata) {
+            $remaining = [];
+
+            Loop::defer(function () use ($emitter, $data) {
+                $emitter->emit($data);
+                $emitter->complete();
+            });
+
+            $bodies = [];
+            $body = \Aerys\parseBody(new Request($ireq));
+            while (null !== $name = yield $body->fetch()) {
+                if (isset($bodies[$name])) {
+                    $remaining[$name][] = \array_shift($fields[$name]);
+                    continue;
+                }
+
+                $bodies[$name] = [$body->stream($name), \array_shift($fields[$name])];
+            }
+
+            foreach ($bodies as list($stream, $expected)) {
+                $this->assertEquals($expected, yield $stream->buffer());
+            }
+
+            $result = (yield $body)->getAll();
+
+            $this->assertEquals($remaining, $result["fields"]);
+        });
+    }
+
+    public function testOutOfOrderStream() {
         $header = null;
         $data = "a=ba%66g&&&be=c&d=f%6&gh&j";
 
@@ -112,12 +187,13 @@ class BodyParsingTest extends TestCase {
         $ireq->client->httpDriver = new Internal\Http1Driver;
 
         $body = new \Aerys\BodyParser(new Request($ireq));
-        $a = $body->stream("a");
+        // Purposely out of order of data arrival.
         $b = $body->stream("b");
-        $be = $body->stream("be");
         $d = $body->stream("d");
         $gh = $body->stream("gh");
         $j = $body->stream("j");
+        $be = $body->stream("be");
+        $a = $body->stream("a");
 
         Loop::run(function () use ($a, $b, $be, $d, $gh, $j, $data, $emitter) {
             Loop::defer(function () use ($data, $emitter) {

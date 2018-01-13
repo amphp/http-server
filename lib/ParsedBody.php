@@ -3,8 +3,13 @@
 namespace Aerys;
 
 class ParsedBody {
+    /** @var string[][] */
     private $fields;
+
+    /** @var string[] */
     private $metadata;
+
+    /** @var string[]|null */
     private $names;
 
     public function __construct(array $fields, array $metadata = []) {
