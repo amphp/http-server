@@ -15,9 +15,6 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\Promise\all;
-use function Amp\Promise\any;
-use function Amp\Promise\timeout;
 
 class Server {
     use CallableMaker;
@@ -26,6 +23,7 @@ class Server {
     const STARTING = 1;
     const STARTED  = 2;
     const STOPPING = 3;
+
     const STATES = [
         self::STOPPED => "STOPPED",
         self::STARTING => "STARTING",
@@ -236,18 +234,11 @@ class Server {
     }
 
     /**
-     * @return \Aerys\ErrorHandler
-     */
-    public function getErrorHandler(): ErrorHandler {
-        return $this->errorHandler;
-    }
-
-    /**
      * Retrieve the current server state.
      *
      * @return int
      */
-    public function state(): int {
+    public function getState(): int {
         return $this->state;
     }
 
@@ -278,32 +269,6 @@ class Server {
      */
     public function detach(ServerObserver $observer) {
         $this->observers->detach($observer);
-    }
-
-    /**
-     * Notify observers of a server state change.
-     *
-     * Resolves to an indexed any() Promise combinator array.
-     *
-     * @return Promise
-     */
-    private function notify(): Promise {
-        $promises = [];
-        foreach ($this->observers as $observer) {
-            $promises[] = $observer->update($this);
-        }
-
-        $promise = any($promises);
-        $promise->onResolve(function ($error, $result) {
-            // $error is always empty because an any() combinator Promise never fails.
-            // Instead we check the error array at index zero in the two-item any() $result
-            // and log as needed.
-            list($observerErrors) = $result;
-            foreach ($observerErrors as $error) {
-                $this->logger->error($error);
-            }
-        });
-        return $promise;
     }
 
     /**
@@ -401,12 +366,15 @@ class Server {
         $this->boundServers = yield $bindSockets($this->generateBindableAddressContextMap(), $socketBinder);
 
         $this->state = self::STARTING;
-        $notifyResult = yield $this->notify();
-        if ($hadErrors = (bool) $notifyResult[0]) {
+        try {
+            $promises = [];
+            foreach ($this->observers as $observer) {
+                $promises[] = $observer->onStart($this, $this->logger, $this->errorHandler);
+            }
+            yield $promises;
+        } catch (\Throwable $exception) {
             yield from $this->doStop();
-            throw new \RuntimeException(
-                "Server::STARTING observer initialization failure"
-            );
+            throw new \RuntimeException("onStart observer initialization failure", 0, $exception);
         }
 
         $this->dropPrivileges();
@@ -421,13 +389,6 @@ class Server {
             }
             $this->acceptWatcherIds[$serverName] = Loop::onReadable($server, $onAcceptable);
             $this->logger->info("Listening on {$serverName}");
-        }
-
-        try {
-            return yield $this->notify();
-        } catch (\Throwable $exception) {
-            yield from $this->doStop();
-            throw new \RuntimeException("Server::STARTED observer initialization failure", 0, $exception);
         }
     }
 
@@ -545,7 +506,7 @@ class Server {
         switch ($this->state) {
             case self::STARTED:
                 $stopPromise = new Coroutine($this->doStop());
-                return timeout($stopPromise, $this->options->shutdownTimeout);
+                return Promise\timeout($stopPromise, $this->options->shutdownTimeout);
             case self::STOPPED:
                 return new Success;
             default:
@@ -581,13 +542,19 @@ class Server {
             }
         }
 
-        yield all([$this->stopDeferred->promise(), $this->notify()]);
-
-        assert($this->logDebug("Stopped"));
-        $this->state = self::STOPPED;
-        $this->stopDeferred = null;
-
-        yield $this->notify();
+        try {
+            $promises = [$this->stopDeferred->promise()];
+            foreach ($this->observers as $observer) {
+                $promises[] = $observer->onStop($this);
+            }
+            yield $promises;
+        } catch (\Throwable $exception) {
+            throw new \RuntimeException("onStop observer failure", 0, $exception);
+        } finally {
+            assert($this->logDebug("Stopped"));
+            $this->state = self::STOPPED;
+            $this->stopDeferred = null;
+        }
     }
 
     private function importClient($socket, $ip, $port) {

@@ -2,8 +2,10 @@
 
 namespace Aerys\Test;
 
+use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
 use Aerys\Internal;
+use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
@@ -16,14 +18,9 @@ use Psr\Log\LoggerInterface as PsrLogger;
 
 class RouterTest extends TestCase {
     public function mockServer($state): Server {
-        $mock = $this->getMockBuilder(Server::class)
+        return $this->getMockBuilder(Server::class)
             ->setConstructorArgs([new Options, $this->createMock(PsrLogger::class)])
             ->getMock();
-
-        $mock->method('state')
-            ->willReturn($state);
-
-        return $mock;
     }
 
     /**
@@ -47,7 +44,7 @@ class RouterTest extends TestCase {
     public function testUpdateFailsIfStartedWithoutAnyRoutes() {
         $router = new Router;
         $mock = $this->mockServer(Server::STARTING);
-        $result = $router->update($mock);
+        $result = $router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
         $this->assertInstanceOf("Amp\\Failure", $result);
         $i = 0;
         $result->onResolve(function ($e, $r) use (&$i) {
@@ -66,7 +63,7 @@ class RouterTest extends TestCase {
         });
         $router->prefix("/mediocre-dev");
         $mock = $this->mockServer(Server::STARTING);
-        $router->update($mock);
+        $result = $router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
 
         $ireq = new Internal\ServerRequest;
         $request = new Request($ireq);

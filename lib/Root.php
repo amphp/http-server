@@ -13,6 +13,7 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Struct;
 use Amp\Success;
+use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 
 class Root implements Responder, ServerObserver {
@@ -86,22 +87,6 @@ class Root implements Responder, ServerObserver {
             }
         });
         Loop::disable($this->cacheWatcher);
-    }
-
-    /**
-     * Set the error handler instance to be used for generating error responses.
-     *
-     * @param \Aerys\ErrorHandler $errorHandler
-     *
-     * @return \Aerys\Server
-     */
-    public function setErrorHandler(ErrorHandler $errorHandler): self {
-        if ($this->state) {
-            throw new \Error("Cannot set the error handler after the server has started");
-        }
-
-        $this->errorHandler = $errorHandler;
-        return $this;
     }
 
     /**
@@ -820,32 +805,25 @@ class Root implements Responder, ServerObserver {
         $this->bufferedFileMaxSize = $bytes;
     }
 
-    /** @inheritdoc */
-    public function update(Server $server): Promise {
-        switch ($this->state = $server->state()) {
-            case Server::STARTING:
-                if (empty($this->mimeFileTypes)) {
-                    $this->loadMimeFileTypes(self::DEFAULT_MIME_TYPE_FILE);
-                }
-                if ($this->errorHandler === null) {
-                    $this->errorHandler = $server->getErrorHandler();
-                }
-                break;
-
-            case Server::STARTED:
-                $this->debug = $server->getOptions()->isInDebugMode();
-                Loop::enable($this->cacheWatcher);
-                break;
-
-            case Server::STOPPED:
-                Loop::disable($this->cacheWatcher);
-                $this->cache = [];
-                $this->cacheTimeouts = [];
-                $this->cacheEntryCount = 0;
-                $this->bufferedFileCount = 0;
-                break;
+    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+        if (empty($this->mimeFileTypes)) {
+            $this->loadMimeFileTypes(self::DEFAULT_MIME_TYPE_FILE);
         }
 
+        $this->errorHandler = $errorHandler;
+
+        $this->debug = $server->getOptions()->isInDebugMode();
+        Loop::enable($this->cacheWatcher);
+
+        return new Success;
+    }
+
+    public function onStop(Server $server): Promise {
+        Loop::disable($this->cacheWatcher);
+        $this->cache = [];
+        $this->cacheTimeouts = [];
+        $this->cacheEntryCount = 0;
+        $this->bufferedFileCount = 0;
         return new Success;
     }
 }

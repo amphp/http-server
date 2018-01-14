@@ -43,9 +43,6 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     /** @var Rfc6455Endpoint */
     private $endpoint;
 
-    /** @var int */
-    private $state;
-
     /** @var \Aerys\ErrorHandler */
     private $errorHandler;
 
@@ -94,8 +91,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     const OP_PING  = 0x09;
     const OP_PONG  = 0x0A;
 
-    public function __construct(PsrLogger $logger, Websocket $application) {
-        $this->logger = $logger;
+    public function __construct(Websocket $application) {
         $this->application = $application;
         $this->now = time();
         $this->endpoint = new Rfc6455Endpoint($this);
@@ -225,22 +221,6 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         Promise\rethrow(new Coroutine($this->read($client)));
 
         return $client;
-    }
-
-    /**
-     * Set the error handler instance to be used for generating error responses.
-     *
-     * @param \Aerys\ErrorHandler $errorHandler
-     *
-     * @return \Aerys\Server
-     */
-    public function setErrorHandler(ErrorHandler $errorHandler): self {
-        if ($this->state) {
-            throw new \Error("Cannot set the error handler after the server has started");
-        }
-
-        $this->errorHandler = $errorHandler;
-        return $this;
     }
 
     private function read(Rfc6455Client $client): \Generator {
@@ -612,55 +592,32 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         return array_keys($this->clients);
     }
 
-    public function update(Server $server): Promise {
-        switch ($this->state = $server->state()) {
-            case Server::STARTING:
-                if ($this->errorHandler === null) {
-                    $this->errorHandler = $server->getErrorHandler();
-                }
+    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+        $this->logger = $logger;
+        $this->errorHandler = $errorHandler;
+        $this->timeoutWatcher = Loop::repeat(1000, $this->callableFromInstanceMethod("timeout"));
 
-                return call([$this->application, "onStart"], $this->endpoint);
+        return call([$this->application, "onStart"], $this->endpoint);
+    }
 
-            case Server::STARTED:
-                $this->timeoutWatcher = Loop::repeat(1000, $this->callableFromInstanceMethod("timeout"));
-                break;
+    public function onStop(Server $server): Promise {
+        Loop::cancel($this->timeoutWatcher);
 
-            case Server::STOPPING:
-                Loop::cancel($this->timeoutWatcher);
+        return call(function () {
+            try {
+                yield call([$this->application, "onStop"]);
+            } finally {
+                $code = Code::GOING_AWAY;
+                $reason = "Server shutting down!";
 
-                return call(function () {
-                    try {
-                        yield call([$this->application, "onStop"]);
-                    } finally {
-                        $code = Code::GOING_AWAY;
-                        $reason = "Server shutting down!";
-
-                        $promises = [];
-                        foreach ($this->clients as $client) {
-                            $promises[] = new Coroutine($this->doClose($client, $code, $reason));
-                        }
-                    }
-
-                    return yield $promises;
-                });
-
-            case Server::STOPPED:
                 $promises = [];
-
-                // we are not going to wait for a proper self::OP_CLOSE answer (because else we'd need to timeout for
-                // 3 seconds, not worth it), but we will ensure to at least *have written* it
                 foreach ($this->clients as $client) {
-                    // only if we couldn't successfully send it in STOPPING
-                    $code = Code::GOING_AWAY;
-                    $reason = "Server shutting down!";
-
                     $promises[] = new Coroutine($this->doClose($client, $code, $reason));
                 }
+            }
 
-                return Promise\all($promises);
-        }
-
-        return new Success;
+            return yield $promises;
+        });
     }
 
     private function sendHeartbeatPing(Rfc6455Client $client) {

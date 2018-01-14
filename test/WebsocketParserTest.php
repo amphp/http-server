@@ -88,7 +88,7 @@ class WebsocketParserTest extends TestCase {
             $websocket = $this->createMock(Websocket::class);
         }
 
-        $gateway = new Rfc6455Gateway($this->createMock(PsrLogger::class), $websocket);
+        $gateway = new Rfc6455Gateway($websocket);
 
         $client = new Rfc6455Client;
         $client->id = 1;
@@ -278,16 +278,19 @@ class WebsocketParserTest extends TestCase {
                 ->willReturnCallback(function (int $clientId, $handshakeData) {
                     $this->assertEquals("foo", $handshakeData);
                 });
-            $ws = \Aerys\websocket($ws, $logger);
+            $ws = \Aerys\websocket($ws);
 
             $options = new Options;
             $options->debug = true;
 
             $server = new Server($options, $logger, $driver);
             $server->use($ws);
-            $server->start();
+            $server->expose("::", 9001);
+            yield $server->start();
 
             $driver->emit();
+
+            yield $server->stop();
 
             /** @var \Aerys\Response $response */
             $response = $driver->response;

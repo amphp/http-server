@@ -3,7 +3,9 @@
 namespace Aerys\Test;
 
 use Aerys\DefaultErrorHandler;
+use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
+use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Root;
@@ -91,15 +93,10 @@ class RootTest extends TestCase {
         $root = new Root(self::fixturePath());
 
         $server = $this->createMock(Server::class);
-        $server->method('state')
-            ->willReturnOnConsecutiveCalls(Server::STARTING, Server::STARTED);
         $server->method('getOptions')
             ->willReturn((new Options)->withDebugMode(true));
-        $server->method('getErrorHandler')
-            ->willReturn(new DefaultErrorHandler);
 
-        $root->update($server);
-        $root->update($server);
+        $root->onStart($server, $this->createMock(Logger::class), new DefaultErrorHandler);
 
         foreach ([
             ["/", "test"],
@@ -206,12 +203,10 @@ class RootTest extends TestCase {
      */
     public function testDebugModeIgnoresCacheIfCacheControlHeaderIndicatesToDoSo(Root $root) {
         $server = $this->createMock(Server::class);
-        $server->method('state')
-            ->willReturn(Server::STARTED);
         $server->method('getOptions')
             ->willReturn((new Options)->withDebugMode(true));
 
-        $root->update($server);
+        $root->onStart($server, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
 
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
@@ -281,7 +276,12 @@ class RootTest extends TestCase {
 
     public function testPreconditionFailure() {
         $root = new Root(self::fixturePath());
-        $root->setErrorHandler(new DefaultErrorHandler);
+
+        $server = $this->createMock(Server::class);
+        $server->method('getOptions')
+            ->willReturn((new Options)->withDebugMode(true));
+
+        $root->onStart($server, $this->createMock(Logger::class), new DefaultErrorHandler);
 
         $root->setOption("useEtagInode", false);
         $diskPath = \realpath(self::fixturePath())."/index.htm";
@@ -364,7 +364,12 @@ class RootTest extends TestCase {
 
     public function testBadRange() {
         $root = new Root(self::fixturePath());
-        $root->setErrorHandler(new DefaultErrorHandler);
+
+        $server = $this->createMock(Server::class);
+        $server->method('getOptions')
+            ->willReturn((new Options)->withDebugMode(true));
+
+        $root->onStart($server, $this->createMock(Logger::class), new DefaultErrorHandler);
 
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";

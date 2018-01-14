@@ -5,7 +5,6 @@ namespace Aerys;
 use Aerys\Cookie\Cookie;
 use Aerys\Websocket\Internal\Rfc6455Gateway;
 use Aerys\Websocket\Websocket;
-use Psr\Log\LoggerInterface as PsrLogger;
 
 /**
  * Create a router for use in a Host instance.
@@ -26,13 +25,12 @@ function router(array $options = []): Router {
  * Create a Websocket application for use in a Host instance.
  *
  * @param \Aerys\Websocket\Websocket $app The websocket app to use
- * @param \Psr\Log\LoggerInterface $logger
  * @param array $options Endpoint options
  *
  * @return \Aerys\Responder
  */
-function websocket(Websocket $app, PsrLogger $logger, array $options = []): Responder {
-    $gateway = new Rfc6455Gateway($logger, $app);
+function websocket(Websocket $app, array $options = []): Responder {
+    $gateway = new Rfc6455Gateway($app);
     foreach ($options as $key => $value) {
         $gateway->setOption($key, $value);
     }

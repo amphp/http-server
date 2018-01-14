@@ -8,6 +8,7 @@ use Amp\Promise;
 use Amp\Success;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
+use Psr\Log\LoggerInterface as PsrLogger;
 use function FastRoute\simpleDispatcher;
 
 class Router implements Responder, ServerObserver {
@@ -165,22 +166,6 @@ class Router implements Responder, ServerObserver {
     }
 
     /**
-     * Set the error handler instance to be used for generating error responses.
-     *
-     * @param \Aerys\ErrorHandler $errorHandler
-     *
-     * @return \Aerys\Server
-     */
-    public function setErrorHandler(ErrorHandler $errorHandler): self {
-        if ($this->state) {
-            throw new \Error("Cannot set the error handler after the server has started");
-        }
-
-        $this->errorHandler = $errorHandler;
-        return $this;
-    }
-
-    /**
      * Prefix all the (already defined) routes with a given prefix.
      *
      * @param string $prefix
@@ -318,38 +303,24 @@ class Router implements Responder, ServerObserver {
         return [$responder, $middlewares];
     }
 
-    /**
-     * React to server state changes.
-     *
-     * Here we generate our dispatcher when the server notifies us that it is
-     * ready to start (Server::STARTING).
-     *
-     * @param Server $server
-     * @return Promise
-     */
-    public function update(Server $server): Promise {
-        switch ($this->state = $server->state()) {
-            case Server::STOPPED:
-                $this->routeDispatcher = null;
-                break;
-            case Server::STARTING:
-                if (empty($this->routes)) {
-                    return new Failure(new \Error(
-                        "Router start failure: no routes registered"
-                    ));
-                }
-
-                $this->routeDispatcher = simpleDispatcher(function ($rc) use ($server) {
-                    $this->buildRouter($rc);
-                });
-
-                if ($this->errorHandler === null) {
-                    $this->errorHandler = $server->getErrorHandler();
-                }
-
-                break;
+    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+        if (empty($this->routes)) {
+            return new Failure(new \Error(
+                "Router start failure: no routes registered"
+            ));
         }
 
+        $this->routeDispatcher = simpleDispatcher(function (RouteCollector $rc) {
+            $this->buildRouter($rc);
+        });
+
+        $this->errorHandler = $errorHandler;
+
+        return new Success;
+    }
+
+    public function onStop(Server $server): Promise {
+        $this->routeDispatcher = null;
         return new Success;
     }
 

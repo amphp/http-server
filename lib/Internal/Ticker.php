@@ -2,6 +2,7 @@
 
 namespace Aerys\Internal;
 
+use Aerys\ErrorHandler;
 use Aerys\Server;
 use Aerys\ServerObserver;
 use Amp\Loop;
@@ -24,18 +25,15 @@ class Ticker implements ServerObserver {
         $this->logger = $logger;
     }
 
-    public function update(Server $server): Promise {
-        switch ($server->state()) {
-            case Server::STARTED:
-                $this->watcherId = Loop::repeat(1000, [$this, "updateTime"]);
-                $this->updateTime();
-                break;
-            case Server::STOPPED:
-                Loop::cancel($this->watcherId);
-                $this->watcherId = null;
-                break;
-        }
+    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+        $this->watcherId = Loop::repeat(1000, [$this, "updateTime"]);
+        $this->updateTime();
+        return new Success;
+    }
 
+    public function onStop(Server $server): Promise {
+        Loop::cancel($this->watcherId);
+        $this->watcherId = null;
         return new Success;
     }
 

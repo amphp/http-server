@@ -3,6 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Body;
+use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
 use Aerys\Internal;
 use Aerys\Logger;
@@ -75,14 +76,8 @@ class WebsocketTest extends TestCase {
         list($socket, $client) = stream_socket_pair(\stripos(PHP_OS, "win") === 0 ? STREAM_PF_INET : STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
         stream_set_blocking($client, false);
         $server = $this->createMock(Server::class);
-        $server->method('state')
-            ->willReturnOnConsecutiveCalls(Server::STARTING, SERVER::STARTED, Server::STOPPING);
 
-        $logger = new class extends Logger {
-            protected function output(string $message) { /* /dev/null */
-            }
-        };
-        $gateway = new Rfc6455Gateway($logger, $ws);
+        $gateway = new Rfc6455Gateway($ws);
 
         if ($timeoutTest) {
             // okay, let's cheat a bit in order to properly test timeout...
@@ -91,9 +86,7 @@ class WebsocketTest extends TestCase {
             })->call($gateway);
         }
 
-        yield $gateway->update($server);
-
-        yield $gateway->update($server);
+        yield $gateway->onStart($server, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
 
         $client = $gateway->reapClient(new ClientSocket($client), $this->createMock(Request::class));
 
@@ -136,8 +129,7 @@ class WebsocketTest extends TestCase {
             }
             $this->assertFalse($ws->gen->valid());
 
-            $server->state = Server::STOPPED;
-            yield $gateway->update($server);
+            yield $gateway->onStop($server);
 
             Loop::stop();
         });
@@ -213,7 +205,7 @@ class WebsocketTest extends TestCase {
         $ws = $this->createMock(Websocket::class);
         $ws->expects($status === 101 ? $this->once() : $this->never())
             ->method("onHandshake");
-        $gateway = new Rfc6455Gateway($logger, $ws);
+        $gateway = new Rfc6455Gateway($ws);
         $response = Promise\wait($gateway->respond(new Request($ireq)));
 
         $this->assertEquals($expected, array_intersect_key($response->getHeaders(), $expected));
@@ -418,7 +410,7 @@ class WebsocketTest extends TestCase {
             $this->assertEquals(1, $client->pongCount);
 
             $server->state = Server::STOPPED;
-            yield $gateway->update($server);
+            yield $gateway->onStop($server);
 
             Loop::stop();
         });

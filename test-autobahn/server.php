@@ -35,7 +35,7 @@ return function (Aerys\Logger $logger) {
         public function onClose(int $clientId, int $code, string $reason) { }
 
         public function onStop() { }
-    }, $logger, [
+    }, [
         "maxBytesPerMinute"  => PHP_INT_MAX,
         "maxFrameSize"       => PHP_INT_MAX,
         "maxFramesPerSecond" => PHP_INT_MAX,
