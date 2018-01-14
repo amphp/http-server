@@ -9,7 +9,7 @@ if (!class_exists(Aerys\Process::class, false)) {
 use Aerys\Request;
 use Aerys\Websocket;
 
-return function (Aerys\Logger $logger) {
+return function () {
     /* --- http://localhost:9001/ ------------------------------------------------------------------- */
 
     $websocket = Aerys\websocket(new class implements Websocket\Websocket {

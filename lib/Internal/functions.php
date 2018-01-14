@@ -29,8 +29,13 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
         throw new \Error("The config file at $configFile must return a callable");
     }
 
+    $options = (new Options)->withDebugMode($console->isArgDefined("debug"));
+    if ($console->isArgDefined("user")) {
+        $options = $options->withUser($console->getArg("user"));
+    }
+
     try {
-        $server = yield call($initializer, $logger, $console);
+        $server = yield call($initializer, $options, $logger, $console);
     } catch (\Throwable $exception) {
         throw new \Error(
             "Callable invoked from file at $configFile threw an exception",

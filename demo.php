@@ -6,7 +6,6 @@ if (!class_exists(Aerys\Process::class, false)) {
     exit(1);
 }
 
-use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;
@@ -15,11 +14,11 @@ use Aerys\Websocket\Message;
 use Aerys\Websocket\Websocket;
 
 // Return a function that defines and returns a Server instance.
-return function (Aerys\Logger $logger, Aerys\Console $console): Server {
+return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $console): Server {
 
     /* --- Global server options -------------------------------------------------------------------- */
 
-    $options = (new Options)
+    $options = $options
         ->withConnectionTimeout(60)
         ->withSendServerToken(true);
 
