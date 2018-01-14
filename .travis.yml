@@ -22,6 +22,7 @@ env:
 before_install:
   - docker pull php:7.1
   - docker pull crossbario/autobahn-testsuite
+  - phpenv config-rm xdebug.ini || echo "No xdebug config."
 
 install:
   - composer update -n --prefer-dist
@@ -30,7 +31,12 @@ install:
   - chmod +x coveralls.phar
 
 script:
-  - vendor/bin/phpunit --coverage-text --coverage-clover build/logs/clover.xml
+  # PHPDBG segfaults on versions other than 7.0 currently
+  - if [ "$TRAVIS_PHP_VERSION" = "7.0" ]; then
+      phpdbg -qrr vendor/bin/phpunit --verbose --coverage-php coverage/cov/main.cov;
+    else
+      vendor/bin/phpunit --coverage-text --verbose --coverage-clover build/logs/clover.xml;
+    fi
   - PHP_CS_FIXER_IGNORE_ENV=1 php vendor/bin/php-cs-fixer --diff --dry-run -v fix
   - docker run -d --rm -v ${PWD}:/app --net="host" --name aerys php:7.1 php /app/bin/aerys -c /app/test-autobahn/server.php
   - docker run -ti --rm -v ${PWD}/test-autobahn/config:/config -v ${PWD}/test-autobahn/reports:/reports --net="host" --name fuzzingclient crossbario/autobahn-testsuite wstest -m fuzzingclient -s config/fuzzingclient.json
