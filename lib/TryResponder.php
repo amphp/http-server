@@ -2,16 +2,16 @@
 
 namespace Aerys;
 
-use Amp\Coroutine;
 use Amp\Promise;
+use function Amp\call;
 
 /**
  * Calls each given responder until a non-404 response is returned from a responder, returning that response. If all
  * responders are exhausted, the final 404 response is returned.
  */
-class TryResponder implements Responder {
+final class TryResponder implements Responder {
     /** @var \Aerys\Responder[] */
-    private $responders = [];
+    private $responders;
 
     /**
      * @param \Aerys\Responder[] $responders
@@ -38,22 +38,18 @@ class TryResponder implements Responder {
      * {@inheritdoc}
      */
     public function respond(Request $request): Promise {
-        return new Coroutine($this->dispatch($request));
-    }
+        return call(function () use ($request) {
+            foreach ($this->responders as $responder) {
+                $response = yield $responder->respond($request);
 
-    private function dispatch(Request $request): \Generator {
-        foreach ($this->responders as $responder) {
-            $response = yield $responder->respond($request);
+                \assert($response instanceof Response, "Responders must return an instance of " . Response::class);
 
-            if (!$response instanceof Response) {
-                throw new \Error("Responders must return an instance of " . Response::class);
+                if ($response->getStatus() !== HttpStatus::NOT_FOUND) {
+                    break;
+                }
             }
 
-            if ($response->getStatus() !== HttpStatus::NOT_FOUND) {
-                break;
-            }
-        }
-
-        return $response;
+            return $response;
+        });
     }
 }
