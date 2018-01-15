@@ -25,8 +25,14 @@ class Root implements Responder, ServerObserver {
 
     const DEFAULT_MIME_TYPE_FILE = __DIR__ . "/../etc/mime";
 
+    /** @var bool */
+    private $running = false;
+
     /** @var \Aerys\ErrorHandler */
     private $errorHandler;
+
+    /** @var \Aerys\Responder|null */
+    private $fallback;
 
     private $root;
     private $debug;
@@ -88,10 +94,42 @@ class Root implements Responder, ServerObserver {
     }
 
     /**
+     * Specifies an instance of Responder (or callable) that is used if no file exists for the requested URI.
+     * If no fallback is given, a 404 response is returned from respond() when the file does not exist.
+     *
+     * @param \Aerys\Responder|callable $responder
+     *
+     * @return \Aerys\Router
+     *
+     * @throws \TypeError
+     */
+    public function fallback($responder): self {
+        if ($this->running) {
+            throw new \Error("Cannot add fallback responder after the server has started");
+        }
+
+        if (\is_callable($responder)) {
+            $responder = new CallableResponder($responder);
+        }
+
+        if (!$responder instanceof Responder) {
+            throw new \TypeError(\sprintf(
+                "%s() requires a callable or an instance of %s",
+                __METHOD__,
+                Responder::class
+            ));
+        }
+
+        $this->fallback = $responder;
+
+        return $this;
+    }
+
+    /**
      * Respond to HTTP requests for filesystem resources.
      */
     public function respond(Request $request): Promise {
-        $uri = $request->getAttribute("aerys.sendfile") ?: $request->getUri()->getPath();
+        $uri = $request->getUri()->getPath();
         $path = ($qPos = \strpos($uri, "?")) ? \substr($uri, 0, $qPos) : $uri;
         // IMPORTANT! Do NOT remove this. If this is left in, we'll be able to use /path\..\../outsideDocRoot defeating the removeDotPathSegments() function! (on Windows at least)
         $path = \str_replace("\\", "/", $path);
@@ -312,10 +350,11 @@ class Root implements Responder, ServerObserver {
     }
 
     private function respondFromFileInfo($fileInfo, Request $request): \Generator {
-        // If the file doesn't exist don't bother to do anything else so the
-        // HTTP server can send a 404 and/or allow handlers further down the chain
-        // a chance to respond.
         if (!$fileInfo->exists) {
+            if ($this->fallback !== null) {
+                return $this->fallback->respond($request);
+            }
+
             $status = HttpStatus::NOT_FOUND;
             return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
         }
@@ -804,6 +843,8 @@ class Root implements Responder, ServerObserver {
     }
 
     public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+        $this->running = true;
+
         if (empty($this->mimeFileTypes)) {
             $this->loadMimeFileTypes(self::DEFAULT_MIME_TYPE_FILE);
         }
@@ -813,15 +854,26 @@ class Root implements Responder, ServerObserver {
         $this->debug = $server->getOptions()->isInDebugMode();
         Loop::enable($this->cacheWatcher);
 
+        if ($this->fallback !== null && $this->fallback instanceof ServerObserver) {
+            return $this->fallback->onStart($server, $logger, $errorHandler);
+        }
+
         return new Success;
     }
 
     public function onStop(Server $server): Promise {
         Loop::disable($this->cacheWatcher);
+
         $this->cache = [];
         $this->cacheTimeouts = [];
         $this->cacheEntryCount = 0;
         $this->bufferedFileCount = 0;
+        $this->running = false;
+
+        if ($this->fallback !== null && $this->fallback instanceof ServerObserver) {
+            return $this->fallback->onStop($server);
+        }
+
         return new Success;
     }
 }

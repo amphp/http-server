@@ -11,6 +11,9 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use function FastRoute\simpleDispatcher;
 
 class Router implements Responder, ServerObserver {
+    const DEFAULT_MAX_CACHE_ENTRIES = 512;
+
+    /** @var bool */
     private $running = false;
 
     /** @var \FastRoute\Dispatcher */
@@ -19,42 +22,29 @@ class Router implements Responder, ServerObserver {
     /** @var \Aerys\ErrorHandler */
     private $errorHandler;
 
+    /** @var \Aerys\Responder|null */
+    private $fallback;
+
     /** @var \SplObjectStorage */
     private $observers;
 
     private $routes = [];
-    private $actions = [];
     private $cache = [];
     private $cacheEntryCount = 0;
-    private $maxCacheEntries = 512;
-
-    public function __construct() {
-        $this->observers = new \SplObjectStorage;
-    }
+    private $maxCacheEntries = self::DEFAULT_MAX_CACHE_ENTRIES;
 
     /**
-     * Set a router option.
+     * @param int $maxCacheEntries Maximum number of route matches to cache.
      *
-     * @param string $key
-     * @param mixed $value
-     * @throws \Error on unknown option key
+     * @throws \Error If $maxCacheEntries is less than zero.
      */
-    public function setOption(string $key, $value) {
-        switch ($key) {
-            case "max_cache_entries":
-                if (!is_int($value)) {
-                    throw new \TypeError(sprintf(
-                        "max_cache_entries requires an integer; %s specified",
-                        is_object($value) ? get_class($value) : gettype($value)
-                    ));
-                }
-                $this->maxCacheEntries = ($value < 1) ? 0 : $value;
-                break;
-            default:
-                throw new \Error(
-                    "Unknown Router option: {$key}"
-                );
+    public function __construct(int $maxCacheEntries = self::DEFAULT_MAX_CACHE_ENTRIES) {
+        if ($maxCacheEntries < 0) {
+            throw new \Error("The number of cache entries must be greater than or equal to zero");
         }
+
+        $this->maxCacheEntries = $maxCacheEntries;
+        $this->observers = new \SplObjectStorage;
     }
 
     /**
@@ -76,49 +66,38 @@ class Router implements Responder, ServerObserver {
         $toMatch = "{$method}\0{$path}";
 
         if (isset($this->cache[$toMatch])) {
-            $responder = $this->cache[$toMatch];
+            list($responder, $routeArgs) = $cache = $this->cache[$toMatch];
+            $request->setAttribute(self::class, $routeArgs);
+
             // Keep the most recently used entry at the back of the LRU cache
             unset($this->cache[$toMatch]);
-            $this->cache[$toMatch] = $responder;
+            $this->cache[$toMatch] = $cache;
         } else {
             $match = $this->routeDispatcher->dispatch($method, $path);
 
             switch ($match[0]) {
                 case Dispatcher::FOUND:
-                    list(, $actions, $routeArgs) = $match;
-                    list($responder, $middlewares) = $actions;
-
-                    if (!empty($routeArgs)) {
-                        $responder = new class($responder, $routeArgs) implements Responder {
-                            private $responder;
-                            private $args;
-
-                            public function __construct(Responder $responder, array $args) {
-                                $this->responder = $responder;
-                                $this->args = $args;
-                            }
-
-                            public function respond(Request $request): Promise {
-                                return $this->responder->respond($request, $this->args);
-                            }
-                        };
-                    }
-
-                    if (!empty($middlewares)) {
-                        $responder = MiddlewareResponder::create($responder, $middlewares);
-                    }
-
+                    list(, $responder, $routeArgs) = $match;
+                    $request->setAttribute(self::class, $routeArgs);
                     break;
+
                 case Dispatcher::NOT_FOUND:
+                    if ($this->fallback !== null) {
+                        return $this->fallback->respond($request);
+                    }
+
                     $status = HttpStatus::NOT_FOUND;
                     return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+
                 case Dispatcher::METHOD_NOT_ALLOWED:
                     $allowedMethods = implode(",", $match[1]);
                     $status = HttpStatus::METHOD_NOT_ALLOWED;
+
                     /** @var \Aerys\Response $response */
                     $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
                     $response->setHeader("Allow", $allowedMethods);
                     return $response;
+
                 default:
                     throw new \UnexpectedValueException(
                         "Encountered unexpected Dispatcher code"
@@ -126,10 +105,11 @@ class Router implements Responder, ServerObserver {
             }
 
             if ($this->maxCacheEntries > 0) {
-                $this->cacheDispatchResult($toMatch, $responder);
+                $this->cacheDispatchResult($toMatch, $responder, $routeArgs);
             }
         }
 
+        /** @var \Aerys\Responder $responder */
         return yield $responder->respond($request);
     }
 
@@ -141,36 +121,17 @@ class Router implements Responder, ServerObserver {
      *
      * @return self
      */
-    public function use($action) {
+    public function merge(self $router): self {
         if ($this->running) {
-            throw new \Error("Cannot add actions after the server has started");
+            throw new \Error("Cannot merge routers after the server has started");
         }
 
-        if (!($action instanceof self || $action instanceof Middleware)) {
-            throw new \Error(\sprintf(
-                "%s requires another %s instance or an instance of %s",
-                __METHOD__,
-                self::class,
-                Responder::class
-            ));
+        /* merge routes in for better performance */
+        foreach ($router->routes as $route) {
+            $this->routes[] = $route;
         }
 
-        if ($action instanceof self) {
-            /* merge routes in for better performance */
-            foreach ($action->routes as $route) {
-                $route[3] = array_merge($route[3], $this->actions);
-                $this->routes[] = $route;
-            }
-        } else {
-            $this->actions[] = $action;
-            foreach ($this->routes as &$route) {
-                $route[3][] = $action;
-            }
-        }
-
-        if ($action instanceof ServerObserver) {
-            $this->observers->attach($action);
-        }
+        $this->observers->addAll($router->observers);
 
         return $this;
     }
@@ -181,21 +142,23 @@ class Router implements Responder, ServerObserver {
      * @param string $prefix
      * @return self
      */
-    public function prefix(string $prefix) {
+    public function prefix(string $prefix): self {
+        if ($this->running) {
+            throw new \Error("Cannot alter routes after the server has started");
+        }
+
         $prefix = trim($prefix, "/");
 
         if ($prefix != "") {
             foreach ($this->routes as &$route) {
                 $route[1] = "/$prefix$route[1]";
             }
-
-            $this->actions = [];
         }
 
         return $this;
     }
 
-    private function cacheDispatchResult(string $toMatch, Responder $responder) {
+    private function cacheDispatchResult(string $toMatch, Responder $responder, array $routeArgs) {
         if ($this->cacheEntryCount < $this->maxCacheEntries) {
             $this->cacheEntryCount++;
         } else {
@@ -205,21 +168,16 @@ class Router implements Responder, ServerObserver {
         }
 
         $cacheKey = $toMatch;
-        $this->cache[$cacheKey] = $responder;
+        $this->cache[$cacheKey] = [$responder, $routeArgs];
     }
 
     /**
      * Define an application route.
      *
-     * The variadic ...$actions argument allows applications to specify multiple separate
-     * handlers for a given route URI. When matched these action callables will be invoked
-     * in order until one starts a response. If the resulting action fails to send a response
-     * the end result is a 404.
+     * Matched URI route arguments are made available to responders as a request attribute
+     * which may be accessed with the following that returns an array of strings:
      *
-     * Matched URI route arguments are made available to action callables as an array in the
-     * following Request property:
-     *
-     *     $request->locals->routeArgs array.
+     *     $request->getAttribute(Router::class)
      *
      * Route URIs ending in "/?" (without the quotes) allow a URI match with or without
      * the trailing slash. Temporary redirects are used to redirect to the canonical URI
@@ -227,12 +185,14 @@ class Router implements Responder, ServerObserver {
      *
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
-     * @param Responder|callable $responder
-     * @param Middleware ...$middleware The middleware to apply to this route
-     * @throws \Error on invalid empty parameters
-     * @return self
+     * @param \Aerys\Responder|callable $responder
+     * @param \Aerys\Middleware ...$middlewares The middleware to apply to this route
+     *
+     * @return \Aerys\Router
+     *
+     * @throws \Error If the server has started, if $method is empty, or $responder is invalid.
      */
-    public function route(string $method, string $uri, $responder, Middleware ...$middleware): Router {
+    public function route(string $method, string $uri, $responder, Middleware ...$middlewares): self {
         if ($this->running) {
             throw new \Error(
                 "Cannot add routes once the server has started"
@@ -245,8 +205,12 @@ class Router implements Responder, ServerObserver {
             );
         }
 
-        if (!\is_callable($responder) && !$responder instanceof Responder) {
-            throw new \Error(\sprintf(
+        if (\is_callable($responder)) {
+            $responder = new CallableResponder($responder);
+        }
+
+        if (!$responder instanceof Responder) {
+            throw new \TypeError(\sprintf(
                 "%s() requires a callable or an instance of %s at Argument 3",
                 __METHOD__,
                 Responder::class
@@ -257,7 +221,13 @@ class Router implements Responder, ServerObserver {
             $this->observers->attach($responder);
         }
 
-        $actions = array_merge($this->actions, $middleware);
+        foreach ($middlewares as $middleware) {
+            if ($middleware instanceof ServerObserver) {
+                $this->observers->attach($middleware);
+            }
+        }
+
+        $responder = MiddlewareResponder::create($responder, $middlewares);
 
         $uri = "/" . ltrim($uri, "/");
 
@@ -269,7 +239,9 @@ class Router implements Responder, ServerObserver {
         if (substr($uri, -2) === "/?") {
             $canonicalUri = substr($uri, 0, -2);
             $redirectUri = substr($uri, 0, -1);
-            $this->routes[] = [$method, $canonicalUri, $responder, $actions];
+
+            $this->routes[] = [$method, $canonicalUri, $responder];
+
             $this->routes[] = [$method, $redirectUri, static function (Request $request): Response {
                 $uri = $request->getUri();
                 $path = rtrim($uri->getPath(), '/');
@@ -280,40 +252,48 @@ class Router implements Responder, ServerObserver {
                 }
 
                 return new Response\TextResponse(
-                        "Canonical resource URI: {$path}",
-                        ["Location" => $redirectTo],
-                        HttpStatus::FOUND
-                    );
-            }, $actions];
+                    "Canonical resource URI: {$path}",
+                    ["Location" => $redirectTo],
+                    HttpStatus::FOUND
+                );
+            }];
         } else {
-            $this->routes[] = [$method, $uri, $responder, $actions];
+            $this->routes[] = [$method, $uri, $responder];
         }
 
         return $this;
     }
 
-    private function bootRouteTarget($responder, array $actions): array {
-        $middlewares = [];
-
-        foreach ($actions as $key => $action) {
-            if ($action instanceof Responder) {
-                throw new \Error("Responders cannot be route actions");
-            }
-
-            if ($action instanceof Middleware) {
-                $middlewares[] = $action;
-            }
+    /**
+     * Specifies an instance of Responder (or callable) that is used if no routes match.
+     * If no fallback is given, a 404 response is returned from respond() when no matching routes are found.
+     *
+     * @param \Aerys\Responder|callable $responder
+     *
+     * @return \Aerys\Router
+     *
+     * @throws \TypeError
+     */
+    public function fallback($responder): self {
+        if ($this->running) {
+            throw new \Error("Cannot add fallback responder after the server has started");
         }
 
-        if (is_callable($responder)) {
+        if (\is_callable($responder)) {
             $responder = new CallableResponder($responder);
         }
 
         if (!$responder instanceof Responder) {
-            throw new \Error("Responder must be callable or an instance of " . Responder::class);
+            throw new \TypeError(\sprintf(
+                "%s() requires a callable or an instance of %s",
+                __METHOD__,
+                Responder::class
+            ));
         }
 
-        return [$responder, $middlewares];
+        $this->fallback = $responder;
+
+        return $this;
     }
 
     public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
@@ -331,10 +311,15 @@ class Router implements Responder, ServerObserver {
 
         $this->errorHandler = $errorHandler;
 
+        if ($this->fallback !== null && $this->fallback instanceof ServerObserver) {
+            $this->observers->attach($this->fallback);
+        }
+
         $promises = [];
         foreach ($this->observers as $observer) {
             $promises[] = $observer->onStart($server, $logger, $errorHandler);
         }
+
         return Promise\all($promises);
     }
 
@@ -346,13 +331,13 @@ class Router implements Responder, ServerObserver {
         foreach ($this->observers as $observer) {
             $promises[] = $observer->onStop($server);
         }
+
         return Promise\all($promises);
     }
 
     private function buildRouter(RouteCollector $rc) {
-        foreach ($this->routes as list($method, $uri, $responder, $actions)) {
-            list($responder, $middlewares) = $this->bootRouteTarget($responder, $actions);
-            $rc->addRoute($method, $uri, [$responder, $middlewares]);
+        foreach ($this->routes as list($method, $uri, $responder)) {
+            $rc->addRoute($method, $uri, $responder);
         }
     }
 }

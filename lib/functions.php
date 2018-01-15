@@ -9,16 +9,12 @@ use Aerys\Websocket\Websocket;
 /**
  * Create a router for use in a Host instance.
  *
- * @param array $options Router options
+ * @param int $maxCacheEntries Maximum number of route matches to cache.
+ *
  * @return \Aerys\Router
  */
-function router(array $options = []): Router {
-    $router = new Router;
-    foreach ($options as $key => $value) {
-        $router->setOption($key, $value);
-    }
-
-    return $router;
+function router(int $maxCacheEntries = Router::DEFAULT_MAX_CACHE_ENTRIES): Router {
+    return new Router($maxCacheEntries);
 }
 
 /**

@@ -20,7 +20,7 @@ class CallableResponder implements Responder {
     /**
      * {@inheritdoc}
      */
-    public function respond(Request $request, ...$args): Promise {
-        return call($this->callable, $request, ...$args);
+    public function respond(Request $request): Promise {
+        return call($this->callable, $request);
     }
 }
