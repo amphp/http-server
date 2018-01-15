@@ -215,15 +215,6 @@ class ServerTest extends TestCase {
         $this->assertSame(HttpStatus::INTERNAL_SERVER_ERROR, $response->getStatus());
     }
 
-    public function testNotFound() {
-        $ireq = $this->newIreq();
-
-        /** @var \Aerys\Response $response */
-        list($response) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], new TryResponder);
-
-        $this->assertSame(HttpStatus::NOT_FOUND, $response->getStatus());
-    }
-
     public function startServer(callable $parser, bool $tls, bool $unixSocket = false) {
         if ($unixSocket) {
             $address = tempnam(sys_get_temp_dir(), "aerys_server_test");

@@ -17,7 +17,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class RouterTest extends TestCase {
-    public function mockServer($state): Server {
+    public function mockServer(): Server {
         return $this->getMockBuilder(Server::class)
             ->setConstructorArgs([new Options, $this->createMock(PsrLogger::class)])
             ->getMock();
@@ -43,7 +43,7 @@ class RouterTest extends TestCase {
 
     public function testUpdateFailsIfStartedWithoutAnyRoutes() {
         $router = new Router;
-        $mock = $this->mockServer(Server::STARTING);
+        $mock = $this->mockServer();
         $result = $router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
         $this->assertInstanceOf("Amp\\Failure", $result);
         $i = 0;
@@ -57,12 +57,12 @@ class RouterTest extends TestCase {
 
     public function testUseCanonicalRedirector() {
         $router = new Router;
-        $router->route("GET", "/{name}/{age}/?", function (Request $req, array $args) use (&$routeArgs) {
-            $routeArgs = $args;
+        $router->route("GET", "/{name}/{age}/?", function (Request $req) use (&$routeArgs) {
+            $routeArgs = $req->getAttribute(Router::class);
             return new Response;
         });
         $router->prefix("/mediocre-dev");
-        $mock = $this->mockServer(Server::STARTING);
+        $mock = $this->mockServer();
         $result = $router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
 
         $ireq = new Internal\ServerRequest;

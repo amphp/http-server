@@ -242,7 +242,7 @@ class Router implements Responder, ServerObserver {
 
             $this->routes[] = [$method, $canonicalUri, $responder];
 
-            $this->routes[] = [$method, $redirectUri, static function (Request $request): Response {
+            $this->routes[] = [$method, $redirectUri, new CallableResponder(static function (Request $request): Response {
                 $uri = $request->getUri();
                 $path = rtrim($uri->getPath(), '/');
                 if ($uri->getQuery()) {
@@ -256,7 +256,7 @@ class Router implements Responder, ServerObserver {
                     ["Location" => $redirectTo],
                     HttpStatus::FOUND
                 );
-            }];
+            })];
         } else {
             $this->routes[] = [$method, $uri, $responder];
         }
