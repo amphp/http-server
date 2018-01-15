@@ -740,16 +740,16 @@ class Server {
         yield from $this->sendResponse($ireq, $response);
     }
 
-    private function setTrace(Internal\ServerRequest $ireq) {
+    private function getTrace(Internal\ServerRequest $ireq): string {
         if (\is_string($ireq->trace)) {
-            $ireq->locals['aerys.trace'] = $ireq->trace;
-        } else {
-            $trace = "{$ireq->method} {$ireq->uri} {$ireq->protocol}\r\n";
-            foreach ($ireq->trace as list($header, $value)) {
-                $trace .= "$header: $value\r\n";
-            }
-            $ireq->locals['aerys.trace'] = $trace;
+            return $ireq->trace;
         }
+
+        $trace = "{$ireq->method} {$ireq->uri} {$ireq->protocol}\r\n";
+        foreach ($ireq->trace as list($header, $value)) {
+            $trace .= "$header: $value\r\n";
+        }
+        return $trace;
     }
 
     private function respond(Internal\ServerRequest $ireq): Promise {
@@ -758,7 +758,6 @@ class Server {
         } elseif (!\in_array($ireq->method, $this->options->allowedMethods)) {
             $generator = $this->sendResponse($ireq, $this->makePreAppMethodNotAllowedResponse());
         } elseif ($ireq->method === "TRACE") {
-            $this->setTrace($ireq);
             $generator = $this->sendResponse($ireq, $this->makePreAppTraceResponse($ireq));
         } elseif ($ireq->method === "OPTIONS" && $ireq->target === "*") {
             $generator = $this->sendResponse($ireq, $this->makePreAppOptionsResponse());
@@ -787,7 +786,7 @@ class Server {
     }
 
     private function makePreAppTraceResponse(Internal\ServerRequest $request): Response {
-        $stream = new InMemoryStream($request->locals['aerys.trace']);
+        $stream = new InMemoryStream($this->getTrace($request));
         return new Response($stream, ["Content-Type" => "message/http"]);
     }
 
