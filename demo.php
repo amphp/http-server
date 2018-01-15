@@ -60,11 +60,6 @@ return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $co
             }
             return new Response\HtmlResponse("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
         }))
-        ->route("GET", "/favicon.ico", new CallableResponder(function (Request $request): Response {
-            $status = 404;
-            $body = Aerys\makeGenericBody($status);
-            return new Response\HtmlResponse($body, [], $status);
-        }))
         ->route("ZANZIBAR", "/zanzibar", new CallableResponder(function (Request $request): Response {
             return new Response\HtmlResponse("<html><body><h1>ZANZIBAR!</h1></body></html>");
         }));
@@ -95,15 +90,7 @@ return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $co
 
     // If none of our routes match try to serve a static file
     $root = Aerys\root($docrootPath = __DIR__);
+    $router->fallback($root);
 
-    // If no static files match fallback to this
-    $fallback = function (Request $req): Response {
-        return new Response\HtmlResponse("<html><body><h1>Fallback \o/</h1></body></html>");
-    };
-
-    return (new Server($options, $logger))
-        ->expose("*", 1337)
-        ->use($router)
-        ->use($root)
-        ->use($fallback);
+    return (new Server($router, $options, $logger))->expose("*", 1337);
 };

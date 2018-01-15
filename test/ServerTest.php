@@ -12,7 +12,6 @@ use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Response;
 use Aerys\Server;
-use Aerys\TryResponder;
 use Amp\ByteStream\InMemoryStream;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
@@ -86,16 +85,12 @@ class ServerTest extends TestCase {
             }
         };
 
-        $logger = new class extends Logger {
-            protected function output(string $message) { /* /dev/null */
-            }
-        };
+        $logger = $this->createMock(Logger::class);
 
         $options = new Options;
         $options->debug = true;
 
-        $server = new Server($options, $logger, $driver);
-        $server->use($responder);
+        $server = new Server($responder, $options, $logger, $driver);
         $server->start();
 
         foreach ($middlewares as $middleware) {
@@ -263,7 +258,7 @@ class ServerTest extends TestCase {
         $options = new Options;
         $options->debug = true;
 
-        $server = new Server($options, $logger, $driver);
+        $server = new Server($this->createMock(Responder::class), $options, $logger, $driver);
 
         $server->expose($address, $port);
 
@@ -365,13 +360,5 @@ class ServerTest extends TestCase {
             yield $deferred->promise();
             Loop::stop();
         });
-    }
-
-    /**
-     * @expectedException \TypeError
-     * @expectedExceptionMessage Aerys\Server::use() requires
-     */
-    public function testBadUse() {
-        (new Server)->use(1);
     }
 }

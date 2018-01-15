@@ -9,6 +9,7 @@ use Aerys\Internal;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
+use Aerys\Responder;
 use Aerys\Response;
 use Aerys\Router;
 use Aerys\Server;
@@ -21,7 +22,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 class RouterTest extends TestCase {
     public function mockServer(): Server {
         return $this->getMockBuilder(Server::class)
-            ->setConstructorArgs([new Options, $this->createMock(PsrLogger::class)])
+            ->setConstructorArgs([$this->createMock(Responder::class), new Options, $this->createMock(PsrLogger::class)])
             ->getMock();
     }
 

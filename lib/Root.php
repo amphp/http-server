@@ -97,27 +97,15 @@ class Root implements Responder, ServerObserver {
      * Specifies an instance of Responder (or callable) that is used if no file exists for the requested URI.
      * If no fallback is given, a 404 response is returned from respond() when the file does not exist.
      *
-     * @param \Aerys\Responder|callable $responder
+     * @param Responder $responder
      *
-     * @return \Aerys\Router
+     * @return Router
      *
      * @throws \TypeError
      */
-    public function fallback($responder): self {
+    public function fallback(Responder $responder): self {
         if ($this->running) {
             throw new \Error("Cannot add fallback responder after the server has started");
-        }
-
-        if (\is_callable($responder)) {
-            $responder = new CallableResponder($responder);
-        }
-
-        if (!$responder instanceof Responder) {
-            throw new \TypeError(\sprintf(
-                "%s() requires a callable or an instance of %s",
-                __METHOD__,
-                Responder::class
-            ));
         }
 
         $this->fallback = $responder;

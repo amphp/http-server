@@ -283,8 +283,7 @@ class WebsocketParserTest extends TestCase {
             $options = new Options;
             $options->debug = true;
 
-            $server = new Server($options, $logger, $driver);
-            $server->use($ws);
+            $server = new Server($ws, $options, $logger, $driver);
             $server->expose("::", 9001);
             yield $server->start();
 

@@ -100,11 +100,16 @@ class Server {
     private $onResponseDataDone;
 
     /**
+     * @param \Aerys\Responder $responder
      * @param \Aerys\Options|null $options
      * @param \Psr\Log\LoggerInterface|null $logger Null automatically uses an instance of \Aerys\ConsoleLogger.
      * @param \Aerys\Internal\HttpDriver $driver Internal parameter used for testing.
+     *
+     * @throws \Error If $responder is not a callable or instance of Responder.
      */
-    public function __construct(Options $options = null, PsrLogger $logger = null, Internal\HttpDriver $driver = null) {
+    public function __construct(Responder $responder, Options $options = null, PsrLogger $logger = null, Internal\HttpDriver $driver = null) {
+        $this->responder = $responder;
+
         $this->host = new Internal\Host;
         $this->immutableOptions = $options ?? new Options;
         $this->options = $this->immutableOptions->export();
@@ -114,6 +119,10 @@ class Server {
         $this->observers->attach($this->ticker);
         $this->ticker->use($this->callableFromInstanceMethod("timeoutKeepAlives"));
         $this->nullBody = new NullBody;
+
+        if ($this->responder instanceof ServerObserver) {
+            $this->observers->attach($this->responder);
+        }
 
         $this->errorHandler = new DefaultErrorHandler;
 
@@ -127,47 +136,6 @@ class Server {
 
         $this->httpDriver = $driver ?? new Internal\Http1Driver;
         $this->httpDriver->setup($this->createHttpDriverHandlers(), $this->callableFromInstanceMethod("writeResponse"));
-    }
-
-    /**
-     * Use a callable request action, Responder, or Middleware.
-     *
-     * Actions are invoked to service requests in the order in which they are added.
-     *
-     * If the action is an instance of ServerObserver it is automatically attached.
-     *
-     * @param callable|Responder|Middleware $action
-     *
-     * @return self
-     *
-     * @throws \Error If $action is not one of the types above.
-     */
-    public function use($action): self {
-        if ($this->state) {
-            throw new \Error("Cannot add actions after the server has been started");
-        }
-
-        if (!\is_callable($action)
-            && !$action instanceof Responder
-            && !$action instanceof Middleware
-        ) {
-            throw new \TypeError(
-                \sprintf(
-                    "%s() requires a callable action or an instance of %s or %s",
-                    __METHOD__,
-                    Responder::class,
-                    Middleware::class
-                )
-            );
-        }
-
-        $this->actions[] = $action;
-
-        if ($action instanceof ServerObserver) {
-            $this->observers->attach($action);
-        }
-
-        return $this;
     }
 
     /**
@@ -274,8 +242,6 @@ class Server {
     public function start(callable $bindSockets = null): Promise {
         try {
             if ($this->state === self::STOPPED) {
-                $this->responder = $this->buildResponder();
-
                 return new Coroutine($this->doStart($bindSockets ?? \Amp\coroutine(function ($addrCtxMap, $socketBinder) {
                     $serverSockets = [];
                     foreach ($addrCtxMap as $address => $context) {
@@ -291,42 +257,6 @@ class Server {
         } catch (\Throwable $uncaught) {
             return new Failure($uncaught);
         }
-    }
-
-    /**
-     * Returns an instance of \Aerys\Responder built from the responders and middleware used on this server.
-     *
-     * @return \Aerys\Responder
-     */
-    private function buildResponder(): Responder {
-        $responders = [];
-        $middlewares = [];
-
-        foreach ($this->actions as $key => $action) {
-            if ($action instanceof Middleware) {
-                $middlewares[] = $action;
-            }
-
-            if (\is_callable($action)) {
-                $action = new CallableResponder($action);
-            }
-
-            if ($action instanceof Responder) {
-                $responders[] = $action;
-            }
-        }
-
-        if (empty($responders)) {
-            $responder = new CallableResponder(static function (): Response {
-                return new Response\HtmlResponse("<html><body><h1>It works!</h1></body>");
-            });
-        } elseif (\count($responders) === 1) {
-            $responder = $responders[0];
-        } else {
-            $responder = new TryResponder($responders);
-        }
-
-        return MiddlewareResponder::create($responder, $middlewares);
     }
 
     private function createHttpDriverHandlers() {

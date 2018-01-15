@@ -3,13 +3,14 @@
 namespace Aerys;
 
 use Amp\Promise;
+use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 
 /**
  * Calls each given responder until a non-404 response is returned from a responder, returning that response. If all
  * responders are exhausted, the final 404 response is returned.
  */
-final class TryResponder implements Responder {
+final class ResponderStack implements Responder, ServerObserver {
     /** @var \Aerys\Responder[] */
     private $responders;
 
@@ -51,5 +52,27 @@ final class TryResponder implements Responder {
 
             return $response;
         });
+    }
+
+    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+        $promises = [];
+        foreach ($this->responders as $responder) {
+            if ($responder instanceof ServerObserver) {
+                $promises[] = $responder->onStart($server, $logger, $errorHandler);
+            }
+        }
+
+        return Promise\all($promises);
+    }
+
+    public function onStop(Server $server): Promise {
+        $promises = [];
+        foreach ($this->responders as $responder) {
+            if ($responder instanceof ServerObserver) {
+                $promises[] = $responder->onStop($server);
+            }
+        }
+
+        return Promise\all($promises);
     }
 }

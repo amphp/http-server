@@ -32,15 +32,11 @@ class ClientTest extends TestCase {
 
         $handler = new CallableResponder($handler);
 
-        $logger = new class extends Logger {
-            protected function output(string $message) { /* /dev/null */
-            }
-        };
+        $logger = $this->createMock(Logger::class);
         $options = new Options;
         $options->debug = true;
-        $server = new Server($options, $logger);
+        $server = new Server($handler, $options, $logger);
         $server->expose("*", $port);
-        $server->use($handler);
         $server->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
 
         yield $server->start();
