@@ -31,7 +31,7 @@ class Router implements Responder, ServerObserver {
     private $routes = [];
     private $cache = [];
     private $cacheEntryCount = 0;
-    private $maxCacheEntries = self::DEFAULT_MAX_CACHE_ENTRIES;
+    private $maxCacheEntries;
 
     /**
      * @param int $maxCacheEntries Maximum number of route matches to cache.
@@ -48,12 +48,11 @@ class Router implements Responder, ServerObserver {
     }
 
     /**
-     * Route a request.
+     * Route a request and dispatch it to the appropriate handler.
      *
-     * @param \Aerys\Request $request
-     * @param callable $next
+     * @param Request $request
      *
-     * @return \Amp\Promise<\Aerys\Response>
+     * @return Promise<\Aerys\Response>
      */
     public function respond(Request $request): Promise {
         return new Coroutine($this->dispatch($request));
@@ -114,10 +113,11 @@ class Router implements Responder, ServerObserver {
     }
 
     /**
-     * Import a router or attach a Middleware to all routes.
-     * Router imports do *not* import the options.
+     * Merge another router's routes into this router.
      *
-     * @param Middleware|self $action
+     * Doing so might improve performance for request dispatching.
+     *
+     * @param self $router
      *
      * @return self
      */
@@ -126,7 +126,6 @@ class Router implements Responder, ServerObserver {
             throw new \Error("Cannot merge routers after the server has started");
         }
 
-        /* merge routes in for better performance */
         foreach ($router->routes as $route) {
             $this->routes[] = $route;
         }
@@ -137,7 +136,7 @@ class Router implements Responder, ServerObserver {
     }
 
     /**
-     * Prefix all the (already defined) routes with a given prefix.
+     * Prefix all currently defined routes with a given prefix.
      *
      * @param string $prefix
      * @return self
@@ -147,9 +146,9 @@ class Router implements Responder, ServerObserver {
             throw new \Error("Cannot alter routes after the server has started");
         }
 
-        $prefix = trim($prefix, "/");
+        $prefix = \trim($prefix, "/");
 
-        if ($prefix != "") {
+        if ($prefix !== "") {
             foreach ($this->routes as &$route) {
                 $route[1] = "/$prefix$route[1]";
             }
@@ -186,13 +185,12 @@ class Router implements Responder, ServerObserver {
      * @param string $method The HTTP method verb for which this route applies
      * @param string $uri The string URI
      * @param \Aerys\Responder|callable $responder
-     * @param \Aerys\Middleware ...$middlewares The middleware to apply to this route
      *
      * @return \Aerys\Router
      *
      * @throws \Error If the server has started, if $method is empty, or $responder is invalid.
      */
-    public function route(string $method, string $uri, $responder, Middleware ...$middlewares): self {
+    public function route(string $method, string $uri, $responder): self {
         if ($this->running) {
             throw new \Error(
                 "Cannot add routes once the server has started"
@@ -221,15 +219,7 @@ class Router implements Responder, ServerObserver {
             $this->observers->attach($responder);
         }
 
-        foreach ($middlewares as $middleware) {
-            if ($middleware instanceof ServerObserver) {
-                $this->observers->attach($middleware);
-            }
-        }
-
-        $responder = MiddlewareResponder::create($responder, $middlewares);
-
-        $uri = "/" . ltrim($uri, "/");
+        $uri = "/" . \ltrim($uri, "/");
 
         // Special-case, otherwise we redirect just to the same URI again
         if ($uri === "/?") {
@@ -237,14 +227,15 @@ class Router implements Responder, ServerObserver {
         }
 
         if (substr($uri, -2) === "/?") {
-            $canonicalUri = substr($uri, 0, -2);
-            $redirectUri = substr($uri, 0, -1);
+            $canonicalUri = \substr($uri, 0, -2);
+            $redirectUri = \substr($uri, 0, -1);
 
             $this->routes[] = [$method, $canonicalUri, $responder];
 
             $this->routes[] = [$method, $redirectUri, new CallableResponder(static function (Request $request): Response {
                 $uri = $request->getUri();
-                $path = rtrim($uri->getPath(), '/');
+                $path = \rtrim($uri->getPath(), '/');
+
                 if ($uri->getQuery()) {
                     $redirectTo = $path . "?" . $uri->getQuery();
                 } else {
@@ -252,7 +243,7 @@ class Router implements Responder, ServerObserver {
                 }
 
                 return new Response\TextResponse(
-                    "Canonical resource URI: {$path}",
+                    "Canonical resource location: {$path}",
                     ["Location" => $redirectTo],
                     HttpStatus::FOUND
                 );
@@ -311,7 +302,7 @@ class Router implements Responder, ServerObserver {
 
         $this->errorHandler = $errorHandler;
 
-        if ($this->fallback !== null && $this->fallback instanceof ServerObserver) {
+        if ($this->fallback instanceof ServerObserver) {
             $this->observers->attach($this->fallback);
         }
 

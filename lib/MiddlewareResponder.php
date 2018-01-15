@@ -3,8 +3,10 @@
 namespace Aerys;
 
 use Amp\Promise;
+use Amp\Success;
+use Psr\Log\LoggerInterface as PsrLogger;
 
-class MiddlewareResponder implements Responder {
+class MiddlewareResponder implements Responder, ServerObserver {
     /** @var \Aerys\Middleware */
     private $middleware;
 
@@ -12,25 +14,19 @@ class MiddlewareResponder implements Responder {
     private $next;
 
     /**
-     * @param \Aerys\Responder $responder
+     * @param \Aerys\Responder    $responder
      * @param \Aerys\Middleware[] $middlewares Iteration order determines the order middlewares are applied.
      *
      * @return \Aerys\Responder May return $responder if $middlewares is empty.
-     *
-     * @throws \TypeError If a non-Middleware is found in $middlewares.
      */
     public static function create(Responder $responder, array $middlewares): Responder {
-        if (empty($middlewares)) {
+        if (!$middlewares) {
             return $responder;
         }
 
         $middleware = \end($middlewares);
 
         while ($middleware) {
-            if (!$middleware instanceof Middleware) {
-                throw new \TypeError("The array of middlewares must contain only instances of " . Middleware::class);
-            }
-
             $responder = new self($middleware, $responder);
             $middleware = \prev($middlewares);
         }
@@ -46,5 +42,23 @@ class MiddlewareResponder implements Responder {
     /** {@inheritdoc} */
     public function respond(Request $request): Promise {
         return $this->middleware->process($request, $this->next);
+    }
+
+    /** @inheritdoc */
+    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+        if ($this->next instanceof ServerObserver) {
+            return $this->next->onStart($server, $logger, $errorHandler);
+        }
+
+        return new Success;
+    }
+
+    /** @inheritdoc */
+    public function onStop(Server $server): Promise {
+        if ($this->next instanceof ServerObserver) {
+            return $this->next->onStop($server);
+        }
+
+        return new Success;
     }
 }

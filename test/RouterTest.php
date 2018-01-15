@@ -11,6 +11,7 @@ use Aerys\Request;
 use Aerys\Response;
 use Aerys\Router;
 use Aerys\Server;
+use Amp\Failure;
 use Amp\Promise;
 use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
@@ -45,7 +46,7 @@ class RouterTest extends TestCase {
         $router = new Router;
         $mock = $this->mockServer();
         $result = $router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
-        $this->assertInstanceOf("Amp\\Failure", $result);
+        $this->assertInstanceOf(Failure::class, $result);
         $i = 0;
         $result->onResolve(function ($e, $r) use (&$i) {
             $i++;
@@ -63,7 +64,7 @@ class RouterTest extends TestCase {
         });
         $router->prefix("/mediocre-dev");
         $mock = $this->mockServer();
-        $result = $router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
+        Promise\wait($router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class)));
 
         $ireq = new Internal\ServerRequest;
         $request = new Request($ireq);
