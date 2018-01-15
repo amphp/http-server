@@ -6,6 +6,7 @@ if (!class_exists(Aerys\Process::class, false)) {
     exit(1);
 }
 
+use Aerys\CallableResponder;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\Router;
@@ -26,47 +27,47 @@ return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $co
     /* --- http://localhost:1337/ ------------------------------------------------------------------- */
 
     $router = Aerys\router()
-        ->route("GET", "/", function (Request $request): Response {
+        ->route("GET", "/", new CallableResponder(function (Request $request): Response {
             return new Response\HtmlResponse("<html><body><h1>Hello, world.</h1></body></html>");
-        })
-        ->route("GET", "/router/{myarg}", function (Request $request): Response {
+        }))
+        ->route("GET", "/router/{myarg}", new CallableResponder(function (Request $request): Response {
             $routeArgs = $request->getAttribute(Router::class);
             $body = "<html><body><h1>Route Args</h1><p>myarg =&gt; " . $routeArgs['myarg'] . "</p></body></html>";
             return new Response\HtmlResponse($body);
-        })
-        ->route("POST", "/", function (Request $request): Response {
+        }))
+        ->route("POST", "/", new CallableResponder(function (Request $request): Response {
             return new Response\HtmlResponse("<html><body><h1>Hello, world (POST).</h1></body></html>");
-        })
-        ->route("GET", "error1", function (Request $request): Response {
+        }))
+        ->route("GET", "error1", new CallableResponder(function (Request $request): Response {
             // ^ the router normalizes the leading forward slash in your URIs
             $nonexistent->methodCall();
-        })
-        ->route("GET", "/error2", function (Request $request): Response {
+        }))
+        ->route("GET", "/error2", new CallableResponder(function (Request $request): Response {
             throw new Exception("wooooooooo!");
-        })
-        ->route("GET", "/directory/?", function (Request $request) {
+        }))
+        ->route("GET", "/directory/?", new CallableResponder(function (Request $request) {
             // The trailing "/?" in the URI allows this route to match /directory OR /directory/
             return new Response\HtmlResponse("<html><body><h1>Dual directory match</h1></body></html>");
-        })
-        ->route("POST", "/body1", function (Request $request): \Generator {
+        }))
+        ->route("POST", "/body1", new CallableResponder(function (Request $request): \Generator {
             $body = yield $request->getBody()->buffer();
             return new Response\HtmlResponse("<html><body><h1>Buffer Body Echo:</h1><pre>{$body}</pre></body></html>");
-        })
-        ->route("POST", "/body2", function (Request $request): \Generator {
+        }))
+        ->route("POST", "/body2", new CallableResponder(function (Request $request): \Generator {
             $body = "";
             while (null != $chunk = yield $request->getBody()->read()) {
                 $body .= $chunk;
             }
             return new Response\HtmlResponse("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
-        })
-        ->route("GET", "/favicon.ico", function (Request $request): Response {
+        }))
+        ->route("GET", "/favicon.ico", new CallableResponder(function (Request $request): Response {
             $status = 404;
             $body = Aerys\makeGenericBody($status);
             return new Response\HtmlResponse($body, [], $status);
-        })
-        ->route("ZANZIBAR", "/zanzibar", function (Request $request): Response {
+        }))
+        ->route("ZANZIBAR", "/zanzibar", new CallableResponder(function (Request $request): Response {
             return new Response\HtmlResponse("<html><body><h1>ZANZIBAR!</h1></body></html>");
-        });
+        }));
 
     $websocket = Aerys\websocket(new class implements Websocket {
         /** @var Endpoint */

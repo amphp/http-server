@@ -22,7 +22,7 @@ class Router implements Responder, ServerObserver {
     /** @var \Aerys\ErrorHandler */
     private $errorHandler;
 
-    /** @var \Aerys\Responder|null */
+    /** @var Responder|null */
     private $fallback;
 
     /** @var \SplObjectStorage */
@@ -108,7 +108,7 @@ class Router implements Responder, ServerObserver {
             }
         }
 
-        /** @var \Aerys\Responder $responder */
+        /** @var Responder $responder */
         return yield $responder->respond($request);
     }
 
@@ -182,15 +182,15 @@ class Router implements Responder, ServerObserver {
      * the trailing slash. Temporary redirects are used to redirect to the canonical URI
      * (with a trailing slash) to avoid search engine duplicate content penalties.
      *
-     * @param string $method The HTTP method verb for which this route applies
-     * @param string $uri The string URI
-     * @param \Aerys\Responder|callable $responder
+     * @param string    $method The HTTP method verb for which this route applies
+     * @param string    $uri The string URI
+     * @param Responder $responder
      *
-     * @return \Aerys\Router
+     * @return Router
      *
      * @throws \Error If the server has started, if $method is empty, or $responder is invalid.
      */
-    public function route(string $method, string $uri, $responder): self {
+    public function route(string $method, string $uri, Responder $responder): self {
         if ($this->running) {
             throw new \Error(
                 "Cannot add routes once the server has started"
@@ -201,18 +201,6 @@ class Router implements Responder, ServerObserver {
             throw new \Error(
                 __METHOD__ . "() requires a non-empty string HTTP method at Argument 1"
             );
-        }
-
-        if (\is_callable($responder)) {
-            $responder = new CallableResponder($responder);
-        }
-
-        if (!$responder instanceof Responder) {
-            throw new \TypeError(\sprintf(
-                "%s() requires a callable or an instance of %s at Argument 3",
-                __METHOD__,
-                Responder::class
-            ));
         }
 
         if ($responder instanceof ServerObserver) {
@@ -259,27 +247,15 @@ class Router implements Responder, ServerObserver {
      * Specifies an instance of Responder (or callable) that is used if no routes match.
      * If no fallback is given, a 404 response is returned from respond() when no matching routes are found.
      *
-     * @param \Aerys\Responder|callable $responder
+     * @param Responder $responder
      *
-     * @return \Aerys\Router
+     * @return Router
      *
      * @throws \TypeError
      */
-    public function fallback($responder): self {
+    public function fallback(Responder $responder): self {
         if ($this->running) {
             throw new \Error("Cannot add fallback responder after the server has started");
-        }
-
-        if (\is_callable($responder)) {
-            $responder = new CallableResponder($responder);
-        }
-
-        if (!$responder instanceof Responder) {
-            throw new \TypeError(\sprintf(
-                "%s() requires a callable or an instance of %s",
-                __METHOD__,
-                Responder::class
-            ));
         }
 
         $this->fallback = $responder;
@@ -297,7 +273,9 @@ class Router implements Responder, ServerObserver {
         $this->running = true;
 
         $this->routeDispatcher = simpleDispatcher(function (RouteCollector $rc) {
-            $this->buildRouter($rc);
+            foreach ($this->routes as list($method, $uri, $responder)) {
+                $rc->addRoute($method, $uri, $responder);
+            }
         });
 
         $this->errorHandler = $errorHandler;
@@ -324,11 +302,5 @@ class Router implements Responder, ServerObserver {
         }
 
         return Promise\all($promises);
-    }
-
-    private function buildRouter(RouteCollector $rc) {
-        foreach ($this->routes as list($method, $uri, $responder)) {
-            $rc->addRoute($method, $uri, $responder);
-        }
     }
 }

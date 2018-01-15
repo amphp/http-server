@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\CallableResponder;
 use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
 use Aerys\Internal;
@@ -30,16 +31,7 @@ class RouterTest extends TestCase {
      */
     public function testRouteThrowsOnEmptyMethodString() {
         $router = new Router;
-        $router->route("", "/uri", function () {});
-    }
-
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Aerys\Router::route() requires a callable or an instance of
-     */
-    public function testRouteThrowsOnInvalidResponder() {
-        $router = new Router;
-        $router->route("GET", "/uri", 1);
+        $router->route("", "/uri", new CallableResponder(function () {}));
     }
 
     public function testUpdateFailsIfStartedWithoutAnyRoutes() {
@@ -48,7 +40,7 @@ class RouterTest extends TestCase {
         $result = $router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
         $this->assertInstanceOf(Failure::class, $result);
         $i = 0;
-        $result->onResolve(function ($e, $r) use (&$i) {
+        $result->onResolve(function (\Throwable $e) use (&$i) {
             $i++;
             $this->assertInstanceOf("Error", $e);
             $this->assertSame("Router start failure: no routes registered", $e->getMessage());
@@ -58,10 +50,10 @@ class RouterTest extends TestCase {
 
     public function testUseCanonicalRedirector() {
         $router = new Router;
-        $router->route("GET", "/{name}/{age}/?", function (Request $req) use (&$routeArgs) {
+        $router->route("GET", "/{name}/{age}/?", new CallableResponder(function (Request $req) use (&$routeArgs) {
             $routeArgs = $req->getAttribute(Router::class);
             return new Response;
-        });
+        }));
         $router->prefix("/mediocre-dev");
         $mock = $this->mockServer();
         Promise\wait($router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class)));
