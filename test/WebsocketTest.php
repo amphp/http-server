@@ -3,6 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Body;
+use Aerys\DefaultErrorHandler;
 use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
 use Aerys\Internal;
@@ -15,13 +16,11 @@ use Aerys\Websocket\Endpoint;
 use Aerys\Websocket\Internal\Rfc6455Gateway;
 use Aerys\Websocket\Message;
 use Aerys\Websocket\Websocket;
-use Amp\ByteStream\IteratorStream;
+use Amp\ByteStream\InMemoryStream;
 use Amp\Deferred;
 use Amp\Delayed;
-use Amp\Emitter;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
-use Amp\Promise;
 use Amp\Socket\ClientSocket;
 
 class NullWebsocket implements Websocket {
@@ -198,20 +197,23 @@ class WebsocketTest extends TestCase {
      * @dataProvider provideHandshakes
      */
     public function testHandshake(Internal\ServerRequest $ireq, int $status, array $expected = []) {
-        $logger = new class extends Logger {
-            protected function output(string $message) { /* /dev/null */
-            }
-        };
-        $ws = $this->createMock(Websocket::class);
-        $ws->expects($status === 101 ? $this->once() : $this->never())
-            ->method("onHandshake");
-        $gateway = new Rfc6455Gateway($ws);
-        $response = Promise\wait($gateway->respond(new Request($ireq)));
+        Loop::run(function () use ($ireq, $status, $expected) {
+            $server = $this->createMock(Server::class);
+            $logger = $this->createMock(Logger::class);
+            $ws = $this->createMock(Websocket::class);
+            $ws->expects($status === 101 ? $this->once() : $this->never())
+                ->method("onHandshake");
+            $gateway = new Rfc6455Gateway($ws);
+            yield $gateway->onStart($server, $logger, new DefaultErrorHandler);
+            $response = yield $gateway->respond(new Request($ireq));
 
-        $this->assertEquals($expected, array_intersect_key($response->getHeaders(), $expected));
-        if ($status === 101) {
-            $this->assertNull(Promise\wait($response->getBody()->read()));
-        }
+            $this->assertEquals($expected, array_intersect_key($response->getHeaders(), $expected));
+            if ($status === 101) {
+                $this->assertNull(yield $response->getBody()->read());
+            }
+
+            yield $gateway->onStop($server);
+        });
     }
 
     public function provideHandshakes() {
@@ -247,7 +249,7 @@ class WebsocketTest extends TestCase {
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
 
         $_ireq = clone $ireq;
-        $_ireq->body = new Body(new IteratorStream((new Emitter)->iterate()));
+        $_ireq->body = new Body(new InMemoryStream("Non-empty body"));
         $return[] = [$_ireq, HttpStatus::BAD_REQUEST];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->

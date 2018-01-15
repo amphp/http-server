@@ -258,17 +258,11 @@ class Server {
      * @return void
      */
     public function attach(ServerObserver $observer) {
-        $this->observers->attach($observer);
-    }
+        if ($this->state) {
+            throw new \Error("Cannot attach observers after the server has started");
+        }
 
-    /**
-     * Detach an Observer.
-     *
-     * @param ServerObserver $observer
-     * @return void
-     */
-    public function detach(ServerObserver $observer) {
-        $this->observers->detach($observer);
+        $this->observers->attach($observer);
     }
 
     /**

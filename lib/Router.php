@@ -5,14 +5,13 @@ namespace Aerys;
 use Amp\Coroutine;
 use Amp\Failure;
 use Amp\Promise;
-use Amp\Success;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function FastRoute\simpleDispatcher;
 
 class Router implements Responder, ServerObserver {
-    private $state = Server::STOPPED;
+    private $running = false;
 
     /** @var \FastRoute\Dispatcher */
     private $routeDispatcher;
@@ -20,11 +19,18 @@ class Router implements Responder, ServerObserver {
     /** @var \Aerys\ErrorHandler */
     private $errorHandler;
 
+    /** @var \SplObjectStorage */
+    private $observers;
+
     private $routes = [];
     private $actions = [];
     private $cache = [];
     private $cacheEntryCount = 0;
     private $maxCacheEntries = 512;
+
+    public function __construct() {
+        $this->observers = new \SplObjectStorage;
+    }
 
     /**
      * Set a router option.
@@ -136,7 +142,7 @@ class Router implements Responder, ServerObserver {
      * @return self
      */
     public function use($action) {
-        if ($this->state) {
+        if ($this->running) {
             throw new \Error("Cannot add actions after the server has started");
         }
 
@@ -160,6 +166,10 @@ class Router implements Responder, ServerObserver {
             foreach ($this->routes as &$route) {
                 $route[3][] = $action;
             }
+        }
+
+        if ($action instanceof ServerObserver) {
+            $this->observers->attach($action);
         }
 
         return $this;
@@ -223,7 +233,7 @@ class Router implements Responder, ServerObserver {
      * @return self
      */
     public function route(string $method, string $uri, $responder, Middleware ...$middleware): Router {
-        if ($this->state !== Server::STOPPED) {
+        if ($this->running) {
             throw new \Error(
                 "Cannot add routes once the server has started"
             );
@@ -243,6 +253,9 @@ class Router implements Responder, ServerObserver {
             ));
         }
 
+        if ($responder instanceof ServerObserver) {
+            $this->observers->attach($responder);
+        }
 
         $actions = array_merge($this->actions, $middleware);
 
@@ -310,18 +323,30 @@ class Router implements Responder, ServerObserver {
             ));
         }
 
+        $this->running = true;
+
         $this->routeDispatcher = simpleDispatcher(function (RouteCollector $rc) {
             $this->buildRouter($rc);
         });
 
         $this->errorHandler = $errorHandler;
 
-        return new Success;
+        $promises = [];
+        foreach ($this->observers as $observer) {
+            $promises[] = $observer->onStart($server, $logger, $errorHandler);
+        }
+        return Promise\all($promises);
     }
 
     public function onStop(Server $server): Promise {
         $this->routeDispatcher = null;
-        return new Success;
+        $this->running = false;
+
+        $promises = [];
+        foreach ($this->observers as $observer) {
+            $promises[] = $observer->onStop($server);
+        }
+        return Promise\all($promises);
     }
 
     private function buildRouter(RouteCollector $rc) {
