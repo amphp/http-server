@@ -323,10 +323,7 @@ class Server {
         } elseif (\count($responders) === 1) {
             $responder = $responders[0];
         } else {
-            $responder = new TryResponder;
-            foreach ($responders as $action) {
-                $responder->addResponder($action);
-            }
+            $responder = new TryResponder($responders);
         }
 
         return MiddlewareResponder::create($responder, $middlewares);
@@ -523,6 +520,16 @@ class Server {
             $this->failCryptoNegotiation($socket, key($this->clientsPerIP) /* doesn't matter after stop */);
         }
 
+        try {
+            $promises = [];
+            foreach ($this->observers as $observer) {
+                $promises[] = $observer->onStop($this);
+            }
+            yield $promises;
+        } catch (\Throwable $exception) {
+            // Exception will be rethrown below once all clients are disconnected.
+        }
+
         $this->stopDeferred = new Deferred;
         if (empty($this->clients)) {
             $this->stopDeferred->resolve();
@@ -536,18 +543,14 @@ class Server {
             }
         }
 
-        try {
-            $promises = [$this->stopDeferred->promise()];
-            foreach ($this->observers as $observer) {
-                $promises[] = $observer->onStop($this);
-            }
-            yield $promises;
-        } catch (\Throwable $exception) {
+        yield $this->stopDeferred->promise();
+
+        assert($this->logDebug("Stopped"));
+        $this->state = self::STOPPED;
+        $this->stopDeferred = null;
+
+        if (isset($exception)) {
             throw new \RuntimeException("onStop observer failure", 0, $exception);
-        } finally {
-            assert($this->logDebug("Stopped"));
-            $this->state = self::STOPPED;
-            $this->stopDeferred = null;
         }
     }
 
@@ -979,7 +982,7 @@ class Server {
     }
 
     private function clear(Client $client) {
-        $client->requestParser = null; // break cyclic reference
+        $client->requestParser = null;
         $client->onWriteDrain = null;
         Loop::cancel($client->readWatcher);
         Loop::cancel($client->writeWatcher);

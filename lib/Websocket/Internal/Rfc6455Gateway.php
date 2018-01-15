@@ -263,7 +263,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             $client->closedAt = $this->now;
             $client->closeCode = Code::ABNORMAL_CLOSE;
             $client->closeReason = "Client closed underlying TCP connection";
-            Promise\rethrow(new Coroutine($this->tryAppOnClose($client->id, $client->closeCode, $client->closeReason)));
+            yield from $this->tryAppOnClose($client->id, $client->closeCode, $client->closeReason);
             $client->socket->close();
         }
 
@@ -611,17 +611,23 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         return call(function () {
             try {
                 yield call([$this->application, "onStop"]);
-            } finally {
-                $code = Code::GOING_AWAY;
-                $reason = "Server shutting down!";
-
-                $promises = [];
-                foreach ($this->clients as $client) {
-                    $promises[] = new Coroutine($this->doClose($client, $code, $reason));
-                }
+            } catch (\Throwable $exception) {
+                // Exception rethrown below after ensuring all clients are closed.
             }
 
-            return yield $promises;
+            $code = Code::GOING_AWAY;
+            $reason = "Server shutting down!";
+
+            $promises = [];
+            foreach ($this->clients as $client) {
+                $promises[] = new Coroutine($this->doClose($client, $code, $reason));
+            }
+
+            yield $promises;
+
+            if (isset($exception)) {
+                throw $exception;
+            }
         });
     }
 

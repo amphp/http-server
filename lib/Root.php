@@ -25,8 +25,6 @@ class Root implements Responder, ServerObserver {
 
     const DEFAULT_MIME_TYPE_FILE = __DIR__ . "/../etc/mime";
 
-    private $state = Server::STOPPED;
-
     /** @var \Aerys\ErrorHandler */
     private $errorHandler;
 

@@ -5,12 +5,35 @@ namespace Aerys;
 use Amp\Coroutine;
 use Amp\Promise;
 
+/**
+ * Calls each given responder until a non-404 response is returned from a responder, returning that response. If all
+ * responders are exhausted, the final 404 response is returned.
+ */
 class TryResponder implements Responder {
     /** @var \Aerys\Responder[] */
     private $responders = [];
 
     /**
-     * Tries each registered responder until on does not return a 404 response.
+     * @param \Aerys\Responder[] $responders
+     *
+     * @throws \Error If the $responders array is empty or a non-Responder is in the array.
+     */
+    public function __construct(array $responders) {
+        if (empty($responders)) {
+            throw new \Error("At least one responder must be defined");
+        }
+
+        foreach ($responders as $responder) {
+            if (!$responder instanceof Responder) {
+                throw new \TypeError("The array of responders must contain only instances of " . Responder::class);
+            }
+        }
+
+        $this->responders = $responders;
+    }
+
+    /**
+     * Tries each registered responder until a non-404 response is returned.
      *
      * {@inheritdoc}
      */
@@ -19,11 +42,6 @@ class TryResponder implements Responder {
     }
 
     private function dispatch(Request $request): \Generator {
-        if (empty($this->responders)) {
-            $status = HttpStatus::NOT_FOUND;
-            return new Response\HtmlResponse(makeGenericBody($status), [], $status);
-        }
-
         foreach ($this->responders as $responder) {
             $response = yield $responder->respond($request);
 
@@ -32,19 +50,10 @@ class TryResponder implements Responder {
             }
 
             if ($response->getStatus() !== HttpStatus::NOT_FOUND) {
-                return $response;
+                break;
             }
         }
 
-        return $response; // Return last response, which may be a 404.
-    }
-
-    /**
-     * Adds a responder to the list of responders. Responders are tried in the order added.
-     *
-     * @param \Aerys\Responder $responder
-     */
-    public function addResponder(Responder $responder) {
-        $this->responders[] = $responder;
+        return $response;
     }
 }

@@ -27,7 +27,7 @@ class MiddlewareResponder implements Responder {
         $middleware = \end($middlewares);
 
         while ($middleware) {
-            if ($middleware instanceof Middleware) {
+            if (!$middleware instanceof Middleware) {
                 throw new \TypeError("The array of middlewares must contain only instances of " . Middleware::class);
             }
 

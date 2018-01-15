@@ -135,22 +135,22 @@ class DeflateMiddleware implements Middleware {
         $iterator = new Producer(function (callable $emit) use ($resource, $body, $bodyBuffer) {
             do {
                 if (isset($bodyBuffer[$this->chunkSize])) {
-                    if (false === $data = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) {
+                    if (false === $bodyBuffer = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) {
                         throw new \RuntimeException("Failed adding data to deflate context");
                     }
 
+                    yield $emit($bodyBuffer);
                     $bodyBuffer = '';
-                    yield $emit($data);
                 }
 
                 $bodyBuffer .= $chunk = yield $body->read();
             } while ($chunk !== null);
 
-            if (false === $data = \deflate_add($resource, $bodyBuffer, \ZLIB_FINISH)) {
+            if (false === $bodyBuffer = \deflate_add($resource, $bodyBuffer, \ZLIB_FINISH)) {
                 throw new \RuntimeException("Failed adding data to deflate context");
             }
 
-            $emit($data);
+            $emit($bodyBuffer);
         });
 
         $response->setBody(new IteratorStream($iterator));
