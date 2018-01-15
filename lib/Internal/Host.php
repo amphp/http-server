@@ -34,7 +34,7 @@ class Host {
      * @param int $port The port number on which to listen (0 for unix domain sockets)
      */
     public function expose(string $address, int $port = 0) {
-        $isUnixSocket = $address[0] == "/";
+        $isUnixSocket = $address[0] === "/";
 
         if ($isUnixSocket) {
             if ($port !== 0) {
@@ -73,7 +73,9 @@ class Host {
                 throw new \Error(
                     "Unix domain socket path is not in an existing or reachable directory"
                 );
-            } elseif (!is_readable($dir) || !is_writable($dir) || !is_executable($dir)) {
+            }
+
+            if (!is_readable($dir) || !is_writable($dir) || !is_executable($dir)) {
                 throw new \Error(
                     "Unix domain socket path is in a directory without read, write and execute permissions"
                 );
@@ -103,19 +105,17 @@ class Host {
      *
      * @param string|Certificate|ServerTlsContext $certificate A string path pointing to your SSL/TLS certificate, a
      *     Certificate object, or a ServerTlsContext object
-     * @return self
      */
-    public function encrypt($certificate): self {
+    public function encrypt($certificate) {
         if (!$certificate instanceof ServerTlsContext) {
             if (!$certificate instanceof Certificate) {
                 $certificate = new Certificate($certificate);
             }
+
             $certificate = (new ServerTlsContext)->withDefaultCertificate($certificate);
         }
 
         $this->tlsContext = $certificate;
-
-        return $this;
     }
 
     public static function separateIPv4Binding(): bool {
@@ -148,12 +148,15 @@ class Host {
 
         return array_map(static function ($interface) {
             list($address, $port) = $interface;
-            if ($address[0] == "/") { // unix domain socket
+
+            if ($address[0] === "/") { // unix domain socket
                 return "unix://$address";
             }
+
             if (strpos($address, ":") !== false) {
                 $address = "[" . trim($address, "[]") . "]";
             }
+
             return "tcp://$address:$port";
         }, $this->interfaces);
     }
@@ -174,16 +177,21 @@ class Host {
                     $ports = array_merge($ports, $port_list);
                 }
             }
+
             return $ports;
         }
 
         $packedAddress = inet_pton($address); // if this yields a warning, there's something else buggy, but no @ missing.
         $wildcard = \strlen($packedAddress) === 4 ? "\0\0\0\0" : "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+
         if (!isset($this->addressMap[$wildcard])) {
             return $this->addressMap[$packedAddress] ?? [];
-        } elseif (!isset($this->addressMap[$packedAddress])) {
+        }
+
+        if (!isset($this->addressMap[$packedAddress])) {
             return $this->addressMap[$wildcard];
         }
+
         return array_merge($this->addressMap[$packedAddress], $this->addressMap[$wildcard]);
     }
 

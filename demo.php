@@ -105,5 +105,8 @@ return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $co
     // If none of our routes match try to serve a static file
     $router->setFallback(new Root($docrootPath = __DIR__));
 
-    return (new Server($router, $options, $logger))->expose("*", 1337);
+    $server = new Server($router, $options, $logger);
+    $server->expose("*", 1337);
+
+    return $server;
 };

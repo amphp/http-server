@@ -43,5 +43,8 @@ return function () {
         "validateUtf8"       => true
     ]);
 
-    return (new Aerys\Server)->expose("127.0.0.1", 9001)->use($websocket);
+    $server = new Aerys\Server($websocket);
+    $server->expose("127.0.0.1", 9001);
+
+    return $server;
 };

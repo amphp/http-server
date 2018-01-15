@@ -157,15 +157,14 @@ class Server {
      * @param string $address The IPv4 or IPv6 interface or unix domain socket path to listen to
      * @param int $port The port number on which to listen (0 for unix domain sockets)
      *
-     * @return self
+     * @throws \Error If the server has started.
      */
-    public function expose(string $address, int $port = 0): self {
+    public function expose(string $address, int $port = 0) {
         if ($this->state) {
             throw new \Error("Cannot add connection interfaces after the server has started");
         }
 
         $this->host->expose($address, $port);
-        return $this;
     }
 
     /**
@@ -174,15 +173,14 @@ class Server {
      * @param string|\Amp\Socket\Certificate|\Amp\Socket\ServerTlsContext $certificate A string path pointing to your
      *     SSL/TLS certificate, a Certificate object, or a ServerTlsContext object
      *
-     * @return self
+     * @throws \Error If the server has started.
      */
-    public function encrypt($certificate): self {
+    public function encrypt($certificate) {
         if ($this->state) {
             throw new \Error("Cannot add a certificate after the server has started");
         }
 
         $this->host->encrypt($certificate);
-        return $this;
     }
 
     /**
@@ -190,9 +188,9 @@ class Server {
      *
      * @param \Aerys\ErrorHandler $errorHandler
      *
-     * @return \Aerys\Server
+     * @throws \Error If the server has started.
      */
-    public function setErrorHandler(ErrorHandler $errorHandler): self {
+    public function setErrorHandler(ErrorHandler $errorHandler) {
         if ($this->state) {
             throw new \Error("Cannot set the error handler after the server has started");
         }

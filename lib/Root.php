@@ -94,23 +94,19 @@ class Root implements Responder, ServerObserver {
     }
 
     /**
-     * Specifies an instance of Responder (or callable) that is used if no file exists for the requested URI.
+     * Specifies an instance of Responder that is used if no file exists for the requested path.
      * If no fallback is given, a 404 response is returned from respond() when the file does not exist.
      *
      * @param Responder $responder
      *
-     * @return Router
-     *
-     * @throws \TypeError
+     * @throws \Error If the server has started.
      */
-    public function fallback(Responder $responder): self {
+    public function setFallback(Responder $responder) {
         if ($this->running) {
             throw new \Error("Cannot add fallback responder after the server has started");
         }
 
         $this->fallback = $responder;
-
-        return $this;
     }
 
     /**
