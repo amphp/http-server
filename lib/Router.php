@@ -10,7 +10,7 @@ use FastRoute\RouteCollector;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function FastRoute\simpleDispatcher;
 
-class Router implements Responder, ServerObserver {
+final class Router implements Responder, ServerObserver {
     const DEFAULT_MAX_CACHE_ENTRIES = 512;
 
     /** @var bool */
@@ -117,11 +117,9 @@ class Router implements Responder, ServerObserver {
      *
      * Doing so might improve performance for request dispatching.
      *
-     * @param self $router
-     *
-     * @return self
+     * @param self $router Router to merge.
      */
-    public function merge(self $router): self {
+    public function merge(self $router) {
         if ($this->running) {
             throw new \Error("Cannot merge routers after the server has started");
         }
@@ -131,17 +129,14 @@ class Router implements Responder, ServerObserver {
         }
 
         $this->observers->addAll($router->observers);
-
-        return $this;
     }
 
     /**
      * Prefix all currently defined routes with a given prefix.
      *
      * @param string $prefix
-     * @return self
      */
-    public function prefix(string $prefix): self {
+    public function prefix(string $prefix) {
         if ($this->running) {
             throw new \Error("Cannot alter routes after the server has started");
         }
@@ -153,8 +148,6 @@ class Router implements Responder, ServerObserver {
                 $route[1] = "/$prefix$route[1]";
             }
         }
-
-        return $this;
     }
 
     private function cacheDispatchResult(string $toMatch, Responder $responder, array $routeArgs) {
@@ -182,15 +175,13 @@ class Router implements Responder, ServerObserver {
      * the trailing slash. Temporary redirects are used to redirect to the canonical URI
      * (with a trailing slash) to avoid search engine duplicate content penalties.
      *
-     * @param string    $method The HTTP method verb for which this route applies
-     * @param string    $uri The string URI
-     * @param Responder $responder
+     * @param string    $method The HTTP method verb for which this route applies.
+     * @param string    $uri The string URI.
+     * @param Responder $responder Responder invoked on a route match.
      *
-     * @return Router
-     *
-     * @throws \Error If the server has started, if $method is empty, or $responder is invalid.
+     * @throws \Error If the server has started, or if $method is empty.
      */
-    public function route(string $method, string $uri, Responder $responder): self {
+    public function addRoute(string $method, string $uri, Responder $responder) {
         if ($this->running) {
             throw new \Error(
                 "Cannot add routes once the server has started"
@@ -239,28 +230,23 @@ class Router implements Responder, ServerObserver {
         } else {
             $this->routes[] = [$method, $uri, $responder];
         }
-
-        return $this;
     }
 
     /**
-     * Specifies an instance of Responder (or callable) that is used if no routes match.
-     * If no fallback is given, a 404 response is returned from respond() when no matching routes are found.
+     * Specifies an instance of Responder that is used if no routes match.
+     *
+     * If no fallback is given, a 404 response is returned from `respond()` when no matching routes are found.
      *
      * @param Responder $responder
      *
-     * @return Router
-     *
-     * @throws \TypeError
+     * @throws \Error If the server has started.
      */
-    public function fallback(Responder $responder): self {
+    public function setFallback(Responder $responder) {
         if ($this->running) {
             throw new \Error("Cannot add fallback responder after the server has started");
         }
 
         $this->fallback = $responder;
-
-        return $this;
     }
 
     public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {

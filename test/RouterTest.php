@@ -28,11 +28,11 @@ class RouterTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Aerys\Router::route() requires a non-empty string HTTP method at Argument 1
+     * @expectedExceptionMessage Aerys\Router::addRoute() requires a non-empty string HTTP method at Argument 1
      */
     public function testRouteThrowsOnEmptyMethodString() {
         $router = new Router;
-        $router->route("", "/uri", new CallableResponder(function () {}));
+        $router->addRoute("", "/uri", new CallableResponder(function () {}));
     }
 
     public function testUpdateFailsIfStartedWithoutAnyRoutes() {
@@ -51,7 +51,7 @@ class RouterTest extends TestCase {
 
     public function testUseCanonicalRedirector() {
         $router = new Router;
-        $router->route("GET", "/{name}/{age}/?", new CallableResponder(function (Request $req) use (&$routeArgs) {
+        $router->addRoute("GET", "/{name}/{age}/?", new CallableResponder(function (Request $req) use (&$routeArgs) {
             $routeArgs = $req->getAttribute(Router::class);
             return new Response;
         }));
