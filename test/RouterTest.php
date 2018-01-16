@@ -5,7 +5,6 @@ namespace Aerys\Test;
 use Aerys\CallableResponder;
 use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
-use Aerys\Internal;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
@@ -66,10 +65,7 @@ class RouterTest extends TestCase {
         $mock = $this->mockServer();
         Promise\wait($router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class)));
 
-        $ireq = new Internal\ServerRequest;
-        $request = new Request($ireq);
-        $ireq->method = "GET";
-        $ireq->uri = new Uri("/mediocre-dev/bob/19/");
+        $request = new Request("GET", new Uri("/mediocre-dev/bob/19/"));
 
         /** @var \Aerys\Response $response */
         $response = Promise\wait($router->respond($request));
@@ -77,10 +73,7 @@ class RouterTest extends TestCase {
         $this->assertEquals(HttpStatus::FOUND, $response->getStatus());
         $this->assertEquals("/mediocre-dev/bob/19", $response->getHeader("location"));
 
-        $ireq = new Internal\ServerRequest;
-        $request = new Request($ireq);
-        $ireq->method = "GET";
-        $ireq->uri = new Uri("/mediocre-dev/bob/19");
+        $request = new Request("GET", new Uri("/mediocre-dev/bob/19"));
 
         $response = Promise\wait($router->respond($request));
 

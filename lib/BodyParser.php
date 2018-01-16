@@ -61,7 +61,8 @@ class BodyParser implements Promise {
     ) {
         $this->request = $request;
         $type = $request->getHeader("content-type");
-        $this->body = $request->getBody($size);
+        $this->body = $request->getBody();
+        $this->body->increaseMaxSize($size);
         $this->maxFieldLength = $maxFieldLength;
         $this->maxInputVars = $maxInputVars;
 

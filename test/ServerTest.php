@@ -2,6 +2,7 @@
 
 namespace Aerys\Test;
 
+use Aerys\Body;
 use Aerys\CallableResponder;
 use Aerys\HttpStatus;
 use Aerys\Internal;
@@ -13,6 +14,8 @@ use Aerys\Responder;
 use Aerys\Response;
 use Aerys\Server;
 use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\IteratorStream;
+use Amp\Emitter;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Socket;
@@ -21,12 +24,12 @@ use Amp\Uri\Uri;
 // @TODO test communication on half-closed streams (both ways) [also with yield message] (also with HTTP/1 pipelining...)
 
 class ServerTest extends TestCase {
-    public function tryRequest(array $emit, $responder, $middlewares = []) {
+    public function tryRequest(array $emit, $responder) {
         if (!$responder instanceof Responder) {
             $responder = new CallableResponder($responder);
         }
 
-        $gen = $this->tryIterativeRequest($responder, $middlewares);
+        $gen = $this->tryIterativeRequest($responder);
         foreach ($emit as $part) {
             $gen->send($part);
         }
@@ -34,10 +37,10 @@ class ServerTest extends TestCase {
     }
 
 
-    public function tryIterativeRequest(Responder $responder, $middlewares = []) {
+    public function tryIterativeRequest(Responder $responder): \Generator {
         $driver = new class($this) implements HttpDriver {
             private $test;
-            private $emitters;
+            private $emitter;
             public $response;
             public $body;
             private $client;
@@ -49,13 +52,11 @@ class ServerTest extends TestCase {
                 $this->client->httpDriver = $this;
             }
 
-            public function setup(array $parseEmitters, callable $write) {
-                $this->emitters = $parseEmitters;
+            public function setup(Server $server, callable $resultEmitter, callable $errorEmitter, callable $write) {
+                $this->emitter = $resultEmitter;
             }
 
-            public function writer(Internal\ServerRequest $ireq, Response $response): \Generator {
-                $this->test->assertSame($this->client, $ireq->client);
-
+            public function writer(Internal\Client $client, Response $response, Request $ireq = null): \Generator {
                 $this->response = $response;
                 $this->body = "";
                 do {
@@ -63,25 +64,12 @@ class ServerTest extends TestCase {
                 } while ($part !== null);
             }
 
-            public function upgradeBodySize(Internal\ServerRequest $ireq, int $bodySize) {
-            }
-
             public function parser(Internal\Client $client): \Generator {
                 $this->test->fail("We shouldn't be invoked the parser with no actual clients");
             }
 
-            public function emit($emit) {
-                $type = array_shift($emit);
-                foreach ($this->emitters as $key => $emitter) {
-                    if ($key & $type) {
-                        if ($emit[0] instanceof Internal\ServerRequest) {
-                            $emit[0]->client = $this->client;
-                            $emitter(...$emit);
-                        } else {
-                            $emitter($this->client, ...$emit);
-                        }
-                    }
-                }
+            public function emit(Request $request) {
+                ($this->emitter)($this->client, $request);
             }
         };
 
@@ -90,12 +78,13 @@ class ServerTest extends TestCase {
         $options = new Options;
         $options->debug = true;
 
-        $server = new Server($responder, $options, $logger, $driver);
-        $server->start();
+        $server = new Server($responder, $options, $logger);
 
-        foreach ($middlewares as $middleware) {
-            $server->use($middleware);
-        }
+        (function () use ($driver) {
+            $this->setupHttpDriver($driver);
+        })->call($server);
+
+        $server->start();
 
         $part = yield;
         while (1) {
@@ -104,22 +93,15 @@ class ServerTest extends TestCase {
         }
     }
 
-    public function newIreq() {
-        $ireq = new Internal\ServerRequest;
-        $ireq->streamId = 2;
-        $ireq->trace = [["host", "localhost"]];
-        $ireq->protocol = "2.0";
-        $ireq->method = "GET";
-        $ireq->uri = new Uri("http://localhost:80/foo");
-        $ireq->headers = ["host" => ["localhost"]];
-        return $ireq;
-    }
-
     public function testBasicRequest() {
-        $ireq = $this->newIreq();
+        $request = new Request(
+            "GET", // method
+            new Uri("http://localhost:80/foo"), // URI
+            ["host" => ["localhost"]] // headers
+        );
 
         /** @var \Aerys\Response $response */
-        list($response, $body) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req) {
+        list($response, $body) = $this->tryRequest([$request], function (Request $req) {
             $this->assertSame("localhost", $req->getHeader("Host"));
             $this->assertSame("/foo", $req->getUri()->getPath());
             $this->assertSame("GET", $req->getMethod());
@@ -128,23 +110,30 @@ class ServerTest extends TestCase {
             return new Response(new InMemoryStream("message"), ["FOO" => "bar"]);
         });
 
-        $this->assertSame(200, $response->getStatus());
-        $this->assertSame("OK", $response->getReason());
+        $status = HttpStatus::OK;
+        $this->assertSame($status, $response->getStatus());
+        $this->assertSame(HttpStatus::getReason($status), $response->getReason());
         $this->assertSame("bar", $response->getHeader("foo"));
 
         $this->assertSame("message", $body);
     }
 
     public function testStreamRequest() {
-        $ireq = $this->newIreq();
+        $emitter = new Emitter;
+
+        $request = new Request(
+            "GET", // method
+            new Uri("http://localhost:80/foo"), // URI
+            ["host" => ["localhost"]], // headers
+            new Body(new IteratorStream($emitter->iterate())) // body
+        );
+
+        $emitter->emit("fooBar");
+        $emitter->emit("BUZZ!");
+        $emitter->complete();
 
         /** @var \Aerys\Response $response */
-        list($response, $body) = $this->tryRequest([
-            [HttpDriver::ENTITY_HEADERS, $ireq],
-            [HttpDriver::ENTITY_PART, "fooBar", 2],
-            [HttpDriver::ENTITY_PART, "BUZZ!", 2],
-            [HttpDriver::ENTITY_RESULT, 2],
-        ], function (Request $req) {
+        list($response, $body) = $this->tryRequest([$request], function (Request $req) {
             $buffer = "";
             while ((null !== $chunk = yield $req->getBody()->read())) {
                 $buffer .= $chunk;
@@ -160,39 +149,59 @@ class ServerTest extends TestCase {
     }
 
     /**
-     * @dataProvider providePreResponderHeaders
+     * @dataProvider providePreResponderRequests
      */
-    public function testPreResponderFailures(array $changes, int $status) {
-        $ireq = $this->newIreq();
-        foreach ($changes as $key => $change) {
-            $ireq->$key = $change;
-        }
-
+    public function testPreResponderFailures(Request $request, int $status) {
         /** @var \Aerys\Response $response */
-        list($response) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req) {
+        list($response) = $this->tryRequest([$request], function (Request $req) {
             $this->fail("We should already have failed and never invoke the responder...");
         });
 
         $this->assertEquals($status, $response->getStatus());
     }
 
-    public function providePreResponderHeaders() {
+    public function providePreResponderRequests() {
         return [
-            [["method" => "OPTIONS", "target" => "*"], HttpStatus::NO_CONTENT],
-            [["method" => "TRACE"], HttpStatus::METHOD_NOT_ALLOWED],
-            [["method" => "UNKNOWN"], HttpStatus::NOT_IMPLEMENTED],
+            [
+                new Request(
+                    "OPTIONS", // method
+                    new Uri("http://localhost:80/"), // URI
+                    ["host" => ["localhost"]], // headers
+                    null, // body
+                    "*" // target
+                ),
+                HttpStatus::NO_CONTENT
+            ],
+            [
+                new Request(
+                    "TRACE", // method
+                    new Uri("http://localhost:80/"), // URI
+                    ["host" => ["localhost"]] // headers
+                ),
+                HttpStatus::METHOD_NOT_ALLOWED
+            ],
+            [
+                new Request(
+                    "UNKNOWN", // method
+                    new Uri("http://localhost:80/"), // URI
+                    ["host" => ["localhost"]] // headers
+                ),
+                HttpStatus::NOT_IMPLEMENTED
+            ],
         ];
     }
 
     public function testOptionsRequest() {
-        $ireq = $this->newIreq();
-        $ireq->headers["host"] = "http://localhost";
-        $ireq->uri = new Uri("http://localhost");
-        $ireq->target = "*";
-        $ireq->method = "OPTIONS";
+        $request = new Request(
+            "OPTIONS", // method
+            new Uri("http://localhost:80/"), // URI
+            ["host" => ["localhost"]], // headers
+            null, // body
+            "*" // target
+        );
 
         /** @var \Aerys\Response $response */
-        list($response) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req) {
+        list($response) = $this->tryRequest([$request], function (Request $req) {
             $this->fail("We should already have failed and never invoke the responder...");
         });
 
@@ -201,10 +210,14 @@ class ServerTest extends TestCase {
     }
 
     public function testError() {
-        $ireq = $this->newIreq();
+        $request = new Request(
+            "GET", // method
+            new Uri("http://localhost:80/foo"), // URI
+            ["host" => ["localhost"]] // headers
+        );
 
         /** @var \Aerys\Response $response */
-        list($response) = $this->tryRequest([[HttpDriver::RESULT, $ireq]], function (Request $req) {
+        list($response) = $this->tryRequest([$request], function (Request $req) {
             throw new \Exception;
         });
 
@@ -234,11 +247,11 @@ class ServerTest extends TestCase {
                 $this->test = $test;
             }
 
-            public function setup(array $parseEmitters, callable $write) {
+            public function setup(Server $server, callable $resultEmitter, callable $errorEmitter, callable $write) {
                 $this->write = $write;
             }
 
-            public function writer(Internal\ServerRequest $ireq, Response $response): \Generator {
+            public function writer(Internal\Client $client, Response $response, Request $request = null): \Generator {
                 $this->test->fail("We shouldn't be invoked the writer when not dispatching requests");
                 yield;
             }
@@ -246,20 +259,18 @@ class ServerTest extends TestCase {
             public function parser(Internal\Client $client): \Generator {
                 yield from ($this->parser)($client, $this->write);
             }
-
-            public function upgradeBodySize(Internal\ServerRequest $ireq, int $bodySize) {
-            }
         };
 
-        $logger = new class extends Logger {
-            protected function output(string $message) { /* /dev/null */
-            }
-        };
+        $logger = $this->createMock(Logger::class);
 
         $options = new Options;
         $options->debug = true;
 
-        $server = new Server($this->createMock(Responder::class), $options, $logger, $driver);
+        $server = new Server($this->createMock(Responder::class), $options, $logger);
+
+        (function () use ($driver) {
+            $this->setupHttpDriver($driver);
+        })->call($server);
 
         $server->expose($address, $port);
 
@@ -336,14 +347,13 @@ class ServerTest extends TestCase {
                     if (isset($e)) {
                         return;
                     }
+
                     Loop::defer(function () use ($client, $deferred) {
                         try {
                             $this->assertEquals(Internal\Client::CLOSED_RDWR, $client->isDead);
+                            $deferred->resolve();
                         } catch (\Throwable $e) {
                             $deferred->fail($e);
-                        }
-                        if (empty($e)) {
-                            $deferred->resolve();
                         }
                     });
                 }

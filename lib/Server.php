@@ -2,14 +2,9 @@
 
 namespace Aerys;
 
-use Aerys\Cookie\Cookie;
-use Aerys\Internal\Client;
-use Amp\ByteStream\InMemoryStream;
-use Amp\ByteStream\IteratorStream;
 use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
-use Amp\Emitter;
 use Amp\Failure;
 use Amp\Loop;
 use Amp\Promise;
@@ -48,11 +43,8 @@ class Server {
     /** @var \Aerys\Internal\HttpDriver */
     private $httpDriver;
 
-    /** @var \Aerys\Responder|null Responder instance built from given responders and middleware */
+    /** @var \Aerys\Responder */
     private $responder;
-
-    /** @var mixed[] */
-    private $actions = [];
 
     /** @var \Aerys\ErrorHandler */
     private $errorHandler;
@@ -103,28 +95,26 @@ class Server {
 
     /**
      * @param \Aerys\Responder $responder
-     * @param \Aerys\Options|null $options
+     * @param \Aerys\Options|null $options Null creates an Options object with all default options.
      * @param \Psr\Log\LoggerInterface|null $logger Null automatically uses an instance of \Aerys\ConsoleLogger.
-     * @param \Aerys\Internal\HttpDriver $driver Internal parameter used for testing.
      *
      * @throws \Error If $responder is not a callable or instance of Responder.
      */
-    public function __construct(
-        Responder $responder,
-        Options $options = null,
-        PsrLogger $logger = null,
-        Internal\HttpDriver $driver = null
-    ) {
+    public function __construct(Responder $responder, Options $options = null, PsrLogger $logger = null) {
         $this->responder = $responder;
 
         $this->host = new Internal\Host;
+
         $this->immutableOptions = $options ?? new Options;
         $this->options = $this->immutableOptions->export();
         $this->logger = $logger ?? new ConsoleLogger(new Console);
+
         $this->ticker = new Internal\Ticker($this->logger);
+        $this->ticker->use($this->callableFromInstanceMethod("timeoutKeepAlives"));
+
         $this->observers = new \SplObjectStorage;
         $this->observers->attach($this->ticker);
-        $this->ticker->use($this->callableFromInstanceMethod("timeoutKeepAlives"));
+
         $this->nullBody = new NullBody;
 
         if ($this->responder instanceof ServerObserver) {
@@ -141,8 +131,7 @@ class Server {
         $this->onWritable = $this->callableFromInstanceMethod("onWritable");
         $this->onResponseDataDone = $this->callableFromInstanceMethod("onResponseDataDone");
 
-        $this->httpDriver = $driver ?? new Internal\Http1Driver;
-        $this->httpDriver->setup($this->createHttpDriverHandlers(), $this->callableFromInstanceMethod("writeResponse"));
+        $this->setupHttpDriver(new Internal\Http1Driver);
     }
 
     /**
@@ -203,7 +192,6 @@ class Server {
         }
 
         $this->errorHandler = $errorHandler;
-        return $this;
     }
 
     /**
@@ -228,7 +216,8 @@ class Server {
      * Attach an observer.
      *
      * @param ServerObserver $observer
-     * @return void
+     *
+     * @throws \Error If the server has started.
      */
     public function attach(ServerObserver $observer) {
         if ($this->state) {
@@ -239,9 +228,17 @@ class Server {
     }
 
     /**
+     * @param callable $callback
+     */
+    public function tick(callable $callback) {
+        $this->ticker->use($callback);
+    }
+
+    /**
      * Start the server.
      *
      * @param callable(array) $bindSockets is passed the $address => $context map
+     *
      * @return \Amp\Promise
      */
     public function start(callable $bindSockets = null): Promise {
@@ -262,16 +259,6 @@ class Server {
         } catch (\Throwable $uncaught) {
             return new Failure($uncaught);
         }
-    }
-
-    private function createHttpDriverHandlers() {
-        return [
-            Internal\HttpDriver::RESULT => $this->callableFromInstanceMethod("onParsedMessage"),
-            Internal\HttpDriver::ENTITY_HEADERS => $this->callableFromInstanceMethod("onParsedEntityHeaders"),
-            Internal\HttpDriver::ENTITY_PART => $this->callableFromInstanceMethod("onParsedEntityPart"),
-            Internal\HttpDriver::ENTITY_RESULT => $this->callableFromInstanceMethod("onParsedEntityResult"),
-            Internal\HttpDriver::ERROR => $this->callableFromInstanceMethod("onParseError"),
-        ];
     }
 
     private function doStart(callable $bindSockets): \Generator {
@@ -316,6 +303,25 @@ class Server {
             $this->acceptWatcherIds[$serverName] = Loop::onReadable($server, $onAcceptable);
             $this->logger->info("Listening on {$serverName}");
         }
+    }
+
+    /**
+     * @param \Aerys\Internal\HttpDriver $httpDriver
+     *
+     * @throws \Error If the server has started.
+     */
+    private function setupHttpDriver(Internal\HttpDriver $httpDriver) {
+        if ($this->state) {
+            throw new \Error("Cannot setup HTTP driver after the server has started");
+        }
+
+        $this->httpDriver = $httpDriver;
+        $this->httpDriver->setup(
+            $this,
+            $this->callableFromInstanceMethod("onParsedMessage"),
+            $this->callableFromInstanceMethod("onParseError"),
+            $this->callableFromInstanceMethod("writeResponse")
+        );
     }
 
     private function generateBindableAddressContextMap(): array {
@@ -397,12 +403,12 @@ class Server {
             assert((function () use ($socket, $ip, $port) {
                 $meta = stream_get_meta_data($socket)["crypto"];
                 $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
-                return $this->logDebug(sprintf("crypto negotiated %s%s:%d", ($isH2 ? "(h2) " : ""), $ip, $port));
+                return $this->logDebug(sprintf("Crypto negotiated %s%s:%d", ($isH2 ? "(h2) " : ""), $ip, $port));
             })());
-            // Dispatch via HTTP 1 driver; it knows how to handle PRI * requests - for now it is easier to dispatch only via content (ignore alpn)...
+            // Dispatch via HTTP 1 driver; it knows how to handle PRI * requests and will check alpn_protocol value.
             $this->importClient($socket, $ip, $port);
         } elseif ($handshake === false) {
-            assert($this->logDebug("crypto handshake error $ip:$port"));
+            assert($this->logDebug("Crypto handshake error $ip:$port"));
             $this->failCryptoNegotiation($socket, $ip);
         }
     }
@@ -490,7 +496,7 @@ class Server {
     }
 
     private function importClient($socket, $ip, $port) {
-        $client = new Client;
+        $client = new Internal\Client;
         $client->id = (int) $socket;
         $client->socket = $socket;
         $client->options = $this->options;
@@ -525,7 +531,7 @@ class Server {
         $this->renewConnectionTimeout($client);
     }
 
-    private function writeResponse(Client $client, string $data, bool $final = false) {
+    private function writeResponse(Internal\Client $client, string $data, bool $final = false) {
         $client->writeBuffer .= $data;
 
         if (!$final && \strlen($client->writeBuffer) < $client->options->outputBufferSize) {
@@ -551,21 +557,21 @@ class Server {
         }
     }
 
-    private function onResponseDataDone(Client $client) {
-        if ($client->shouldClose || (--$client->pendingResponses == 0 && $client->isDead == Client::CLOSED_RD)) {
+    private function onResponseDataDone(Internal\Client $client) {
+        if ($client->shouldClose || (--$client->pendingResponses === 0 && $client->isDead === Internal\Client::CLOSED_RD)) {
             $this->close($client);
-        } elseif (!($client->isDead & Client::CLOSED_RD)) {
+        } elseif (!($client->isDead & Internal\Client::CLOSED_RD)) {
             $this->renewConnectionTimeout($client);
         }
     }
 
-    private function onWritable(string $watcherId, $socket, Client $client) {
+    private function onWritable(string $watcherId, $socket, Internal\Client $client) {
         $bytesWritten = @\fwrite($socket, $client->writeBuffer);
         if ($bytesWritten === false || ($bytesWritten === 0 && (!\is_resource($socket) || @\feof($socket)))) {
-            if ($client->isDead === Client::CLOSED_RD) {
+            if ($client->isDead === Internal\Client::CLOSED_RD) {
                 $this->close($client);
             } else {
-                $client->isDead = Client::CLOSED_WR;
+                $client->isDead = Internal\Client::CLOSED_WR;
                 Loop::cancel($watcherId);
             }
         } else {
@@ -596,19 +602,21 @@ class Server {
                 break;
             }
         }
+
         foreach ($timeouts as $client) {
-            // do not close in case some longer response is taking longer, but do in case bodyEmitters aren't fulfilled
+            // Do not close in case some longer response is taking more time to complete.
             if ($client->pendingResponses > \count($client->bodyEmitters)) {
-                $this->clearConnectionTimeout($client);
+                $this->clearConnectionTimeout($client); // Will be re-enabled once response is written.
             } else {
-                // timeouts are only active while Client is doing nothing (not sending nor receving) and no pending writes, hence we can just fully close here
+                // Timeouts are only active while Client is doing nothing (not sending nor receiving) and no pending
+                // writes, hence we can just fully close here
                 $this->close($client);
             }
         }
     }
 
-    private function renewConnectionTimeout(Client $client) {
-        $timeoutAt = $this->ticker->currentTime + $this->options->connectionTimeout;
+    private function renewConnectionTimeout(Internal\Client $client) {
+        $timeoutAt = $this->ticker->getCurrentTime() + $this->options->connectionTimeout;
         // DO NOT remove the call to unset(); it looks superfluous but it's not.
         // Keep-alive timeout entries must be ordered by value. This means that
         // it's not enough to replace the existing map entry -- we have to remove
@@ -618,119 +626,54 @@ class Server {
         $this->connectionTimeouts[$client->id] = $timeoutAt;
     }
 
-    private function clearConnectionTimeout(Client $client) {
+    private function clearConnectionTimeout(Internal\Client $client) {
         unset($this->connectionTimeouts[$client->id]);
     }
 
-    private function onReadable(string $watcherId, $socket, Client $client) {
+    private function onReadable(string $watcherId, $socket, Internal\Client $client) {
         $data = @\stream_get_contents($socket, $this->options->ioGranularity);
-        if ($data !== "") {
+        if ($data !== false && $data !== "") {
             $this->renewConnectionTimeout($client);
             $client->requestParser->send($data);
             return;
         }
 
         if (!\is_resource($socket) || @\feof($socket)) {
-            if ($client->isDead === Client::CLOSED_WR || $client->pendingResponses == 0) {
+            if ($client->isDead === Internal\Client::CLOSED_WR || $client->pendingResponses <= \count($client->bodyEmitters)) {
                 $this->close($client);
                 return;
             }
 
-            $client->isDead = Client::CLOSED_RD;
+            $client->isDead = Internal\Client::CLOSED_RD;
             Loop::cancel($watcherId);
-            if ($client->bodyEmitters) {
-                $ex = new ClientException("Client unexpectedly closed");
-                foreach ($client->bodyEmitters as $emitter) {
-                    $emitter->fail($ex);
-                }
-            }
         }
     }
 
-    private function onParsedMessage(Internal\ServerRequest $ireq) {
-        if ($this->options->normalizeMethodCase) {
-            $ireq->method = strtoupper($ireq->method);
-        }
-
+    private function onParsedMessage(Internal\Client $client, Request $request) {
         assert($this->logDebug(sprintf(
-            "%s %s HTTP/%s @ %s:%s%s",
-            $ireq->method,
-            $ireq->uri,
-            $ireq->protocol,
-            $ireq->client->clientAddr,
-            $ireq->client->clientPort,
-            ""//empty($parseResult["server_push"]) ? "" : " (server-push via {$parseResult["server_push"]})"
+            "%s %s HTTP/%s @ %s:%s",
+            $request->getMethod(),
+            $request->getUri(),
+            $request->getProtocolVersion(),
+            $client->clientAddr,
+            $client->clientPort
         )));
 
-        $client = $ireq->client;
-
         $client->remainingRequests--;
-
-        $ireq->time = $this->ticker->currentTime;
-        $ireq->httpDate = $this->ticker->currentHttpDate;
-
-        if (!isset($ireq->body)) {
-            $ireq->body = $this->nullBody;
-        }
-
-        if (!empty($ireq->headers["cookie"])) { // @TODO delay initialization
-            $cookies = \array_filter(\array_map([Cookie::class, "fromHeader"], $ireq->headers["cookie"]));
-            /** @var \Aerys\Cookie\Cookie $cookie */
-            foreach ($cookies as $cookie) {
-                $ireq->cookies[$cookie->getName()] = $cookie;
-            }
-        }
-
         $client->pendingResponses++;
-        Promise\rethrow(new Coroutine($this->respond($ireq)));
+
+        Promise\rethrow(new Coroutine($this->respond($client, $request)));
     }
 
-    private function onParsedEntityHeaders(Internal\ServerRequest $ireq) {
-        $ireq->client->bodyEmitters[$ireq->streamId] = $bodyEmitter = new Emitter;
-        $ireq->body = new Body(new IteratorStream($bodyEmitter->iterate()));
-
-        $this->onParsedMessage($ireq);
-    }
-
-    private function onParsedEntityPart(Client $client, $body, int $streamId = 0) {
-        if ($client->isDead) {
-            return;
-        }
-
-        $client->bodyEmitters[$streamId]->emit($body);
-    }
-
-    private function onParsedEntityResult(Client $client, int $streamId = 0) {
-        if ($client->isDead) {
-            return;
-        }
-
-        $emitter = $client->bodyEmitters[$streamId];
-        unset($client->bodyEmitters[$streamId]);
-        $emitter->complete();
-        // @TODO Update trailer headers if present
-
-        // Don't respond() because we always start the response when headers arrive
-    }
-
-    private function onParseError(Client $client, int $status, string $message) {
-        $this->clearConnectionTimeout($client);
-
+    private function onParseError(Internal\Client $client, int $status, string $message) {
         Loop::disable($client->readWatcher);
 
         $this->logger->notice("Client parse error on {$client->clientAddr}:{$client->clientPort}: {$message}");
 
-        if ($client->bodyEmitters) {
-            $ex = new ClientException($message);
-            foreach ($client->bodyEmitters as $emitter) {
-                $emitter->fail($ex);
-            }
-        }
-
         $client->shouldClose = true;
         $client->pendingResponses++;
 
-        Promise\rethrow(new Coroutine($this->sendParseErrorResponse($client, $status, $message)));
+        Promise\rethrow(new Coroutine($this->sendErrorResponse($client, $status, $message)));
     }
 
     /**
@@ -742,58 +685,52 @@ class Server {
      *
      * @return \Generator
      */
-    private function sendParseErrorResponse(Internal\Client $client, int $status, string $reason): \Generator {
-        // Minimal required request properties.
-        $ireq = new Internal\ServerRequest;
-        $ireq->client = $client;
-        $ireq->time = $this->ticker->currentTime;
-        $ireq->httpDate = $this->ticker->currentHttpDate;
+    private function sendErrorResponse(Internal\Client $client, int $status, string $reason): \Generator {
+        try {
+            $response = yield $this->errorHandler->handle($status, $reason);
+        } catch (\Throwable $exception) {
+            $response = yield $this->makeExceptionResponse($exception);
+        }
 
-        $response = yield $this->errorHandler->handle($status, $reason);
-
-        yield from $this->sendResponse($ireq, $response);
+        yield from $this->sendResponse($client, $response);
     }
 
     /**
      * Respond to a parsed request from the client.
      *
-     * @param \Aerys\Internal\ServerRequest $ireq
+     * @param \Aerys\Request $request
      *
      * @return \Generator
      */
-    private function respond(Internal\ServerRequest $ireq): \Generator {
+    private function respond(Internal\Client $client, Request $request): \Generator {
         try {
+            $method = $request->getMethod();
+
             if ($this->stopDeferred) {
                 $response = yield from $this->makeServiceUnavailableResponse();
-            } elseif (!\in_array($ireq->method, $this->options->allowedMethods, true)) {
-                if (!\in_array($ireq->method, self::KNOWN_METHODS, true)) {
+            } elseif (!\in_array($method, $this->options->allowedMethods, true)) {
+                if (!\in_array($method, self::KNOWN_METHODS, true)) {
                     $response = yield from $this->makeNotImplementedResponse();
                 } else {
                     $response = yield from $this->makeMethodNotAllowedResponse();
                 }
-            } elseif ($ireq->method === "TRACE") {
-                $response = $this->makeTraceResponse($ireq);
-            } elseif ($ireq->method === "OPTIONS" && $ireq->target === "*") {
+            } elseif ($method === "OPTIONS" && $request->getTarget() === "*") {
                 $response = $this->makeOptionsResponse();
             } else {
-                $request = new Request($ireq);
-
                 $response = yield $this->responder->respond($request);
 
                 if (!$response instanceof Response) {
                     throw new \Error("At least one request handler must return an instance of " . Response::class);
                 }
             }
+        } catch (ClientException $exception) {
+            return; // Handled in code that generated the ClientException, response already sent.
         } catch (\Throwable $error) {
-            if ($error instanceof ClientException) {
-                return; // Handled in code that generated the ClientException, response already sent.
-            }
-
             $this->logger->error($error);
-            $response = yield $this->makeErrorResponse($error, $request);
+            $response = yield $this->makeExceptionResponse($error, $request);
         }
 
-        yield from $this->sendResponse($ireq, $response);
+        yield from $this->sendResponse($client, $response, $request);
     }
 
     private function makeServiceUnavailableResponse(): \Generator {
@@ -822,55 +759,38 @@ class Server {
         return $response;
     }
 
-    private function makeTraceResponse(Internal\ServerRequest $request): Response {
-        $stream = new InMemoryStream($this->getTrace($request));
-        return new Response($stream, ["Content-Type" => "message/http"]);
-    }
-
     private function makeOptionsResponse(): Response {
         return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->allowedMethods)]);
-    }
-
-    private function getTrace(Internal\ServerRequest $ireq): string {
-        if (\is_string($ireq->trace)) {
-            return $ireq->trace;
-        }
-
-        $trace = "{$ireq->method} {$ireq->uri} {$ireq->protocol}\r\n";
-        foreach ($ireq->trace as list($header, $value)) {
-            $trace .= "$header: $value\r\n";
-        }
-        return $trace;
     }
 
     /**
      * Send the response to the client.
      *
-     * @param \Aerys\Internal\ServerRequest $ireq
+     * @param \Aerys\Internal\Client $client
      * @param \Aerys\Response $response
+     * @param \Aerys\Request|null $request
      *
      * @return \Generator
      */
-    private function sendResponse(Internal\ServerRequest $ireq, Response $response): \Generator {
-        $responseWriter = $ireq->client->httpDriver->writer($ireq, $response);
+    private function sendResponse(Internal\Client $client, Response $response, Request $request = null): \Generator {
+        $responseWriter = $client->httpDriver->writer($client, $response, $request);
+
         $body = $response->getBody();
 
         try {
             do {
                 $chunk = yield $body->read();
 
-                if ($ireq->client->isDead & Client::CLOSED_WR) {
+                if ($client->isDead & Internal\Client::CLOSED_WR) {
                     $responseWriter->send(null);
                     return;
                 }
 
                 $responseWriter->send($chunk); // Sends null when stream closes.
             } while ($chunk !== null);
+        } catch (ClientException $exception) {
+            return;
         } catch (\Throwable $exception) {
-            if ($exception instanceof ClientException) {
-                return;
-            }
-
             // Reading response body failed, abort writing the response to the client.
             $this->logger->error($exception);
             $responseWriter->send(null);
@@ -880,27 +800,33 @@ class Server {
         try {
             if ($response->isDetached()) {
                 $responseWriter->send(null);
-                $this->export($ireq->client, $response);
+                $this->export($client, $response);
             }
         } catch (\Throwable $exception) {
             $this->logger->error($exception);
         }
     }
 
-    private function makeErrorResponse(\Throwable $error, Request $request): Promise {
+    /**
+     * @param \Throwable $error
+     * @param \Aerys\Request $request
+     *
+     * @return \Amp\Promise<\Aerys\Response>
+     */
+    private function makeExceptionResponse(\Throwable $exception, Request $request = null): Promise {
         $status = HttpStatus::INTERNAL_SERVER_ERROR;
 
         // Return an HTML page with the exception in debug mode.
-        if ($this->options->debug) {
+        if ($request !== null && $this->options->debug) {
             $html = \str_replace(
                 ["{uri}", "{class}", "{message}", "{file}", "{line}", "{trace}"],
                 \array_map("htmlspecialchars", [
                     $request->getUri(),
-                    \get_class($error),
-                    $error->getMessage(),
-                    $error->getFile(),
-                    $error->getLine(),
-                    $error->getTraceAsString()
+                    \get_class($exception),
+                    $exception->getMessage(),
+                    $exception->getFile(),
+                    $exception->getLine(),
+                    $exception->getTraceAsString()
                 ]),
                 INTERNAL_SERVER_ERROR_HTML
             );
@@ -925,13 +851,13 @@ class Server {
         }
     }
 
-    private function close(Client $client) {
+    private function close(Internal\Client $client) {
         $this->clear($client);
-        assert($client->isDead !== Client::CLOSED_RDWR);
+        assert($client->isDead !== Internal\Client::CLOSED_RDWR);
         // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
         @\stream_socket_shutdown($client->socket, \STREAM_SHUT_RDWR);
         @fclose($client->socket);
-        $client->isDead = Client::CLOSED_RDWR;
+        $client->isDead = Internal\Client::CLOSED_RDWR;
 
         $this->clientCount--;
         if ($client->serverAddr[0] !== "/") { // no unix domain socket
@@ -945,32 +871,28 @@ class Server {
             assert($this->logDebug("Close connection on {$client->serverAddr} #{$client->id}"));
         }
 
-        if ($client->bodyEmitters) {
-            $ex = new ClientException("Client forcefully closed");
-            foreach ($client->bodyEmitters as $key => $emitter) {
-                $emitter->fail($ex);
-            }
-        }
-
         if ($client->bufferDeferred) {
-            $ex = $ex ?? new ClientException("Client forcefully closed");
+            $ex = new ClientException("Client forcefully closed");
             $client->bufferDeferred->fail($ex);
         }
     }
 
-    private function clear(Client $client) {
+    private function clear(Internal\Client $client) {
         $client->requestParser = null;
         $client->onWriteDrain = null;
+
         Loop::cancel($client->readWatcher);
         Loop::cancel($client->writeWatcher);
+
         $this->clearConnectionTimeout($client);
+
         unset($this->clients[$client->id]);
         if ($this->stopDeferred && empty($this->clients)) {
             $this->stopDeferred->resolve();
         }
     }
 
-    private function export(Client $client, Response $response) {
+    private function export(Internal\Client $client, Response $response) {
         $this->clear($client);
         $client->isExported = true;
 

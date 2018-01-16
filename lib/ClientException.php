@@ -3,9 +3,8 @@
 namespace Aerys;
 
 /**
- * ~~~~~~~~~~~~~~~ WARNING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- * This class is strictly for internal Aerys use!
- * Do NOT throw it in userspace code or you risk breaking things.
+ * WARNING: This class is strictly to be thrown by the server only.
+ * Do NOT throw it in responders/middlewares or you risk breaking things.
  *
  * ClientException indicates that the requesting client has (or will be) closed
  * the incoming data stream. [if thrown on a reading action]

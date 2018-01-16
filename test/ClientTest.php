@@ -22,7 +22,7 @@ use PHPUnit\Framework\TestCase;
 use function Amp\call;
 
 class ClientTest extends TestCase {
-    public function startServer(callable $handler, array $middlewares = []) {
+    public function startServer(callable $handler) {
         if (!$server = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
             $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
         }

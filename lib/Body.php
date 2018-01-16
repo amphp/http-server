@@ -23,8 +23,16 @@ class Body implements InputStream {
     /** @var \Amp\Promise|null */
     private $lastRead;
 
-    public function __construct(InputStream $stream) {
+    /** @var callable|null */
+    private $upgradeSize;
+
+    /**
+     * @param \Amp\ByteStream\InputStream $stream
+     * @param callable|null $upgradeSize Callback used to increase the maximum size of the body.
+     */
+    public function __construct(InputStream $stream, callable $upgradeSize = null) {
         $this->stream = $stream;
+        $this->upgradeSize = $upgradeSize;
     }
 
     public function __destruct() {
@@ -81,5 +89,18 @@ class Body implements InputStream {
             }
             return $buffer;
         });
+    }
+
+    /**
+     * Set a new maximum length of the body in bytes.
+     *
+     * @param int $size
+     */
+    public function increaseMaxSize(int $size) {
+        if (!$this->upgradeSize) {
+            return;
+        }
+
+        ($this->upgradeSize)($size);
     }
 }

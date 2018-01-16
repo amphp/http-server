@@ -3,30 +3,30 @@
 namespace Aerys\Test;
 
 use Aerys\Body;
-use Aerys\Internal;
 use Aerys\Request;
 use Amp\ByteStream\IteratorStream;
 use Amp\Loop;
+use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
 
 class BodyParsingTest extends TestCase {
     /**
      * @dataProvider requestBodies
      */
-    public function testDecoding($header, $data, $fields, $metadata) {
+    public function testDecoding(string $header, string $data, array $fields, array $metadata) {
         $emitter = new \Amp\Emitter;
-        $ireq = new Internal\ServerRequest;
-        $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
-        $ireq->client = new Internal\Client;
-        $ireq->client->options = new Internal\Options;
-        $ireq->client->httpDriver = new Internal\Http1Driver;
+
+        $headers = [];
+        $headers["content-type"] = [$header];
+        $body = new Body(new IteratorStream($emitter->iterate()));
+
+        $request = new Request("POST", new Uri("/"), $headers, $body);
 
         $emitter->emit($data);
         $emitter->complete();
 
-        Loop::run(function () use ($ireq, &$result) {
-            $parsedBody = yield \Aerys\parseBody(new Request($ireq));
+        Loop::run(function () use ($request, &$result) {
+            $parsedBody = yield \Aerys\parseBody($request);
             $result = $parsedBody->getAll();
         });
 
@@ -37,22 +37,22 @@ class BodyParsingTest extends TestCase {
     /**
      * @dataProvider requestBodies
      */
-    public function testImmediateWatch($header, $data, $fields, $metadata) {
+    public function testImmediateWatch(string $header, string $data, array $fields, array $metadata) {
         $emitter = new \Amp\Emitter;
-        $ireq = new Internal\ServerRequest;
-        $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
-        $ireq->client = new Internal\Client;
-        $ireq->client->options = new Internal\Options;
-        $ireq->client->httpDriver = new Internal\Http1Driver;
+
+        $headers = [];
+        $headers["content-type"] = [$header];
+        $body = new Body(new IteratorStream($emitter->iterate()));
 
         $emitter->emit($data);
         $emitter->complete();
 
-        Loop::run(function () use ($ireq, $fields, $metadata) {
+        $request = new Request("POST", new Uri("/"), $headers, $body);
+
+        Loop::run(function () use ($request, $fields, $metadata) {
             $fieldlist = $fields;
 
-            $body = \Aerys\parseBody(new Request($ireq));
+            $body = \Aerys\parseBody($request);
 
             while (($field = yield $body->fetch()) !== null) {
                 $this->assertArrayHasKey($field, $fieldlist);
@@ -69,16 +69,16 @@ class BodyParsingTest extends TestCase {
     /**
      * @dataProvider requestBodies
      */
-    public function testIncrementalWatch($header, $data, $fields, $metadata) {
+    public function testIncrementalWatch(string $header, string $data, array $fields, array $metadata) {
         $emitter = new \Amp\Emitter;
-        $ireq = new Internal\ServerRequest;
-        $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
-        $ireq->client = new Internal\Client;
-        $ireq->client->options = new Internal\Options;
-        $ireq->client->httpDriver = new Internal\Http1Driver;
 
-        Loop::run(function () use ($emitter, $data, $ireq, $fields, $metadata) {
+        $headers = [];
+        $headers["content-type"] = [$header];
+        $body = new Body(new IteratorStream($emitter->iterate()));
+
+        $request = new Request("POST", new Uri("/"), $headers, $body);
+
+        Loop::run(function () use ($emitter, $data, $request, $fields, $metadata) {
             $fieldlist = $fields;
 
             Loop::defer(function () use ($emitter, $data) {
@@ -86,7 +86,7 @@ class BodyParsingTest extends TestCase {
                 $emitter->complete();
             });
 
-            $body = \Aerys\parseBody(new Request($ireq));
+            $body = \Aerys\parseBody($request);
             while (($field = yield $body->fetch()) !== null) {
                 $this->assertArrayHasKey($field, $fieldlist);
                 array_pop($fieldlist[$field]);
@@ -102,23 +102,23 @@ class BodyParsingTest extends TestCase {
     /**
      * @dataProvider requestBodies
      */
-    public function testStream($header, $data, $fields, $metadata) {
+    public function testStream(string $header, string $data, array $fields) {
         $emitter = new \Amp\Emitter;
-        $ireq = new Internal\ServerRequest;
-        $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
-        $ireq->client = new Internal\Client;
-        $ireq->client->options = new Internal\Options;
-        $ireq->client->httpDriver = new Internal\Http1Driver;
 
-        Loop::run(function () use ($emitter, $data, $ireq, $fields, $metadata) {
+        $headers = [];
+        $headers["content-type"] = [$header];
+        $body = new Body(new IteratorStream($emitter->iterate()));
+
+        $request = new Request("POST", new Uri("/"), $headers, $body);
+
+        Loop::run(function () use ($emitter, $data, $request, $fields) {
             Loop::defer(function () use ($emitter, $data) {
                 $emitter->emit($data);
                 $emitter->complete();
             });
 
             $bodies = [];
-            $body = \Aerys\parseBody(new Request($ireq));
+            $body = \Aerys\parseBody($request);
             while (null !== $name = yield $body->fetch()) {
                 $bodies[] = [$body->stream($name), \array_shift($fields[$name])];
             }
@@ -136,16 +136,16 @@ class BodyParsingTest extends TestCase {
     /**
      * @dataProvider requestBodies
      */
-    public function testPartialStream($header, $data, $fields, $metadata) {
+    public function testPartialStream(string $header, string $data, array $fields) {
         $emitter = new \Amp\Emitter;
-        $ireq = new Internal\ServerRequest;
-        $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
-        $ireq->client = new Internal\Client;
-        $ireq->client->options = new Internal\Options;
-        $ireq->client->httpDriver = new Internal\Http1Driver;
 
-        Loop::run(function () use ($emitter, $data, $ireq, $fields, $metadata) {
+        $headers = [];
+        $headers["content-type"] = [$header];
+        $body = new Body(new IteratorStream($emitter->iterate()));
+
+        $request = new Request("POST", new Uri("/"), $headers, $body);
+
+        Loop::run(function () use ($emitter, $data, $request, $fields) {
             $remaining = [];
 
             Loop::defer(function () use ($emitter, $data) {
@@ -154,7 +154,7 @@ class BodyParsingTest extends TestCase {
             });
 
             $bodies = [];
-            $body = \Aerys\parseBody(new Request($ireq));
+            $body = \Aerys\parseBody($request);
             while (null !== $name = yield $body->fetch()) {
                 if (isset($bodies[$name])) {
                     $remaining[$name][] = \array_shift($fields[$name]);
@@ -175,18 +175,17 @@ class BodyParsingTest extends TestCase {
     }
 
     public function testOutOfOrderStream() {
-        $header = null;
         $data = "a=ba%66g&&&be=c&d=f%6&gh&j";
 
         $emitter = new \Amp\Emitter;
-        $ireq = new Internal\ServerRequest;
-        $ireq->headers["content-type"][0] = $header;
-        $ireq->body = new Body(new IteratorStream($emitter->iterate()));
-        $ireq->client = new Internal\Client;
-        $ireq->client->options = new Internal\Options;
-        $ireq->client->httpDriver = new Internal\Http1Driver;
 
-        $body = new \Aerys\BodyParser(new Request($ireq));
+        $headers = [];
+        $headers["content-type"] = ["application/x-www-form-urlencoded"];
+        $body = new Body(new IteratorStream($emitter->iterate()));
+
+        $request = new Request("POST", new Uri("/"), $headers, $body);
+
+        $body = new \Aerys\BodyParser($request);
         // Purposely out of order of data arrival.
         $b = $body->stream("b");
         $d = $body->stream("d");
@@ -219,7 +218,7 @@ class BodyParsingTest extends TestCase {
 
         $input = "a=b&c=d&e=f&e=g";
 
-        $return[] = [null, $input, ["a" => ["b"], "c" => ["d"], "e" => ["f", "g"]], []];
+        $return[] = ["application/x-www-form-urlencoded", $input, ["a" => ["b"], "c" => ["d"], "e" => ["f", "g"]], []];
 
         // 1 --- basic multipart request ---------------------------------------------------------->
 

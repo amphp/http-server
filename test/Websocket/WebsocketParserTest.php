@@ -2,26 +2,16 @@
 
 namespace Aerys\Test\Websocket;
 
-use Aerys\HttpStatus;
-use Aerys\Internal;
-use Aerys\Internal\Client;
-use Aerys\Internal\HttpDriver;
-use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
-use Aerys\Server;
+use Aerys\Websocket\Application;
 use Aerys\Websocket\Code;
 use Aerys\Websocket\Endpoint;
 use Aerys\Websocket\Internal\Rfc6455Client;
 use Aerys\Websocket\Internal\Rfc6455Gateway;
 use Aerys\Websocket\Message;
-use Aerys\Websocket\Application;
-use Aerys\Websocket\Websocket;
-use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Socket\Socket;
-use Amp\Uri\Uri;
-use Psr\Log\LoggerInterface as PsrLogger;
 
 class WebsocketParserTest extends TestCase {
     public static function compile($opcode, $fin, $msg = "", $rsv = 0b000) {
@@ -214,101 +204,5 @@ class WebsocketParserTest extends TestCase {
         // x -------------------------------------------------------------------------------------->
 
         return $return;
-    }
-
-    public function testUpgrading() {
-        Loop::run(function () {
-            $client = new Client;
-            $client->id = 1;
-            $client->readWatcher = 'a';
-            $client->writeWatcher = 'b';
-            list($sock, $client->socket) = stream_socket_pair(\stripos(PHP_OS, "win") === 0 ? STREAM_PF_INET : STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
-
-            $driver = new class($this, $client) implements HttpDriver {
-                private $test;
-                private $emit;
-                public $response;
-                public $body;
-                private $client;
-
-                public function __construct($test, $client) {
-                    $this->test = $test;
-                    $this->client = $client;
-                    $this->client->serverPort = 80;
-                    $this->client->httpDriver = $this;
-                }
-
-                public function setup(array $parseEmitters, callable $write) {
-                    $this->emit = $parseEmitters[HttpDriver::RESULT];
-                }
-
-                public function writer(Internal\ServerRequest $ireq, Response $response): \Generator {
-                    $this->response = $response;
-                    $this->body = "";
-                    do {
-                        $this->body .= $part = yield;
-                    } while ($part !== null);
-                }
-
-                public function parser(Client $client): \Generator {
-                    $this->test->fail("We shouldn't be invoked the parser with no actual clients");
-                }
-
-                public function emit() {
-                    $ireq = new Internal\ServerRequest;
-                    $ireq->client = $this->client;
-                    $ireq->protocol = "1.1";
-                    $ireq->method = "GET";
-                    $ireq->uri = new Uri("http://localhost:80/foo");
-                    $ireq->headers = ["host" => ["localhost"], "sec-websocket-key" => ["x3JJHMbDL1EzLkh9GBhXDw=="], "sec-websocket-version" => ["13"], "upgrade" => ["websocket"], "connection" => ["keep-alive, upgrade"]];
-                    $ireq->trace = [["host", "localhost"], /* irrelevant ... */];
-                    ($this->emit)($ireq);
-                }
-
-                public function upgradeBodySize(Internal\ServerRequest $ireq, int $bodySize) {
-                }
-            };
-
-            $logger = $this->createMock(PsrLogger::class);
-
-            $ws = $this->createMock(Application::class);
-            $ws->expects($this->exactly(1))
-                ->method("onHandshake")
-                ->willReturnCallback(function (Request $request, Response $response) {
-                    $response->setHeader("Test", "foo");
-                    return $response;
-                });
-            $ws->expects($this->exactly(1))
-                ->method("onOpen")
-                ->willReturnCallback(function (int $clientId, $handshakeData) {
-                    $this->assertEquals("foo", $handshakeData);
-                });
-            $ws = new Websocket($ws);
-
-            $options = (new Options)
-                ->withDebugMode(true);
-
-            $server = new Server($ws, $options, $logger, $driver);
-            $server->expose("::", 9001);
-            yield $server->start();
-
-            $driver->emit();
-
-            yield $server->stop();
-
-            /** @var \Aerys\Response $response */
-            $response = $driver->response;
-            $this->assertSame(HttpStatus::SWITCHING_PROTOCOLS, $response->getStatus());
-            $this->assertSame("websocket", $response->getHeader("upgrade"));
-            $this->assertSame("upgrade", $response->getHeader("connection"));
-            $this->assertSame("HSmrc0sMlYUkAGmm5OPpG2HaGWk=", $response->getHeader("sec-websocket-accept"));
-            $this->assertSame("foo", $response->getHeader("test"));
-            $this->assertSame("", $driver->body);
-
-            // we need to test for unloading here (and not against unloading), because otherwise destructor order is not deterministic and it may spuriously succeed or fail
-            fclose($sock);
-            Loop::defer([Loop::class, "stop"]);
-            $this->assertTrue($client->isExported);
-        });
     }
 }

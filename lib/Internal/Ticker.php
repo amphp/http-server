@@ -5,28 +5,37 @@ namespace Aerys\Internal;
 use Aerys\ErrorHandler;
 use Aerys\Server;
 use Aerys\ServerObserver;
+use Amp\CallableMaker;
 use Amp\Loop;
 use Amp\Promise;
-use Amp\Struct;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 class Ticker implements ServerObserver {
-    use Struct;
+    use CallableMaker;
 
+    /** @var \Psr\Log\LoggerInterface */
     private $logger;
-    private $watcherId;
-    private $useCallbacks;
 
-    public $currentTime;
-    public $currentHttpDate;
+    /** @var string */
+    private $watcherId;
+
+    /** @var callable[] */
+    private $useCallbacks = [];
+
+    /** @var int */
+    private $currentTime;
+
+    /** @var string */
+    private $currentHttpDate;
 
     public function __construct(PsrLogger $logger) {
         $this->logger = $logger;
+        $this->updateTime();
     }
 
     public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
-        $this->watcherId = Loop::repeat(1000, [$this, "updateTime"]);
+        $this->watcherId = Loop::repeat(1000, $this->callableFromInstanceMethod("updateTime"));
         $this->updateTime();
         return new Success;
     }
@@ -35,6 +44,20 @@ class Ticker implements ServerObserver {
         Loop::cancel($this->watcherId);
         $this->watcherId = null;
         return new Success;
+    }
+
+    /**
+     * @return int
+     */
+    public function getCurrentTime(): int {
+        return $this->currentTime;
+    }
+
+    /**
+     * @return string
+     */
+    public function getCurrentDate(): string {
+        return $this->currentHttpDate;
     }
 
     /**
@@ -47,6 +70,7 @@ class Ticker implements ServerObserver {
      */
     public function use(callable $useCallback) {
         $this->useCallbacks[] = $useCallback;
+        $this->tryUseCallback($useCallback);
     }
 
     /**
@@ -54,13 +78,13 @@ class Ticker implements ServerObserver {
      *
      * @return void
      */
-    public function updateTime() {
+    private function updateTime() {
         // Date string generation is (relatively) expensive. Since we only need HTTP
         // dates at a granularity of one second we're better off to generate this
         // information once per second and cache it.
-        $now = (int) round(microtime(true));
-        $this->currentTime = $now;
-        $this->currentHttpDate = gmdate("D, d M Y H:i:s", $now) . " GMT";
+        $this->currentTime = time();
+        $this->currentHttpDate = gmdate("D, d M Y H:i:s", $this->currentTime) . " GMT";
+
         foreach ($this->useCallbacks as $useCallback) {
             $this->tryUseCallback($useCallback);
         }

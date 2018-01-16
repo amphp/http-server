@@ -6,17 +6,15 @@ use Aerys\Body;
 use Aerys\DefaultErrorHandler;
 use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
-use Aerys\Internal;
 use Aerys\Logger;
-use Aerys\NullBody;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;
+use Aerys\Websocket\Application;
 use Aerys\Websocket\Code;
 use Aerys\Websocket\Endpoint;
 use Aerys\Websocket\Internal\Rfc6455Gateway;
 use Aerys\Websocket\Message;
-use Aerys\Websocket\Application;
 use Amp\ByteStream\InMemoryStream;
 use Amp\Deferred;
 use Amp\Delayed;
@@ -24,6 +22,7 @@ use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Socket\ClientSocket;
+use Amp\Uri\Uri;
 
 class NullApplication implements Application {
     /** @var TestCase */
@@ -223,14 +222,14 @@ class WebsocketTest extends TestCase {
     }
 
     /**
-     * @param Internal\ServerRequest $ireq Request initiating the handshake.
-     * @param int                    $status Expected status code.
-     * @param array                  $expectedHeaders Expected response headers.
+     * @param Request $request Request initiating the handshake.
+     * @param int     $status Expected status code.
+     * @param array   $expectedHeaders Expected response headers.
      *
      * @dataProvider provideHandshakes
      */
-    public function testHandshake(Internal\ServerRequest $ireq, int $status, array $expectedHeaders = []) {
-        Loop::run(function () use ($ireq, $status, $expectedHeaders) {
+    public function testHandshake(Request $request, int $status, array $expectedHeaders = []) {
+        Loop::run(function () use ($request, $status, $expectedHeaders) {
             $server = $this->createMock(Server::class);
             $logger = $this->createMock(Logger::class);
             $application = $this->createMock(Application::class);
@@ -244,7 +243,7 @@ class WebsocketTest extends TestCase {
             yield $gateway->onStart($server, $logger, new DefaultErrorHandler);
 
             /** @var Response $response */
-            $response = yield $gateway->respond(new Request($ireq));
+            $response = yield $gateway->respond($request);
             $this->assertEquals($expectedHeaders, array_intersect_key($response->getHeaders(), $expectedHeaders));
 
             if ($status === HttpStatus::SWITCHING_PROTOCOLS) {
@@ -258,70 +257,73 @@ class WebsocketTest extends TestCase {
     public function provideHandshakes(): array {
         $testCases = [];
 
-        $validRequest = new Internal\ServerRequest;
-        $validRequest->client = new Internal\Client;
-        $validRequest->method = "GET";
-        $validRequest->protocol = "1.1";
-        $validRequest->headers = [
+        $headers = [
             "host" => ["localhost"],
             "sec-websocket-key" => ["x3JJHMbDL1EzLkh9GBhXDw=="],
             "sec-websocket-version" => ["13"],
             "upgrade" => ["websocket"],
             "connection" => ["upgrade"]
         ];
-        $validRequest->body = new NullBody;
 
         // 0 ----- valid Handshake request -------------------------------------------------------->
-        $ireq = clone $validRequest;
-        $testCases[] = [$ireq, HttpStatus::SWITCHING_PROTOCOLS, ["upgrade" => ["websocket"], "connection" => ["upgrade"], "sec-websocket-accept" => ["HSmrc0sMlYUkAGmm5OPpG2HaGWk="]]];
+        $request = new Request("GET", new Uri("/"), $headers);
+        $testCases[] = [$request, HttpStatus::SWITCHING_PROTOCOLS, [
+            "upgrade" => ["websocket"],
+            "connection" => ["upgrade"],
+            "sec-websocket-accept" => ["HSmrc0sMlYUkAGmm5OPpG2HaGWk="]
+        ]];
 
         // 1 ----- error conditions: Handshake with POST method ----------------------------------->
-        $ireq = clone $validRequest;
-        $ireq->method = "POST";
-        $testCases[] = [$ireq, HttpStatus::METHOD_NOT_ALLOWED, ["allow" => ["GET"]]];
+        $request = new Request("POST", new Uri("/"), $headers);
+        $testCases[] = [$request, HttpStatus::METHOD_NOT_ALLOWED, ["allow" => ["GET"]]];
 
         // 2 ----- error conditions: Handshake with 1.0 protocol ---------------------------------->
-        $ireq = clone $validRequest;
-        $ireq->protocol = "1.0";
-        $testCases[] = [$ireq, HttpStatus::HTTP_VERSION_NOT_SUPPORTED];
+        $request = new Request("GET", new Uri("/"), $headers, null, "/", "1.0");
+        $testCases[] = [$request, HttpStatus::HTTP_VERSION_NOT_SUPPORTED];
 
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
-        $ireq = clone $validRequest;
-        $ireq->body = new Body(new InMemoryStream("Non-empty body"));
-        $testCases[] = [$ireq, HttpStatus::BAD_REQUEST];
+        $body = new Body(new InMemoryStream("Non-empty body"));
+        $request = new Request("GET", new Uri("/"), $headers, $body);
+        $testCases[] = [$request, HttpStatus::BAD_REQUEST];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->
-        $ireq = clone $validRequest;
-        $ireq->headers["upgrade"] = ["no websocket!"];
-        $testCases[] = [$ireq, HttpStatus::UPGRADE_REQUIRED];
+        $invalidHeaders = $headers;
+        $invalidHeaders["upgrade"] = ["no websocket!"];
+        $request = new Request("GET", new Uri("/"), $invalidHeaders, $body);
+        $testCases[] = [$request, HttpStatus::UPGRADE_REQUIRED];
 
         // 5 ----- error conditions: Connection: Upgrade header required -------------------------->
-        $ireq = clone $validRequest;
-        $ireq->headers["connection"] = ["no upgrade!"];
-        $testCases[] = [$ireq, HttpStatus::UPGRADE_REQUIRED];
+        $invalidHeaders = $headers;
+        $invalidHeaders["connection"] = ["no upgrade!"];
+        $request = new Request("GET", new Uri("/"), $invalidHeaders, $body);
+        $testCases[] = [$request, HttpStatus::UPGRADE_REQUIRED];
 
         // 6 ----- error conditions: Sec-Websocket-Key header required ---------------------------->
-        $ireq = clone $validRequest;
-        unset($ireq->headers["sec-websocket-key"]);
-        $testCases[] = [$ireq, HttpStatus::BAD_REQUEST];
+        $invalidHeaders = $headers;
+        unset($invalidHeaders["sec-websocket-key"]);
+        $request = new Request("GET", new Uri("/"), $invalidHeaders, $body);
+        $testCases[] = [$request, HttpStatus::BAD_REQUEST];
 
         // 7 ----- error conditions: Sec-Websocket-Version header must be 13 ---------------------->
-        $ireq = clone $validRequest;
-        $ireq->headers["sec-websocket-version"] = ["12"];
-        $testCases[] = [$ireq, HttpStatus::BAD_REQUEST];
+        $invalidHeaders = $headers;
+        $invalidHeaders["sec-websocket-version"] = ["12"];
+        $request = new Request("GET", new Uri("/"), $invalidHeaders, $body);
+        $testCases[] = [$request, HttpStatus::BAD_REQUEST];
 
         return $testCases;
     }
 
     public function runClose(callable $closeCallback) {
         Loop::run(function () use ($closeCallback) {
-            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullApplication {
-                public $closed = false;
+            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(
+                $ws = new class($this) extends NullApplication {
+                    public $closed = false;
 
-                public function onClose(int $clientId, int $code, string $reason) {
-                    $this->closed = $code;
+                    public function onClose(int $clientId, int $code, string $reason) {
+                        $this->closed = $code;
+                    }
                 }
-            });
+            );
 
             yield from $closeCallback($gateway, $sock, $ws, $client);
 

@@ -2,17 +2,81 @@
 
 namespace Aerys;
 
+use Aerys\Cookie\Cookie;
 use Amp\Uri\Uri;
 
 class Request {
-    /** @var \Aerys\Internal\ServerRequest */
-    private $internalRequest;
+    /** @var string */
+    private $method;
+
+    /** @var \Amp\Uri\Uri */
+    private $uri;
+
+    /** @var string */
+    private $target;
+
+    /** @var string */
+    private $protocol;
+
+    /** @var string[][] */
+    private $headers = [];
+
+    /** @var \Aerys\Body|null */
+    private $body;
+
+    /** @var int */
+    private $streamId;
+
+    /** @var \Aerys\Cookie\Cookie[] */
+    private $cookies = [];
+
+    /** @var mixed[] */
+    private $attributes = [];
 
     /**
-     * @param \Aerys\Internal\ServerRequest $internalRequest
+     * @param string $method HTTP request method.
+     * @param Uri $uri The full URI being requested, including host, port, and protocol.
+     * @param string[]|string[][] $headers An array of strings or an array of string arrays.
+     * @param Body|null $body
+     * @param string|null $target Request target. Usually similar to URI, but contains only the exact string provided
+     *    in the request line.
+     * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
+     * @param int $streamId Stream ID used for HTTP/2 push requests.
      */
-    public function __construct(Internal\ServerRequest $internalRequest) {
-        $this->internalRequest = $internalRequest;
+    public function __construct(
+        string $method,
+        Uri $uri,
+        array $headers = [],
+        Body $body = null,
+        string $target = null,
+        string $protocol = "1.1",
+        int $streamId = 0
+    ) {
+        $this->method = $method;
+        $this->uri = $uri;
+        $this->protocol = $protocol;
+        $this->body = $body ?? new NullBody;
+        $this->target = $target ?? ($uri->getPath() . ($uri->getQuery() ? "?" . $uri->getQuery() : ""));
+        $this->streamId = $streamId;
+
+        foreach ($headers as $name => $value) {
+            if (\is_array($value)) {
+                $value = \array_map("strval", $value);
+            } else {
+                $value = [(string) $value];
+            }
+
+            $name = \strtolower($name);
+            $this->headers[$name] = $value;
+        }
+
+        if (!empty($this->headers["cookie"])) { // @TODO delay initialization
+            $cookies = \array_filter(\array_map([Cookie::class, "fromHeader"], $this->headers["cookie"]));
+            /** @var Cookie $cookie */
+            foreach ($cookies as $cookie) {
+                $this->cookies[$cookie->getName()] = $cookie;
+            }
+        }
     }
 
     /**
@@ -21,7 +85,7 @@ class Request {
      * @return string
      */
     public function getMethod(): string {
-        return $this->internalRequest->method;
+        return $this->method;
     }
 
     /**
@@ -30,7 +94,16 @@ class Request {
      * @return \Amp\Uri\Uri
      */
     public function getUri(): Uri {
-        return $this->internalRequest->uri;
+        return $this->uri;
+    }
+
+    /**
+     * Retrieve the request target path.
+     *
+     * @return string
+     */
+    public function getTarget(): string {
+        return $this->target;
     }
 
     /**
@@ -42,7 +115,7 @@ class Request {
      * @return string
      */
     public function getProtocolVersion(): string {
-        return $this->internalRequest->protocol;
+        return $this->protocol;
     }
 
     /**
@@ -61,7 +134,7 @@ class Request {
      * @return string|null
      */
     public function getHeader(string $field) { /* : ?string */
-        return $this->internalRequest->headers[strtolower($field)][0] ?? null;
+        return $this->headers[strtolower($field)][0] ?? null;
     }
 
     /**
@@ -75,7 +148,7 @@ class Request {
      * @return array
      */
     public function getHeaderArray(string $field): array {
-        return $this->internalRequest->headers[strtolower($field)] ?? [];
+        return $this->headers[strtolower($field)] ?? [];
     }
 
     /**
@@ -87,25 +160,16 @@ class Request {
      * @return array
      */
     public function getHeaders(): array {
-        return $this->internalRequest->headers;
+        return $this->headers;
     }
 
     /**
      * Retrieve the streaming request entity body.
      *
-     * @TODO add documentation for how the body object is used
-     *
-     * @param int|null $bodySize Maximum body size or null to use server default.
-     *
      * @return \Aerys\Body
      */
-    public function getBody(int $bodySize = null): Body {
-        $ireq = $this->internalRequest;
-        if ($bodySize !== null) {
-            $ireq->client->httpDriver->upgradeBodySize($this->internalRequest, $bodySize);
-        }
-
-        return $ireq->body;
+    public function getBody(): Body {
+        return $this->body;
     }
 
     /**
@@ -114,10 +178,8 @@ class Request {
      * @param string $name
      * @return \Aerys\Cookie\Cookie|null
      */
-    public function getCookie(string $name) {
-        $ireq = $this->internalRequest;
-
-        return $ireq->cookies[$name] ?? null;
+    public function getCookie(string $name) { /* : ?Cookie */
+        return $this->cookies[$name] ?? null;
     }
 
     /**
@@ -132,7 +194,7 @@ class Request {
      * @return mixed
      */
     public function getAttribute(string $key) {
-        return $this->internalRequest->locals[$key] ?? null;
+        return $this->attributes[$key] ?? null;
     }
 
     /**
@@ -148,54 +210,13 @@ class Request {
      * @return void
      */
     public function setAttribute(string $key, $value) {
-        $this->internalRequest->locals[$key] = $value;
+        $this->attributes[$key] = $value;
     }
 
     /**
-     * Retrieve an associative array of extended information about the underlying connection.
-     *
-     * Keys:
-     *      - client_port
-     *      - client_addr
-     *      - server_port
-     *      - server_addr
-     *      - is_encrypted
-     *      - crypto_info = [protocol, cipher_name, cipher_bits, cipher_version]
-     *
-     * If the underlying connection is not encrypted the crypto_info array is empty.
-     *
-     * @return array
+     * @return int HTTP/2 stream ID. Always 0 for HTTP/1.x.
      */
-    public function getConnectionInfo(): array {
-        $client = $this->internalRequest->client;
-        return [
-            "client_port" => $client->clientPort,
-            "client_addr" => $client->clientAddr,
-            "server_port" => $client->serverPort,
-            "server_addr" => $client->serverAddr,
-            "is_encrypted"=> $client->isEncrypted,
-            "crypto_info" => $client->cryptoInfo,
-        ];
-    }
-
-
-    /**
-     * Retrieve a server option value.
-     *
-     * @param string $option The option to retrieve
-     *
-     * @return mixed
-     *
-     * @throws \Error on unknown option
-     */
-    public function getOption(string $option) {
-        return $this->internalRequest->client->options->{$option};
-    }
-
-    /**
-     * @return int Unix timestamp of the request time.
-     */
-    public function getTime(): int {
-        return $this->internalRequest->time;
+    public function getStreamId(): int {
+        return $this->streamId;
     }
 }

@@ -2,10 +2,15 @@
 
 namespace Aerys\Internal;
 
+use Aerys\Body;
 use Aerys\ClientException;
 use Aerys\HttpStatus;
 use Aerys\NullBody;
+use Aerys\Request;
 use Aerys\Response;
+use Aerys\Server;
+use Amp\ByteStream\IteratorStream;
+use Amp\Emitter;
 use Amp\Loop;
 use Amp\Uri\Uri;
 use const Aerys\SERVER_TOKEN;
@@ -19,91 +24,48 @@ class Http1Driver implements HttpDriver {
     /** @var \Aerys\Internal\Http2Driver */
     private $http2;
 
-    private $resultEmitter;
-    private $entityHeaderEmitter;
-    private $entityPartEmitter;
-    private $entityResultEmitter;
-    private $errorEmitter;
+    /** @var callable */
+    private $onRequest;
+
+    /** @var callable */
+    private $onError;
+
+    /** @var callable */
     private $responseWriter;
 
-    public function setup(array $parseEmitters, callable $responseWriter) {
-        $map = [
-            self::RESULT => "resultEmitter",
-            self::ENTITY_HEADERS => "entityHeaderEmitter",
-            self::ENTITY_PART => "entityPartEmitter",
-            self::ENTITY_RESULT => "entityResultEmitter",
-            self::ERROR => "errorEmitter",
-        ];
-        foreach ($parseEmitters as $emitterType => $emitter) {
-            foreach ($map as $key => $property) {
-                if ($emitterType & $key) {
-                    $this->$property = $emitter;
-                }
-            }
-        }
+    /** @var \Aerys\NullBody */
+    private $nullBody;
+
+    /** @var string */
+    private $date;
+
+    public function __construct() {
+        $this->http2 = new Http2Driver();
+        $this->nullBody = new NullBody;
+    }
+
+    public function setup(Server $server, callable $onRequest, callable $onError, callable $responseWriter) {
+        $server->tick(function (int $time, string $date) {
+            $this->date = $date;
+        });
+
+        $this->onRequest = $onRequest;
+        $this->onError = $onError;
         $this->responseWriter = $responseWriter;
-        $this->http2 = new Http2Driver;
-        $this->http2->setup($parseEmitters, $responseWriter);
+        $this->http2->setup($server, $onRequest, $onError, $responseWriter);
     }
 
-    public function writer(ServerRequest $request, Response $response): \Generator {
-        // We need this in here to be able to return HTTP/2.0 writer; if we allow HTTP/1.1 writer to be returned, we have lost
-        if (isset($request->headers["upgrade"][0]) &&
-            $request->headers["upgrade"][0] === "h2c" &&
-            $request->protocol === "1.1" &&
-            isset($request->headers["http2-settings"][0]) &&
-            false !== $h2cSettings = base64_decode(strtr($request->headers["http2-settings"][0], "-_", "+/"), true)
-        ) {
-            // Send upgrading response
-            $responseWriter = $this->send($request, new Response(new NullBody, [
-                "connection" => "Upgrade",
-                "upgrade" => "h2c",
-            ], HttpStatus::SWITCHING_PROTOCOLS));
-            $responseWriter->send(null); // flush before replacing
-
-            // internal upgrade
-            $client = $request->client;
-            $client->httpDriver = $this->http2;
-            $client->requestParser = $client->httpDriver->parser($client, $h2cSettings);
-
-            $client->requestParser->valid(); // start generator
-
-            $request->streamId = 1;
-            $client->streamWindow = [];
-            $client->streamWindow[$request->streamId] = $client->window;
-            $client->streamWindowBuffer[$request->streamId] = "";
-            $request->protocol = "2.0";
-
-            /* unnecessary:
-            // Make request look HTTP/2 compatible
-            $ireq->headers[":scheme"] = $client->isEncrypted ? "https" : "http";
-            $ireq->headers[":authority"] = $ireq->headers["host"][0];
-            $ireq->headers[":path"] = $ireq->uriPath;
-            $ireq->headers[":method"] = $ireq->method;
-            $host = \explode(":", $ireq->headers["host"][0]);
-            if (count($host) > 1) {
-                $ireq->uriPort = array_pop($host);
-            }
-            $ireq->uriHost = implode(":", $host);
-            unset($ireq->headers["host"]);
-            */
-
-            return $this->http2->writer($request, $response);
-        }
-
-        return $this->send($request, $response);
-    }
-
-    private function send(ServerRequest $request, Response $response): \Generator {
-        $client = $request->client;
+    public function writer(Client $client, Response $response, Request $request = null): \Generator {
+        $protocol = $request !== null ? $request->getProtocolVersion() : "1.0";
 
         $status = $response->getStatus();
         $reason = $response->getReason();
-        $headers = $this->filter($request, $response->getHeaders(), $response->getPush(), $status);
+
+        $headers = $this->filter($client, $response, $protocol, $request ? $request->getHeaderArray("connection") : []);
 
         $chunked = !isset($headers["content-length"])
-            && $request->protocol === "1.1"
-            && $status >= 200;
+            && $protocol === "1.1"
+            && $status >= HttpStatus::OK;
 
         if (!empty($headers["connection"])) {
             foreach ($headers["connection"] as $connection) {
@@ -118,21 +80,22 @@ class Http1Driver implements HttpDriver {
             $headers["transfer-encoding"] = ["chunked"];
         }
 
-        $protocol = $request->protocol ?? "1.1";
-
         $buffer = "HTTP/{$protocol} {$status} {$reason}\r\n";
         foreach ($headers as $headerField => $headerLines) {
             if ($headerField[0] !== ":") {
                 foreach ($headerLines as $headerLine) {
                     /* verify header fields (per RFC) and header values against containing \n */
-                    \assert(strpbrk($headerField, "\n\t ()<>@,;:\\\"/[]?={}") === false && strpbrk((string) $headerLine, "\n") === false);
+                    \assert(
+                        strpbrk($headerField, "\n\t ()<>@,;:\\\"/[]?={}") === false
+                        && strpbrk((string) $headerLine, "\n") === false
+                    );
                     $buffer .= "{$headerField}: {$headerLine}\r\n";
                 }
             }
         }
         $buffer .= "\r\n";
 
-        if ($request->method === "HEAD") {
+        if ($request !== null && $request->getMethod() === "HEAD") {
             ($this->responseWriter)($client, $buffer, true);
             while (null !== yield); // Ignore body portions written.
         } else {
@@ -174,16 +137,11 @@ class Http1Driver implements HttpDriver {
         }
     }
 
-    public function upgradeBodySize(ServerRequest $ireq, int $bodySize) {
-        if ($bodySize > ($ireq->maxBodySize ?? $ireq->client->options->maxBodySize)) {
-            $ireq->maxBodySize = $bodySize;
-        }
-    }
-
     public function parser(Client $client): \Generator {
         $maxHeaderSize = $client->options->maxHeaderSize;
         $maxBodySize = $client->options->maxBodySize;
         $bodyEmitSize = $client->options->ioGranularity;
+        $id = 0;
 
         $buffer = "";
 
@@ -221,7 +179,7 @@ class Http1Driver implements HttpDriver {
                 }
 
                 if (\strlen($buffer) > $maxHeaderSize) {
-                    ($this->errorEmitter)($client, HttpStatus::REQUEST_HEADER_FIELDS_TOO_LARGE, "Bad Request: header size violation");
+                    ($this->onError)($client, HttpStatus::REQUEST_HEADER_FIELDS_TOO_LARGE, "Bad Request: header size violation");
                     return;
                 }
 
@@ -233,35 +191,38 @@ class Http1Driver implements HttpDriver {
             $rawHeaders = \substr($startLineAndHeaders, $startLineEndPos + 2);
 
             if (!\preg_match("/^([A-Z]+) (\S+) HTTP\/(\d+(?:\.\d+)?)$/i", $startLine, $matches)) {
-                ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: invalid request line");
+                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: invalid request line");
                 return;
             }
 
-            $method = $matches[1];
-            $uri = $matches[2];
-            $protocol = $matches[3];
+            list(, $method, $target, $protocol) = $matches;
 
             if ($protocol !== "1.1" && $protocol !== "1.0") {
-                // @TODO eventually add an option to disable HTTP/2.0 support???
                 if ($protocol === "2.0") {
+                    if ($client->isEncrypted && ($client->cryptoInfo["alpn_protocol"] ?? null) !== "h2") {
+                        ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: ALPN must be h2");
+                        return;
+                    }
+
+                    // Internal upgrade to HTTP/2.
                     $client->httpDriver = $this->http2;
-                    $client->streamWindow = [];
                     $client->requestParser = $client->httpDriver->parser($client);
                     $client->requestParser->send("$startLineAndHeaders\r\n$buffer");
                     return;
                 }
-                ($this->errorEmitter)($client, HttpStatus::HTTP_VERSION_NOT_SUPPORTED, "Unsupported version {$protocol}");
+
+                ($this->onError)($client, HttpStatus::HTTP_VERSION_NOT_SUPPORTED, "Unsupported version {$protocol}");
                 break;
             }
 
             if ($rawHeaders) {
                 if (\strpos($rawHeaders, "\n\x20") || \strpos($rawHeaders, "\n\t")) {
-                    ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: multi-line headers deprecated by RFC 7230");
+                    ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: multi-line headers deprecated by RFC 7230");
                     return;
                 }
 
                 if (!\preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches, \PREG_SET_ORDER)) {
-                    ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: header syntax violation");
+                    ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: header syntax violation");
                     return;
                 }
 
@@ -274,7 +235,7 @@ class Http1Driver implements HttpDriver {
                 $contentLength = $headers["content-length"][0] ?? null;
                 if ($contentLength !== null) {
                     if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {
-                        ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: invalid content length");
+                        ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: invalid content length");
                         return;
                     }
 
@@ -284,38 +245,26 @@ class Http1Driver implements HttpDriver {
                 if (isset($headers["transfer-encoding"])) {
                     $value = strtolower($headers["transfer-encoding"][0]);
                     if (!($isChunked = $value === "chunked") && $value !== "identity") {
-                        ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: unsupported transfer-encoding");
+                        ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: unsupported transfer-encoding");
                         return;
                     }
                 }
             }
 
-            if ($method == "HEAD" || $method == "TRACE" || $method == "OPTIONS" || $contentLength === 0) {
-                // No body allowed for these messages
-                $hasBody = false;
-            } else {
-                $hasBody = $isChunked || $contentLength;
+            if ($client->options->normalizeMethodCase) {
+                $method = \strtoupper($method);
             }
-
-            $ireq = new ServerRequest;
-            $ireq->client = $client;
-            $ireq->headers = $headers;
-            $ireq->method = $method;
-            $ireq->protocol = $protocol;
-            $ireq->trace = $startLineAndHeaders;
-            $ireq->target = $uri;
-            $ireq->maxBodySize = $maxBodySize;
 
             $host = $headers["host"][0] ?? ""; // Host header may be set but empty.
             if ($host === "") {
-                ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: Invalid host header");
+                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: Invalid host header");
                 return;
             }
 
-            if ($uri === "*") {
-                $ireq->uri = new Uri($host . ":" . $client->serverPort);
-            } elseif (($schemepos = \strpos($uri, "://")) !== false && $schemepos < \strpos($uri, "/")) {
-                $ireq->uri = new Uri($uri);
+            if ($target === "*") {
+                $uri = new Uri($host . ":" . $client->serverPort);
+            } elseif (($schemepos = \strpos($target, "://")) !== false && $schemepos < \strpos($target, "/")) {
+                $uri = new Uri($target);
             } else {
                 $scheme = $client->isEncrypted ? "https" : "http";
                 if (($colon = \strrpos($host, ":")) !== false) {
@@ -325,214 +274,289 @@ class Http1Driver implements HttpDriver {
                     $port = $client->serverPort;
                 }
 
-                $uri = $scheme . "://" . $host . ":" . $port . $uri;
-                $ireq->uri = new Uri($uri);
+                $uri = new Uri($scheme . "://" . $host . ":" . $port . $target);
             }
 
-            if (!$hasBody) {
-                ($this->resultEmitter)($ireq);
+            // Handle HTTP/2 upgrade request.
+            if ($protocol === "1.1" &&
+                isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0]) &&
+                false !== stripos($headers["connection"][0], "upgrade") &&
+                strtolower($headers["upgrade"][0]) === "h2c" &&
+                false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
+            ) {
+                // Request instance will be overwritten below. This is for sending the switching protocols response.
+                $request = new Request($method, $uri, $headers, $this->nullBody, $target, $protocol);
+
+                $client->pendingResponses++;
+                $responseWriter = $this->writer($client, new Response($this->nullBody, [
+                    "connection" => "upgrade",
+                    "upgrade" => "h2c",
+                ], HttpStatus::SWITCHING_PROTOCOLS), $request);
+                $responseWriter->send(null); // Flush before replacing
+
+                // Internal upgrade
+                $client->httpDriver = $this->http2;
+                $client->requestParser = $client->httpDriver->parser($client, $h2cSettings, true);
+
+                $client->requestParser->current(); // Start the parser to send initial frames.
+
+                // Not needed for HTTP/2 request.
+                unset($headers["upgrade"], $headers["connection"], $headers["http2-settings"]);
+
+                // Make request look like HTTP/2 request.
+                $headers[":method"][0] = $method;
+                $headers[":authority"][0] = $uri->getAuthority();
+                $headers[":scheme"][0] = $uri->getScheme();
+                $headers[":path"][0] = $target;
+
+                $protocol = "2.0";
+                $id = 1; // Initial HTTP/2 stream ID.
+            }
+
+            if (!($isChunked || $contentLength)) {
+                $request = new Request($method, $uri, $headers, $this->nullBody, $target, $protocol, $id);
+                ($this->onRequest)($client, $request);
                 continue;
             }
 
-            // @TODO Handle HTTP/2 upgrade request.
+            // HTTP/1.x clients only ever have a single body emitter.
+            $client->bodyEmitters[0] = $emitter = new Emitter;
 
-            ($this->entityHeaderEmitter)($ireq);
+            $body = new Body(
+                new IteratorStream($client->bodyEmitters[0]->iterate()),
+                function (int $bodySize) use (&$maxBodySize) {
+                    if ($bodySize > $maxBodySize) {
+                        $maxBodySize = $bodySize;
+                    }
+                }
+            );
+
+            $request = new Request($method, $uri, $headers, $body, $target, $protocol, $id);
+
+            ($this->onRequest)($client, $request);
+
             $body = "";
 
-            if ($isChunked) {
-                $bodySize = 0;
-                while (true) {
-                    while (false === ($lineEndPos = \strpos($buffer, "\r\n"))) {
-                        if (\strlen($buffer) > 10) {
-                            ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
-                            return;
-                        }
-
-                        $buffer .= yield;
-                    }
-
-                    $line = \substr($buffer, 0, $lineEndPos);
-                    $buffer = \substr($buffer, $lineEndPos + 2);
-                    $hex = \trim($line);
-                    if ($hex !== "0") {
-                        $hex = \ltrim($line, "0");
-
-                        if (!\preg_match("/^[1-9A-F][0-9A-F]*?$/i", $hex)) {
-                            ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
-                            return;
-                        }
-                    }
-
-                    $chunkLenRemaining = \hexdec($hex);
-
-                    if ($chunkLenRemaining === 0) {
-                        while (!isset($buffer[1])) {
-                            $buffer .= yield;
-                        }
-                        $firstTwoBytes = \substr($buffer, 0, 2);
-                        if ($firstTwoBytes === "\r\n") {
-                            $buffer = \substr($buffer, 2);
-                            break; // finished ($is_chunked loop)
-                        }
-
-                        do {
-                            if ($trailerSize = \strpos($buffer, "\r\n\r\n")) {
-                                $trailers = \substr($buffer, 0, $trailerSize + 2);
-                                $buffer = \substr($buffer, $trailerSize + 4);
-                            } else {
-                                $buffer .= yield;
-                                $trailerSize = \strlen($buffer);
-                                $trailers = null;
-                            }
-                            if ($maxHeaderSize > 0 && $trailerSize > $maxHeaderSize) {
-                                ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Trailer headers too large");
+            try {
+                if ($isChunked) {
+                    $bodySize = 0;
+                    while (true) {
+                        while (false === ($lineEndPos = \strpos($buffer, "\r\n"))) {
+                            if (\strlen($buffer) > 10) {
+                                unset($client->bodyEmitters[0]);
+                                $emitter->fail(new ClientException("Invalid body encoding"));
+                                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
                                 return;
                             }
-                        } while (!isset($trailers));
 
-                        if (\strpos($trailers, "\n\x20") || \strpos($trailers, "\n\t")) {
-                            ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: multi-line trailers deprecated by RFC 7230");
-                            return;
-                        }
-
-                        if (!\preg_match_all(self::HEADER_REGEX, $trailers, $matches)) {
-                            ($this->errorEmitter)($client, HttpStatus::BAD_REQUEST, "Bad Request: trailer syntax violation");
-                            return;
-                        }
-
-                        list(, $fields, $values) = $matches;
-                        $trailers = [];
-                        foreach ($fields as $index => $field) {
-                            $trailers[$field][] = $values[$index];
-                        }
-
-                        if ($trailers) {
-                            $trailers = \array_change_key_case($trailers);
-
-                            foreach (["transfer-encoding", "content-length", "trailer"] as $remove) {
-                                unset($trailers[$remove]);
-                            }
-
-                            if ($trailers) {
-                                $headers = \array_merge($headers, $trailers);
-                            }
-                        }
-
-                        break; // finished ($is_chunked loop)
-                    }
-
-                    if ($bodySize + $chunkLenRemaining > $client->streamWindow) {
-                        do {
-                            $remaining = $ireq->maxBodySize - $bodySize;
-                            $chunkLenRemaining -= $remaining - \strlen($body);
-                            $body .= $buffer;
-                            $bodyBufferSize = \strlen($body);
-
-                            while ($bodyBufferSize < $remaining) {
-                                if ($bodyBufferSize >= $bodyEmitSize) {
-                                    ($this->entityPartEmitter)($client, $body);
-                                    $body = '';
-                                    $bodySize += $bodyBufferSize;
-                                    $remaining -= $bodyBufferSize;
-                                }
-                                $body .= yield;
-                                $bodyBufferSize = \strlen($body);
-                            }
-                            if ($remaining) {
-                                ($this->entityPartEmitter)($client, substr($body, 0, $remaining));
-                                $buffer = substr($body, $remaining);
-                                $body = "";
-                                $bodySize += $remaining;
-                            }
-
-                            if ($bodySize !== $ireq->maxBodySize) {
-                                continue;
-                            }
-
-                            ($this->errorEmitter)($client, HttpStatus::PAYLOAD_TOO_LARGE, "Payload too large");
-                            return;
-                        } while ($ireq->maxBodySize < $bodySize + $chunkLenRemaining);
-                    }
-
-                    $bodyBufferSize = 0;
-
-                    while (true) {
-                        $bufferLen = \strlen($buffer);
-                        // These first two (extreme) edge cases prevent errors where the packet boundary ends after
-                        // the \r and before the \n at the end of a chunk.
-                        if ($bufferLen === $chunkLenRemaining || $bufferLen === $chunkLenRemaining + 1) {
                             $buffer .= yield;
-                            continue;
-                        } elseif ($bufferLen >= $chunkLenRemaining + 2) {
-                            $body .= substr($buffer, 0, $chunkLenRemaining);
-                            $buffer = substr($buffer, $chunkLenRemaining + 2);
-                            $bodyBufferSize += $chunkLenRemaining;
-                        } else {
-                            $body .= $buffer;
-                            $bodyBufferSize += $bufferLen;
-                            $chunkLenRemaining -= $bufferLen;
                         }
 
-                        if ($bodyBufferSize >= $bodyEmitSize) {
-                            ($this->entityPartEmitter)($client, $body);
-                            $body = '';
-                            $bodySize += $bodyBufferSize;
-                            $bodyBufferSize = 0;
+                        $line = \substr($buffer, 0, $lineEndPos);
+                        $buffer = \substr($buffer, $lineEndPos + 2);
+                        $hex = \trim($line);
+                        if ($hex !== "0") {
+                            $hex = \ltrim($line, "0");
+
+                            if (!\preg_match("/^[1-9A-F][0-9A-F]*?$/i", $hex)) {
+                                unset($client->bodyEmitters[0]);
+                                $emitter->fail(new ClientException("Invalid body encoding"));
+                                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
+                                return;
+                            }
                         }
 
-                        if ($bufferLen >= $chunkLenRemaining + 2) {
-                            $chunkLenRemaining = null;
-                            continue 2; // next chunk ($isChunked loop)
+                        $chunkLenRemaining = \hexdec($hex);
+
+                        if ($chunkLenRemaining === 0) {
+                            while (!isset($buffer[1])) {
+                                $buffer .= yield;
+                            }
+                            $firstTwoBytes = \substr($buffer, 0, 2);
+                            if ($firstTwoBytes === "\r\n") {
+                                $buffer = \substr($buffer, 2);
+                                break; // finished ($is_chunked loop)
+                            }
+
+                            do {
+                                if ($trailerSize = \strpos($buffer, "\r\n\r\n")) {
+                                    $trailers = \substr($buffer, 0, $trailerSize + 2);
+                                    $buffer = \substr($buffer, $trailerSize + 4);
+                                } else {
+                                    $buffer .= yield;
+                                    $trailerSize = \strlen($buffer);
+                                    $trailers = null;
+                                }
+                                if ($maxHeaderSize > 0 && $trailerSize > $maxHeaderSize) {
+                                    unset($client->bodyEmitters[0]);
+                                    $emitter->fail(new ClientException("Trailer headers too large"));
+                                    ($this->onError)($client, HttpStatus::BAD_REQUEST, "Trailer headers too large");
+                                    return;
+                                }
+                            } while (!isset($trailers));
+
+                            if (\strpos($trailers, "\n\x20") || \strpos($trailers, "\n\t")) {
+                                unset($client->bodyEmitters[0]);
+                                $emitter->fail(new ClientException("Multi-line trailers found"));
+                                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: multi-line trailers deprecated by RFC 7230");
+                                return;
+                            }
+
+                            if (!\preg_match_all(self::HEADER_REGEX, $trailers, $matches)) {
+                                unset($client->bodyEmitters[0]);
+                                $emitter->fail(new ClientException("Trailer syntax violation"));
+                                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: trailer syntax violation");
+                                return;
+                            }
+
+                            list(, $fields, $values) = $matches;
+                            $trailers = [];
+                            foreach ($fields as $index => $field) {
+                                $trailers[$field][] = $values[$index];
+                            }
+
+                            // @TODO Alter Body to support trailer headers.
+                            if ($trailers) {
+                                $trailers = \array_change_key_case($trailers);
+
+                                foreach (["transfer-encoding", "content-length", "trailer"] as $remove) {
+                                    unset($trailers[$remove]);
+                                }
+
+                                if ($trailers) {
+                                    $headers = \array_merge($headers, $trailers);
+                                }
+                            }
+
+                            break; // finished (chunked loop)
                         }
 
-                        $buffer = yield;
+                        if ($bodySize + $chunkLenRemaining > $client->streamWindow) {
+                            do {
+                                $remaining = $maxBodySize - $bodySize;
+                                $chunkLenRemaining -= $remaining - \strlen($body);
+                                $body .= $buffer;
+                                $bodyBufferSize = \strlen($body);
+
+                                while ($bodyBufferSize < $remaining) {
+                                    if ($bodyBufferSize >= $bodyEmitSize) {
+                                        $emitter->emit($body);
+                                        $body = '';
+                                        $bodySize += $bodyBufferSize;
+                                        $remaining -= $bodyBufferSize;
+                                    }
+                                    $body .= yield;
+                                    $bodyBufferSize = \strlen($body);
+                                }
+                                if ($remaining) {
+                                    $emitter->emit(substr($body, 0, $remaining));
+                                    $buffer = substr($body, $remaining);
+                                    $body = "";
+                                    $bodySize += $remaining;
+                                }
+
+                                if ($bodySize !== $maxBodySize) {
+                                    continue;
+                                }
+
+                                unset($client->bodyEmitters[0]);
+                                $emitter->fail(new ClientException("Body too large"));
+                                ($this->onError)($client, HttpStatus::PAYLOAD_TOO_LARGE, "Payload too large");
+                                return;
+                            } while ($maxBodySize < $bodySize + $chunkLenRemaining);
+                        }
+
+                        $bodyBufferSize = 0;
+
+                        while (true) {
+                            $bufferLen = \strlen($buffer);
+                            // These first two (extreme) edge cases prevent errors where the packet boundary ends after
+                            // the \r and before the \n at the end of a chunk.
+                            if ($bufferLen === $chunkLenRemaining || $bufferLen === $chunkLenRemaining + 1) {
+                                $buffer .= yield;
+                                continue;
+                            } elseif ($bufferLen >= $chunkLenRemaining + 2) {
+                                $body .= substr($buffer, 0, $chunkLenRemaining);
+                                $buffer = substr($buffer, $chunkLenRemaining + 2);
+                                $bodyBufferSize += $chunkLenRemaining;
+                            } else {
+                                $body .= $buffer;
+                                $bodyBufferSize += $bufferLen;
+                                $chunkLenRemaining -= $bufferLen;
+                            }
+
+                            if ($bodyBufferSize >= $bodyEmitSize) {
+                                $emitter->emit($body);
+                                $body = '';
+                                $bodySize += $bodyBufferSize;
+                                $bodyBufferSize = 0;
+                            }
+
+                            if ($bufferLen >= $chunkLenRemaining + 2) {
+                                $chunkLenRemaining = null;
+                                continue 2; // next chunk (chunked loop)
+                            }
+
+                            $buffer = yield;
+                        }
                     }
-                }
 
-                if ($body !== "") {
-                    ($this->entityPartEmitter)($client, $body);
-                }
-            } else {
-                $bodySize = 0;
-
-                if ($ireq->maxBodySize < $contentLength) {
-                    ($this->errorEmitter)($client, HttpStatus::PAYLOAD_TOO_LARGE, "Payload too large");
-                    return;
-                }
-
-                $bound = $contentLength;
-                $bodyBufferSize = \strlen($buffer);
-
-                while ($bodySize + $bodyBufferSize < $bound) {
-                    if ($bodyBufferSize >= $bodyEmitSize) {
-                        ($this->entityPartEmitter)($client, $buffer);
-                        $buffer = '';
-                        $bodySize += $bodyBufferSize;
+                    if ($body !== "") {
+                        $emitter->emit($body);
                     }
-                    $buffer .= yield;
+                } else {
+                    $bodySize = 0;
+
+                    if ($maxBodySize < $contentLength) {
+                        unset($client->bodyEmitters[0]);
+                        $emitter->fail(new ClientException("Body too large"));
+                        ($this->onError)($client, HttpStatus::PAYLOAD_TOO_LARGE, "Payload too large");
+                        return;
+                    }
+
+                    $bound = $contentLength;
                     $bodyBufferSize = \strlen($buffer);
+
+                    while ($bodySize + $bodyBufferSize < $bound) {
+                        if ($bodyBufferSize >= $bodyEmitSize) {
+                            $emitter->emit($buffer);
+                            $buffer = '';
+                            $bodySize += $bodyBufferSize;
+                        }
+                        $buffer .= yield;
+                        $bodyBufferSize = \strlen($buffer);
+                    }
+                    $remaining = $bound - $bodySize;
+                    if ($remaining) {
+                        $emitter->emit(substr($buffer, 0, $remaining));
+                        $buffer = substr($buffer, $remaining);
+                    }
                 }
-                $remaining = $bound - $bodySize;
-                if ($remaining) {
-                    ($this->entityPartEmitter)($client, substr($buffer, 0, $remaining));
-                    $buffer = substr($buffer, $remaining);
+
+                unset($client->bodyEmitters[0]);
+                $emitter->complete();
+            } finally {
+                if (isset($client->bodyEmitters[0])) {
+                    $emitter = $client->bodyEmitters[0];
+                    unset($client->bodyEmitters[0]);
+                    $emitter->fail(new ClientException("Client disconnected"));
                 }
             }
-
-            ($this->entityResultEmitter)($client);
         } while (true);
     }
 
-    private function filter(ServerRequest $request, array $headers, array $push, int $status): array {
-        $options = $request->client->options;
+    private function filter(Client $client, Response $response, string $protocol = "1.0", array $connection = []): array {
+        $headers = $response->getHeaders();
 
-        if ($options->sendServerToken) {
+        if ($client->options->sendServerToken) {
             $headers["server"] = [SERVER_TOKEN];
         }
 
-        if ($status < 200) {
+        if ($response->getStatus() < HttpStatus::OK) {
             return $headers;
         }
+
+        $push = $response->getPush();
 
         if (!empty($push)) {
             $headers["link"] = [];
@@ -542,32 +566,32 @@ class Http1Driver implements HttpDriver {
         }
 
         $contentLength = $headers["content-length"][0] ?? null;
-        $shouldClose = (isset($request->headers["connection"]) && \in_array("close", $request->headers["connection"]))
+        $shouldClose = (\in_array("close", $connection))
             || (isset($headers["connection"]) && \in_array("close", $headers["connection"]));
 
         if ($contentLength !== null) {
-            $shouldClose = $shouldClose || $request->protocol === "1.0";
+            $shouldClose = $shouldClose || $protocol === "1.0";
             unset($headers["transfer-encoding"]);
-        } elseif ($request->protocol === "1.1") {
+        } elseif ($protocol === "1.1") {
             unset($headers["content-length"]);
         } else {
             $shouldClose = true;
         }
 
-        $remainingRequests = $request->client->remainingRequests;
+        $remainingRequests = $client->remainingRequests;
         if ($shouldClose || $remainingRequests <= 0) {
             $headers["connection"] = ["close"];
         } elseif ($remainingRequests < (PHP_INT_MAX >> 1)) {
             $headers["connection"] = ["keep-alive"];
-            $keepAlive = "timeout={$options->connectionTimeout}, max={$remainingRequests}";
+            $keepAlive = "timeout={$client->options->connectionTimeout}, max={$remainingRequests}";
             $headers["keep-alive"] = [$keepAlive];
         } else {
             $headers["connection"] = ["keep-alive"];
-            $keepAlive = "timeout={$options->connectionTimeout}";
+            $keepAlive = "timeout={$client->options->connectionTimeout}";
             $headers["keep-alive"] = [$keepAlive];
         }
 
-        $headers["date"] = [$request->httpDate];
+        $headers["date"] = [$this->date];
 
         return $headers;
     }

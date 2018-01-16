@@ -2,36 +2,29 @@
 
 namespace Aerys\Internal;
 
+use Aerys\Request;
 use Aerys\Response;
+use Aerys\Server;
 
 interface HttpDriver {
-    const RESULT = 1;
-    const ENTITY_HEADERS = 2;
-    const ENTITY_PART = 4;
-    const ENTITY_RESULT = 8;
-    const ERROR = 16;
-
     /**
-     * @param \Amp\Emitter[] $parseEmitters
-     * @param callable $responseWriter
+     * @param Server $server
+     * @param callable $onRequest
+     * @param callable $onError
+     * @param callable $writer
      */
-    public function setup(array $parseEmitters, callable $responseWriter);
+    public function setup(Server $server, callable $onRequest, callable $onError, callable $writer);
 
     /**
      * Returns a generator used to write the response body.
      *
-     * @param \Aerys\Internal\ServerRequest $request
+     * @param \Aerys\Internal\Client $client
      * @param \Aerys\Response $response
+     * @param \Aerys\Request|null $request
      *
      * @return \Generator
      */
-    public function writer(ServerRequest $request, Response $response): \Generator;
-
-    /**
-     * @param \Aerys\Internal\ServerRequest $ireq
-     * @param int $bodySize
-     */
-    public function upgradeBodySize(ServerRequest $ireq, int $bodySize);
+    public function writer(Client $client, Response $response, Request $request = null): \Generator;
 
     /**
      * Note that you *can* rely on keep-alive timeout terminating the Body with a ClientException, when no further
