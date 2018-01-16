@@ -19,11 +19,12 @@ use Aerys\Websocket\Websocket;
 // Return a function that defines and returns a Server instance.
 return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $console): Server {
 
-    /* --- Global server options -------------------------------------------------------------------- */
+    /* --- Server options --------------------------------------------------------------------------- */
 
     $options = $options
-        ->withConnectionTimeout(60)
-        ->withSendServerToken(true);
+        ->withConnectionTimeout(60) // Allows up to 60s for request receive and keep-alive timeout
+        ->withAllowedMethods(["GET", "HEAD", "POST", "ZANZIBAR"]) // Limit allowed methods (with custom)
+        ->withSendServerToken(true); // Appends Server header to each response
 
     /* --- http://localhost:1337/ ------------------------------------------------------------------- */
 

@@ -395,18 +395,23 @@ final class Options {
                     )
                 );
             }
+
             if ($method === "") {
                 throw new \Error(
                     "Invalid empty HTTP method at key {$key} of allowed methods array"
                 );
             }
         }
-        if (!\in_array("GET", $allowedMethods)) {
+
+        $allowedMethods = \array_unique($allowedMethods);
+
+        if (!\in_array("GET", $allowedMethods, true)) {
             throw new \Error(
                 "Servers must support GET as an allowed HTTP method"
             );
         }
-        if (!\in_array("HEAD", $allowedMethods)) {
+
+        if (!\in_array("HEAD", $allowedMethods, true)) {
             throw new \Error(
                 "Servers must support HEAD as an allowed HTTP method"
             );

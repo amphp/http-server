@@ -31,6 +31,8 @@ class Server {
         self::STOPPING => "STOPPING",
     ];
 
+    const KNOWN_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"];
+
     /** @var int */
     private $state = self::STOPPED;
 
@@ -675,7 +677,7 @@ class Server {
         }
 
         $client->pendingResponses++;
-        Promise\rethrow($this->respond($ireq));
+        Promise\rethrow(new Coroutine($this->respond($ireq)));
     }
 
     private function onParsedEntityHeaders(Internal\ServerRequest $ireq) {
@@ -723,10 +725,19 @@ class Server {
         $client->shouldClose = true;
         $client->pendingResponses++;
 
-        Promise\rethrow(new Coroutine($this->sendErrorResponse($client, $status, $message)));
+        Promise\rethrow(new Coroutine($this->sendParseErrorResponse($client, $status, $message)));
     }
 
-    private function sendErrorResponse(Internal\Client $client, int $status, string $reason): \Generator {
+    /**
+     * Respond to a parse error when parsing a client message.
+     *
+     * @param \Aerys\Internal\Client $client
+     * @param int $status
+     * @param string $reason
+     *
+     * @return \Generator
+     */
+    private function sendParseErrorResponse(Internal\Client $client, int $status, string $reason): \Generator {
         // Minimal required request properties.
         $ireq = new Internal\ServerRequest;
         $ireq->client = $client;
@@ -736,6 +747,83 @@ class Server {
         $response = yield $this->errorHandler->handle($status, $reason);
 
         yield from $this->sendResponse($ireq, $response);
+    }
+
+    /**
+     * Respond to a parsed request from the client.
+     *
+     * @param \Aerys\Internal\ServerRequest $ireq
+     *
+     * @return \Generator
+     */
+    private function respond(Internal\ServerRequest $ireq): \Generator {
+        if ($this->stopDeferred) {
+            $response = yield from $this->makeServiceUnavailableResponse();
+        } elseif (!\in_array($ireq->method, $this->options->allowedMethods, true)) {
+            if (!\in_array($ireq->method, self::KNOWN_METHODS, true)) {
+                $response = yield from $this->makeNotImplementedResponse();
+            } else {
+                $response = yield from $this->makeMethodNotAllowedResponse();
+            }
+        } elseif ($ireq->method === "TRACE") {
+            $response = $this->makeTraceResponse($ireq);
+        } elseif ($ireq->method === "OPTIONS" && $ireq->target === "*") {
+            $response = $this->makeOptionsResponse();
+        } else {
+            $request = new Request($ireq);
+
+            try {
+                $response = yield $this->responder->respond($request);
+
+                if (!$response instanceof Response) {
+                    throw new \Error("At least one request handler must return an instance of " . Response::class);
+                }
+            } catch (\Throwable $error) {
+                if ($error instanceof ClientException) {
+                    return; // Handled in code that generated the ClientException, response already sent.
+                }
+
+                $this->logger->error($error);
+                $response = yield $this->makeErrorResponse($error, $request);
+            }
+        }
+
+        yield from $this->sendResponse($ireq, $response);
+    }
+
+    private function makeServiceUnavailableResponse(): \Generator {
+        $status = HttpStatus::SERVICE_UNAVAILABLE;
+        /** @var \Aerys\Response $response */
+        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
+        $response->setHeader("Connection", "close");
+        return $response;
+    }
+
+    private function makeMethodNotAllowedResponse(): \Generator {
+        $status = HttpStatus::METHOD_NOT_ALLOWED;
+        /** @var \Aerys\Response $response */
+        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
+        $response->setHeader("Connection", "close");
+        $response->setHeader("Allow", \implode(", ", $this->options->allowedMethods));
+        return $response;
+    }
+
+    private function makeNotImplementedResponse(): \Generator {
+        $status = HttpStatus::NOT_IMPLEMENTED;
+        /** @var \Aerys\Response $response */
+        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
+        $response->setHeader("Connection", "close");
+        $response->setHeader("Allow", \implode(", ", $this->options->allowedMethods));
+        return $response;
+    }
+
+    private function makeTraceResponse(Internal\ServerRequest $request): Response {
+        $stream = new InMemoryStream($this->getTrace($request));
+        return new Response($stream, ["Content-Type" => "message/http"]);
+    }
+
+    private function makeOptionsResponse(): Response {
+        return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->allowedMethods)]);
     }
 
     private function getTrace(Internal\ServerRequest $ireq): string {
@@ -750,75 +838,9 @@ class Server {
         return $trace;
     }
 
-    private function respond(Internal\ServerRequest $ireq): Promise {
-        if ($this->stopDeferred) {
-            $generator = $this->sendResponse($ireq, $this->makePreAppServiceUnavailableResponse());
-        } elseif (!\in_array($ireq->method, $this->options->allowedMethods)) {
-            $generator = $this->sendResponse($ireq, $this->makePreAppMethodNotAllowedResponse());
-        } elseif ($ireq->method === "TRACE") {
-            $generator = $this->sendResponse($ireq, $this->makePreAppTraceResponse($ireq));
-        } elseif ($ireq->method === "OPTIONS" && $ireq->target === "*") {
-            $generator = $this->sendResponse($ireq, $this->makePreAppOptionsResponse());
-        } else {
-            $generator = $this->tryResponder($ireq);
-        }
-
-        return new Coroutine($generator);
-    }
-
-    private function makePreAppServiceUnavailableResponse(): Response {
-        $status = HttpStatus::SERVICE_UNAVAILABLE;
-        $headers = [
-            "Connection" => "close",
-        ];
-        return new Response\EmptyResponse($headers, $status);
-    }
-
-    private function makePreAppMethodNotAllowedResponse(): Response {
-        $status = HttpStatus::METHOD_NOT_ALLOWED;
-        $headers = [
-            "Connection" => "close",
-            "Allow" => implode(", ", $this->options->allowedMethods),
-        ];
-        return new Response\EmptyResponse($headers, $status);
-    }
-
-    private function makePreAppTraceResponse(Internal\ServerRequest $request): Response {
-        $stream = new InMemoryStream($this->getTrace($request));
-        return new Response($stream, ["Content-Type" => "message/http"]);
-    }
-
-    private function makePreAppOptionsResponse(): Response {
-        return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->allowedMethods)]);
-    }
-
     /**
-     * @param \Aerys\Internal\ServerRequest $ireq
+     * Send the response to the client.
      *
-     * @return \Generator
-     */
-    private function tryResponder(Internal\ServerRequest $ireq): \Generator {
-        $request = new Request($ireq);
-
-        try {
-            $response = yield $this->responder->respond($request);
-
-            if (!$response instanceof Response) {
-                throw new \Error("At least one request handler must return an instance of " . Response::class);
-            }
-        } catch (\Throwable $error) {
-            if ($error instanceof ClientException) {
-                return; // Handled in code that generated the ClientException, response already sent.
-            }
-
-            $this->logger->error($error);
-            $response = yield $this->makeErrorResponse($error, $request);
-        }
-
-        yield from $this->sendResponse($ireq, $response);
-    }
-
-    /**
      * @param \Aerys\Internal\ServerRequest $ireq
      * @param \Aerys\Response $response
      *
@@ -840,6 +862,10 @@ class Server {
                 $responseWriter->send($chunk); // Sends null when stream closes.
             } while ($chunk !== null);
         } catch (\Throwable $exception) {
+            if ($exception instanceof ClientException) {
+                return;
+            }
+
             // Reading response body failed, abort writing the response to the client.
             $this->logger->error($exception);
             $responseWriter->send(null);
