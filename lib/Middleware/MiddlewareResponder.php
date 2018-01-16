@@ -1,40 +1,29 @@
 <?php
 
-namespace Aerys;
+namespace Aerys\Middleware;
 
+use Aerys\ErrorHandler;
+use Aerys\Request;
+use Aerys\Responder;
+use Aerys\Server;
+use Aerys\ServerObserver;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
+/**
+ * Wraps a responder with a single middleware.
+ *
+ * @see stack()
+ */
 class MiddlewareResponder implements Responder, ServerObserver {
-    /** @var \Aerys\Middleware */
+    /** @var Middleware */
     private $middleware;
 
-    /** @var \Aerys\Responder */
+    /** @var Responder */
     private $next;
 
-    /**
-     * @param \Aerys\Responder    $responder
-     * @param \Aerys\Middleware[] $middlewares Iteration order determines the order middlewares are applied.
-     *
-     * @return \Aerys\Responder May return $responder if $middlewares is empty.
-     */
-    public static function create(Responder $responder, array $middlewares): Responder {
-        if (!$middlewares) {
-            return $responder;
-        }
-
-        $middleware = \end($middlewares);
-
-        while ($middleware) {
-            $responder = new self($middleware, $responder);
-            $middleware = \prev($middlewares);
-        }
-
-        return $responder;
-    }
-
-    private function __construct(Middleware $middleware, Responder $responder) {
+    public function __construct(Middleware $middleware, Responder $responder) {
         $this->middleware = $middleware;
         $this->next = $responder;
     }

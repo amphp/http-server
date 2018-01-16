@@ -4,7 +4,7 @@ namespace Aerys\Test;
 
 use Aerys\CallableResponder;
 use Aerys\Logger;
-use Aerys\Middleware;
+use Aerys\Middleware\Middleware;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Responder;

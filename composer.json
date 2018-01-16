@@ -58,7 +58,8 @@
         "files": [
             "lib/functions.php",
             "lib/constants.php",
-            "lib/Internal/functions.php"
+            "lib/Internal/functions.php",
+            "lib/Middleware/functions.php"
         ]
     },
     "autoload-dev": {

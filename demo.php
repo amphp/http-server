@@ -66,7 +66,7 @@ return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $co
 
     $router->addRoute("POST", "/body2", new CallableResponder(function (Request $request): \Generator {
         $body = "";
-        while (null != $chunk = yield $request->getBody()->read()) {
+        while (null !== $chunk = yield $request->getBody()->read()) {
             $body .= $chunk;
         }
         return new Response\HtmlResponse("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
