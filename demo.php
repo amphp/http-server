@@ -81,24 +81,32 @@ return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $co
         private $endpoint;
 
         public function onStart(Endpoint $endpoint) {
+            // Called once when the server is starting.
             $this->endpoint = $endpoint;
         }
 
-        public function onHandshake(Request $request) { /* check origin header here */
+        public function onHandshake(Request $request, Response $response) {
+            // Check origin header here, return a new response to deny the connection.
+            return $response;
         }
 
         public function onOpen(int $clientId, Request $request) {
+            // Called when a client connection is accepted.
         }
 
         public function onData(int $clientId, Message $message) {
-            // broadcast to all connected clients
-            $this->endpoint->broadcast(yield $message->buffer());
+            // Broadcast text messages to all connected clients
+            if (!$message->isBinary()) {
+                $this->endpoint->broadcast(yield $message->buffer());
+            }
         }
 
         public function onClose(int $clientId, int $code, string $reason) {
+            // Called when a client connection is closed (by the server or client).
         }
 
         public function onStop() {
+            // Called once when the server is stopping.
         }
     });
 

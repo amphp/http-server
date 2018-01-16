@@ -7,6 +7,7 @@ if (!class_exists(Aerys\Process::class, false)) {
 }
 
 use Aerys\Request;
+use Aerys\Response;
 use Aerys\Websocket;
 
 return function () {
@@ -20,7 +21,9 @@ return function () {
             $this->endpoint = $endpoint;
         }
 
-        public function onHandshake(Request $request) { }
+        public function onHandshake(Request $request, Response $response) {
+            return $response;
+        }
 
         public function onOpen(int $clientId, Request $request) { }
 

@@ -36,7 +36,7 @@ interface Endpoint {
     public function multicast(string $data, array $clientIds): Promise;
 
     /**
-     * Send a binary message to the given client(s).
+     * Send a binary message to the given client.
      *
      * @param string $data Data to send.
      * @param int $clientId

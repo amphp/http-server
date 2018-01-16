@@ -34,11 +34,13 @@ interface Application {
      * Return an instance of \Aerys\Response to reject the websocket connection request.
      *
      * @param Request $request The HTTP request that instigated the handshake
+     * @param Response $response The switching protocol response for adding headers, etc.
      *
-     * @return Response|null Return a response object to deny the connection.
-     *     May also return a promise or generator to run as a coroutine.
+     * @return Response|\Amp\Promise|\Generator Return the given response to accept the
+     *     connection or a new responseobject to deny the connection. May also return a
+     *     promise or generator to run as a coroutine.
      */
-    public function onHandshake(Request $request);
+    public function onHandshake(Request $request, Response $response);
 
     /**
      * Invoked when the full two-way websocket upgrade completes.

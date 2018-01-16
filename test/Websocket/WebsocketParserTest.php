@@ -66,7 +66,8 @@ class WebsocketParserTest extends TestCase {
                 public function onStart(Endpoint $endpoint) {
                 }
 
-                public function onHandshake(Request $request) {
+                public function onHandshake(Request $request, Response $response) {
+                    return $response;
                 }
 
                 public function onOpen(int $clientId, Request $request) {
@@ -273,7 +274,10 @@ class WebsocketParserTest extends TestCase {
             $ws = $this->createMock(Application::class);
             $ws->expects($this->exactly(1))
                 ->method("onHandshake")
-                ->will($this->returnValue((function () { if (0) { yield; } return "foo"; })()));
+                ->willReturnCallback(function (Request $request, Response $response) {
+                    $response->setHeader("Test", "foo");
+                    return $response;
+                });
             $ws->expects($this->exactly(1))
                 ->method("onOpen")
                 ->willReturnCallback(function (int $clientId, $handshakeData) {
@@ -298,6 +302,7 @@ class WebsocketParserTest extends TestCase {
             $this->assertSame("websocket", $response->getHeader("upgrade"));
             $this->assertSame("upgrade", $response->getHeader("connection"));
             $this->assertSame("HSmrc0sMlYUkAGmm5OPpG2HaGWk=", $response->getHeader("sec-websocket-accept"));
+            $this->assertSame("foo", $response->getHeader("test"));
             $this->assertSame("", $driver->body);
 
             // we need to test for unloading here (and not against unloading), because otherwise destructor order is not deterministic and it may spuriously succeed or fail

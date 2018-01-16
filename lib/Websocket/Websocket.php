@@ -33,10 +33,16 @@ class Websocket implements Responder, ServerObserver {
      *
      * @throws \Error If the size is less than 1.
      */
-    public function setMaxMessageSize(int $size) {
+    public function setMessageSizeLimit(int $size) {
         $this->gateway->setOption("maxMessageSize", $size);
     }
 
+    /**
+     * @param int $bytes Maximum number of bytes per minute the endpoint can receive from the client.
+     *     Default is 8388608 (8MB).
+     *
+     * @throws \Error If the number of bytes is less than 1.
+     */
     public function setMaxBytesPerMinute(int $bytes) {
         $this->gateway->setOption("maxBytesPerMinute", $bytes);
     }
@@ -57,6 +63,16 @@ class Websocket implements Responder, ServerObserver {
      */
     public function setMaxFramesPerSecond(int $count) {
         $this->gateway->setOption("maxFramesPerSecond", $count);
+    }
+
+    /**
+     * @param int $bytes The number of bytes in outgoing message that will cause the endpoint to break the message into
+     *     multiple frames. Default is 65527 (64k - 9 for frame overhead).
+     *
+     * @throws \Error
+     */
+    public function setFrameSplitThreshold(int $bytes) {
+        $this->gateway->setOption("autoFrameSize", $bytes);
     }
 
     /**

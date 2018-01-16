@@ -40,7 +40,8 @@ class NullApplication implements Application {
         $this->endpoint = $endpoint;
     }
 
-    public function onHandshake(Request $request) {
+    public function onHandshake(Request $request, Response $response) {
+        return $response;
     }
 
     public function onOpen(int $clientId, Request $request) {
@@ -185,7 +186,7 @@ class WebsocketTest extends TestCase {
     /**
      * @dataProvider provideErrorEvent
      */
-    public function testAppErrorClosesConnection(string $method, array $call) {
+    public function testAppErrorClosesConnection(string $method, array $call = null) {
         Loop::run(function () use ($method, $call) {
             $application = $this->createMock(Application::class);
             $application->expects($this->once())
@@ -193,6 +194,8 @@ class WebsocketTest extends TestCase {
                 ->willReturnCallback(function () {
                     throw new \Exception;
                 });
+            $application->method("onHandshake")
+                ->willReturnArgument(1);
 
             list($gateway, $client, $socket) = yield from $this->initEndpoint($application, $timeoutTest = true);
 
@@ -232,8 +235,9 @@ class WebsocketTest extends TestCase {
             $logger = $this->createMock(Logger::class);
             $application = $this->createMock(Application::class);
 
-            $application->expects($status === 101 ? $this->once() : $this->never())
-                ->method("onHandshake");
+            $application->expects($status === HttpStatus::SWITCHING_PROTOCOLS ? $this->once() : $this->never())
+                ->method("onHandshake")
+                ->willReturnArgument(1);
 
             $gateway = new Rfc6455Gateway($application);
 
@@ -243,7 +247,7 @@ class WebsocketTest extends TestCase {
             $response = yield $gateway->respond(new Request($ireq));
             $this->assertEquals($expectedHeaders, array_intersect_key($response->getHeaders(), $expectedHeaders));
 
-            if ($status === 101) {
+            if ($status === HttpStatus::SWITCHING_PROTOCOLS) {
                 $this->assertNull(yield $response->getBody()->read());
             }
 

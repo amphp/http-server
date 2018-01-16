@@ -190,14 +190,20 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             return $response;
         }
 
-        $response = new Rfc6455Handshake($acceptKey);
-        $onHandshakeResult = yield call([$this->application, "onHandshake"], $request);
+        $response = yield call([$this->application, "onHandshake"], $request, new Rfc6455Handshake($acceptKey));
 
-        if ($onHandshakeResult instanceof Response) {
-            return $response;
+        if (!$response instanceof Response) {
+            throw new \Error(\sprintf(
+                "%s::onHandshake() must return or resolve to an instance of %s, %s returned",
+                Application::class,
+                Response::class,
+                \is_object($response) ? "instance of " . get_class($response) : \gettype($response)
+            ));
         }
 
-        $response->detach($this->reapClient, $request);
+        if ($response->getStatus() === HttpStatus::SWITCHING_PROTOCOLS) {
+            $response->detach($this->reapClient, $request);
+        }
 
         return $response;
     }
