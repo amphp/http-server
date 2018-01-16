@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Test;
+namespace Aerys\Test\Websocket;
 
 use Aerys\Body;
 use Aerys\DefaultErrorHandler;
@@ -24,22 +24,32 @@ use Amp\PHPUnit\TestCase;
 use Amp\Socket\ClientSocket;
 
 class NullApplication implements Application {
+    /** @var TestCase */
     public $test;
+
+    /** @var Endpoint */
     public $endpoint;
+
     public function __construct($test = null) {
         $this->test = $test;
     }
+
     public function onStart(Endpoint $endpoint) {
         $this->endpoint = $endpoint;
     }
+
     public function onHandshake(Request $request) {
     }
+
     public function onOpen(int $clientId, Request $request) {
     }
+
     public function onData(int $clientId, Message $msg) {
     }
+
     public function onClose(int $clientId, int $code, string $reason) {
     }
+
     public function onStop() {
     }
 }
@@ -105,6 +115,7 @@ class WebsocketTest extends TestCase {
      */
     public function testParseData($data, $func) {
         Loop::run(function () use ($data, $func) {
+            /** @var Rfc6455Gateway $gateway */
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this, $func) extends NullApplication {
                 public $func;
                 public $gen;
@@ -170,7 +181,7 @@ class WebsocketTest extends TestCase {
                 ->willReturnCallback(function () {
                     throw new \Exception;
                 });
-            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws, $timeoutTest = true);
+            list($gateway, $client, $sock) = yield from $this->initEndpoint($ws, $timeoutTest = true);
 
             if ($call !== null) {
                 list($method, $args) = $call;
@@ -295,7 +306,7 @@ class WebsocketTest extends TestCase {
     }
 
     public function testCloseFrame() {
-        $this->runClose(function ($gateway, $sock, $ws, $client) {
+        $this->runClose(function (Rfc6455Gateway $gateway, $sock, $ws, $client) {
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, "");
             yield new Delayed(10); // Time to read, write, and close.
             $this->assertEquals(Code::NONE, $ws->closed);
@@ -304,7 +315,7 @@ class WebsocketTest extends TestCase {
     }
 
     public function testCloseWithStatus() {
-        $this->runClose(function ($gateway, $sock, $ws, $client) {
+        $this->runClose(function (Rfc6455Gateway $gateway, $sock, $ws, $client) {
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, pack("n", Code::GOING_AWAY));
             yield new Delayed(10); // Time to read, write, and close.
             $this->assertEquals(Code::GOING_AWAY, $ws->closed);
@@ -313,7 +324,7 @@ class WebsocketTest extends TestCase {
     }
 
     public function testCloseFrameWithHalfClose() {
-        $this->runClose(function ($gateway, $sock, $ws, $client) {
+        $this->runClose(function (Rfc6455Gateway $gateway, $sock, $ws, $client) {
             $bytes = @fwrite($client->socket, str_repeat("*", 1 << 20)); // just fill the buffer to have the server not write the close frame immediately
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_CLOSE, "");
             stream_socket_shutdown($sock, STREAM_SHUT_WR);
@@ -325,7 +336,7 @@ class WebsocketTest extends TestCase {
     }
 
     public function testHalfClose() {
-        $this->runClose(function ($gateway, $sock, $ws, $client) {
+        $this->runClose(function (Rfc6455Gateway $gateway, $sock, $ws, $client) {
             stream_socket_shutdown($sock, STREAM_SHUT_WR);
             yield new Delayed(10); // Time to read, write, and close.
             $this->assertEquals(Code::ABNORMAL_CLOSE, $ws->closed);
@@ -334,7 +345,7 @@ class WebsocketTest extends TestCase {
     }
 
     public function testIOClose() {
-        $this->runClose(function ($gateway, $sock, $ws, $client) {
+        $this->runClose(function (Rfc6455Gateway $gateway, $sock, $ws, $client) {
             fclose($sock);
             yield new Delayed(10); // Time to read, write, and close.
             $this->assertEquals(Code::ABNORMAL_CLOSE, $ws->closed);
@@ -343,7 +354,7 @@ class WebsocketTest extends TestCase {
 
     public function testIORead() {
         Loop::run(function () {
-            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullApplication);
+            list(, $client, $sock) = yield from $this->initEndpoint(new NullApplication);
             fwrite($sock, WebsocketParserTest::compile(Rfc6455Gateway::OP_PING, true, "foo"));
             yield $this->waitOnRead($sock);
             $client->socket->close();
@@ -355,7 +366,8 @@ class WebsocketTest extends TestCase {
 
     public function testMultiWrite() {
         Loop::run(function () {
-            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullApplication {
+            /** @var Rfc6455Gateway $gateway */
+            list($gateway, $client, $sock) = yield from $this->initEndpoint($ws = new class($this) extends NullApplication {
                 public function onData(int $clientId, Message $msg) {
                     $this->endpoint->broadcast("foo".str_repeat("*", 1 << 20 /* fill buffer */));
                     $this->endpoint->send("bar", $clientId);
@@ -406,6 +418,7 @@ class WebsocketTest extends TestCase {
 
     public function testSinglePong() {
         Loop::run(function () {
+            /** @var Rfc6455Gateway $gateway */
             list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullApplication);
             $client->pingCount = 2;
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_PONG, "1");
