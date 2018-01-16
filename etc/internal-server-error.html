@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Internal Server Error</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            background: #eee;
+            font-family: monospace;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .box {
+            overflow-x: scroll;
+            margin: 5%;
+            background: #fff;
+            border-radius: 3px;
+            padding: 20px 30px;
+            max-width: 90%;
+            font-size: 14px;
+            color: #333;
+            box-shadow: 0 2px 6px rgba(0,0,0,.1);
+        }
+
+        h1, h2 {
+            color: #111;
+            /* border-bottom: 2px solid #08e; */
+            padding: 0 0 0 0;
+            margin: 10px 0 8px 0;
+        }
+
+        h1 {
+            font-size: 20px;
+        }
+
+        h2 {
+            font-size: 14px;
+        }
+
+        button {
+            box-sizing: content-box;
+            width: 100%;
+            display: block;
+            background: #e84;
+            color: #fff;
+            border-radius: 0 0 2px 2px;
+            border: 0;
+            padding: 15px 30px;
+            margin: 20px -30px -20px -30px;
+            font-weight: bold;
+            font-family: monospace;
+            box-shadow: 0 2px 4px rgba(0,0,0,.2) inset;
+        }
+
+        button:hover {
+            background: #d73;
+        }
+
+        button:focus {
+            outline: 0;
+        }
+
+        button:focus:not(:hover) {
+            outline: 0;
+            border: 2px solid #d52;
+            padding: 13px 28px;
+        }
+
+        button:active {
+            outline: 0;
+            box-shadow: 0 0 6px rgba(0,0,0,.3) inset;
+            border: 0;
+            padding: 15px 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <header>
+            <h1>Internal Server Error</h1>
+        </header>
+        <main>
+            <h2>Requested: {uri}</h2>
+            <h2>Uncaught {class}: {message} in {file} on line {line}.</h2>
+            <pre>{trace}</pre>
+            <button type="button" onclick="window.location.reload()">Retry</button>
+        </main>
+    </div>
+</body>
+</html>

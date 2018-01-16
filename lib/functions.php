@@ -70,28 +70,3 @@ function parseCookie(string $cookies): array {
 
     return $result;
 }
-
-/**
- * Create a generic HTML entity body.
- *
- * @param int $status
- * @param array $options
- * @return string
- */
-function makeGenericBody(int $status, array $options = []): string {
-    $reason = $options["reason"] ?? HttpStatus::getReason($status);
-    $subhead = isset($options["sub_heading"]) ? "<h3>{$options["sub_heading"]}</h3>" : "";
-    $server = empty($options["server_token"]) ? "" : (SERVER_TOKEN . " @ ");
-    $date = $options["http_date"] ?? gmdate("D, d M Y H:i:s") . " GMT";
-    $msg = isset($options["message"]) ? "{$options["message"]}\n" : "";
-
-    return sprintf(
-        "<html>\n<body>\n<h1>%d %s</h1>\n%s\n<hr/>\n<em>%s%s</em>\n<br/><br/>\n%s</body>\n</html>",
-        $status,
-        $reason,
-        $subhead,
-        $server,
-        $date,
-        $msg
-    );
-}

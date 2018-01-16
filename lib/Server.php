@@ -892,14 +892,20 @@ class Server {
 
         // Return an HTML page with the exception in debug mode.
         if ($this->options->debug) {
-            $message = "<pre>" . \htmlspecialchars($error) . "</pre>";
+            $html = \str_replace(
+                ["{uri}", "{class}", "{message}", "{file}", "{line}", "{trace}"],
+                \array_map("htmlspecialchars", [
+                    $request->getUri(),
+                    \get_class($error),
+                    $error->getMessage(),
+                    $error->getFile(),
+                    $error->getLine(),
+                    $error->getTraceAsString()
+                ]),
+                INTERNAL_SERVER_ERROR_HTML
+            );
 
-            $body = makeGenericBody($status, [
-                "sub_heading" =>"Requested: " . $request->getUri(),
-                "message" => $message,
-            ]);
-
-            return new Success(new Response\HtmlResponse($body, [], $status));
+            return new Success(new Response\HtmlResponse($html, [], $status));
         }
 
         // Return a response defined by the error handler in production mode.
