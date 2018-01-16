@@ -762,35 +762,35 @@ class Server {
      * @return \Generator
      */
     private function respond(Internal\ServerRequest $ireq): \Generator {
-        if ($this->stopDeferred) {
-            $response = yield from $this->makeServiceUnavailableResponse();
-        } elseif (!\in_array($ireq->method, $this->options->allowedMethods, true)) {
-            if (!\in_array($ireq->method, self::KNOWN_METHODS, true)) {
-                $response = yield from $this->makeNotImplementedResponse();
+        try {
+            if ($this->stopDeferred) {
+                $response = yield from $this->makeServiceUnavailableResponse();
+            } elseif (!\in_array($ireq->method, $this->options->allowedMethods, true)) {
+                if (!\in_array($ireq->method, self::KNOWN_METHODS, true)) {
+                    $response = yield from $this->makeNotImplementedResponse();
+                } else {
+                    $response = yield from $this->makeMethodNotAllowedResponse();
+                }
+            } elseif ($ireq->method === "TRACE") {
+                $response = $this->makeTraceResponse($ireq);
+            } elseif ($ireq->method === "OPTIONS" && $ireq->target === "*") {
+                $response = $this->makeOptionsResponse();
             } else {
-                $response = yield from $this->makeMethodNotAllowedResponse();
-            }
-        } elseif ($ireq->method === "TRACE") {
-            $response = $this->makeTraceResponse($ireq);
-        } elseif ($ireq->method === "OPTIONS" && $ireq->target === "*") {
-            $response = $this->makeOptionsResponse();
-        } else {
-            $request = new Request($ireq);
+                $request = new Request($ireq);
 
-            try {
                 $response = yield $this->responder->respond($request);
 
                 if (!$response instanceof Response) {
                     throw new \Error("At least one request handler must return an instance of " . Response::class);
                 }
-            } catch (\Throwable $error) {
-                if ($error instanceof ClientException) {
-                    return; // Handled in code that generated the ClientException, response already sent.
-                }
-
-                $this->logger->error($error);
-                $response = yield $this->makeErrorResponse($error, $request);
             }
+        } catch (\Throwable $error) {
+            if ($error instanceof ClientException) {
+                return; // Handled in code that generated the ClientException, response already sent.
+            }
+
+            $this->logger->error($error);
+            $response = yield $this->makeErrorResponse($error, $request);
         }
 
         yield from $this->sendResponse($ireq, $response);
@@ -908,8 +908,21 @@ class Server {
             return new Success(new Response\HtmlResponse($html, [], $status));
         }
 
-        // Return a response defined by the error handler in production mode.
-        return $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+        try {
+            // Return a response defined by the error handler in production mode.
+            return $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+        } catch (\Throwable $exception) {
+            // If the error handler throws, fallback to returning the default HTML error page.
+            $this->logger->error($exception);
+
+            $html = \str_replace(
+                ["{code}", "{reason}"],
+                \array_map("htmlspecialchars", [$status, HttpStatus::getReason($status)]),
+                DEFAULT_ERROR_HTML
+            );
+
+            return new Success(new Response\HtmlResponse($html, [], $status));
+        }
     }
 
     private function close(Client $client) {
@@ -921,7 +934,7 @@ class Server {
         $client->isDead = Client::CLOSED_RDWR;
 
         $this->clientCount--;
-        if ($client->serverAddr[0] != "/") { // no unix domain socket
+        if ($client->serverAddr[0] !== "/") { // no unix domain socket
             $net = @\inet_pton($client->clientAddr);
             if (isset($net[4])) {
                 $net = substr($net, 0, 7 /* /56 block */);
