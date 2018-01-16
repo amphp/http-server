@@ -109,7 +109,12 @@ class Server {
      *
      * @throws \Error If $responder is not a callable or instance of Responder.
      */
-    public function __construct(Responder $responder, Options $options = null, PsrLogger $logger = null, Internal\HttpDriver $driver = null) {
+    public function __construct(
+        Responder $responder,
+        Options $options = null,
+        PsrLogger $logger = null,
+        Internal\HttpDriver $driver = null
+    ) {
         $this->responder = $responder;
 
         $this->host = new Internal\Host;

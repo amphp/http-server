@@ -12,7 +12,8 @@ return function () {
         return new Response\EmptyResponse;
     });
 
-    $server = (new Server($responder))->expose("*", 80);
+    $server = new Server($responder);
+    $server->expose("*", 80);
 
     return new Success($server);
 };

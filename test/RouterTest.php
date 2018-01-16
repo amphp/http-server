@@ -21,9 +21,16 @@ use Psr\Log\LoggerInterface as PsrLogger;
 
 class RouterTest extends TestCase {
     public function mockServer(): Server {
-        return $this->getMockBuilder(Server::class)
-            ->setConstructorArgs([$this->createMock(Responder::class), new Options, $this->createMock(PsrLogger::class)])
+        $options = new Options;
+
+        $mock = $this->getMockBuilder(Server::class)
+            ->setConstructorArgs([$this->createMock(Responder::class), $options, $this->createMock(PsrLogger::class)])
             ->getMock();
+
+        $mock->method("getOptions")
+            ->willReturn($options);
+
+        return $mock;
     }
 
     /**

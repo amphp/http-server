@@ -373,6 +373,10 @@ final class Options {
      * @return string[] An array of allowed request methods.
      */
     public function getAllowedMethods(): array {
+        if ($this->values->normalizeMethodCase) {
+            return \array_unique(\array_map("strtoupper", $this->values->allowedMethods));
+        }
+
         return $this->values->allowedMethods;
     }
 
@@ -483,6 +487,12 @@ final class Options {
      * @return \Aerys\Internal\Options
      */
     public function export(): Internal\Options {
-        return clone $this->values;
+        $clone = clone $this->values;
+
+        if ($clone->normalizeMethodCase) {
+            $clone->allowedMethods = \array_unique(\array_map("strtoupper", $clone->allowedMethods));
+        }
+
+        return $clone;
     }
 }

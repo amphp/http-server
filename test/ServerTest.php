@@ -179,7 +179,8 @@ class ServerTest extends TestCase {
     public function providePreResponderHeaders() {
         return [
             [["method" => "OPTIONS", "target" => "*"], HttpStatus::NO_CONTENT],
-            [["method" => "NOT_ALLOWED"], HttpStatus::METHOD_NOT_ALLOWED],
+            [["method" => "TRACE"], HttpStatus::METHOD_NOT_ALLOWED],
+            [["method" => "UNKNOWN"], HttpStatus::NOT_IMPLEMENTED],
         ];
     }
 
