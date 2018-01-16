@@ -12,7 +12,7 @@ use Aerys\Websocket;
 return function () {
     /* --- http://localhost:9001/ ------------------------------------------------------------------- */
 
-    $websocket = Aerys\websocket(new class implements Websocket\Websocket {
+    $websocket = new Websocket\Websocket(new class implements Websocket\Application {
         /** @var \Aerys\Websocket\Endpoint */
         private $endpoint;
 
@@ -35,13 +35,13 @@ return function () {
         public function onClose(int $clientId, int $code, string $reason) { }
 
         public function onStop() { }
-    }, [
-        "maxBytesPerMinute"  => PHP_INT_MAX,
-        "maxFrameSize"       => PHP_INT_MAX,
-        "maxFramesPerSecond" => PHP_INT_MAX,
-        "maxMsgSize"         => PHP_INT_MAX,
-        "validateUtf8"       => true
-    ]);
+    });
+
+    $websocket->setMaxBytesPerMinute(PHP_INT_MAX);
+    $websocket->setMaxFrameSize(PHP_INT_MAX);
+    $websocket->setMaxFramesPerSecond(PHP_INT_MAX);
+    $websocket->setMaxMessageSize(PHP_INT_MAX);
+    $websocket->validateUtf8(true);
 
     $server = new Aerys\Server($websocket);
     $server->expose("127.0.0.1", 9001);

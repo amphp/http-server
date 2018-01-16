@@ -15,7 +15,7 @@ use Aerys\Websocket\Code;
 use Aerys\Websocket\Endpoint;
 use Aerys\Websocket\Internal\Rfc6455Gateway;
 use Aerys\Websocket\Message;
-use Aerys\Websocket\Websocket;
+use Aerys\Websocket\Application;
 use Amp\ByteStream\InMemoryStream;
 use Amp\Deferred;
 use Amp\Delayed;
@@ -23,7 +23,7 @@ use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Socket\ClientSocket;
 
-class NullWebsocket implements Websocket {
+class NullApplication implements Application {
     public $test;
     public $endpoint;
     public function __construct($test = null) {
@@ -105,7 +105,7 @@ class WebsocketTest extends TestCase {
      */
     public function testParseData($data, $func) {
         Loop::run(function () use ($data, $func) {
-            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this, $func) extends NullWebsocket {
+            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this, $func) extends NullApplication {
                 public $func;
                 public $gen;
                 public function __construct($test, $func) {
@@ -164,7 +164,7 @@ class WebsocketTest extends TestCase {
      */
     public function testAppError($method, $call) {
         Loop::run(function () use ($method, $call) {
-            $ws = $this->createMock(Websocket::class);
+            $ws = $this->createMock(Application::class);
             $ws->expects($this->once())
                 ->method($method)
                 ->willReturnCallback(function () {
@@ -200,7 +200,7 @@ class WebsocketTest extends TestCase {
         Loop::run(function () use ($ireq, $status, $expected) {
             $server = $this->createMock(Server::class);
             $logger = $this->createMock(Logger::class);
-            $ws = $this->createMock(Websocket::class);
+            $ws = $this->createMock(Application::class);
             $ws->expects($status === 101 ? $this->once() : $this->never())
                 ->method("onHandshake");
             $gateway = new Rfc6455Gateway($ws);
@@ -283,7 +283,7 @@ class WebsocketTest extends TestCase {
 
     public function runClose(callable $closeCb) {
         Loop::run(function () use ($closeCb) {
-            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
+            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullApplication {
                 public $closed = false;
                 public function onClose(int $clientId, int $code, string $reason) {
                     $this->closed = $code;
@@ -343,7 +343,7 @@ class WebsocketTest extends TestCase {
 
     public function testIORead() {
         Loop::run(function () {
-            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
+            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullApplication);
             fwrite($sock, WebsocketParserTest::compile(Rfc6455Gateway::OP_PING, true, "foo"));
             yield $this->waitOnRead($sock);
             $client->socket->close();
@@ -355,7 +355,7 @@ class WebsocketTest extends TestCase {
 
     public function testMultiWrite() {
         Loop::run(function () {
-            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullWebsocket {
+            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint($ws = new class($this) extends NullApplication {
                 public function onData(int $clientId, Message $msg) {
                     $this->endpoint->broadcast("foo".str_repeat("*", 1 << 20 /* fill buffer */));
                     $this->endpoint->send("bar", $clientId);
@@ -386,7 +386,7 @@ class WebsocketTest extends TestCase {
 
     public function testFragmentation() {
         Loop::run(function () {
-            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
+            list($endpoint, $client, $sock, $server) = yield from $this->initEndpoint(new NullApplication);
             $endpoint->broadcast(str_repeat("*", 131046), true)->onResolve(function ($exception) use ($sock, $server) {
                 stream_socket_shutdown($sock, STREAM_SHUT_WR);
                 if ($exception) {
@@ -406,7 +406,7 @@ class WebsocketTest extends TestCase {
 
     public function testSinglePong() {
         Loop::run(function () {
-            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullWebsocket);
+            list($gateway, $client, $sock, $server) = yield from $this->initEndpoint(new NullApplication);
             $client->pingCount = 2;
             $gateway->onParsedControlFrame($client, Rfc6455Gateway::OP_PONG, "1");
             $this->assertEquals(1, $client->pongCount);

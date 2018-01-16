@@ -1,13 +1,16 @@
 <?php
 
-namespace Aerys\Websocket;
+namespace Aerys\Websocket\Internal;
 
+use Aerys\Websocket\Code;
+use Aerys\Websocket\Endpoint;
 use Amp\Promise;
 
 class Rfc6455Endpoint implements Endpoint {
+    /** @var \Aerys\Websocket\Internal\Rfc6455Gateway */
     private $gateway;
 
-    public function __construct(Internal\Rfc6455Gateway $gateway) {
+    public function __construct(Rfc6455Gateway $gateway) {
         $this->gateway = $gateway;
     }
 

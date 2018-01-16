@@ -15,6 +15,7 @@ use Aerys\Websocket\Endpoint;
 use Aerys\Websocket\Internal\Rfc6455Client;
 use Aerys\Websocket\Internal\Rfc6455Gateway;
 use Aerys\Websocket\Message;
+use Aerys\Websocket\Application;
 use Aerys\Websocket\Websocket;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
@@ -51,7 +52,7 @@ class WebsocketParserTest extends TestCase {
      */
     public function testParser($msg, array $message = null, array $error = null) {
         if ($message) {
-            $websocket = new class($this, ...$message) implements Websocket {
+            $websocket = new class($this, ...$message) implements Application {
                 private $test;
                 private $data;
                 private $binary;
@@ -85,7 +86,7 @@ class WebsocketParserTest extends TestCase {
                 }
             };
         } else {
-            $websocket = $this->createMock(Websocket::class);
+            $websocket = $this->createMock(Application::class);
         }
 
         $gateway = new Rfc6455Gateway($websocket);
@@ -269,7 +270,7 @@ class WebsocketParserTest extends TestCase {
 
             $logger = $this->createMock(PsrLogger::class);
 
-            $ws = $this->createMock(Websocket::class);
+            $ws = $this->createMock(Application::class);
             $ws->expects($this->exactly(1))
                 ->method("onHandshake")
                 ->will($this->returnValue((function () { if (0) { yield; } return "foo"; })()));
@@ -278,7 +279,7 @@ class WebsocketParserTest extends TestCase {
                 ->willReturnCallback(function (int $clientId, $handshakeData) {
                     $this->assertEquals("foo", $handshakeData);
                 });
-            $ws = \Aerys\websocket($ws);
+            $ws = new Websocket($ws);
 
             $options = new Options;
             $options->debug = true;

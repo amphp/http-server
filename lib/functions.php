@@ -3,51 +3,6 @@
 namespace Aerys;
 
 use Aerys\Cookie\Cookie;
-use Aerys\Websocket\Internal\Rfc6455Gateway;
-use Aerys\Websocket\Websocket;
-
-/**
- * Create a router for use in a Host instance.
- *
- * @param int $maxCacheEntries Maximum number of route matches to cache.
- *
- * @return \Aerys\Router
- */
-function router(int $maxCacheEntries = Router::DEFAULT_MAX_CACHE_ENTRIES): Router {
-    return new Router($maxCacheEntries);
-}
-
-/**
- * Create a Websocket application for use in a Host instance.
- *
- * @param \Aerys\Websocket\Websocket $app The websocket app to use
- * @param array $options Endpoint options
- *
- * @return \Aerys\Responder
- */
-function websocket(Websocket $app, array $options = []): Responder {
-    $gateway = new Rfc6455Gateway($app);
-    foreach ($options as $key => $value) {
-        $gateway->setOption($key, $value);
-    }
-    return $gateway;
-}
-
-/**
- * Create a static file root for use in a Host instance.
- *
- * @param string $docroot The filesystem directory from which to serve documents
- * @param array $options Static file serving options
- *
- * @return \Aerys\Root
- */
-function root(string $docroot, array $options = []): Root {
-    $root = new Root($docroot);
-    foreach ($options as $key => $value) {
-        $root->setOption($key, $value);
-    }
-    return $root;
-}
 
 /**
  * Create a redirect responder for use in a Host instance.

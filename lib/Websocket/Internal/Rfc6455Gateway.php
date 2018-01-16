@@ -11,10 +11,8 @@ use Aerys\Response;
 use Aerys\Server;
 use Aerys\ServerObserver;
 use Aerys\Websocket\Code;
-use Aerys\Websocket\Handshake;
 use Aerys\Websocket\Message;
-use Aerys\Websocket\Rfc6455Endpoint;
-use Aerys\Websocket\Websocket;
+use Aerys\Websocket\Application;
 use Amp\ByteStream\IteratorStream;
 use Amp\ByteStream\StreamException;
 use Amp\CallableMaker;
@@ -35,7 +33,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     /** @var PsrLogger */
     private $logger;
 
-    /** @var Websocket */
+    /** @var Application */
     private $application;
 
     /** @var Rfc6455Endpoint */
@@ -68,10 +66,10 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     private $autoFrameSize = (64 << 10) - 9 /* frame overhead */;
     private $maxBytesPerMinute = 8 << 20;
     private $maxFrameSize = 2 << 20;
-    private $maxMsgSize = 2 << 20;
+    private $maxMessageSize = 2 << 20;
     private $heartbeatPeriod = 10;
     private $closePeriod = 3;
-    private $validateUtf8 = false;
+    private $validateUtf8 = true;
     private $textOnly = false;
     private $queuedPingLimit = 3;
     private $maxFramesPerSecond = 100; // do not bother with setting it too low, fread(8192) may anyway include up to 2700 frames
@@ -89,7 +87,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     const OP_PING  = 0x09;
     const OP_PONG  = 0x0A;
 
-    public function __construct(Websocket $application) {
+    public function __construct(Application $application) {
         $this->application = $application;
         $this->now = time();
         $this->endpoint = new Rfc6455Endpoint($this);
@@ -103,7 +101,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             case "autoFrameSize":
             case "maxFrameSize":
             case "maxFramesPerSecond":
-            case "maxMsgSize":
+            case "maxMessageSize":
             case "heartbeatPeriod":
             case "closePeriod":
             case "queuedPingLimit":
@@ -192,7 +190,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             return $response;
         }
 
-        $response = new Handshake($acceptKey);
+        $response = new Rfc6455Handshake($acceptKey);
         $onHandshakeResult = yield call([$this->application, "onHandshake"], $request);
 
         if ($onHandshakeResult instanceof Response) {
@@ -212,7 +210,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         $client->socket = $socket;
 
         $client->parser = $this->parser($client, $options = [
-            "max_msg_size" => $this->maxMsgSize,
+            "max_msg_size" => $this->maxMessageSize,
             "max_frame_size" => $this->maxFrameSize,
             "validate_utf8" => $this->validateUtf8,
             "text_only" => $this->textOnly,
@@ -695,7 +693,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
      */
     public function parser(Rfc6455Client $client, array $options = []): \Generator {
         $maxFrameSize = $options["max_frame_size"] ?? PHP_INT_MAX;
-        $maxMsgSize = $options["max_msg_size"] ?? PHP_INT_MAX;
+        $maxMessageSize = $options["max_msg_size"] ?? PHP_INT_MAX;
         $textOnly = $options["text_only"] ?? false;
         $doUtf8Validation = $validateUtf8 = $options["validate_utf8"] ?? false;
 
@@ -841,7 +839,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
                 return;
             }
 
-            if ($maxMsgSize && ($frameLength + $dataMsgBytesRecd) > $maxMsgSize) {
+            if ($maxMessageSize && ($frameLength + $dataMsgBytesRecd) > $maxMessageSize) {
                 $this->onParsedError(
                     $client,
                     Code::MESSAGE_TOO_LARGE,

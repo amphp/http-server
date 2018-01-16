@@ -12,6 +12,7 @@ use Aerys\Response;
 use Aerys\Root;
 use Aerys\Router;
 use Aerys\Server;
+use Aerys\Websocket\Application;
 use Aerys\Websocket\Endpoint;
 use Aerys\Websocket\Message;
 use Aerys\Websocket\Websocket;
@@ -75,7 +76,7 @@ return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $co
         return new Response\HtmlResponse("<html><body><h1>ZANZIBAR!</h1></body></html>");
     }));
 
-    $websocket = Aerys\websocket(new class implements Websocket {
+    $websocket = new Websocket(new class implements Application {
         /** @var Endpoint */
         private $endpoint;
 
