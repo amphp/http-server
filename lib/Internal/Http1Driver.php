@@ -200,11 +200,6 @@ class Http1Driver implements HttpDriver {
 
             if ($protocol !== "1.1" && $protocol !== "1.0") {
                 if ($protocol === "2.0") {
-                    if ($client->isEncrypted && ($client->cryptoInfo["alpn_protocol"] ?? null) !== "h2") {
-                        ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: ALPN must be h2");
-                        return;
-                    }
-
                     // Internal upgrade to HTTP/2.
                     $client->httpDriver = $this->http2;
                     $client->requestParser = $client->httpDriver->parser($client);

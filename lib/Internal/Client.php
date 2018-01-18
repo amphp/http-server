@@ -58,6 +58,6 @@ class Client {
     public $initialWindowSize = 65536;
     public $streamId = 0;
     public $streamEnd = [];
-    public $streamWindow = [];
-    public $streamWindowBuffer = [];
+    public $streamWindow = [\PHP_INT_MAX];
+    public $streamWindowBuffer = [""];
 }

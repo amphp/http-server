@@ -103,6 +103,9 @@ class Http2Driver implements HttpDriver {
         $headers = [":status" => $response->getStatus()];
         $headers = \array_merge($headers, $response->getHeaders());
 
+        // Remove headers that are obsolete in HTTP/2.
+        unset($headers["connection"], $headers["keep-alive"], $headers["transfer-encoding"]);
+
         if ($request !== null && !empty($push = $response->getPush())) {
             foreach ($push as $url => $pushHeaders) {
                 if ($client->allowsPush) {
@@ -119,7 +122,7 @@ class Http2Driver implements HttpDriver {
     }
 
     public function dispatchInternalRequest(Client $client, Request $request, string $url, array $pushHeaders = null) {
-        $id = $client->streamId += 2;
+        $streamId = $request->getStreamId();
 
         if ($pushHeaders === null) {
             // headers to take over from original request if present
@@ -141,10 +144,8 @@ class Http2Driver implements HttpDriver {
         $headers = [];
 
         $url = new Uri($url);
-        $host = $url->getHost() ?: $request->getUri()->getHost();
-        $port = $url->getPort() ?: $request->getUri()->getPort();
-        $authority = $authority = \rawurlencode($host) . ":" . $port;
-        $scheme = $url->getScheme() ?: ($client->isEncrypted ? "https" : "http");
+        $authority = $url->getAuthority() ?: $request->getUri()->getAuthority();
+        $scheme = $url->getScheme() ?: $request->getUri()->getScheme();
         $path = $url->getPath();
 
         if ($query = $url->getQuery()) {
@@ -169,6 +170,7 @@ class Http2Driver implements HttpDriver {
             }
         }
 
+        $id = $client->streamId += 2;
         $request = new Request("GET", $url, $headers, $this->nullBody, $path, "2.0", $id);
 
         $client->streamWindow[$id] = $client->initialWindowSize;
@@ -178,15 +180,15 @@ class Http2Driver implements HttpDriver {
         if (\strlen($headers) >= 16384) {
             $split = str_split($headers, 16384);
             $headers = array_shift($split);
-            $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::NOFLAG, $ireq->streamId);
+            $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::NOFLAG, $streamId);
 
             $headers = array_pop($split);
             foreach ($split as $msgPart) {
-                $this->writeFrame($client, $msgPart, self::CONTINUATION, self::NOFLAG, $ireq->streamId);
+                $this->writeFrame($client, $msgPart, self::CONTINUATION, self::NOFLAG, $streamId);
             }
-            $this->writeFrame($client, $headers, self::CONTINUATION, self::END_HEADERS, $ireq->streamId);
+            $this->writeFrame($client, $headers, self::CONTINUATION, self::END_HEADERS, $streamId);
         } else {
-            $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::END_HEADERS, $ireq->streamId);
+            $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::END_HEADERS, $streamId);
         }
 
         ($this->onRequest)($client, $request);
@@ -197,7 +199,6 @@ class Http2Driver implements HttpDriver {
 
         try {
             $headers = $this->filter($client, $response, $request);
-            unset($headers["connection"]); // obsolete in HTTP/2.0
             $headers = HPack::encode($headers);
 
             // @TODO decide whether to use max-frame size
@@ -265,65 +266,84 @@ class Http2Driver implements HttpDriver {
     // Note: bufferSize is increased in writeData(), but also here to respect data in streamWindowBuffers;
     // thus needs to be decreased here when shifting data from streamWindowBuffers to writeData()
     public function writeData(Client $client, string $data, int $stream, bool $last) {
-        $len = \strlen($data);
-        if ($client->streamWindowBuffer[$stream] !== "" || $client->window < $len || $client->streamWindow[$stream] < $len) {
+        $length = \strlen($data);
+
+        if ($client->streamWindowBuffer[$stream] !== "" || $client->window < $length || $client->streamWindow[$stream] < $length) {
             $client->streamWindowBuffer[$stream] .= $data;
+
             if ($last) {
                 $client->streamEnd[$stream] = true;
             }
-            $client->bufferSize += $len;
+
+            $client->bufferSize += $length;
             if (!$client->bufferDeferred && $client->bufferSize > $client->options->getSoftStreamCap()) {
                 $client->bufferDeferred = new Deferred;
             }
+
             $this->tryDataSend($client, $stream);
+            return;
+        }
+
+        $client->window -= $length;
+        if ($length > 16384) {
+            $split = str_split($data, 16384);
+            $data = array_pop($split);
+            foreach ($split as $part) {
+                $this->writeFrame($client, $part, self::DATA, self::NOFLAG, $stream);
+            }
+        }
+
+        $this->writeFrame($client, $data, self::DATA, $last ? self::END_STREAM : self::NOFLAG, $stream);
+
+        if ($last) {
+            unset($client->streamWindow[$stream], $client->streamWindowBuffer[$stream]);
         } else {
-            $client->window -= $len;
-            if ($len > 16384) {
-                $split = str_split($data, 16384);
-                $data = array_pop($split);
-                foreach ($split as $part) {
-                    $this->writeFrame($client, $part, self::DATA, self::NOFLAG, $stream);
-                }
-            }
-            if ($last) {
-                $this->writeFrame($client, $data, self::DATA, $last ? self::END_STREAM : self::NOFLAG, $stream);
-                unset($client->streamWindow[$stream], $client->streamWindowBuffer[$stream]);
-            } else {
-                $client->streamWindow[$stream] -= $len;
-                $this->writeFrame($client, $data, self::DATA, $last ? self::END_STREAM : self::NOFLAG, $stream);
-            }
+            $client->streamWindow[$stream] -= $length;
         }
     }
 
     private function tryDataSend(Client $client, int $id) {
         $delta = min($client->window, $client->streamWindow[$id]);
-        $len = \strlen($client->streamWindowBuffer[$id]);
-        if ($delta >= $len) {
-            $client->window -= $len;
-            $client->bufferSize -= $len;
-            if ($len > 16384) {
+        $length = \strlen($client->streamWindowBuffer[$id]);
+
+        if ($length === 0) {
+            return;
+        }
+
+        if ($delta >= $length) {
+            $client->window -= $length;
+            $client->bufferSize -= $length;
+
+            if ($length > 16384) {
                 $split = str_split($client->streamWindowBuffer[$id], 16384);
                 $client->streamWindowBuffer[$id] = array_pop($split);
                 foreach ($split as $part) {
                     $this->writeFrame($client, $part, self::DATA, self::NOFLAG, $id);
                 }
             }
+
             if (isset($client->streamEnd[$id])) {
                 $this->writeFrame($client, $client->streamWindowBuffer[$id], self::DATA, self::END_STREAM, $id);
                 unset($client->streamWindowBuffer[$id], $client->streamEnd[$id], $client->streamWindow[$id]);
             } else {
                 $this->writeFrame($client, $client->streamWindowBuffer[$id], self::DATA, self::NOFLAG, $id);
-                $client->streamWindow[$id] -= $len;
+                $client->streamWindow[$id] -= $length;
                 $client->streamWindowBuffer[$id] = "";
             }
-        } elseif ($delta > 0) {
+            return;
+        }
+
+        if ($delta > 0) {
             $data = $client->streamWindowBuffer[$id];
             $end = $delta - 16384;
             $client->bufferSize -= $delta;
+
             for ($off = 0; $off < $end; $off += 16384) {
                 $this->writeFrame($client, substr($data, $off, 16384), self::DATA, self::NOFLAG, $id);
             }
+
             $this->writeFrame($client, substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
+
             $client->streamWindowBuffer[$id] = substr($data, $delta);
             $client->streamWindow[$id] -= $delta;
             $client->window -= $delta;
@@ -339,6 +359,11 @@ class Http2Driver implements HttpDriver {
     protected function writeFrame(Client $client, string $data, string $type, string $flags, int $stream = 0) {
         \assert($stream >= 0);
         $data = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
+
+        \assert(print \preg_replace_callback("/[^\x20-\x7e]/", function (array $matches) {
+            return "\\x" . \dechex(\ord($matches[0]));
+        }, $data) . "\n");
+
         ($this->write)($client, $data, $type == self::DATA && ($flags & self::END_STREAM) !== "\0");
     }
 
@@ -361,6 +386,11 @@ class Http2Driver implements HttpDriver {
         $headers = [];
         $bodyLens = [];
         $table = new HPack;
+
+        if ($client->isEncrypted && ($client->cryptoInfo["alpn_protocol"] ?? null) !== "h2") {
+            ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: ALPN must be h2");
+            return;
+        }
 
         $setSetting = function (string $buffer) use ($client, $table): int {
             $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value"] >= 0
@@ -416,7 +446,7 @@ class Http2Driver implements HttpDriver {
         }
 
         $this->writeFrame($client, pack("nNnN", self::INITIAL_WINDOW_SIZE, $maxBodySize + 256, self::MAX_CONCURRENT_STREAMS, $maxStreams), self::SETTINGS, self::NOFLAG);
-        $this->writeFrame($client, "\x7f\xfe\xff\xff", self::WINDOW_UPDATE, self::NOFLAG); // effectively disabling global flow control...
+        //$this->writeFrame($client, "\x7f\xfe\xff\xff", self::WINDOW_UPDATE, self::NOFLAG); // effectively disabling global flow control...
 
         $buffer = yield;
 
@@ -429,6 +459,7 @@ class Http2Driver implements HttpDriver {
                 $protocol = \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start);
                 ($this->onError)($client, HttpStatus::HTTP_VERSION_NOT_SUPPORTED, "Unsupported version {$protocol}");
             }
+            ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad request: invalid preface");
             return;
         }
         $buffer = \substr($buffer, \strlen(self::PREFACE));
@@ -780,14 +811,14 @@ class Http2Driver implements HttpDriver {
                         }
 
                         if ($error !== 0) {
-                            ($this->onError)($client, HttpStatus::BAD_REQUEST, $error);
+                            // @TODO Log error?
+                            //($this->onError)($client, HttpStatus::BAD_REQUEST, "HTTP/2 Error: " . $error);
                             return;
                         }
 
                         $client->shouldClose = true;
-                        Loop::disable($client->readWatcher);
+                        ($this->write)($client, "", true); // Force close with empty write with final flag.
                         return;
-                        // connectionTimeout will force a close when necessary
 
                     case self::WINDOW_UPDATE:
                         if ($length != 4) {
@@ -808,6 +839,7 @@ class Http2Driver implements HttpDriver {
                         }
 
                         $windowSize = \unpack("N", $buffer)[1];
+
                         if ($id) {
                             if (!isset($client->streamWindow[$id])) {
                                 $client->streamWindow[$id] = $client->initialWindowSize + $windowSize;
