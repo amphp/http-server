@@ -16,16 +16,14 @@
     "authors": [
         {
             "name": "Daniel Lowrey",
-            "email": "rdlowrey@php.net",
-            "role": "Creator / Lead Developer"
+            "email": "rdlowrey@php.net"
         },
         {
-            "name": "Bob Weinand",
-            "role": "Developer / API Coordinator"
+            "name": "Bob Weinand"
         },
         {
             "name": "Niklas Keller",
-            "role": "Quality Assurance / Developer"
+            "email": "me@kelunik.com"
         },
         {
             "name": "Aaron Piotrowski",
@@ -41,8 +39,7 @@
         "amphp/uri": "^0.1",
         "league/climate": "^3",
         "nikic/fast-route": "^1",
-        "psr/log": "^1",
-        "ocramius/package-versions": "^1.1"
+        "psr/log": "^1"
     },
     "require-dev": {
         "amphp/phpunit-util": "^1",

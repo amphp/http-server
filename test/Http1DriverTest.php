@@ -625,12 +625,7 @@ class Http1DriverTest extends TestCase {
         $client = new Client;
         $client->options = new Options;
         $client->remainingRequests = PHP_INT_MAX;
-        foreach ([
-            "connectionTimeout" => 60,
-            "sendServerToken" => false
-        ] as $k => $v) {
-            $client->options->$k = $v;
-        }
+        $client->options->connectionTimeout = 60;
 
         $request = new Request("GET", new Uri("http://test.local"));
 

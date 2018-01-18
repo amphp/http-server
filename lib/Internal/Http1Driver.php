@@ -13,7 +13,6 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\Loop;
 use Amp\Uri\Uri;
-use const Aerys\SERVER_TOKEN;
 
 class Http1Driver implements HttpDriver {
     const HEADER_REGEX = "(
@@ -547,10 +546,6 @@ class Http1Driver implements HttpDriver {
 
     private function filter(Client $client, Response $response, string $protocol = "1.0", array $connection = []): array {
         $headers = $response->getHeaders();
-
-        if ($client->options->sendServerToken) {
-            $headers["server"] = [SERVER_TOKEN];
-        }
 
         if ($response->getStatus() < HttpStatus::OK) {
             return $headers;

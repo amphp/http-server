@@ -18,7 +18,6 @@ use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Loop;
 use Amp\Uri\Uri;
-use const Aerys\SERVER_TOKEN;
 
 class Http2Driver implements HttpDriver {
     const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
@@ -103,10 +102,6 @@ class Http2Driver implements HttpDriver {
     private function filter(Client $client, Response $response, Request $request = null): array {
         $headers = [":status" => $response->getStatus()];
         $headers = \array_merge($headers, $response->getHeaders());
-
-        if ($client->options->sendServerToken) {
-            $headers["server"] = [SERVER_TOKEN];
-        }
 
         if ($request !== null && !empty($push = $response->getPush())) {
             foreach ($push as $url => $pushHeaders) {

@@ -151,24 +151,6 @@ final class Options {
     }
 
     /**
-     * @return bool True if the Server header should be set in responses, false if none.
-     */
-    public function shouldSendServerToken(): bool {
-        return $this->values->sendServerToken;
-    }
-
-    /**
-     * @param bool $flag True to set the Server header automatically in responses. Default is false.
-     *
-     * @return \Aerys\Options
-     */
-    public function withSendServerToken(bool $flag): self {
-        $new = clone $this;
-        $new->values->sendServerToken = $flag;
-        return $new;
-    }
-
-    /**
      * @return int Maximum backlog size of each listening server socket.
      */
     public function getSocketBacklogSize(): int {

@@ -14,7 +14,6 @@ final class Options {
     public $maxRequestsPerConnection = 1000; // set to PHP_INT_MAX to disable
     public $connectionTimeout = 15; // seconds
 
-    public $sendServerToken = false;
     public $socketBacklogSize = 128;
     public $normalizeMethodCase = true;
     public $maxConcurrentStreams = 20;
