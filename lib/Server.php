@@ -290,8 +290,6 @@ class Server {
             throw new \RuntimeException("onStart observer initialization failure", 0, $exception);
         }
 
-        $this->dropPrivileges();
-
         $this->state = self::STARTED;
         assert($this->logDebug("Started"));
 
@@ -896,7 +894,7 @@ class Server {
         $this->clear($client);
         $client->isExported = true;
 
-        assert($this->logDebug("Export {$client->clientAddr}:{$client->clientPort}"));
+        \assert($this->logDebug("Export {$client->clientAddr}:{$client->clientPort}"));
 
         $net = @\inet_pton($client->clientAddr);
         if (isset($net[4])) {
@@ -911,48 +909,17 @@ class Server {
             $clientsPerIP--;
         };
 
-        assert($closer = (function () use ($client, $closer, &$clientCount, &$clientsPerIP) {
+        \assert($closer = (function () use ($client, $closer) {
             $logger = $this->logger;
             $message = "Close {$client->clientAddr}:{$client->clientPort}";
-            return static function () use ($closer, &$clientCount, &$clientsPerIP, $logger, $message) {
+
+            return static function () use ($closer, $logger, $message) {
                 $closer();
                 $logger->log(Logger::DEBUG, $message);
             };
         })());
 
         $response->export(new Internal\DetachedSocket($closer, $client->socket));
-    }
-
-    private function dropPrivileges() {
-        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-            return;
-        }
-
-        $user = $this->options->user;
-        if (!extension_loaded("posix")) {
-            if ($user !== null) {
-                throw new \RuntimeException("Posix extension must be enabled to switch to user '{$user}'!");
-            }
-            $this->logger->warning("Posix extension not enabled, be sure not to run your server as root!");
-            return;
-        }
-
-        if (posix_geteuid() === 0) {
-            if ($user === null) {
-                $this->logger->warning("Running as privileged user is discouraged! Use the 'user' option to switch to another user after startup!");
-                return;
-            }
-
-            $info = posix_getpwnam($user);
-            if (!$info) {
-                throw new \RuntimeException("Switching to user '{$user}' failed, because it doesn't exist!");
-            }
-
-            $success = posix_seteuid($info["uid"]);
-            if (!$success) {
-                throw new \RuntimeException("Switching to user '{$user}' failed, probably because of missing privileges.'");
-            }
-        }
     }
 
     /**

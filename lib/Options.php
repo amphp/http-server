@@ -33,24 +33,6 @@ final class Options {
     }
 
     /**
-     * @return string|null
-     */
-    public function getUser() { /* : ?string */
-        return $this->values->user;
-    }
-
-    /**
-     * @param string|null $user Username to run server or null to not attempt to switch users. Default is null.
-     *
-     * @return \Aerys\Options
-     */
-    public function withUser(string $user = null): self {
-        $new = clone $this;
-        $new->values->user = $user;
-        return $new;
-    }
-
-    /**
      * @return int The maximum number of connections that can be handled by the server at a single time.
      */
     public function getMaxConnections(): int {

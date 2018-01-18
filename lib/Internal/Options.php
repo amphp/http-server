@@ -8,7 +8,6 @@ final class Options {
     use Struct;
 
     public $debug = false;
-    public $user = null;
     public $maxConnections = 10000;
     public $connectionsPerIP = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
     public $maxRequestsPerConnection = 1000; // set to PHP_INT_MAX to disable
