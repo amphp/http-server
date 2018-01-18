@@ -10,7 +10,7 @@ use Amp\Coroutine;
 use Amp\Producer;
 use Amp\Promise;
 
-class DeflateMiddleware implements Middleware {
+class ZlibMiddleware implements Middleware {
     const MAX_CACHE_SIZE = 1024;
 
     /**
