@@ -16,6 +16,7 @@ $report = json_decode($report, true);
 
 if (!isset($report["Aerys"])) {
     $climate->red("Could not find result set for Aerys");
+    exit(1);
 }
 
 $report = $report["Aerys"];
