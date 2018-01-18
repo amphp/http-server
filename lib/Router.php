@@ -5,13 +5,14 @@ namespace Aerys;
 use Amp\Coroutine;
 use Amp\Failure;
 use Amp\Promise;
+use cash\LRUCache;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function FastRoute\simpleDispatcher;
 
 final class Router implements Responder, ServerObserver {
-    const DEFAULT_MAX_CACHE_ENTRIES = 512;
+    const DEFAULT_CACHE_SIZE = 512;
 
     /** @var bool */
     private $running = false;
@@ -28,22 +29,23 @@ final class Router implements Responder, ServerObserver {
     /** @var \SplObjectStorage */
     private $observers;
 
+    /** @var array */
     private $routes = [];
-    private $cache = [];
-    private $cacheEntryCount = 0;
-    private $maxCacheEntries;
+
+    /** @var LRUCache */
+    private $cache;
 
     /**
-     * @param int $maxCacheEntries Maximum number of route matches to cache.
+     * @param int $cacheSize Maximum number of route matches to cache.
      *
-     * @throws \Error If $maxCacheEntries is less than zero.
+     * @throws \Error If `$cacheSize` is less than zero.
      */
-    public function __construct(int $maxCacheEntries = self::DEFAULT_MAX_CACHE_ENTRIES) {
-        if ($maxCacheEntries < 0) {
-            throw new \Error("The number of cache entries must be greater than or equal to zero");
+    public function __construct(int $cacheSize = self::DEFAULT_CACHE_SIZE) {
+        if ($cacheSize <= 0) {
+            throw new \Error("The number of cache entries must be greater than zero");
         }
 
-        $this->maxCacheEntries = $maxCacheEntries;
+        $this->cache = new LRUCache($cacheSize);
         $this->observers = new \SplObjectStorage;
     }
 
@@ -64,13 +66,9 @@ final class Router implements Responder, ServerObserver {
 
         $toMatch = "{$method}\0{$path}";
 
-        if (isset($this->cache[$toMatch])) {
-            list($responder, $routeArgs) = $cache = $this->cache[$toMatch];
+        if ($cacheEntry = $this->cache->get($toMatch)) {
+            list($responder, $routeArgs) = $cacheEntry;
             $request->setAttribute(self::class, $routeArgs);
-
-            // Keep the most recently used entry at the back of the LRU cache
-            unset($this->cache[$toMatch]);
-            $this->cache[$toMatch] = $cache;
         } else {
             $match = $this->routeDispatcher->dispatch($method, $path);
 
@@ -101,9 +99,7 @@ final class Router implements Responder, ServerObserver {
                     );
             }
 
-            if ($this->maxCacheEntries > 0) {
-                $this->cacheDispatchResult($toMatch, $responder, $routeArgs);
-            }
+            $this->cache->put($toMatch, [$responder, $routeArgs]);
         }
 
         /** @var Responder $responder */
@@ -146,19 +142,6 @@ final class Router implements Responder, ServerObserver {
                 $route[1] = "/$prefix$route[1]";
             }
         }
-    }
-
-    private function cacheDispatchResult(string $toMatch, Responder $responder, array $routeArgs) {
-        if ($this->cacheEntryCount < $this->maxCacheEntries) {
-            $this->cacheEntryCount++;
-        } else {
-            // Remove the oldest entry from the LRU cache to make room
-            $unsetMe = key($this->cache);
-            unset($this->cache[$unsetMe]);
-        }
-
-        $cacheKey = $toMatch;
-        $this->cache[$cacheKey] = [$responder, $routeArgs];
     }
 
     /**

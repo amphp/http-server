@@ -24,14 +24,13 @@ return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $co
 
     $options = $options
         ->withConnectionTimeout(60) // Allows up to 60s for request receive and keep-alive timeout
-        ->withAllowedMethods(["GET", "HEAD", "POST", "ZANZIBAR"]) // Limit allowed methods (with custom)
-        ->withSendServerToken(true); // Appends Server header to each response
+        ->withAllowedMethods(["GET", "HEAD", "POST", "ZANZIBAR"]); // Limit allowed methods (with custom)
 
     /* --- http://localhost:1337/ ------------------------------------------------------------------- */
 
     $router = new Router;
 
-    $router->addRoute("GET", "/", new CallableResponder(function (Request $request): Response {
+    $router->addRoute("GET", "/", new CallableResponder(function (): Response {
         return new Response\HtmlResponse("<html><body><h1>Hello, world.</h1></body></html>");
     }));
 

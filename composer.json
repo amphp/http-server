@@ -39,7 +39,8 @@
         "amphp/uri": "^0.1",
         "league/climate": "^3",
         "nikic/fast-route": "^1",
-        "psr/log": "^1"
+        "psr/log": "^1",
+        "cash/lrucache": "^1.0"
     },
     "require-dev": {
         "amphp/phpunit-util": "^1",

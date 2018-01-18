@@ -9,6 +9,7 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
 use Amp\Producer;
 use Amp\Promise;
+use cash\LRUCache;
 
 class ZlibMiddleware implements Middleware {
     const MAX_CACHE_SIZE = 1024;
@@ -25,8 +26,12 @@ class ZlibMiddleware implements Middleware {
     /** @var int Minimum chunk size before being compressed. */
     private $chunkSize = 8192;
 
-    /** @var int[] */
-    private $contentTypeCache = [];
+    /** @var LRUCache */
+    private $contentTypeCache;
+
+    public function __construct() {
+        $this->contentTypeCache = new LRUCache(self::MAX_CACHE_SIZE);
+    }
 
     public function process(Request $request, Responder $responder): Promise {
         return new Coroutine($this->deflate($request, $responder));
@@ -50,6 +55,8 @@ class ZlibMiddleware implements Middleware {
             return $response;
         }
 
+        $contentType = $headers["content-type"][0];
+
         // @TODO Perform a more sophisticated check for gzip acceptance.
         // This check isn't technically correct as the gzip parameter
         // could have a q-value of zero indicating "never accept gzip."
@@ -63,23 +70,15 @@ class ZlibMiddleware implements Middleware {
             return $response;
         } while (false);
 
-        // Match and cache Content-Type
-        if (!$doDeflate = $this->contentTypeCache[$headers["content-type"][0]] ?? null) {
-            if ($doDeflate === 0) {
-                return $response;
-            }
+        $doDeflate = $this->contentTypeCache->get($contentType);
 
-            if (\count($this->contentTypeCache) === self::MAX_CACHE_SIZE) {
-                unset($this->contentTypeCache[\key($this->contentTypeCache)]);
-            }
-
-            $contentType = $headers["content-type"][0];
+        if ($doDeflate === null) {
             $doDeflate = \preg_match($this->contentRegex, \trim(\strstr($contentType, ";", true) ?: $contentType));
-            $this->contentTypeCache[$contentType] = $doDeflate;
+            $this->contentTypeCache->put($contentType, $doDeflate);
+        }
 
-            if ($doDeflate === 0) {
-                return $response;
-            }
+        if ($doDeflate === 0) {
+            return $response;
         }
 
         $body = $response->getBody();
