@@ -163,7 +163,7 @@ class Http2DriverTest extends TestCase {
             public function __construct($test) {
                 $this->test = $test;
             }
-            protected function writeFrame(Client $client, $data, $type, $flags, $stream = 0) {
+            protected function writeFrame(Client $client, string $data, string $type, string $flags, int $stream = 0) {
                 if ($type == Http2Driver::RST_STREAM || $type == Http2Driver::GOAWAY) {
                     $this->test->fail("RST_STREAM or GOAWAY frame received");
                 }
