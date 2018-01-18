@@ -901,7 +901,7 @@ class Http2Driver implements HttpDriver {
                     $client->streamWindowBuffer[$id] = "";
 
                     if ($streamEnd) {
-                        $request = new Request($headers[":method"][0], $uri, $headers, $this->nullBody, $target, "2.0");
+                        $request = new Request($headers[":method"][0], $uri, $headers, $this->nullBody, $target, "2.0", $id);
                         ($this->onRequest)($client, $request);
                     } else {
                         $client->bodyEmitters[$id] = new Emitter;
