@@ -607,7 +607,7 @@ class Http1DriverTest extends TestCase {
         $data = "foobar";
 
         $server = $this->createMock(Server::class);
-        $server->method('tick')
+        $server->method('onTimeUpdate')
             ->willReturnCallback(function (callable $callback) {
                 $callback(0, "date");
             });

@@ -44,7 +44,7 @@ class Http1Driver implements HttpDriver {
     }
 
     public function setup(Server $server, callable $onRequest, callable $onError, callable $responseWriter) {
-        $server->tick(function (int $time, string $date) {
+        $server->onTimeUpdate(function (int $time, string $date) {
             $this->date = $date;
         });
 

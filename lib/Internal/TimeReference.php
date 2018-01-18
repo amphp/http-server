@@ -11,7 +11,7 @@ use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
-class Ticker implements ServerObserver {
+class TimeReference implements ServerObserver {
     use CallableMaker;
 
     /** @var \Psr\Log\LoggerInterface */
@@ -68,7 +68,7 @@ class Ticker implements ServerObserver {
      * @param callable $useCallback
      * @return void
      */
-    public function use(callable $useCallback) {
+    public function onTimeUpdate(callable $useCallback) {
         $this->useCallbacks[] = $useCallback;
         $this->tryUseCallback($useCallback);
     }

@@ -89,7 +89,7 @@ class Http2Driver implements HttpDriver {
     }
 
     public function setup(Server $server, callable $onRequest, callable $onError, callable $write) {
-        $server->tick(function (int $time, string $date) {
+        $server->onTimeUpdate(function (int $time, string $date) {
             $this->time = $time;
             $this->date = $date;
         });

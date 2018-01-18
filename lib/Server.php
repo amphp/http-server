@@ -52,8 +52,8 @@ class Server {
     /** @var \Psr\Log\LoggerInterface */
     private $logger;
 
-    /** @var \Aerys\Internal\Ticker */
-    private $ticker;
+    /** @var \Aerys\Internal\TimeReference */
+    private $timeReference;
 
     /** @var \SplObjectStorage */
     private $observers;
@@ -109,11 +109,11 @@ class Server {
         $this->options = $this->immutableOptions->export();
         $this->logger = $logger ?? new ConsoleLogger(new Console);
 
-        $this->ticker = new Internal\Ticker($this->logger);
-        $this->ticker->use($this->callableFromInstanceMethod("timeoutKeepAlives"));
+        $this->timeReference = new Internal\TimeReference($this->logger);
+        $this->timeReference->onTimeUpdate($this->callableFromInstanceMethod("timeoutKeepAlives"));
 
         $this->observers = new \SplObjectStorage;
-        $this->observers->attach($this->ticker);
+        $this->observers->attach($this->timeReference);
 
         $this->nullBody = new NullBody;
 
@@ -230,8 +230,8 @@ class Server {
     /**
      * @param callable $callback
      */
-    public function tick(callable $callback) {
-        $this->ticker->use($callback);
+    public function onTimeUpdate(callable $callback) {
+        $this->timeReference->onTimeUpdate($callback);
     }
 
     /**
@@ -614,7 +614,7 @@ class Server {
     }
 
     private function renewConnectionTimeout(Internal\Client $client) {
-        $timeoutAt = $this->ticker->getCurrentTime() + $this->options->connectionTimeout;
+        $timeoutAt = $this->timeReference->getCurrentTime() + $this->options->connectionTimeout;
         // DO NOT remove the call to unset(); it looks superfluous but it's not.
         // Keep-alive timeout entries must be ordered by value. This means that
         // it's not enough to replace the existing map entry -- we have to remove
@@ -938,7 +938,7 @@ class Server {
         return [
             "state" => $this->state,
             "host" => $this->host,
-            "ticker" => $this->ticker,
+            "timeReference" => $this->timeReference,
             "observers" => $this->observers,
             "acceptWatcherIds" => $this->acceptWatcherIds,
             "boundServers" => $this->boundServers,
