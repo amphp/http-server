@@ -10,6 +10,8 @@ use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Response;
 use Aerys\Server;
+use Amp\Artax\Cookie\ArrayCookieJar;
+use Amp\Artax\Cookie\Cookie;
 use Amp\Artax\DefaultClient;
 use Amp\ByteStream\InMemoryStream;
 use Amp\Loop;
@@ -33,8 +35,7 @@ class ClientTest extends TestCase {
         $handler = new CallableResponder($handler);
 
         $logger = $this->createMock(Logger::class);
-        $options = new Options;
-        $options->debug = true;
+        $options = (new Options)->withDebugMode(true);
         $server = new Server($handler, $options, $logger);
         $server->expose("*", $port);
         $server->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
@@ -63,8 +64,8 @@ class ClientTest extends TestCase {
                 return $res;
             });
 
-            $cookies = new \Amp\Artax\Cookie\ArrayCookieJar;
-            $cookies->store(new \Amp\Artax\Cookie\Cookie("test", "value", null, "/", "localhost"));
+            $cookies = new ArrayCookieJar;
+            $cookies->store(new Cookie("test", "value", null, "/", "localhost"));
             $context = (new ClientTlsContext)->withoutPeerVerification();
             $client = new DefaultClient($cookies, null, $context);
             $port = parse_url($address, PHP_URL_PORT);
@@ -72,6 +73,7 @@ class ClientTest extends TestCase {
                 (new \Amp\Artax\Request("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))->withHeader("custom", "header")
             );
 
+            /** @var Response $res */
             $res = yield $promise;
             $this->assertEquals(200, $res->getStatus());
             $this->assertEquals(["header"], $res->getHeaderArray("custom"));

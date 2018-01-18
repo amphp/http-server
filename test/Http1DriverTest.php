@@ -5,7 +5,7 @@ namespace Aerys\Test;
 use Aerys\Internal\Client;
 use Aerys\Internal\Http1Driver;
 use Aerys\Internal\HttpDriver;
-use Aerys\Internal\Options;
+use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;
@@ -35,10 +35,7 @@ class Http1DriverTest extends TestCase {
         };
 
         $client = new Client;
-        $client->options = new Options;
-        foreach ($opts as $key => $val) {
-            $client->options->$key = $val;
-        }
+        $client->options = $opts;
         $driver = new Http1Driver;
         $driver->setup($this->createMock(Server::class), $emitCallback, $errorCallback, $this->createCallback(0));
         $parser = $driver->parser($client);
@@ -67,10 +64,7 @@ class Http1DriverTest extends TestCase {
         };
 
         $client = new Client;
-        $client->options = new Options;
-        foreach ($opts as $key => $val) {
-            $client->options->$key = $val;
-        }
+        $client->options = $opts;
         $driver = new Http1Driver;
         $driver->setup($this->createMock(Server::class), $emitCallback, $errorCallback, $this->createCallback(0));
         $parser = $driver->parser($client);
@@ -202,13 +196,12 @@ class Http1DriverTest extends TestCase {
         };
 
         $client = new Client;
-        $client->options = new Options;
-        $client->options->ioGranularity = 1;
+        $client->options = (new Options)->withIoGranularity(1);
         $driver = new Http1Driver;
         $driver->setup($this->createMock(Server::class), $resultEmitter, $this->createCallback(0), $this->createCallback(0));
 
         $parser = $driver->parser($client);
-        for ($i=0, $c=strlen($msg);$i<$c;$i++) {
+        for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
         }
 
@@ -231,12 +224,12 @@ class Http1DriverTest extends TestCase {
             "\r\n";
         $trace = substr($msg, 0, -2);
         $expectations = [
-            "trace"       => $trace,
-            "protocol"    => "1.1",
-            "method"      => "GET",
-            "uri"         => "/",
-            "headers"     => ["host" => ["localhost"]],
-            "body"        => "",
+            "trace" => $trace,
+            "protocol" => "1.1",
+            "method" => "GET",
+            "uri" => "/",
+            "headers" => ["host" => ["localhost"]],
+            "body" => "",
         ];
 
         $return[] = [$msg, $expectations];
@@ -258,16 +251,16 @@ class Http1DriverTest extends TestCase {
         $headers = [
             "host" => ["localhost:80"],
             "cookie" => ["cookie1", "cookie2"],
-            "content-length" => ["3"]
+            "content-length" => ["3"],
         ];
 
         $expectations = [
-            "trace"       => $trace,
-            "protocol"    => "1.0",
-            "method"      => "POST",
-            "uri"         => "/post-endpoint",
-            "headers"     => $headers,
-            "body"        => "123",
+            "trace" => $trace,
+            "protocol" => "1.0",
+            "method" => "POST",
+            "uri" => "/post-endpoint",
+            "headers" => $headers,
+            "body" => "123",
         ];
 
         $return[] = [$msg, $expectations];
@@ -278,12 +271,12 @@ class Http1DriverTest extends TestCase {
         $trace = substr($msg, 0, -2);
 
         $expectations = [
-            "trace"       => $trace,
-            "protocol"    => "1.1",
-            "method"      => "OPTIONS",
-            "uri"         => "",
-            "headers"     => ["host" => ["http://localhost"]],
-            "body"        => "",
+            "trace" => $trace,
+            "protocol" => "1.1",
+            "method" => "OPTIONS",
+            "uri" => "",
+            "headers" => ["host" => ["http://localhost"]],
+            "body" => "",
         ];
 
         $return[] = [$msg, $expectations];
@@ -311,16 +304,16 @@ class Http1DriverTest extends TestCase {
             "accept-encoding" => ["gzip,deflate,sdch"],
             "accept-language" => ["en-US,en;q=0.8"],
             "accept-charset" => ["ISO-8859-1,utf-8;q=0.7,*;q=0.3"],
-            "content-length" => ["5"]
+            "content-length" => ["5"],
         ];
 
         $expectations = [
-            "trace"       => $trace,
-            "protocol"    => "1.1",
-            "method"      => "GET",
-            "uri"         => "/test",
-            "headers"     => $headers,
-            "body"        => "12345",
+            "trace" => $trace,
+            "protocol" => "1.1",
+            "method" => "GET",
+            "uri" => "/test",
+            "headers" => $headers,
+            "body" => "12345",
         ];
 
         $return[] = [$msg, $expectations];
@@ -345,12 +338,12 @@ class Http1DriverTest extends TestCase {
         ];
 
         $expectations = [
-            "trace"       => $trace,
-            "protocol"    => "1.1",
-            "method"      => "GET",
-            "uri"         => "/test",
-            "headers"     => $headers,
-            "body"        => "woot!test",
+            "trace" => $trace,
+            "protocol" => "1.1",
+            "method" => "GET",
+            "uri" => "/test",
+            "headers" => $headers,
+            "body" => "woot!test",
         ];
 
         $return[] = [$msg, $expectations];
@@ -378,12 +371,12 @@ class Http1DriverTest extends TestCase {
         ];
 
         $expectations = [
-            "trace"       => $trace,
-            "protocol"    => "1.1",
-            "method"      => "GET",
-            "uri"         => "/test",
-            "headers"     => $headers,
-            "body"        => "woot!test",
+            "trace" => $trace,
+            "protocol" => "1.1",
+            "method" => "GET",
+            "uri" => "/test",
+            "headers" => $headers,
+            "body" => "woot!test",
         ];
 
         $return[] = [$msg, $expectations];
@@ -401,7 +394,7 @@ class Http1DriverTest extends TestCase {
         $msg = "dajfalkjf jslfhalsdjf\r\n\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid request line";
-        $opts = [];
+        $opts = new Options;
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 1 -------------------------------------------------------------------------------------->
@@ -409,7 +402,7 @@ class Http1DriverTest extends TestCase {
         $msg = "test   \r\n\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid request line";
-        $opts = [];
+        $opts = new Options;
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 2 -------------------------------------------------------------------------------------->
@@ -421,7 +414,7 @@ class Http1DriverTest extends TestCase {
             "\r\n";
         $errCode = 431;
         $errMsg = "Bad Request: header size violation";
-        $opts = ["maxHeaderSize" => 128];
+        $opts = (new Options)->withMaxHeaderSize(128);
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 3 -------------------------------------------------------------------------------------->
@@ -434,7 +427,7 @@ class Http1DriverTest extends TestCase {
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: multi-line headers deprecated by RFC 7230";
-        $opts = [];
+        $opts = new Options;
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 4 -------------------------------------------------------------------------------------->
@@ -446,7 +439,7 @@ class Http1DriverTest extends TestCase {
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: multi-line headers deprecated by RFC 7230";
-        $opts = [];
+        $opts = new Options;
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 5 -------------------------------------------------------------------------------------->
@@ -484,9 +477,9 @@ class Http1DriverTest extends TestCase {
             $request = $req;
         };
 
-        $client->options = new Options;
-        $client->options->maxBodySize = 4;
-        $client->readWatcher = Loop::defer(function () {}); // dummy watcher
+        $client->options = (new Options)->withMaxBodySize(4);
+        $client->readWatcher = Loop::defer(function () {
+        }); // dummy watcher
 
         $driver = new Http1Driver;
         $driver->setup($this->createMock(Server::class), $resultEmitter, $this->createCallback(0), $this->createCallback(0));
@@ -530,7 +523,8 @@ class Http1DriverTest extends TestCase {
 
         $client->options = new Options;
         $client->remainingRequests = 3;
-        $client->readWatcher = Loop::defer(function () {}); // dummy watcher
+        $client->readWatcher = Loop::defer(function () {
+        }); // dummy watcher
         $driver = new Http1Driver;
         $driver->setup(
             $this->createMock(Server::class),
@@ -623,9 +617,8 @@ class Http1DriverTest extends TestCase {
             }
         );
         $client = new Client;
-        $client->options = new Options;
+        $client->options = (new Options)->withConnectionTimeout(60);
         $client->remainingRequests = PHP_INT_MAX;
-        $client->options->connectionTimeout = 60;
 
         $request = new Request("GET", new Uri("http://test.local"));
 
@@ -700,9 +693,11 @@ class Http1DriverTest extends TestCase {
 
             public function setup(Server $server, callable $onRequest, callable $onError, callable $responseWriter) {
             }
+
             public function writer(Client $client, Response $response, Request $request = null): \Generator {
                 yield;
             }
+
             public function parser(Client $client): \Generator {
                 $this->invoked = true;
                 yield;
@@ -732,11 +727,13 @@ class Http1DriverTest extends TestCase {
         $http2 = new class implements HttpDriver {
             public function setup(Server $server, callable $onRequest, callable $onError, callable $responseWriter) {
             }
+
             public function writer(Client $client, Response $response, Request $request = null): \Generator {
                 yield;
             }
 
             public $received;
+
             public function parser(Client $client): \Generator {
                 while (1) {
                     $this->received .= yield;

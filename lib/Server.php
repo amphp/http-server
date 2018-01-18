@@ -31,10 +31,7 @@ class Server {
     /** @var int */
     private $state = self::STOPPED;
 
-    /** @var \Aerys\Options */
-    private $immutableOptions;
-
-    /** @var \Aerys\Internal\Options */
+    /** @var Options */
     private $options;
 
     /** @var \Aerys\Internal\Host */
@@ -102,8 +99,7 @@ class Server {
 
         $this->host = new Internal\Host;
 
-        $this->immutableOptions = $options ?? new Options;
-        $this->options = $this->immutableOptions->export();
+        $this->options = $options ?? new Options;
         $this->logger = $logger ?? new ConsoleLogger(new Console);
 
         $this->timeReference = new Internal\TimeReference;
@@ -204,7 +200,7 @@ class Server {
      * @return \Aerys\Options
      */
     public function getOptions(): Options {
-        return $this->immutableOptions;
+        return $this->options;
     }
 
     /**
@@ -271,7 +267,7 @@ class Server {
             return $socket;
         };
 
-        $this->boundServers = yield $bindSockets($this->generateBindableAddressContextMap(), $socketBinder);
+        $this->boundServers = yield $bindSockets($this->generateAddressContextMap(), $socketBinder);
 
         $this->state = self::STARTING;
         try {
@@ -317,12 +313,12 @@ class Server {
         );
     }
 
-    private function generateBindableAddressContextMap(): array {
+    private function generateAddressContextMap(): array {
         $addrCtxMap = [];
         $addresses = $this->host->getAddresses();
         $tlsContext = $this->host->getTlsContext();
-        $backlogSize = $this->options->socketBacklogSize;
-        $shouldReusePort = !$this->options->debug;
+        $backlogSize = $this->options->getSocketBacklogSize();
+        $shouldReusePort = !$this->options->isInDebugMode();
 
         foreach ($addresses as $address) {
             $context = ["socket" => [
@@ -355,7 +351,7 @@ class Server {
             $perIP = &$this->clientsPerIP[$net];
         }
 
-        if (($this->clientCount++ === $this->options->maxConnections) | ($perIP++ === $this->options->connectionsPerIP)) {
+        if (($this->clientCount++ === $this->options->getMaxConnections()) | ($perIP++ === $this->options->getMaxConnectionsPerIp())) {
             assert($this->logDebug("client denied: too many existing connections"));
             $this->clientCount--;
             $perIP--;
@@ -431,7 +427,7 @@ class Server {
         switch ($this->state) {
             case self::STARTED:
                 $stopPromise = new Coroutine($this->doStop());
-                return Promise\timeout($stopPromise, $this->options->shutdownTimeout);
+                return Promise\timeout($stopPromise, $this->options->getShutdownTimeout());
             case self::STOPPED:
                 return new Success;
             default:
@@ -493,7 +489,7 @@ class Server {
         $client->id = (int) $socket;
         $client->socket = $socket;
         $client->options = $this->options;
-        $client->remainingRequests = $this->options->maxRequestsPerConnection;
+        $client->remainingRequests = $this->options->getMaxRequestsPerConnection();
 
         $client->clientAddr = $ip;
         $client->clientPort = $port;
@@ -527,7 +523,7 @@ class Server {
     private function writeResponse(Internal\Client $client, string $data, bool $final = false) {
         $client->writeBuffer .= $data;
 
-        if (!$final && \strlen($client->writeBuffer) < $client->options->outputBufferSize) {
+        if (!$final && \strlen($client->writeBuffer) < $this->options->getOutputBufferSize()) {
             return;
         }
 
@@ -535,7 +531,7 @@ class Server {
 
         $length = \strlen($client->writeBuffer);
 
-        if ($length > $client->options->softStreamCap) {
+        if ($length > $this->options->getSoftStreamCap()) {
             $client->bufferDeferred = new Deferred;
         }
 
@@ -578,7 +574,7 @@ class Server {
                 $client->writeBuffer = \substr($client->writeBuffer, $bytesWritten);
                 Loop::enable($watcherId);
             }
-            if ($client->bufferDeferred && \strlen($client->writeBuffer) <= $client->options->softStreamCap) {
+            if ($client->bufferDeferred && \strlen($client->writeBuffer) <= $this->options->getSoftStreamCap()) {
                 $deferred = $client->bufferDeferred;
                 $client->bufferDeferred = null;
                 $deferred->resolve();
@@ -609,7 +605,7 @@ class Server {
     }
 
     private function renewConnectionTimeout(Internal\Client $client) {
-        $timeoutAt = $this->timeReference->getCurrentTime() + $this->options->connectionTimeout;
+        $timeoutAt = $this->timeReference->getCurrentTime() + $this->options->getConnectionTimeout();
         // DO NOT remove the call to unset(); it looks superfluous but it's not.
         // Keep-alive timeout entries must be ordered by value. This means that
         // it's not enough to replace the existing map entry -- we have to remove
@@ -624,7 +620,7 @@ class Server {
     }
 
     private function onReadable(string $watcherId, $socket, Internal\Client $client) {
-        $data = @\stream_get_contents($socket, $this->options->ioGranularity);
+        $data = @\stream_get_contents($socket, $this->options->getIoGranularity());
         if ($data !== false && $data !== "") {
             $this->renewConnectionTimeout($client);
             $client->requestParser->send($data);
@@ -701,7 +697,7 @@ class Server {
 
             if ($this->stopDeferred) {
                 $response = yield from $this->makeServiceUnavailableResponse();
-            } elseif (!\in_array($method, $this->options->allowedMethods, true)) {
+            } elseif (!\in_array($method, $this->options->getAllowedMethods(), true)) {
                 if (!\in_array($method, self::KNOWN_METHODS, true)) {
                     $response = yield from $this->makeNotImplementedResponse();
                 } else {
@@ -739,7 +735,7 @@ class Server {
         /** @var \Aerys\Response $response */
         $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
         $response->setHeader("Connection", "close");
-        $response->setHeader("Allow", \implode(", ", $this->options->allowedMethods));
+        $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
         return $response;
     }
 
@@ -748,12 +744,12 @@ class Server {
         /** @var \Aerys\Response $response */
         $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
         $response->setHeader("Connection", "close");
-        $response->setHeader("Allow", \implode(", ", $this->options->allowedMethods));
+        $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
         return $response;
     }
 
     private function makeOptionsResponse(): Response {
-        return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->allowedMethods)]);
+        return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->getAllowedMethods())]);
     }
 
     /**
@@ -810,7 +806,7 @@ class Server {
         $status = HttpStatus::INTERNAL_SERVER_ERROR;
 
         // Return an HTML page with the exception in debug mode.
-        if ($request !== null && $this->options->debug) {
+        if ($request !== null && $this->options->isInDebugMode()) {
             $html = \str_replace(
                 ["{uri}", "{class}", "{message}", "{file}", "{line}", "{trace}"],
                 \array_map("htmlspecialchars", [

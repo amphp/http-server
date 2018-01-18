@@ -3,22 +3,31 @@
 namespace Aerys;
 
 final class Options {
-    /** @var \Aerys\Internal\Options */
-    private $values;
+    private $debug = false;
+    private $maxConnections = 10000;
+    private $connectionsPerIP = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
+    private $maxRequestsPerConnection = 1000; // set to PHP_INT_MAX to disable
+    private $connectionTimeout = 15; // seconds
 
-    public function __construct() {
-        $this->values = new Internal\Options;
-    }
+    private $socketBacklogSize = 128;
+    private $normalizeMethodCase = true;
+    private $maxConcurrentStreams = 20;
+    private $maxFramesPerSecond = 60;
+    private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
 
-    public function __clone() {
-        $this->values = clone $this->values;
-    }
+    private $maxBodySize = 131072;
+    private $maxHeaderSize = 32768;
+    private $ioGranularity = 32768; // recommended: at least 16 KB
+    private $softStreamCap = 131072; // should be multiple of outputBufferSize
+
+    private $outputBufferSize = 8192;
+    private $shutdownTimeout = 3000; // milliseconds
 
     /**
      * @return bool True if server is in debug mode, false if in production mode.
      */
     public function isInDebugMode(): bool {
-        return $this->values->debug;
+        return $this->debug;
     }
 
     /**
@@ -28,7 +37,8 @@ final class Options {
      */
     public function withDebugMode(bool $flag): self {
         $new = clone $this;
-        $new->values->debug = $flag;
+        $new->debug = $flag;
+
         return $new;
     }
 
@@ -36,7 +46,7 @@ final class Options {
      * @return int The maximum number of connections that can be handled by the server at a single time.
      */
     public function getMaxConnections(): int {
-        return $this->values->maxConnections;
+        return $this->maxConnections;
     }
 
     /**
@@ -54,7 +64,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->maxConnections = $count;
+        $new->maxConnections = $count;
+
         return $new;
     }
 
@@ -62,7 +73,7 @@ final class Options {
      * @return int The maximum number of connections allowed from a single IP.
      */
     public function getMaxConnectionsPerIp(): int {
-        return $this->values->connectionsPerIP;
+        return $this->connectionsPerIP;
     }
 
     /**
@@ -77,14 +88,17 @@ final class Options {
             );
         }
 
-        $this->values->connectionsPerIP = $count;
+        $new = clone $this;
+        $new->connectionsPerIP = $count;
+
+        return $new;
     }
 
     /**
      * @return int The maximum number of requests that can be made on a single connection.
      */
     public function getMaxRequestsPerConnection(): int {
-        return $this->values->maxRequestsPerConnection;
+        return $this->maxRequestsPerConnection;
     }
 
     /**
@@ -102,7 +116,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->maxRequestsPerConnection = $count;
+        $new->maxRequestsPerConnection = $count;
+
         return $new;
     }
 
@@ -110,7 +125,7 @@ final class Options {
      * @return int Number of seconds a connection may be idle before it is automatically closed.
      */
     public function getConnectionTimeout(): int {
-        return $this->values->connectionTimeout;
+        return $this->connectionTimeout;
     }
 
     /**
@@ -128,7 +143,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->connectionTimeout = $seconds;
+        $new->connectionTimeout = $seconds;
+
         return $new;
     }
 
@@ -136,7 +152,7 @@ final class Options {
      * @return int Maximum backlog size of each listening server socket.
      */
     public function getSocketBacklogSize(): int {
-        return $this->values->socketBacklogSize;
+        return $this->socketBacklogSize;
     }
 
     /**
@@ -154,7 +170,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->socketBacklogSize = $backlog;
+        $new->socketBacklogSize = $backlog;
+
         return $new;
     }
 
@@ -162,7 +179,7 @@ final class Options {
      * @return bool True to UPPERCASE all request method strings, false uses case as given in client request.
      */
     public function shouldNormalizeMethodCase(): bool {
-        return $this->values->normalizeMethodCase;
+        return $this->normalizeMethodCase;
     }
 
     /**
@@ -173,7 +190,8 @@ final class Options {
      */
     public function withNormalizeMethodCase(bool $flag): self {
         $new = clone $this;
-        $new->values->normalizeMethodCase = $flag;
+        $new->normalizeMethodCase = $flag;
+
         return $new;
     }
 
@@ -181,7 +199,7 @@ final class Options {
      * @return int Maximum request body size in bytes.
      */
     public function getMaxBodySize(): int {
-        return $this->values->maxBodySize;
+        return $this->maxBodySize;
     }
 
     /**
@@ -200,7 +218,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->maxBodySize = $bytes;
+        $new->maxBodySize = $bytes;
+
         return $new;
     }
 
@@ -208,7 +227,7 @@ final class Options {
      * @return int Maximum size of the request header section in bytes.
      */
     public function getMaxHeaderSize(): int {
-        return $this->values->maxHeaderSize;
+        return $this->maxHeaderSize;
     }
 
     /**
@@ -225,7 +244,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->maxHeaderSize = $bytes;
+        $new->maxHeaderSize = $bytes;
+
         return $new;
     }
 
@@ -233,7 +253,7 @@ final class Options {
      * @return int
      */
     public function getSoftStreamCap(): int {
-        return $this->values->softStreamCap;
+        return $this->softStreamCap;
     }
 
     /**
@@ -250,7 +270,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->softStreamCap = $bytes;
+        $new->softStreamCap = $bytes;
+
         return $new;
     }
 
@@ -258,7 +279,7 @@ final class Options {
      * @return int Maximum number of concurrent HTTP/2 streams.
      */
     public function getMaxConcurrentStreams(): int {
-        return $this->values->maxConcurrentStreams;
+        return $this->maxConcurrentStreams;
     }
 
     /**
@@ -276,7 +297,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->maxConcurrentStreams = $streams;
+        $new->maxConcurrentStreams = $streams;
+
         return $new;
     }
 
@@ -284,7 +306,7 @@ final class Options {
      * @return int Maximum number of HTTP/2 frames per second.
      */
     public function getMaxFramesPerSecond(): int {
-        return $this->values->maxFramesPerSecond;
+        return $this->maxFramesPerSecond;
     }
 
     /**
@@ -302,7 +324,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->maxFramesPerSecond = $frames;
+        $new->maxFramesPerSecond = $frames;
+
         return $new;
     }
 
@@ -310,7 +333,7 @@ final class Options {
      * @return int The maximum number of bytes to read from a client per read.
      */
     public function getIoGranularity(): int {
-        return $this->values->ioGranularity;
+        return $this->ioGranularity;
     }
 
     /**
@@ -329,7 +352,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->ioGranularity = $bytes;
+        $new->ioGranularity = $bytes;
+
         return $new;
     }
 
@@ -337,11 +361,11 @@ final class Options {
      * @return string[] An array of allowed request methods.
      */
     public function getAllowedMethods(): array {
-        if ($this->values->normalizeMethodCase) {
-            return \array_unique(\array_map("strtoupper", $this->values->allowedMethods));
+        if ($this->normalizeMethodCase) {
+            return \array_unique(\array_map("strtoupper", $this->allowedMethods));
         }
 
-        return $this->values->allowedMethods;
+        return $this->allowedMethods;
     }
 
     /**
@@ -386,7 +410,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->allowedMethods = $allowedMethods;
+        $new->allowedMethods = $allowedMethods;
+
         return $new;
     }
 
@@ -394,7 +419,7 @@ final class Options {
      * @return int Number of body bytes to buffer before writes are made to the client.
      */
     public function getOutputBufferSize(): int {
-        return $this->values->outputBufferSize;
+        return $this->outputBufferSize;
     }
 
     /**
@@ -412,7 +437,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->outputBufferSize = $bytes;
+        $new->outputBufferSize = $bytes;
+
         return $new;
     }
 
@@ -420,7 +446,7 @@ final class Options {
      * @return int Number of milliseconds to wait when shutting down the server before forcefully shutting down.
      */
     public function getShutdownTimeout(): int {
-        return $this->values->shutdownTimeout;
+        return $this->shutdownTimeout;
     }
 
     /**
@@ -439,24 +465,8 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->values->shutdownTimeout = $milliseconds;
+        $new->shutdownTimeout = $milliseconds;
+
         return $new;
-    }
-
-    /**
-     * Returns an object with public properties corresponding to the values given in this object. Primarily for internal
-     * use for better performance. May be used in external components if option values are frequently accessed.
-     * Note that changing values in the returned object has no effect on the values used by the server.
-     *
-     * @return \Aerys\Internal\Options
-     */
-    public function export(): Internal\Options {
-        $clone = clone $this->values;
-
-        if ($clone->normalizeMethodCase) {
-            $clone->allowedMethods = \array_unique(\array_map("strtoupper", $clone->allowedMethods));
-        }
-
-        return $clone;
     }
 }

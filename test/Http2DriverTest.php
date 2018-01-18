@@ -5,7 +5,7 @@ namespace Aerys\Test;
 use Aerys\Internal\Client;
 use Aerys\Internal\HPack;
 use Aerys\Internal\Http2Driver;
-use Aerys\Internal\Options;
+use Aerys\Options;
 use Aerys\NullBody;
 use Aerys\Request;
 use Aerys\Response;
@@ -285,7 +285,7 @@ class Http2DriverTest extends TestCase {
         $streamId = 1;
         $request = new Request("GET", new Uri("/"), [], new NullBody, "/", "2.0", $streamId);
 
-        $client->options->outputBufferSize = 1; // Force data frame when any data is written.
+        $client->options = $client->options->withOutputBufferSize(1); // Force data frame when any data is written.
         $writer = $driver->writer($client, new Response(null, ["content-type" => "text/html; charset=utf-8"]), $request);
         $writer->valid(); // Start writer.
 

@@ -225,7 +225,7 @@ class Http2Driver implements HttpDriver {
                 while (null !== $part = yield) {
                     $buffer .= $part;
 
-                    if (\strlen($buffer) >= $client->options->outputBufferSize) {
+                    if (\strlen($buffer) >= $client->options->getOutputBufferSize()) {
                         $this->writeData($client, $buffer, $id, false);
                         $buffer = "";
                     }
@@ -272,7 +272,7 @@ class Http2Driver implements HttpDriver {
                 $client->streamEnd[$stream] = true;
             }
             $client->bufferSize += $len;
-            if ($client->bufferSize > $client->options->softStreamCap && !$client->bufferDeferred) {
+            if (!$client->bufferDeferred && $client->bufferSize > $client->options->getSoftStreamCap()) {
                 $client->bufferDeferred = new Deferred;
             }
             $this->tryDataSend($client, $stream);
@@ -350,11 +350,11 @@ class Http2Driver implements HttpDriver {
      * @return \Generator
      */
     public function parser(Client $client, string $settings = "", bool $upgraded = false): \Generator {
-        $maxHeaderSize = $client->options->maxHeaderSize;
-        $maxBodySize = $client->options->maxBodySize;
-        $maxStreams = $client->options->maxConcurrentStreams;
+        $maxHeaderSize = $client->options->getMaxHeaderSize();
+        $maxBodySize = $client->options->getMaxBodySize();
+        $maxStreams = $client->options->getMaxConcurrentStreams();
         // $bodyEmitSize = $client->options->ioGranularity; // redundant because data frames, which is 16 KB
-        $maxFramesPerSecond = $client->options->maxFramesPerSecond;
+        $maxFramesPerSecond = $client->options->getMaxFramesPerSecond();
         $lastReset = 0;
         $framesLastSecond = 0;
 

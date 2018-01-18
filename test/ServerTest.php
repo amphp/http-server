@@ -15,6 +15,7 @@ use Aerys\Response;
 use Aerys\Server;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
+use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
@@ -75,8 +76,8 @@ class ServerTest extends TestCase {
 
         $logger = $this->createMock(Logger::class);
 
-        $options = new Options;
-        $options->debug = true;
+        $options = (new Options)
+            ->withDebugMode(true);
 
         $server = new Server($responder, $options, $logger);
 
@@ -263,8 +264,8 @@ class ServerTest extends TestCase {
 
         $logger = $this->createMock(Logger::class);
 
-        $options = new Options;
-        $options->debug = true;
+        $options = (new Options)
+            ->withDebugMode(true);
 
         $server = new Server($this->createMock(Responder::class), $options, $logger);
 
@@ -310,7 +311,7 @@ class ServerTest extends TestCase {
             $client = yield Socket\connect($address);
             yield $client->write("a");
             // give readWatcher a chance
-            $deferred = new \Amp\Deferred;
+            $deferred = new Deferred;
             Loop::defer(function () use ($deferred) { Loop::defer([$deferred, "resolve"]); });
             yield $deferred->promise();
             yield $client->write("b");
@@ -328,7 +329,7 @@ class ServerTest extends TestCase {
             } catch (Loop\UnsupportedFeatureException $e) {
             }
 
-            $deferred = new \Amp\Deferred;
+            $deferred = new Deferred;
             list($address) = yield from $this->startServer(function (Internal\Client $client, $write) use ($deferred) {
                 try {
                     $this->assertTrue($client->isEncrypted);

@@ -99,7 +99,7 @@ class Http1Driver implements HttpDriver {
             while (null !== yield); // Ignore body portions written.
         } else {
             do {
-                if (\strlen($buffer) >= $client->options->outputBufferSize) {
+                if (\strlen($buffer) >= $client->options->getOutputBufferSize()) {
                     ($this->responseWriter)($client, $buffer);
                     $buffer = "";
 
@@ -137,9 +137,9 @@ class Http1Driver implements HttpDriver {
     }
 
     public function parser(Client $client): \Generator {
-        $maxHeaderSize = $client->options->maxHeaderSize;
-        $maxBodySize = $client->options->maxBodySize;
-        $bodyEmitSize = $client->options->ioGranularity;
+        $maxHeaderSize = $client->options->getMaxHeaderSize();
+        $maxBodySize = $client->options->getMaxBodySize();
+        $bodyEmitSize = $client->options->getIoGranularity();
         $id = 0;
 
         $buffer = "";
@@ -250,7 +250,7 @@ class Http1Driver implements HttpDriver {
                 }
             }
 
-            if ($client->options->normalizeMethodCase) {
+            if ($client->options->shouldNormalizeMethodCase()) {
                 $method = \strtoupper($method);
             }
 
@@ -578,11 +578,11 @@ class Http1Driver implements HttpDriver {
             $headers["connection"] = ["close"];
         } elseif ($remainingRequests < (PHP_INT_MAX >> 1)) {
             $headers["connection"] = ["keep-alive"];
-            $keepAlive = "timeout={$client->options->connectionTimeout}, max={$remainingRequests}";
+            $keepAlive = "timeout={$client->options->getConnectionTimeout()}, max={$remainingRequests}";
             $headers["keep-alive"] = [$keepAlive];
         } else {
             $headers["connection"] = ["keep-alive"];
-            $keepAlive = "timeout={$client->options->connectionTimeout}";
+            $keepAlive = "timeout={$client->options->getConnectionTimeout()}";
             $headers["keep-alive"] = [$keepAlive];
         }
 
