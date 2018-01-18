@@ -339,8 +339,7 @@ class Root implements Responder, ServerObserver {
                 return $this->fallback->respond($request);
             }
 
-            $status = HttpStatus::NOT_FOUND;
-            return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+            return yield $this->errorHandler->handle(HttpStatus::NOT_FOUND, null, $request);
         }
 
         switch ($request->getMethod()) {
@@ -354,9 +353,8 @@ class Root implements Responder, ServerObserver {
                 );
 
             default:
-                $status = HttpStatus::METHOD_NOT_ALLOWED;
                 /** @var \Aerys\Response $response */
-                $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+                $response = yield $this->errorHandler->handle(HttpStatus::METHOD_NOT_ALLOWED, null, $request);
                 $response->setHeader("Allow", "GET, HEAD, OPTIONS");
                 return $response;
         }
@@ -373,8 +371,7 @@ class Root implements Responder, ServerObserver {
                 return $response;
 
             case self::PRECONDITION_FAILED:
-                $status = HttpStatus::PRECONDITION_FAILED;
-                return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+                return yield $this->errorHandler->handle(HttpStatus::PRECONDITION_FAILED, null, $request);
 
             case self::PRECONDITION_IF_RANGE_FAILED:
                 // Return this so the resulting generator will be auto-resolved
@@ -392,9 +389,8 @@ class Root implements Responder, ServerObserver {
         }
 
         // If we're still here this is the only remaining response we can send
-        $status = HttpStatus::RANGE_NOT_SATISFIABLE;
         /** @var \Aerys\Response $response */
-        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+        $response = yield $this->errorHandler->handle(HttpStatus::RANGE_NOT_SATISFIABLE, null, $request);
         $response->setHeader("Content-Range", "*/{$fileInfo->size}");
         return $response;
     }

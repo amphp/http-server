@@ -85,15 +85,13 @@ final class Router implements Responder, ServerObserver {
                         return $this->fallback->respond($request);
                     }
 
-                    $status = HttpStatus::NOT_FOUND;
-                    return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+                    return yield $this->errorHandler->handle(HttpStatus::NOT_FOUND, null, $request);
 
                 case Dispatcher::METHOD_NOT_ALLOWED:
                     $allowedMethods = implode(",", $match[1]);
-                    $status = HttpStatus::METHOD_NOT_ALLOWED;
 
                     /** @var \Aerys\Response $response */
-                    $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+                    $response = yield $this->errorHandler->handle(HttpStatus::METHOD_NOT_ALLOWED, null, $request);
                     $response->setHeader("Allow", $allowedMethods);
                     return $response;
 

@@ -128,20 +128,17 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     private function do(Request $request): \Generator {
         /** @var \Aerys\Response $response */
         if ($request->getMethod() !== "GET") {
-            $status = HttpStatus::METHOD_NOT_ALLOWED;
-            $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+            $response = yield $this->errorHandler->handle(HttpStatus::METHOD_NOT_ALLOWED, null, $request);
             $response->setHeader("Allow", "GET");
             return $response;
         }
 
         if ($request->getProtocolVersion() !== "1.1") {
-            $status = HttpStatus::HTTP_VERSION_NOT_SUPPORTED;
-            return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+            return yield $this->errorHandler->handle(HttpStatus::HTTP_VERSION_NOT_SUPPORTED, null, $request);
         }
 
         if (null !== yield $request->getBody()->read()) {
-            $status = HttpStatus::BAD_REQUEST;
-            return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+            return yield $this->errorHandler->handle(HttpStatus::BAD_REQUEST, null, $request);
         }
 
         $hasUpgradeWebsocket = false;
@@ -152,8 +149,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             }
         }
         if (!$hasUpgradeWebsocket) {
-            $status = HttpStatus::UPGRADE_REQUIRED;
-            return yield $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+            return yield $this->errorHandler->handle(HttpStatus::UPGRADE_REQUIRED, null, $request);
         }
 
         $hasConnectionUpgrade = false;
@@ -169,23 +165,20 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         }
 
         if (!$hasConnectionUpgrade) {
-            $status = HttpStatus::UPGRADE_REQUIRED;
             $reason = "Bad Request: \"Connection: Upgrade\" header required";
-            $response = yield $this->errorHandler->handle($status, $reason, $request);
+            $response = yield $this->errorHandler->handle(HttpStatus::UPGRADE_REQUIRED, $reason, $request);
             $response->setHeader("Upgrade", "websocket");
             return $response;
         }
 
         if (!$acceptKey = $request->getHeader("Sec-Websocket-Key")) {
-            $status = HttpStatus::BAD_REQUEST;
             $reason = "Bad Request: \"Sec-Websocket-Key\" header required";
-            return yield $this->errorHandler->handle($status, $reason, $request);
+            return yield $this->errorHandler->handle(HttpStatus::BAD_REQUEST, $reason, $request);
         }
 
         if (!\in_array("13", $request->getHeaderArray("Sec-Websocket-Version"), true)) {
-            $status = HttpStatus::BAD_REQUEST;
             $reason = "Bad Request: Requested Websocket version unavailable";
-            $response = yield $this->errorHandler->handle($status, $reason, $request);
+            $response = yield $this->errorHandler->handle(HttpStatus::BAD_REQUEST, $reason, $request);
             $response->setHeader("Sec-Websocket-Version", "13");
             return $response;
         }
@@ -197,7 +190,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
                 "%s::onHandshake() must return or resolve to an instance of %s, %s returned",
                 Application::class,
                 Response::class,
-                \is_object($response) ? "instance of " . get_class($response) : \gettype($response)
+                \is_object($response) ? "instance of " . \get_class($response) : \gettype($response)
             ));
         }
 
@@ -548,9 +541,14 @@ class Rfc6455Gateway implements Responder, ServerObserver {
                 $promises[] = $this->send($data, $binary, $id);
             }
         } else {
-            $exceptIds = \array_flip($exceptIds);
+            $exceptIdLookup = \array_flip($exceptIds);
+
+            if ($exceptIdLookup === null) {
+                throw new \Error("Unable to array_flip() the passed IDs");
+            }
+
             foreach ($this->clients as $id => $client) {
-                if (isset($exceptIds[$id])) {
+                if (isset($exceptIdLookup[$id])) {
                     continue;
                 }
                 $promises[] = $this->send($data, $binary, $id);
