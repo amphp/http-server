@@ -47,12 +47,16 @@ class Http2DriverTest extends TestCase {
         $msg = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$msg";
 
         $driver = new class($this) extends Http2Driver {
+            /** @var TestCase */
+            private $test;
+
             public function __construct($test) {
                 parent::__construct();
                 $this->test = $test;
             }
-            protected function writeFrame(Client $client, $data, $type, $flags, $stream = 0) {
-                if ($type == Http2Driver::RST_STREAM || $type == Http2Driver::GOAWAY) {
+
+            protected function writeFrame(Client $client, string $data, string $type, string $flags, int $stream = 0) {
+                if ($type === Http2Driver::RST_STREAM || $type === Http2Driver::GOAWAY) {
                     $this->test->fail("RST_STREAM or GOAWAY frame received");
                 }
             }
@@ -65,9 +69,7 @@ class Http2DriverTest extends TestCase {
         $driver->setup($this->createMock(Server::class), $resultEmitter, $this->createCallback(0), $this->createCallback(0));
 
         for ($mode = 0; $mode <= 1; $mode++) {
-            $invoked = 0;
             $parseResult = null;
-            $body = "";
 
             $client = new Client;
             $client->options = new Options;
@@ -76,8 +78,8 @@ class Http2DriverTest extends TestCase {
 
             $parser = $driver->parser($client);
 
-            if ($mode == 1) {
-                for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
+            if ($mode === 1) {
+                for ($i = 0, $length = \strlen($msg); $i < $length; $i++) {
                     $parser->send($msg[$i]);
                 }
             } else {
@@ -160,16 +162,24 @@ class Http2DriverTest extends TestCase {
     public function setupDriver() {
         $driver = new class($this) extends Http2Driver {
             public $frames = [];
+
+            /** @var TestCase */
+            private $test;
+
             public function __construct($test) {
+                parent::__construct();
                 $this->test = $test;
             }
+
             protected function writeFrame(Client $client, string $data, string $type, string $flags, int $stream = 0) {
-                if ($type == Http2Driver::RST_STREAM || $type == Http2Driver::GOAWAY) {
+                if ($type === Http2Driver::RST_STREAM || $type === Http2Driver::GOAWAY) {
                     $this->test->fail("RST_STREAM or GOAWAY frame received");
                 }
-                if ($type == Http2Driver::WINDOW_UPDATE) {
+
+                if ($type === Http2Driver::WINDOW_UPDATE) {
                     return; // we don't test this as we always give a far too large window currently ;-)
                 }
+
                 $this->frames[] = [$data, $type, $flags, $stream];
             }
         };
@@ -256,7 +266,7 @@ class Http2DriverTest extends TestCase {
         $driver->frames = [];
 
         $parser->send($this->packFrame(pack("nN", Http2Driver::INITIAL_WINDOW_SIZE, 66000), Http2Driver::SETTINGS, Http2Driver::NOFLAG));
-        $this->assertEquals(1, count($driver->frames));
+        $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
         $this->assertEquals(Http2Driver::SETTINGS, $type);
         $this->assertEquals(Http2Driver::ACK, $flags);
@@ -301,20 +311,19 @@ class Http2DriverTest extends TestCase {
 
         $parser->send($this->packFrame(pack("N", 464 /* until 66000 */), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
 
-        $this->assertEquals(1, count($driver->frames));
+        $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::NOFLAG, $flags);
         $this->assertEquals(464, \strlen($data));
         $this->assertEquals(1, $stream);
 
-
         $parser->send($this->packFrame(pack("N", 4), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
-        $this->assertEquals(0, count($driver->frames)); // global window update alone must not trigger send
+        $this->assertCount(0, $driver->frames); // global window update alone must not trigger send
 
         $parser->send($this->packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG, 1));
 
-        $this->assertEquals(1, count($driver->frames));
+        $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::NOFLAG, $flags);
@@ -323,7 +332,7 @@ class Http2DriverTest extends TestCase {
 
         $parser->send($this->packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG, 1));
 
-        $this->assertEquals(1, count($driver->frames));
+        $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::END_STREAM, $flags);
@@ -346,7 +355,7 @@ class Http2DriverTest extends TestCase {
 
         $writer->send("**");
 
-        $this->assertEquals(1, count($driver->frames));
+        $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::NOFLAG, $flags);
@@ -354,11 +363,11 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals(3, $stream);
 
         $writer->send("*");
-        $this->assertEquals(0, count($driver->frames)); // global window too small
+        $this->assertCount(0, $driver->frames); // global window too small
 
         $parser->send($this->packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
 
-        $this->assertEquals(1, count($driver->frames));
+        $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::NOFLAG, $flags);
@@ -367,7 +376,7 @@ class Http2DriverTest extends TestCase {
 
         $writer->send(null);
 
-        $this->assertEquals(1, count($driver->frames));
+        $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::END_STREAM, $flags);
