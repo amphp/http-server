@@ -98,8 +98,10 @@ class Http1Driver implements HttpDriver {
             ($this->responseWriter)($client, $buffer, true);
             while (null !== yield); // Ignore body portions written.
         } else {
+            $outputBufferSize = $client->options->getOutputBufferSize();
+
             do {
-                if (\strlen($buffer) >= $client->options->getOutputBufferSize()) {
+                if (\strlen($buffer) >= $outputBufferSize) {
                     ($this->responseWriter)($client, $buffer);
                     $buffer = "";
 
