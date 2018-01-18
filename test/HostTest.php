@@ -15,7 +15,7 @@ class HostTest extends TestCase {
     public function testGenericInterface() {
         $host = $this->getHost();
         $host->expose("*", 1025);
-        $interfaces = $host->getBindableAddresses();
+        $interfaces = $host->getAddresses();
         if (Host::separateIPv4Binding()) {
             $this->assertEquals(["tcp://0.0.0.0:1025", "tcp://[::]:1025"], $interfaces);
         } else {
@@ -29,7 +29,7 @@ class HostTest extends TestCase {
         $host->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
 
         $this->assertTrue(isset($host->getTlsContext()["local_cert"]));
-        $this->assertEquals(["tcp://127.0.0.1:8080"], array_values($host->getBindableAddresses()));
+        $this->assertEquals(["tcp://127.0.0.1:8080"], array_values($host->getAddresses()));
     }
 
     /**
@@ -37,7 +37,7 @@ class HostTest extends TestCase {
      * @expectedExceptionMessage At least one interface must be specified
      */
     public function testNoInterfaces() {
-        (new Host)->getBindableAddresses();
+        (new Host)->getAddresses();
     }
 
     /**

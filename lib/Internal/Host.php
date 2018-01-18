@@ -12,7 +12,7 @@ class Host {
     /** @var int[][] */
     private $addressMap = [];
 
-    /** @var \Amp\Socket\ServerTlsContext|null */
+    /** @var ServerTlsContext|null */
     private $tlsContext;
 
     /**
@@ -30,8 +30,8 @@ class Host {
      * access on UNIX-like systems. The default port for encrypted sockets (https) is 443. If you
      * plan to use encryption with this host you'll generally want to use port 443.
      *
-     * @param string $address The IPv4 or IPv6 interface or unix domain socket path to listen to
-     * @param int $port The port number on which to listen (0 for unix domain sockets)
+     * @param string $address The IPv4 or IPv6 interface or unix domain socket path to listen to.
+     * @param int $port The port number on which to listen (0 for unix domain sockets).
      */
     public function expose(string $address, int $port = 0) {
         $isUnixSocket = $address[0] === "/";
@@ -56,41 +56,40 @@ class Host {
             $address = "::";
         }
 
-        if (!$isUnixSocket && !@inet_pton($address)) {
+        if (!$isUnixSocket && !@\inet_pton($address)) {
             throw new \Error(
                 "Invalid IP address or unix domain socket path: {$address}"
             );
         }
 
         if ($isUnixSocket) {
-            $socketPath = realpath($address);
-            if ($socketPath) {
+            if ($socketPath = \realpath($address)) {
                 $address = $socketPath;
             }
 
-            $dir = realpath(dirname($address));
-            if (!$dir || !is_dir($dir)) {
+            $dir = \realpath(\dirname($address));
+            if (!$dir || !\is_dir($dir)) {
                 throw new \Error(
-                    "Unix domain socket path is not in an existing or reachable directory"
+                    "Unix domain socket path is not in an existing or reachable directory: " . \dirname($address)
                 );
             }
 
-            if (!is_readable($dir) || !is_writable($dir) || !is_executable($dir)) {
+            if (!\is_readable($dir) || !\is_writable($dir) || !\is_executable($dir)) {
                 throw new \Error(
-                    "Unix domain socket path is in a directory without read, write and execute permissions"
+                    "Unix domain socket path is in a directory without read, write and execute permissions: {$dir}"
                 );
             }
 
             $packedAddress = $address = $dir. "/" .basename($address);
-        } elseif ($packedAddress = @inet_pton($address)) {
-            $address = inet_ntop($packedAddress);
+        } elseif (false !== $packedAddress = @\inet_pton($address)) {
+            $address = \inet_ntop($packedAddress);
         } else {
             throw new \Error(
                 "IPv4 or IPv6 address or unix domain socket path required: {$address} given"
             );
         }
 
-        if (isset($this->addressMap[$packedAddress]) && in_array($port, $this->addressMap[$packedAddress])) {
+        if (isset($this->addressMap[$packedAddress]) && \in_array($port, $this->addressMap[$packedAddress])) {
             throw new \Error(
                 "There must be no two identical interfaces for a same host: {$address} duplicated"
             );
@@ -138,7 +137,7 @@ class Host {
      *
      * @return array
      */
-    public function getBindableAddresses(): array {
+    public function getAddresses(): array {
         if (empty($this->interfaces)) {
             throw new \Error(\sprintf(
                 "At least one interface must be specified (see %s::expose()), an empty interfaces array is not allowed",
@@ -154,7 +153,7 @@ class Host {
             }
 
             if (strpos($address, ":") !== false) {
-                $address = "[" . trim($address, "[]") . "]";
+                $address = "[" . \trim($address, "[]") . "]";
             }
 
             return "tcp://$address:$port";
@@ -171,17 +170,18 @@ class Host {
         }
 
         if ($address === '0.0.0.0' || $address === '::') {
-            $ports = [];
-            foreach ($this->addressMap as $packedAddress => $port_list) {
+            $ports = [[]];
+            foreach ($this->addressMap as $packedAddress => $portList) {
                 if (\strlen($packedAddress) === ($address === '0.0.0.0' ? 4 : 16)) {
-                    $ports = array_merge($ports, $port_list);
+                    $ports[] = $portList;
                 }
             }
 
-            return $ports;
+            return \array_merge($ports, ...$ports);
         }
 
-        $packedAddress = inet_pton($address); // if this yields a warning, there's something else buggy, but no @ missing.
+        // if this yields a warning, there's something else buggy, but no @ missing.
+        $packedAddress = inet_pton($address);
         $wildcard = \strlen($packedAddress) === 4 ? "\0\0\0\0" : "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
         if (!isset($this->addressMap[$wildcard])) {
@@ -228,7 +228,7 @@ class Host {
      * @return bool
      */
     private static function hasAlpnSupport(): bool {
-        if (!defined("OPENSSL_VERSION_NUMBER")) {
+        if (!\defined("OPENSSL_VERSION_NUMBER")) {
             return false;
         }
 

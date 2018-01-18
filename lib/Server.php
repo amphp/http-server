@@ -319,7 +319,7 @@ class Server {
 
     private function generateBindableAddressContextMap(): array {
         $addrCtxMap = [];
-        $addresses = $this->host->getBindableAddresses();
+        $addresses = $this->host->getAddresses();
         $tlsContext = $this->host->getTlsContext();
         $backlogSize = $this->options->socketBacklogSize;
         $shouldReusePort = !$this->options->debug;

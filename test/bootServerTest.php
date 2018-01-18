@@ -58,9 +58,9 @@ class bootServerTest extends TestCase {
 
         $info = $server->__debugInfo();
         if (Internal\Host::separateIPv4Binding()) {
-            $this->assertEquals(["tcp://0.0.0.0:80", "tcp://[::]:80"], array_values($info["host"]->getBindableAddresses()));
+            $this->assertEquals(["tcp://0.0.0.0:80", "tcp://[::]:80"], array_values($info["host"]->getAddresses()));
         } else {
-            $this->assertEquals(["tcp://[::]:80"], array_values($info["host"]->getBindableAddresses()));
+            $this->assertEquals(["tcp://[::]:80"], array_values($info["host"]->getAddresses()));
         }
     }
 }
