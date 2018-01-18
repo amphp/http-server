@@ -79,9 +79,6 @@ class Server {
     /** @var int[] */
     private $connectionTimeouts = [];
 
-    /** @var \Aerys\NullBody */
-    private $nullBody;
-
     /** @var \Amp\Deferred|null */
     private $stopDeferred;
 
@@ -109,13 +106,11 @@ class Server {
         $this->options = $this->immutableOptions->export();
         $this->logger = $logger ?? new ConsoleLogger(new Console);
 
-        $this->timeReference = new Internal\TimeReference($this->logger);
+        $this->timeReference = new Internal\TimeReference;
         $this->timeReference->onTimeUpdate($this->callableFromInstanceMethod("timeoutKeepAlives"));
 
         $this->observers = new \SplObjectStorage;
         $this->observers->attach($this->timeReference);
-
-        $this->nullBody = new NullBody;
 
         if ($this->responder instanceof ServerObserver) {
             $this->observers->attach($this->responder);

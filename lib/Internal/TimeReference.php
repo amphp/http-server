@@ -14,14 +14,11 @@ use Psr\Log\LoggerInterface as PsrLogger;
 class TimeReference implements ServerObserver {
     use CallableMaker;
 
-    /** @var \Psr\Log\LoggerInterface */
-    private $logger;
-
     /** @var string */
     private $watcherId;
 
     /** @var callable[] */
-    private $useCallbacks = [];
+    private $callbacks = [];
 
     /** @var int */
     private $currentTime;
@@ -29,20 +26,21 @@ class TimeReference implements ServerObserver {
     /** @var string */
     private $currentHttpDate;
 
-    public function __construct(PsrLogger $logger) {
-        $this->logger = $logger;
+    public function __construct() {
         $this->updateTime();
     }
 
+    /** @inheritdoc */
     public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
         $this->watcherId = Loop::repeat(1000, $this->callableFromInstanceMethod("updateTime"));
-        $this->updateTime();
+
         return new Success;
     }
 
+    /** @inheritdoc */
     public function onStop(Server $server): Promise {
         Loop::cancel($this->watcherId);
-        $this->watcherId = null;
+
         return new Success;
     }
 
@@ -65,12 +63,13 @@ class TimeReference implements ServerObserver {
      *
      * Callbacks are invoked with two parameters: currentTime and currentHttpDate.
      *
-     * @param callable $useCallback
-     * @return void
+     * Callbacks SHOULD NOT throw. Any errors will bubble up to the event loop.
+     *
+     * @param callable $callback
      */
-    public function onTimeUpdate(callable $useCallback) {
-        $this->useCallbacks[] = $useCallback;
-        $this->tryUseCallback($useCallback);
+    public function onTimeUpdate(callable $callback) {
+        $this->callbacks[] = $callback;
+        $callback($this->currentTime, $this->currentHttpDate);
     }
 
     /**
@@ -85,16 +84,8 @@ class TimeReference implements ServerObserver {
         $this->currentTime = time();
         $this->currentHttpDate = gmdate("D, d M Y H:i:s", $this->currentTime) . " GMT";
 
-        foreach ($this->useCallbacks as $useCallback) {
-            $this->tryUseCallback($useCallback);
-        }
-    }
-
-    private function tryUseCallback(callable $useCallback) {
-        try {
-            $useCallback($this->currentTime, $this->currentHttpDate);
-        } catch (\Throwable $uncaught) {
-            $this->logger->critical($uncaught);
+        foreach ($this->callbacks as $callback) {
+            $callback($this->currentTime, $this->currentHttpDate);
         }
     }
 }
