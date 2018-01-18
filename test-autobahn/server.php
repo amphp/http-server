@@ -43,7 +43,7 @@ return function () {
     $websocket->setMaxBytesPerMinute(PHP_INT_MAX);
     $websocket->setMaxFrameSize(PHP_INT_MAX);
     $websocket->setMaxFramesPerSecond(PHP_INT_MAX);
-    $websocket->setMaxMessageSize(PHP_INT_MAX);
+    $websocket->setMessageSizeLimit(PHP_INT_MAX);
     $websocket->validateUtf8(true);
 
     $server = new Aerys\Server($websocket);
