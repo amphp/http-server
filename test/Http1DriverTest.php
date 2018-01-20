@@ -3,6 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Client;
+use Aerys\ClientException;
 use Aerys\Http1Driver;
 use Aerys\Options;
 use Aerys\Request;
@@ -20,34 +21,25 @@ class Http1DriverTest extends TestCase {
      * @dataProvider provideUnparsableRequests
      */
     public function testBadRequestBufferedParse(string $unparsable, int $errCode, string $errMsg, Options $options) {
-        $invoked = 0;
         $resultCode = null;
         $errorMsg = null;
-
-        $emitCallback = function () use (&$invoked) {
-            $invoked++;
-        };
-
-        $errorCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$errorMsg) {
-            $invoked++;
-            list($resultCode, $errorMsg) = $emitStruct;
-        };
 
         $driver = new Http1Driver($options, $this->createMock(TimeReference::class));
         $driver->setup(
             $this->createMock(Client::class),
-            $emitCallback,
-            $errorCallback,
+            $this->createCallback(0),
             $this->createCallback(0),
             $this->createCallback(0)
         );
 
         $parser = $driver->parser();
-        $parser->send($unparsable);
 
-        $this->assertTrue($invoked > 0);
-        $this->assertSame($errCode, $resultCode);
-        $this->assertSame($errMsg, $errorMsg);
+        try {
+            $parser->send($unparsable);
+        } catch (ClientException $exception) {
+            $this->assertSame($errCode, $exception->getCode());
+            $this->assertSame($errMsg, $exception->getMessage());
+        }
     }
 
     /**
@@ -70,24 +62,24 @@ class Http1DriverTest extends TestCase {
         $driver = new Http1Driver($options, $this->createMock(TimeReference::class));
         $driver->setup(
             $this->createMock(Client::class),
-            $emitCallback,
-            $errorCallback,
+            $this->createCallback(0),
             $this->createCallback(0),
             $this->createCallback(0)
         );
 
         $parser = $driver->parser();
 
-        for ($i = 0, $c = strlen($unparsable); $i < $c; $i++) {
-            $parser->send($unparsable[$i]);
-            if ($errorMsg) {
-                break;
+        try {
+            for ($i = 0, $c = strlen($unparsable); $i < $c; $i++) {
+                $parser->send($unparsable[$i]);
+                if ($errorMsg) {
+                    break;
+                }
             }
+        } catch (ClientException $exception) {
+            $this->assertSame($errCode, $exception->getCode());
+            $this->assertSame($errMsg, $exception->getMessage());
         }
-
-        $this->assertTrue($invoked > 0);
-        $this->assertSame($errCode, $resultCode);
-        $this->assertSame($errMsg, $errorMsg);
     }
 
     /**
@@ -102,7 +94,6 @@ class Http1DriverTest extends TestCase {
         $driver->setup(
             $this->createMock(Client::class),
             $resultEmitter,
-            $this->createCallback(0),
             $this->createCallback(0),
             $this->createCallback(1)
         );
@@ -134,7 +125,6 @@ class Http1DriverTest extends TestCase {
         $driver->setup(
             $this->createMock(Client::class),
             $resultEmitter,
-            $this->createCallback(0),
             $this->createCallback(0),
             $this->createCallback(1)
         );
@@ -178,7 +168,6 @@ class Http1DriverTest extends TestCase {
             $this->createMock(Client::class),
             $resultEmitter,
             $this->createCallback(0),
-            $this->createCallback(0),
             $this->createCallback(1)
         );
 
@@ -219,7 +208,6 @@ class Http1DriverTest extends TestCase {
         $driver->setup(
             $this->createMock(Client::class),
             $resultEmitter,
-            $this->createCallback(0),
             $this->createCallback(0),
             $this->createCallback(1)
         );
@@ -506,7 +494,6 @@ class Http1DriverTest extends TestCase {
             $this->createMock(Client::class),
             $resultEmitter,
             $this->createCallback(0),
-            $this->createCallback(0),
             $this->createCallback(1)
         );
 
@@ -550,7 +537,6 @@ class Http1DriverTest extends TestCase {
         $driver->setup(
             $this->createMock(Client::class),
             $resultEmitter,
-            $this->createCallback(0),
             function ($data, $close) use (&$pendingResponses) {
                 $pendingResponses--;
             },
@@ -634,7 +620,6 @@ class Http1DriverTest extends TestCase {
         $driver->setup(
             $this->createMock(Client::class),
             $this->createCallback(0),
-            $this->createCallback(0),
             function (string $data, bool $close) use (&$buffer, &$fin) {
                 $buffer = $data;
                 $fin = $close;
@@ -667,7 +652,6 @@ class Http1DriverTest extends TestCase {
         $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
         $driver->setup(
             $this->createMock(Client::class),
-            $this->createCallback(0),
             $this->createCallback(0),
             function (string $data, bool $close) use (&$invoked) {
                 $this->assertTrue($close);
@@ -704,7 +688,6 @@ class Http1DriverTest extends TestCase {
                 $this->assertSame("/path", $request->getUri()->getPath());
                 $this->assertSame("2.0", $request->getProtocolVersion());
             },
-            $this->createCallback(0),
             function (string $data) {
                 static $expected = [
                     "HTTP/1.1 101 Switching Protocols",
@@ -726,7 +709,6 @@ class Http1DriverTest extends TestCase {
         $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
         $driver->setup(
             $this->createMock(Client::class),
-            $this->createCallback(0),
             $this->createCallback(0),
             function (string $data) {
                 $this->assertSame("\x0\x0\xc\x4\x0\x0\x0\x0\x0\x0\x4\x0\x2\x1\x0\x0\x3\x0\x0\x0\x14", $data);

@@ -310,7 +310,7 @@ class ClientTest extends TestCase {
         $driver = $this->createMock(\Aerys\HttpDriver::class);
 
         $driver->method("setup")
-            ->willReturnCallback(function (Client $client, callable $onMessage, callable $onError, callable $writer) use (&$write) {
+            ->willReturnCallback(function (Client $client, callable $onMessage, callable $writer) use (&$write) {
                 $write = $writer;
             });
 

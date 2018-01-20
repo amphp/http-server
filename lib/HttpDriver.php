@@ -14,11 +14,10 @@ interface HttpDriver {
      *
      * @param \Aerys\Client $client
      * @param callable $onMessage
-     * @param callable $onError
      * @param callable $write
      * @param callable $pause
      */
-    public function setup(Client $client, callable $onMessage, callable $onError, callable $write, callable $pause);
+    public function setup(Client $client, callable $onMessage, callable $write, callable $pause);
 
     /**
      * Returns a generator used to write the response body.

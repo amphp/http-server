@@ -163,7 +163,6 @@ class Client {
         $this->httpDriver->setup(
             $this,
             $this->callableFromInstanceMethod("onMessage"),
-            $this->callableFromInstanceMethod("onError"),
             $this->callableFromInstanceMethod("write"),
             $this->callableFromInstanceMethod("pause")
         );
@@ -327,7 +326,13 @@ class Client {
         $data = @\stream_get_contents($socket, $this->options->getIoGranularity());
         if ($data !== false && $data !== "") {
             $this->timeoutCache->renew($this->id);
-            $this->requestParser->send($data);
+
+            try {
+                $this->requestParser->send($data);
+            } catch (ClientException $exception) {
+                $this->onError($exception);
+            }
+
             return;
         }
 
@@ -440,8 +445,11 @@ class Client {
         return new Coroutine($this->respond($request));
     }
 
-    private function onError(int $status, string $message): Promise {
+    private function onError(ClientException $exception): Promise {
         $this->pause();
+
+        $message = $exception->getMessage();
+        $status = $exception->getCode() ?: HttpStatus::BAD_REQUEST;
 
         \assert($this->logger->debug(
             "Client parse error on {$this->clientAddress}:{$this->clientPort}: {$message}"
@@ -512,7 +520,8 @@ class Client {
                 }
             }
         } catch (ClientException $exception) {
-            return; // Handled in code that generated the ClientException, response already sent.
+            $this->onError($exception);
+            return;
         } catch (\Throwable $error) {
             $this->logger->error($error);
             $response = yield $this->makeExceptionResponse($error, $request);
@@ -576,6 +585,7 @@ class Client {
                 $responseWriter->send($chunk); // Sends null when stream closes.
             } while ($chunk !== null);
         } catch (ClientException $exception) {
+            $this->close(); // Response already started, no choice but to close the connection.
             return;
         } catch (\Throwable $exception) {
             // Reading response body failed, abort writing the response to the client.

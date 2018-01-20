@@ -164,7 +164,6 @@ class Http2DriverTest extends TestCase {
         $driver->setup(
             $this->createMock(Client::class),
             $onMessage ?? function () {},
-            $this->createCallback(0),
             $writer ?? $this->createCallback(0),
             $this->createCallback(0)
         );
@@ -178,7 +177,6 @@ class Http2DriverTest extends TestCase {
         $driver = new Http2Driver($options, $this->createMock(TimeReference::class));
         $driver->setup(
             $this->createMock(Client::class),
-            $this->createCallback(0),
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$buffer) {
                 // HTTP/2 shall only reset streams, not abort the connection

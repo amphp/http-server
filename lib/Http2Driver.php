@@ -121,10 +121,9 @@ class Http2Driver implements HttpDriver {
         $this->remainingStreams = $this->options->getMaxConcurrentStreams();
     }
 
-    public function setup(Client $client, callable $onMessage, callable $onError, callable $write, callable $pause) {
+    public function setup(Client $client, callable $onMessage, callable $write, callable $pause) {
         $this->client = $client;
         $this->onMessage = $onMessage;
-        // $onError is unused; protocol error responses are not required in HTTP/2, GOAWAY frames are used instead.
         $this->write = $write;
         $this->pause = $pause;
     }

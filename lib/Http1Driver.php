@@ -40,9 +40,6 @@ class Http1Driver implements HttpDriver {
     private $onMessage;
 
     /** @var callable */
-    private $onError;
-
-    /** @var callable */
     private $write;
 
     /** @var callable */
@@ -63,10 +60,9 @@ class Http1Driver implements HttpDriver {
         $this->remainingRequests = $this->options->getMaxRequestsPerConnection();
     }
 
-    public function setup(Client $client, callable $onMessage, callable $onError, callable $write, callable $pause) {
+    public function setup(Client $client, callable $onMessage, callable $write, callable $pause) {
         $this->client = $client;
         $this->onMessage = $onMessage;
-        $this->onError = $onError;
         $this->write = $write;
         $this->pause = $pause;
     }
@@ -192,8 +188,10 @@ class Http1Driver implements HttpDriver {
                 }
 
                 if (\strlen($buffer) > $maxHeaderSize) {
-                    ($this->onError)(HttpStatus::REQUEST_HEADER_FIELDS_TOO_LARGE, "Bad Request: header size violation");
-                    return;
+                    throw new ClientException(
+                        "Bad Request: header size violation",
+                        HttpStatus::REQUEST_HEADER_FIELDS_TOO_LARGE
+                    );
                 }
 
                 $buffer .= yield;
@@ -204,8 +202,7 @@ class Http1Driver implements HttpDriver {
             $rawHeaders = \substr($startLineAndHeaders, $startLineEndPos + 2);
 
             if (!\preg_match("/^([A-Z]+) (\S+) HTTP\/(\d+(?:\.\d+)?)$/i", $startLine, $matches)) {
-                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: invalid request line");
-                return;
+                throw new ClientException("Bad Request: invalid request line", HttpStatus::BAD_REQUEST);
             }
 
             list(, $method, $target, $protocol) = $matches;
@@ -214,26 +211,26 @@ class Http1Driver implements HttpDriver {
                 if ($protocol === "2.0") {
                     // Internal upgrade to HTTP/2.
                     $this->http2 = new Http2Driver($this->options, $this->timeReference);
-                    $this->http2->setup($this->client, $this->onMessage, $this->onError, $this->write, $this->pause);
+                    $this->http2->setup($this->client, $this->onMessage, $this->write, $this->pause);
 
                     $parser = $this->http2->parser();
                     $parser->send("$startLineAndHeaders\r\n$buffer");
                     continue; // Yield from the above parser immediately.
                 }
 
-                ($this->onError)(HttpStatus::HTTP_VERSION_NOT_SUPPORTED, "Unsupported version {$protocol}");
-                break;
+                throw new ClientException("Unsupported version {$protocol}", HttpStatus::HTTP_VERSION_NOT_SUPPORTED);
             }
 
             if ($rawHeaders) {
                 if (\strpos($rawHeaders, "\n\x20") || \strpos($rawHeaders, "\n\t")) {
-                    ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: multi-line headers deprecated by RFC 7230");
-                    return;
+                    throw new ClientException(
+                        "Bad Request: multi-line headers deprecated by RFC 7230",
+                        HttpStatus::BAD_REQUEST
+                    );
                 }
 
                 if (!\preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches, \PREG_SET_ORDER)) {
-                    ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: header syntax violation");
-                    return;
+                    throw new ClientException("Bad Request: header syntax violation", HttpStatus::BAD_REQUEST);
                 }
 
                 foreach ($matches as list(, $field, $value)) {
@@ -245,8 +242,7 @@ class Http1Driver implements HttpDriver {
                 $contentLength = $headers["content-length"][0] ?? null;
                 if ($contentLength !== null) {
                     if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {
-                        ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: invalid content length");
-                        return;
+                        throw new ClientException("Bad Request: invalid content length", HttpStatus::BAD_REQUEST);
                     }
 
                     $contentLength = (int) $contentLength;
@@ -255,8 +251,10 @@ class Http1Driver implements HttpDriver {
                 if (isset($headers["transfer-encoding"])) {
                     $value = strtolower($headers["transfer-encoding"][0]);
                     if (!($isChunked = $value === "chunked") && $value !== "identity") {
-                        ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: unsupported transfer-encoding");
-                        return;
+                        throw new ClientException(
+                            "Bad Request: unsupported transfer-encoding",
+                            HttpStatus::BAD_REQUEST
+                        );
                     }
                 }
             }
@@ -267,8 +265,7 @@ class Http1Driver implements HttpDriver {
 
             $host = $headers["host"][0] ?? ""; // Host header may be set but empty.
             if ($host === "") {
-                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: Invalid host header");
-                return;
+                throw new ClientException("Bad Request: invalid host header", HttpStatus::BAD_REQUEST);
             }
 
             if ($target === "*") {
@@ -315,7 +312,7 @@ class Http1Driver implements HttpDriver {
 
                 // Internal upgrade
                 $this->http2 = new Http2Driver($this->options, $this->timeReference);
-                $this->http2->setup($this->client, $this->onMessage, $this->onError, $this->write, $this->pause);
+                $this->http2->setup($this->client, $this->onMessage, $this->write, $this->pause);
 
                 $parser = $this->http2->parser($h2cSettings, true);
                 $parser->current(); // Yield from this parser after reading the current request body.
@@ -377,10 +374,10 @@ class Http1Driver implements HttpDriver {
                     while (true) {
                         while (false === ($lineEndPos = \strpos($buffer, "\r\n"))) {
                             if (\strlen($buffer) > 10) {
-                                $this->bodyEmitter = null;
-                                $emitter->fail(new ClientException("Invalid body encoding"));
-                                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
-                                return;
+                                throw new ClientException(
+                                    "Bad Request: hex chunk size expected",
+                                    HttpStatus::BAD_REQUEST
+                                );
                             }
 
                             $buffer .= yield;
@@ -393,10 +390,10 @@ class Http1Driver implements HttpDriver {
                             $hex = \ltrim($line, "0");
 
                             if (!\preg_match("/^[1-9A-F][0-9A-F]*?$/i", $hex)) {
-                                $this->bodyEmitter = null;
-                                $emitter->fail(new ClientException("Invalid body encoding"));
-                                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
-                                return;
+                                throw new ClientException(
+                                    "Bad Request: invalid hex chunk size",
+                                    HttpStatus::BAD_REQUEST
+                                );
                             }
                         }
 
@@ -422,25 +419,25 @@ class Http1Driver implements HttpDriver {
                                     $trailers = null;
                                 }
                                 if ($maxHeaderSize > 0 && $trailerSize > $maxHeaderSize) {
-                                    $this->bodyEmitter = null;
-                                    $emitter->fail(new ClientException("Trailer headers too large"));
-                                    ($this->onError)(HttpStatus::BAD_REQUEST, "Trailer headers too large");
-                                    return;
+                                    throw new ClientException(
+                                        "Trailer headers too large",
+                                        HttpStatus::BAD_REQUEST
+                                    );
                                 }
                             } while (!isset($trailers));
 
                             if (\strpos($trailers, "\n\x20") || \strpos($trailers, "\n\t")) {
-                                $this->bodyEmitter = null;
-                                $emitter->fail(new ClientException("Multi-line trailers found"));
-                                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: multi-line trailers deprecated by RFC 7230");
-                                return;
+                                throw new ClientException(
+                                    "Bad Request: multi-line trailers deprecated by RFC 7230",
+                                    HttpStatus::BAD_REQUEST
+                                );
                             }
 
                             if (!\preg_match_all(self::HEADER_REGEX, $trailers, $matches)) {
-                                $this->bodyEmitter = null;
-                                $emitter->fail(new ClientException("Trailer syntax violation"));
-                                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: trailer syntax violation");
-                                return;
+                                throw new ClientException(
+                                    "Bad Request: trailer syntax violation",
+                                    HttpStatus::BAD_REQUEST
+                                );
                             }
 
                             list(, $fields, $values) = $matches;
@@ -493,10 +490,7 @@ class Http1Driver implements HttpDriver {
                                     continue;
                                 }
 
-                                $this->bodyEmitter = null;
-                                $emitter->fail(new ClientException("Body too large"));
-                                ($this->onError)(HttpStatus::PAYLOAD_TOO_LARGE, "Payload too large");
-                                return;
+                                throw new ClientException("Payload too large", HttpStatus::PAYLOAD_TOO_LARGE);
                             } while ($maxBodySize < $bodySize + $chunkLenRemaining);
                         }
 
@@ -542,10 +536,7 @@ class Http1Driver implements HttpDriver {
                     $bodySize = 0;
 
                     if ($maxBodySize < $contentLength) {
-                        $this->bodyEmitter = null;
-                        $emitter->fail(new ClientException("Body too large"));
-                        ($this->onError)(HttpStatus::PAYLOAD_TOO_LARGE, "Payload too large");
-                        return;
+                        throw new ClientException("Payload too large", HttpStatus::PAYLOAD_TOO_LARGE);
                     }
 
                     $bound = $contentLength;
@@ -573,11 +564,17 @@ class Http1Driver implements HttpDriver {
 
                 $this->bodyEmitter = null;
                 $emitter->complete();
+            } catch (\Throwable $exception) {
+                // Catching and rethrowing to set $exception to be used in finally.
+                throw $exception;
             } finally {
                 if (isset($this->bodyEmitter)) {
                     $emitter = $this->bodyEmitter;
                     $this->bodyEmitter = null;
-                    $emitter->fail(new ClientException("Client disconnected"));
+                    $emitter->fail($exception ?? new ClientException(
+                        "Client disconnected",
+                        HttpStatus::REQUEST_TIMEOUT
+                    ));
                 }
             }
         } while (true);
