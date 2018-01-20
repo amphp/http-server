@@ -1,17 +1,11 @@
 <?php
 
-namespace Aerys\Internal;
+namespace Aerys;
 
 // @TODO trailer headers??
 // @TODO add ServerObserver for properly sending GOAWAY frames
 // @TODO maybe display a real HTML error page for artificial limits exceeded
 
-use Aerys\Body;
-use Aerys\ClientException;
-use Aerys\NullBody;
-use Aerys\Options;
-use Aerys\Request;
-use Aerys\Response;
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\Loop;
@@ -68,7 +62,7 @@ class Http2Driver implements HttpDriver {
      */
     private $counter = "aaaaaaaa";
 
-    /** @var \Aerys\Internal\Client */
+    /** @var \Aerys\Client */
     private $client;
 
     /** @var \Aerys\Options */
@@ -77,7 +71,7 @@ class Http2Driver implements HttpDriver {
     /** @var \Aerys\NullBody */
     private $nullBody;
 
-    /** @var \Aerys\Internal\TimeReference */
+    /** @var \Aerys\TimeReference */
     private $timeReference;
 
     /** @var int */
@@ -186,11 +180,11 @@ class Http2Driver implements HttpDriver {
         $request = new Request("GET", $url, $headers, $this->nullBody, $path, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
-        $this->streams[$id] = new Http2Stream;
+        $this->streams[$id] = new Internal\Http2Stream;
         $this->streams[$id]->window = $this->initialWindowSize;
         $this->streams[$id]->buffer = "";
 
-        $headers = pack("N", $id) . HPack::encode($headers);
+        $headers = pack("N", $id) . Internal\HPack::encode($headers);
         if (\strlen($headers) >= 16384) {
             $split = str_split($headers, 16384);
             $headers = array_shift($split);
@@ -234,7 +228,7 @@ class Http2Driver implements HttpDriver {
                 }
             }
 
-            $headers = HPack::encode($headers);
+            $headers = Internal\HPack::encode($headers);
 
             // @TODO decide whether to use max-frame size
 
@@ -413,7 +407,7 @@ class Http2Driver implements HttpDriver {
 
         $headers = [];
         $bodyLens = [];
-        $table = new HPack;
+        $table = new Internal\HPack;
 
         if ($this->client->isEncrypted() && ($this->client->getCryptoContext()["alpn_protocol"] ?? null) !== "h2") {
             $error = self::CONNECT_ERROR;
@@ -469,7 +463,7 @@ class Http2Driver implements HttpDriver {
 
         if ($upgraded) {
             // Upgraded connections automatically assume an initial stream with ID 1.
-            $this->streams[1] = new Http2Stream;
+            $this->streams[1] = new Internal\Http2Stream;
             $this->streams[1]->window = $this->initialWindowSize;
             $this->remainingStreams--;
         }
@@ -853,7 +847,7 @@ class Http2Driver implements HttpDriver {
 
                         if ($id) {
                             if (!isset($this->streams[$id])) {
-                                $this->streams[$id] = new Http2Stream;
+                                $this->streams[$id] = new Internal\Http2Stream;
                                 $this->streams[$id]->window = $this->initialWindowSize + $windowSize;
                             } else {
                                 $this->streams[$id]->window += $windowSize;
@@ -945,7 +939,7 @@ class Http2Driver implements HttpDriver {
                     }
 
                     if (!isset($this->streams[$id])) {
-                        $this->streams[$id] = new Http2Stream;
+                        $this->streams[$id] = new Internal\Http2Stream;
                         $this->streams[$id]->window = $this->initialWindowSize;
                     }
 

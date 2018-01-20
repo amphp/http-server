@@ -2,13 +2,13 @@
 
 namespace Aerys\Test;
 
-use Aerys\Internal\Client;
-use Aerys\Internal\Http1Driver;
-use Aerys\Internal\TimeReference;
+use Aerys\Client;
+use Aerys\Http1Driver;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;
+use Aerys\TimeReference;
 use Amp\Artax\Internal\Parser;
 use Amp\ByteStream\InMemoryStream;
 use Amp\PHPUnit\TestCase;

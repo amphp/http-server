@@ -1,10 +1,7 @@
 <?php
 
-namespace Aerys\Internal;
+namespace Aerys;
 
-use Aerys\ErrorHandler;
-use Aerys\Server;
-use Aerys\ServerObserver;
 use Amp\CallableMaker;
 use Amp\Loop;
 use Amp\Promise;

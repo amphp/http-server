@@ -1,14 +1,7 @@
 <?php
 
-namespace Aerys\Internal;
+namespace Aerys;
 
-use Aerys\Body;
-use Aerys\ClientException;
-use Aerys\HttpStatus;
-use Aerys\NullBody;
-use Aerys\Options;
-use Aerys\Request;
-use Aerys\Response;
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\Uri\Uri;
@@ -19,16 +12,16 @@ class Http1Driver implements HttpDriver {
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
     )x";
 
-    /** @var \Aerys\Internal\Http2Driver|null */
+    /** @var \Aerys\Http2Driver|null */
     private $http2;
 
-    /** @var \Aerys\Internal\Client */
+    /** @var \Aerys\Client */
     private $client;
 
     /** @var \Aerys\Options */
     private $options;
 
-    /** @var \Aerys\Internal\TimeReference */
+    /** @var \Aerys\TimeReference */
     private $timeReference;
 
     /** @var \Aerys\NullBody */

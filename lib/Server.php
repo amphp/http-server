@@ -43,7 +43,7 @@ class Server {
     /** @var \Psr\Log\LoggerInterface */
     private $logger;
 
-    /** @var \Aerys\Internal\TimeReference */
+    /** @var \Aerys\TimeReference */
     private $timeReference;
 
     /** @var \SplObjectStorage */
@@ -55,7 +55,7 @@ class Server {
     /** @var resource[] Server sockets. */
     private $boundServers = [];
 
-    /** @var \Aerys\Internal\Client[] */
+    /** @var \Aerys\Client[] */
     private $clients = [];
 
     /** @var int */
@@ -64,7 +64,7 @@ class Server {
     /** @var int[] */
     private $clientsPerIP = [];
 
-    /** @var \Aerys\Internal\TimeoutCache */
+    /** @var \Aerys\TimeoutCache */
     private $timeouts;
 
     /**
@@ -82,9 +82,9 @@ class Server {
         $this->options = $options ?? new Options;
         $this->logger = $logger ?? new ConsoleLogger(new Console);
 
-        $this->timeReference = new Internal\TimeReference;
+        $this->timeReference = new TimeReference;
 
-        $this->timeouts = new Internal\TimeoutCache(
+        $this->timeouts = new TimeoutCache(
             $this->timeReference,
             $this->options->getConnectionTimeout()
         );
@@ -295,7 +295,7 @@ class Server {
             return;
         }
 
-        $client = new Internal\Client(
+        $client = new Client(
             $socket,
             $this->responder,
             $this->errorHandler,
@@ -313,7 +313,7 @@ class Server {
             $this->clientsPerIP[$net] = 0;
         }
 
-        $client->onClose(function (Internal\Client $client) {
+        $client->onClose(function (Client $client) {
             unset($this->clients[$client->getId()]);
 
             $net = $client->getNetworkId();
@@ -334,7 +334,7 @@ class Server {
 
         $this->clients[$client->getId()] = $client;
 
-        $client->start(new Internal\Http1Driver($this->options, $this->timeReference));
+        $client->start(new Http1Driver($this->options, $this->timeReference));
     }
 
     /**
@@ -399,7 +399,7 @@ class Server {
             }
         }
 
-        /** @var \Aerys\Internal\Client $client */
+        /** @var \Aerys\Client $client */
         foreach ($timeouts as $id => $client) {
             // Do not close in case some longer response is taking more time to complete.
             if ($client->waitingOnResponse()) {

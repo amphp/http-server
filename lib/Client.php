@@ -1,14 +1,7 @@
 <?php
 
-namespace Aerys\Internal;
+namespace Aerys;
 
-use Aerys\ClientException;
-use Aerys\ErrorHandler;
-use Aerys\HttpStatus;
-use Aerys\Options;
-use Aerys\Request;
-use Aerys\Responder;
-use Aerys\Response;
 use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
@@ -72,7 +65,7 @@ class Client {
     /** @var \Aerys\Options */
     private $options;
 
-    /** @var \Aerys\Internal\HttpDriver */
+    /** @var \Aerys\HttpDriver */
     private $httpDriver;
 
     /** @var \Aerys\Responder */
@@ -84,7 +77,7 @@ class Client {
     /** @var callable[] */
     private $onClose = [];
 
-    /** @var \Aerys\Internal\TimeoutCache */
+    /** @var \Aerys\TimeoutCache */
     private $timeoutCache;
 
     /** @var \Psr\Log\LoggerInterface */
@@ -157,7 +150,7 @@ class Client {
     /**
      * Listen for requests on the client and parse them using the given HTTP driver.
      *
-     * @param \Aerys\Internal\HttpDriver $driver
+     * @param \Aerys\HttpDriver $driver
      *
      * @throws \Error If the client has already been started.
      */
@@ -637,7 +630,7 @@ class Client {
                     $exception->getLine(),
                     $exception->getTraceAsString()
                 ]),
-                \Aerys\INTERNAL_SERVER_ERROR_HTML
+                INTERNAL_SERVER_ERROR_HTML
             );
 
             return new Success(new Response\HtmlResponse($html, [], $status));
@@ -653,7 +646,7 @@ class Client {
             $html = \str_replace(
                 ["{code}", "{reason}"],
                 \array_map("htmlspecialchars", [$status, HttpStatus::getReason($status)]),
-                \Aerys\DEFAULT_ERROR_HTML
+                DEFAULT_ERROR_HTML
             );
 
             return new Success(new Response\HtmlResponse($html, [], $status));
@@ -671,6 +664,6 @@ class Client {
 
         \assert($this->logger->debug("Export {$this->clientAddress}:{$this->clientPort}") || true);
 
-        $response->export(new DetachedSocket($this, $this->socket));
+        $response->export(new Internal\DetachedSocket($this, $this->socket));
     }
 }

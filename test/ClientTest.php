@@ -7,7 +7,6 @@ use Aerys\CallableResponder;
 use Aerys\DefaultErrorHandler;
 use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
-use Aerys\Internal;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
@@ -122,11 +121,11 @@ class ClientTest extends TestCase {
     }
 
     public function tryRequest(Request $request, callable $responder) {
-        $driver = $this->createMock(Internal\HttpDriver::class);
+        $driver = $this->createMock(\Aerys\HttpDriver::class);
 
         $driver->expects($this->once())
             ->method("setup")
-            ->willReturnCallback(function (Internal\Client $client, callable $emitter) use (&$emit) {
+            ->willReturnCallback(function (\Aerys\Client $client, callable $emitter) use (&$emit) {
                 $emit = $emitter;
             });
 
@@ -145,13 +144,13 @@ class ClientTest extends TestCase {
         $options = (new Options)
             ->withDebugMode(true);
 
-        $client = new Internal\Client(
+        $client = new \Aerys\Client(
             \fopen("php://memory", "w"),
             new CallableResponder($responder),
             new DefaultErrorHandler,
             $this->createMock(Logger::class),
             $options,
-            $this->createMock(Internal\TimeoutCache::class)
+            $this->createMock(\Aerys\TimeoutCache::class)
         );
 
         $client->start($driver);
@@ -299,10 +298,10 @@ class ClientTest extends TestCase {
     }
 
     public function startClient(callable $parser, $socket) {
-        $driver = $this->createMock(Internal\HttpDriver::class);
+        $driver = $this->createMock(\Aerys\HttpDriver::class);
 
         $driver->method("setup")
-            ->willReturnCallback(function (Internal\Client $client, callable $onMessage, callable $onError, callable $writer) use (&$write) {
+            ->willReturnCallback(function (\Aerys\Client $client, callable $onMessage, callable $onError, callable $writer) use (&$write) {
                 $write = $writer;
             });
 
@@ -314,13 +313,13 @@ class ClientTest extends TestCase {
         $options = (new Options)
             ->withDebugMode(true);
 
-        $client = new Internal\Client(
+        $client = new \Aerys\Client(
             $socket,
             $this->createMock(Responder::class),
             $this->createMock(ErrorHandler::class),
             $this->createMock(Logger::class),
             $options,
-            $this->createMock(Internal\TimeoutCache::class)
+            $this->createMock(\Aerys\TimeoutCache::class)
         );
 
         $client->start($driver);

@@ -2,14 +2,14 @@
 
 namespace Aerys\Test;
 
-use Aerys\Internal\Client;
+use Aerys\Client;
+use Aerys\Http2Driver;
 use Aerys\Internal\HPack;
-use Aerys\Internal\Http2Driver;
-use Aerys\Internal\TimeReference;
 use Aerys\NullBody;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
+use Aerys\TimeReference;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Uri\Uri;

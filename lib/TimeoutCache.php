@@ -1,6 +1,6 @@
 <?php
 
-namespace Aerys\Internal;
+namespace Aerys;
 
 use cash\LRUCache;
 
@@ -11,11 +11,11 @@ class TimeoutCache implements \IteratorAggregate {
     /** @var int */
     private $time;
 
-    /** @var \Aerys\Internal\TimeReference */
+    /** @var \Aerys\TimeReference */
     private $timeReference;
 
     /**
-     * @param \Aerys\Internal\TimeReference $timeReference
+     * @param \Aerys\TimeReference $timeReference
      * @param int $timeout Number of seconds to add when renewing a timeout.
      */
     public function __construct(TimeReference $timeReference, int $timeout) {

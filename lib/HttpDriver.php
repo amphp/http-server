@@ -1,9 +1,6 @@
 <?php
 
-namespace Aerys\Internal;
-
-use Aerys\Request;
-use Aerys\Response;
+namespace Aerys;
 
 interface HttpDriver {
     /**
@@ -15,7 +12,7 @@ interface HttpDriver {
     /**
      * Define the callables to be invoked when messages are parsed, an error occurs, or data should is to be written.
      *
-     * @param \Aerys\Internal\Client $client
+     * @param \Aerys\Client $client
      * @param callable $onMessage
      * @param callable $onError
      * @param callable $write

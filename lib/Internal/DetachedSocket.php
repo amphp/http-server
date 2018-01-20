@@ -2,6 +2,7 @@
 
 namespace Aerys\Internal;
 
+use Aerys\Client;
 use Amp\Socket\ServerSocket;
 
 class DetachedSocket extends ServerSocket {
