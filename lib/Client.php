@@ -330,6 +330,10 @@ class Client {
             try {
                 $this->requestParser->send($data);
             } catch (ClientException $exception) {
+                if ($this->status & self::CLOSED_RD) {
+                    return; // Exception already handled by responder.
+                }
+
                 $this->onError($exception);
             }
 
@@ -342,6 +346,7 @@ class Client {
                 return;
             }
 
+            $this->paused = true;
             $this->status = self::CLOSED_RD;
             Loop::cancel($watcherId);
         }
@@ -446,7 +451,9 @@ class Client {
     }
 
     private function onError(ClientException $exception): Promise {
-        $this->pause();
+        Loop::cancel($this->readWatcher);
+        $this->status &= self::CLOSED_RD;
+        $this->paused = true;
 
         $message = $exception->getMessage();
         $status = $exception->getCode() ?: HttpStatus::BAD_REQUEST;
@@ -520,7 +527,7 @@ class Client {
                 }
             }
         } catch (ClientException $exception) {
-            $this->onError($exception);
+            yield $this->onError($exception);
             return;
         } catch (\Throwable $error) {
             $this->logger->error($error);
