@@ -98,7 +98,7 @@ class Client {
      * @param \Aerys\ErrorHandler $errorHandler
      * @param \Psr\Log\LoggerInterface $logger
      * @param \Aerys\Options $options
-     * @param \cash\LRUCache $cache
+     * @param \Aerys\TimeoutCache $timeoutCache
      */
     public function __construct(
         /* resource */ $socket,
@@ -141,8 +141,6 @@ class Client {
             $this->clientPort = 0;
             $this->clientNet = $serverName;
         }
-
-        $this->remainingRequests = $this->options->getMaxRequestsPerConnection();
 
         $this->resume = $this->callableFromInstanceMethod("resume");
     }
