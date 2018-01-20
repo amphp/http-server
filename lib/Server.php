@@ -4,7 +4,6 @@ namespace Aerys;
 
 use Amp\CallableMaker;
 use Amp\Coroutine;
-use Amp\Deferred;
 use Amp\Failure;
 use Amp\Loop;
 use Amp\Promise;
@@ -26,8 +25,6 @@ class Server {
         self::STOPPING => "STOPPING",
     ];
 
-    const KNOWN_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"];
-
     /** @var int */
     private $state = self::STOPPED;
 
@@ -36,9 +33,6 @@ class Server {
 
     /** @var \Aerys\Internal\Host */
     private $host;
-
-    /** @var \Aerys\Internal\HttpDriver */
-    private $httpDriver;
 
     /** @var \Aerys\Responder */
     private $responder;
@@ -61,9 +55,6 @@ class Server {
     /** @var resource[] Server sockets. */
     private $boundServers = [];
 
-    /** @var resource[] */
-    private $pendingTlsStreams = [];
-
     /** @var \Aerys\Internal\Client[] */
     private $clients = [];
 
@@ -73,19 +64,8 @@ class Server {
     /** @var int[] */
     private $clientsPerIP = [];
 
-    /** @var int[] */
-    private $connectionTimeouts = [];
-
-    /** @var \Amp\Deferred|null */
-    private $stopDeferred;
-
-    // private callables that we pass to external code //
-    private $onAcceptable;
-    private $onUnixSocketAcceptable;
-    private $negotiateCrypto;
-    private $onReadable;
-    private $onWritable;
-    private $onResponseDataDone;
+    /** @var \Aerys\Internal\TimeoutCache */
+    private $timeouts;
 
     /**
      * @param \Aerys\Responder $responder
@@ -103,6 +83,12 @@ class Server {
         $this->logger = $logger ?? new ConsoleLogger(new Console);
 
         $this->timeReference = new Internal\TimeReference;
+
+        $this->timeouts = new Internal\TimeoutCache(
+            $this->timeReference,
+            $this->options->getConnectionTimeout()
+        );
+
         $this->timeReference->onTimeUpdate($this->callableFromInstanceMethod("timeoutKeepAlives"));
 
         $this->observers = new \SplObjectStorage;
@@ -113,16 +99,6 @@ class Server {
         }
 
         $this->errorHandler = new DefaultErrorHandler;
-
-        // private callables that we pass to external code //
-        $this->onAcceptable = $this->callableFromInstanceMethod("onAcceptable");
-        $this->onUnixSocketAcceptable = $this->callableFromInstanceMethod("onUnixSocketAcceptable");
-        $this->negotiateCrypto = $this->callableFromInstanceMethod("negotiateCrypto");
-        $this->onReadable = $this->callableFromInstanceMethod("onReadable");
-        $this->onWritable = $this->callableFromInstanceMethod("onWritable");
-        $this->onResponseDataDone = $this->callableFromInstanceMethod("onResponseDataDone");
-
-        $this->setupHttpDriver(new Internal\Http1Driver);
     }
 
     /**
@@ -253,7 +229,7 @@ class Server {
     }
 
     private function doStart(callable $bindSockets): \Generator {
-        assert($this->logDebug("Starting"));
+        \assert($this->logger->debug("Starting") || true);
 
         $socketBinder = function ($address, $context) {
             if (!strncmp($address, "unix://", 7)) {
@@ -282,35 +258,13 @@ class Server {
         }
 
         $this->state = self::STARTED;
-        assert($this->logDebug("Started"));
+        assert($this->logger->debug("Started") || true);
 
+        $onAcceptable = $this->callableFromInstanceMethod("onAcceptable");
         foreach ($this->boundServers as $serverName => $server) {
-            $onAcceptable = $this->onAcceptable;
-            if (!strncmp($serverName, "unix://", 7)) {
-                $onAcceptable = $this->onUnixSocketAcceptable;
-            }
             $this->acceptWatcherIds[$serverName] = Loop::onReadable($server, $onAcceptable);
             $this->logger->info("Listening on {$serverName}");
         }
-    }
-
-    /**
-     * @param \Aerys\Internal\HttpDriver $httpDriver
-     *
-     * @throws \Error If the server has started.
-     */
-    private function setupHttpDriver(Internal\HttpDriver $httpDriver) {
-        if ($this->state) {
-            throw new \Error("Cannot setup HTTP driver after the server has started");
-        }
-
-        $this->httpDriver = $httpDriver;
-        $this->httpDriver->setup(
-            $this,
-            $this->callableFromInstanceMethod("onParsedMessage"),
-            $this->callableFromInstanceMethod("onParseError"),
-            $this->callableFromInstanceMethod("writeResponse")
-        );
     }
 
     private function generateAddressContextMap(): array {
@@ -337,85 +291,50 @@ class Server {
     }
 
     private function onAcceptable(string $watcherId, $server) {
-        if (!$client = @\stream_socket_accept($server, $timeout = 0, $peerName)) {
+        if (!$socket = @\stream_socket_accept($server, 0)) {
             return;
         }
 
-        $portStartPos = strrpos($peerName, ":");
-        $ip = substr($peerName, 0, $portStartPos);
-        $port = substr($peerName, $portStartPos + 1);
-        $net = @\inet_pton($ip);
-        if (isset($net[4])) {
-            $perIP = &$this->clientsPerIP[substr($net, 0, 7 /* /56 block */)];
-        } else {
-            $perIP = &$this->clientsPerIP[$net];
+        $client = new Internal\Client(
+            $socket,
+            $this->responder,
+            $this->errorHandler,
+            $this->logger,
+            $this->options,
+            $this->timeouts
+        );
+
+        \assert($this->logger->debug("Accept {$client->getRemoteAddress()}:{$client->getRemotePort()} on " .
+                stream_socket_get_name($socket, false) . " #" . (int) $socket) || true);
+
+        $net = $client->getNetworkId();
+
+        if (!isset($this->clientsPerIP[$net])) {
+            $this->clientsPerIP[$net] = 0;
         }
 
-        if (($this->clientCount++ === $this->options->getMaxConnections()) | ($perIP++ === $this->options->getMaxConnectionsPerIp())) {
-            assert($this->logDebug("client denied: too many existing connections"));
-            $this->clientCount--;
-            $perIP--;
-            @fclose($client);
+        $client->onClose(function (Internal\Client $client) {
+            unset($this->clients[$client->getId()]);
+
+            $net = $client->getNetworkId();
+            if (--$this->clientsPerIP[$net] === 0) {
+                unset($this->clientsPerIP[$net]);
+            }
+
+            --$this->clientCount;
+        });
+
+        if ($this->clientCount++ === $this->options->getMaxConnections()
+            || $this->clientsPerIP[$net]++ === $this->options->getMaxConnectionsPerIp()
+        ) {
+            \assert($this->logger->debug("Client denied: too many existing connections") || true);
+            $client->close();
             return;
         }
 
-        \assert($this->logDebug("Accept {$peerName} on " . stream_socket_get_name($client, false) . " #" . (int) $client));
+        $this->clients[$client->getId()] = $client;
 
-        \stream_set_blocking($client, false);
-        $contextOptions = \stream_context_get_options($client);
-        if (isset($contextOptions["ssl"])) {
-            $clientId = (int) $client;
-            $watcherId = Loop::onReadable($client, $this->negotiateCrypto, [$ip, $port]);
-            $this->pendingTlsStreams[$clientId] = [$watcherId, $client];
-        } else {
-            $this->importClient($client, $ip, $port);
-        }
-    }
-
-    private function onUnixSocketAcceptable(string $watcherId, $server) {
-        if (!$client = @\stream_socket_accept($server, $timeout = 0)) {
-            return;
-        }
-
-        \assert($this->logDebug("Accept connection on " . stream_socket_get_name($client, false) . " #" . (int) $client));
-
-        \stream_set_blocking($client, false);
-        $this->importClient($client, "", 0);
-    }
-
-    private function negotiateCrypto(string $watcherId, $socket, $peer) {
-        list($ip, $port) = $peer;
-        if ($handshake = @\stream_socket_enable_crypto($socket, true)) {
-            $socketId = (int) $socket;
-            Loop::cancel($watcherId);
-            unset($this->pendingTlsStreams[$socketId]);
-            assert((function () use ($socket, $ip, $port) {
-                $meta = stream_get_meta_data($socket)["crypto"];
-                $isH2 = (isset($meta["alpn_protocol"]) && $meta["alpn_protocol"] === "h2");
-                return $this->logDebug(sprintf("Crypto negotiated %s%s:%d", ($isH2 ? "(h2) " : ""), $ip, $port));
-            })());
-            // Dispatch via HTTP 1 driver; it knows how to handle PRI * requests and will check alpn_protocol value.
-            $this->importClient($socket, $ip, $port);
-        } elseif ($handshake === false) {
-            assert($this->logDebug("Crypto handshake error $ip:$port"));
-            $this->failCryptoNegotiation($socket, $ip);
-        }
-    }
-
-    private function failCryptoNegotiation($socket, $ip) {
-        $this->clientCount--;
-        $net = @\inet_pton($ip);
-        if (isset($net[4])) {
-            $net = substr($net, 0, 7 /* /56 block */);
-        }
-        $this->clientsPerIP[$net]--;
-
-        $socketId = (int) $socket;
-        list($watcherId) = $this->pendingTlsStreams[$socketId];
-        Loop::cancel($watcherId);
-        unset($this->pendingTlsStreams[$socketId]);
-        @\stream_socket_shutdown($socket, \STREAM_SHUT_RDWR); // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
-        @\fclose($socket);
+        $client->start(new Internal\Http1Driver($this->options, $this->timeReference));
     }
 
     /**
@@ -438,7 +357,7 @@ class Server {
     }
 
     private function doStop(): \Generator {
-        assert($this->logDebug("Stopping"));
+        \assert($this->logger->debug("Stopping") || true);
         $this->state = self::STOPPING;
 
         foreach ($this->acceptWatcherIds as $watcherId) {
@@ -446,9 +365,6 @@ class Server {
         }
         $this->boundServers = [];
         $this->acceptWatcherIds = [];
-        foreach ($this->pendingTlsStreams as list(, $socket)) {
-            $this->failCryptoNegotiation($socket, key($this->clientsPerIP) /* doesn't matter after stop */);
-        }
 
         try {
             $promises = [];
@@ -460,131 +376,22 @@ class Server {
             // Exception will be rethrown below once all clients are disconnected.
         }
 
-        $this->stopDeferred = new Deferred;
-        if (empty($this->clients)) {
-            $this->stopDeferred->resolve();
-        } else {
-            foreach ($this->clients as $client) {
-                if (empty($client->pendingResponses)) {
-                    $this->close($client);
-                } else {
-                    $client->remainingRequests = 0;
-                }
-            }
+        foreach ($this->clients as $client) {
+            // @TODO Alter client to return a promise indicating when all pending responses have completed.
+            $client->close();
         }
 
-        yield $this->stopDeferred->promise();
-
-        assert($this->logDebug("Stopped"));
+        \assert($this->logger->debug("Stopped") || true);
         $this->state = self::STOPPED;
-        $this->stopDeferred = null;
 
         if (isset($exception)) {
             throw new \RuntimeException("onStop observer failure", 0, $exception);
         }
     }
 
-    private function importClient($socket, $ip, $port) {
-        $client = new Internal\Client;
-        $client->id = (int) $socket;
-        $client->socket = $socket;
-        $client->options = $this->options;
-        $client->remainingRequests = $this->options->getMaxRequestsPerConnection();
-
-        $client->clientAddr = $ip;
-        $client->clientPort = $port;
-
-        $serverName = stream_socket_get_name($socket, false);
-        if ($portStartPos = strrpos($serverName, ":")) {
-            $client->serverAddr = substr($serverName, 0, $portStartPos);
-            $client->serverPort = (int) substr($serverName, $portStartPos + 1);
-        } else {
-            $client->serverAddr = $serverName;
-            $client->serverPort = 0;
-        }
-
-        $meta = stream_get_meta_data($socket);
-        $client->cryptoInfo = $meta["crypto"] ?? [];
-        $client->isEncrypted = (bool) $client->cryptoInfo;
-
-        $client->readWatcher = Loop::onReadable($socket, $this->onReadable, $client);
-        $client->writeWatcher = Loop::onWritable($socket, $this->onWritable, $client);
-        Loop::disable($client->writeWatcher);
-
-        $this->clients[$client->id] = $client;
-
-        $client->httpDriver = $this->httpDriver;
-        $client->requestParser = $client->httpDriver->parser($client);
-        $client->requestParser->valid();
-
-        $this->renewConnectionTimeout($client);
-    }
-
-    private function writeResponse(Internal\Client $client, string $data, bool $final = false) {
-        $client->writeBuffer .= $data;
-
-        if (!$final && \strlen($client->writeBuffer) < $this->options->getOutputBufferSize()) {
-            return;
-        }
-
-        $this->onWritable($client->writeWatcher, $client->socket, $client);
-
-        $length = \strlen($client->writeBuffer);
-
-        if ($length > $this->options->getSoftStreamCap()) {
-            $client->bufferDeferred = new Deferred;
-        }
-
-        if (!$final) {
-            return;
-        }
-
-        if ($length === 0) {
-            $this->onResponseDataDone($client);
-        } else {
-            $client->onWriteDrain = $this->onResponseDataDone;
-        }
-    }
-
-    private function onResponseDataDone(Internal\Client $client) {
-        if ($client->shouldClose || (--$client->pendingResponses === 0 && $client->isDead === Internal\Client::CLOSED_RD)) {
-            $this->close($client);
-        } elseif (!($client->isDead & Internal\Client::CLOSED_RD)) {
-            $this->renewConnectionTimeout($client);
-        }
-    }
-
-    private function onWritable(string $watcherId, $socket, Internal\Client $client) {
-        $bytesWritten = @\fwrite($socket, $client->writeBuffer);
-        if ($bytesWritten === false || ($bytesWritten === 0 && (!\is_resource($socket) || @\feof($socket)))) {
-            if ($client->isDead === Internal\Client::CLOSED_RD) {
-                $this->close($client);
-            } else {
-                $client->isDead = Internal\Client::CLOSED_WR;
-                Loop::cancel($watcherId);
-            }
-        } else {
-            if ($bytesWritten === \strlen($client->writeBuffer)) {
-                $client->writeBuffer = "";
-                Loop::disable($watcherId);
-                if ($client->onWriteDrain) {
-                    ($client->onWriteDrain)($client);
-                }
-            } else {
-                $client->writeBuffer = \substr($client->writeBuffer, $bytesWritten);
-                Loop::enable($watcherId);
-            }
-            if ($client->bufferDeferred && \strlen($client->writeBuffer) <= $this->options->getSoftStreamCap()) {
-                $deferred = $client->bufferDeferred;
-                $client->bufferDeferred = null;
-                $deferred->resolve();
-            }
-        }
-    }
-
     private function timeoutKeepAlives(int $now) {
         $timeouts = [];
-        foreach ($this->connectionTimeouts as $id => $expiresAt) {
+        foreach ($this->timeouts as $id => $expiresAt) {
             if ($now > $expiresAt) {
                 $timeouts[] = $this->clients[$id];
             } else {
@@ -592,337 +399,17 @@ class Server {
             }
         }
 
-        foreach ($timeouts as $client) {
+        /** @var \Aerys\Internal\Client $client */
+        foreach ($timeouts as $id => $client) {
             // Do not close in case some longer response is taking more time to complete.
-            if ($client->pendingResponses > \count($client->bodyEmitters)) {
-                $this->clearConnectionTimeout($client); // Will be re-enabled once response is written.
+            if ($client->waitingOnResponse()) {
+                $this->timeouts->clear($id);
             } else {
                 // Timeouts are only active while Client is doing nothing (not sending nor receiving) and no pending
                 // writes, hence we can just fully close here
-                $this->close($client);
+                $client->close();
             }
         }
-    }
-
-    private function renewConnectionTimeout(Internal\Client $client) {
-        $timeoutAt = $this->timeReference->getCurrentTime() + $this->options->getConnectionTimeout();
-        // DO NOT remove the call to unset(); it looks superfluous but it's not.
-        // Keep-alive timeout entries must be ordered by value. This means that
-        // it's not enough to replace the existing map entry -- we have to remove
-        // it completely and push it back onto the end of the array to maintain the
-        // correct order.
-        unset($this->connectionTimeouts[$client->id]);
-        $this->connectionTimeouts[$client->id] = $timeoutAt;
-    }
-
-    private function clearConnectionTimeout(Internal\Client $client) {
-        unset($this->connectionTimeouts[$client->id]);
-    }
-
-    private function onReadable(string $watcherId, $socket, Internal\Client $client) {
-        $data = @\stream_get_contents($socket, $this->options->getIoGranularity());
-        if ($data !== false && $data !== "") {
-            $this->renewConnectionTimeout($client);
-            $client->requestParser->send($data);
-            return;
-        }
-
-        if (!\is_resource($socket) || @\feof($socket)) {
-            if ($client->isDead === Internal\Client::CLOSED_WR || $client->pendingResponses <= \count($client->bodyEmitters)) {
-                $this->close($client);
-                return;
-            }
-
-            $client->isDead = Internal\Client::CLOSED_RD;
-            Loop::cancel($watcherId);
-        }
-    }
-
-    private function onParsedMessage(Internal\Client $client, Request $request) {
-        assert($this->logDebug(sprintf(
-            "%s %s HTTP/%s @ %s:%s",
-            $request->getMethod(),
-            $request->getUri(),
-            $request->getProtocolVersion(),
-            $client->clientAddr,
-            $client->clientPort
-        )));
-
-        $client->remainingRequests--;
-        $client->pendingResponses++;
-
-        Promise\rethrow(new Coroutine($this->respond($client, $request)));
-    }
-
-    private function onParseError(Internal\Client $client, int $status, string $message) {
-        Loop::disable($client->readWatcher);
-
-        $this->logger->notice("Client parse error on {$client->clientAddr}:{$client->clientPort}: {$message}");
-
-        $client->shouldClose = true;
-        $client->pendingResponses++;
-
-        Promise\rethrow(new Coroutine($this->sendErrorResponse($client, $status, $message)));
-    }
-
-    /**
-     * Respond to a parse error when parsing a client message.
-     *
-     * @param \Aerys\Internal\Client $client
-     * @param int $status
-     * @param string $reason
-     *
-     * @return \Generator
-     */
-    private function sendErrorResponse(Internal\Client $client, int $status, string $reason): \Generator {
-        try {
-            $response = yield $this->errorHandler->handle($status, $reason);
-        } catch (\Throwable $exception) {
-            $response = yield $this->makeExceptionResponse($exception);
-        }
-
-        yield from $this->sendResponse($client, $response);
-    }
-
-    /**
-     * Respond to a parsed request from the client.
-     *
-     * @param \Aerys\Request $request
-     *
-     * @return \Generator
-     */
-    private function respond(Internal\Client $client, Request $request): \Generator {
-        try {
-            $method = $request->getMethod();
-
-            if ($this->stopDeferred) {
-                $response = yield from $this->makeServiceUnavailableResponse();
-            } elseif (!\in_array($method, $this->options->getAllowedMethods(), true)) {
-                if (!\in_array($method, self::KNOWN_METHODS, true)) {
-                    $response = yield from $this->makeNotImplementedResponse();
-                } else {
-                    $response = yield from $this->makeMethodNotAllowedResponse();
-                }
-            } elseif ($method === "OPTIONS" && $request->getTarget() === "*") {
-                $response = $this->makeOptionsResponse();
-            } else {
-                $response = yield $this->responder->respond($request);
-
-                if (!$response instanceof Response) {
-                    throw new \Error("At least one request handler must return an instance of " . Response::class);
-                }
-            }
-        } catch (ClientException $exception) {
-            return; // Handled in code that generated the ClientException, response already sent.
-        } catch (\Throwable $error) {
-            $this->logger->error($error);
-            $response = yield $this->makeExceptionResponse($error, $request);
-        }
-
-        yield from $this->sendResponse($client, $response, $request);
-    }
-
-    private function makeServiceUnavailableResponse(): \Generator {
-        $status = HttpStatus::SERVICE_UNAVAILABLE;
-        /** @var \Aerys\Response $response */
-        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
-        $response->setHeader("Connection", "close");
-        return $response;
-    }
-
-    private function makeMethodNotAllowedResponse(): \Generator {
-        $status = HttpStatus::METHOD_NOT_ALLOWED;
-        /** @var \Aerys\Response $response */
-        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
-        $response->setHeader("Connection", "close");
-        $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
-        return $response;
-    }
-
-    private function makeNotImplementedResponse(): \Generator {
-        $status = HttpStatus::NOT_IMPLEMENTED;
-        /** @var \Aerys\Response $response */
-        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
-        $response->setHeader("Connection", "close");
-        $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
-        return $response;
-    }
-
-    private function makeOptionsResponse(): Response {
-        return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->getAllowedMethods())]);
-    }
-
-    /**
-     * Send the response to the client.
-     *
-     * @param \Aerys\Internal\Client $client
-     * @param \Aerys\Response $response
-     * @param \Aerys\Request|null $request
-     *
-     * @return \Generator
-     */
-    private function sendResponse(Internal\Client $client, Response $response, Request $request = null): \Generator {
-        $responseWriter = $client->httpDriver->writer($client, $response, $request);
-
-        $body = $response->getBody();
-
-        try {
-            do {
-                $chunk = yield $body->read();
-
-                if ($client->isDead & Internal\Client::CLOSED_WR) {
-                    $responseWriter->send(null);
-                    return;
-                }
-
-                $responseWriter->send($chunk); // Sends null when stream closes.
-            } while ($chunk !== null);
-        } catch (ClientException $exception) {
-            return;
-        } catch (\Throwable $exception) {
-            // Reading response body failed, abort writing the response to the client.
-            $this->logger->error($exception);
-            $responseWriter->send(null);
-            return;
-        }
-
-        try {
-            if ($response->isDetached()) {
-                $responseWriter->send(null);
-                $this->export($client, $response);
-            }
-        } catch (\Throwable $exception) {
-            $this->logger->error($exception);
-        }
-    }
-
-    /**
-     * @param \Throwable $error
-     * @param \Aerys\Request $request
-     *
-     * @return \Amp\Promise<\Aerys\Response>
-     */
-    private function makeExceptionResponse(\Throwable $exception, Request $request = null): Promise {
-        $status = HttpStatus::INTERNAL_SERVER_ERROR;
-
-        // Return an HTML page with the exception in debug mode.
-        if ($request !== null && $this->options->isInDebugMode()) {
-            $html = \str_replace(
-                ["{uri}", "{class}", "{message}", "{file}", "{line}", "{trace}"],
-                \array_map("htmlspecialchars", [
-                    $request->getUri(),
-                    \get_class($exception),
-                    $exception->getMessage(),
-                    $exception->getFile(),
-                    $exception->getLine(),
-                    $exception->getTraceAsString()
-                ]),
-                INTERNAL_SERVER_ERROR_HTML
-            );
-
-            return new Success(new Response\HtmlResponse($html, [], $status));
-        }
-
-        try {
-            // Return a response defined by the error handler in production mode.
-            return $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
-        } catch (\Throwable $exception) {
-            // If the error handler throws, fallback to returning the default HTML error page.
-            $this->logger->error($exception);
-
-            $html = \str_replace(
-                ["{code}", "{reason}"],
-                \array_map("htmlspecialchars", [$status, HttpStatus::getReason($status)]),
-                DEFAULT_ERROR_HTML
-            );
-
-            return new Success(new Response\HtmlResponse($html, [], $status));
-        }
-    }
-
-    private function close(Internal\Client $client) {
-        $this->clear($client);
-        assert($client->isDead !== Internal\Client::CLOSED_RDWR);
-        // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
-        @\stream_socket_shutdown($client->socket, \STREAM_SHUT_RDWR);
-        @fclose($client->socket);
-        $client->isDead = Internal\Client::CLOSED_RDWR;
-
-        $this->clientCount--;
-        if ($client->serverAddr[0] !== "/") { // no unix domain socket
-            $net = @\inet_pton($client->clientAddr);
-            if (isset($net[4])) {
-                $net = substr($net, 0, 7 /* /56 block */);
-            }
-            $this->clientsPerIP[$net]--;
-            assert($this->logDebug("Close {$client->clientAddr}:{$client->clientPort} #{$client->id}"));
-        } else {
-            assert($this->logDebug("Close connection on {$client->serverAddr} #{$client->id}"));
-        }
-
-        if ($client->bufferDeferred) {
-            $ex = new ClientException("Client forcefully closed");
-            $client->bufferDeferred->fail($ex);
-        }
-    }
-
-    private function clear(Internal\Client $client) {
-        $client->requestParser = null;
-        $client->onWriteDrain = null;
-
-        Loop::cancel($client->readWatcher);
-        Loop::cancel($client->writeWatcher);
-
-        $this->clearConnectionTimeout($client);
-
-        unset($this->clients[$client->id]);
-        if ($this->stopDeferred && empty($this->clients)) {
-            $this->stopDeferred->resolve();
-        }
-    }
-
-    private function export(Internal\Client $client, Response $response) {
-        $this->clear($client);
-        $client->isExported = true;
-
-        \assert($this->logDebug("Export {$client->clientAddr}:{$client->clientPort}"));
-
-        $net = @\inet_pton($client->clientAddr);
-        if (isset($net[4])) {
-            $net = substr($net, 0, 7 /* /56 block */);
-        }
-
-        $clientCount = &$this->clientCount;
-        $clientsPerIP = &$this->clientsPerIP[$net];
-
-        $closer = static function () use (&$clientCount, &$clientsPerIP) {
-            $clientCount--;
-            $clientsPerIP--;
-        };
-
-        \assert($closer = (function () use ($client, $closer) {
-            $logger = $this->logger;
-            $message = "Close {$client->clientAddr}:{$client->clientPort}";
-
-            return static function () use ($closer, $logger, $message) {
-                $closer();
-                $logger->log(Logger::DEBUG, $message);
-            };
-        })());
-
-        $response->export(new Internal\DetachedSocket($closer, $client->socket));
-    }
-
-    /**
-     * This function MUST always return TRUE. It should only be invoked
-     * inside an assert() block so that we can cancel its opcodes when
-     * in production mode. This approach allows us to take full advantage
-     * of debug mode log output without adding superfluous method call
-     * overhead in production environments.
-     */
-    private function logDebug($message) {
-        $this->logger->log(Logger::DEBUG, (string) $message);
-        return true;
     }
 
     public function __debugInfo() {
@@ -933,10 +420,8 @@ class Server {
             "observers" => $this->observers,
             "acceptWatcherIds" => $this->acceptWatcherIds,
             "boundServers" => $this->boundServers,
-            "pendingTlsStreams" => $this->pendingTlsStreams,
             "clients" => $this->clients,
-            "connectionTimeouts" => $this->connectionTimeouts,
-            "stopPromise" => $this->stopDeferred ? $this->stopDeferred->promise() : null,
+            "connectionTimeouts" => $this->timeouts,
         ];
     }
 }

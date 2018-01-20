@@ -104,11 +104,13 @@ class Host {
      *
      * @param string|Certificate|ServerTlsContext $certificate A string path pointing to your SSL/TLS certificate, a
      *     Certificate object, or a ServerTlsContext object
+     * @param string|null $keyFile Key file with the corresponding private key or `null` if the key is in $certFile.
+     *     Ignored if the first parameter is an instance of Certificate or ServerTlsContext.
      */
-    public function encrypt($certificate) {
+    public function encrypt($certificate, $keyFile = null) {
         if (!$certificate instanceof ServerTlsContext) {
             if (!$certificate instanceof Certificate) {
-                $certificate = new Certificate($certificate);
+                $certificate = new Certificate($certificate, $keyFile);
             }
 
             $certificate = (new ServerTlsContext)->withDefaultCertificate($certificate);

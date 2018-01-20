@@ -2,9 +2,13 @@
 
 namespace Aerys\Test;
 
+use Aerys\Body;
 use Aerys\CallableResponder;
+use Aerys\DefaultErrorHandler;
+use Aerys\ErrorHandler;
+use Aerys\HttpStatus;
+use Aerys\Internal;
 use Aerys\Logger;
-use Aerys\Middleware\Middleware;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Responder;
@@ -14,12 +18,15 @@ use Amp\Artax\Cookie\ArrayCookieJar;
 use Amp\Artax\Cookie\Cookie;
 use Amp\Artax\DefaultClient;
 use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\IteratorStream;
+use Amp\Deferred;
+use Amp\Emitter;
 use Amp\Loop;
-use Amp\Promise;
 use Amp\Socket;
 use Amp\Socket\Certificate;
 use Amp\Socket\ClientTlsContext;
 use Amp\Socket\ServerTlsContext;
+use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
 use function Amp\call;
 
@@ -97,18 +104,7 @@ class ClientTest extends TestCase {
                 $data .= \str_repeat("_", $server->getOptions()->getOutputBufferSize() + 1);
 
                 return new Response(new InMemoryStream($data));
-            }, [new class($this) implements Middleware {
-                private $test;
-                public function __construct(TestCase $test) {
-                    $this->test = $test;
-                }
-                public function process(Request $request, Responder $responder): Promise {
-                    return call(function () use ($request, $responder) {
-                        $this->test->assertSame("1.0", $request->getProtocolVersion());
-                        return $responder->respond($request);
-                    });
-                }
-            }]);
+            });
 
             $port = parse_url($address, PHP_URL_PORT);
             $context = (new ClientTlsContext)->withoutPeerVerification();
@@ -122,6 +118,284 @@ class ClientTest extends TestCase {
             Loop::delay(100, function () use ($socket) {
                 Loop::stop();
             });
+        });
+    }
+
+    public function tryRequest(Request $request, callable $responder) {
+        $driver = $this->createMock(Internal\HttpDriver::class);
+
+        $driver->expects($this->once())
+            ->method("setup")
+            ->willReturnCallback(function (Internal\Client $client, callable $emitter) use (&$emit) {
+                $emit = $emitter;
+            });
+
+        $driver->method("writer")
+            ->willReturnCallback(function (Response $written) use (&$response, &$body) {
+                $response = $written;
+                $body = "";
+                do {
+                    $body .= $part = yield;
+                } while ($part !== null);
+            });
+
+        $driver->expects($this->once())
+            ->method("parser");
+
+        $options = (new Options)
+            ->withDebugMode(true);
+
+        $client = new Internal\Client(
+            \fopen("php://memory", "w"),
+            new CallableResponder($responder),
+            new DefaultErrorHandler,
+            $this->createMock(Logger::class),
+            $options,
+            $this->createMock(Internal\TimeoutCache::class)
+        );
+
+        $client->start($driver);
+
+        $emit($request);
+
+        return [$response, $body];
+    }
+
+    public function testBasicRequest() {
+        $request = new Request(
+            "GET", // method
+            new Uri("http://localhost:80/foo"), // URI
+            ["host" => ["localhost"]] // headers
+        );
+
+        /** @var \Aerys\Response $response */
+        list($response, $body) = $this->tryRequest($request, function (Request $req) {
+            $this->assertSame("localhost", $req->getHeader("Host"));
+            $this->assertSame("/foo", $req->getUri()->getPath());
+            $this->assertSame("GET", $req->getMethod());
+            $this->assertSame("", yield $req->getBody()->buffer());
+
+            return new Response(new InMemoryStream("message"), ["FOO" => "bar"]);
+        });
+
+        $this->assertInstanceOf(Response::class, $response);
+
+        $status = HttpStatus::OK;
+        $this->assertSame($status, $response->getStatus());
+        $this->assertSame(HttpStatus::getReason($status), $response->getReason());
+        $this->assertSame("bar", $response->getHeader("foo"));
+
+        $this->assertSame("message", $body);
+    }
+
+    public function testStreamRequest() {
+        $emitter = new Emitter;
+
+        $request = new Request(
+            "GET", // method
+            new Uri("http://localhost:80/foo"), // URI
+            ["host" => ["localhost"]], // headers
+            new Body(new IteratorStream($emitter->iterate())) // body
+        );
+
+        $emitter->emit("fooBar");
+        $emitter->emit("BUZZ!");
+        $emitter->complete();
+
+        /** @var \Aerys\Response $response */
+        list($response, $body) = $this->tryRequest($request, function (Request $req) {
+            $buffer = "";
+            while ((null !== $chunk = yield $req->getBody()->read())) {
+                $buffer .= $chunk;
+            }
+            return new Response(new InMemoryStream($buffer));
+        });
+
+        $this->assertInstanceOf(Response::class, $response);
+
+        $status = HttpStatus::OK;
+        $this->assertSame($status, $response->getStatus());
+        $this->assertSame(HttpStatus::getReason($status), $response->getReason());
+
+        $this->assertSame("fooBarBUZZ!", $body);
+    }
+
+    /**
+     * @dataProvider providePreResponderRequests
+     */
+    public function testPreResponderFailures(Request $request, int $status) {
+        /** @var \Aerys\Response $response */
+        list($response) = $this->tryRequest($request, function (Request $req) {
+            $this->fail("We should already have failed and never invoke the responder...");
+        });
+
+        $this->assertInstanceOf(Response::class, $response);
+
+        $this->assertEquals($status, $response->getStatus());
+    }
+
+    public function providePreResponderRequests() {
+        return [
+            [
+                new Request(
+                    "OPTIONS", // method
+                    new Uri("http://localhost:80/"), // URI
+                    ["host" => ["localhost"]], // headers
+                    null, // body
+                    "*" // target
+                ),
+                HttpStatus::NO_CONTENT
+            ],
+            [
+                new Request(
+                    "TRACE", // method
+                    new Uri("http://localhost:80/"), // URI
+                    ["host" => ["localhost"]] // headers
+                ),
+                HttpStatus::METHOD_NOT_ALLOWED
+            ],
+            [
+                new Request(
+                    "UNKNOWN", // method
+                    new Uri("http://localhost:80/"), // URI
+                    ["host" => ["localhost"]] // headers
+                ),
+                HttpStatus::NOT_IMPLEMENTED
+            ],
+        ];
+    }
+
+    public function testOptionsRequest() {
+        $request = new Request(
+            "OPTIONS", // method
+            new Uri("http://localhost:80/"), // URI
+            ["host" => ["localhost"]], // headers
+            null, // body
+            "*" // target
+        );
+
+        /** @var \Aerys\Response $response */
+        list($response) = $this->tryRequest($request, function (Request $req) {
+            $this->fail("We should already have failed and never invoke the responder...");
+        });
+
+        $this->assertSame(HttpStatus::NO_CONTENT, $response->getStatus());
+        $this->assertSame(implode(", ", (new Options)->getAllowedMethods()), $response->getHeader("allow"));
+    }
+
+    public function testError() {
+        $request = new Request(
+            "GET", // method
+            new Uri("http://localhost:80/foo"), // URI
+            ["host" => ["localhost"]] // headers
+        );
+
+        /** @var \Aerys\Response $response */
+        list($response) = $this->tryRequest($request, function (Request $req) {
+            throw new \Exception;
+        });
+
+        $this->assertSame(HttpStatus::INTERNAL_SERVER_ERROR, $response->getStatus());
+    }
+
+    public function startClient(callable $parser, $socket) {
+        $driver = $this->createMock(Internal\HttpDriver::class);
+
+        $driver->method("setup")
+            ->willReturnCallback(function (Internal\Client $client, callable $onMessage, callable $onError, callable $writer) use (&$write) {
+                $write = $writer;
+            });
+
+        $driver->method("parser")
+            ->willReturnCallback(function () use (&$write, $parser) {
+                yield from $parser($write);
+            });
+
+        $options = (new Options)
+            ->withDebugMode(true);
+
+        $client = new Internal\Client(
+            $socket,
+            $this->createMock(Responder::class),
+            $this->createMock(ErrorHandler::class),
+            $this->createMock(Logger::class),
+            $options,
+            $this->createMock(Internal\TimeoutCache::class)
+        );
+
+        $client->start($driver);
+
+        return $client;
+    }
+
+    public function provideFalseTrueUnixDomainSocket() {
+        return [
+            "tcp-unencrypted" => [false, false],
+            //"tcp-encrypted" => [false, true],
+            "unix" => [true, false],
+        ];
+    }
+
+    /**
+     * @dataProvider provideFalseTrueUnixDomainSocket
+     */
+    public function testIO(bool $unixSocket, bool $tls) {
+        $tlsContext = null;
+
+        if ($tls) {
+            $tlsContext = new Socket\ServerTlsContext;
+            $tlsContext = $tlsContext->withDefaultCertificate(new Socket\Certificate(__DIR__ . "/server.pem"));
+        }
+
+        if ($unixSocket) {
+            $uri = tempnam(sys_get_temp_dir(), "aerys.") . ".sock";
+            $uri = "unix://" . $uri;
+            $server = Socket\listen($uri, null, $tlsContext);
+        } else {
+            $server = Socket\listen("tcp://127.0.0.1:0", null, $tlsContext);
+            $uri = $server->getAddress();
+        }
+
+        Loop::run(function () use ($server, $uri, $tls) {
+            $promise = call(function () use ($server, $tls) {
+                /** @var \Amp\Socket\Socket $socket */
+                $socket = yield $server->accept();
+
+                if ($tls) {
+                    yield $socket->enableCrypto();
+                }
+
+                yield $socket->write("a");
+                // give readWatcher a chance
+                $deferred = new Deferred;
+                Loop::defer(function () use ($deferred) { Loop::defer([$deferred, "resolve"]); });
+                yield $deferred->promise();
+                yield $socket->write("b");
+                stream_socket_shutdown($socket->getResource(), STREAM_SHUT_WR);
+                $this->assertEquals("cd", yield $socket->read());
+            });
+
+            if ($tls) {
+                $tlsContext = (new Socket\ClientTlsContext)->withoutPeerVerification();
+                $tlsContext = $tlsContext->toStreamContextArray();
+            } else {
+                $tlsContext = [];
+            }
+
+            $client = \stream_socket_client($uri, $errno, $errstr, 1, STREAM_CLIENT_CONNECT, stream_context_create($tlsContext));
+
+            $client = $this->startClient(function (callable $write) {
+                $this->assertEquals("a", yield);
+                $this->assertEquals("b", yield);
+                $write("c");
+                $write("d");
+            }, $client);
+
+            yield $promise;
+
+            $client->close();
+
+            Loop::stop();
         });
     }
 }

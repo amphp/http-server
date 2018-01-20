@@ -5,11 +5,11 @@ namespace Aerys\Test;
 use Aerys\Internal\Client;
 use Aerys\Internal\HPack;
 use Aerys\Internal\Http2Driver;
+use Aerys\Internal\TimeReference;
 use Aerys\NullBody;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
-use Aerys\Server;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Uri\Uri;
@@ -46,37 +46,14 @@ class Http2DriverTest extends TestCase {
     public function testSimpleCases($msg, $expectations) {
         $msg = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$msg";
 
-        $driver = new class($this) extends Http2Driver {
-            /** @var TestCase */
-            private $test;
-
-            public function __construct($test) {
-                parent::__construct();
-                $this->test = $test;
-            }
-
-            protected function writeFrame(Client $client, string $data, string $type, string $flags, int $stream = 0) {
-                if ($type === Http2Driver::RST_STREAM || $type === Http2Driver::GOAWAY) {
-                    $this->test->fail("RST_STREAM or GOAWAY frame received");
-                }
-            }
-        };
-
-        $resultEmitter = function ($client, Request $req) use (&$request) {
+        $driver = $this->setupDriver(function (Request $req) use (&$request) {
             $request = $req;
-        };
-
-        $driver->setup($this->createMock(Server::class), $resultEmitter, $this->createCallback(0), $this->createCallback(0));
+        });
 
         for ($mode = 0; $mode <= 1; $mode++) {
             $parseResult = null;
 
-            $client = new Client;
-            $client->options = new Options;
-            $client->serverAddr = "127.0.0.1";
-            $port = $client->serverPort = 80;
-
-            $parser = $driver->parser($client);
+            $parser = $driver->parser();
 
             if ($mode === 1) {
                 for ($i = 0, $length = \strlen($msg); $i < $length; $i++) {
@@ -102,7 +79,7 @@ class Http2DriverTest extends TestCase {
             $this->assertSame($expectations["method"], $request->getMethod(), "method mismatch");
             $this->assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
             $this->assertSame($expectations["headers"], $headers, "headers mismatch");
-            $this->assertSame($expectations["port"] ?? $port, $request->getUri()->getPort(), "uriPort mismatch");
+            $this->assertSame($expectations["port"] ?? 80, $request->getUri()->getPort(), "uriPort mismatch");
             $this->assertSame($expectations["host"], $request->getUri()->getHost(), "uriHost mismatch");
             $this->assertSame($expectations["body"], $body, "body mismatch");
         }
@@ -159,19 +136,19 @@ class Http2DriverTest extends TestCase {
         return $return;
     }
 
-    public function setupDriver() {
-        $driver = new class($this) extends Http2Driver {
+    public function setupDriver(callable $onMessage = null, callable $writer = null, Options $options = null) {
+        $driver = new class($this, $options ?? new Options, $this->createMock(TimeReference::class)) extends Http2Driver {
             public $frames = [];
 
             /** @var TestCase */
             private $test;
 
-            public function __construct($test) {
-                parent::__construct();
+            public function __construct($test, $options, $timeReference) {
+                parent::__construct($options, $timeReference);
                 $this->test = $test;
             }
 
-            protected function writeFrame(Client $client, string $data, string $type, string $flags, int $stream = 0) {
+            protected function writeFrame(string $data, string $type, string $flags, int $stream = 0) {
                 if ($type === Http2Driver::RST_STREAM || $type === Http2Driver::GOAWAY) {
                     $this->test->fail("RST_STREAM or GOAWAY frame received");
                 }
@@ -185,9 +162,10 @@ class Http2DriverTest extends TestCase {
         };
 
         $driver->setup(
-            $this->createMock(Server::class),
-            function () {},
+            $this->createMock(Client::class),
+            $onMessage ?? function () {},
             $this->createCallback(0),
+            $writer ?? $this->createCallback(0),
             $this->createCallback(0)
         );
 
@@ -195,41 +173,58 @@ class Http2DriverTest extends TestCase {
     }
 
     public function testWriterAbortAfterHeaders() {
-        $driver = new Http2Driver;
         $buffer = "";
+        $options = new Options;
+        $driver = new Http2Driver($options, $this->createMock(TimeReference::class));
         $driver->setup(
-            $this->createMock(Server::class),
+            $this->createMock(Client::class),
             $this->createCallback(0),
             $this->createCallback(0),
-            function (Client $client, string $data, bool $final) use (&$buffer) {
+            function (string $data, bool $close = false) use (&$buffer) {
                 // HTTP/2 shall only reset streams, not abort the connection
-                $this->assertFalse($final);
-                $this->assertFalse($client->shouldClose);
+                $this->assertFalse($close);
                 $buffer .= $data;
-            }
+            },
+            $this->createCallback(0)
         );
+        $parser = $driver->parser("", true); // Simulate upgrade request.
 
-        $streamId = 2;
+        $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+        //$parser->send($this->packFrame(pack("nN", Http2Driver::INITIAL_WINDOW_SIZE, 66000), Http2Driver::SETTINGS, Http2Driver::NOFLAG));
 
-        $client = new Client;
-        $client->options = new Options;
-        $client->streamWindow[$streamId] = 65536;
-        $client->streamWindowBuffer[$streamId] = "";
+//        $headers = [
+//            ":authority" => "localhost",
+//            ":path" => "/",
+//            ":scheme" => "http",
+//            ":method" => "GET",
+//            "test" => "successful"
+//        ];
+//        $parser->send($this->packHeader($headers));
+//
+//        // $onMessage callback should be invoked.
+//        $this->assertInstanceOf(Request::class, $request);
 
-        $request = new Request("GET", new Uri("/"), [], new NullBody, "/", "2.0", $streamId);
+        $request = new Request("GET", new Uri("/"), [], new NullBody, "/", "2.0");
 
-        $writer = $driver->writer($client, new Response, $request);
+        $writer = $driver->writer(new Response, $request);
 
         $writer->send("foo");
 
         unset($writer);
 
-        $data = $this->packFrame(HPack::encode([
+        $data = $this->packFrame(pack(
+            "nNnN",
+            Http2Driver::INITIAL_WINDOW_SIZE,
+            $options->getMaxBodySize() + 256,
+            Http2Driver::MAX_CONCURRENT_STREAMS,
+            $options->getMaxConcurrentStreams()
+        ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0);
+        $data .= $this->packFrame(HPack::encode([
             ":status" => 200,
-            "date" => [null],
-        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 2);
-        $data .= $this->packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 2);
-        $data .= $this->packFrame(pack("N", Http2Driver::INTERNAL_ERROR), Http2Driver::RST_STREAM, Http2Driver::NOFLAG, 2);
+            "date" => [""],
+        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
+        $data .= $this->packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
+        $data .= $this->packFrame(pack("N", Http2Driver::INTERNAL_ERROR), Http2Driver::RST_STREAM, Http2Driver::NOFLAG, 1);
 
         $this->assertEquals($data, $buffer);
     }
@@ -237,9 +232,7 @@ class Http2DriverTest extends TestCase {
     public function testPingPong() {
         $driver = $this->setupDriver();
 
-        $client = new Client;
-        $client->options = new Options;
-        $parser = $driver->parser($client);
+        $parser = $driver->parser();
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
         $driver->frames = []; // ignore settings and window updates...
@@ -250,12 +243,11 @@ class Http2DriverTest extends TestCase {
     }
 
     public function testFlowControl() {
-        $driver = $this->setupDriver();
+        $driver = $this->setupDriver(function (Request $read) use (&$request) {
+            $request = $read;
+        }, null, (new Options)->withOutputBufferSize(1));
 
-        $client = new Client;
-        $client->options = new Options;
-
-        $parser = $driver->parser($client);
+        $parser = $driver->parser();
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
 
@@ -282,17 +274,16 @@ class Http2DriverTest extends TestCase {
         ];
         $parser->send($this->packHeader($headers));
 
-        $streamId = 1;
-        $request = new Request("GET", new Uri("/"), [], new NullBody, "/", "2.0", $streamId);
+        // $onMessage callback should be invoked.
+        $this->assertInstanceOf(Request::class, $request);
 
-        $client->options = $client->options->withOutputBufferSize(1); // Force data frame when any data is written.
-        $writer = $driver->writer($client, new Response(null, ["content-type" => "text/html; charset=utf-8"]), $request);
+        $writer = $driver->writer(new Response(null, ["content-type" => "text/html; charset=utf-8"]), $request);
         $writer->valid(); // Start writer.
 
         $this->assertEquals([HPack::encode([
             ":status" => 200,
             "content-type" => ["text/html; charset=utf-8"],
-            "date" => [null],
+            "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1], array_pop($driver->frames));
 
         $writer->send(str_repeat("_", 66002));
@@ -341,16 +332,16 @@ class Http2DriverTest extends TestCase {
 
         $parser->send($this->packHeader($headers, false, 3));
 
-        $streamId = 3;
-        $request = new Request("GET", new Uri("/"), [], new NullBody, "/", "2.0", $streamId);
+        // $onMessage callback should be invoked.
+        $this->assertInstanceOf(Request::class, $request);
 
-        $writer = $driver->writer($client, new Response(null, ["content-type" => "text/html; charset=utf-8"]), $request);
+        $writer = $driver->writer(new Response(null, ["content-type" => "text/html; charset=utf-8"]), $request);
         $writer->valid(); // Start writer.
 
         $this->assertEquals([HPack::encode([
             ":status" => 200,
             "content-type" => ["text/html; charset=utf-8"],
-            "date" => [null],
+            "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], array_pop($driver->frames));
 
         $writer->send("**");

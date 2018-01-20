@@ -24,9 +24,6 @@ class Request {
     /** @var \Aerys\Body|null */
     private $body;
 
-    /** @var int */
-    private $streamId;
-
     /** @var \Aerys\Cookie\Cookie[] */
     private $cookies = [];
 
@@ -41,7 +38,6 @@ class Request {
      * @param string|null $target Request target. Usually similar to URI, but contains only the exact string provided
      *    in the request line.
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
-     * @param int $streamId Stream ID used for HTTP/2 push requests.
      */
     public function __construct(
         string $method,
@@ -49,15 +45,13 @@ class Request {
         array $headers = [],
         Body $body = null,
         string $target = null,
-        string $protocol = "1.1",
-        int $streamId = 0
+        string $protocol = "1.1"
     ) {
         $this->method = $method;
         $this->uri = $uri;
         $this->protocol = $protocol;
         $this->body = $body ?? new NullBody;
         $this->target = $target ?? ($uri->getPath() . ($uri->getQuery() ? "?" . $uri->getQuery() : ""));
-        $this->streamId = $streamId;
 
         foreach ($headers as $name => $value) {
             if (\is_array($value)) {
@@ -211,12 +205,5 @@ class Request {
      */
     public function setAttribute(string $key, $value) {
         $this->attributes[$key] = $value;
-    }
-
-    /**
-     * @return int HTTP/2 stream ID. Always 0 for HTTP/1.x.
-     */
-    public function getStreamId(): int {
-        return $this->streamId;
     }
 }

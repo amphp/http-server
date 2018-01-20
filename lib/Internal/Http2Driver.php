@@ -8,13 +8,11 @@ namespace Aerys\Internal;
 
 use Aerys\Body;
 use Aerys\ClientException;
-use Aerys\HttpStatus;
 use Aerys\NullBody;
+use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
-use Aerys\Server;
 use Amp\ByteStream\IteratorStream;
-use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Loop;
 use Amp\Uri\Uri;
@@ -64,66 +62,80 @@ class Http2Driver implements HttpDriver {
     const INADEQUATE_SECURITY = 0xc;
     const HTTP_1_1_REQUIRED = 0xd;
 
-    private $counter = "aaaaaaaa"; // 64 bit for ping (@TODO we maybe want to timeout once a day and reset the first letter of counter to "a")
+    /**
+     * 64 bit for ping (@TODO we maybe want to timeout once a day and reset the first letter of counter to "a").
+     * @var string
+     */
+    private $counter = "aaaaaaaa";
 
-    /** @var callable */
-    private $onRequest;
+    /** @var \Aerys\Internal\Client */
+    private $client;
 
-    /** @var callable */
-    private $onError;
-
-    /** @var callable */
-    private $write;
+    /** @var \Aerys\Options */
+    private $options;
 
     /** @var \Aerys\NullBody */
     private $nullBody;
 
+    /** @var \Aerys\Internal\TimeReference */
+    private $timeReference;
+
     /** @var int */
-    private $time;
+    private $window = 65536;
 
-    /** @var string */
-    private $date;
+    /** @var int */
+    private $initialWindowSize = 65536;
 
-    public function __construct() {
+    /** @var bool */
+    private $allowsPush = true;
+
+    /** @var int Last used stream ID. */
+    private $streamId = 0;
+
+    /** @var \Aerys\Internal\Http2Stream[] */
+    private $streams = [];
+
+    /** @var int[] */
+    private $streamIdMap = [];
+
+    /** @var \Amp\Emitter[] */
+    private $bodyEmitters = [];
+
+    /** @var int Number of streams that may be opened. */
+    private $remainingStreams;
+
+    /** @var int Number of pending responses. */
+    private $pendingResponses = 0;
+
+    /** @var callable */
+    private $onMessage;
+
+    /** @var callable */
+    private $write;
+
+    /** @var callable */
+    private $pause;
+
+    /** @var \Amp\Promise|null */
+    private $lastWrite;
+
+    public function __construct(Options $options, TimeReference $timeReference) {
+        $this->options = $options;
         $this->nullBody = new NullBody;
+        $this->timeReference = $timeReference;
+
+        $this->remainingStreams = $this->options->getMaxConcurrentStreams();
     }
 
-    public function setup(Server $server, callable $onRequest, callable $onError, callable $write) {
-        $server->onTimeUpdate(function (int $time, string $date) {
-            $this->time = $time;
-            $this->date = $date;
-        });
-
-        $this->onRequest = $onRequest;
-        $this->onError = $onError;
+    public function setup(Client $client, callable $onMessage, callable $onError, callable $write, callable $pause) {
+        $this->client = $client;
+        $this->onMessage = $onMessage;
+        // $onError is unused; protocol error responses are not required in HTTP/2, GOAWAY frames are used instead.
         $this->write = $write;
+        $this->pause = $pause;
     }
 
-    private function filter(Client $client, Response $response, Request $request = null): array {
-        $headers = [":status" => $response->getStatus()];
-        $headers = \array_merge($headers, $response->getHeaders());
-
-        // Remove headers that are obsolete in HTTP/2.
-        unset($headers["connection"], $headers["keep-alive"], $headers["transfer-encoding"]);
-
-        if ($request !== null && !empty($push = $response->getPush())) {
-            foreach ($push as $url => $pushHeaders) {
-                if ($client->allowsPush) {
-                    $this->dispatchInternalRequest($client, $request, $url, $pushHeaders);
-                } else {
-                    $headers["link"][] = "<$url>; rel=preload";
-                }
-            }
-        }
-
-        $headers["date"] = [$this->date];
-
-        return $headers;
-    }
-
-    public function dispatchInternalRequest(Client $client, Request $request, string $url, array $pushHeaders = null) {
-        $streamId = $request->getStreamId();
-
+    protected function dispatchInternalRequest(Request $request, int $streamId, string $url, array $pushHeaders = null) {
         if ($pushHeaders === null) {
             // headers to take over from original request if present
             $pushHeaders = array_intersect_key($request->getHeaders(), [
@@ -170,35 +182,58 @@ class Http2Driver implements HttpDriver {
             }
         }
 
-        $id = $client->streamId += 2;
-        $request = new Request("GET", $url, $headers, $this->nullBody, $path, "2.0", $id);
+        $id = $this->streamId += 2; // Server initiated stream IDs must be even.
+        $request = new Request("GET", $url, $headers, $this->nullBody, $path, "2.0");
+        $this->streamIdMap[\spl_object_hash($request)] = $id;
 
-        $client->streamWindow[$id] = $client->initialWindowSize;
-        $client->streamWindowBuffer[$id] = "";
+        $this->streams[$id] = new Http2Stream;
+        $this->streams[$id]->window = $this->initialWindowSize;
+        $this->streams[$id]->buffer = "";
 
         $headers = pack("N", $id) . HPack::encode($headers);
         if (\strlen($headers) >= 16384) {
             $split = str_split($headers, 16384);
             $headers = array_shift($split);
-            $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::NOFLAG, $streamId);
+            $this->writeFrame($headers, self::PUSH_PROMISE, self::NOFLAG, $streamId);
 
             $headers = array_pop($split);
             foreach ($split as $msgPart) {
-                $this->writeFrame($client, $msgPart, self::CONTINUATION, self::NOFLAG, $streamId);
+                $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $streamId);
             }
-            $this->writeFrame($client, $headers, self::CONTINUATION, self::END_HEADERS, $streamId);
+            $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $streamId);
         } else {
-            $this->writeFrame($client, $headers, self::PUSH_PROMISE, self::END_HEADERS, $streamId);
+            $this->writeFrame($headers, self::PUSH_PROMISE, self::END_HEADERS, $streamId);
         }
 
-        ($this->onRequest)($client, $request);
+        $this->pendingResponses++;
+        ($this->onMessage)($request);
     }
 
-    public function writer(Client $client, Response $response, Request $request = null): \Generator {
-        $id = $request !== null ? $request->getStreamId() : 0;
+    public function writer(Response $response, Request $request = null): \Generator {
+        \assert($request !== null); // HTTP/2 responses will always have an associated request.
+
+        $hash = \spl_object_hash($request);
+        $id = $this->streamIdMap[$hash] ?? 1; // Default ID of 1 for upgrade requests.
+        unset($this->streamIdMap[$hash]);
 
         try {
-            $headers = $this->filter($client, $response, $request);
+            $headers = \array_merge([":status" => $response->getStatus()], $response->getHeaders());
+
+            // Remove headers that are obsolete in HTTP/2.
+            unset($headers["connection"], $headers["keep-alive"], $headers["transfer-encoding"]);
+
+            $headers["date"] = [$this->timeReference->getCurrentDate()];
+
+            if ($request !== null && !empty($push = $response->getPush())) {
+                foreach ($push as $url => $pushHeaders) {
+                    if ($this->allowsPush) {
+                        $this->dispatchInternalRequest($request, $id, $url, $pushHeaders);
+                    } else {
+                        $headers["link"][] = "<$url>; rel=preload";
+                    }
+                }
+            }
+
             $headers = HPack::encode($headers);
 
             // @TODO decide whether to use max-frame size
@@ -206,19 +241,19 @@ class Http2Driver implements HttpDriver {
             if (\strlen($headers) > 16384) {
                 $split = str_split($headers, 16384);
                 $headers = array_shift($split);
-                $this->writeFrame($client, $headers, self::HEADERS, self::NOFLAG, $id);
+                $this->writeFrame($headers, self::HEADERS, self::NOFLAG, $id);
 
                 $headers = array_pop($split);
                 foreach ($split as $msgPart) {
-                    $this->writeFrame($client, $msgPart, self::CONTINUATION, self::NOFLAG, $id);
+                    $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $id);
                 }
-                $this->writeFrame($client, $headers, self::CONTINUATION, self::END_HEADERS, $id);
+                $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $id);
             } else {
-                $this->writeFrame($client, $headers, self::HEADERS, self::END_HEADERS, $id);
+                $this->writeFrame($headers, self::HEADERS, self::END_HEADERS, $id);
             }
 
             if ($request !== null && $request->getMethod() === "HEAD") {
-                $this->writeData($client, "", $id, true);
+                $this->writeData("", $id, true);
                 while (null !== yield); // Ignore body portions written.
             } else {
                 $buffer = "";
@@ -226,160 +261,153 @@ class Http2Driver implements HttpDriver {
                 while (null !== $part = yield) {
                     $buffer .= $part;
 
-                    if (\strlen($buffer) >= $client->options->getOutputBufferSize()) {
-                        $this->writeData($client, $buffer, $id, false);
+                    if (\strlen($buffer) >= $this->options->getOutputBufferSize()) {
+                        $this->writeData($buffer, $id, false);
                         $buffer = "";
                     }
 
-                    if ($client->isDead & Client::CLOSED_WR) {
+                    if ($this->client->getStatus() & Client::CLOSED_WR) {
                         return;
                     }
                 }
 
-                $this->writeData($client, $buffer, $id, true);
+                $this->writeData($buffer, $id, true);
             }
         } finally {
-            if ((!isset($headers) || isset($part)) && !($client->isDead & Client::CLOSED_WR)) {
+            if ((!isset($headers) || isset($part)) && !($this->client->getStatus() & Client::CLOSED_WR)) {
                 if (($buffer ?? "") !== "") {
-                    $this->writeData($client, $buffer, $id, false);
+                    $this->writeData($buffer, $id, false);
                 }
 
-                $this->writeFrame($client, pack("N", self::INTERNAL_ERROR), self::RST_STREAM, self::NOFLAG, $id);
+                $this->writeFrame(pack("N", self::INTERNAL_ERROR), self::RST_STREAM, self::NOFLAG, $id);
 
-                if (isset($client->bodyEmitters[$id])) {
-                    $client->bodyEmitters[$id]->fail(new ClientException);
-                    unset($client->bodyEmitters[$id]);
+                unset($this->streams[$id]);
+
+                if (isset($this->bodyEmitters[$id])) {
+                    $this->bodyEmitters[$id]->fail(new ClientException);
+                    unset($this->bodyEmitters[$id]);
                 }
             }
 
-            if ($client->bufferDeferred) {
-                $keepAlives = &$client->remainingRequests; // avoid cyclic reference
-                $client->bufferDeferred->onResolve(static function () use (&$keepAlives) {
-                    $keepAlives++;
+            if ($this->lastWrite) {
+                $this->lastWrite->onResolve(function () {
+                    $this->remainingStreams++;
                 });
             } else {
-                $client->remainingRequests++;
+                $this->remainingStreams++;
             }
         }
     }
 
     // Note: bufferSize is increased in writeData(), but also here to respect data in streamWindowBuffers;
     // thus needs to be decreased here when shifting data from streamWindowBuffers to writeData()
-    public function writeData(Client $client, string $data, int $stream, bool $last) {
+    protected function writeData(string $data, int $stream, bool $last) {
         $length = \strlen($data);
 
-        if ($client->streamWindowBuffer[$stream] !== "" || $client->window < $length || $client->streamWindow[$stream] < $length) {
-            $client->streamWindowBuffer[$stream] .= $data;
+        if ($this->streams[$stream]->buffer !== "" || $this->window < $length || $this->streams[$stream]->window < $length) {
+            $this->streams[$stream]->buffer .= $data;
 
             if ($last) {
-                $client->streamEnd[$stream] = true;
+                $this->streams[$stream]->end = true;
             }
 
-            $client->bufferSize += $length;
-            if (!$client->bufferDeferred && $client->bufferSize > $client->options->getSoftStreamCap()) {
-                $client->bufferDeferred = new Deferred;
-            }
-
-            $this->tryDataSend($client, $stream);
+            $this->tryDataSend($stream);
             return;
         }
 
-        $client->window -= $length;
+        $this->window -= $length;
         if ($length > 16384) {
             $split = str_split($data, 16384);
             $data = array_pop($split);
             foreach ($split as $part) {
-                $this->writeFrame($client, $part, self::DATA, self::NOFLAG, $stream);
+                $this->writeFrame($part, self::DATA, self::NOFLAG, $stream);
             }
         }
 
-        $this->writeFrame($client, $data, self::DATA, $last ? self::END_STREAM : self::NOFLAG, $stream);
+        $this->writeFrame($data, self::DATA, $last ? self::END_STREAM : self::NOFLAG, $stream);
 
         if ($last) {
-            unset($client->streamWindow[$stream], $client->streamWindowBuffer[$stream]);
+            $this->pendingResponses--;
+            unset($this->streams[$stream]);
+            $this->remainingStreams++;
         } else {
-            $client->streamWindow[$stream] -= $length;
+            $this->streams[$stream]->window -= $length;
         }
     }
 
-    private function tryDataSend(Client $client, int $id) {
-        $delta = min($client->window, $client->streamWindow[$id]);
-        $length = \strlen($client->streamWindowBuffer[$id]);
+    private function tryDataSend(int $id) {
+        $delta = \min($this->window, $this->streams[$id]->window);
+        $length = \strlen($this->streams[$id]->buffer);
 
         if ($length === 0) {
             return;
         }
 
         if ($delta >= $length) {
-            $client->window -= $length;
-            $client->bufferSize -= $length;
+            $this->window -= $length;
 
             if ($length > 16384) {
-                $split = str_split($client->streamWindowBuffer[$id], 16384);
-                $client->streamWindowBuffer[$id] = array_pop($split);
+                $split = str_split($this->streams[$id]->buffer, 16384);
+                $this->streams[$id]->buffer = array_pop($split);
                 foreach ($split as $part) {
-                    $this->writeFrame($client, $part, self::DATA, self::NOFLAG, $id);
+                    $this->writeFrame($part, self::DATA, self::NOFLAG, $id);
                 }
             }
 
-            if (isset($client->streamEnd[$id])) {
-                $this->writeFrame($client, $client->streamWindowBuffer[$id], self::DATA, self::END_STREAM, $id);
-                unset($client->streamWindowBuffer[$id], $client->streamEnd[$id], $client->streamWindow[$id]);
+            if ($this->streams[$id]->end) {
+                $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::END_STREAM, $id);
+                $this->pendingResponses--;
+                unset($this->streams[$id]);
+                $this->remainingStreams++;
             } else {
-                $this->writeFrame($client, $client->streamWindowBuffer[$id], self::DATA, self::NOFLAG, $id);
-                $client->streamWindow[$id] -= $length;
-                $client->streamWindowBuffer[$id] = "";
+                $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::NOFLAG, $id);
+                $this->streams[$id]->window -= $length;
+                $this->streams[$id]->buffer = "";
             }
             return;
         }
 
         if ($delta > 0) {
-            $data = $client->streamWindowBuffer[$id];
+            $data = $this->streams[$id]->buffer;
             $end = $delta - 16384;
-            $client->bufferSize -= $delta;
 
             for ($off = 0; $off < $end; $off += 16384) {
-                $this->writeFrame($client, substr($data, $off, 16384), self::DATA, self::NOFLAG, $id);
+                $this->writeFrame(substr($data, $off, 16384), self::DATA, self::NOFLAG, $id);
             }
 
-            $this->writeFrame($client, substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
+            $this->writeFrame(substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
 
-            $client->streamWindowBuffer[$id] = substr($data, $delta);
-            $client->streamWindow[$id] -= $delta;
-            $client->window -= $delta;
+            $this->streams[$id]->buffer = substr($data, $delta);
+            $this->streams[$id]->window -= $delta;
+            $this->window -= $delta;
         }
     }
 
-    public function writePing(Client $client) {
+    protected function writePing() {
         // no need to receive the PONG frame, that's anyway registered by the keep-alive handler
         $data = $this->counter++;
-        $this->writeFrame($client, $data, self::PING, self::NOFLAG);
+        $this->writeFrame($data, self::PING, self::NOFLAG);
     }
 
-    protected function writeFrame(Client $client, string $data, string $type, string $flags, int $stream = 0) {
+    protected function writeFrame(string $data, string $type, string $flags, int $stream = 0) {
         \assert($stream >= 0);
         $data = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
 
-        \assert(print \preg_replace_callback("/[^\x20-\x7e]/", function (array $matches) {
-            return "\\x" . \dechex(\ord($matches[0]));
-        }, $data) . "\n");
-
-        ($this->write)($client, $data, $type == self::DATA && ($flags & self::END_STREAM) !== "\0");
+        $this->lastWrite = ($this->write)($data);
     }
 
     /**
-     * @param \Aerys\Internal\Client $client
      * @param string $settings HTTP2-Settings header content.
      * @param bool $upgraded True if the connection was upgraded from an HTTP/1.1 upgrade request.
      *
      * @return \Generator
      */
-    public function parser(Client $client, string $settings = "", bool $upgraded = false): \Generator {
-        $maxHeaderSize = $client->options->getMaxHeaderSize();
-        $maxBodySize = $client->options->getMaxBodySize();
-        $maxStreams = $client->options->getMaxConcurrentStreams();
-        // $bodyEmitSize = $client->options->ioGranularity; // redundant because data frames, which is 16 KB
-        $maxFramesPerSecond = $client->options->getMaxFramesPerSecond();
+    public function parser(string $settings = "", bool $upgraded = false): \Generator {
+        $maxHeaderSize = $this->options->getMaxHeaderSize();
+        $maxBodySize = $this->options->getMaxBodySize();
+        $maxStreams = $this->options->getMaxConcurrentStreams();
+        // $bodyEmitSize = $this->options->ioGranularity; // redundant because data frames, which is 16 KB
+        $maxFramesPerSecond = $this->options->getMaxFramesPerSecond();
         $lastReset = 0;
         $framesLastSecond = 0;
 
@@ -387,12 +415,12 @@ class Http2Driver implements HttpDriver {
         $bodyLens = [];
         $table = new HPack;
 
-        if ($client->isEncrypted && ($client->cryptoInfo["alpn_protocol"] ?? null) !== "h2") {
-            ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: ALPN must be h2");
-            return;
+        if ($this->client->isEncrypted() && ($this->client->getCryptoContext()["alpn_protocol"] ?? null) !== "h2") {
+            $error = self::CONNECT_ERROR;
+            goto connection_error;
         }
 
-        $setSetting = function (string $buffer) use ($client, $table): int {
+        $setSetting = function (string $buffer) use ($table): int {
             $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value"] >= 0
 
             switch ($unpacked["setting"]) {
@@ -409,7 +437,7 @@ class Http2Driver implements HttpDriver {
                         return self::FLOW_CONTROL_ERROR;
                     }
 
-                    $client->initialWindowSize = $unpacked["value"];
+                    $this->initialWindowSize = $unpacked["value"];
                     return 0;
 
                 case self::ENABLE_PUSH:
@@ -417,7 +445,7 @@ class Http2Driver implements HttpDriver {
                         return self::PROTOCOL_ERROR;
                     }
 
-                    $client->allowsPush = (bool) $unpacked["value"];
+                    $this->allowsPush = (bool) $unpacked["value"];
                     return 0;
 
                 default:
@@ -441,44 +469,40 @@ class Http2Driver implements HttpDriver {
 
         if ($upgraded) {
             // Upgraded connections automatically assume an initial stream with ID 1.
-            $client->streamWindow[1] = $client->initialWindowSize;
-            $client->streamWindowBuffer[1] = "";
+            $this->streams[1] = new Http2Stream;
+            $this->streams[1]->window = $this->initialWindowSize;
+            $this->remainingStreams--;
         }
 
-        $this->writeFrame($client, pack("nNnN", self::INITIAL_WINDOW_SIZE, $maxBodySize + 256, self::MAX_CONCURRENT_STREAMS, $maxStreams), self::SETTINGS, self::NOFLAG);
-        //$this->writeFrame($client, "\x7f\xfe\xff\xff", self::WINDOW_UPDATE, self::NOFLAG); // effectively disabling global flow control...
+        // Initial settings frame.
+        $this->writeFrame(
+            pack("nNnN", self::INITIAL_WINDOW_SIZE, $maxBodySize + 256, self::MAX_CONCURRENT_STREAMS, $maxStreams),
+            self::SETTINGS,
+            self::NOFLAG
+        );
 
         $buffer = yield;
 
         while (\strlen($buffer) < \strlen(self::PREFACE)) {
             $buffer .= yield;
         }
+
         if (\strncmp($buffer, self::PREFACE, \strlen(self::PREFACE)) !== 0) {
-            $start = \strpos($buffer, "HTTP/") + 5;
-            if ($start < \strlen($buffer)) {
-                $protocol = \substr($buffer, $start, \strpos($buffer, "\r\n", $start) - $start);
-                ($this->onError)($client, HttpStatus::HTTP_VERSION_NOT_SUPPORTED, "Unsupported version {$protocol}");
-            }
-            ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad request: invalid preface");
-            return;
+            $error = self::PROTOCOL_ERROR;
+            goto connection_error;
         }
+
         $buffer = \substr($buffer, \strlen(self::PREFACE));
-        $client->remainingRequests = $maxStreams;
+        $this->remainingStreams = $maxStreams;
 
         try {
             while (true) {
                 if (++$framesLastSecond > $maxFramesPerSecond / 2) {
-                    $time = $this->time;
+                    $time = $this->timeReference->getCurrentTime();
                     if ($lastReset === $time) {
                         if ($framesLastSecond > $maxFramesPerSecond) {
-                            Loop::disable($client->readWatcher); // aka tiny frame DoS prevention
-                            Loop::delay(1000, static function (string $watcher, Client $client) {
-                                if (!($client->isDead & Client::CLOSED_RD)) {
-                                    Loop::enable($client->readWatcher);
-                                    $client->requestParser->next();
-                                }
-                            }, $client);
-                            yield;
+                            $resume = ($this->pause)(); // aka tiny frame DoS prevention
+                            Loop::delay(1000, $resume);
                             $framesLastSecond = 0;
                         }
                     } else {
@@ -503,14 +527,6 @@ class Http2Driver implements HttpDriver {
                     $id = ~$id;
                 }*/
 
-                // For debugging flag and type values.
-                \assert(function () use ($flags, $type) {
-                    $flags = bin2hex($flags);
-                    $type = \bin2hex($type);
-
-                    return true;
-                });
-
                 $buffer = \substr($buffer, 9);
 
                 switch ($type) {
@@ -520,7 +536,7 @@ class Http2Driver implements HttpDriver {
                             goto connection_error;
                         }
 
-                        if (!isset($client->bodyEmitters[$id])) {
+                        if (!isset($this->bodyEmitters[$id])) {
                             if (isset($headers[$id])) {
                                 $error = self::PROTOCOL_ERROR;
                                 goto connection_error;
@@ -554,7 +570,7 @@ class Http2Driver implements HttpDriver {
                             goto connection_error;
                         }
 
-                        if (($remaining = $bodyLens[$id] + $length - ($client->streamWindow[$id] ?? $maxBodySize)) > 0) {
+                        if (($remaining = $bodyLens[$id] + $length - ($this->streams[$id]->window ?? $maxBodySize)) > 0) {
                             $error = self::FLOW_CONTROL_ERROR;
                             goto connection_error;
                         }
@@ -567,13 +583,13 @@ class Http2Driver implements HttpDriver {
                         $body = \substr($buffer, 0, $length - $padding);
                         $buffer = \substr($buffer, $length);
                         if ($body !== "") {
-                            $client->bodyEmitters[$id]->emit($body);
+                            $this->bodyEmitters[$id]->emit($body);
                         }
 
                         if (($flags & self::END_STREAM) !== "\0") {
-                            unset($bodyLens[$id], $client->streamWindow[$id]);
-                            $emitter = $client->bodyEmitters[$id];
-                            unset($client->bodyEmitters[$id]);
+                            unset($bodyLens[$id], $this->streams[$id]);
+                            $emitter = $this->bodyEmitters[$id];
+                            unset($this->bodyEmitters[$id]);
                             $emitter->complete();
                         } else {
                             $bodyLens[$id] += $length;
@@ -592,7 +608,7 @@ class Http2Driver implements HttpDriver {
                             goto connection_error;
                         }
 
-                        if ($client->remainingRequests-- <= 0) {
+                        if ($this->remainingStreams-- <= 0) {
                             $error = self::PROTOCOL_ERROR;
                             goto connection_error;
                         }
@@ -686,7 +702,7 @@ class Http2Driver implements HttpDriver {
                         continue 2;
 
                     case self::RST_STREAM:
-                        if ($length != 4) {
+                        if ($length !== 4) {
                             $error = self::FRAME_SIZE_ERROR;
                             goto connection_error;
                         }
@@ -702,17 +718,15 @@ class Http2Driver implements HttpDriver {
 
                         $error = \unpack("N", $buffer)[1];
 
-                        if (isset($client->bodyEmitters[$id])) {
-                            $client->bodyEmitters[$id]->fail(new ClientException);
-                            unset($client->bodyEmitters[$id]);
+                        if (isset($this->bodyEmitters[$id])) {
+                            $this->bodyEmitters[$id]->fail(new ClientException);
+                            unset($this->bodyEmitters[$id]);
                         }
 
                         unset(
                             $headers[$id],
                             $bodyLens[$id],
-                            $client->streamWindow[$id],
-                            $client->streamEnd[$id],
-                            $client->streamWindowBuffer[$id]
+                            $this->streams[$id]
                         );
 
                         $buffer = \substr($buffer, 4);
@@ -758,7 +772,7 @@ class Http2Driver implements HttpDriver {
                             $length -= 6;
                         }
 
-                        $this->writeFrame($client, "", self::SETTINGS, self::ACK);
+                        $this->writeFrame("", self::SETTINGS, self::ACK);
                         continue 2;
 
                     // PUSH_PROMISE sent by client is a PROTOCOL_ERROR (just like undefined frame types)
@@ -783,7 +797,7 @@ class Http2Driver implements HttpDriver {
                         if (($flags & self::ACK) !== "\0") {
                             // do not resolve ping - unneeded because of connectionTimeout
                         } else {
-                            $this->writeFrame($client, $data, self::PING, self::ACK);
+                            $this->writeFrame($data, self::PING, self::ACK);
                         }
 
                         $buffer = \substr($buffer, 8);
@@ -811,13 +825,10 @@ class Http2Driver implements HttpDriver {
                         }
 
                         if ($error !== 0) {
-                            // @TODO Log error?
-                            //($this->onError)($client, HttpStatus::BAD_REQUEST, "HTTP/2 Error: " . $error);
-                            return;
+                            // @TODO Log error, since the client says we made a boo-boo.
                         }
 
-                        $client->shouldClose = true;
-                        ($this->write)($client, "", true); // Force close with empty write with final flag.
+                        $this->client->close();
                         return;
 
                     case self::WINDOW_UPDATE:
@@ -841,19 +852,21 @@ class Http2Driver implements HttpDriver {
                         $windowSize = \unpack("N", $buffer)[1];
 
                         if ($id) {
-                            if (!isset($client->streamWindow[$id])) {
-                                $client->streamWindow[$id] = $client->initialWindowSize + $windowSize;
+                            if (!isset($this->streams[$id])) {
+                                $this->streams[$id] = new Http2Stream;
+                                $this->streams[$id]->window = $this->initialWindowSize + $windowSize;
                             } else {
-                                $client->streamWindow[$id] += $windowSize;
+                                $this->streams[$id]->window += $windowSize;
                             }
-                            if (isset($client->streamWindowBuffer[$id])) {
-                                $this->tryDataSend($client, $id);
+
+                            if ($this->streams[$id]->buffer !== "") {
+                                $this->tryDataSend($id);
                             }
                         } else {
-                            $client->window += $windowSize;
-                            foreach ($client->streamWindowBuffer as $stream => $data) {
-                                $this->tryDataSend($client, $stream);
-                                if ($client->window == 0) {
+                            $this->window += $windowSize;
+                            foreach ($this->streams as $id => $stream) {
+                                $this->tryDataSend($id);
+                                if ($this->window == 0) {
                                     break;
                                 }
                             }
@@ -910,7 +923,7 @@ class Http2Driver implements HttpDriver {
                     }
 
                     $target = $headers[":path"][0];
-                    $scheme = $headers[":scheme"][0] ?? ($client->isEncrypted ? "https" : "http");
+                    $scheme = $headers[":scheme"][0] ?? ($this->client->isEncrypted() ? "https" : "http");
                     $host = $headers[":authority"][0] ?? "";
 
                     if ($host === "") {
@@ -922,40 +935,47 @@ class Http2Driver implements HttpDriver {
                         $port = (int) \substr($host, $colon + 1);
                         $host = \substr($host, 0, $colon);
                     } else {
-                        $port = $client->serverPort;
+                        $port = $this->client->getLocalPort();
                     }
 
-                    $uri = new Uri($scheme . "://" . \rawurldecode($host) . ":" . $port . $target);
-
-                    if (!isset($client->streamWindow[$id])) {
-                        $client->streamWindow[$id] = $client->initialWindowSize;
+                    if ($port) {
+                        $uri = new Uri($scheme . "://" . \rawurldecode($host) . ":" . $port . $target);
+                    } else {
+                        $uri = new Uri($scheme . "://" . \rawurldecode($host) . $target);
                     }
-                    $client->streamWindowBuffer[$id] = "";
+
+                    if (!isset($this->streams[$id])) {
+                        $this->streams[$id] = new Http2Stream;
+                        $this->streams[$id]->window = $this->initialWindowSize;
+                    }
 
                     if ($streamEnd) {
-                        $request = new Request($headers[":method"][0], $uri, $headers, $this->nullBody, $target, "2.0", $id);
-                        ($this->onRequest)($client, $request);
+                        $request = new Request($headers[":method"][0], $uri, $headers, $this->nullBody, $target, "2.0");
+                        $this->streamIdMap[\spl_object_hash($request)] = $id;
+                        $this->pendingResponses++;
+                        ($this->onMessage)($request);
                     } else {
-                        $client->bodyEmitters[$id] = new Emitter;
+                        $this->bodyEmitters[$id] = new Emitter;
                         $body = new Body(
-                            new IteratorStream($client->bodyEmitters[$id]->iterate()),
-                            function (int $bodySize) use ($id, $client) {
-                                if (!isset($client->streamWindow[$id], $client->bodyEmitters[$id])
-                                    || $bodySize <= $client->streamWindow[$id]
+                            new IteratorStream($this->bodyEmitters[$id]->iterate()),
+                            function (int $bodySize) use ($id) {
+                                if (!isset($this->streams[$id], $this->bodyEmitters[$id])
+                                    || $bodySize <= $this->streams[$id]->window
                                 ) {
                                     return;
                                 }
 
-                                $increment = $bodySize - $client->streamWindow[$id];
-                                $client->streamWindow[$id] = $bodySize;
+                                $increment = $bodySize - $this->streams[$id]->window;
+                                $this->streams[$id]->window = $bodySize;
 
-                                $this->writeFrame($client, pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG, $id);
+                                $this->writeFrame(pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG, $id);
                             }
                         );
 
-                        $request = new Request($headers[":method"][0], $uri, $headers, $body, $target, "2.0", $id);
-
-                        ($this->onRequest)($client, $request);
+                        $request = new Request($headers[":method"][0], $uri, $headers, $body, $target, "2.0");
+                        $this->streamIdMap[\spl_object_hash($request)] = $id;
+                        $this->pendingResponses++;
+                        ($this->onMessage)($request);
                         $bodyLens[$id] = 0;
                     }
                     continue;
@@ -967,9 +987,9 @@ class Http2Driver implements HttpDriver {
                         goto connection_error;
                     }
 
-                    $this->writeFrame($client, pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
-                    unset($headers[$id], $bodyLens[$id], $client->streamWindow[$id]);
-                    $client->remainingRequests++;
+                    $this->writeFrame(pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
+                    unset($headers[$id], $bodyLens[$id], $this->streams[$id]);
+                    $this->remainingStreams++;
 
                     // consume whole frame to be able to continue this connection
                     $length -= \strlen($buffer);
@@ -982,20 +1002,26 @@ class Http2Driver implements HttpDriver {
                 }
             }
         } finally {
-            if (!empty($client->bodyEmitters)) {
+            if (!empty($this->bodyEmitters)) {
                 $exception = new ClientException("Client disconnected");
-                foreach ($client->bodyEmitters as $id => $emitter) {
-                    unset($client->bodyEmitters[$id]);
+                foreach ($this->bodyEmitters as $id => $emitter) {
+                    unset($this->bodyEmitters[$id]);
                     $emitter->fail($exception);
                 }
             }
         }
 
         connection_error: {
-            $client->shouldClose = true;
-            $this->writeFrame($client, pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
-
-            Loop::disable($client->readWatcher);
+            $this->writeFrame(pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
+            $this->client->close();
         }
+    }
+
+    public function pendingRequestCount(): int {
+        return \count($this->bodyEmitters);
+    }
+
+    public function pendingResponseCount(): int {
+        return $this->pendingResponses;
     }
 }

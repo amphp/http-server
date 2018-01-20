@@ -6,27 +6,27 @@ use Amp\Socket\ServerSocket;
 
 class DetachedSocket extends ServerSocket {
     /** @var callable */
-    private $clearer;
+    private $client;
 
     /**
-     * @param callable $clearer
+     * @param Client $client
      * @param resource $resource
      * @param int $chunkSize
      */
-    public function __construct(callable $clearer, $resource, int $chunkSize = 65536) {
+    public function __construct(Client $client, $resource, int $chunkSize = 65536) {
         parent::__construct($resource, $chunkSize);
-        $this->clearer = $clearer;
+        $this->client = $client;
     }
 
     public function close() {
         parent::close();
-        ($this->clearer)();
-        $this->clearer = null;
+        $this->client->close();
+        $this->client = null;
     }
 
     public function __destruct() {
-        if ($this->clearer) {
-            ($this->clearer)();
+        if ($this->client) {
+            $this->client->close();
         }
     }
 }

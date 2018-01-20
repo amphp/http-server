@@ -4,14 +4,13 @@ namespace Aerys\Test;
 
 use Aerys\Internal\Client;
 use Aerys\Internal\Http1Driver;
-use Aerys\Internal\HttpDriver;
+use Aerys\Internal\TimeReference;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;
 use Amp\Artax\Internal\Parser;
 use Amp\ByteStream\InMemoryStream;
-use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Uri\Uri;
@@ -20,7 +19,7 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideUnparsableRequests
      */
-    public function testBadRequestBufferedParse($unparsable, $errCode, $errMsg, $opts) {
+    public function testBadRequestBufferedParse(string $unparsable, int $errCode, string $errMsg, Options $options) {
         $invoked = 0;
         $resultCode = null;
         $errorMsg = null;
@@ -31,14 +30,19 @@ class Http1DriverTest extends TestCase {
 
         $errorCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$errorMsg) {
             $invoked++;
-            list(, $resultCode, $errorMsg) = $emitStruct;
+            list($resultCode, $errorMsg) = $emitStruct;
         };
 
-        $client = new Client;
-        $client->options = $opts;
-        $driver = new Http1Driver;
-        $driver->setup($this->createMock(Server::class), $emitCallback, $errorCallback, $this->createCallback(0));
-        $parser = $driver->parser($client);
+        $driver = new Http1Driver($options, $this->createMock(TimeReference::class));
+        $driver->setup(
+            $this->createMock(Client::class),
+            $emitCallback,
+            $errorCallback,
+            $this->createCallback(0),
+            $this->createCallback(0)
+        );
+
+        $parser = $driver->parser();
         $parser->send($unparsable);
 
         $this->assertTrue($invoked > 0);
@@ -49,7 +53,7 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideUnparsableRequests
      */
-    public function testBadRequestIncrementalParse($unparsable, $errCode, $errMsg, $opts) {
+    public function testBadRequestIncrementalParse(string $unparsable, int $errCode, string $errMsg, Options $options) {
         $invoked = 0;
         $resultCode = null;
         $errorMsg = null;
@@ -60,14 +64,19 @@ class Http1DriverTest extends TestCase {
 
         $errorCallback = function (...$emitStruct) use (&$invoked, &$resultCode, &$errorMsg) {
             $invoked++;
-            list(, $resultCode, $errorMsg) = $emitStruct;
+            list($resultCode, $errorMsg) = $emitStruct;
         };
 
-        $client = new Client;
-        $client->options = $opts;
-        $driver = new Http1Driver;
-        $driver->setup($this->createMock(Server::class), $emitCallback, $errorCallback, $this->createCallback(0));
-        $parser = $driver->parser($client);
+        $driver = new Http1Driver($options, $this->createMock(TimeReference::class));
+        $driver->setup(
+            $this->createMock(Client::class),
+            $emitCallback,
+            $errorCallback,
+            $this->createCallback(0),
+            $this->createCallback(0)
+        );
+
+        $parser = $driver->parser();
 
         for ($i = 0, $c = strlen($unparsable); $i < $c; $i++) {
             $parser->send($unparsable[$i]);
@@ -85,16 +94,20 @@ class Http1DriverTest extends TestCase {
      * @dataProvider provideParsableRequests
      */
     public function testBufferedRequestParse(string $msg, array $expectations) {
-        $resultEmitter = function ($client, Request $req) use (&$request) {
+        $resultEmitter = function (Request $req) use (&$request) {
             $request = $req;
         };
 
-        $client = new Client;
-        $client->options = new Options;
-        $driver = new Http1Driver;
-        $driver->setup($this->createMock(Server::class), $resultEmitter, $this->createCallback(0), $this->createCallback(0));
+        $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
+        $driver->setup(
+            $this->createMock(Client::class),
+            $resultEmitter,
+            $this->createCallback(0),
+            $this->createCallback(0),
+            $this->createCallback(1)
+        );
 
-        $parser = $driver->parser($client);
+        $parser = $driver->parser();
         $parser->send($msg);
 
         $this->assertInstanceOf(Request::class, $request);
@@ -113,17 +126,20 @@ class Http1DriverTest extends TestCase {
      * @dataProvider provideParsableRequests
      */
     public function testIncrementalRequestParse($msg, $expectations) {
-        $resultEmitter = function ($client, Request $req) use (&$request) {
+        $resultEmitter = function (Request $req) use (&$request) {
             $request = $req;
         };
 
-        $client = new Client;
-        $client->options = new Options;
-        $client->serverPort = 80;
-        $driver = new Http1Driver;
-        $driver->setup($this->createMock(Server::class), $resultEmitter, $this->createCallback(0), $this->createCallback(0));
+        $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
+        $driver->setup(
+            $this->createMock(Client::class),
+            $resultEmitter,
+            $this->createCallback(0),
+            $this->createCallback(0),
+            $this->createCallback(1)
+        );
 
-        $parser = $driver->parser($client);
+        $parser = $driver->parser();
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
         }
@@ -153,16 +169,20 @@ class Http1DriverTest extends TestCase {
             "\r\n" .
             $originalBody;
 
-        $resultEmitter = function ($client, Request $req) use (&$request) {
+        $resultEmitter = function (Request $req) use (&$request) {
             $request = $req;
         };
 
-        $client = new Client;
-        $client->options = new Options;
-        $driver = new Http1Driver;
-        $driver->setup($this->createMock(Server::class), $resultEmitter, $this->createCallback(0), $this->createCallback(0));
+        $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
+        $driver->setup(
+            $this->createMock(Client::class),
+            $resultEmitter,
+            $this->createCallback(0),
+            $this->createCallback(0),
+            $this->createCallback(1)
+        );
 
-        $parser = $driver->parser($client);
+        $parser = $driver->parser();
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
         }
@@ -191,16 +211,20 @@ class Http1DriverTest extends TestCase {
 
         $expectedBody = "woot!test";
 
-        $resultEmitter = function ($client, Request $req) use (&$request) {
+        $resultEmitter = function (Request $req) use (&$request) {
             $request = $req;
         };
 
-        $client = new Client;
-        $client->options = (new Options)->withIoGranularity(1);
-        $driver = new Http1Driver;
-        $driver->setup($this->createMock(Server::class), $resultEmitter, $this->createCallback(0), $this->createCallback(0));
+        $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
+        $driver->setup(
+            $this->createMock(Client::class),
+            $resultEmitter,
+            $this->createCallback(0),
+            $this->createCallback(0),
+            $this->createCallback(1)
+        );
 
-        $parser = $driver->parser($client);
+        $parser = $driver->parser();
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
             $parser->send($msg[$i]);
         }
@@ -469,23 +493,24 @@ class Http1DriverTest extends TestCase {
      * @dataProvider provideUpgradeBodySizeData
      */
     public function testUpgradeBodySizeContentLength($data, $payload) {
-        $client = new Client;
-
-        $resultEmitter = function ($client, Request $req) use (&$request) {
+        $resultEmitter = function (Request $req) use (&$request) {
             $body = $req->getBody();
             $body->increaseMaxSize(26);
             $request = $req;
         };
 
-        $client->options = (new Options)->withMaxBodySize(4);
-        $client->readWatcher = Loop::defer(function () {
-        }); // dummy watcher
+        $options = (new Options)->withMaxBodySize(4);
 
-        $driver = new Http1Driver;
-        $driver->setup($this->createMock(Server::class), $resultEmitter, $this->createCallback(0), $this->createCallback(0));
-        $parser = $driver->parser($client);
+        $driver = new Http1Driver($options, $this->createMock(TimeReference::class));
+        $driver->setup(
+            $this->createMock(Client::class),
+            $resultEmitter,
+            $this->createCallback(0),
+            $this->createCallback(0),
+            $this->createCallback(1)
+        );
 
-        $client->requestParser = $parser;
+        $parser = $driver->parser();
 
         $parser->send($data);
 
@@ -514,32 +539,29 @@ class Http1DriverTest extends TestCase {
     public function testPipelinedRequests() {
         list($payloads, $results) = array_map(null, ...$this->provideUpgradeBodySizeData());
 
-        $client = new Client;
+        $pendingResponses = 0;
 
-        $resultEmitter = function ($_, Request $req) use (&$request, $client) {
-            $client->pendingResponses++;
+        $resultEmitter = function (Request $req) use (&$request, &$pendingResponses) {
+            $pendingResponses++;
             $request = $req;
         };
 
-        $client->options = new Options;
-        $client->remainingRequests = 3;
-        $client->readWatcher = Loop::defer(function () {
-        }); // dummy watcher
-        $driver = new Http1Driver;
+        $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
         $driver->setup(
-            $this->createMock(Server::class),
+            $this->createMock(Client::class),
             $resultEmitter,
             $this->createCallback(0),
-            function ($client, $final = false) {
-                $client->writeBuffer = "";
-                if ($final) {
-                    $client->pendingResponses--;
-                }
+            function ($data, $close) use (&$pendingResponses) {
+                $pendingResponses--;
+            },
+            function () use (&$parser) {
+                return function () use ($parser) {
+                    $parser->send("");
+                };
             }
         );
 
-        $parser = $driver->parser($client);
-        $client->requestParser = $parser;
+        $parser = $driver->parser();
 
         $parser->send($payloads[0] . $payloads[1]);
 
@@ -550,7 +572,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertSame($results[0], $body);
 
-        $writer = $driver->writer($client, new Response\EmptyResponse, $request);
+        $writer = $driver->writer(new Response\EmptyResponse, $request);
         $request = null;
         $writer->send(null);
 
@@ -561,7 +583,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertSame($results[1], $body);
 
-        $writer = $driver->writer($client, new Response\EmptyResponse);
+        $writer = $driver->writer(new Response\EmptyResponse);
         $request = null;
         $writer->send(null);
 
@@ -574,11 +596,11 @@ class Http1DriverTest extends TestCase {
 
         $this->assertSame($results[0], $body);
 
-        $writer = $driver->writer($client, new Response\EmptyResponse);
+        $writer = $driver->writer(new Response\EmptyResponse);
         $request = null;
         $writer->send(null);
 
-        $this->assertSame(0, $client->pendingResponses);
+        $this->assertSame(0, $pendingResponses);
     }
 
     public function verifyWrite($input, $status, $headers, $data) {
@@ -606,23 +628,23 @@ class Http1DriverTest extends TestCase {
                 $callback(0, "date");
             });
 
-        $driver = new Http1Driver;
+        $options = (new Options)->withConnectionTimeout(60);
+
+        $driver = new Http1Driver($options, $this->createMock(TimeReference::class));
         $driver->setup(
-            $server,
+            $this->createMock(Client::class),
             $this->createCallback(0),
             $this->createCallback(0),
-            function (Client $client, string $data, bool $final = false) use (&$buffer, &$fin) {
+            function (string $data, bool $close) use (&$buffer, &$fin) {
                 $buffer = $data;
-                $fin = $final;
-            }
+                $fin = $close;
+            },
+            $this->createCallback(0)
         );
-        $client = new Client;
-        $client->options = (new Options)->withConnectionTimeout(60);
-        $client->remainingRequests = PHP_INT_MAX;
 
         $request = new Request("GET", new Uri("http://test.local"));
 
-        $writer = $driver->writer($client, $response = new Response(new InMemoryStream, $headers), $request);
+        $writer = $driver->writer($response = new Response(new InMemoryStream, $headers), $request);
 
         $response->push("/foo");
 
@@ -631,35 +653,32 @@ class Http1DriverTest extends TestCase {
         }
         $writer->send(null);
 
-        $this->assertTrue($fin);
+        $this->assertFalse($fin);
         $this->verifyWrite($buffer, $status, $headers + [
                 "link" => ["</foo>; rel=preload"],
                 "connection" => ["keep-alive"],
-                "keep-alive" => ["timeout=60"],
-                "date" => ["date"],
+                "keep-alive" => ["timeout=60, max=1000"],
+                "date" => [""], // Empty due to mock TimeReference
                 "transfer-encoding" => ["chunked"],
             ], $data);
-        $this->assertNotTrue($client->shouldClose);
     }
 
     public function testWriterAbortAfterHeaders() {
-        $driver = new Http1Driver;
+        $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
         $driver->setup(
-            $this->createMock(Server::class),
+            $this->createMock(Client::class),
             $this->createCallback(0),
             $this->createCallback(0),
-            function (Client $client, string $data, bool $final) use (&$invoked) {
-                $this->assertTrue($final);
-                $this->assertTrue($client->shouldClose);
+            function (string $data, bool $close) use (&$invoked) {
+                $this->assertTrue($close);
                 $expected = "HTTP/1.0 200 OK";
                 $this->assertEquals($expected, \substr($data, 0, \strlen($expected)));
                 $invoked = true;
-            }
+            },
+            $this->createCallback(0)
         );
 
-        $client = new Client;
-        $client->options = new Options;
-        $writer = $driver->writer($client, new Response);
+        $writer = $driver->writer(new Response);
 
         $writer->send("foo");
 
@@ -677,78 +696,45 @@ class Http1DriverTest extends TestCase {
             "http2-settings: $settings\r\n" .
             "\r\n";
 
-        $client = new Client;
-        $client->options = new Options;
-
-        $driver = new Http1Driver;
+        $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
         $driver->setup(
-            $this->createMock(Server::class),
-            $this->createCallback(1),
+            $this->createMock(Client::class),
+            function (Request $request) {
+                $this->assertSame("foo.bar", $request->getUri()->getHost());
+                $this->assertSame("/path", $request->getUri()->getPath());
+                $this->assertSame("2.0", $request->getProtocolVersion());
+            },
             $this->createCallback(0),
+            function (string $data) {
+                static $expected = [
+                    "HTTP/1.1 101 Switching Protocols",
+                    "\x0\x0\xc\x4\x0\x0\x0\x0\x0\x0\x4\x0\x2\x1\x0\x0\x3\x0\x0\x0\x14",
+                ];
+
+                $write = \array_shift($expected);
+
+                $this->assertSame($write, \substr($data, 0, \strlen($write)));
+            },
             $this->createCallback(1)
         );
 
-        $http2 = new class implements HttpDriver {
-            public $invoked = false;
-
-            public function setup(Server $server, callable $onRequest, callable $onError, callable $responseWriter) {
-            }
-
-            public function writer(Client $client, Response $response, Request $request = null): \Generator {
-                yield;
-            }
-
-            public function parser(Client $client): \Generator {
-                $this->invoked = true;
-                yield;
-            }
-        };
-
-        $http2->setup(
-            $this->createMock(Server::class),
-            $this->createCallback(0),
-            $this->createCallback(0),
-            $this->createCallback(0)
-        );
-
-        // Set HTTP/2 driver with bound closure.
-        (function () use ($http2) {
-            $this->http2 = $http2;
-        })->call($driver);
-
-        $parser = $driver->parser($client);
+        $parser = $driver->parser();
         $parser->send($payload);
-
-        $this->assertTrue($http2->invoked);
     }
 
     public function testNativeHttp2() {
-        $driver = new Http1Driver;
-        $http2 = new class implements HttpDriver {
-            public function setup(Server $server, callable $onRequest, callable $onError, callable $responseWriter) {
-            }
+        $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
+        $driver->setup(
+            $this->createMock(Client::class),
+            $this->createCallback(0),
+            $this->createCallback(0),
+            function (string $data) {
+                $this->assertSame("\x0\x0\xc\x4\x0\x0\x0\x0\x0\x0\x4\x0\x2\x1\x0\x0\x3\x0\x0\x0\x14", $data);
+            },
+            $this->createCallback(0)
+        );
 
-            public function writer(Client $client, Response $response, Request $request = null): \Generator {
-                yield;
-            }
-
-            public $received;
-
-            public function parser(Client $client): \Generator {
-                while (1) {
-                    $this->received .= yield;
-                }
-            }
-        };
-
-        (function () use ($http2) {
-            $this->http2 = $http2;
-        })->call($driver);
-
-        $client = new Client;
-        $client->options = new Options;
-        $data = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\nbinary data";
-        $driver->parser($client)->send($data);
-        $this->assertEquals($data, $http2->received);
+        $data = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+        $driver->parser()->send($data);
     }
 }

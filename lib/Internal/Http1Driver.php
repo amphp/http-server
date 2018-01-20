@@ -6,12 +6,11 @@ use Aerys\Body;
 use Aerys\ClientException;
 use Aerys\HttpStatus;
 use Aerys\NullBody;
+use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
-use Aerys\Server;
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
-use Amp\Loop;
 use Amp\Uri\Uri;
 
 class Http1Driver implements HttpDriver {
@@ -20,47 +19,79 @@ class Http1Driver implements HttpDriver {
         ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
     )x";
 
-    /** @var \Aerys\Internal\Http2Driver */
+    /** @var \Aerys\Internal\Http2Driver|null */
     private $http2;
 
+    /** @var \Aerys\Internal\Client */
+    private $client;
+
+    /** @var \Aerys\Options */
+    private $options;
+
+    /** @var \Aerys\Internal\TimeReference */
+    private $timeReference;
+
+    /** @var \Aerys\NullBody */
+    private $nullBody;
+
+    /** @var \Amp\Emitter|null */
+    private $bodyEmitter;
+
+    /** @var int */
+    private $pendingResponses = 0;
+
+    /** @var int */
+    private $remainingRequests;
+
     /** @var callable */
-    private $onRequest;
+    private $onMessage;
 
     /** @var callable */
     private $onError;
 
     /** @var callable */
-    private $responseWriter;
+    private $write;
 
-    /** @var \Aerys\NullBody */
-    private $nullBody;
+    /** @var callable */
+    private $pause;
 
-    /** @var string */
-    private $date;
+    /** @var callable|null */
+    private $resume;
 
-    public function __construct() {
-        $this->http2 = new Http2Driver();
+    /** @var \Aerys\Request[] */
+    private $messageQueue = [];
+
+    public function __construct(Options $options, TimeReference $timeReference) {
+        $this->options = $options;
         $this->nullBody = new NullBody;
+
+        $this->timeReference = $timeReference;
+
+        $this->remainingRequests = $this->options->getMaxRequestsPerConnection();
     }
 
-    public function setup(Server $server, callable $onRequest, callable $onError, callable $responseWriter) {
-        $server->onTimeUpdate(function (int $time, string $date) {
-            $this->date = $date;
-        });
-
-        $this->onRequest = $onRequest;
+    public function setup(Client $client, callable $onMessage, callable $onError, callable $write, callable $pause) {
+        $this->client = $client;
+        $this->onMessage = $onMessage;
         $this->onError = $onError;
-        $this->responseWriter = $responseWriter;
-        $this->http2->setup($server, $onRequest, $onError, $responseWriter);
+        $this->write = $write;
+        $this->pause = $pause;
     }
 
-    public function writer(Client $client, Response $response, Request $request = null): \Generator {
+    public function writer(Response $response, Request $request = null): \Generator {
+        if ($this->http2) {
+            yield from $this->http2->writer($response, $request);
+            return;
+        }
+
+        $shouldClose = false;
+
         $protocol = $request !== null ? $request->getProtocolVersion() : "1.0";
 
         $status = $response->getStatus();
         $reason = $response->getReason();
 
-        $headers = $this->filter($client, $response, $protocol, $request ? $request->getHeaderArray("connection") : []);
+        $headers = $this->filter($response, $protocol, $request ? $request->getHeaderArray("connection") : []);
 
         $chunked = !isset($headers["content-length"])
             && $protocol === "1.1"
@@ -69,8 +100,8 @@ class Http1Driver implements HttpDriver {
         if (!empty($headers["connection"])) {
             foreach ($headers["connection"] as $connection) {
                 if (\strcasecmp($connection, "close") === 0) {
-                    $client->shouldClose = true;
                     $chunked = false;
+                    $shouldClose = true;
                 }
             }
         }
@@ -95,17 +126,17 @@ class Http1Driver implements HttpDriver {
         $buffer .= "\r\n";
 
         if ($request !== null && $request->getMethod() === "HEAD") {
-            ($this->responseWriter)($client, $buffer, true);
+            ($this->write)($buffer, true);
             while (null !== yield); // Ignore body portions written.
         } else {
-            $outputBufferSize = $client->options->getOutputBufferSize();
+            $outputBufferSize = $this->options->getOutputBufferSize();
 
             do {
                 if (\strlen($buffer) >= $outputBufferSize) {
-                    ($this->responseWriter)($client, $buffer);
+                    ($this->write)($buffer);
                     $buffer = "";
 
-                    if ($client->isDead & Client::CLOSED_WR) {
+                    if ($this->client->getStatus() & Client::CLOSED_WR) {
                         return;
                     }
                 }
@@ -125,52 +156,40 @@ class Http1Driver implements HttpDriver {
                 $buffer .= "0\r\n\r\n";
             }
 
-            ($this->responseWriter)($client, $buffer, true);
+            ($this->write)($buffer, $shouldClose);
         }
 
-        // parserEmitLock check is required to prevent recursive continuation of the parser
-        if ($client->requestParser && $client->parserEmitLock && !$client->shouldClose) {
-            $client->requestParser->send("");
-        }
+        $this->pendingResponses--;
+        $this->remainingRequests--;
 
-        if ($client->isDead == Client::CLOSED_RD /* i.e. not CLOSED_WR */ && $client->bodyEmitters) {
-            array_pop($client->bodyEmitters)->fail(new ClientException); // just one element with Http1Driver
+        if (!empty($this->messageQueue)) {
+            ($this->onMessage)(\array_shift($this->messageQueue));
+        } elseif ($this->resume) {
+            $resume = $this->resume;
+            $this->resume = null;
+            $resume(); // Resume sending data to the request parser.
         }
     }
 
-    public function parser(Client $client): \Generator {
-        $maxHeaderSize = $client->options->getMaxHeaderSize();
-        $maxBodySize = $client->options->getMaxBodySize();
-        $bodyEmitSize = $client->options->getIoGranularity();
-        $id = 0;
-
+    public function parser(): \Generator {
+        $maxHeaderSize = $this->options->getMaxHeaderSize();
+        $maxBodySize = $this->options->getMaxBodySize();
+        $bodyEmitSize = $this->options->getIoGranularity();
+        $parser = null;
         $buffer = "";
 
         do {
+            if ($parser !== null) { // May be set from upgrade request or receive of PRI * HTTP/2.0 request.
+                /** @var \Generator $parser */
+                yield from $parser; // Yield from HTTP/2 parser for duration of request.
+                return;
+            }
+
             $headers = [];
             $contentLength = null;
             $isChunked = false;
 
-            if ($client->pendingResponses) {
-                $client->parserEmitLock = true;
-
-                do {
-                    if (\strlen($buffer) > $maxHeaderSize + $maxBodySize) {
-                        Loop::disable($client->readWatcher);
-                        $buffer .= yield;
-                        if (!($client->isDead & Client::CLOSED_RD)) {
-                            Loop::enable($client->readWatcher);
-                        }
-                        break;
-                    }
-
-                    $buffer .= yield;
-                } while ($client->pendingResponses);
-
-                $client->parserEmitLock = false;
-            }
-
-            while (true) {
+            do {
                 $buffer = \ltrim($buffer, "\r\n");
 
                 if ($headerPos = \strpos($buffer, "\r\n\r\n")) {
@@ -180,19 +199,19 @@ class Http1Driver implements HttpDriver {
                 }
 
                 if (\strlen($buffer) > $maxHeaderSize) {
-                    ($this->onError)($client, HttpStatus::REQUEST_HEADER_FIELDS_TOO_LARGE, "Bad Request: header size violation");
+                    ($this->onError)(HttpStatus::REQUEST_HEADER_FIELDS_TOO_LARGE, "Bad Request: header size violation");
                     return;
                 }
 
                 $buffer .= yield;
-            }
+            } while (true);
 
             $startLineEndPos = \strpos($startLineAndHeaders, "\r\n");
             $startLine = substr($startLineAndHeaders, 0, $startLineEndPos);
             $rawHeaders = \substr($startLineAndHeaders, $startLineEndPos + 2);
 
             if (!\preg_match("/^([A-Z]+) (\S+) HTTP\/(\d+(?:\.\d+)?)$/i", $startLine, $matches)) {
-                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: invalid request line");
+                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: invalid request line");
                 return;
             }
 
@@ -201,24 +220,26 @@ class Http1Driver implements HttpDriver {
             if ($protocol !== "1.1" && $protocol !== "1.0") {
                 if ($protocol === "2.0") {
                     // Internal upgrade to HTTP/2.
-                    $client->httpDriver = $this->http2;
-                    $client->requestParser = $client->httpDriver->parser($client);
-                    $client->requestParser->send("$startLineAndHeaders\r\n$buffer");
-                    return;
+                    $this->http2 = new Http2Driver($this->options, $this->timeReference);
+                    $this->http2->setup($this->client, $this->onMessage, $this->onError, $this->write, $this->pause);
+
+                    $parser = $this->http2->parser();
+                    $parser->send("$startLineAndHeaders\r\n$buffer");
+                    continue; // Yield from the above parser immediately.
                 }
 
-                ($this->onError)($client, HttpStatus::HTTP_VERSION_NOT_SUPPORTED, "Unsupported version {$protocol}");
+                ($this->onError)(HttpStatus::HTTP_VERSION_NOT_SUPPORTED, "Unsupported version {$protocol}");
                 break;
             }
 
             if ($rawHeaders) {
                 if (\strpos($rawHeaders, "\n\x20") || \strpos($rawHeaders, "\n\t")) {
-                    ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: multi-line headers deprecated by RFC 7230");
+                    ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: multi-line headers deprecated by RFC 7230");
                     return;
                 }
 
                 if (!\preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches, \PREG_SET_ORDER)) {
-                    ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: header syntax violation");
+                    ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: header syntax violation");
                     return;
                 }
 
@@ -231,7 +252,7 @@ class Http1Driver implements HttpDriver {
                 $contentLength = $headers["content-length"][0] ?? null;
                 if ($contentLength !== null) {
                     if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {
-                        ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: invalid content length");
+                        ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: invalid content length");
                         return;
                     }
 
@@ -241,36 +262,45 @@ class Http1Driver implements HttpDriver {
                 if (isset($headers["transfer-encoding"])) {
                     $value = strtolower($headers["transfer-encoding"][0]);
                     if (!($isChunked = $value === "chunked") && $value !== "identity") {
-                        ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: unsupported transfer-encoding");
+                        ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: unsupported transfer-encoding");
                         return;
                     }
                 }
             }
 
-            if ($client->options->shouldNormalizeMethodCase()) {
+            if ($this->options->shouldNormalizeMethodCase()) {
                 $method = \strtoupper($method);
             }
 
             $host = $headers["host"][0] ?? ""; // Host header may be set but empty.
             if ($host === "") {
-                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: Invalid host header");
+                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: Invalid host header");
                 return;
             }
 
             if ($target === "*") {
-                $uri = new Uri($host . ":" . $client->serverPort);
+                $port = $this->client->getLocalPort();
+                if ($port) {
+                    $uri = new Uri($host . ":" . $port);
+                } else {
+                    $uri = new Uri($host);
+                }
             } elseif (($schemepos = \strpos($target, "://")) !== false && $schemepos < \strpos($target, "/")) {
                 $uri = new Uri($target);
             } else {
-                $scheme = $client->isEncrypted ? "https" : "http";
+                $scheme = $this->client->isEncrypted() ? "https" : "http";
                 if (($colon = \strrpos($host, ":")) !== false) {
                     $port = (int) \substr($host, $colon + 1);
                     $host = \substr($host, 0, $colon);
                 } else {
-                    $port = $client->serverPort;
+                    $port = $this->client->getLocalPort();
                 }
 
-                $uri = new Uri($scheme . "://" . $host . ":" . $port . $target);
+                if ($port) {
+                    $uri = new Uri($scheme . "://" . $host . ":" . $port . $target);
+                } else {
+                    $uri = new Uri($scheme . "://" . $host . $target);
+                }
             }
 
             // Handle HTTP/2 upgrade request.
@@ -283,18 +313,19 @@ class Http1Driver implements HttpDriver {
                 // Request instance will be overwritten below. This is for sending the switching protocols response.
                 $request = new Request($method, $uri, $headers, $this->nullBody, $target, $protocol);
 
-                $client->pendingResponses++;
-                $responseWriter = $this->writer($client, new Response($this->nullBody, [
+                $this->pendingResponses++;
+                $responseWriter = $this->writer(new Response($this->nullBody, [
                     "connection" => "upgrade",
                     "upgrade" => "h2c",
                 ], HttpStatus::SWITCHING_PROTOCOLS), $request);
                 $responseWriter->send(null); // Flush before replacing
 
                 // Internal upgrade
-                $client->httpDriver = $this->http2;
-                $client->requestParser = $client->httpDriver->parser($client, $h2cSettings, true);
+                $this->http2 = new Http2Driver($this->options, $this->timeReference);
+                $this->http2->setup($this->client, $this->onMessage, $this->onError, $this->write, $this->pause);
 
-                $client->requestParser->current(); // Start the parser to send initial frames.
+                $parser = $this->http2->parser($h2cSettings, true);
+                $parser->current(); // Yield from this parser after reading the current request body.
 
                 // Not needed for HTTP/2 request.
                 unset($headers["upgrade"], $headers["connection"], $headers["http2-settings"]);
@@ -306,20 +337,28 @@ class Http1Driver implements HttpDriver {
                 $headers[":path"][0] = $target;
 
                 $protocol = "2.0";
-                $id = 1; // Initial HTTP/2 stream ID.
             }
 
             if (!($isChunked || $contentLength)) {
-                $request = new Request($method, $uri, $headers, $this->nullBody, $target, $protocol, $id);
-                ($this->onRequest)($client, $request);
+                $request = new Request($method, $uri, $headers, $this->nullBody, $target, $protocol);
+
+                $this->pendingResponses++;
+
+                if ($this->resume) {
+                    $this->messageQueue[] = $request;
+                } else {
+                    $this->resume = ($this->pause)(); // Pause client until response is written.
+                    ($this->onMessage)($request);
+                }
+
                 continue;
             }
 
             // HTTP/1.x clients only ever have a single body emitter.
-            $client->bodyEmitters[0] = $emitter = new Emitter;
+            $this->bodyEmitter = $emitter = new Emitter;
 
             $body = new Body(
-                new IteratorStream($client->bodyEmitters[0]->iterate()),
+                new IteratorStream($this->bodyEmitter->iterate()),
                 function (int $bodySize) use (&$maxBodySize) {
                     if ($bodySize > $maxBodySize) {
                         $maxBodySize = $bodySize;
@@ -327,9 +366,15 @@ class Http1Driver implements HttpDriver {
                 }
             );
 
-            $request = new Request($method, $uri, $headers, $body, $target, $protocol, $id);
+            $request = new Request($method, $uri, $headers, $body, $target, $protocol);
 
-            ($this->onRequest)($client, $request);
+            $this->pendingResponses++;
+
+            if ($this->resume) {
+                $this->messageQueue[] = $request;
+            } else {
+                ($this->onMessage)($request);
+            }
 
             $body = "";
 
@@ -339,9 +384,9 @@ class Http1Driver implements HttpDriver {
                     while (true) {
                         while (false === ($lineEndPos = \strpos($buffer, "\r\n"))) {
                             if (\strlen($buffer) > 10) {
-                                unset($client->bodyEmitters[0]);
+                                $this->bodyEmitter = null;
                                 $emitter->fail(new ClientException("Invalid body encoding"));
-                                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
+                                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
                                 return;
                             }
 
@@ -355,9 +400,9 @@ class Http1Driver implements HttpDriver {
                             $hex = \ltrim($line, "0");
 
                             if (!\preg_match("/^[1-9A-F][0-9A-F]*?$/i", $hex)) {
-                                unset($client->bodyEmitters[0]);
+                                $this->bodyEmitter = null;
                                 $emitter->fail(new ClientException("Invalid body encoding"));
-                                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
+                                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: hex chunk size expected");
                                 return;
                             }
                         }
@@ -384,24 +429,24 @@ class Http1Driver implements HttpDriver {
                                     $trailers = null;
                                 }
                                 if ($maxHeaderSize > 0 && $trailerSize > $maxHeaderSize) {
-                                    unset($client->bodyEmitters[0]);
+                                    $this->bodyEmitter = null;
                                     $emitter->fail(new ClientException("Trailer headers too large"));
-                                    ($this->onError)($client, HttpStatus::BAD_REQUEST, "Trailer headers too large");
+                                    ($this->onError)(HttpStatus::BAD_REQUEST, "Trailer headers too large");
                                     return;
                                 }
                             } while (!isset($trailers));
 
                             if (\strpos($trailers, "\n\x20") || \strpos($trailers, "\n\t")) {
-                                unset($client->bodyEmitters[0]);
+                                $this->bodyEmitter = null;
                                 $emitter->fail(new ClientException("Multi-line trailers found"));
-                                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: multi-line trailers deprecated by RFC 7230");
+                                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: multi-line trailers deprecated by RFC 7230");
                                 return;
                             }
 
                             if (!\preg_match_all(self::HEADER_REGEX, $trailers, $matches)) {
-                                unset($client->bodyEmitters[0]);
+                                $this->bodyEmitter = null;
                                 $emitter->fail(new ClientException("Trailer syntax violation"));
-                                ($this->onError)($client, HttpStatus::BAD_REQUEST, "Bad Request: trailer syntax violation");
+                                ($this->onError)(HttpStatus::BAD_REQUEST, "Bad Request: trailer syntax violation");
                                 return;
                             }
 
@@ -427,7 +472,7 @@ class Http1Driver implements HttpDriver {
                             break; // finished (chunked loop)
                         }
 
-                        if ($bodySize + $chunkLenRemaining > $client->streamWindow) {
+                        if ($bodySize + $chunkLenRemaining > $maxBodySize) {
                             do {
                                 $remaining = $maxBodySize - $bodySize;
                                 $chunkLenRemaining -= $remaining - \strlen($body);
@@ -455,9 +500,9 @@ class Http1Driver implements HttpDriver {
                                     continue;
                                 }
 
-                                unset($client->bodyEmitters[0]);
+                                $this->bodyEmitter = null;
                                 $emitter->fail(new ClientException("Body too large"));
-                                ($this->onError)($client, HttpStatus::PAYLOAD_TOO_LARGE, "Payload too large");
+                                ($this->onError)(HttpStatus::PAYLOAD_TOO_LARGE, "Payload too large");
                                 return;
                             } while ($maxBodySize < $bodySize + $chunkLenRemaining);
                         }
@@ -504,9 +549,9 @@ class Http1Driver implements HttpDriver {
                     $bodySize = 0;
 
                     if ($maxBodySize < $contentLength) {
-                        unset($client->bodyEmitters[0]);
+                        $this->bodyEmitter = null;
                         $emitter->fail(new ClientException("Body too large"));
-                        ($this->onError)($client, HttpStatus::PAYLOAD_TOO_LARGE, "Payload too large");
+                        ($this->onError)(HttpStatus::PAYLOAD_TOO_LARGE, "Payload too large");
                         return;
                     }
 
@@ -529,19 +574,31 @@ class Http1Driver implements HttpDriver {
                     }
                 }
 
-                unset($client->bodyEmitters[0]);
+                if (!$this->resume) {
+                    $this->resume = ($this->pause)(); // Pause client until response is written.
+                }
+
+                $this->bodyEmitter = null;
                 $emitter->complete();
             } finally {
-                if (isset($client->bodyEmitters[0])) {
-                    $emitter = $client->bodyEmitters[0];
-                    unset($client->bodyEmitters[0]);
+                if (isset($this->bodyEmitter)) {
+                    $emitter = $this->bodyEmitter;
+                    $this->bodyEmitter = null;
                     $emitter->fail(new ClientException("Client disconnected"));
                 }
             }
         } while (true);
     }
 
-    private function filter(Client $client, Response $response, string $protocol = "1.0", array $connection = []): array {
+    public function pendingRequestCount(): int {
+        return $this->bodyEmitter !== null ? 1 : 0;
+    }
+
+    public function pendingResponseCount(): int {
+        return $this->pendingResponses;
+    }
+
+    private function filter(Response $response, string $protocol = "1.0", array $connection = []): array {
         $headers = $response->getHeaders();
 
         if ($response->getStatus() < HttpStatus::OK) {
@@ -570,20 +627,20 @@ class Http1Driver implements HttpDriver {
             $shouldClose = true;
         }
 
-        $remainingRequests = $client->remainingRequests;
+        $remainingRequests = $this->remainingRequests;
         if ($shouldClose || $remainingRequests <= 0) {
             $headers["connection"] = ["close"];
         } elseif ($remainingRequests < (PHP_INT_MAX >> 1)) {
             $headers["connection"] = ["keep-alive"];
-            $keepAlive = "timeout={$client->options->getConnectionTimeout()}, max={$remainingRequests}";
+            $keepAlive = "timeout={$this->options->getConnectionTimeout()}, max={$remainingRequests}";
             $headers["keep-alive"] = [$keepAlive];
         } else {
             $headers["connection"] = ["keep-alive"];
-            $keepAlive = "timeout={$client->options->getConnectionTimeout()}";
+            $keepAlive = "timeout={$this->options->getConnectionTimeout()}";
             $headers["keep-alive"] = [$keepAlive];
         }
 
-        $headers["date"] = [$this->date];
+        $headers["date"] = [$this->timeReference->getCurrentDate()];
 
         return $headers;
     }
