@@ -642,7 +642,7 @@ class Http1DriverTest extends TestCase {
             $this->createCallback(0)
         );
 
-        $request = new Request("GET", new Uri("http://test.local"));
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("http://test.local"));
 
         $writer = $driver->writer($response = new Response(new InMemoryStream, $headers), $request);
 

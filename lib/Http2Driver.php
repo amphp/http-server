@@ -177,7 +177,7 @@ class Http2Driver implements HttpDriver {
         }
 
         $id = $this->streamId += 2; // Server initiated stream IDs must be even.
-        $request = new Request("GET", $url, $headers, $this->nullBody, $path, "2.0");
+        $request = new Request($this->client, "GET", $url, $headers, $this->nullBody, $path, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
         $this->streams[$id] = new Internal\Http2Stream;
@@ -944,7 +944,16 @@ class Http2Driver implements HttpDriver {
                     }
 
                     if ($streamEnd) {
-                        $request = new Request($headers[":method"][0], $uri, $headers, $this->nullBody, $target, "2.0");
+                        $request = new Request(
+                            $this->client,
+                            $headers[":method"][0],
+                            $uri,
+                            $headers,
+                            $this->nullBody,
+                            $target,
+                            "2.0"
+                        );
+
                         $this->streamIdMap[\spl_object_hash($request)] = $id;
                         $this->pendingResponses++;
                         ($this->onMessage)($request);
@@ -966,7 +975,16 @@ class Http2Driver implements HttpDriver {
                             }
                         );
 
-                        $request = new Request($headers[":method"][0], $uri, $headers, $body, $target, "2.0");
+                        $request = new Request(
+                            $this->client,
+                            $headers[":method"][0],
+                            $uri,
+                            $headers,
+                            $body,
+                            $target,
+                            "2.0"
+                        );
+
                         $this->streamIdMap[\spl_object_hash($request)] = $id;
                         $this->pendingResponses++;
                         ($this->onMessage)($request);

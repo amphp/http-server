@@ -31,6 +31,7 @@ class Request {
     private $attributes = [];
 
     /**
+     * @param Client $client The client sending the request.
      * @param string $method HTTP request method.
      * @param Uri $uri The full URI being requested, including host, port, and protocol.
      * @param string[]|string[][] $headers An array of strings or an array of string arrays.
@@ -40,6 +41,7 @@ class Request {
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
      */
     public function __construct(
+        Client $client,
         string $method,
         Uri $uri,
         array $headers = [],
@@ -47,6 +49,7 @@ class Request {
         string $target = null,
         string $protocol = "1.1"
     ) {
+        $this->client = $client;
         $this->method = $method;
         $this->uri = $uri;
         $this->protocol = $protocol;
@@ -71,6 +74,13 @@ class Request {
                 $this->cookies[$cookie->getName()] = $cookie;
             }
         }
+    }
+
+    /**
+     * @return \Aerys\Client The client sending the request.
+     */
+    public function getClient(): Client {
+        return $this->client;
     }
 
     /**

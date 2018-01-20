@@ -304,7 +304,7 @@ class Http1Driver implements HttpDriver {
                 false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
             ) {
                 // Request instance will be overwritten below. This is for sending the switching protocols response.
-                $request = new Request($method, $uri, $headers, $this->nullBody, $target, $protocol);
+                $request = new Request($this->client, $method, $uri, $headers, $this->nullBody, $target, $protocol);
 
                 $this->pendingResponses++;
                 $responseWriter = $this->writer(new Response($this->nullBody, [
@@ -333,7 +333,7 @@ class Http1Driver implements HttpDriver {
             }
 
             if (!($isChunked || $contentLength)) {
-                $request = new Request($method, $uri, $headers, $this->nullBody, $target, $protocol);
+                $request = new Request($this->client, $method, $uri, $headers, $this->nullBody, $target, $protocol);
 
                 $this->pendingResponses++;
 
@@ -359,7 +359,7 @@ class Http1Driver implements HttpDriver {
                 }
             );
 
-            $request = new Request($method, $uri, $headers, $body, $target, $protocol);
+            $request = new Request($this->client, $method, $uri, $headers, $body, $target, $protocol);
 
             $this->pendingResponses++;
 

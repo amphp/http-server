@@ -4,6 +4,7 @@ namespace Aerys\Test;
 
 use Aerys\Body;
 use Aerys\CallableResponder;
+use Aerys\Client;
 use Aerys\DefaultErrorHandler;
 use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
@@ -13,12 +14,13 @@ use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Response;
 use Aerys\Server;
+use Aerys\TimeoutCache;
 use Amp\Artax\Cookie\ArrayCookieJar;
 use Amp\Artax\Cookie\Cookie;
 use Amp\Artax\DefaultClient;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
-use Amp\Deferred;
+use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Loop;
 use Amp\Socket;
@@ -125,7 +127,7 @@ class ClientTest extends TestCase {
 
         $driver->expects($this->once())
             ->method("setup")
-            ->willReturnCallback(function (\Aerys\Client $client, callable $emitter) use (&$emit) {
+            ->willReturnCallback(function (Client $client, callable $emitter) use (&$emit) {
                 $emit = $emitter;
             });
 
@@ -144,13 +146,13 @@ class ClientTest extends TestCase {
         $options = (new Options)
             ->withDebugMode(true);
 
-        $client = new \Aerys\Client(
+        $client = new Client(
             \fopen("php://memory", "w"),
             new CallableResponder($responder),
             new DefaultErrorHandler,
             $this->createMock(Logger::class),
             $options,
-            $this->createMock(\Aerys\TimeoutCache::class)
+            $this->createMock(TimeoutCache::class)
         );
 
         $client->start($driver);
@@ -162,6 +164,7 @@ class ClientTest extends TestCase {
 
     public function testBasicRequest() {
         $request = new Request(
+            $this->createMock(Client::class),
             "GET", // method
             new Uri("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]] // headers
@@ -191,6 +194,7 @@ class ClientTest extends TestCase {
         $emitter = new Emitter;
 
         $request = new Request(
+            $this->createMock(Client::class),
             "GET", // method
             new Uri("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]], // headers
@@ -237,6 +241,7 @@ class ClientTest extends TestCase {
         return [
             [
                 new Request(
+                    $this->createMock(Client::class),
                     "OPTIONS", // method
                     new Uri("http://localhost:80/"), // URI
                     ["host" => ["localhost"]], // headers
@@ -247,6 +252,7 @@ class ClientTest extends TestCase {
             ],
             [
                 new Request(
+                    $this->createMock(Client::class),
                     "TRACE", // method
                     new Uri("http://localhost:80/"), // URI
                     ["host" => ["localhost"]] // headers
@@ -255,6 +261,7 @@ class ClientTest extends TestCase {
             ],
             [
                 new Request(
+                    $this->createMock(Client::class),
                     "UNKNOWN", // method
                     new Uri("http://localhost:80/"), // URI
                     ["host" => ["localhost"]] // headers
@@ -266,6 +273,7 @@ class ClientTest extends TestCase {
 
     public function testOptionsRequest() {
         $request = new Request(
+            $this->createMock(Client::class),
             "OPTIONS", // method
             new Uri("http://localhost:80/"), // URI
             ["host" => ["localhost"]], // headers
@@ -284,6 +292,7 @@ class ClientTest extends TestCase {
 
     public function testError() {
         $request = new Request(
+            $this->createMock(Client::class),
             "GET", // method
             new Uri("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]] // headers
@@ -301,7 +310,7 @@ class ClientTest extends TestCase {
         $driver = $this->createMock(\Aerys\HttpDriver::class);
 
         $driver->method("setup")
-            ->willReturnCallback(function (\Aerys\Client $client, callable $onMessage, callable $onError, callable $writer) use (&$write) {
+            ->willReturnCallback(function (Client $client, callable $onMessage, callable $onError, callable $writer) use (&$write) {
                 $write = $writer;
             });
 
@@ -313,13 +322,13 @@ class ClientTest extends TestCase {
         $options = (new Options)
             ->withDebugMode(true);
 
-        $client = new \Aerys\Client(
+        $client = new Client(
             $socket,
             $this->createMock(Responder::class),
             $this->createMock(ErrorHandler::class),
             $this->createMock(Logger::class),
             $options,
-            $this->createMock(\Aerys\TimeoutCache::class)
+            $this->createMock(TimeoutCache::class)
         );
 
         $client->start($driver);
@@ -365,11 +374,12 @@ class ClientTest extends TestCase {
                 }
 
                 yield $socket->write("a");
+
                 // give readWatcher a chance
-                $deferred = new Deferred;
-                Loop::defer(function () use ($deferred) { Loop::defer([$deferred, "resolve"]); });
-                yield $deferred->promise();
+                yield new Delayed(10);
+
                 yield $socket->write("b");
+
                 stream_socket_shutdown($socket->getResource(), STREAM_SHUT_WR);
                 $this->assertEquals("cd", yield $socket->read());
             });

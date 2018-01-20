@@ -3,6 +3,8 @@
 namespace Aerys\Test;
 
 use Aerys\Body;
+use Aerys\BodyParser;
+use Aerys\Client;
 use Aerys\Request;
 use Amp\ByteStream\IteratorStream;
 use Amp\Loop;
@@ -20,7 +22,7 @@ class BodyParsingTest extends TestCase {
         $headers["content-type"] = [$header];
         $body = new Body(new IteratorStream($emitter->iterate()));
 
-        $request = new Request("POST", new Uri("/"), $headers, $body);
+        $request = new Request($this->createMock(Client::class), "POST", new Uri("/"), $headers, $body);
 
         $emitter->emit($data);
         $emitter->complete();
@@ -47,7 +49,7 @@ class BodyParsingTest extends TestCase {
         $emitter->emit($data);
         $emitter->complete();
 
-        $request = new Request("POST", new Uri("/"), $headers, $body);
+        $request = new Request($this->createMock(Client::class), "POST", new Uri("/"), $headers, $body);
 
         Loop::run(function () use ($request, $fields, $metadata) {
             $fieldlist = $fields;
@@ -76,7 +78,7 @@ class BodyParsingTest extends TestCase {
         $headers["content-type"] = [$header];
         $body = new Body(new IteratorStream($emitter->iterate()));
 
-        $request = new Request("POST", new Uri("/"), $headers, $body);
+        $request = new Request($this->createMock(Client::class), "POST", new Uri("/"), $headers, $body);
 
         Loop::run(function () use ($emitter, $data, $request, $fields, $metadata) {
             $fieldlist = $fields;
@@ -109,7 +111,7 @@ class BodyParsingTest extends TestCase {
         $headers["content-type"] = [$header];
         $body = new Body(new IteratorStream($emitter->iterate()));
 
-        $request = new Request("POST", new Uri("/"), $headers, $body);
+        $request = new Request($this->createMock(Client::class), "POST", new Uri("/"), $headers, $body);
 
         Loop::run(function () use ($emitter, $data, $request, $fields) {
             Loop::defer(function () use ($emitter, $data) {
@@ -143,7 +145,7 @@ class BodyParsingTest extends TestCase {
         $headers["content-type"] = [$header];
         $body = new Body(new IteratorStream($emitter->iterate()));
 
-        $request = new Request("POST", new Uri("/"), $headers, $body);
+        $request = new Request($this->createMock(Client::class), "POST", new Uri("/"), $headers, $body);
 
         Loop::run(function () use ($emitter, $data, $request, $fields) {
             $remaining = [];
@@ -183,9 +185,9 @@ class BodyParsingTest extends TestCase {
         $headers["content-type"] = ["application/x-www-form-urlencoded"];
         $body = new Body(new IteratorStream($emitter->iterate()));
 
-        $request = new Request("POST", new Uri("/"), $headers, $body);
+        $request = new Request($this->createMock(Client::class), "POST", new Uri("/"), $headers, $body);
 
-        $body = new \Aerys\BodyParser($request);
+        $body = new BodyParser($request);
         // Purposely out of order of data arrival.
         $b = $body->stream("b");
         $d = $body->stream("d");

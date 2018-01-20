@@ -3,6 +3,7 @@
 namespace Aerys\Test\Middleware;
 
 use Aerys\CallableResponder;
+use Aerys\Client;
 use Aerys\Middleware\Middleware;
 use Aerys\Request;
 use Aerys\Responder;
@@ -16,7 +17,7 @@ use function Amp\Promise\wait;
 
 class StackTest extends TestCase {
     public function testStackAppliesMiddlewaresInCorrectOrder() {
-        $request = new Request("GET", new Uri("/foobar"));
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/foobar"));
 
         $stack = stack(new CallableResponder(function (Request $request) {
             $response = new HtmlResponse("OK");

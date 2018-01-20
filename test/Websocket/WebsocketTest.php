@@ -3,6 +3,7 @@
 namespace Aerys\Test\Websocket;
 
 use Aerys\Body;
+use Aerys\Client;
 use Aerys\DefaultErrorHandler;
 use Aerys\ErrorHandler;
 use Aerys\HttpStatus;
@@ -266,7 +267,7 @@ class WebsocketTest extends TestCase {
         ];
 
         // 0 ----- valid Handshake request -------------------------------------------------------->
-        $request = new Request("GET", new Uri("/"), $headers);
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers);
         $testCases[] = [$request, HttpStatus::SWITCHING_PROTOCOLS, [
             "upgrade" => ["websocket"],
             "connection" => ["upgrade"],
@@ -274,40 +275,40 @@ class WebsocketTest extends TestCase {
         ]];
 
         // 1 ----- error conditions: Handshake with POST method ----------------------------------->
-        $request = new Request("POST", new Uri("/"), $headers);
+        $request = new Request($this->createMock(Client::class), "POST", new Uri("/"), $headers);
         $testCases[] = [$request, HttpStatus::METHOD_NOT_ALLOWED, ["allow" => ["GET"]]];
 
         // 2 ----- error conditions: Handshake with 1.0 protocol ---------------------------------->
-        $request = new Request("GET", new Uri("/"), $headers, null, "/", "1.0");
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers, null, "/", "1.0");
         $testCases[] = [$request, HttpStatus::HTTP_VERSION_NOT_SUPPORTED];
 
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
         $body = new Body(new InMemoryStream("Non-empty body"));
-        $request = new Request("GET", new Uri("/"), $headers, $body);
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers, $body);
         $testCases[] = [$request, HttpStatus::BAD_REQUEST];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->
         $invalidHeaders = $headers;
         $invalidHeaders["upgrade"] = ["no websocket!"];
-        $request = new Request("GET", new Uri("/"), $invalidHeaders, $body);
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
         $testCases[] = [$request, HttpStatus::UPGRADE_REQUIRED];
 
         // 5 ----- error conditions: Connection: Upgrade header required -------------------------->
         $invalidHeaders = $headers;
         $invalidHeaders["connection"] = ["no upgrade!"];
-        $request = new Request("GET", new Uri("/"), $invalidHeaders, $body);
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
         $testCases[] = [$request, HttpStatus::UPGRADE_REQUIRED];
 
         // 6 ----- error conditions: Sec-Websocket-Key header required ---------------------------->
         $invalidHeaders = $headers;
         unset($invalidHeaders["sec-websocket-key"]);
-        $request = new Request("GET", new Uri("/"), $invalidHeaders, $body);
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
         $testCases[] = [$request, HttpStatus::BAD_REQUEST];
 
         // 7 ----- error conditions: Sec-Websocket-Version header must be 13 ---------------------->
         $invalidHeaders = $headers;
         $invalidHeaders["sec-websocket-version"] = ["12"];
-        $request = new Request("GET", new Uri("/"), $invalidHeaders, $body);
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
         $testCases[] = [$request, HttpStatus::BAD_REQUEST];
 
         return $testCases;

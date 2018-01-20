@@ -190,21 +190,8 @@ class Http2DriverTest extends TestCase {
         $parser = $driver->parser("", true); // Simulate upgrade request.
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
-        //$parser->send($this->packFrame(pack("nN", Http2Driver::INITIAL_WINDOW_SIZE, 66000), Http2Driver::SETTINGS, Http2Driver::NOFLAG));
 
-//        $headers = [
-//            ":authority" => "localhost",
-//            ":path" => "/",
-//            ":scheme" => "http",
-//            ":method" => "GET",
-//            "test" => "successful"
-//        ];
-//        $parser->send($this->packHeader($headers));
-//
-//        // $onMessage callback should be invoked.
-//        $this->assertInstanceOf(Request::class, $request);
-
-        $request = new Request("GET", new Uri("/"), [], new NullBody, "/", "2.0");
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), [], new NullBody, "/", "2.0");
 
         $writer = $driver->writer(new Response, $request);
 
