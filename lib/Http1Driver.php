@@ -4,6 +4,7 @@ namespace Aerys;
 
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
+use Amp\Http\Status;
 use Amp\Uri\Uri;
 
 class Http1Driver implements HttpDriver {
@@ -84,7 +85,7 @@ class Http1Driver implements HttpDriver {
 
         $chunked = !isset($headers["content-length"])
             && $protocol === "1.1"
-            && $status >= HttpStatus::OK;
+            && $status >= Status::OK;
 
         if (!empty($headers["connection"])) {
             foreach ($headers["connection"] as $connection) {
@@ -190,7 +191,7 @@ class Http1Driver implements HttpDriver {
                 if (\strlen($buffer) > $maxHeaderSize) {
                     throw new ClientException(
                         "Bad Request: header size violation",
-                        HttpStatus::REQUEST_HEADER_FIELDS_TOO_LARGE
+                        Status::REQUEST_HEADER_FIELDS_TOO_LARGE
                     );
                 }
 
@@ -202,7 +203,7 @@ class Http1Driver implements HttpDriver {
             $rawHeaders = \substr($startLineAndHeaders, $startLineEndPos + 2);
 
             if (!\preg_match("/^([A-Z]+) (\S+) HTTP\/(\d+(?:\.\d+)?)$/i", $startLine, $matches)) {
-                throw new ClientException("Bad Request: invalid request line", HttpStatus::BAD_REQUEST);
+                throw new ClientException("Bad Request: invalid request line", Status::BAD_REQUEST);
             }
 
             list(, $method, $target, $protocol) = $matches;
@@ -218,19 +219,19 @@ class Http1Driver implements HttpDriver {
                     continue; // Yield from the above parser immediately.
                 }
 
-                throw new ClientException("Unsupported version {$protocol}", HttpStatus::HTTP_VERSION_NOT_SUPPORTED);
+                throw new ClientException("Unsupported version {$protocol}", Status::HTTP_VERSION_NOT_SUPPORTED);
             }
 
             if ($rawHeaders) {
                 if (\strpos($rawHeaders, "\n\x20") || \strpos($rawHeaders, "\n\t")) {
                     throw new ClientException(
                         "Bad Request: multi-line headers deprecated by RFC 7230",
-                        HttpStatus::BAD_REQUEST
+                        Status::BAD_REQUEST
                     );
                 }
 
                 if (!\preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches, \PREG_SET_ORDER)) {
-                    throw new ClientException("Bad Request: header syntax violation", HttpStatus::BAD_REQUEST);
+                    throw new ClientException("Bad Request: header syntax violation", Status::BAD_REQUEST);
                 }
 
                 foreach ($matches as list(, $field, $value)) {
@@ -242,7 +243,7 @@ class Http1Driver implements HttpDriver {
                 $contentLength = $headers["content-length"][0] ?? null;
                 if ($contentLength !== null) {
                     if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {
-                        throw new ClientException("Bad Request: invalid content length", HttpStatus::BAD_REQUEST);
+                        throw new ClientException("Bad Request: invalid content length", Status::BAD_REQUEST);
                     }
 
                     $contentLength = (int) $contentLength;
@@ -253,7 +254,7 @@ class Http1Driver implements HttpDriver {
                     if (!($isChunked = $value === "chunked") && $value !== "identity") {
                         throw new ClientException(
                             "Bad Request: unsupported transfer-encoding",
-                            HttpStatus::BAD_REQUEST
+                            Status::BAD_REQUEST
                         );
                     }
                 }
@@ -265,7 +266,7 @@ class Http1Driver implements HttpDriver {
 
             $host = $headers["host"][0] ?? ""; // Host header may be set but empty.
             if ($host === "") {
-                throw new ClientException("Bad Request: invalid host header", HttpStatus::BAD_REQUEST);
+                throw new ClientException("Bad Request: invalid host header", Status::BAD_REQUEST);
             }
 
             if ($target === "*") {
@@ -307,7 +308,7 @@ class Http1Driver implements HttpDriver {
                 $responseWriter = $this->writer(new Response($this->nullBody, [
                     "connection" => "upgrade",
                     "upgrade" => "h2c",
-                ], HttpStatus::SWITCHING_PROTOCOLS), $request);
+                ], Status::SWITCHING_PROTOCOLS), $request);
                 $responseWriter->send(null); // Flush before replacing
 
                 // Internal upgrade
@@ -376,7 +377,7 @@ class Http1Driver implements HttpDriver {
                             if (\strlen($buffer) > 10) {
                                 throw new ClientException(
                                     "Bad Request: hex chunk size expected",
-                                    HttpStatus::BAD_REQUEST
+                                    Status::BAD_REQUEST
                                 );
                             }
 
@@ -392,7 +393,7 @@ class Http1Driver implements HttpDriver {
                             if (!\preg_match("/^[1-9A-F][0-9A-F]*?$/i", $hex)) {
                                 throw new ClientException(
                                     "Bad Request: invalid hex chunk size",
-                                    HttpStatus::BAD_REQUEST
+                                    Status::BAD_REQUEST
                                 );
                             }
                         }
@@ -421,7 +422,7 @@ class Http1Driver implements HttpDriver {
                                 if ($maxHeaderSize > 0 && $trailerSize > $maxHeaderSize) {
                                     throw new ClientException(
                                         "Trailer headers too large",
-                                        HttpStatus::BAD_REQUEST
+                                        Status::BAD_REQUEST
                                     );
                                 }
                             } while (!isset($trailers));
@@ -429,14 +430,14 @@ class Http1Driver implements HttpDriver {
                             if (\strpos($trailers, "\n\x20") || \strpos($trailers, "\n\t")) {
                                 throw new ClientException(
                                     "Bad Request: multi-line trailers deprecated by RFC 7230",
-                                    HttpStatus::BAD_REQUEST
+                                    Status::BAD_REQUEST
                                 );
                             }
 
                             if (!\preg_match_all(self::HEADER_REGEX, $trailers, $matches)) {
                                 throw new ClientException(
                                     "Bad Request: trailer syntax violation",
-                                    HttpStatus::BAD_REQUEST
+                                    Status::BAD_REQUEST
                                 );
                             }
 
@@ -490,7 +491,7 @@ class Http1Driver implements HttpDriver {
                                     continue;
                                 }
 
-                                throw new ClientException("Payload too large", HttpStatus::PAYLOAD_TOO_LARGE);
+                                throw new ClientException("Payload too large", Status::PAYLOAD_TOO_LARGE);
                             } while ($maxBodySize < $bodySize + $chunkLenRemaining);
                         }
 
@@ -536,7 +537,7 @@ class Http1Driver implements HttpDriver {
                     $bodySize = 0;
 
                     if ($maxBodySize < $contentLength) {
-                        throw new ClientException("Payload too large", HttpStatus::PAYLOAD_TOO_LARGE);
+                        throw new ClientException("Payload too large", Status::PAYLOAD_TOO_LARGE);
                     }
 
                     $bound = $contentLength;
@@ -573,7 +574,7 @@ class Http1Driver implements HttpDriver {
                     $this->bodyEmitter = null;
                     $emitter->fail($exception ?? new ClientException(
                         "Client disconnected",
-                        HttpStatus::REQUEST_TIMEOUT
+                        Status::REQUEST_TIMEOUT
                     ));
                 }
             }
@@ -591,7 +592,7 @@ class Http1Driver implements HttpDriver {
     private function filter(Response $response, string $protocol = "1.0", array $connection = []): array {
         $headers = $response->getHeaders();
 
-        if ($response->getStatus() < HttpStatus::OK) {
+        if ($response->getStatus() < Status::OK) {
             return $headers;
         }
 

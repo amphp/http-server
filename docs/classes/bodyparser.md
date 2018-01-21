@@ -30,7 +30,7 @@ $field = $body->stream("file");
 while (null !== $data = yield $field->read()) {
     $metadata = yield $field->getMetadata();
     if (!isset($metadata["filename"])) {
-        $res->setStatus(Aerys\HttpStatus::BAD_REQUEST);
+        $res->setStatus(Amp\Http\Status::BAD_REQUEST);
         return;
     }
     // This obviously is only fine when this is an admin panel and user can be trusted

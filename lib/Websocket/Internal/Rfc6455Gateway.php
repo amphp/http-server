@@ -20,6 +20,7 @@ use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Failure;
+use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Socket\Socket;
@@ -128,17 +129,17 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     private function do(Request $request): \Generator {
         /** @var \Aerys\Response $response */
         if ($request->getMethod() !== "GET") {
-            $response = yield $this->errorHandler->handle(HttpStatus::METHOD_NOT_ALLOWED, null, $request);
+            $response = yield $this->errorHandler->handle(Status::METHOD_NOT_ALLOWED, null, $request);
             $response->setHeader("Allow", "GET");
             return $response;
         }
 
         if ($request->getProtocolVersion() !== "1.1") {
-            return yield $this->errorHandler->handle(HttpStatus::HTTP_VERSION_NOT_SUPPORTED, null, $request);
+            return yield $this->errorHandler->handle(Status::HTTP_VERSION_NOT_SUPPORTED, null, $request);
         }
 
         if (null !== yield $request->getBody()->read()) {
-            return yield $this->errorHandler->handle(HttpStatus::BAD_REQUEST, null, $request);
+            return yield $this->errorHandler->handle(Status::BAD_REQUEST, null, $request);
         }
 
         $hasUpgradeWebsocket = false;
@@ -149,7 +150,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             }
         }
         if (!$hasUpgradeWebsocket) {
-            return yield $this->errorHandler->handle(HttpStatus::UPGRADE_REQUIRED, null, $request);
+            return yield $this->errorHandler->handle(Status::UPGRADE_REQUIRED, null, $request);
         }
 
         $hasConnectionUpgrade = false;
@@ -166,19 +167,19 @@ class Rfc6455Gateway implements Responder, ServerObserver {
 
         if (!$hasConnectionUpgrade) {
             $reason = "Bad Request: \"Connection: Upgrade\" header required";
-            $response = yield $this->errorHandler->handle(HttpStatus::UPGRADE_REQUIRED, $reason, $request);
+            $response = yield $this->errorHandler->handle(Status::UPGRADE_REQUIRED, $reason, $request);
             $response->setHeader("Upgrade", "websocket");
             return $response;
         }
 
         if (!$acceptKey = $request->getHeader("Sec-Websocket-Key")) {
             $reason = "Bad Request: \"Sec-Websocket-Key\" header required";
-            return yield $this->errorHandler->handle(HttpStatus::BAD_REQUEST, $reason, $request);
+            return yield $this->errorHandler->handle(Status::BAD_REQUEST, $reason, $request);
         }
 
         if (!\in_array("13", $request->getHeaderArray("Sec-Websocket-Version"), true)) {
             $reason = "Bad Request: Requested Websocket version unavailable";
-            $response = yield $this->errorHandler->handle(HttpStatus::BAD_REQUEST, $reason, $request);
+            $response = yield $this->errorHandler->handle(Status::BAD_REQUEST, $reason, $request);
             $response->setHeader("Sec-Websocket-Version", "13");
             return $response;
         }
@@ -194,7 +195,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             ));
         }
 
-        if ($response->getStatus() === HttpStatus::SWITCHING_PROTOCOLS) {
+        if ($response->getStatus() === Status::SWITCHING_PROTOCOLS) {
             $response->detach($this->reapClient, $request);
         }
 

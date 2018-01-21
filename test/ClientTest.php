@@ -23,6 +23,7 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Http\Cookie\ResponseCookie;
+use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Socket;
 use Amp\Socket\Certificate;
@@ -184,9 +185,9 @@ class ClientTest extends TestCase {
 
         $this->assertInstanceOf(Response::class, $response);
 
-        $status = HttpStatus::OK;
+        $status = Status::OK;
         $this->assertSame($status, $response->getStatus());
-        $this->assertSame(HttpStatus::getReason($status), $response->getReason());
+        $this->assertSame(Status::getReason($status), $response->getReason());
         $this->assertSame("bar", $response->getHeader("foo"));
 
         $this->assertSame("message", $body);
@@ -218,9 +219,9 @@ class ClientTest extends TestCase {
 
         $this->assertInstanceOf(Response::class, $response);
 
-        $status = HttpStatus::OK;
+        $status = Status::OK;
         $this->assertSame($status, $response->getStatus());
-        $this->assertSame(HttpStatus::getReason($status), $response->getReason());
+        $this->assertSame(Status::getReason($status), $response->getReason());
 
         $this->assertSame("fooBarBUZZ!", $body);
     }
@@ -250,7 +251,7 @@ class ClientTest extends TestCase {
                     null, // body
                     "*" // target
                 ),
-                HttpStatus::NO_CONTENT
+                Status::NO_CONTENT
             ],
             [
                 new Request(
@@ -259,7 +260,7 @@ class ClientTest extends TestCase {
                     new Uri("http://localhost:80/"), // URI
                     ["host" => ["localhost"]] // headers
                 ),
-                HttpStatus::METHOD_NOT_ALLOWED
+                Status::METHOD_NOT_ALLOWED
             ],
             [
                 new Request(
@@ -268,7 +269,7 @@ class ClientTest extends TestCase {
                     new Uri("http://localhost:80/"), // URI
                     ["host" => ["localhost"]] // headers
                 ),
-                HttpStatus::NOT_IMPLEMENTED
+                Status::NOT_IMPLEMENTED
             ],
         ];
     }
@@ -288,7 +289,7 @@ class ClientTest extends TestCase {
             $this->fail("We should already have failed and never invoke the responder...");
         });
 
-        $this->assertSame(HttpStatus::NO_CONTENT, $response->getStatus());
+        $this->assertSame(Status::NO_CONTENT, $response->getStatus());
         $this->assertSame(implode(", ", (new Options)->getAllowedMethods()), $response->getHeader("allow"));
     }
 
@@ -305,7 +306,7 @@ class ClientTest extends TestCase {
             throw new \Exception;
         });
 
-        $this->assertSame(HttpStatus::INTERNAL_SERVER_ERROR, $response->getStatus());
+        $this->assertSame(Status::INTERNAL_SERVER_ERROR, $response->getStatus());
     }
 
     public function startClient(callable $parser, $socket) {

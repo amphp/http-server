@@ -5,6 +5,7 @@ namespace Aerys;
 use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
+use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
@@ -361,7 +362,7 @@ class Client {
 
             \assert($this->logger->debug(\sprintf(
                 "Crypto negotiated %s%s:%d",
-                ($this->cryptoInfo["alpn_protocol"] ?? null === "h2" ? "(h2) " : ""),
+                $this->cryptoInfo["alpn_protocol"] ?? null === "h2" ? "(h2) " : "",
                 $this->clientAddress,
                 $this->clientPort
             )) || true);
@@ -456,7 +457,7 @@ class Client {
         $this->paused = true;
 
         $message = $exception->getMessage();
-        $status = $exception->getCode() ?: HttpStatus::BAD_REQUEST;
+        $status = $exception->getCode() ?: Status::BAD_REQUEST;
 
         \assert($this->logger->debug(
             "Client parse error on {$this->clientAddress}:{$this->clientPort}: {$message}"
@@ -538,26 +539,26 @@ class Client {
     }
 
     private function makeServiceUnavailableResponse(): \Generator {
-        $status = HttpStatus::SERVICE_UNAVAILABLE;
+        $status = Status::SERVICE_UNAVAILABLE;
         /** @var \Aerys\Response $response */
-        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
+        $response = yield $this->errorHandler->handle($status, Status::getReason($status));
         $response->setHeader("Connection", "close");
         return $response;
     }
 
     private function makeMethodNotAllowedResponse(): \Generator {
-        $status = HttpStatus::METHOD_NOT_ALLOWED;
+        $status = Status::METHOD_NOT_ALLOWED;
         /** @var \Aerys\Response $response */
-        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
+        $response = yield $this->errorHandler->handle($status, Status::getReason($status));
         $response->setHeader("Connection", "close");
         $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
         return $response;
     }
 
     private function makeNotImplementedResponse(): \Generator {
-        $status = HttpStatus::NOT_IMPLEMENTED;
+        $status = Status::NOT_IMPLEMENTED;
         /** @var \Aerys\Response $response */
-        $response = yield $this->errorHandler->handle($status, HttpStatus::getReason($status));
+        $response = yield $this->errorHandler->handle($status, Status::getReason($status));
         $response->setHeader("Connection", "close");
         $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
         return $response;
@@ -631,7 +632,7 @@ class Client {
      * @return \Amp\Promise<\Aerys\Response>
      */
     private function makeExceptionResponse(\Throwable $exception, Request $request = null): Promise {
-        $status = HttpStatus::INTERNAL_SERVER_ERROR;
+        $status = Status::INTERNAL_SERVER_ERROR;
 
         // Return an HTML page with the exception in debug mode.
         if ($request !== null && $this->options->isInDebugMode()) {
@@ -653,14 +654,14 @@ class Client {
 
         try {
             // Return a response defined by the error handler in production mode.
-            return $this->errorHandler->handle($status, HttpStatus::getReason($status), $request);
+            return $this->errorHandler->handle($status, Status::getReason($status), $request);
         } catch (\Throwable $exception) {
             // If the error handler throws, fallback to returning the default HTML error page.
             $this->logger->error($exception);
 
             $html = \str_replace(
                 ["{code}", "{reason}"],
-                \array_map("htmlspecialchars", [$status, HttpStatus::getReason($status)]),
+                \array_map("htmlspecialchars", [$status, Status::getReason($status)]),
                 DEFAULT_ERROR_HTML
             );
 

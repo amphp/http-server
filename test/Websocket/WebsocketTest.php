@@ -19,6 +19,7 @@ use Aerys\Websocket\Message;
 use Amp\ByteStream\InMemoryStream;
 use Amp\Deferred;
 use Amp\Delayed;
+use Amp\Http\Status;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
@@ -235,7 +236,7 @@ class WebsocketTest extends TestCase {
             $logger = $this->createMock(Logger::class);
             $application = $this->createMock(Application::class);
 
-            $application->expects($status === HttpStatus::SWITCHING_PROTOCOLS ? $this->once() : $this->never())
+            $application->expects($status === Status::SWITCHING_PROTOCOLS ? $this->once() : $this->never())
                 ->method("onHandshake")
                 ->willReturnArgument(1);
 
@@ -247,7 +248,7 @@ class WebsocketTest extends TestCase {
             $response = yield $gateway->respond($request);
             $this->assertEquals($expectedHeaders, array_intersect_key($response->getHeaders(), $expectedHeaders));
 
-            if ($status === HttpStatus::SWITCHING_PROTOCOLS) {
+            if ($status === Status::SWITCHING_PROTOCOLS) {
                 $this->assertNull(yield $response->getBody()->read());
             }
 
@@ -268,7 +269,7 @@ class WebsocketTest extends TestCase {
 
         // 0 ----- valid Handshake request -------------------------------------------------------->
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers);
-        $testCases[] = [$request, HttpStatus::SWITCHING_PROTOCOLS, [
+        $testCases[] = [$request, Status::SWITCHING_PROTOCOLS, [
             "upgrade" => ["websocket"],
             "connection" => ["upgrade"],
             "sec-websocket-accept" => ["HSmrc0sMlYUkAGmm5OPpG2HaGWk="]
@@ -276,40 +277,40 @@ class WebsocketTest extends TestCase {
 
         // 1 ----- error conditions: Handshake with POST method ----------------------------------->
         $request = new Request($this->createMock(Client::class), "POST", new Uri("/"), $headers);
-        $testCases[] = [$request, HttpStatus::METHOD_NOT_ALLOWED, ["allow" => ["GET"]]];
+        $testCases[] = [$request, Status::METHOD_NOT_ALLOWED, ["allow" => ["GET"]]];
 
         // 2 ----- error conditions: Handshake with 1.0 protocol ---------------------------------->
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers, null, "/", "1.0");
-        $testCases[] = [$request, HttpStatus::HTTP_VERSION_NOT_SUPPORTED];
+        $testCases[] = [$request, Status::HTTP_VERSION_NOT_SUPPORTED];
 
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
         $body = new Body(new InMemoryStream("Non-empty body"));
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers, $body);
-        $testCases[] = [$request, HttpStatus::BAD_REQUEST];
+        $testCases[] = [$request, Status::BAD_REQUEST];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->
         $invalidHeaders = $headers;
         $invalidHeaders["upgrade"] = ["no websocket!"];
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
-        $testCases[] = [$request, HttpStatus::UPGRADE_REQUIRED];
+        $testCases[] = [$request, Status::UPGRADE_REQUIRED];
 
         // 5 ----- error conditions: Connection: Upgrade header required -------------------------->
         $invalidHeaders = $headers;
         $invalidHeaders["connection"] = ["no upgrade!"];
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
-        $testCases[] = [$request, HttpStatus::UPGRADE_REQUIRED];
+        $testCases[] = [$request, Status::UPGRADE_REQUIRED];
 
         // 6 ----- error conditions: Sec-Websocket-Key header required ---------------------------->
         $invalidHeaders = $headers;
         unset($invalidHeaders["sec-websocket-key"]);
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
-        $testCases[] = [$request, HttpStatus::BAD_REQUEST];
+        $testCases[] = [$request, Status::BAD_REQUEST];
 
         // 7 ----- error conditions: Sec-Websocket-Version header must be 13 ---------------------->
         $invalidHeaders = $headers;
         $invalidHeaders["sec-websocket-version"] = ["12"];
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
-        $testCases[] = [$request, HttpStatus::BAD_REQUEST];
+        $testCases[] = [$request, Status::BAD_REQUEST];
 
         return $testCases;
     }

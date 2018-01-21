@@ -4,6 +4,7 @@ namespace Aerys;
 
 use Amp\Coroutine;
 use Amp\Failure;
+use Amp\Http\Status;
 use Amp\Promise;
 use cash\LRUCache;
 use FastRoute\Dispatcher;
@@ -83,13 +84,13 @@ final class Router implements Responder, ServerObserver {
                         return $this->fallback->respond($request);
                     }
 
-                    return yield $this->errorHandler->handle(HttpStatus::NOT_FOUND, null, $request);
+                    return yield $this->errorHandler->handle(Status::NOT_FOUND, null, $request);
 
                 case Dispatcher::METHOD_NOT_ALLOWED:
                     $allowedMethods = implode(",", $match[1]);
 
                     /** @var \Aerys\Response $response */
-                    $response = yield $this->errorHandler->handle(HttpStatus::METHOD_NOT_ALLOWED, null, $request);
+                    $response = yield $this->errorHandler->handle(Status::METHOD_NOT_ALLOWED, null, $request);
                     $response->setHeader("Allow", $allowedMethods);
                     return $response;
 
@@ -205,7 +206,7 @@ final class Router implements Responder, ServerObserver {
                 return new Response\TextResponse(
                     "Canonical resource location: {$path}",
                     ["Location" => $redirectTo],
-                    HttpStatus::FOUND
+                    Status::FOUND
                 );
             })];
         } else {

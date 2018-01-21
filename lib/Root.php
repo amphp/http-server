@@ -9,6 +9,7 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
 use Amp\Emitter;
 use Amp\File;
+use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Struct;
@@ -339,7 +340,7 @@ class Root implements Responder, ServerObserver {
                 return $this->fallback->respond($request);
             }
 
-            return yield $this->errorHandler->handle(HttpStatus::NOT_FOUND, null, $request);
+            return yield $this->errorHandler->handle(Status::NOT_FOUND, null, $request);
         }
 
         switch ($request->getMethod()) {
@@ -354,7 +355,7 @@ class Root implements Responder, ServerObserver {
 
             default:
                 /** @var \Aerys\Response $response */
-                $response = yield $this->errorHandler->handle(HttpStatus::METHOD_NOT_ALLOWED, null, $request);
+                $response = yield $this->errorHandler->handle(Status::METHOD_NOT_ALLOWED, null, $request);
                 $response->setHeader("Allow", "GET, HEAD, OPTIONS");
                 return $response;
         }
@@ -364,14 +365,14 @@ class Root implements Responder, ServerObserver {
         switch ($precondition) {
             case self::PRECONDITION_NOT_MODIFIED:
                 $lastModifiedHttpDate = \gmdate('D, d M Y H:i:s', $fileInfo->mtime) . " GMT";
-                $response = new Response\EmptyResponse(["Last-Modified" => $lastModifiedHttpDate], HttpStatus::NOT_MODIFIED);
+                $response = new Response\EmptyResponse(["Last-Modified" => $lastModifiedHttpDate], Status::NOT_MODIFIED);
                 if ($fileInfo->etag) {
                     $response->setHeader("Etag", $fileInfo->etag);
                 }
                 return $response;
 
             case self::PRECONDITION_FAILED:
-                return yield $this->errorHandler->handle(HttpStatus::PRECONDITION_FAILED, null, $request);
+                return yield $this->errorHandler->handle(Status::PRECONDITION_FAILED, null, $request);
 
             case self::PRECONDITION_IF_RANGE_FAILED:
                 // Return this so the resulting generator will be auto-resolved
@@ -390,7 +391,7 @@ class Root implements Responder, ServerObserver {
 
         // If we're still here this is the only remaining response we can send
         /** @var \Aerys\Response $response */
-        $response = yield $this->errorHandler->handle(HttpStatus::RANGE_NOT_SATISFIABLE, null, $request);
+        $response = yield $this->errorHandler->handle(Status::RANGE_NOT_SATISFIABLE, null, $request);
         $response->setHeader("Content-Range", "*/{$fileInfo->size}");
         return $response;
     }
@@ -579,7 +580,7 @@ class Root implements Responder, ServerObserver {
             $stream = $this->sendMultiRange($handle, $fileInfo, $range);
         }
 
-        $response = new Response($stream, $headers, HttpStatus::PARTIAL_CONTENT);
+        $response = new Response($stream, $headers, Status::PARTIAL_CONTENT);
         $response->onDispose([$handle, "close"]);
         return $response;
     }

@@ -5,6 +5,7 @@ namespace Aerys\Websocket\Internal;
 use Aerys\HttpStatus;
 use Aerys\Response;
 use Amp\ByteStream\InMemoryStream;
+use Amp\Http\Status;
 
 class Rfc6455Handshake extends Response {
     const ACCEPT_CONCAT = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -23,6 +24,6 @@ class Rfc6455Handshake extends Response {
             "Sec-WebSocket-Accept" => $secWebSocketAccept,
         ];
 
-        parent::__construct(new InMemoryStream, $headers, HttpStatus::SWITCHING_PROTOCOLS);
+        parent::__construct(new InMemoryStream, $headers, Status::SWITCHING_PROTOCOLS);
     }
 }

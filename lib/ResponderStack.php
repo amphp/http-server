@@ -2,6 +2,7 @@
 
 namespace Aerys;
 
+use Amp\Http\Status;
 use Amp\Promise;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
@@ -45,7 +46,7 @@ final class ResponderStack implements Responder, ServerObserver {
 
                 \assert($response instanceof Response, "Responders must return an instance of " . Response::class);
 
-                if ($response->getStatus() !== HttpStatus::NOT_FOUND) {
+                if ($response->getStatus() !== Status::NOT_FOUND) {
                     break;
                 }
             }

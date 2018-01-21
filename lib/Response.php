@@ -5,6 +5,7 @@ namespace Aerys;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\ResponseCookie;
+use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Socket\Socket;
 
@@ -44,11 +45,11 @@ class Response {
     public function __construct(
         $stringOrStream = null,
         array $headers = [],
-        int $code = HttpStatus::OK,
+        int $code = Status::OK,
         string $reason = null
     ) {
         $this->status = $this->validateStatusCode($code);
-        $this->reason = $reason ?? HttpStatus::getReason($this->status);
+        $this->reason = $reason ?? Status::getReason($this->status);
 
         $this->setBody($stringOrStream);
 
@@ -283,7 +284,7 @@ class Response {
      */
     public function setStatus(int $code, string $reason = null) {
         $this->status = $this->validateStatusCode($code);
-        $this->reason = $reason ?? HttpStatus::getReason($this->status);
+        $this->reason = $reason ?? Status::getReason($this->status);
     }
 
     /**

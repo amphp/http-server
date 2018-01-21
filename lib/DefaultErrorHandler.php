@@ -2,6 +2,7 @@
 
 namespace Aerys;
 
+use Amp\Http\Status;
 use Amp\Promise;
 use Amp\Success;
 
@@ -18,7 +19,7 @@ class DefaultErrorHandler implements ErrorHandler {
             $this->cache[$statusCode] = \str_replace(
                 ["{code}", "{reason}"],
                 // Using standard reason in HTML for caching purposes.
-                \array_map("htmlspecialchars", [$statusCode, HttpStatus::getReason($statusCode)]),
+                \array_map("htmlspecialchars", [$statusCode, Status::getReason($statusCode)]),
                 DEFAULT_ERROR_HTML
             );
         }

@@ -14,6 +14,7 @@ use Aerys\Response;
 use Aerys\Router;
 use Aerys\Server;
 use Amp\Failure;
+use Amp\Http\Status;
 use Amp\Promise;
 use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
@@ -71,14 +72,14 @@ class RouterTest extends TestCase {
         /** @var \Aerys\Response $response */
         $response = Promise\wait($router->respond($request));
 
-        $this->assertEquals(HttpStatus::FOUND, $response->getStatus());
+        $this->assertEquals(Status::FOUND, $response->getStatus());
         $this->assertEquals("/mediocre-dev/bob/19", $response->getHeader("location"));
 
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/mediocre-dev/bob/19"));
 
         $response = Promise\wait($router->respond($request));
 
-        $this->assertEquals(HttpStatus::OK, $response->getStatus());
+        $this->assertEquals(Status::OK, $response->getStatus());
         $this->assertSame(["name" => "bob", "age" => "19"], $routeArgs);
     }
 }
