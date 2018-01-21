@@ -84,9 +84,6 @@ class Client {
     /** @var \Psr\Log\LoggerInterface */
     private $logger;
 
-    /** @var bool */
-    private $paused = false;
-
     /** @var \Amp\Deferred|null */
     private $writeDeferred;
 
@@ -164,8 +161,7 @@ class Client {
         $this->httpDriver->setup(
             $this,
             $this->callableFromInstanceMethod("onMessage"),
-            $this->callableFromInstanceMethod("write"),
-            $this->callableFromInstanceMethod("pause")
+            $this->callableFromInstanceMethod("write")
         );
 
         $this->requestParser = $this->httpDriver->parser();
@@ -311,6 +307,7 @@ class Client {
     private function clear() {
         $this->httpDriver = null;
         $this->requestParser = null;
+        $this->resume = null;
 
         if ($this->readWatcher) {
             Loop::cancel($this->readWatcher);
@@ -329,7 +326,13 @@ class Client {
             $this->timeoutCache->renew($this->id);
 
             try {
-                $this->requestParser->send($data);
+                $promise = $this->requestParser->send($data);
+
+                if ($promise instanceof Promise && !$this->isExported) {
+                    // Parser wants to wait until a promise completes.
+                    Loop::disable($watcherId);
+                    $promise->onResolve($this->resume);
+                }
             } catch (ClientException $exception) {
                 if ($this->status & self::CLOSED_RD) {
                     return; // Exception already handled by responder.
@@ -347,7 +350,6 @@ class Client {
                 return;
             }
 
-            $this->paused = true;
             $this->status = self::CLOSED_RD;
             Loop::cancel($watcherId);
         }
@@ -454,7 +456,6 @@ class Client {
     private function onError(ClientException $exception): Promise {
         Loop::cancel($this->readWatcher);
         $this->status &= self::CLOSED_RD;
-        $this->paused = true;
 
         $message = $exception->getMessage();
         $status = $exception->getCode() ?: Status::BAD_REQUEST;
@@ -466,18 +467,21 @@ class Client {
         return new Coroutine($this->sendErrorResponse($status, $message));
     }
 
-    private function pause(): callable {
-        $this->paused = true;
-        Loop::disable($this->readWatcher);
-        return $this->resume;
-    }
-
-    private function resume() {
-        if ($this->paused && !($this->status & self::CLOSED_RD)) {
-            Loop::enable($this->readWatcher);
+    /**
+     * Resumes the request parser after it has yielded a promise.
+     *
+     * @param \Throwable|null $exception
+     */
+    private function resume(\Throwable $exception = null) {
+        if ($exception) {
+            $this->close();
+            return;
         }
 
-        $this->paused = false;
+        if (!$this->isExported && !($this->status & self::CLOSED_RD)) {
+            Loop::enable($this->readWatcher);
+            $this->requestParser->send("");
+        }
     }
 
     /**

@@ -15,12 +15,11 @@ interface HttpDriver {
      * @param \Aerys\Client $client
      * @param callable $onMessage
      * @param callable $write
-     * @param callable $pause
      */
-    public function setup(Client $client, callable $onMessage, callable $write, callable $pause);
+    public function setup(Client $client, callable $onMessage, callable $write);
 
     /**
-     * Returns a generator used to write the response body.
+     * Returns a generator used to write the response body. Data to be written is sent to the generator.
      *
      * @param \Aerys\Response $response
      * @param \Aerys\Request|null $request
@@ -30,8 +29,9 @@ interface HttpDriver {
     public function writer(Response $response, Request $request = null): \Generator;
 
     /**
-     * Note that you *can* rely on keep-alive timeout terminating the Body with a ClientException, when no further
-     * data comes in. No need to manually handle that here.
+     * Data read from the client connection is sent to the generator returned from this method. If the generator
+     * yields a promise, no additional data is sent to the parser until the promise resolves. Each yield must be
+     * prepared to receive additional client data, including those yielding promises.
      *
      * @return \Generator
      */

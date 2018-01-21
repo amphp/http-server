@@ -43,15 +43,6 @@ class Http1Driver implements HttpDriver {
     /** @var callable */
     private $write;
 
-    /** @var callable */
-    private $pause;
-
-    /** @var callable|null */
-    private $resume;
-
-    /** @var \Aerys\Request[] */
-    private $messageQueue = [];
-
     public function __construct(Options $options, TimeReference $timeReference) {
         $this->options = $options;
         $this->nullBody = new NullBody;
@@ -61,11 +52,10 @@ class Http1Driver implements HttpDriver {
         $this->remainingRequests = $this->options->getMaxRequestsPerConnection();
     }
 
-    public function setup(Client $client, callable $onMessage, callable $write, callable $pause) {
+    public function setup(Client $client, callable $onMessage, callable $write) {
         $this->client = $client;
         $this->onMessage = $onMessage;
         $this->write = $write;
-        $this->pause = $pause;
     }
 
     public function writer(Response $response, Request $request = null): \Generator {
@@ -151,14 +141,6 @@ class Http1Driver implements HttpDriver {
 
         $this->pendingResponses--;
         $this->remainingRequests--;
-
-        if (!empty($this->messageQueue)) {
-            ($this->onMessage)(\array_shift($this->messageQueue));
-        } elseif ($this->resume) {
-            $resume = $this->resume;
-            $this->resume = null;
-            $resume(); // Resume sending data to the request parser.
-        }
     }
 
     public function parser(): \Generator {
@@ -171,7 +153,7 @@ class Http1Driver implements HttpDriver {
         do {
             if ($parser !== null) { // May be set from upgrade request or receive of PRI * HTTP/2.0 request.
                 /** @var \Generator $parser */
-                yield from $parser; // Yield from HTTP/2 parser for duration of request.
+                yield from $parser; // Yield from HTTP/2 parser for duration of connection.
                 return;
             }
 
@@ -212,7 +194,7 @@ class Http1Driver implements HttpDriver {
                 if ($protocol === "2.0") {
                     // Internal upgrade to HTTP/2.
                     $this->http2 = new Http2Driver($this->options, $this->timeReference);
-                    $this->http2->setup($this->client, $this->onMessage, $this->write, $this->pause);
+                    $this->http2->setup($this->client, $this->onMessage, $this->write);
 
                     $parser = $this->http2->parser();
                     $parser->send("$startLineAndHeaders\r\n$buffer");
@@ -313,7 +295,7 @@ class Http1Driver implements HttpDriver {
 
                 // Internal upgrade
                 $this->http2 = new Http2Driver($this->options, $this->timeReference);
-                $this->http2->setup($this->client, $this->onMessage, $this->write, $this->pause);
+                $this->http2->setup($this->client, $this->onMessage, $this->write);
 
                 $parser = $this->http2->parser($h2cSettings, true);
                 $parser->current(); // Yield from this parser after reading the current request body.
@@ -335,12 +317,7 @@ class Http1Driver implements HttpDriver {
 
                 $this->pendingResponses++;
 
-                if ($this->resume) {
-                    $this->messageQueue[] = $request;
-                } else {
-                    $this->resume = ($this->pause)(); // Pause client until response is written.
-                    ($this->onMessage)($request);
-                }
+                $buffer .= yield ($this->onMessage)($request); // Wait for response to be fully written.
 
                 continue;
             }
@@ -361,11 +338,7 @@ class Http1Driver implements HttpDriver {
 
             $this->pendingResponses++;
 
-            if ($this->resume) {
-                $this->messageQueue[] = $request;
-            } else {
-                ($this->onMessage)($request);
-            }
+            $promise = ($this->onMessage)($request); // Do not yield promise until body is completely read.
 
             $body = "";
 
@@ -559,12 +532,10 @@ class Http1Driver implements HttpDriver {
                     }
                 }
 
-                if (!$this->resume) {
-                    $this->resume = ($this->pause)(); // Pause client until response is written.
-                }
-
                 $this->bodyEmitter = null;
                 $emitter->complete();
+
+                $buffer .= yield $promise; // Wait for response to be fully written.
             } catch (\Throwable $exception) {
                 // Catching and rethrowing to set $exception to be used in finally.
                 throw $exception;

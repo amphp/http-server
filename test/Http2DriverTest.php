@@ -16,11 +16,11 @@ use Amp\Success;
 use Amp\Uri\Uri;
 
 class Http2DriverTest extends TestCase {
-    public function packFrame($data, $type, $flags, $stream = 0) {
+    public static function packFrame($data, $type, $flags, $stream = 0) {
         return substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
     }
 
-    public function packHeader($headers, $hasBody = false, $stream = 1, $split = PHP_INT_MAX) {
+    public static function packHeader($headers, $hasBody = false, $stream = 1, $split = PHP_INT_MAX) {
         $data = "";
         $headers = HPack::encode($headers);
         $all = str_split($headers, $split);
@@ -34,11 +34,11 @@ class Http2DriverTest extends TestCase {
         $end = array_pop($all);
         $type = Http2Driver::HEADERS;
         foreach ($all as $frame) {
-            $data .= $this->packFrame($frame, $type, $flag, $stream);
+            $data .= self::packFrame($frame, $type, $flag, $stream);
             $type = Http2Driver::CONTINUATION;
             $flag = Http2Driver::NOFLAG;
         }
-        return $data . $this->packFrame($end, $type, ($hasBody ? $flag : Http2Driver::END_STREAM | $flag) | Http2Driver::END_HEADERS, $stream);
+        return $data . self::packFrame($end, $type, ($hasBody ? $flag : Http2Driver::END_STREAM | $flag) | Http2Driver::END_HEADERS, $stream);
     }
 
     /**
@@ -96,8 +96,8 @@ class Http2DriverTest extends TestCase {
             ":method" => "GET",
             "test" => "successful"
         ];
-        $msg = $this->packFrame(pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
-        $msg .= $this->packHeader($headers);
+        $msg = self::packFrame(pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
+        $msg .= self::packHeader($headers);
 
         $expectations = [
             "protocol"    => "2.0",
@@ -116,11 +116,11 @@ class Http2DriverTest extends TestCase {
 
         $headers[":authority"] = "localhost";
 
-        $msg = $this->packFrame(pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
-        $msg .= $this->packHeader($headers, true, 1, 1);
-        $msg .= $this->packFrame("a", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
-        $msg .= $this->packFrame("", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
-        $msg .= $this->packFrame("b", Http2Driver::DATA, Http2Driver::END_STREAM, 1);
+        $msg = self::packFrame(pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
+        $msg .= self::packHeader($headers, true, 1, 1);
+        $msg .= self::packFrame("a", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
+        $msg .= self::packFrame("", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
+        $msg .= self::packFrame("b", Http2Driver::DATA, Http2Driver::END_STREAM, 1);
 
         $expectations = [
             "protocol"    => "2.0",
@@ -167,8 +167,7 @@ class Http2DriverTest extends TestCase {
         $driver->setup(
             $this->createMock(Client::class),
             $onMessage ?? function () {},
-            $writer ?? $this->createCallback(0),
-            $this->createCallback(0)
+            $writer ?? $this->createCallback(0)
         );
 
         return $driver;
@@ -186,8 +185,7 @@ class Http2DriverTest extends TestCase {
                 $this->assertFalse($close);
                 $buffer .= $data;
                 return new Success;
-            },
-            $this->createCallback(0)
+            }
         );
         $parser = $driver->parser("", true); // Simulate upgrade request.
 
@@ -201,7 +199,7 @@ class Http2DriverTest extends TestCase {
 
         unset($writer);
 
-        $data = $this->packFrame(pack(
+        $data = self::packFrame(pack(
             "nNnNnN",
             Http2Driver::INITIAL_WINDOW_SIZE,
             $options->getMaxBodySize() + 256,
@@ -210,12 +208,14 @@ class Http2DriverTest extends TestCase {
             Http2Driver::MAX_HEADER_LIST_SIZE,
             $options->getMaxHeaderSize()
         ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0);
-        $data .= $this->packFrame(HPack::encode([
+
+        $data .= self::packFrame(HPack::encode([
             ":status" => 200,
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
-        $data .= $this->packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
-        $data .= $this->packFrame(pack("N", Http2Driver::INTERNAL_ERROR), Http2Driver::RST_STREAM, Http2Driver::NOFLAG, 1);
+
+        $data .= self::packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
+        $data .= self::packFrame(pack("N", Http2Driver::INTERNAL_ERROR), Http2Driver::RST_STREAM, Http2Driver::NOFLAG, 1);
 
         $this->assertEquals($data, $buffer);
     }
@@ -228,7 +228,7 @@ class Http2DriverTest extends TestCase {
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
         $driver->frames = []; // ignore settings and window updates...
 
-        $parser->send($this->packFrame("blahbleh", Http2Driver::PING, Http2Driver::NOFLAG));
+        $parser->send(self::packFrame("blahbleh", Http2Driver::PING, Http2Driver::NOFLAG));
 
         $this->assertEquals([["blahbleh", Http2Driver::PING, Http2Driver::ACK, 0]], $driver->frames);
     }
@@ -248,7 +248,7 @@ class Http2DriverTest extends TestCase {
         }
         $driver->frames = [];
 
-        $parser->send($this->packFrame(pack("nN", Http2Driver::INITIAL_WINDOW_SIZE, 66000), Http2Driver::SETTINGS, Http2Driver::NOFLAG));
+        $parser->send(self::packFrame(pack("nN", Http2Driver::INITIAL_WINDOW_SIZE, 66000), Http2Driver::SETTINGS, Http2Driver::NOFLAG));
         $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
         $this->assertEquals(Http2Driver::SETTINGS, $type);
@@ -263,7 +263,7 @@ class Http2DriverTest extends TestCase {
             ":method" => "GET",
             "test" => "successful"
         ];
-        $parser->send($this->packHeader($headers, false, 1));
+        $parser->send(self::packHeader($headers, false, 1));
 
         // $onMessage callback should be invoked.
         $this->assertInstanceOf(Request::class, $request);
@@ -291,7 +291,7 @@ class Http2DriverTest extends TestCase {
 
         $this->assertEquals(65536, \strlen($recv)); // global window!!
 
-        $parser->send($this->packFrame(pack("N", 464 /* until 66000 */), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
+        $parser->send(self::packFrame(pack("N", 464 /* until 66000 */), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
 
         $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
@@ -300,10 +300,10 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals(464, \strlen($data));
         $this->assertEquals(1, $stream);
 
-        $parser->send($this->packFrame(pack("N", 4), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
+        $parser->send(self::packFrame(pack("N", 4), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
         $this->assertCount(0, $driver->frames); // global window update alone must not trigger send
 
-        $parser->send($this->packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG, 1));
+        $parser->send(self::packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG, 1));
 
         $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
@@ -312,7 +312,7 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals("_", $data);
         $this->assertEquals(1, $stream);
 
-        $parser->send($this->packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG, 1));
+        $parser->send(self::packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG, 1));
 
         $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
@@ -321,7 +321,7 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals("_", $data);
         $this->assertEquals(1, $stream);
 
-        $parser->send($this->packHeader($headers, false, 3));
+        $parser->send(self::packHeader($headers, false, 3));
 
         // $onMessage callback should be invoked.
         $this->assertInstanceOf(Request::class, $request);
@@ -347,7 +347,7 @@ class Http2DriverTest extends TestCase {
         $writer->send("*");
         $this->assertCount(0, $driver->frames); // global window too small
 
-        $parser->send($this->packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
+        $parser->send(self::packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
 
         $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);

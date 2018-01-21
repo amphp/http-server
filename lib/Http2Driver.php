@@ -7,6 +7,7 @@ namespace Aerys;
 // @TODO maybe display a real HTML error page for artificial limits exceeded
 
 use Amp\ByteStream\IteratorStream;
+use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Http\Status;
 use Amp\Loop;
@@ -109,9 +110,6 @@ class Http2Driver implements HttpDriver {
     /** @var callable */
     private $write;
 
-    /** @var callable */
-    private $pause;
-
     public function __construct(Options $options, TimeReference $timeReference) {
         $this->options = $options;
         $this->nullBody = new NullBody;
@@ -120,11 +118,10 @@ class Http2Driver implements HttpDriver {
         $this->remainingStreams = $this->options->getMaxConcurrentStreams();
     }
 
-    public function setup(Client $client, callable $onMessage, callable $write, callable $pause) {
+    public function setup(Client $client, callable $onMessage, callable $write) {
         $this->client = $client;
         $this->onMessage = $onMessage;
         $this->write = $write;
-        $this->pause = $pause;
     }
 
     protected function dispatchInternalRequest(Request $request, int $streamId, string $url, array $pushHeaders = null) {
@@ -467,8 +464,7 @@ class Http2Driver implements HttpDriver {
                     $time = $this->timeReference->getCurrentTime();
                     if ($lastReset === $time) {
                         if ($framesLastSecond > $maxFramesPerSecond) {
-                            $resume = ($this->pause)(); // aka tiny frame DoS prevention
-                            Loop::delay(1000, $resume);
+                            $buffer .= yield new Delayed(1000); // aka tiny frame DoS prevention
                             $framesLastSecond = 0;
                         }
                     } else {
