@@ -10,7 +10,13 @@ use Amp\Struct;
 class Http2Stream {
     use Struct;
 
+    const DEFAULT_INITIAL_WINDOW_SIZE = 65536;
+
     public $end = false;
-    public $window = 65536;
+    public $window;
     public $buffer = "";
+
+    public function __construct(int $size = self::DEFAULT_INITIAL_WINDOW_SIZE) {
+        $this->window = $size;
+    }
 }

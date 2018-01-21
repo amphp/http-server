@@ -12,6 +12,7 @@ use Aerys\Response;
 use Aerys\TimeReference;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
+use Amp\Success;
 use Amp\Uri\Uri;
 
 class Http2DriverTest extends TestCase {
@@ -148,16 +149,18 @@ class Http2DriverTest extends TestCase {
                 $this->test = $test;
             }
 
-            protected function writeFrame(string $data, string $type, string $flags, int $stream = 0) {
+            protected function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise {
                 if ($type === Http2Driver::RST_STREAM || $type === Http2Driver::GOAWAY) {
                     $this->test->fail("RST_STREAM or GOAWAY frame received");
                 }
 
                 if ($type === Http2Driver::WINDOW_UPDATE) {
-                    return; // we don't test this as we always give a far too large window currently ;-)
+                    return new Success; // we don't test this as we always give a far too large window currently ;-)
                 }
 
                 $this->frames[] = [$data, $type, $flags, $stream];
+
+                return new Success;
             }
         };
 
@@ -182,6 +185,7 @@ class Http2DriverTest extends TestCase {
                 // HTTP/2 shall only reset streams, not abort the connection
                 $this->assertFalse($close);
                 $buffer .= $data;
+                return new Success;
             },
             $this->createCallback(0)
         );
@@ -198,11 +202,13 @@ class Http2DriverTest extends TestCase {
         unset($writer);
 
         $data = $this->packFrame(pack(
-            "nNnN",
+            "nNnNnN",
             Http2Driver::INITIAL_WINDOW_SIZE,
             $options->getMaxBodySize() + 256,
             Http2Driver::MAX_CONCURRENT_STREAMS,
-            $options->getMaxConcurrentStreams()
+            $options->getMaxConcurrentStreams(),
+            Http2Driver::MAX_HEADER_LIST_SIZE,
+            $options->getMaxHeaderSize()
         ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0);
         $data .= $this->packFrame(HPack::encode([
             ":status" => 200,
@@ -257,7 +263,7 @@ class Http2DriverTest extends TestCase {
             ":method" => "GET",
             "test" => "successful"
         ];
-        $parser->send($this->packHeader($headers));
+        $parser->send($this->packHeader($headers, false, 1));
 
         // $onMessage callback should be invoked.
         $this->assertInstanceOf(Request::class, $request);
