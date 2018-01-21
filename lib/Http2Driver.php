@@ -121,52 +121,39 @@ class Http2Driver implements HttpDriver {
         $this->write = $write;
     }
 
-    protected function dispatchInternalRequest(Request $request, int $streamId, string $url, array $pushHeaders = null) {
-        if ($pushHeaders === null) {
+    protected function dispatchInternalRequest(Request $request, int $streamId, string $url, array $headers = []) {
+        $headers = \array_merge(\array_intersect_key($request->getHeaders(), [
             // headers to take over from original request if present
-            $pushHeaders = array_intersect_key($request->getHeaders(), [
-                "accept" => 1,
-                "accept-charset" => 1,
-                "accept-encoding" => 1,
-                "accept-language" => 1,
-                "authorization" => 1,
-                "cookie" => 1,
-                "date" => 1,
-                "transfer-encoding" => 1,
-                "user-agent" => 1,
-                "via" => 1,
-            ]);
-            $pushHeaders["referer"] = (string) $request->getUri();
+            "accept" => 1,
+            "accept-charset" => 1,
+            "accept-encoding" => 1,
+            "accept-language" => 1,
+            "authorization" => 1,
+            "cookie" => 1,
+            "date" => 1,
+            "user-agent" => 1,
+            "via" => 1,
+        ], $headers));
+
+        $headers["referer"] = (string) $request->getUri();
+
+        $uri = $request->getUri();
+
+        if (!\preg_match("#^https?://#i", $url)) {
+            $url = $uri->getScheme() . "://" . $uri->getAuthority(false) . "/" . \ltrim($url, "/");
         }
 
-        $headers = [];
-
         $url = new Uri($url);
-        $authority = $url->getAuthority() ?: $request->getUri()->getAuthority();
-        $scheme = $url->getScheme() ?: $request->getUri()->getScheme();
-        $path = $url->getPath();
 
+        $path = $url->getPath();
         if ($query = $url->getQuery()) {
             $path .= "?" . $query;
         }
 
-        $headers[":authority"][0] = $authority;
-        $headers[":scheme"][0] = $scheme;
-        $headers[":path"][0] = $path;
-        $headers[":method"][0] = "GET";
-
-        foreach (\array_change_key_case($pushHeaders, \CASE_LOWER) as $name => $header) {
-            if (\is_int($name)) {
-                \assert(\is_array($header));
-                list($name, $header) = $header;
-                $headers[$name][] = $header;
-            } elseif (\is_string($header)) {
-                $headers[$name][] = $header;
-            } else {
-                \assert(\is_array($header));
-                $headers[$name] = $header;
-            }
-        }
+        $headers[":authority"] = [$url->getAuthority(false)];
+        $headers[":scheme"] = [$url->getScheme()];
+        $headers[":path"] = [$path];
+        $headers[":method"] = ["GET"];
 
         $id = $this->streamId += 2; // Server initiated stream IDs must be even.
         $request = new Request($this->client, "GET", $url, $headers, null, $path, "2.0");
