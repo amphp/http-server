@@ -45,10 +45,12 @@ class Response extends Message {
         int $code = Status::OK,
         string $reason = null
     ) {
-        parent::__construct($headers);
-
         $this->status = $this->validateStatusCode($code);
         $this->reason = $reason ?? Status::getReason($this->status);
+
+        if (!empty($headers)) {
+            $this->setHeaders($headers);
+        }
 
         $this->setBody($stringOrStream);
     }

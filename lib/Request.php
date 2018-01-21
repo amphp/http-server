@@ -51,12 +51,14 @@ class Request extends Message {
         string $target = null,
         string $protocol = "1.1"
     ) {
-        parent::__construct($headers);
-
         $this->client = $client;
         $this->method = $method;
         $this->uri = $uri;
         $this->protocol = $protocol;
+
+        if (!empty($headers)) {
+            $this->setHeaders($headers);
+        }
 
         $this->setBody($body);
 

@@ -7,20 +7,6 @@ abstract class Message {
     private $headers = [];
 
     /**
-     * @param \Amp\ByteStream\InputStream|string|null $stringOrStream
-     * @param string[][] $headers
-     * @param int $code Status code.
-     * @param string|null $reason Status code reason.
-     *
-     * @throws \Error If one of the arguments is invalid.
-     */
-    public function __construct(array $headers = []) {
-        if (!empty($headers)) {
-            $this->setHeaders($headers);
-        }
-    }
-
-    /**
      * Returns the response headers as a string-indexed array of arrays of strings or an empty array if no headers
      * have been set.
      *
