@@ -6,7 +6,6 @@ use Aerys\Body;
 use Aerys\Client;
 use Aerys\DefaultErrorHandler;
 use Aerys\ErrorHandler;
-use Aerys\HttpStatus;
 use Aerys\Logger;
 use Aerys\Request;
 use Aerys\Response;

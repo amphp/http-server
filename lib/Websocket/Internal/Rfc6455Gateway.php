@@ -4,7 +4,6 @@ namespace Aerys\Websocket\Internal;
 
 use Aerys\ClientException;
 use Aerys\ErrorHandler;
-use Aerys\HttpStatus;
 use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Response;

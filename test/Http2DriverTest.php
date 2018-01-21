@@ -5,7 +5,6 @@ namespace Aerys\Test;
 use Aerys\Client;
 use Aerys\Http2Driver;
 use Aerys\Internal\HPack;
-use Aerys\NullBody;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;

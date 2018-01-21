@@ -11,7 +11,6 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Http\Status;
-use Amp\Loop;
 use Amp\Promise;
 use Amp\Uri\InvalidUriException;
 use Amp\Uri\Uri;

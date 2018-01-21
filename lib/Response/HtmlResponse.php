@@ -2,7 +2,6 @@
 
 namespace Aerys\Response;
 
-use Aerys\HttpStatus;
 use Aerys\Response;
 use Amp\ByteStream\InMemoryStream;
 use Amp\Http\Status;

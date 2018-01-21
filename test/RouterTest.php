@@ -5,7 +5,6 @@ namespace Aerys\Test;
 use Aerys\CallableResponder;
 use Aerys\Client;
 use Aerys\ErrorHandler;
-use Aerys\HttpStatus;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
