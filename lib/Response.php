@@ -9,10 +9,7 @@ use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Socket\Socket;
 
-class Response {
-    /** @var string[][] */
-    private $headers = [];
-
+class Response extends Message {
     /** @var \Amp\ByteStream\InputStream  */
     private $body;
 
@@ -48,18 +45,12 @@ class Response {
         int $code = Status::OK,
         string $reason = null
     ) {
+        parent::__construct($headers);
+
         $this->status = $this->validateStatusCode($code);
         $this->reason = $reason ?? Status::getReason($this->status);
 
         $this->setBody($stringOrStream);
-
-        if (!empty($headers)) {
-            $this->setHeaders($headers);
-        }
-
-        if (isset($this->headers['set-cookie'])) {
-            $this->setCookiesFromHeaders();
-        }
     }
 
     public function __destruct() {
@@ -73,41 +64,6 @@ class Response {
             }
         }
     }
-
-    /**
-     * Returns the response headers as a string-indexed array of arrays of strings or an empty array if no headers
-     * have been set.
-     *
-     * @return string[][]
-     */
-    public function getHeaders(): array {
-        return $this->headers;
-    }
-
-    /**
-     * Returns the array of values for the given header or an empty array if the header does not exist.
-     *
-     * @param string $name
-     *
-     * @return string[]
-     */
-    public function getHeaderArray(string $name): array {
-        return $this->headers[\strtolower($name)] ?? [];
-    }
-
-    /**
-     * Returns the value of the given header. If multiple headers were present for the named header, only the first
-     * header value will be returned. Use getHeaderArray() to return an array of all values for the particular header.
-     * Returns null if the header does not exist.
-     *
-     * @param string $name
-     *
-     * @return string|null
-     */
-    public function getHeader(string $name) {
-        return $this->headers[\strtolower($name)][0] ?? null;
-    }
-
 
     /**
      * Returns the stream for the message body.
@@ -127,33 +83,17 @@ class Response {
      * @throws \TypeError If the body given is not a string or instance of \Amp\ByteStream\InputStream
      */
     public function setBody($stringOrStream) {
-        if ($stringOrStream === null) {
-            $stringOrStream = new InMemoryStream;
-        }
-
         if ($stringOrStream instanceof InputStream) {
             $this->body = $stringOrStream;
-            unset($this->headers["content-length"]);
             return;
         }
 
-        if (!\is_string($stringOrStream)) {
+        if ($stringOrStream !== null && !\is_string($stringOrStream)) {
             throw new \TypeError("The response body must a string, null, or instance of " . InputStream::class);
         }
 
         $this->body = new InMemoryStream($stringOrStream);
-        $this->headers["content-length"] = [(string) \strlen($stringOrStream)];
-    }
-
-    /**
-     * Sets the headers from the given array.
-     *
-     * @param string[] $headers
-     */
-    public function setHeaders(array $headers) {
-        foreach ($headers as $name => $value) {
-            $this->setHeader($name, $value);
-        }
+        $this->setHeader("content-length", (string) \strlen($stringOrStream));
     }
 
     /**
@@ -165,20 +105,9 @@ class Response {
      * @throws \Error If the header name or value is invalid.
      */
     public function setHeader(string $name, $value) {
-        \assert($this->isNameValid($name), "Header name is invalid");
+        parent::setHeader($name, $value);
 
-        if (\is_array($value)) {
-            $value = \array_map("strval", $value);
-        } else {
-            $value = [(string) $value];
-        }
-
-        \assert($this->isValueValid($value), "Header value is invalid");
-
-        $name = \strtolower($name);
-        $this->headers[$name] = $value;
-
-        if ('set-cookie' === $name) {
+        if (\stripos($name, "set-cookie") === 0) {
             $this->setCookiesFromHeaders();
         }
     }
@@ -192,24 +121,9 @@ class Response {
      * @throws \Error If the header name or value is invalid.
      */
     public function addHeader(string $name, $value) {
-        \assert($this->isNameValid($name), "Header name is invalid");
+        parent::addHeader($name, $value);
 
-        if (\is_array($value)) {
-            $value = \array_map("strval", $value);
-        } else {
-            $value = [(string) $value];
-        }
-
-        \assert($this->isValueValid($value), "Header value is invalid");
-
-        $name = \strtolower($name);
-        if (isset($this->headers[$name])) {
-            $this->headers[$name] = \array_merge($this->headers[$name], $value);
-        } else {
-            $this->headers[$name] = $value;
-        }
-
-        if ('set-cookie' === $name) {
+        if (\stripos($name, "set-cookie") === 0) {
             $this->setCookiesFromHeaders();
         }
     }
@@ -220,41 +134,11 @@ class Response {
      * @param string $name
      */
     public function removeHeader(string $name) {
-        $name = \strtolower($name);
-        unset($this->headers[$name]);
+        parent::removeHeader($name);
 
-        if ('set-cookie' === $name) {
+        if (\stripos($name, "set-cookie") === 0) {
             $this->cookies = [];
         }
-    }
-
-    /**
-     * @param string $name
-     *
-     * @return bool
-     */
-    private function isNameValid(string $name): bool {
-        return (bool) preg_match('/^[A-Za-z0-9`~!#$%^&_|\'\-]+$/', $name);
-    }
-
-    /**
-     * Determines if the given value is a valid header value.
-     *
-     * @param mixed[] $values
-     *
-     * @return bool
-     *
-     * @throws \Error If the given value cannot be converted to a string and is not an array of values that can be
-     *     converted to strings.
-     */
-    private function isValueValid(array $values): bool {
-        foreach ($values as $value) {
-            if (preg_match("/[^\t\r\n\x20-\x7e\x80-\xfe]|\r\n/", $value)) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /**
@@ -299,7 +183,7 @@ class Response {
      *
      * @return ResponseCookie|null
      */
-    public function getCookie(string $name) { /* : ?MetaCookie */
+    public function getCookie(string $name) { /* : ?ResponseCookie */
         return $this->cookies[$name] ?? null;
     }
 
@@ -350,7 +234,7 @@ class Response {
     private function setCookiesFromHeaders() {
         $this->cookies = [];
 
-        $headers = $this->getHeaderArray('set-cookie');
+        $headers = $this->getHeaderArray("set-cookie");
 
         foreach ($headers as $line) {
             $cookie = ResponseCookie::fromHeader($line);
@@ -368,7 +252,7 @@ class Response {
             $values[] = (string) $cookie;
         }
 
-        $this->setHeader('set-cookie', $values);
+        $this->setHeader("set-cookie", $values);
     }
 
     /**
@@ -379,22 +263,18 @@ class Response {
     }
 
     /**
+     * @param string $url URL of resource to push to the client.
+     * @param string[]|string[][] Additional headers to attach to the request.
      */
     public function push(string $url, array $headers = []) {
         \assert((function ($headers) {
-            foreach ($headers ?? [] as $name => $header) {
-                if (\is_int($name)) {
-                    if (count($header) != 2) {
-                        return false;
-                    }
-                    list($name) = $header;
-                }
+            foreach ($headers as $name => $header) {
                 if ($name[0] == ":" || !strncasecmp("host", $name, 4)) {
                     return false;
                 }
             }
             return true;
-        })($headers), "Headers must not contain colon prefixed headers or a Host header. Use a full URL if necessary, the method is always GET.");
+        })($headers), "Headers must not contain colon prefixed headers or a Host header");
 
         $this->push[$url] = $headers;
     }

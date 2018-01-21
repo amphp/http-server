@@ -2,10 +2,12 @@
 
 namespace Aerys;
 
+use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Uri\Uri;
 
-class Request {
+class Request extends Message {
     /** @var Client */
     private $client;
 
@@ -21,9 +23,6 @@ class Request {
     /** @var string */
     private $protocol;
 
-    /** @var string[][] */
-    private $headers = [];
-
     /** @var \Aerys\Body|null */
     private $body;
 
@@ -38,7 +37,7 @@ class Request {
      * @param string $method HTTP request method.
      * @param Uri $uri The full URI being requested, including host, port, and protocol.
      * @param string[]|string[][] $headers An array of strings or an array of string arrays.
-     * @param Body|null $body
+     * @param Body|InputStream|string|null $body
      * @param string|null $target Request target. Usually similar to URI, but contains only the exact string provided
      *    in the request line.
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
@@ -48,34 +47,20 @@ class Request {
         string $method,
         Uri $uri,
         array $headers = [],
-        Body $body = null,
+        $body = null,
         string $target = null,
         string $protocol = "1.1"
     ) {
+        parent::__construct($headers);
+
         $this->client = $client;
         $this->method = $method;
         $this->uri = $uri;
         $this->protocol = $protocol;
-        $this->body = $body ?? new NullBody;
+
+        $this->setBody($body);
+
         $this->target = $target ?? ($uri->getPath() . ($uri->getQuery() ? "?" . $uri->getQuery() : ""));
-
-        foreach ($headers as $name => $value) {
-            if (\is_array($value)) {
-                $value = \array_map("strval", $value);
-            } else {
-                $value = [(string) $value];
-            }
-
-            $name = \strtolower($name);
-            $this->headers[$name] = $value;
-        }
-
-        if (!empty($this->headers["cookie"])) { // @TODO delay initialization
-            // There MUST NOT be more than one cookie header, see https://tools.ietf.org/html/rfc6265#section-5.4
-            foreach (RequestCookie::fromHeader($this->headers["cookie"][0]) as $cookie) {
-                $this->cookies[$cookie->getName()] = $cookie;
-            }
-        }
     }
 
     /**
@@ -104,6 +89,15 @@ class Request {
     }
 
     /**
+     * Sets a new URI for the request.
+     *
+     * @param \Amp\Uri\Uri $uri
+     */
+    public function setUri(Uri $uri) {
+        $this->uri = $uri;
+    }
+
+    /**
      * Retrieve the request target path.
      *
      * @return string
@@ -113,8 +107,15 @@ class Request {
     }
 
     /**
-     * Retrieve the HTTP protocol version number used by this request.
+     * Sets a new target for the request.
      *
+     * @param string $target
+     */
+    public function setTarget(string $target) {
+        $this->target = $target;
+    }
+
+    /**
      * This method returns the HTTP protocol version (e.g. "1.0", "1.1", "2.0") in use;
      * it has nothing to do with URI schemes like http:// or https:// ...
      *
@@ -125,52 +126,61 @@ class Request {
     }
 
     /**
-     * Retrieve the first occurrence of specified header in the message.
+     * Sets a new protocol version number for the request.
      *
-     * If multiple headers were received for the specified field only the
-     * value of the first header is returned. Applications may use
-     * Request::getHeaderArray() to retrieve a list of all header values
-     * received for a given field.
-     *
-     * All header $field names are treated case-insensitively.
-     *
-     * A null return indicates the requested header field was not present.
-     *
-     * @param string $field
-     * @return string|null
+     * @param string $protocol
      */
-    public function getHeader(string $field) { /* : ?string */
-        return $this->headers[strtolower($field)][0] ?? null;
+    public function setProtocolVersion(string $protocol) {
+        $this->protocol = $protocol;
     }
 
     /**
-     * Retrieve the specified header as an array of each of its occurrences in the request.
+     * Sets the named header to the given value.
      *
-     * All header $field names are treated case-insensitively.
+     * @param string $name
+     * @param string|string[] $value
      *
-     * An empty return array indicates that the header was not present in the request.
-     *
-     * @param string $field
-     * @return array
+     * @throws \Error If the header name or value is invalid.
      */
-    public function getHeaderArray(string $field): array {
-        return $this->headers[strtolower($field)] ?? [];
+    public function setHeader(string $name, $value) {
+        parent::setHeader($name, $value);
+
+        if (\stripos($name, "cookie") === 0) {
+            $this->setCookiesFromHeaders();
+        }
     }
 
     /**
-     * Retrieve an array of all headers in the message.
+     * Adds the value to the named header, or creates the header with the given value if it did not exist.
      *
-     * The returned array uses header names normalized to all-lowercase for
-     * simplified querying via isset().
+     * @param string $name
+     * @param string|string[] $value
      *
-     * @return array
+     * @throws \Error If the header name or value is invalid.
      */
-    public function getHeaders(): array {
-        return $this->headers;
+    public function addHeader(string $name, $value) {
+        parent::addHeader($name, $value);
+
+        if (\stripos($name, "cookie") === 0) {
+            $this->setCookiesFromHeaders();
+        }
     }
 
     /**
-     * Retrieve the streaming request entity body.
+     * Removes the given header if it exists.
+     *
+     * @param string $name
+     */
+    public function removeHeader(string $name) {
+        parent::removeHeader($name);
+
+        if (\stripos($name, "cookie") === 0) {
+            $this->cookies = [];
+        }
+    }
+
+    /**
+     * Retrieve the request body.
      *
      * @return \Aerys\Body
      */
@@ -179,13 +189,110 @@ class Request {
     }
 
     /**
-     * Retrieve a cookie.
+     * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
+     * to the length of the given string. Using an InputStream or Body instance will remove the Content-Length header.
      *
-     * @param string $name
+     * @param Body|InputStream|string|null $stringOrStream
+     *
+     * @throws \Error
+     * @throws \TypeError
+     */
+    public function setBody($stringOrStream) {
+        if ($stringOrStream instanceof Body) {
+            $this->body = $stringOrStream;
+            return;
+        }
+
+        if ($stringOrStream instanceof InputStream) {
+            $this->body = new Body($stringOrStream);
+            return;
+        }
+
+        if ($stringOrStream !== null && !\is_string($stringOrStream)) {
+            throw new \TypeError(\sprintf(
+                "The request body must a string, null, or an instance of %s or %s ",
+                Body::class,
+                InputStream::class
+            ));
+        }
+
+        $this->body = new Body(new InMemoryStream($stringOrStream));
+        if ($length = \strlen($stringOrStream)) {
+            $this->setHeader("content-length", (string) \strlen($stringOrStream));
+        } elseif (!\in_array($this->method, ["GET", "HEAD", "OPTIONS", "TRACE"])) {
+            $this->setHeader("content-length", "0");
+        } else {
+            $this->removeHeader("content-length");
+        }
+    }
+
+    /**
+     * @return RequestCookie[]
+     */
+    public function getCookies(): array {
+        return $this->cookies;
+    }
+
+    /**
+     * @param string $name Name of the cookie.
+     *
      * @return RequestCookie|null
      */
-    public function getCookie(string $name) { /* : ?Cookie */
+    public function getCookie(string $name) { /* : ?RequestCookie */
         return $this->cookies[$name] ?? null;
+    }
+
+    /**
+     * Adds a cookie to the response.
+     *
+     * @param RequestCookie $cookie
+     */
+    public function setCookie(RequestCookie $cookie) {
+        $this->cookies[$cookie->getName()] = $cookie;
+        $this->setHeadersFromCookies();
+    }
+
+    /**
+     * Removes a cookie from the response.
+     *
+     * @param string $name
+     */
+    public function removeCookie(string $name) {
+        if (isset($this->cookies[$name])) {
+            unset($this->cookies[$name]);
+            $this->setHeadersFromCookies();
+        }
+    }
+
+    /**
+     * Sets cookies based on headers.
+     *
+     * @throws \Error
+     */
+    private function setCookiesFromHeaders() {
+        $this->cookies = [];
+
+        $headers = $this->getHeaderArray("cookie");
+
+        foreach ($headers as $line) {
+            $cookies = RequestCookie::fromHeader($line);
+            foreach ($cookies as $cookie) {
+                $this->cookies[$cookie->getName()] = $cookie;
+            }
+        }
+    }
+
+    /**
+     * Sets headers based on cookie values.
+     */
+    private function setHeadersFromCookies() {
+        $values = [];
+
+        foreach ($this->cookies as $cookie) {
+            $values[] = (string) $cookie;
+        }
+
+        $this->setHeader("cookie", $values);
     }
 
     /**

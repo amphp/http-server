@@ -211,6 +211,7 @@ class Http2DriverTest extends TestCase {
 
         $data .= self::packFrame(HPack::encode([
             ":status" => 200,
+            "content-length" => ["0"],
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
 
@@ -274,6 +275,7 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals([HPack::encode([
             ":status" => 200,
             "content-type" => ["text/html; charset=utf-8"],
+            "content-length" => ["0"],
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1], array_pop($driver->frames));
 
@@ -332,6 +334,7 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals([HPack::encode([
             ":status" => 200,
             "content-type" => ["text/html; charset=utf-8"],
+            "content-length" => ["0"],
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], array_pop($driver->frames));
 
