@@ -13,6 +13,7 @@ use Amp\Emitter;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
+use Amp\Uri\InvalidUriException;
 use Amp\Uri\Uri;
 
 class Http2Driver implements HttpDriver {
@@ -888,10 +889,15 @@ class Http2Driver implements HttpDriver {
                         $port = $this->client->getLocalPort();
                     }
 
-                    if ($port) {
-                        $uri = new Uri($scheme . "://" . \rawurldecode($host) . ":" . $port . $target);
-                    } else {
-                        $uri = new Uri($scheme . "://" . \rawurldecode($host) . $target);
+                    try {
+                        if ($port) {
+                            $uri = new Uri($scheme . "://" . \rawurldecode($host) . ":" . $port . $target);
+                        } else {
+                            $uri = new Uri($scheme . "://" . \rawurldecode($host) . $target);
+                        }
+                    } catch (InvalidUriException $exception) {
+                        $error = self::PROTOCOL_ERROR;
+                        goto connection_error;
                     }
 
                     if (!isset($this->streams[$id])) {

@@ -6,6 +6,7 @@ use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\Http\Status;
+use Amp\Uri\InvalidUriException;
 use Amp\Uri\Uri;
 
 class Http1Driver implements HttpDriver {
@@ -247,29 +248,33 @@ class Http1Driver implements HttpDriver {
                 throw new ClientException("Bad Request: invalid host header", Status::BAD_REQUEST);
             }
 
-            if ($target === "*") {
-                $port = $this->client->getLocalPort();
-                if ($port) {
-                    $uri = new Uri($host . ":" . $port);
-                } else {
-                    $uri = new Uri($host);
-                }
-            } elseif (($schemepos = \strpos($target, "://")) !== false && $schemepos < \strpos($target, "/")) {
-                $uri = new Uri($target);
-            } else {
-                $scheme = $this->client->isEncrypted() ? "https" : "http";
-                if (($colon = \strrpos($host, ":")) !== false) {
-                    $port = (int) \substr($host, $colon + 1);
-                    $host = \substr($host, 0, $colon);
-                } else {
+            try {
+                if ($target === "*") {
                     $port = $this->client->getLocalPort();
-                }
-
-                if ($port) {
-                    $uri = new Uri($scheme . "://" . $host . ":" . $port . $target);
+                    if ($port) {
+                        $uri = new Uri($host . ":" . $port);
+                    } else {
+                        $uri = new Uri($host);
+                    }
+                } elseif (\preg_match("#^https?://#i", $target)) {
+                    $uri = new Uri($target);
                 } else {
-                    $uri = new Uri($scheme . "://" . $host . $target);
+                    $scheme = $this->client->isEncrypted() ? "https" : "http";
+                    if (($colon = \strrpos($host, ":")) !== false) {
+                        $port = (int) \substr($host, $colon + 1);
+                        $host = \substr($host, 0, $colon);
+                    } else {
+                        $port = $this->client->getLocalPort();
+                    }
+
+                    if ($port) {
+                        $uri = new Uri($scheme . "://" . $host . ":" . $port . $target);
+                    } else {
+                        $uri = new Uri($scheme . "://" . $host . $target);
+                    }
                 }
+            } catch (InvalidUriException $exception) {
+                throw new ClientException("Bad Request: invalid target", Status::BAD_REQUEST, $exception);
             }
 
             // Handle HTTP/2 upgrade request.
@@ -301,7 +306,7 @@ class Http1Driver implements HttpDriver {
 
                 // Make request look like HTTP/2 request.
                 $headers[":method"][0] = $method;
-                $headers[":authority"][0] = $uri->getAuthority();
+                $headers[":authority"][0] = $uri->getAuthority(false);
                 $headers[":scheme"][0] = $uri->getScheme();
                 $headers[":path"][0] = $target;
 
