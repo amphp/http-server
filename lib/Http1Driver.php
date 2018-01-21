@@ -2,6 +2,7 @@
 
 namespace Aerys;
 
+use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\Http\Status;
@@ -25,9 +26,6 @@ class Http1Driver implements HttpDriver {
     /** @var \Aerys\TimeReference */
     private $timeReference;
 
-    /** @var \Aerys\NullBody */
-    private $nullBody;
-
     /** @var \Amp\Emitter|null */
     private $bodyEmitter;
 
@@ -45,8 +43,6 @@ class Http1Driver implements HttpDriver {
 
     public function __construct(Options $options, TimeReference $timeReference) {
         $this->options = $options;
-        $this->nullBody = new NullBody;
-
         $this->timeReference = $timeReference;
 
         $this->remainingRequests = $this->options->getMaxRequestsPerConnection();
@@ -284,10 +280,10 @@ class Http1Driver implements HttpDriver {
                 false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
             ) {
                 // Request instance will be overwritten below. This is for sending the switching protocols response.
-                $request = new Request($this->client, $method, $uri, $headers, $this->nullBody, $target, $protocol);
+                $request = new Request($this->client, $method, $uri, $headers, null, $target, $protocol);
 
                 $this->pendingResponses++;
-                $responseWriter = $this->writer(new Response($this->nullBody, [
+                $responseWriter = $this->writer(new Response(null, [
                     "connection" => "upgrade",
                     "upgrade" => "h2c",
                 ], Status::SWITCHING_PROTOCOLS), $request);
@@ -313,7 +309,15 @@ class Http1Driver implements HttpDriver {
             }
 
             if (!($isChunked || $contentLength)) {
-                $request = new Request($this->client, $method, $uri, $headers, $this->nullBody, $target, $protocol);
+                $request = new Request(
+                    $this->client,
+                    $method,
+                    $uri,
+                    $headers,
+                    new Body(new InMemoryStream),
+                    $target,
+                    $protocol
+                );
 
                 $this->pendingResponses++;
 

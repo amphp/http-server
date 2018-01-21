@@ -191,7 +191,7 @@ class Http2DriverTest extends TestCase {
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
 
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), [], new NullBody, "/", "2.0");
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), [], null, "/", "2.0");
 
         $writer = $driver->writer(new Response, $request);
 

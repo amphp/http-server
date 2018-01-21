@@ -6,6 +6,7 @@ namespace Aerys;
 // @TODO add ServerObserver for properly sending GOAWAY frames
 // @TODO maybe display a real HTML error page for artificial limits exceeded
 
+use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Delayed;
 use Amp\Emitter;
@@ -71,9 +72,6 @@ class Http2Driver implements HttpDriver {
     /** @var \Aerys\Options */
     private $options;
 
-    /** @var \Aerys\NullBody */
-    private $nullBody;
-
     /** @var \Aerys\TimeReference */
     private $timeReference;
 
@@ -112,7 +110,6 @@ class Http2Driver implements HttpDriver {
 
     public function __construct(Options $options, TimeReference $timeReference) {
         $this->options = $options;
-        $this->nullBody = new NullBody;
         $this->timeReference = $timeReference;
 
         $this->remainingStreams = $this->options->getMaxConcurrentStreams();
@@ -172,7 +169,7 @@ class Http2Driver implements HttpDriver {
         }
 
         $id = $this->streamId += 2; // Server initiated stream IDs must be even.
-        $request = new Request($this->client, "GET", $url, $headers, $this->nullBody, $path, "2.0");
+        $request = new Request($this->client, "GET", $url, $headers, null, $path, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
         $this->streams[$id] = new Internal\Http2Stream($this->initialWindowSize);
@@ -920,7 +917,7 @@ class Http2Driver implements HttpDriver {
                             $headers[":method"][0],
                             $uri,
                             $headers,
-                            $this->nullBody,
+                            new Body(new InMemoryStream),
                             $target,
                             "2.0"
                         );
