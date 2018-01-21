@@ -22,6 +22,7 @@ use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Delayed;
 use Amp\Emitter;
+use Amp\Http\Cookie\ResponseCookie;
 use Amp\Loop;
 use Amp\Socket;
 use Amp\Socket\Certificate;
@@ -59,14 +60,15 @@ class ClientTest extends TestCase {
                 $this->assertEquals("/uri", $req->getUri()->getPath());
                 $this->assertEquals(["foo" => ["bar"], "baz" => ["1", "2"]], $req->getUri()->getAllQueryParameters());
                 $this->assertEquals(["header"], $req->getHeaderArray("custom"));
-                $this->assertEquals("value", $req->getCookie("test"));
+                $this->assertNotNull($req->getCookie("test"));
+                $this->assertSame("value", $req->getCookie("test")->getValue());
 
                 $data = \str_repeat("*", 100000);
                 $stream = new InMemoryStream("data/" . $data . "/data");
 
                 $res = new Response($stream);
 
-                $res->setCookie("cookie", "with-value");
+                $res->setCookie(new ResponseCookie("cookie", "with-value"));
                 $res->setHeader("custom", "header");
 
                 return $res;

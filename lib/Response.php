@@ -2,9 +2,9 @@
 
 namespace Aerys;
 
-use Aerys\Cookie\MetaCookie;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
+use Amp\Http\Cookie\ResponseCookie;
 use Amp\Loop;
 use Amp\Socket\Socket;
 
@@ -21,7 +21,7 @@ class Response {
     /** @var string Response reason. */
     private $reason;
 
-    /** @var \Aerys\Cookie\MetaCookie[] */
+    /** @var ResponseCookie[] */
     private $cookies = [];
 
     /** @var array */
@@ -287,14 +287,16 @@ class Response {
     }
 
     /**
-     * @return \Aerys\Cookie\MetaCookie[]
+     * @return ResponseCookie[]
      */
     public function getCookies(): array {
         return $this->cookies;
     }
 
     /**
-     * @return \Aerys\Cookie\MetaCookie|null
+     * @param string $name Name of the cookie.
+     *
+     * @return ResponseCookie|null
      */
     public function getCookie(string $name) { /* : ?MetaCookie */
         return $this->cookies[$name] ?? null;
@@ -303,60 +305,27 @@ class Response {
     /**
      * Adds a cookie to the response.
      *
-     * @param string|\Aerys\Cookie\MetaCookie $nameOrCookie If an instance of MetaCookie is provided, all other
-     *     parameters are ignored.
-     * @param mixed $value
-     * @param int $expires Unix timestamp of expiration.
-     * @param string|null $path Optional path.
-     * @param string|null $domain Optional domain.
-     * @param bool $secure Send only on secure requests.
-     * @param bool $httpOnly Send only on http requests.
+     * @param ResponseCookie $cookie
      */
-    public function setCookie(
-        $nameOrCookie,
-        $value = '',
-        int $expires = 0,
-        string $path = '',
-        string $domain = '',
-        bool $secure = false,
-        bool $httpOnly = false
-    ) {
-        if ($nameOrCookie instanceof MetaCookie) {
-            $this->cookies[$nameOrCookie->getName()] = $nameOrCookie;
-            $this->setHeadersFromCookies();
-            return;
-        }
-
-        if (!\is_string($nameOrCookie)) {
-            throw new \TypeError(\sprintf("Must provide an instance of %s or a cookie name", MetaCookie::class));
-        }
-
-        $this->cookies[$nameOrCookie] = new MetaCookie($nameOrCookie, $value, $expires, $path, $domain, $secure, $httpOnly);
+    public function setCookie(ResponseCookie $cookie) {
+        $this->cookies[$cookie->getName()] = $cookie;
         $this->setHeadersFromCookies();
     }
 
     /**
      * Removes a cookie from the response.
      *
-     * @param string|\Aerys\Cookie\MetaCookie $nameOrCookie
+     * @param string $name
      */
-    public function removeCookie($nameOrCookie) {
-        if ($nameOrCookie instanceof MetaCookie) {
-            unset($this->cookies[$nameOrCookie->getName()]);
+    public function removeCookie(string $name) {
+        if (isset($this->cookies[$name])) {
+            unset($this->cookies[$name]);
             $this->setHeadersFromCookies();
-            return;
         }
-
-        if (!\is_string($nameOrCookie)) {
-            throw new \TypeError(\sprintf("Must provide an instance of %s or a cookie name", MetaCookie::class));
-        }
-
-        unset($this->cookies[$nameOrCookie]);
-        $this->setHeadersFromCookies();
     }
 
     /**
-     * @param string|int $code
+     * @param int $code
      *
      * @return int
      *
@@ -383,7 +352,7 @@ class Response {
         $headers = $this->getHeaderArray('set-cookie');
 
         foreach ($headers as $line) {
-            $cookie = MetaCookie::fromHeader($line);
+            $cookie = ResponseCookie::fromHeader($line);
             $this->cookies[$cookie->getName()] = $cookie;
         }
     }
@@ -395,7 +364,7 @@ class Response {
         $values = [];
 
         foreach ($this->cookies as $cookie) {
-            $values[] = $cookie->toHeader();
+            $values[] = (string) $cookie;
         }
 
         $this->setHeader('set-cookie', $values);

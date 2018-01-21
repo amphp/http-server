@@ -2,8 +2,6 @@
 
 namespace Aerys;
 
-use Aerys\Cookie\Cookie;
-
 /**
  * Create a redirect responder for use in a Host instance.
  *
@@ -51,22 +49,4 @@ function redirect(string $absoluteUri, int $redirectCode = 307): Responder {
  */
 function parseBody(Request $request, int $size = BodyParser::DEFAULT_MAX_BODY_SIZE): BodyParser {
     return new BodyParser($request, $size);
-}
-
-/**
- * Parses cookies into an array.
- *
- * @param string $cookies
- *
- * @return \Aerys\Cookie\Cookie[]
- */
-function parseCookie(string $cookies): array {
-    $result = [];
-
-    foreach (\explode("; ", $cookies) as $cookie) {
-        $cookie = Cookie::fromHeader($cookie);
-        $result[$cookie->getName()] = $cookie;
-    }
-
-    return $result;
 }

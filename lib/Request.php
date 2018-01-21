@@ -2,10 +2,13 @@
 
 namespace Aerys;
 
-use Aerys\Cookie\Cookie;
+use Amp\Http\Cookie\RequestCookie;
 use Amp\Uri\Uri;
 
 class Request {
+    /** @var Client */
+    private $client;
+
     /** @var string */
     private $method;
 
@@ -24,7 +27,7 @@ class Request {
     /** @var \Aerys\Body|null */
     private $body;
 
-    /** @var \Aerys\Cookie\Cookie[] */
+    /** @var RequestCookie[] */
     private $cookies = [];
 
     /** @var mixed[] */
@@ -68,9 +71,8 @@ class Request {
         }
 
         if (!empty($this->headers["cookie"])) { // @TODO delay initialization
-            $cookies = \array_filter(\array_map([Cookie::class, "fromHeader"], $this->headers["cookie"]));
-            /** @var Cookie $cookie */
-            foreach ($cookies as $cookie) {
+            // There MUST NOT be more than one cookie header, see https://tools.ietf.org/html/rfc6265#section-5.4
+            foreach (RequestCookie::fromHeader($this->headers["cookie"][0]) as $cookie) {
                 $this->cookies[$cookie->getName()] = $cookie;
             }
         }
@@ -180,7 +182,7 @@ class Request {
      * Retrieve a cookie.
      *
      * @param string $name
-     * @return \Aerys\Cookie\Cookie|null
+     * @return RequestCookie|null
      */
     public function getCookie(string $name) { /* : ?Cookie */
         return $this->cookies[$name] ?? null;
