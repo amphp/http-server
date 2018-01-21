@@ -328,7 +328,7 @@ class Client {
             try {
                 $promise = $this->requestParser->send($data);
 
-                if ($promise instanceof Promise && !$this->isExported) {
+                if ($promise instanceof Promise && !$this->isExported && !($this->status & self::CLOSED_RD)) {
                     // Parser wants to wait until a promise completes.
                     Loop::disable($watcherId);
                     $promise->onResolve($this->resume);
