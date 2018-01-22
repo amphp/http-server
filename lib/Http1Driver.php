@@ -305,10 +305,10 @@ class Http1Driver implements HttpDriver {
                 unset($headers["upgrade"], $headers["connection"], $headers["http2-settings"]);
 
                 // Make request look like HTTP/2 request.
-                $headers[":method"][0] = $method;
-                $headers[":authority"][0] = $uri->getAuthority(false);
-                $headers[":scheme"][0] = $uri->getScheme();
-                $headers[":path"][0] = $target;
+                $headers[":method"] = [$method];
+                $headers[":authority"] = [$uri->getAuthority(false)];
+                $headers[":scheme"] = [$uri->getScheme()];
+                $headers[":path"] = [$target];
 
                 $protocol = "2.0";
             }
@@ -562,11 +562,15 @@ class Http1Driver implements HttpDriver {
     }
 
     public function pendingRequestCount(): int {
-        return $this->bodyEmitter !== null ? 1 : 0;
+        return $this->http2
+            ? $this->http2->pendingRequestCount()
+            : ($this->bodyEmitter !== null ? 1 : 0);
     }
 
     public function pendingResponseCount(): int {
-        return $this->pendingResponses;
+        return $this->http2
+            ? $this->http2->pendingResponseCount()
+            : $this->pendingResponses;
     }
 
     private function filter(Response $response, string $protocol = "1.0", array $connection = []): array {

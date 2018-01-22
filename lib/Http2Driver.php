@@ -412,6 +412,7 @@ class Http2Driver implements HttpDriver {
         if ($upgraded) {
             // Upgraded connections automatically assume an initial stream with ID 1.
             $this->streams[1] = new Internal\Http2Stream($this->initialWindowSize);
+            $this->pendingResponses++;
         }
 
         // Initial settings frame.
