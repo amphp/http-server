@@ -188,7 +188,7 @@ class Http1Driver implements HttpDriver {
             list(, $method, $target, $protocol) = $matches;
 
             if ($protocol !== "1.1" && $protocol !== "1.0") {
-                if ($protocol === "2.0") {
+                if ($protocol === "2.0" && $this->options->isHttp2Enabled()) {
                     // Internal upgrade to HTTP/2.
                     $this->http2 = new Http2Driver($this->options, $this->timeReference);
                     $this->http2->setup($this->client, $this->onMessage, $this->write);
@@ -278,11 +278,12 @@ class Http1Driver implements HttpDriver {
             }
 
             // Handle HTTP/2 upgrade request.
-            if ($protocol === "1.1" &&
-                isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0]) &&
-                false !== stripos($headers["connection"][0], "upgrade") &&
-                strtolower($headers["upgrade"][0]) === "h2c" &&
-                false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
+            if ($protocol === "1.1"
+                && isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0])
+                && $this->options->isHttp2Enabled()
+                && false !== stripos($headers["connection"][0], "upgrade")
+                && strtolower($headers["upgrade"][0]) === "h2c"
+                && false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
             ) {
                 // Request instance will be overwritten below. This is for sending the switching protocols response.
                 $request = new Request($this->client, $method, $uri, $headers, null, $target, $protocol);

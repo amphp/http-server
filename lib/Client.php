@@ -590,8 +590,7 @@ class Client {
                 $chunk = yield $body->read();
 
                 if ($this->status & self::CLOSED_WR) {
-                    $responseWriter->send(null);
-                    return;
+                    return; // Client closed connection, abort reading body.
                 }
 
                 $responseWriter->send($chunk); // Sends null when stream closes.
@@ -602,7 +601,6 @@ class Client {
         } catch (\Throwable $exception) {
             // Reading response body failed, abort writing the response to the client.
             $this->logger->error($exception);
-            $responseWriter->send(null);
         }
 
         if ($this->status === self::CLOSED_RD && !$this->waitingOnResponse()) {
@@ -615,9 +613,11 @@ class Client {
             return;
         }
 
-        if (!($this->status & self::CLOSED_RD)) {
-            $this->timeoutCache->renew($this->id);
+        if ($this->status & self::CLOSED_RD) {
+            return;
         }
+
+        $this->timeoutCache->renew($this->id);
 
         try {
             if ($response->isDetached()) {

@@ -278,10 +278,27 @@ class Server {
             $context = ["socket" => [
                 "backlog"      => $backlogSize,
                 "so_reuseport" => $shouldReusePort,
-                "so_reuseaddr" => stripos(PHP_OS, "WIN") === 0, // SO_REUSEADDR has SO_REUSEPORT semantics on Windows
+                "so_reuseaddr" => \stripos(PHP_OS, "WIN") === 0, // SO_REUSEADDR has SO_REUSEPORT semantics on Windows
                 "ipv6_v6only"  => true,
             ]];
+
             if ($tlsContext) {
+                if (self::hasAlpnSupport()) {
+                    $protocols = [];
+
+                    if ($this->options->isHttp2Enabled()) {
+                        $protocols[] = "h2";
+                    }
+
+                    if ($this->options->isHttp1Enabled()) {
+                        $protocols[] = "http1.1";
+                    }
+
+                    $tlsContext["alpn_protocols"] = \implode(", ", $protocols);
+                } elseif ($this->options->isHttp2Enabled()) {
+                    $this->logger->alert("HTTP/2 requires ALPN support; HTTP/2 will not available over TLS");
+                }
+
                 $context["ssl"] = $tlsContext;
             }
             $addrCtxMap[$address] = $context;
@@ -334,7 +351,12 @@ class Server {
 
         $this->clients[$client->getId()] = $client;
 
-        $client->start(new Http1Driver($this->options, $this->timeReference));
+        if ($this->options->isHttp1Enabled()) {
+            $client->start(new Http1Driver($this->options, $this->timeReference));
+            return;
+        }
+
+        $client->start(new Http2Driver($this->options, $this->timeReference));
     }
 
     /**
@@ -423,5 +445,17 @@ class Server {
             "clients" => $this->clients,
             "connectionTimeouts" => $this->timeouts,
         ];
+    }
+
+    /**
+     * @see https://wiki.openssl.org/index.php/Manual:OPENSSL_VERSION_NUMBER(3)
+     * @return bool
+     */
+    private static function hasAlpnSupport(): bool {
+        if (!\defined("OPENSSL_VERSION_NUMBER")) {
+            return false;
+        }
+
+        return \OPENSSL_VERSION_NUMBER >= 0x10002000;
     }
 }

@@ -23,6 +23,9 @@ final class Options {
     private $outputBufferSize = 8192;
     private $shutdownTimeout = 3000; // milliseconds
 
+    private $enableHttp1 = true;
+    private $enableHttp2 = true;
+
     /**
      * @return bool True if server is in debug mode, false if in production mode.
      */
@@ -468,5 +471,59 @@ final class Options {
         $new->shutdownTimeout = $milliseconds;
 
         return $new;
+    }
+
+    /**
+     * @return bool True if HTTP/1.x is enabled, false if HTTP/2 only. Defaults to true.
+     */
+    public function isHttp1Enabled(): bool {
+        return $this->enableHttp1;
+    }
+
+    /**
+     * Enables HTTP/1.x support, which is enabled by default.
+     */
+    public function withHttp1(): self {
+        $this->enableHttp1 = true;
+        return $this;
+    }
+
+    /**
+     * Disables HTTP/1.x support. Not recommended now, but will be recommended for encrypted servers in the future.
+     */
+    public function withoutHttp1(): self {
+        if (!$this->enableHttp2) {
+            throw new \Error("One of HTTP/1.x or HTTP/2 must be enabled");
+        }
+
+        $this->enableHttp1 = false;
+        return $this;
+    }
+
+    /**
+     * @return bool True if HTTP/2 is enabled, false if HTTP/1.x only. Defaults to true.
+     */
+    public function isHttp2Enabled(): bool {
+        return $this->enableHttp2;
+    }
+
+    /**
+     * Enables HTTP/2 support, which is enabled by default.
+     */
+    public function withHttp2(): self {
+        $this->enableHttp2 = true;
+        return $this;
+    }
+
+    /**
+     * Disables HTTP/2 support.
+     */
+    public function withoutHttp2(): self {
+        if (!$this->enableHttp1) {
+            throw new \Error("One of HTTP/1.x or HTTP/2 must be enabled");
+        }
+
+        $this->enableHttp2 = false;
+        return $this;
     }
 }

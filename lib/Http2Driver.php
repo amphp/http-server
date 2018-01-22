@@ -357,11 +357,6 @@ class Http2Driver implements HttpDriver {
         $bodyLens = [];
         $table = new Internal\HPack;
 
-        if ($this->client->isEncrypted() && ($this->client->getCryptoContext()["alpn_protocol"] ?? null) !== "h2") {
-            $error = self::CONNECT_ERROR;
-            goto connection_error;
-        }
-
         $setSetting = function (string $buffer) use ($table): int {
             $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value"] >= 0
 
@@ -413,22 +408,22 @@ class Http2Driver implements HttpDriver {
             // Upgraded connections automatically assume an initial stream with ID 1.
             $this->streams[1] = new Internal\Http2Stream($this->initialWindowSize);
             $this->pendingResponses++;
-        }
 
-        // Initial settings frame.
-        $this->writeFrame(
-            pack(
-                "nNnNnN",
-                self::INITIAL_WINDOW_SIZE,
-                $maxBodySize + 256,
-                self::MAX_CONCURRENT_STREAMS,
-                $this->options->getMaxConcurrentStreams(),
-                self::MAX_HEADER_LIST_SIZE,
-                $maxHeaderSize
-            ),
-            self::SETTINGS,
-            self::NOFLAG
-        );
+            // Initial settings frame, sent immediately for upgraded connections.
+            $this->writeFrame(
+                pack(
+                    "nNnNnN",
+                    self::INITIAL_WINDOW_SIZE,
+                    $maxBodySize + 256,
+                    self::MAX_CONCURRENT_STREAMS,
+                    $this->options->getMaxConcurrentStreams(),
+                    self::MAX_HEADER_LIST_SIZE,
+                    $maxHeaderSize
+                ),
+                self::SETTINGS,
+                self::NOFLAG
+            );
+        }
 
         $buffer = yield;
 
@@ -442,6 +437,28 @@ class Http2Driver implements HttpDriver {
         }
 
         $buffer = \substr($buffer, \strlen(self::PREFACE));
+
+        if ($this->client->isEncrypted() && ($this->client->getCryptoContext()["alpn_protocol"] ?? null) !== "h2") {
+            $error = self::CONNECT_ERROR;
+            goto connection_error;
+        }
+
+        if (!$upgraded) {
+            // Initial settings frame, delayed until after the preface is read for non-upgraded connections.
+            $this->writeFrame(
+                pack(
+                    "nNnNnN",
+                    self::INITIAL_WINDOW_SIZE,
+                    $maxBodySize + 256,
+                    self::MAX_CONCURRENT_STREAMS,
+                    $this->options->getMaxConcurrentStreams(),
+                    self::MAX_HEADER_LIST_SIZE,
+                    $maxHeaderSize
+                ),
+                self::SETTINGS,
+                self::NOFLAG
+            );
+        }
 
         try {
             while (true) {

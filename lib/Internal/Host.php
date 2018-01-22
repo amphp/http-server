@@ -207,13 +207,7 @@ class Host {
             return [];
         }
 
-        $context = $this->tlsContext->toStreamContextArray()["ssl"];
-
-        if (self::hasAlpnSupport()) {
-            $context["alpn_protocols"] = "h2";
-        }
-
-        return $context;
+        return $this->tlsContext->toStreamContextArray()["ssl"];
     }
 
     /**
@@ -223,17 +217,5 @@ class Host {
      */
     public function isEncrypted(): bool {
         return (bool) $this->tlsContext;
-    }
-
-    /**
-     * @see https://wiki.openssl.org/index.php/Manual:OPENSSL_VERSION_NUMBER(3)
-     * @return bool
-     */
-    private static function hasAlpnSupport(): bool {
-        if (!\defined("OPENSSL_VERSION_NUMBER")) {
-            return false;
-        }
-
-        return \OPENSSL_VERSION_NUMBER >= 0x10002000;
     }
 }
