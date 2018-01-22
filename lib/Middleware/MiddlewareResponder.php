@@ -3,6 +3,7 @@
 namespace Aerys\Middleware;
 
 use Aerys\ErrorHandler;
+use Aerys\Middleware;
 use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Server;

@@ -1,9 +1,7 @@
 <?php
 
-namespace Aerys\Middleware;
+namespace Aerys;
 
-use Aerys\Request;
-use Aerys\Responder;
 use Amp\Promise;
 
 /**

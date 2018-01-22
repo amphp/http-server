@@ -2,6 +2,7 @@
 
 namespace Aerys\Middleware;
 
+use Aerys\Middleware;
 use Aerys\Request;
 use Aerys\Responder;
 use Amp\ByteStream\InMemoryStream;
