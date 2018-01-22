@@ -43,6 +43,11 @@ class ZlibMiddleware implements Middleware {
         $response = yield $responder->respond($request);
 
         $headers = $response->getHeaders();
+
+        if (isset($headers["content-encoding"])) {
+            return $response; // Another responder or middleware has already encoded the response.
+        }
+
         $contentLength = $headers["content-length"][0] ?? null;
 
         if ($contentLength !== null) {
