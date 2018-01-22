@@ -15,23 +15,41 @@ use cash\LRUCache;
 class ZlibMiddleware implements Middleware {
     const MAX_CACHE_SIZE = 1024;
 
-    /**
-     * @var int Minimum body length before body is compressed.
-     * @link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits
-     */
-    private $minimumLength = 860;
+    /** @link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits */
+    const DEFAULT_MINIMUM_LENGTH = 860;
+    const DEFAULT_CHUNK_SIZE = 8192;
+    const DEFAULT_CONTENT_TYPE_REGEX = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
+
+    /** @var int Minimum body length before body is compressed. */
+    private $minimumLength;
 
     /** @var string */
-    private $contentRegex = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
+    private $contentRegex;
 
     /** @var int Minimum chunk size before being compressed. */
-    private $chunkSize = 8192;
+    private $chunkSize;
 
     /** @var LRUCache */
     private $contentTypeCache;
 
-    public function __construct() {
+    public function __construct(
+        int $minimumLength = self::DEFAULT_MINIMUM_LENGTH,
+        int $chunkSize = self::DEFAULT_CHUNK_SIZE,
+        string $contentRegex = self::DEFAULT_CONTENT_TYPE_REGEX
+    ) {
+        if ($minimumLength < 1) {
+            throw new \Error("The minimum length must be positive");
+        }
+
+        if ($chunkSize < 1) {
+            throw new \Error("The chunk size must be positive");
+        }
+
         $this->contentTypeCache = new LRUCache(self::MAX_CACHE_SIZE);
+
+        $this->minimumLength = $minimumLength;
+        $this->chunkSize = $chunkSize;
+        $this->contentRegex = $contentRegex;
     }
 
     public function process(Request $request, Responder $responder): Promise {
@@ -138,7 +156,7 @@ class ZlibMiddleware implements Middleware {
 
         $iterator = new Producer(function (callable $emit) use ($resource, $body, $bodyBuffer) {
             do {
-                if (isset($bodyBuffer[$this->chunkSize])) {
+                if (isset($bodyBuffer[$this->chunkSize - 1])) {
                     if (false === $bodyBuffer = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) {
                         throw new \RuntimeException("Failed adding data to deflate context");
                     }
