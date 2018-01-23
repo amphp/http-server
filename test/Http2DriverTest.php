@@ -9,8 +9,6 @@ use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\TimeReference;
-use Amp\ByteStream\InputStream;
-use Amp\Delayed;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Success;

@@ -104,32 +104,32 @@ class Http1Driver implements HttpDriver {
         if ($request !== null && $request->getMethod() === "HEAD") {
             ($this->write)($buffer, $shouldClose);
             return;
-        } else {
-            $outputBufferSize = $this->options->getOutputBufferSize();
+        }
 
-            do {
-                if (\strlen($buffer) >= $outputBufferSize) {
-                    ($this->write)($buffer);
-                    $buffer = "";
-                }
+        $outputBufferSize = $this->options->getOutputBufferSize();
 
-                if (null === $part = yield) {
-                    break;
-                }
-
-                if ($chunked && $length = \strlen($part)) {
-                    $buffer .= \sprintf("%x\r\n%s\r\n", $length, $part);
-                } else {
-                    $buffer .= $part;
-                }
-            } while (true);
-
-            if ($chunked) {
-                $buffer .= "0\r\n\r\n";
+        do {
+            if (\strlen($buffer) >= $outputBufferSize) {
+                ($this->write)($buffer);
+                $buffer = "";
             }
 
-            ($this->write)($buffer, $shouldClose);
+            if (null === $part = yield) {
+                break;
+            }
+
+            if ($chunked && $length = \strlen($part)) {
+                $buffer .= \sprintf("%x\r\n%s\r\n", $length, $part);
+            } else {
+                $buffer .= $part;
+            }
+        } while (true);
+
+        if ($chunked) {
+            $buffer .= "0\r\n\r\n";
         }
+
+        ($this->write)($buffer, $shouldClose);
 
         $this->pendingResponses--;
         $this->remainingRequests--;

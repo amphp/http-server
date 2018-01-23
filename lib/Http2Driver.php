@@ -229,30 +229,31 @@ class Http2Driver implements HttpDriver {
             if ($request->getMethod() === "HEAD") {
                 $this->writeData("", $id, true);
                 return;
-            } else {
-                $buffer = "";
+            }
 
-                while (null !== $part = yield) {
-                    // Stream may have been closed while waiting for body data.
-                    if (!isset($this->streams[$id])) {
-                        return;
-                    }
+            $buffer = "";
+            $outputBufferSize = $this->options->getOutputBufferSize();
 
-                    $buffer .= $part;
-
-                    if (\strlen($buffer) >= $this->options->getOutputBufferSize()) {
-                        $this->writeData($buffer, $id, false);
-                        $buffer = "";
-                    }
-                }
-
+            while (null !== $part = yield) {
                 // Stream may have been closed while waiting for body data.
                 if (!isset($this->streams[$id])) {
                     return;
                 }
 
-                $this->writeData($buffer, $id, true);
+                $buffer .= $part;
+
+                if (\strlen($buffer) >= $outputBufferSize) {
+                    $this->writeData($buffer, $id, false);
+                    $buffer = "";
+                }
             }
+
+            // Stream may have been closed while waiting for body data.
+            if (!isset($this->streams[$id])) {
+                return;
+            }
+
+            $this->writeData($buffer, $id, true);
         } finally {
             if (isset($this->streams[$id]) && (!isset($headers) || isset($part))) {
                 if (($buffer ?? "") !== "") {
