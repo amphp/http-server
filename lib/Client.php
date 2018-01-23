@@ -582,25 +582,28 @@ class Client {
      */
     private function sendResponse(Response $response, Request $request = null): \Generator {
         $responseWriter = $this->httpDriver->writer($response, $request);
+        $responseWriter->current();
 
-        $body = $response->getBody();
+        if ($responseWriter->valid()) {
+            $body = $response->getBody();
 
-        try {
-            do {
-                $chunk = yield $body->read();
+            try {
+                do {
+                    $chunk = yield $body->read();
 
-                if ($this->status & self::CLOSED_WR) {
-                    return; // Client closed connection, abort reading body.
-                }
+                    if ($this->status & self::CLOSED_WR) {
+                        return; // Client closed connection, abort reading body.
+                    }
 
-                $responseWriter->send($chunk); // Sends null when stream closes.
-            } while ($chunk !== null);
-        } catch (ClientException $exception) {
-            $this->close(); // Response already started, no choice but to close the connection.
-            return;
-        } catch (\Throwable $exception) {
-            // Reading response body failed, abort writing the response to the client.
-            $this->logger->error($exception);
+                    $responseWriter->send($chunk); // Sends null when stream closes.
+                } while ($chunk !== null && $responseWriter->valid());
+            } catch (ClientException $exception) {
+                $this->close(); // Response already started, no choice but to close the connection.
+                return;
+            } catch (\Throwable $exception) {
+                // Reading response body failed, abort writing the response to the client.
+                $this->logger->error($exception);
+            }
         }
 
         if ($this->status === self::CLOSED_RD && !$this->waitingOnResponse()) {

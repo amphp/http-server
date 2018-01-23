@@ -186,6 +186,10 @@ class Http2Driver implements HttpDriver {
         $id = $this->streamIdMap[$hash] ?? 1; // Default ID of 1 for upgrade requests.
         unset($this->streamIdMap[$hash]);
 
+        if (!isset($this->streams[$id])) {
+            return;
+        }
+
         try {
             $headers = \array_merge([":status" => $response->getStatus()], $response->getHeaders());
 
@@ -222,13 +226,18 @@ class Http2Driver implements HttpDriver {
                 $this->writeFrame($headers, self::HEADERS, self::END_HEADERS, $id);
             }
 
-            if ($request !== null && $request->getMethod() === "HEAD") {
+            if ($request->getMethod() === "HEAD") {
                 $this->writeData("", $id, true);
-                while (null !== yield); // Ignore body portions written.
+                return;
             } else {
                 $buffer = "";
 
                 while (null !== $part = yield) {
+                    // Stream may have been closed while waiting for body data.
+                    if (!isset($this->streams[$id])) {
+                        return;
+                    }
+
                     $buffer .= $part;
 
                     if (\strlen($buffer) >= $this->options->getOutputBufferSize()) {
@@ -237,10 +246,15 @@ class Http2Driver implements HttpDriver {
                     }
                 }
 
+                // Stream may have been closed while waiting for body data.
+                if (!isset($this->streams[$id])) {
+                    return;
+                }
+
                 $this->writeData($buffer, $id, true);
             }
         } finally {
-            if ((!isset($headers) || isset($part)) && !($this->client->getStatus() & Client::CLOSED_WR)) {
+            if (isset($this->streams[$id]) && (!isset($headers) || isset($part))) {
                 if (($buffer ?? "") !== "") {
                     $this->writeData($buffer, $id, false);
                 }
@@ -259,9 +273,7 @@ class Http2Driver implements HttpDriver {
     // Note: bufferSize is increased in writeData(), but also here to respect data in streamWindowBuffers;
     // thus needs to be decreased here when shifting data from streamWindowBuffers to writeData()
     protected function writeData(string $data, int $stream, bool $last) {
-        if (!isset($this->streams[$stream])) {
-            return; // Stream closed by remote.
-        }
+        \assert(isset($this->streams[$stream]), "The stream was closed");
 
         $this->streams[$stream]->buffer .= $data;
         if ($last) {
@@ -321,7 +333,8 @@ class Http2Driver implements HttpDriver {
     }
 
     protected function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise {
-        \assert($stream >= 0);
+        \assert($stream === 0 || isset($this->streams[$stream]), "The stream was closed");
+
         $data = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
 
         return ($this->write)($data);
@@ -739,7 +752,7 @@ class Http2Driver implements HttpDriver {
                     // PUSH_PROMISE sent by client is a PROTOCOL_ERROR (just like undefined frame types)
 
                     case self::PING:
-                        if ($length != 8) {
+                        if ($length !== 8) {
                             $error = self::FRAME_SIZE_ERROR;
                             goto connection_error;
                         }
@@ -755,9 +768,7 @@ class Http2Driver implements HttpDriver {
 
                         $data = \substr($buffer, 0, 8);
 
-                        if (($flags & self::ACK) !== "\0") {
-                            // do not resolve ping - unneeded because of connectionTimeout
-                        } else {
+                        if (($flags & self::ACK) === "\0") {
                             $this->writeFrame($data, self::PING, self::ACK);
                         }
 
@@ -811,33 +822,34 @@ class Http2Driver implements HttpDriver {
                         }
 
                         $windowSize = \unpack("N", $buffer)[1];
+                        $buffer = \substr($buffer, 4);
 
                         if ($id) {
-                            if (!isset($this->streams[$id])) {
-                                $this->streams[$id] = new Internal\Http2Stream($this->initialWindowSize + $windowSize);
-                            } else {
+                            // May receive a WINDOW_UPDATE frame for a closed stream.
+                            if (isset($this->streams[$id])) {
                                 $this->streams[$id]->window += $windowSize;
-                            }
 
-                            if ($this->streams[$id]->buffer !== "") {
-                                $this->writeBufferedData($id);
-                            }
-                        } else {
-                            $this->window += $windowSize;
-                            foreach ($this->streams as $id => $stream) {
-                                if ($stream->buffer === "") {
-                                    continue;
-                                }
-
-                                $this->writeBufferedData($id);
-
-                                if ($this->window === 0) {
-                                    break;
+                                if ($this->streams[$id]->buffer !== "") {
+                                    $this->writeBufferedData($id);
                                 }
                             }
+
+                            continue 2;
                         }
 
-                        $buffer = \substr($buffer, 4);
+                        $this->window += $windowSize;
+
+                        foreach ($this->streams as $id => $stream) {
+                            if ($stream->buffer === "") {
+                                continue;
+                            }
+
+                            $this->writeBufferedData($id);
+
+                            if ($this->window === 0) {
+                                break;
+                            }
+                        }
 
                         continue 2;
 
@@ -999,7 +1011,8 @@ class Http2Driver implements HttpDriver {
         }
 
         connection_error: {
-            $this->writeFrame(pack("NN", 0, $error), self::GOAWAY, self::NOFLAG)->onResolve([$this->client, "close"]);
+            yield $this->writeFrame(pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
+            $this->client->close();
         }
     }
 

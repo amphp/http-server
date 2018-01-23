@@ -102,8 +102,8 @@ class Http1Driver implements HttpDriver {
         $buffer .= "\r\n";
 
         if ($request !== null && $request->getMethod() === "HEAD") {
-            ($this->write)($buffer, true);
-            while (null !== yield); // Ignore body portions written.
+            ($this->write)($buffer, $shouldClose);
+            return;
         } else {
             $outputBufferSize = $this->options->getOutputBufferSize();
 

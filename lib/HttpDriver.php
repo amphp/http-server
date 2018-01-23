@@ -19,7 +19,8 @@ interface HttpDriver {
     public function setup(Client $client, callable $onMessage, callable $write);
 
     /**
-     * Returns a generator used to write the response body. Data to be written is sent to the generator.
+     * Returns a generator used to write the response body. Data to be written is sent to the generator. The generator
+     * may return at any time to indicate that body data is no longer desired.
      *
      * @param \Aerys\Response $response
      * @param \Aerys\Request|null $request

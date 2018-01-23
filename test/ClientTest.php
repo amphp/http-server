@@ -7,6 +7,7 @@ use Aerys\CallableResponder;
 use Aerys\Client;
 use Aerys\DefaultErrorHandler;
 use Aerys\ErrorHandler;
+use Aerys\HttpDriver;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
@@ -18,6 +19,7 @@ use Amp\Artax\Cookie\ArrayCookieJar;
 use Amp\Artax\Cookie\Cookie;
 use Amp\Artax\DefaultClient;
 use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\InputStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Delayed;
 use Amp\Emitter;
@@ -28,6 +30,7 @@ use Amp\Socket;
 use Amp\Socket\Certificate;
 use Amp\Socket\ClientTlsContext;
 use Amp\Socket\ServerTlsContext;
+use Amp\Success;
 use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
 use function Amp\call;
@@ -125,7 +128,7 @@ class ClientTest extends TestCase {
     }
 
     public function tryRequest(Request $request, callable $responder) {
-        $driver = $this->createMock(\Aerys\HttpDriver::class);
+        $driver = $this->createMock(HttpDriver::class);
 
         $driver->expects($this->once())
             ->method("setup")
@@ -138,7 +141,7 @@ class ClientTest extends TestCase {
                 $response = $written;
                 $body = "";
                 do {
-                    $body .= $part = yield;
+                    $body .= $part = yield true;
                 } while ($part !== null);
             });
 
@@ -308,8 +311,61 @@ class ClientTest extends TestCase {
         $this->assertSame(Status::INTERNAL_SERVER_ERROR, $response->getStatus());
     }
 
+    public function testWriterReturningEndsReadingResponse() {
+        $driver = $this->createMock(HttpDriver::class);
+
+        $driver->expects($this->once())
+            ->method("setup")
+            ->willReturnCallback(function (Client $client, callable $emitter) use (&$emit) {
+                $emit = $emitter;
+            });
+
+        $driver->method("writer")
+            ->willReturnCallback(function (Response $written) use (&$body) {
+                $count = 3;
+                $body = "";
+                do {
+                    $body .= $part = yield;
+                } while ($part !== null && --$count); // Return to end reading stream.
+            });
+
+        $bodyData = "{data}";
+
+        $options = (new Options)
+            ->withDebugMode(true);
+
+        $body = $this->createMock(InputStream::class);
+        $body->expects($this->exactly(3))
+            ->method("read")
+            ->willReturn(new Success($bodyData));
+
+        $response = $this->createMock(Response::class);
+        $response->method("getBody")
+            ->willReturn($body);
+
+        $responder = $this->createMock(Responder::class);
+        $responder->expects($this->once())
+            ->method("respond")
+            ->willReturn(new Success($response));
+
+        $client = new Client(
+            \fopen("php://memory", "w"),
+            $responder,
+            new DefaultErrorHandler,
+            $this->createMock(Logger::class),
+            $options,
+            $this->createMock(TimeoutCache::class)
+        );
+
+        $client->start($driver);
+
+        $emit(new Request($client, "GET", new Uri("/")));
+
+        $this->assertSame(str_repeat($bodyData, 3), $body);
+    }
+
     public function startClient(callable $parser, $socket) {
-        $driver = $this->createMock(\Aerys\HttpDriver::class);
+        $driver = $this->createMock(HttpDriver::class);
 
         $driver->method("setup")
             ->willReturnCallback(function (Client $client, callable $onMessage, callable $writer) use (&$write) {

@@ -9,6 +9,8 @@ use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\TimeReference;
+use Amp\ByteStream\InputStream;
+use Amp\Delayed;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Success;
@@ -366,5 +368,52 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals(Http2Driver::END_STREAM, $flags);
         $this->assertEquals("", $data);
         $this->assertEquals(3, $stream);
+    }
+
+    public function testClosingStreamYieldsFalseFromWriter() {
+        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class));
+
+        $driver->setup(
+            $this->createMock(Client::class),
+            function (Request $read) use (&$request) {
+                $request = $read;
+                return new Success;
+            },
+            function () {
+                return new Success;
+            }
+        );
+
+        $parser = $driver->parser();
+
+        $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+
+        $headers = [
+            ":authority" => "localhost",
+            ":path" => "/",
+            ":scheme" => "http",
+            ":method" => "GET",
+        ];
+        $parser->send(self::packHeader($headers, false, 1));
+
+        // $onMessage callback should be invoked.
+        $this->assertInstanceOf(Request::class, $request);
+
+        $writer = $driver->writer(new Response, $request);
+
+        $writer->send("{data}");
+
+        $this->assertTrue($writer->valid());
+
+        $parser->send(self::packFrame(
+            \pack("N", Http2Driver::REFUSED_STREAM),
+            Http2Driver::RST_STREAM,
+            Http2Driver::NOFLAG,
+            1
+        ));
+
+        $writer->send("{data}");
+
+        $this->assertFalse($writer->valid());
     }
 }
