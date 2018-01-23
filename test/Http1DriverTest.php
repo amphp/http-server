@@ -457,8 +457,7 @@ class Http1DriverTest extends TestCase {
             "GET /someurl.html HTTP/1.0\r\n" .
             "Host: localhost\r\n" .
             "X-My-Header: \x01\x02\x03 42\r\n" .
-            "\r\n"
-        ;
+            "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: Invalid header syntax";
         $opts = new Options;

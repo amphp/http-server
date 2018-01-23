@@ -382,18 +382,16 @@ class Http1Driver implements HttpDriver {
                                 }
                             } while (!isset($trailers));
 
-                            try {
-                                $trailers = Rfc7230::parseHeaders($trailers);
-                            } catch (InvalidHeaderException $e) {
-                                throw new ClientException(
-                                    "Bad Request: " . \str_replace("header", "trailer", $e->getMessage()),
-                                    Status::BAD_REQUEST
-                                );
-                            }
-
                             // @TODO Alter Body to support trailer headers.
                             if ($trailers) {
-                                $trailers = \array_change_key_case($trailers);
+                                try {
+                                    $trailers = Rfc7230::parseHeaders($trailers);
+                                } catch (InvalidHeaderException $e) {
+                                    throw new ClientException(
+                                        "Bad Request: " . \str_replace("header", "trailer", $e->getMessage()),
+                                        Status::BAD_REQUEST
+                                    );
+                                }
 
                                 foreach (["transfer-encoding", "content-length", "trailer"] as $remove) {
                                     unset($trailers[$remove]);
