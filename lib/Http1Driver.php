@@ -2,7 +2,6 @@
 
 namespace Aerys;
 
-use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\Http\Status;
@@ -316,7 +315,7 @@ class Http1Driver implements HttpDriver {
                     $method,
                     $uri,
                     $headers,
-                    new Body(new InMemoryStream),
+                    new Body,
                     $target,
                     $protocol
                 );

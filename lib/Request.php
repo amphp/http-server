@@ -205,12 +205,12 @@ class Request extends Message {
             return;
         }
 
-        if ($stringOrStream instanceof InputStream) {
+        if ($stringOrStream === null || $stringOrStream instanceof InputStream) {
             $this->body = new Body($stringOrStream);
             return;
         }
 
-        if ($stringOrStream !== null && !\is_string($stringOrStream)) {
+        if (!\is_string($stringOrStream)) {
             throw new \TypeError(\sprintf(
                 "The request body must a string, null, or an instance of %s or %s ",
                 Body::class,

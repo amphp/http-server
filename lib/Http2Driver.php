@@ -6,7 +6,6 @@ namespace Aerys;
 // @TODO add ServerObserver for properly sending GOAWAY frames
 // @TODO maybe display a real HTML error page for artificial limits exceeded
 
-use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Delayed;
 use Amp\Emitter;
@@ -156,7 +155,7 @@ class Http2Driver implements HttpDriver {
         $headers[":method"] = ["GET"];
 
         $id = $this->streamId += 2; // Server initiated stream IDs must be even.
-        $request = new Request($this->client, "GET", $url, $headers, null, $path, "2.0");
+        $request = new Request($this->client, "GET", $url, $headers, new Body, $path, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
         $this->streams[$id] = new Internal\Http2Stream($this->initialWindowSize);
@@ -195,7 +194,7 @@ class Http2Driver implements HttpDriver {
 
             $headers["date"] = [$this->timeReference->getCurrentDate()];
 
-            if ($request !== null && !empty($push = $response->getPush())) {
+            if (!empty($push = $response->getPush())) {
                 foreach ($push as $url => $pushHeaders) {
                     if ($this->allowsPush) {
                         $this->dispatchInternalRequest($request, $id, $url, $pushHeaders);
@@ -247,8 +246,7 @@ class Http2Driver implements HttpDriver {
                 }
 
                 $this->writeFrame(pack("N", self::INTERNAL_ERROR), self::RST_STREAM, self::NOFLAG, $id);
-
-                //$this->releaseStream($id);
+                $this->releaseStream($id);
 
                 if (isset($this->bodyEmitters[$id])) {
                     $this->bodyEmitters[$id]->fail(new ClientException("Stream error", Status::INTERNAL_SERVER_ERROR));
@@ -404,6 +402,7 @@ class Http2Driver implements HttpDriver {
             // Upgraded connections automatically assume an initial stream with ID 1.
             $this->streams[1] = new Internal\Http2Stream($this->initialWindowSize);
             $this->pendingResponses++;
+            $this->remainingStreams--;
 
             // Initial settings frame, sent immediately for upgraded connections.
             $this->writeFrame(
@@ -530,7 +529,9 @@ class Http2Driver implements HttpDriver {
                             goto connection_error;
                         }
 
-                        if (($remaining = $bodyLens[$id] + $length - ($this->streams[$id]->window ?? $maxBodySize)) > 0) {
+                        $remaining = $bodyLens[$id] + $length - ($this->streams[$id]->window ?? $maxBodySize);
+
+                        if ($remaining > 0) {
                             $error = self::FLOW_CONTROL_ERROR;
                             goto connection_error;
                         }
@@ -923,7 +924,7 @@ class Http2Driver implements HttpDriver {
                             $headers[":method"][0],
                             $uri,
                             $headers,
-                            new Body(new InMemoryStream),
+                            new Body,
                             $target,
                             "2.0"
                         );
