@@ -518,7 +518,7 @@ final class Options {
         $new = clone $this;
         $new->enableHttp2 = true;
 
-        return $this;
+        return $new;
     }
 
     /**
