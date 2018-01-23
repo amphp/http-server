@@ -484,8 +484,10 @@ final class Options {
      * Enables HTTP/1.x support, which is enabled by default.
      */
     public function withHttp1(): self {
-        $this->enableHttp1 = true;
-        return $this;
+        $new = clone $this;
+        $new->enableHttp1 = true;
+
+        return $new;
     }
 
     /**
@@ -496,8 +498,10 @@ final class Options {
             throw new \Error("One of HTTP/1.x or HTTP/2 must be enabled");
         }
 
-        $this->enableHttp1 = false;
-        return $this;
+        $new = clone $this;
+        $new->enableHttp1 = false;
+
+        return $new;
     }
 
     /**
@@ -511,7 +515,9 @@ final class Options {
      * Enables HTTP/2 support, which is enabled by default.
      */
     public function withHttp2(): self {
-        $this->enableHttp2 = true;
+        $new = clone $this;
+        $new->enableHttp2 = true;
+
         return $this;
     }
 
@@ -523,7 +529,9 @@ final class Options {
             throw new \Error("One of HTTP/1.x or HTTP/2 must be enabled");
         }
 
-        $this->enableHttp2 = false;
-        return $this;
+        $new = clone $this;
+        $new->enableHttp2 = false;
+
+        return $new;
     }
 }
