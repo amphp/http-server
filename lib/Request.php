@@ -60,7 +60,9 @@ class Request extends Message {
             $this->setHeaders($headers);
         }
 
-        $this->setBody($body);
+        if ($body !== null) {
+            $this->setBody($body);
+        }
 
         $this->target = $target ?? ($uri->getPath() . ($uri->getQuery() ? "?" . $uri->getQuery() : ""));
     }
@@ -187,6 +189,10 @@ class Request extends Message {
      * @return \Aerys\Body
      */
     public function getBody(): Body {
+        if ($this->body === null) {
+            $this->body = new Body(new InMemoryStream);
+        }
+
         return $this->body;
     }
 
@@ -205,12 +211,12 @@ class Request extends Message {
             return;
         }
 
-        if ($stringOrStream === null || $stringOrStream instanceof InputStream) {
+        if ($stringOrStream instanceof InputStream) {
             $this->body = new Body($stringOrStream);
             return;
         }
 
-        if (!\is_string($stringOrStream)) {
+        if ($stringOrStream !== null && !\is_string($stringOrStream)) {
             throw new \TypeError(\sprintf(
                 "The request body must a string, null, or an instance of %s or %s ",
                 Body::class,

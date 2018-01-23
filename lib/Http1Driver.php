@@ -292,7 +292,7 @@ class Http1Driver implements HttpDriver {
                     $method,
                     $uri,
                     $headers,
-                    new Body,
+                    null,
                     $target,
                     $protocol
                 );

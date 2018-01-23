@@ -155,7 +155,7 @@ class Http2Driver implements HttpDriver {
         $headers[":method"] = ["GET"];
 
         $id = $this->streamId += 2; // Server initiated stream IDs must be even.
-        $request = new Request($this->client, "GET", $url, $headers, new Body, $path, "2.0");
+        $request = new Request($this->client, "GET", $url, $headers, null, $path, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
         $this->streams[$id] = new Internal\Http2Stream($this->initialWindowSize);
@@ -509,7 +509,7 @@ class Http2Driver implements HttpDriver {
                             goto connection_error;
                         }
 
-                        if (!isset($this->bodyEmitters[$id])) {
+                        if (!isset($this->bodyEmitters[$id], $this->streams[$id])) {
                             if (isset($headers[$id])) {
                                 $error = self::PROTOCOL_ERROR;
                                 goto connection_error;
@@ -543,7 +543,7 @@ class Http2Driver implements HttpDriver {
                             goto connection_error;
                         }
 
-                        $remaining = $bodyLens[$id] + $length - ($this->streams[$id]->window ?? $maxBodySize);
+                        $remaining = $bodyLens[$id] + $length - $this->streams[$id]->window;
 
                         if ($remaining > 0) {
                             $error = self::FLOW_CONTROL_ERROR;
@@ -562,9 +562,9 @@ class Http2Driver implements HttpDriver {
                         }
 
                         if (($flags & self::END_STREAM) !== "\0") {
-                            unset($bodyLens[$id], $this->streams[$id]);
                             $emitter = $this->bodyEmitters[$id];
-                            unset($this->bodyEmitters[$id]);
+                            unset($bodyLens[$id], $this->bodyEmitters[$id]);
+                            $this->releaseStream($id);
                             $emitter->complete();
                         } else {
                             $bodyLens[$id] += $length;
@@ -937,7 +937,7 @@ class Http2Driver implements HttpDriver {
                             $headers[":method"][0],
                             $uri,
                             $headers,
-                            new Body,
+                            null,
                             $target,
                             "2.0"
                         );

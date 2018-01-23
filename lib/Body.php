@@ -5,7 +5,6 @@ namespace Aerys;
 use Amp\ByteStream\InputStream;
 use Amp\Coroutine;
 use Amp\Promise;
-use Amp\Success;
 use function Amp\call;
 
 /**
@@ -28,16 +27,16 @@ class Body implements InputStream {
     private $upgradeSize;
 
     /**
-     * @param \Amp\ByteStream\InputStream|null $stream Null creates an empty body.
+     * @param \Amp\ByteStream\InputStream $stream
      * @param callable|null $upgradeSize Callback used to increase the maximum size of the body.
      */
-    public function __construct(InputStream $stream = null, callable $upgradeSize = null) {
+    public function __construct(InputStream $stream, callable $upgradeSize = null) {
         $this->stream = $stream;
         $this->upgradeSize = $upgradeSize;
     }
 
     public function __destruct() {
-        if ($this->stream && !$this->promise) {
+        if (!$this->promise) {
             Promise\rethrow(new Coroutine($this->consume()));
         }
     }
@@ -66,10 +65,6 @@ class Body implements InputStream {
             throw new \Error("Cannot stream message data once a buffered message has been requested");
         }
 
-        if (!$this->stream) {
-            return new Success;
-        }
-
         return $this->lastRead = $this->stream->read();
     }
 
@@ -81,10 +76,6 @@ class Body implements InputStream {
     public function buffer(): Promise {
         if ($this->promise) {
             return $this->promise;
-        }
-
-        if (!$this->stream) {
-            return $this->promise = new Success('');
         }
 
         return $this->promise = call(function () {
