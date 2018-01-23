@@ -4,29 +4,26 @@ namespace Aerys;
 
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
+use Amp\Http\InvalidHeaderException;
+use Amp\Http\Rfc7230;
 use Amp\Http\Status;
 use Amp\Uri\InvalidUriException;
 use Amp\Uri\Uri;
 
 class Http1Driver implements HttpDriver {
-    const HEADER_REGEX = "(
-        ([^()<>@,;:\\\"/[\]?={}\x01-\x20\x7F]+):[\x20\x09]*
-        ([^\x01-\x08\x0A-\x1F\x7F]*)[\x0D]?[\x20\x09]*[\r]?[\n]
-    )x";
-
     /** @var \Aerys\Http2Driver|null */
     private $http2;
 
-    /** @var \Aerys\Client */
+    /** @var Client */
     private $client;
 
-    /** @var \Aerys\Options */
+    /** @var Options */
     private $options;
 
-    /** @var \Aerys\TimeReference */
+    /** @var TimeReference */
     private $timeReference;
 
-    /** @var \Amp\Emitter|null */
+    /** @var Emitter|null */
     private $bodyEmitter;
 
     /** @var int */
@@ -44,7 +41,6 @@ class Http1Driver implements HttpDriver {
     public function __construct(Options $options, TimeReference $timeReference) {
         $this->options = $options;
         $this->timeReference = $timeReference;
-
         $this->remainingRequests = $this->options->getMaxRequestsPerConnection();
     }
 
@@ -87,18 +83,7 @@ class Http1Driver implements HttpDriver {
         }
 
         $buffer = "HTTP/{$protocol} {$status} {$reason}\r\n";
-        foreach ($headers as $headerField => $headerLines) {
-            if ($headerField[0] !== ":") {
-                foreach ($headerLines as $headerLine) {
-                    /* verify header fields (per RFC) and header values against containing \n */
-                    \assert(
-                        strpbrk($headerField, "\n\t ()<>@,;:\\\"/[]?={}") === false
-                        && strpbrk((string) $headerLine, "\n") === false
-                    );
-                    $buffer .= "{$headerField}: {$headerLine}\r\n";
-                }
-            }
-        }
+        $buffer .= Rfc7230::formatHeaders($headers);
         $buffer .= "\r\n";
 
         if ($request !== null && $request->getMethod() === "HEAD") {
@@ -197,22 +182,14 @@ class Http1Driver implements HttpDriver {
             }
 
             if ($rawHeaders) {
-                if (\strpos($rawHeaders, "\n\x20") || \strpos($rawHeaders, "\n\t")) {
+                try {
+                    $headers = Rfc7230::parseHeaders($rawHeaders);
+                } catch (InvalidHeaderException $e) {
                     throw new ClientException(
-                        "Bad Request: multi-line headers deprecated by RFC 7230",
+                        "Bad Request: " . $e->getMessage(),
                         Status::BAD_REQUEST
                     );
                 }
-
-                if (!\preg_match_all(self::HEADER_REGEX, $rawHeaders, $matches, \PREG_SET_ORDER)) {
-                    throw new ClientException("Bad Request: header syntax violation", Status::BAD_REQUEST);
-                }
-
-                foreach ($matches as list(, $field, $value)) {
-                    $headers[$field][] = $value;
-                }
-
-                $headers = \array_change_key_case($headers);
 
                 $contentLength = $headers["content-length"][0] ?? null;
                 if ($contentLength !== null) {
@@ -405,24 +382,13 @@ class Http1Driver implements HttpDriver {
                                 }
                             } while (!isset($trailers));
 
-                            if (\strpos($trailers, "\n\x20") || \strpos($trailers, "\n\t")) {
+                            try {
+                                $trailers = Rfc7230::parseHeaders($trailers);
+                            } catch (InvalidHeaderException $e) {
                                 throw new ClientException(
-                                    "Bad Request: multi-line trailers deprecated by RFC 7230",
+                                    "Bad Request: " . \str_replace("header", "trailer", $e->getMessage()),
                                     Status::BAD_REQUEST
                                 );
-                            }
-
-                            if (!\preg_match_all(self::HEADER_REGEX, $trailers, $matches)) {
-                                throw new ClientException(
-                                    "Bad Request: trailer syntax violation",
-                                    Status::BAD_REQUEST
-                                );
-                            }
-
-                            list(, $fields, $values) = $matches;
-                            $trailers = [];
-                            foreach ($fields as $index => $field) {
-                                $trailers[$field][] = $values[$index];
                             }
 
                             // @TODO Alter Body to support trailer headers.

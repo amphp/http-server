@@ -435,7 +435,7 @@ class Http1DriverTest extends TestCase {
             "X-My-Header: 42\r\n" .
             "\r\n";
         $errCode = 400;
-        $errMsg = "Bad Request: multi-line headers deprecated by RFC 7230";
+        $errMsg = "Bad Request: Invalid header syntax: Obsolete line folding";
         $opts = new Options;
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
@@ -447,13 +447,12 @@ class Http1DriverTest extends TestCase {
             "X-My-Header: 42\r\n" .
             "\r\n";
         $errCode = 400;
-        $errMsg = "Bad Request: multi-line headers deprecated by RFC 7230";
+        $errMsg = "Bad Request: Invalid header syntax: Obsolete line folding";
         $opts = new Options;
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 5 -------------------------------------------------------------------------------------->
 
-        /* //@TODO Messages with invalid CTL chars in their headers should fail
         $msg =
             "GET /someurl.html HTTP/1.0\r\n" .
             "Host: localhost\r\n" .
@@ -461,10 +460,9 @@ class Http1DriverTest extends TestCase {
             "\r\n"
         ;
         $errCode = 400;
-        $errMsg = "Bad Request: header syntax violation";
-        $opts = [];
+        $errMsg = "Bad Request: Invalid header syntax";
+        $opts = new Options;
         $return[] = [$msg, $errCode, $errMsg, $opts];
-        */
 
         //
 
