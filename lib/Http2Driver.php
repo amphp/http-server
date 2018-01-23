@@ -236,10 +236,6 @@ class Http2Driver implements HttpDriver {
                         $this->writeData($buffer, $id, false);
                         $buffer = "";
                     }
-
-                    if ($this->client->getStatus() & Client::CLOSED_WR) {
-                        return;
-                    }
                 }
 
                 $this->writeData($buffer, $id, true);

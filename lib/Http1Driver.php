@@ -112,10 +112,6 @@ class Http1Driver implements HttpDriver {
                 if (\strlen($buffer) >= $outputBufferSize) {
                     ($this->write)($buffer);
                     $buffer = "";
-
-                    if ($this->client->getStatus() & Client::CLOSED_WR) {
-                        return;
-                    }
                 }
 
                 if (null === $part = yield) {
