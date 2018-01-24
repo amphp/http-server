@@ -185,7 +185,7 @@ class Http1DriverTest extends TestCase {
     public function testChunkedBodyParseEmit() {
         $msg =
             "POST https://test.local:1337/post-endpoint HTTP/1.0\r\n" .
-            "Host: localhost\r\n" .
+            "Host: test.local:1337\r\n" .
             "Transfer-Encoding: chunked\r\n" .
             "Cookie: cookie1=value1\r\n" .
             "Cookie: cookie2=value2\r\n" .

@@ -215,34 +215,59 @@ class Http1Driver implements HttpDriver {
                 $method = \strtoupper($method);
             }
 
-            $host = $headers["host"][0] ?? ""; // Host header may be set but empty.
-            if ($host === "") {
+            if (!isset($headers["host"][0])) {
+                throw new ClientException("Bad Request: missing host header", Status::BAD_REQUEST);
+            }
+
+            if (isset($headers["host"][1])) {
+                throw new ClientException("Bad Request: multiple host headers", Status::BAD_REQUEST);
+            }
+
+            if (!\preg_match("#^(?:https?://)?([^\s:]+)(?::(\d+))?$#i", $headers["host"][0], $matches)) {
                 throw new ClientException("Bad Request: invalid host header", Status::BAD_REQUEST);
             }
 
+            $host = $matches[1];
+            $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
+            $scheme = $this->client->isEncrypted() ? "https" : "http";
+            $authority = $port ? $host . ":" . $port : $host;
+
             try {
-                if ($target === "*") {
-                    $port = $this->client->getLocalPort();
-                    if ($port) {
-                        $uri = new Uri($host . ":" . $port);
-                    } else {
-                        $uri = new Uri($host);
-                    }
-                } elseif (\preg_match("#^https?://#i", $target)) {
+                if ($target[0] === "/") { // origin-form
+                    $uri = new Uri($scheme . "://" . $authority . $target);
+                } elseif ($target === "*") { // asterisk-form
+                    $uri = new Uri($scheme . "://" . $authority);
+                } elseif (\preg_match("#^https?://#i", $target)) { // absolute-form
                     $uri = new Uri($target);
-                } else {
-                    $scheme = $this->client->isEncrypted() ? "https" : "http";
-                    if (($colon = \strrpos($host, ":")) !== false) {
-                        $port = (int) \substr($host, $colon + 1);
-                        $host = \substr($host, 0, $colon);
-                    } else {
-                        $port = $this->client->getLocalPort();
+
+                    if ($uri->getHost() !== $host || $uri->getPort() !== $port) {
+                        throw new ClientException(
+                            "Bad Request: target host mis-matched to host header",
+                            Status::BAD_REQUEST
+                        );
                     }
 
-                    if ($port) {
-                        $uri = new Uri($scheme . "://" . $host . ":" . $port . $target);
-                    } else {
-                        $uri = new Uri($scheme . "://" . $host . $target);
+                    if ($uri->getPath() === "") {
+                        throw new ClientException(
+                            "Bad Request: no request path provided in target",
+                            Status::BAD_REQUEST
+                        );
+                    }
+                } else { // authority-form
+                    if ($method !== "CONNECT") {
+                        throw new ClientException(
+                            "Bad Request: authority-form only valid for CONNECT requests",
+                            Status::BAD_REQUEST
+                        );
+                    }
+
+                    $uri = new Uri($target);
+
+                    if ($uri->getPath() !== "") {
+                        throw new ClientException(
+                            "Bad Request: authority-form does not allow a path component in the target",
+                            Status::BAD_REQUEST
+                        );
                     }
                 }
             } catch (InvalidUriException $exception) {
