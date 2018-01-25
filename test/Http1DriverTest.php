@@ -276,7 +276,7 @@ class Http1DriverTest extends TestCase {
 
         // 2 --- OPTIONS request ------------------------------------------------------------------>
 
-        $msg = "OPTIONS * HTTP/1.1\r\nHost: http://localhost\r\n\r\n";
+        $msg = "OPTIONS * HTTP/1.1\r\nHost: localhost\r\n\r\n";
         $trace = substr($msg, 0, -2);
 
         $expectations = [
@@ -284,7 +284,7 @@ class Http1DriverTest extends TestCase {
             "protocol" => "1.1",
             "method" => "OPTIONS",
             "uri" => "",
-            "headers" => ["host" => ["http://localhost"]],
+            "headers" => ["host" => ["localhost"]],
             "body" => "",
         ];
 
@@ -463,7 +463,60 @@ class Http1DriverTest extends TestCase {
         $opts = new Options;
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
-        //
+        // 6 -------------------------------------------------------------------------------------->
+
+        $msg =
+            "GET  HTTP/1.1\r\n" .
+            "Host: localhost\r\n" .
+            "\r\n";
+        $errCode = 400;
+        $errMsg = "Bad Request: invalid request line";
+        $opts = new Options;
+        $return[] = [$msg, $errCode, $errMsg, $opts];
+
+        // 7 -------------------------------------------------------------------------------------->
+
+        $msg =
+            "GET http://localhost/ HTTP/1.1\r\n" .
+            "Host: mis-matched.host\r\n" .
+            "\r\n";
+        $errCode = 400;
+        $errMsg = "Bad Request: target host mis-matched to host header";
+        $opts = new Options;
+        $return[] = [$msg, $errCode, $errMsg, $opts];
+
+        // 8 -------------------------------------------------------------------------------------->
+
+        $msg =
+            "CONNECT localhost/path HTTP/1.1\r\n" .
+            "Host: localhost\r\n" .
+            "\r\n";
+        $errCode = 400;
+        $errMsg = "Bad Request: authority-form does not allow a path component in the target";
+        $opts = new Options;
+        $return[] = [$msg, $errCode, $errMsg, $opts];
+
+        // 9 -------------------------------------------------------------------------------------->
+
+        $msg =
+            "GET localhost:1337 HTTP/1.1\r\n" .
+            "Host: localhost:1337\r\n" .
+            "\r\n";
+        $errCode = 400;
+        $errMsg = "Bad Request: authority-form only valid for CONNECT requests";
+        $opts = new Options;
+        $return[] = [$msg, $errCode, $errMsg, $opts];
+
+        // 10 ------------------------------------------------------------------------------------->
+
+        $msg =
+            "GET / HTTP/1.1\r\n" .
+            "Host: http://localhost:1337\r\n" .
+            "\r\n";
+        $errCode = 400;
+        $errMsg = "Bad Request: invalid host header";
+        $opts = new Options;
+        $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // x -------------------------------------------------------------------------------------->
 

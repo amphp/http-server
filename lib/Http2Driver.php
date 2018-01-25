@@ -904,24 +904,18 @@ class Http2Driver implements HttpDriver {
                     $scheme = $headers[":scheme"][0] ?? ($this->client->isEncrypted() ? "https" : "http");
                     $host = $headers[":authority"][0] ?? "";
 
-                    if ($host === "") {
+                    if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\])(?::([1-9]\d*))?$#i", $host, $matches)) {
                         $error = self::PROTOCOL_ERROR;
                         goto connection_error;
                     }
 
-                    if (($colon = \strrpos($host, ":")) !== false) {
-                        $port = (int) \substr($host, $colon + 1);
-                        $host = \substr($host, 0, $colon);
-                    } else {
-                        $port = $this->client->getLocalPort();
-                    }
+                    $host = $matches[1];
+                    $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
+                    $host = \rawurldecode($host);
+                    $authority = $port ? $host . ":" . $port : $host;
 
                     try {
-                        if ($port) {
-                            $uri = new Uri($scheme . "://" . \rawurldecode($host) . ":" . $port . $target);
-                        } else {
-                            $uri = new Uri($scheme . "://" . \rawurldecode($host) . $target);
-                        }
+                        $uri = new Uri($scheme . "://" . $authority . $target);
                     } catch (InvalidUriException $exception) {
                         $error = self::PROTOCOL_ERROR;
                         goto connection_error;

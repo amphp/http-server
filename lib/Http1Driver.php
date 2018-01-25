@@ -223,13 +223,14 @@ class Http1Driver implements HttpDriver {
                 throw new ClientException("Bad Request: multiple host headers", Status::BAD_REQUEST);
             }
 
-            if (!\preg_match("#^(?:https?://)?([^\s:]+)(?::(\d+))?$#i", $headers["host"][0], $matches)) {
+            if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\])(?::([1-9]\d*))?$#i", $headers["host"][0], $matches)) {
                 throw new ClientException("Bad Request: invalid host header", Status::BAD_REQUEST);
             }
 
             $host = $matches[1];
             $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
             $scheme = $this->client->isEncrypted() ? "https" : "http";
+            $host = \rawurldecode($host);
             $authority = $port ? $host . ":" . $port : $host;
 
             try {
