@@ -248,10 +248,9 @@ class ClientTest extends TestCase {
                 new Request(
                     $this->createMock(Client::class),
                     "OPTIONS", // method
-                    new Uri("http://localhost:80/"), // URI
+                    new Uri("http://localhost:80"), // URI
                     ["host" => ["localhost"]], // headers
-                    null, // body
-                    "*" // target
+                    null // body
                 ),
                 Status::NO_CONTENT
             ],
@@ -280,10 +279,9 @@ class ClientTest extends TestCase {
         $request = new Request(
             $this->createMock(Client::class),
             "OPTIONS", // method
-            new Uri("http://localhost:80/"), // URI
+            new Uri("http://localhost:80"), // URI
             ["host" => ["localhost"]], // headers
-            null, // body
-            "*" // target
+            null // body
         );
 
         /** @var \Aerys\Response $response */

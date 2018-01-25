@@ -279,7 +279,7 @@ class WebsocketTest extends TestCase {
         $testCases[] = [$request, Status::METHOD_NOT_ALLOWED, ["allow" => ["GET"]]];
 
         // 2 ----- error conditions: Handshake with 1.0 protocol ---------------------------------->
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers, null, "/", "1.0");
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers, null, "1.0");
         $testCases[] = [$request, Status::HTTP_VERSION_NOT_SUPPORTED];
 
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->

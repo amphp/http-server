@@ -522,7 +522,7 @@ class Client {
                 } else {
                     $response = yield from $this->makeMethodNotAllowedResponse();
                 }
-            } elseif ($method === "OPTIONS" && $request->getTarget() === "*") {
+            } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
                 $response = $this->makeOptionsResponse();
             } else {
                 $response = yield $this->responder->respond($request);

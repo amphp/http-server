@@ -155,7 +155,7 @@ class Http2Driver implements HttpDriver {
         $headers[":method"] = ["GET"];
 
         $id = $this->streamId += 2; // Server initiated stream IDs must be even.
-        $request = new Request($this->client, "GET", $url, $headers, null, $path, "2.0");
+        $request = new Request($this->client, "GET", $url, $headers, null, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
         $this->streams[$id] = new Internal\Http2Stream($this->initialWindowSize);
@@ -932,7 +932,6 @@ class Http2Driver implements HttpDriver {
                             $uri,
                             $headers,
                             null,
-                            $target,
                             "2.0"
                         );
 
@@ -963,7 +962,6 @@ class Http2Driver implements HttpDriver {
                             $uri,
                             $headers,
                             $body,
-                            $target,
                             "2.0"
                         );
 

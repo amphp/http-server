@@ -18,9 +18,6 @@ class Request extends Message {
     private $uri;
 
     /** @var string */
-    private $target;
-
-    /** @var string */
     private $protocol;
 
     /** @var \Aerys\Body|null */
@@ -38,8 +35,6 @@ class Request extends Message {
      * @param Uri $uri The full URI being requested, including host, port, and protocol.
      * @param string[]|string[][] $headers An array of strings or an array of string arrays.
      * @param Body|InputStream|string|null $body
-     * @param string|null $target Request target. Usually similar to URI, but contains only the exact string provided
-     *    in the request line.
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
      */
     public function __construct(
@@ -48,7 +43,6 @@ class Request extends Message {
         Uri $uri,
         array $headers = [],
         $body = null,
-        string $target = null,
         string $protocol = "1.1"
     ) {
         $this->client = $client;
@@ -63,8 +57,6 @@ class Request extends Message {
         if ($body !== null) {
             $this->setBody($body);
         }
-
-        $this->target = $target ?? ($uri->getPath() . ($uri->getQuery() ? "?" . $uri->getQuery() : ""));
     }
 
     /**
@@ -99,24 +91,6 @@ class Request extends Message {
      */
     public function setUri(Uri $uri) {
         $this->uri = $uri;
-    }
-
-    /**
-     * Retrieve the request target path.
-     *
-     * @return string
-     */
-    public function getTarget(): string {
-        return $this->target;
-    }
-
-    /**
-     * Sets a new target for the request.
-     *
-     * @param string $target
-     */
-    public function setTarget(string $target) {
-        $this->target = $target;
     }
 
     /**
