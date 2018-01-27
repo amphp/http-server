@@ -60,6 +60,21 @@ class Http2Driver implements HttpDriver {
     const INADEQUATE_SECURITY = 0xc;
     const HTTP_1_1_REQUIRED = 0xd;
 
+    // Headers to take over from original request if present
+    const PUSH_PROMISE_INTERSECT = [
+        "accept" => 1,
+        "accept-charset" => 1,
+        "accept-encoding" => 1,
+        "accept-language" => 1,
+        "authorization" => 1,
+        "cache-control" => 1,
+        "cookie" => 1,
+        "date" => 1,
+        "host" => 1,
+        "user-agent" => 1,
+        "via" => 1,
+    ];
+
     /**
      * 64 bit for ping (@TODO we maybe want to timeout once a day and reset the first letter of counter to "a").
      * @var string
@@ -125,21 +140,6 @@ class Http2Driver implements HttpDriver {
     }
 
     protected function dispatchInternalRequest(Request $request, int $streamId, string $url, array $headers = []) {
-        $headers = \array_merge(\array_intersect_key($request->getHeaders(), [
-            // headers to take over from original request if present
-            "accept" => 1,
-            "accept-charset" => 1,
-            "accept-encoding" => 1,
-            "accept-language" => 1,
-            "authorization" => 1,
-            "cookie" => 1,
-            "date" => 1,
-            "user-agent" => 1,
-            "via" => 1,
-        ], $headers));
-
-        $headers["referer"] = (string) $request->getUri();
-
         $uri = $request->getUri();
 
         if (!\preg_match("#^https?://#i", $url)) {
@@ -153,10 +153,12 @@ class Http2Driver implements HttpDriver {
             $path .= "?" . $query;
         }
 
-        $headers[":authority"] = [$url->getAuthority(false)];
-        $headers[":scheme"] = [$url->getScheme()];
-        $headers[":path"] = [$path];
-        $headers[":method"] = ["GET"];
+        $headers = \array_merge([
+            ":authority" => [$url->getAuthority(false)],
+            ":scheme" => [$url->getScheme()],
+            ":path" => [$path],
+            ":method" => ["GET"],
+        ], \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), $headers);
 
         $id = $this->streamId += 2; // Server initiated stream IDs must be even.
         $request = new Request($this->client, "GET", $url, $headers, null, "2.0");
