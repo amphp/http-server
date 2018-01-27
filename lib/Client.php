@@ -5,6 +5,7 @@ namespace Aerys;
 use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
+use Amp\Failure;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
@@ -380,32 +381,47 @@ class Client {
     }
 
     private function onWritable() {
-        $this->writeBuffer = $this->send($this->writeBuffer);
+        try {
+            $this->writeBuffer = $this->send($this->writeBuffer);
 
-        if ($this->writeBuffer === "") {
-            Loop::disable($this->writeWatcher);
-
-            if ($this->writeDeferred) {
-                $deferred = $this->writeDeferred;
-                $this->writeDeferred = null;
-                $deferred->resolve();
+            if ($this->writeBuffer !== "") {
+                return;
             }
+
+            Loop::disable($this->writeWatcher);
+            $deferred = $this->writeDeferred;
+            $this->writeDeferred = null;
+            $deferred->resolve();
+        } catch (\Throwable $exception) {
+            $this->close();
         }
     }
 
     private function write(string $data, bool $close = false): Promise {
-        $this->writeBuffer = $this->send($data);
+        if ($this->status & self::CLOSED_WR) {
+            return new Failure(new ClientException("The client disconnected"));
+        }
+
+        if ($this->writeDeferred) {
+            $this->writeBuffer .= $data;
+            return $this->writeDeferred->promise();
+        }
+
+        try {
+            $this->writeBuffer = $this->send($data);
+        } catch (\Throwable $exception) {
+            $this->close();
+            return new Failure($exception);
+        }
 
         if ($this->writeBuffer !== "") {
             Loop::enable($this->writeWatcher);
 
-            if ($this->writeDeferred === null) {
-                $this->writeDeferred = new Deferred;
-            }
-
+            $this->writeDeferred = new Deferred;
             $promise = $this->writeDeferred->promise();
 
             if ($close) {
+                $this->status &= self::CLOSED_WR;
                 $promise->onResolve([$this, "close"]);
             }
 
@@ -424,13 +440,7 @@ class Client {
         if ($bytesWritten === false
             || ($bytesWritten === 0 && (!\is_resource($this->socket) || @\feof($this->socket)))
         ) {
-            if ($this->status === self::CLOSED_RD) {
-                $this->close();
-            } else {
-                $this->status = self::CLOSED_WR;
-                Loop::cancel($this->writeWatcher);
-            }
-            return "";
+            throw new ClientException("The client disconnected");
         }
 
         if ($bytesWritten === \strlen($data)) {
@@ -586,10 +596,18 @@ class Client {
 
         if ($responseWriter->valid()) {
             $body = $response->getBody();
+            $streamCap = $this->options->getSoftStreamCap();
 
             try {
                 do {
-                    $chunk = yield $body->read();
+                    $promise = $body->read();
+
+                    // If output buffer is beyond the soft stream cap, wait for buffer to empty.
+                    if ($this->writeDeferred && \strlen($this->writeBuffer) > $streamCap) {
+                        yield $this->writeDeferred->promise();
+                    }
+
+                    $chunk = yield $promise;
 
                     if ($this->status & self::CLOSED_WR) {
                         return; // Client closed connection, abort reading body.
