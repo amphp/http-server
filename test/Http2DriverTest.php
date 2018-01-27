@@ -46,7 +46,7 @@ class Http2DriverTest extends TestCase {
     public function testSimpleCases($msg, $expectations) {
         $msg = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$msg";
 
-        $driver = $this->setupDriver(function (Request $req) use (&$request) {
+        $driver = $this->setupDriver(function (Request $req) use (&$request, &$parser) {
             $request = $req;
         });
 
@@ -57,10 +57,14 @@ class Http2DriverTest extends TestCase {
 
             if ($mode === 1) {
                 for ($i = 0, $length = \strlen($msg); $i < $length; $i++) {
-                    $parser->send($msg[$i]);
+                    $promise = $parser->send($msg[$i]);
                 }
             } else {
-                $parser->send($msg);
+                $promise = $parser->send($msg);
+            }
+
+            while ($promise instanceof Promise) {
+                $promise = $parser->send("");
             }
 
             $this->assertInstanceOf(Request::class, $request);

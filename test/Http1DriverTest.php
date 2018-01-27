@@ -99,7 +99,10 @@ class Http1DriverTest extends TestCase {
         );
 
         $parser = $driver->parser();
-        $parser->send($msg);
+        $promise = $parser->send($msg);
+        while ($promise instanceof Promise) {
+            $promise = $parser->send("");
+        }
 
         $this->assertInstanceOf(Request::class, $request);
 
@@ -130,7 +133,11 @@ class Http1DriverTest extends TestCase {
 
         $parser = $driver->parser();
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
-            $parser->send($msg[$i]);
+            $promise = $parser->send($msg[$i]);
+        }
+
+        while ($promise instanceof Promise) {
+            $promise = $parser->send("");
         }
 
         $this->assertInstanceOf(Request::class, $request);
@@ -171,7 +178,11 @@ class Http1DriverTest extends TestCase {
 
         $parser = $driver->parser();
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
-            $parser->send($msg[$i]);
+            $promise = $parser->send($msg[$i]);
+        }
+
+        while ($promise instanceof Promise) {
+            $promise = $parser->send("");
         }
 
         $this->assertInstanceOf(Request::class, $request);
@@ -211,7 +222,11 @@ class Http1DriverTest extends TestCase {
 
         $parser = $driver->parser();
         for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
-            $parser->send($msg[$i]);
+            $promise = $parser->send($msg[$i]);
+        }
+
+        while ($promise instanceof Promise) {
+            $promise = $parser->send("");
         }
 
         $this->assertInstanceOf(Request::class, $request);
@@ -545,7 +560,10 @@ class Http1DriverTest extends TestCase {
 
         $parser = $driver->parser();
 
-        $parser->send($data);
+        $promise = $parser->send($data);
+        while ($promise instanceof Promise) {
+            $promise = $parser->send("");
+        }
 
         $this->assertInstanceOf(Request::class, $request);
 
@@ -594,6 +612,7 @@ class Http1DriverTest extends TestCase {
         $parser = $driver->parser();
 
         $parser->send($payloads[0] . $payloads[1]);
+        $parser->send(""); // Continue past yield for body emit.
 
         $this->assertInstanceOf(Request::class, $request);
 
@@ -605,6 +624,8 @@ class Http1DriverTest extends TestCase {
         $writer = $driver->writer(new Response\EmptyResponse, $request);
         $request = null;
         $writer->send(null);
+
+        $parser->send(""); // Continue past yield for body emit.
 
         $this->assertInstanceOf(Request::class, $request);
 
@@ -618,6 +639,7 @@ class Http1DriverTest extends TestCase {
         $writer->send(null);
 
         $parser->send($payloads[0]);
+        $parser->send(""); // Continue past yield for body emit.
 
         $this->assertInstanceOf(Request::class, $request);
 

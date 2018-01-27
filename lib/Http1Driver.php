@@ -122,10 +122,10 @@ class Http1Driver implements HttpDriver {
 
     public function parser(): \Generator {
         $maxHeaderSize = $this->options->getMaxHeaderSize();
-        $maxBodySize = $this->options->getMaxBodySize();
         $bodyEmitSize = $this->options->getIoGranularity();
         $parser = null;
-        $buffer = "";
+
+        $buffer = yield;
 
         do {
             if ($parser !== null) { // May be set from upgrade request or receive of PRI * HTTP/2.0 request.
@@ -134,7 +134,6 @@ class Http1Driver implements HttpDriver {
                 return;
             }
 
-            $headers = [];
             $contentLength = null;
             $isChunked = false;
 
@@ -142,7 +141,7 @@ class Http1Driver implements HttpDriver {
                 $buffer = \ltrim($buffer, "\r\n");
 
                 if ($headerPos = \strpos($buffer, "\r\n\r\n")) {
-                    $startLineAndHeaders = \substr($buffer, 0, $headerPos + 2);
+                    $headers = \substr($buffer, 0, $headerPos + 2);
                     $buffer = (string) \substr($buffer, $headerPos + 4);
                     break;
                 }
@@ -157,9 +156,9 @@ class Http1Driver implements HttpDriver {
                 $buffer .= yield;
             } while (true);
 
-            $startLineEndPos = \strpos($startLineAndHeaders, "\r\n");
-            $startLine = substr($startLineAndHeaders, 0, $startLineEndPos);
-            $rawHeaders = \substr($startLineAndHeaders, $startLineEndPos + 2);
+            $startLineEndPos = \strpos($headers, "\r\n");
+            $startLine = \substr($headers, 0, $startLineEndPos);
+            $headers = \substr($headers, $startLineEndPos + 2);
 
             if (!\preg_match("/^([A-Z]+) (\S+) HTTP\/(\d+(?:\.\d+)?)$/i", $startLine, $matches)) {
                 throw new ClientException("Bad Request: invalid request line", Status::BAD_REQUEST);
@@ -174,40 +173,42 @@ class Http1Driver implements HttpDriver {
                     $this->http2->setup($this->client, $this->onMessage, $this->write);
 
                     $parser = $this->http2->parser();
-                    $parser->send("$startLineAndHeaders\r\n$buffer");
+                    $parser->send("$startLine\r\n$headers\r\n$buffer");
                     continue; // Yield from the above parser immediately.
                 }
 
                 throw new ClientException("Unsupported version {$protocol}", Status::HTTP_VERSION_NOT_SUPPORTED);
             }
 
-            if ($rawHeaders) {
-                try {
-                    $headers = Rfc7230::parseHeaders($rawHeaders);
-                } catch (InvalidHeaderException $e) {
+            if (!$headers) {
+                throw new ClientException("Bad Request: missing host header");
+            }
+
+            try {
+                $headers = Rfc7230::parseHeaders($headers);
+            } catch (InvalidHeaderException $e) {
+                throw new ClientException(
+                    "Bad Request: " . $e->getMessage(),
+                    Status::BAD_REQUEST
+                );
+            }
+
+            $contentLength = $headers["content-length"][0] ?? null;
+            if ($contentLength !== null) {
+                if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {
+                    throw new ClientException("Bad Request: invalid content length", Status::BAD_REQUEST);
+                }
+
+                $contentLength = (int) $contentLength;
+            }
+
+            if (isset($headers["transfer-encoding"])) {
+                $value = strtolower($headers["transfer-encoding"][0]);
+                if (!($isChunked = $value === "chunked") && $value !== "identity") {
                     throw new ClientException(
-                        "Bad Request: " . $e->getMessage(),
+                        "Bad Request: unsupported transfer-encoding",
                         Status::BAD_REQUEST
                     );
-                }
-
-                $contentLength = $headers["content-length"][0] ?? null;
-                if ($contentLength !== null) {
-                    if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {
-                        throw new ClientException("Bad Request: invalid content length", Status::BAD_REQUEST);
-                    }
-
-                    $contentLength = (int) $contentLength;
-                }
-
-                if (isset($headers["transfer-encoding"])) {
-                    $value = strtolower($headers["transfer-encoding"][0]);
-                    if (!($isChunked = $value === "chunked") && $value !== "identity") {
-                        throw new ClientException(
-                            "Bad Request: unsupported transfer-encoding",
-                            Status::BAD_REQUEST
-                        );
-                    }
                 }
             }
 
@@ -331,6 +332,7 @@ class Http1Driver implements HttpDriver {
 
             // HTTP/1.x clients only ever have a single body emitter.
             $this->bodyEmitter = $emitter = new Emitter;
+            $maxBodySize = $this->options->getMaxBodySize();
 
             $body = new Body(
                 new IteratorStream($this->bodyEmitter->iterate()),
@@ -434,7 +436,7 @@ class Http1Driver implements HttpDriver {
 
                                 while ($bodyBufferSize < $remaining) {
                                     if ($bodyBufferSize >= $bodyEmitSize) {
-                                        $emitter->emit($body);
+                                        $buffer .= yield $emitter->emit($body);
                                         $body = '';
                                         $bodySize += $bodyBufferSize;
                                         $remaining -= $bodyBufferSize;
@@ -443,7 +445,7 @@ class Http1Driver implements HttpDriver {
                                     $bodyBufferSize = \strlen($body);
                                 }
                                 if ($remaining) {
-                                    $emitter->emit(substr($body, 0, $remaining));
+                                    $buffer .= yield $emitter->emit(substr($body, 0, $remaining));
                                     $buffer = substr($body, $remaining);
                                     $body = "";
                                     $bodySize += $remaining;
@@ -477,7 +479,7 @@ class Http1Driver implements HttpDriver {
                             }
 
                             if ($bodyBufferSize >= $bodyEmitSize) {
-                                $emitter->emit($body);
+                                $buffer .= yield $emitter->emit($body);
                                 $body = '';
                                 $bodySize += $bodyBufferSize;
                                 $bodyBufferSize = 0;
@@ -493,31 +495,31 @@ class Http1Driver implements HttpDriver {
                     }
 
                     if ($body !== "") {
-                        $emitter->emit($body);
+                        $buffer .= yield $emitter->emit($body);
                     }
                 } else {
                     $bodySize = 0;
-
-                    if ($maxBodySize < $contentLength) {
-                        throw new ClientException("Payload too large", Status::PAYLOAD_TOO_LARGE);
-                    }
-
-                    $bound = $contentLength;
                     $bodyBufferSize = \strlen($buffer);
 
-                    while ($bodySize + $bodyBufferSize < $bound) {
+                    // Note that $maxBodySize may change while looping.
+                    while ($bodySize + $bodyBufferSize < \min($maxBodySize, $contentLength)) {
                         if ($bodyBufferSize >= $bodyEmitSize) {
-                            $emitter->emit($buffer);
-                            $buffer = '';
+                            $buffer = yield $emitter->emit($buffer);
                             $bodySize += $bodyBufferSize;
                         }
                         $buffer .= yield;
                         $bodyBufferSize = \strlen($buffer);
                     }
-                    $remaining = $bound - $bodySize;
+
+                    $remaining = \min($maxBodySize, $contentLength) - $bodySize;
+
                     if ($remaining) {
-                        $emitter->emit(substr($buffer, 0, $remaining));
+                        $buffer .= yield $emitter->emit(substr($buffer, 0, $remaining));
                         $buffer = substr($buffer, $remaining);
+                    }
+
+                    if ($contentLength > $maxBodySize) {
+                        throw new ClientException("Payload too large", Status::PAYLOAD_TOO_LARGE);
                     }
                 }
 

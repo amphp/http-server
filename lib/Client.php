@@ -88,6 +88,9 @@ class Client {
     /** @var \Amp\Deferred|null */
     private $writeDeferred;
 
+    /** @var bool  */
+    private $paused = false;
+
     /** @var callable */
     private $resume;
 
@@ -331,8 +334,11 @@ class Client {
 
                 if ($promise instanceof Promise && !$this->isExported && !($this->status & self::CLOSED_RD)) {
                     // Parser wants to wait until a promise completes.
-                    Loop::disable($watcherId);
-                    $promise->onResolve($this->resume);
+                    $this->paused = true;
+                    $promise->onResolve($this->resume); // Resume will set $this->paused to false if called immediately.
+                    if ($this->paused) { // Avoids potential for unnecessary disable followed by enable.
+                        Loop::disable($this->readWatcher);
+                    }
                 }
             } catch (ClientException $exception) {
                 if ($this->status & self::CLOSED_RD) {
@@ -489,8 +495,17 @@ class Client {
         }
 
         if (!$this->isExported && !($this->status & self::CLOSED_RD)) {
-            Loop::enable($this->readWatcher);
-            $this->requestParser->send("");
+            try {
+                $this->requestParser->send("");
+                $this->paused = false;
+                Loop::enable($this->readWatcher);
+            } catch (ClientException $exception) {
+                if ($this->status & self::CLOSED_RD) {
+                    return; // Exception already handled by responder.
+                }
+
+                $this->onError($exception);
+            }
         }
     }
 
