@@ -11,6 +11,7 @@ use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;
 use Aerys\TimeReference;
+use Aerys\Trailers;
 use Amp\Artax\Internal\Parser;
 use Amp\ByteStream\InMemoryStream;
 use Amp\PHPUnit\TestCase;
@@ -816,7 +817,6 @@ class Http1DriverTest extends TestCase {
             },
             function (string $data) use (&$received) {
                 $received .= $data;
-
                 return new Success;
             }
         );
@@ -835,5 +835,47 @@ class Http1DriverTest extends TestCase {
         $this->assertSame("100-continue", $request->getHeader("expect"));
 
         $this->assertSame("HTTP/1.1 100 Continue\r\n\r\n", $received);
+    }
+
+    public function testTrailerHeaders() {
+        $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
+        $driver->setup(
+            $this->createMock(Client::class),
+            function (Request $req) use (&$request) {
+                $request = $req;
+            },
+            $this->createCallback(0)
+        );
+
+        $message =
+            "GET /test HTTP/1.1\r\n" .
+            "Host: localhost\r\n" .
+            "Transfer-Encoding: chunked\r\n" .
+            "Trailer: My-Trailer\r\n" . // Note that Trailer is optional (RFC7230, section 4.4).
+            "\r\n" .
+            "c\r\n" .
+            "Body Content\r\n" .
+            "0\r\n" .
+            "My-Trailer: 42\r\n" .
+            "\r\n";
+
+        $parser = $driver->parser();
+
+        $promise = $parser->send($message);
+        while ($promise instanceof Promise) {
+            $promise = $parser->send("");
+        }
+
+        $this->assertInstanceOf(Request::class, $request);
+
+        /** @var \Aerys\Request $request */
+        $body = Promise\wait($request->getBody()->buffer());
+
+        $this->assertSame("Body Content", $body);
+
+        $trailers = Promise\wait($request->getBody()->getTrailers());
+
+        $this->assertInstanceOf(Trailers::class, $trailers);
+        $this->assertSame("42", $trailers->getHeader("My-Trailer"));
     }
 }

@@ -5,6 +5,7 @@ namespace Aerys;
 use Amp\ByteStream\InputStream;
 use Amp\Coroutine;
 use Amp\Promise;
+use Amp\Success;
 use function Amp\call;
 
 /**
@@ -26,13 +27,18 @@ class Body implements InputStream {
     /** @var callable|null */
     private $upgradeSize;
 
+    /** @var \Amp\Promise */
+    private $trailers;
+
     /**
      * @param \Amp\ByteStream\InputStream $stream
      * @param callable|null $upgradeSize Callback used to increase the maximum size of the body.
+     * @param \Amp\Promise|null $trailers Promise for array of trailing headers.
      */
-    public function __construct(InputStream $stream, callable $upgradeSize = null) {
+    public function __construct(InputStream $stream, callable $upgradeSize = null, Promise $trailers = null) {
         $this->stream = $stream;
         $this->upgradeSize = $upgradeSize;
+        $this->trailers = $trailers ?? new Success(new Trailers([]));
     }
 
     public function __destruct() {
@@ -102,5 +108,12 @@ class Body implements InputStream {
         }
 
         ($this->upgradeSize)($size);
+    }
+
+    /**
+     * @return \Amp\Promise<\Aerys\Trailers>
+     */
+    public function getTrailers(): Promise {
+        return $this->trailers;
     }
 }

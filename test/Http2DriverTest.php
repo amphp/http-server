@@ -19,7 +19,7 @@ class Http2DriverTest extends TestCase {
         return substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
     }
 
-    public static function packHeader($headers, $hasBody = false, $stream = 1, $split = PHP_INT_MAX) {
+    public static function packHeader($headers, $continue = false, $stream = 1, $split = PHP_INT_MAX) {
         $data = "";
         $headers = HPack::encode($headers);
         $all = str_split($headers, $split);
@@ -30,14 +30,19 @@ class Http2DriverTest extends TestCase {
         } else {
             $flag = Http2Driver::NOFLAG;
         }
+
         $end = array_pop($all);
         $type = Http2Driver::HEADERS;
+
         foreach ($all as $frame) {
             $data .= self::packFrame($frame, $type, $flag, $stream);
             $type = Http2Driver::CONTINUATION;
             $flag = Http2Driver::NOFLAG;
         }
-        return $data . self::packFrame($end, $type, ($hasBody ? $flag : Http2Driver::END_STREAM | $flag) | Http2Driver::END_HEADERS, $stream);
+
+        $flags = ($continue ? $flag : Http2Driver::END_STREAM | $flag) | Http2Driver::END_HEADERS;
+
+        return $data . self::packFrame($end, $type, $flags, $stream);
     }
 
     /**
@@ -46,11 +51,11 @@ class Http2DriverTest extends TestCase {
     public function testSimpleCases($msg, $expectations) {
         $msg = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$msg";
 
-        $driver = $this->setupDriver(function (Request $req) use (&$request, &$parser) {
-            $request = $req;
-        });
-
         for ($mode = 0; $mode <= 1; $mode++) {
+            $driver = $this->setupDriver(function (Request $req) use (&$request, &$parser) {
+                $request = $req;
+            });
+
             $parseResult = null;
 
             $parser = $driver->parser();
@@ -71,6 +76,7 @@ class Http2DriverTest extends TestCase {
 
             /** @var \Aerys\Request $request */
             $body = Promise\wait($request->getBody()->buffer());
+            $trailers = Promise\wait($request->getBody()->getTrailers());
 
             $headers = $request->getHeaders();
             foreach ($headers as $header => $value) {
@@ -86,6 +92,7 @@ class Http2DriverTest extends TestCase {
             $this->assertSame($expectations["port"] ?? 80, $request->getUri()->getPort(), "uriPort mismatch");
             $this->assertSame($expectations["host"], $request->getUri()->getHost(), "uriHost mismatch");
             $this->assertSame($expectations["body"], $body, "body mismatch");
+            $this->assertSame($expectations["trailers"] ?? [], $trailers->getHeaders());
         }
     }
 
@@ -93,14 +100,14 @@ class Http2DriverTest extends TestCase {
         // 0 --- basic request -------------------------------------------------------------------->
 
         $headers = [
-            ":authority" => "localhost:8888",
-            ":path" => "/foo",
-            ":scheme" => "http",
-            ":method" => "GET",
-            "test" => "successful"
+            ":authority" => ["localhost:8888"],
+            ":path" => ["/foo"],
+            ":scheme" => ["http"],
+            ":method" => ["GET"],
+            "test" => ["successful"]
         ];
         $msg = self::packFrame(pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
-        $msg .= self::packHeader($headers);
+        $msg .= self::packHeader($headers, false, 1);
 
         $expectations = [
             "protocol"    => "2.0",
@@ -110,7 +117,6 @@ class Http2DriverTest extends TestCase {
             "port"        => 8888,
             "headers"     => ["test" => ["successful"]],
             "body"        => "",
-            "invocations" => 1
         ];
 
         $return[] = [$msg, $expectations];
@@ -132,7 +138,35 @@ class Http2DriverTest extends TestCase {
             "host"        => "localhost",
             "headers"     => ["test" => ["successful"]],
             "body"        => "ab",
-            "invocations" => 4 /* header + 2 * individual data + end */
+        ];
+
+        $return[] = [$msg, $expectations];
+
+        // 2 --- request trailing headers --------------------------------------------------------->
+
+        $headers = [
+            ":authority" => ["localhost"],
+            ":path" => ["/foo"],
+            ":scheme" => ["http"],
+            ":method" => ["GET"],
+            "Trailers" => ["Expires"]
+        ];
+
+        $msg = self::packFrame(pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
+        $msg .= self::packHeader($headers, true, 1, 1);
+        $msg .= self::packFrame("a", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
+        $msg .= self::packFrame("", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
+        $msg .= self::packFrame("b", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
+        $msg .= self::packHeader(["Expires" => ["date"]], false, 1);
+
+        $expectations = [
+            "protocol"    => "2.0",
+            "method"      => "GET",
+            "uri"         => "/foo",
+            "host"        => "localhost",
+            "headers"     => ["trailers" => ["Expires"]],
+            "body"        => "ab",
+            "trailers"    => ["expires" => ["date"]],
         ];
 
         $return[] = [$msg, $expectations];
@@ -194,7 +228,7 @@ class Http2DriverTest extends TestCase {
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
 
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), [], null, "/", "2.0");
+        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), [], null, "2.0");
 
         $writer = $driver->writer(new Response, $request);
 

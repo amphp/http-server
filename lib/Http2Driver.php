@@ -7,6 +7,7 @@ namespace Aerys;
 // @TODO maybe display a real HTML error page for artificial limits exceeded
 
 use Amp\ByteStream\IteratorStream;
+use Amp\Deferred;
 use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Http\Status;
@@ -91,6 +92,9 @@ class Http2Driver implements HttpDriver {
 
     /** @var int[] */
     private $streamIdMap = [];
+
+    /** @var \Amp\Deferred[] */
+    private $trailerDeferreds = [];
 
     /** @var \Amp\Emitter[] */
     private $bodyEmitters = [];
@@ -342,7 +346,7 @@ class Http2Driver implements HttpDriver {
     }
 
     private function releaseStream(int $id) {
-        unset($this->streams[$id]);
+        unset($this->streams[$id], $this->trailerDeferreds[$id], $this->bodyEmitters[$id]);
         if ($id & 1) { // Client-initiated stream.
             $this->remainingStreams++;
         }
@@ -361,8 +365,8 @@ class Http2Driver implements HttpDriver {
         $lastReset = 0;
         $framesLastSecond = 0;
 
-        $headers = [];
-        $bodyLens = [];
+        $packedHeaders = [];
+        $bodyLengths = [];
         $table = new Internal\HPack;
 
         $setSetting = function (string $buffer) use ($table): int {
@@ -509,12 +513,12 @@ class Http2Driver implements HttpDriver {
                             goto connection_error;
                         }
 
-                        if (!isset($this->bodyEmitters[$id], $this->streams[$id])) {
-                            if (isset($headers[$id])) {
-                                $error = self::PROTOCOL_ERROR;
-                                goto connection_error;
-                            }
+                        if (isset($packedHeaders[$id])) {
+                            $error = self::PROTOCOL_ERROR;
+                            goto connection_error;
+                        }
 
+                        if (!isset($this->streams[$id], $this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
                             // Technically it is a protocol error to send data to a never opened stream
                             // but we do not want to store what streams WE have closed via RST_STREAM,
                             // thus we're just reporting them as closed
@@ -543,7 +547,7 @@ class Http2Driver implements HttpDriver {
                             goto connection_error;
                         }
 
-                        $remaining = $bodyLens[$id] + $length - $this->streams[$id]->window;
+                        $remaining = $bodyLengths[$id] + $length - $this->streams[$id]->window;
 
                         if ($remaining > 0) {
                             $error = self::FLOW_CONTROL_ERROR;
@@ -562,14 +566,18 @@ class Http2Driver implements HttpDriver {
                         }
 
                         if (($flags & self::END_STREAM) !== "\0") {
+                            $deferred = $this->trailerDeferreds[$id];
                             $emitter = $this->bodyEmitters[$id];
-                            unset($bodyLens[$id], $this->bodyEmitters[$id]);
+
+                            unset($bodyLengths[$id]);
                             $this->releaseStream($id);
+
+                            $deferred->resolve(new Trailers([]));
                             $emitter->complete();
                         } else {
-                            $bodyLens[$id] += $length;
+                            $bodyLengths[$id] += $length;
 
-                            if ($remaining == 0 && $length) {
+                            if ($remaining === 0 && $length) {
                                 $error = self::ENHANCE_YOUR_CALM;
                                 goto connection_error;
                             }
@@ -578,12 +586,12 @@ class Http2Driver implements HttpDriver {
                         continue 2;
 
                     case self::HEADERS:
-                        if (isset($headers[$id])) {
+                        if (isset($packedHeaders[$id])) {
                             $error = self::PROTOCOL_ERROR;
                             goto connection_error;
                         }
 
-                        if ($this->remainingStreams-- <= 0) {
+                        if (!isset($this->streams[$id]) && $this->remainingStreams-- <= 0) {
                             $error = self::PROTOCOL_ERROR;
                             goto connection_error;
                         }
@@ -639,7 +647,7 @@ class Http2Driver implements HttpDriver {
                             goto parse_headers;
                         }
 
-                        $headers[$id] = $packed;
+                        $packedHeaders[$id] = $packed;
 
                         continue 2;
 
@@ -700,7 +708,7 @@ class Http2Driver implements HttpDriver {
                             unset($this->bodyEmitters[$id]);
                         }
 
-                        unset($headers[$id], $bodyLens[$id]);
+                        unset($packedHeaders[$id], $bodyLengths[$id]);
                         $this->releaseStream($id);
 
                         $buffer = \substr($buffer, 4);
@@ -855,7 +863,7 @@ class Http2Driver implements HttpDriver {
                         continue 2;
 
                     case self::CONTINUATION:
-                        if (!isset($headers[$id])) {
+                        if (!isset($packedHeaders[$id])) {
                             // technically it is a protocol error to send data to a never opened stream
                             // but we do not want to store what streams WE have closed via RST_STREAM,
                             // thus we're just reporting them as closed
@@ -863,7 +871,7 @@ class Http2Driver implements HttpDriver {
                             goto stream_error;
                         }
 
-                        if ($length > $maxHeaderSize - \strlen($headers[$id])) {
+                        if ($length > $maxHeaderSize - \strlen($packedHeaders[$id])) {
                             $error = self::ENHANCE_YOUR_CALM;
                             goto stream_error;
                         }
@@ -872,12 +880,12 @@ class Http2Driver implements HttpDriver {
                             $buffer .= yield;
                         }
 
-                        $headers[$id] .= \substr($buffer, 0, $length);
+                        $packedHeaders[$id] .= \substr($buffer, 0, $length);
                         $buffer = \substr($buffer, $length);
 
                         if (($flags & self::END_HEADERS) !== "\0") {
-                            $packed = $headers[$id];
-                            unset($headers[$id]);
+                            $packed = $packedHeaders[$id];
+                            unset($packedHeaders[$id]);
                             goto parse_headers;
                         }
 
@@ -892,7 +900,7 @@ class Http2Driver implements HttpDriver {
                     $decoded = $table->decode($packed);
                     if ($decoded === null) {
                         $error = self::COMPRESSION_ERROR;
-                        break;
+                        goto stream_error;
                     }
 
                     $headers = [];
@@ -900,13 +908,37 @@ class Http2Driver implements HttpDriver {
                         $headers[$name][] = $value;
                     }
 
-                    $target = $headers[":path"][0];
+                    if (isset($this->streams[$id])) {
+                        if (!isset($this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
+                            $error = self::PROTOCOL_ERROR;
+                            goto stream_error;
+                        }
+
+                        $deferred = $this->trailerDeferreds[$id];
+                        $emitter = $this->bodyEmitters[$id];
+                        unset($bodyLengths[$id]);
+                        $this->releaseStream($id);
+
+                        // Trailers must not contain pseudo-headers.
+                        foreach ($headers as $name => $value) {
+                            if ($name[0] === ':') {
+                                $error = self::PROTOCOL_ERROR;
+                                goto stream_error;
+                            }
+                        }
+
+                        $deferred->resolve(new Trailers($headers));
+                        $emitter->complete();
+                        continue;
+                    }
+
+                    $target = $headers[":path"][0] ?? "";
                     $scheme = $headers[":scheme"][0] ?? ($this->client->isEncrypted() ? "https" : "http");
                     $host = $headers[":authority"][0] ?? "";
 
                     if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\])(?::([1-9]\d*))?$#i", $host, $matches)) {
                         $error = self::PROTOCOL_ERROR;
-                        goto connection_error;
+                        goto stream_error;
                     }
 
                     $host = $matches[1];
@@ -921,9 +953,7 @@ class Http2Driver implements HttpDriver {
                         goto connection_error;
                     }
 
-                    if (!isset($this->streams[$id])) {
-                        $this->streams[$id] = new Internal\Http2Stream($this->initialWindowSize);
-                    }
+                    $this->streams[$id] = new Internal\Http2Stream($this->initialWindowSize);
 
                     if ($streamEnd) {
                         $request = new Request(
@@ -938,38 +968,44 @@ class Http2Driver implements HttpDriver {
                         $this->streamIdMap[\spl_object_hash($request)] = $id;
                         $this->pendingResponses++;
                         ($this->onMessage)($request);
-                    } else {
-                        $this->bodyEmitters[$id] = new Emitter;
-                        $body = new Body(
-                            new IteratorStream($this->bodyEmitters[$id]->iterate()),
-                            function (int $bodySize) use ($id) {
-                                if (!isset($this->streams[$id], $this->bodyEmitters[$id])
-                                    || $bodySize <= $this->streams[$id]->window
-                                ) {
-                                    return;
-                                }
 
-                                $increment = $bodySize - $this->streams[$id]->window;
-                                $this->streams[$id]->window = $bodySize;
-
-                                $this->writeFrame(pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG, $id);
-                            }
-                        );
-
-                        $request = new Request(
-                            $this->client,
-                            $headers[":method"][0],
-                            $uri,
-                            $headers,
-                            $body,
-                            "2.0"
-                        );
-
-                        $this->streamIdMap[\spl_object_hash($request)] = $id;
-                        $this->pendingResponses++;
-                        $bodyLens[$id] = 0;
-                        ($this->onMessage)($request);
+                        continue;
                     }
+
+                    $this->trailerDeferreds[$id] = $deferred = new Deferred;
+                    $this->bodyEmitters[$id] = new Emitter;
+
+                    $body = new Body(
+                        new IteratorStream($this->bodyEmitters[$id]->iterate()),
+                        function (int $bodySize) use ($id) {
+                            if (!isset($this->streams[$id], $this->bodyEmitters[$id])
+                                || $bodySize <= $this->streams[$id]->window
+                            ) {
+                                return;
+                            }
+
+                            $increment = $bodySize - $this->streams[$id]->window;
+                            $this->streams[$id]->window = $bodySize;
+
+                            $this->writeFrame(pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG, $id);
+                        },
+                        $deferred->promise()
+                    );
+
+                    $request = new Request(
+                        $this->client,
+                        $headers[":method"][0],
+                        $uri,
+                        $headers,
+                        $body,
+                        "2.0"
+                    );
+
+                    $this->streamIdMap[\spl_object_hash($request)] = $id;
+                    $this->pendingResponses++;
+                    $bodyLengths[$id] = 0;
+                    ($this->onMessage)($request);
+
                     continue;
                 }
 
@@ -980,7 +1016,20 @@ class Http2Driver implements HttpDriver {
                     }
 
                     $this->writeFrame(pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
-                    unset($headers[$id], $bodyLens[$id]);
+                    unset($packedHeaders[$id], $bodyLengths[$id]);
+
+                    if (isset($this->trailerDeferreds[$id])) {
+                        $deferred = $this->trailerDeferreds[$id];
+                        $this->trailerDeferreds[$id] = null;
+                        $deferred->fail(new ClientException("Stream error", Status::BAD_REQUEST));
+                    }
+
+                    if (isset($this->bodyEmitters[$id])) {
+                        $emitter = $this->bodyEmitters[$id];
+                        $this->bodyEmitters[$id] = null;
+                        $emitter->fail(new ClientException("Stream error", Status::BAD_REQUEST));
+                    }
+
                     $this->releaseStream($id);
 
                     // consume whole frame to be able to continue this connection
@@ -990,12 +1039,19 @@ class Http2Driver implements HttpDriver {
                         $length -= \strlen($buffer);
                     }
                     $buffer = substr($buffer, \strlen($buffer) + $length);
+
                     continue;
                 }
             }
         } finally {
-            if (!empty($this->bodyEmitters)) {
+            if (!empty($this->bodyEmitters) || !empty($this->trailerDeferreds)) {
                 $exception = new ClientException("Client disconnected", Status::REQUEST_TIMEOUT);
+
+                foreach ($this->trailerDeferreds as $id => $deferred) {
+                    unset($this->trailerDeferreds[$id]);
+                    $deferred->fail($exception);
+                }
+
                 foreach ($this->bodyEmitters as $id => $emitter) {
                     unset($this->bodyEmitters[$id]);
                     $emitter->fail($exception);

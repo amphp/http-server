@@ -4,6 +4,7 @@ namespace Aerys;
 
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
+use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Rfc7230;
@@ -12,6 +13,26 @@ use Amp\Uri\InvalidUriException;
 use Amp\Uri\Uri;
 
 class Http1Driver implements HttpDriver {
+    /** @see https://tools.ietf.org/html/rfc7230#section-4.1.2 */
+    const DISALLOWED_TRAILERS = [
+        "authorization",
+        "content-encoding",
+        "content-length",
+        "content-range",
+        "content-type",
+        "cookie",
+        "expect",
+        "host",
+        "pragma",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "range",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "www-authenticate",
+    ];
+
     /** @var \Aerys\Http2Driver|null */
     private $http2;
 
@@ -26,6 +47,9 @@ class Http1Driver implements HttpDriver {
 
     /** @var Emitter|null */
     private $bodyEmitter;
+
+    /** @var Deferred|null */
+    private $trailerDeferred;
 
     /** @var int */
     private $pendingResponses = 0;
@@ -142,7 +166,7 @@ class Http1Driver implements HttpDriver {
                 $buffer = \ltrim($buffer, "\r\n");
 
                 if ($headerPos = \strpos($buffer, "\r\n\r\n")) {
-                    $headers = \substr($buffer, 0, $headerPos + 2);
+                    $rawHeaders = \substr($buffer, 0, $headerPos + 2);
                     $buffer = (string) \substr($buffer, $headerPos + 4);
                     break;
                 }
@@ -157,9 +181,9 @@ class Http1Driver implements HttpDriver {
                 $buffer .= yield;
             } while (true);
 
-            $startLineEndPos = \strpos($headers, "\r\n");
-            $startLine = \substr($headers, 0, $startLineEndPos);
-            $headers = \substr($headers, $startLineEndPos + 2);
+            $startLineEndPos = \strpos($rawHeaders, "\r\n");
+            $startLine = \substr($rawHeaders, 0, $startLineEndPos);
+            $rawHeaders = \substr($rawHeaders, $startLineEndPos + 2);
 
             if (!\preg_match("/^([A-Z]+) (\S+) HTTP\/(\d+(?:\.\d+)?)$/i", $startLine, $matches)) {
                 throw new ClientException("Bad Request: invalid request line", Status::BAD_REQUEST);
@@ -174,19 +198,19 @@ class Http1Driver implements HttpDriver {
                     $this->http2->setup($this->client, $this->onMessage, $this->write);
 
                     $parser = $this->http2->parser();
-                    $parser->send("$startLine\r\n$headers\r\n$buffer");
+                    $parser->send("$startLine\r\n$rawHeaders\r\n$buffer");
                     continue; // Yield from the above parser immediately.
                 }
 
                 throw new ClientException("Unsupported version {$protocol}", Status::HTTP_VERSION_NOT_SUPPORTED);
             }
 
-            if (!$headers) {
-                throw new ClientException("Bad Request: missing host header");
+            if (!$rawHeaders) {
+                throw new ClientException("Bad Request: missing host header", Status::BAD_REQUEST);
             }
 
             try {
-                $headers = Rfc7230::parseHeaders($headers);
+                $headers = Rfc7230::parseHeaders($rawHeaders);
             } catch (InvalidHeaderException $e) {
                 throw new ClientException(
                     "Bad Request: " . $e->getMessage(),
@@ -333,6 +357,7 @@ class Http1Driver implements HttpDriver {
 
             // HTTP/1.x clients only ever have a single body emitter.
             $this->bodyEmitter = $emitter = new Emitter;
+            $this->trailerDeferred = $deferred = new Deferred;
             $maxBodySize = $this->options->getMaxBodySize();
 
             $body = new Body(
@@ -341,7 +366,8 @@ class Http1Driver implements HttpDriver {
                     if ($bodySize > $maxBodySize) {
                         $maxBodySize = $bodySize;
                     }
-                }
+                },
+                $this->trailerDeferred->promise()
             );
 
             $request = new Request($this->client, $method, $uri, $headers, $body, $protocol);
@@ -379,7 +405,7 @@ class Http1Driver implements HttpDriver {
                         if ($hex !== "0") {
                             $hex = \ltrim($line, "0");
 
-                            if (!\preg_match("/^[1-9A-F][0-9A-F]*?$/i", $hex)) {
+                            if (!\preg_match("/^[1-9A-F][0-9A-F]*$/i", $hex)) {
                                 throw new ClientException(
                                     "Bad Request: invalid hex chunk size",
                                     Status::BAD_REQUEST
@@ -393,42 +419,49 @@ class Http1Driver implements HttpDriver {
                             while (!isset($buffer[1])) {
                                 $buffer .= yield;
                             }
+
                             $firstTwoBytes = \substr($buffer, 0, 2);
                             if ($firstTwoBytes === "\r\n") {
                                 $buffer = \substr($buffer, 2);
-                                break; // finished ($is_chunked loop)
+                                break; // finished, no trailers (chunked loop)
                             }
 
+                            // Note that the Trailer header does not need to be set for the message to include trailers.
+                            // @see https://tools.ietf.org/html/rfc7230#section-4.4
+
                             do {
-                                if ($trailerSize = \strpos($buffer, "\r\n\r\n")) {
-                                    $trailers = \substr($buffer, 0, $trailerSize + 2);
-                                    $buffer = \substr($buffer, $trailerSize + 4);
-                                } else {
-                                    $buffer .= yield;
-                                    $trailerSize = \strlen($buffer);
-                                    $trailers = null;
+                                if ($trailerPos = \strpos($buffer, "\r\n\r\n")) {
+                                    $rawTrailers = \substr($buffer, 0, $trailerPos + 2);
+                                    $buffer = (string) \substr($buffer, $trailerPos + 4);
+                                    break;
                                 }
-                                if ($maxHeaderSize > 0 && $trailerSize > $maxHeaderSize) {
+
+                                if (\strlen($buffer) > $maxHeaderSize) {
                                     throw new ClientException(
-                                        "Trailer headers too large",
+                                        "Bad Request: trailer headers too large",
                                         Status::BAD_REQUEST
                                     );
                                 }
-                            } while (!isset($trailers));
 
-                            // @TODO Alter Body to support trailer headers.
-                            if ($trailers) {
+                                $buffer .= yield;
+                            } while (true);
+
+                            if ($rawTrailers) {
                                 try {
-                                    $trailers = Rfc7230::parseHeaders($trailers);
+                                    $trailers = Rfc7230::parseHeaders($rawTrailers);
                                 } catch (InvalidHeaderException $e) {
                                     throw new ClientException("Bad Request: " . $e->getMessage(), Status::BAD_REQUEST);
                                 }
 
-                                foreach (["transfer-encoding", "content-length", "trailer"] as $remove) {
-                                    unset($trailers[$remove]);
+                                if (\array_intersect_key($trailers, self::DISALLOWED_TRAILERS)) {
+                                    throw new ClientException(
+                                        "Trailer section contains disallowed headers",
+                                        Status::BAD_REQUEST
+                                    );
                                 }
 
-                                // @TODO: Expose trailers
+                                $this->trailerDeferred = null;
+                                $deferred->resolve(new Trailers($trailers));
                             }
 
                             break; // finished (chunked loop)
@@ -452,7 +485,7 @@ class Http1Driver implements HttpDriver {
                                     $bodyBufferSize = \strlen($body);
                                 }
                                 if ($remaining) {
-                                    $buffer .= yield $emitter->emit(substr($body, 0, $remaining));
+                                    $body .= yield $emitter->emit(substr($body, 0, $remaining));
                                     $buffer = substr($body, $remaining);
                                     $body = "";
                                     $bodySize += $remaining;
@@ -530,6 +563,11 @@ class Http1Driver implements HttpDriver {
                     }
                 }
 
+                if ($this->trailerDeferred !== null) {
+                    $this->trailerDeferred = null;
+                    $deferred->resolve(new Trailers([]));
+                }
+
                 $this->bodyEmitter = null;
                 $emitter->complete();
 
@@ -538,10 +576,19 @@ class Http1Driver implements HttpDriver {
                 // Catching and rethrowing to set $exception to be used in finally.
                 throw $exception;
             } finally {
-                if (isset($this->bodyEmitter)) {
+                if ($this->bodyEmitter !== null) {
                     $emitter = $this->bodyEmitter;
                     $this->bodyEmitter = null;
                     $emitter->fail($exception ?? new ClientException(
+                        "Client disconnected",
+                        Status::REQUEST_TIMEOUT
+                    ));
+                }
+
+                if ($this->trailerDeferred !== null) {
+                    $deferred = $this->trailerDeferred;
+                    $this->trailerDeferred = null;
+                    $deferred->fail($exception ?? new ClientException(
                         "Client disconnected",
                         Status::REQUEST_TIMEOUT
                     ));
