@@ -48,9 +48,6 @@ class Http1Driver implements HttpDriver {
     /** @var Emitter|null */
     private $bodyEmitter;
 
-    /** @var Deferred|null */
-    private $trailerDeferred;
-
     /** @var int */
     private $pendingResponses = 0;
 
@@ -357,7 +354,7 @@ class Http1Driver implements HttpDriver {
 
             // HTTP/1.x clients only ever have a single body emitter.
             $this->bodyEmitter = $emitter = new Emitter;
-            $this->trailerDeferred = $deferred = new Deferred;
+            $trailerDeferred = new Deferred;
             $maxBodySize = $this->options->getMaxBodySize();
 
             $body = new Body(
@@ -367,7 +364,7 @@ class Http1Driver implements HttpDriver {
                         $maxBodySize = $bodySize;
                     }
                 },
-                $this->trailerDeferred->promise()
+                $trailerDeferred->promise()
             );
 
             $request = new Request($this->client, $method, $uri, $headers, $body, $protocol);
@@ -460,8 +457,8 @@ class Http1Driver implements HttpDriver {
                                     );
                                 }
 
-                                $this->trailerDeferred = null;
-                                $deferred->resolve(new Trailers($trailers));
+                                $trailerDeferred->resolve(new Trailers($trailers));
+                                $trailerDeferred = null;
                             }
 
                             break; // finished (chunked loop)
@@ -563,9 +560,9 @@ class Http1Driver implements HttpDriver {
                     }
                 }
 
-                if ($this->trailerDeferred !== null) {
-                    $this->trailerDeferred = null;
-                    $deferred->resolve(new Trailers([]));
+                if ($trailerDeferred !== null) {
+                    $trailerDeferred->resolve(new Trailers([]));
+                    $trailerDeferred = null;
                 }
 
                 $this->bodyEmitter = null;
@@ -585,13 +582,10 @@ class Http1Driver implements HttpDriver {
                     ));
                 }
 
-                if ($this->trailerDeferred !== null) {
-                    $deferred = $this->trailerDeferred;
-                    $this->trailerDeferred = null;
-                    $deferred->fail($exception ?? new ClientException(
-                        "Client disconnected",
-                        Status::REQUEST_TIMEOUT
-                    ));
+                if ($trailerDeferred !== null) {
+                    $exception = $exception ?? new ClientException("Client disconnected", Status::REQUEST_TIMEOUT);
+                    $trailerDeferred->fail($exception);
+                    $trailerDeferred = null;
                 }
             }
         } while (true);
