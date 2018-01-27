@@ -52,13 +52,11 @@ class Http2DriverTest extends TestCase {
         $msg = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$msg";
 
         for ($mode = 0; $mode <= 1; $mode++) {
-            $driver = $this->setupDriver(function (Request $req) use (&$request, &$parser) {
+            list($driver, $parser) = $this->setupDriver(function (Request $req) use (&$request, &$parser) {
                 $request = $req;
             });
 
             $parseResult = null;
-
-            $parser = $driver->parser();
 
             if ($mode === 1) {
                 for ($i = 0, $length = \strlen($msg); $i < $length; $i++) {
@@ -174,7 +172,7 @@ class Http2DriverTest extends TestCase {
         return $return;
     }
 
-    public function setupDriver(callable $onMessage = null, callable $writer = null, Options $options = null) {
+    public function setupDriver(callable $onMessage = null, callable $writer = null, Options $options = null): array {
         $driver = new class($this, $options ?? new Options, $this->createMock(TimeReference::class)) extends Http2Driver {
             public $frames = [];
 
@@ -201,20 +199,20 @@ class Http2DriverTest extends TestCase {
             }
         };
 
-        $driver->setup(
+        $parser = $driver->setup(
             $this->createMock(Client::class),
             $onMessage ?? function () {},
             $writer ?? $this->createCallback(0)
         );
 
-        return $driver;
+        return [$driver, $parser];
     }
 
     public function testWriterAbortAfterHeaders() {
         $buffer = "";
         $options = new Options;
         $driver = new Http2Driver($options, $this->createMock(TimeReference::class));
-        $driver->setup(
+        $parser = $driver->setup(
             $this->createMock(Client::class),
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$buffer) {
@@ -222,9 +220,9 @@ class Http2DriverTest extends TestCase {
                 $this->assertFalse($close);
                 $buffer .= $data;
                 return new Success;
-            }
+            },
+            "" // Simulate upgrade request.
         );
-        $parser = $driver->parser("", true); // Simulate upgrade request.
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
 
@@ -259,9 +257,7 @@ class Http2DriverTest extends TestCase {
     }
 
     public function testPingPong() {
-        $driver = $this->setupDriver();
-
-        $parser = $driver->parser();
+        list($driver, $parser) = $this->setupDriver();
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
         $driver->frames = []; // ignore settings and window updates...
@@ -272,11 +268,9 @@ class Http2DriverTest extends TestCase {
     }
 
     public function testFlowControl() {
-        $driver = $this->setupDriver(function (Request $read) use (&$request) {
+        list($driver, $parser) = $this->setupDriver(function (Request $read) use (&$request) {
             $request = $read;
         }, null, (new Options)->withOutputBufferSize(1));
-
-        $parser = $driver->parser();
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
 
@@ -409,7 +403,7 @@ class Http2DriverTest extends TestCase {
     public function testClosingStreamYieldsFalseFromWriter() {
         $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class));
 
-        $driver->setup(
+        $parser = $driver->setup(
             $this->createMock(Client::class),
             function (Request $read) use (&$request) {
                 $request = $read;
@@ -419,8 +413,6 @@ class Http2DriverTest extends TestCase {
                 return new Success;
             }
         );
-
-        $parser = $driver->parser();
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
 

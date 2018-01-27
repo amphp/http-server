@@ -88,6 +88,9 @@ class Client {
     /** @var \Amp\Deferred|null */
     private $writeDeferred;
 
+    /** @var int */
+    private $pendingResponses = 0;
+
     /** @var bool  */
     private $paused = false;
 
@@ -162,13 +165,12 @@ class Client {
         $this->timeoutCache->renew($this->id);
 
         $this->httpDriver = $driver;
-        $this->httpDriver->setup(
+        $this->requestParser = $this->httpDriver->setup(
             $this,
             $this->callableFromInstanceMethod("onMessage"),
             $this->callableFromInstanceMethod("write")
         );
 
-        $this->requestParser = $this->httpDriver->parser();
         $this->requestParser->current();
 
         $this->writeWatcher = Loop::onWritable($this->socket, $this->callableFromInstanceMethod("onWritable"));
@@ -194,7 +196,7 @@ class Client {
      * @return bool
      */
     public function waitingOnResponse(): bool {
-        return $this->httpDriver->pendingResponseCount() > $this->httpDriver->pendingRequestCount();
+        return $this->pendingResponses > $this->httpDriver->pendingRequestCount();
     }
 
     /**
@@ -466,6 +468,8 @@ class Client {
             $this->clientPort
         )) || true);
 
+        $this->pendingResponses++;
+
         return new Coroutine($this->respond($request));
     }
 
@@ -477,8 +481,10 @@ class Client {
         $status = $exception->getCode() ?: Status::BAD_REQUEST;
 
         \assert($this->logger->debug(
-            "Client parse error on {$this->clientAddress}:{$this->clientPort}: {$message}"
+            "Client error on {$this->clientAddress}:{$this->clientPort}: {$message}"
         ) || true);
+
+        $this->pendingResponses++;
 
         return new Coroutine($this->sendErrorResponse($status, $message));
     }
@@ -638,6 +644,8 @@ class Client {
                 $this->logger->error($exception);
             }
         }
+
+        $this->pendingResponses--;
 
         if ($this->status === self::CLOSED_RD && !$this->waitingOnResponse()) {
             if ($this->writeDeferred) {

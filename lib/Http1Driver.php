@@ -49,9 +49,6 @@ class Http1Driver implements HttpDriver {
     private $bodyEmitter;
 
     /** @var int */
-    private $pendingResponses = 0;
-
-    /** @var int */
     private $remainingRequests;
 
     /** @var callable */
@@ -66,10 +63,14 @@ class Http1Driver implements HttpDriver {
         $this->remainingRequests = $this->options->getMaxRequestsPerConnection();
     }
 
-    public function setup(Client $client, callable $onMessage, callable $write) {
+    public function setup(Client $client, callable $onMessage, callable $write): \Generator {
+        \assert(!$this->client, "The driver has already been setup");
+
         $this->client = $client;
         $this->onMessage = $onMessage;
         $this->write = $write;
+
+        return $this->parser();
     }
 
     public function writer(Response $response, Request $request = null): \Generator {
@@ -77,6 +78,8 @@ class Http1Driver implements HttpDriver {
             yield from $this->http2->writer($response, $request);
             return;
         }
+
+        \assert($this->client, "The driver has not been setup; call setup first");
 
         $shouldClose = false;
 
@@ -138,11 +141,10 @@ class Http1Driver implements HttpDriver {
 
         ($this->write)($buffer, $shouldClose);
 
-        $this->pendingResponses--;
         $this->remainingRequests--;
     }
 
-    public function parser(): \Generator {
+    private function parser(): \Generator {
         $maxHeaderSize = $this->options->getMaxHeaderSize();
         $bodyEmitSize = $this->options->getIoGranularity();
         $parser = null;
@@ -192,9 +194,8 @@ class Http1Driver implements HttpDriver {
                 if ($protocol === "2.0" && $this->options->isHttp2Enabled()) {
                     // Internal upgrade to HTTP/2.
                     $this->http2 = new Http2Driver($this->options, $this->timeReference);
-                    $this->http2->setup($this->client, $this->onMessage, $this->write);
+                    $parser = $this->http2->setup($this->client, $this->onMessage, $this->write);
 
-                    $parser = $this->http2->parser();
                     $parser->send("$startLine\r\n$rawHeaders\r\n$buffer");
                     continue; // Yield from the above parser immediately.
                 }
@@ -309,7 +310,6 @@ class Http1Driver implements HttpDriver {
                 // Request instance will be overwritten below. This is for sending the switching protocols response.
                 $request = new Request($this->client, $method, $uri, $headers, null, $protocol);
 
-                $this->pendingResponses++;
                 $responseWriter = $this->writer(new Response(null, [
                     "connection" => "upgrade",
                     "upgrade" => "h2c",
@@ -318,9 +318,8 @@ class Http1Driver implements HttpDriver {
 
                 // Internal upgrade
                 $this->http2 = new Http2Driver($this->options, $this->timeReference);
-                $this->http2->setup($this->client, $this->onMessage, $this->write);
+                $parser = $this->http2->setup($this->client, $this->onMessage, $this->write, $h2cSettings);
 
-                $parser = $this->http2->parser($h2cSettings, true);
                 $parser->current(); // Yield from this parser after reading the current request body.
 
                 // Not needed for HTTP/2 request.
@@ -345,8 +344,6 @@ class Http1Driver implements HttpDriver {
                     $protocol
                 );
 
-                $this->pendingResponses++;
-
                 $buffer .= yield ($this->onMessage)($request); // Wait for response to be fully written.
 
                 continue;
@@ -370,12 +367,9 @@ class Http1Driver implements HttpDriver {
             $request = new Request($this->client, $method, $uri, $headers, $body, $protocol);
 
             if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
-                $this->pendingResponses++;
                 $responseWriter = $this->writer(new Response(new InMemoryStream, [], Status::CONTINUE), $request);
                 $responseWriter->send(null); // Flush writer.
             }
-
-            $this->pendingResponses++;
 
             $promise = ($this->onMessage)($request); // Do not yield promise until body is completely read.
 
@@ -595,12 +589,6 @@ class Http1Driver implements HttpDriver {
         return $this->http2
             ? $this->http2->pendingRequestCount()
             : ($this->bodyEmitter !== null ? 1 : 0);
-    }
-
-    public function pendingResponseCount(): int {
-        return $this->http2
-            ? $this->http2->pendingResponseCount()
-            : $this->pendingResponses;
     }
 
     private function filter(Response $response, string $protocol = "1.0", array $connection = []): array {

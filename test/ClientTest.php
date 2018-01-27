@@ -134,6 +134,7 @@ class ClientTest extends TestCase {
             ->method("setup")
             ->willReturnCallback(function (Client $client, callable $emitter) use (&$emit) {
                 $emit = $emitter;
+                yield;
             });
 
         $driver->method("writer")
@@ -144,9 +145,6 @@ class ClientTest extends TestCase {
                     $body .= $part = yield true;
                 } while ($part !== null);
             });
-
-        $driver->expects($this->once())
-            ->method("parser");
 
         $options = (new Options)
             ->withDebugMode(true);
@@ -316,6 +314,7 @@ class ClientTest extends TestCase {
             ->method("setup")
             ->willReturnCallback(function (Client $client, callable $emitter) use (&$emit) {
                 $emit = $emitter;
+                yield;
             });
 
         $driver->method("writer")
@@ -366,13 +365,8 @@ class ClientTest extends TestCase {
         $driver = $this->createMock(HttpDriver::class);
 
         $driver->method("setup")
-            ->willReturnCallback(function (Client $client, callable $onMessage, callable $writer) use (&$write) {
-                $write = $writer;
-            });
-
-        $driver->method("parser")
-            ->willReturnCallback(function () use (&$write, $parser) {
-                yield from $parser($write);
+            ->willReturnCallback(function (Client $client, callable $onMessage, callable $writer) use ($parser) {
+                yield from $parser($writer);
             });
 
         $options = (new Options)

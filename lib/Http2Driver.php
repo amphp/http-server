@@ -133,10 +133,22 @@ class Http2Driver implements HttpDriver {
         $this->remainingStreams = $this->options->getMaxConcurrentStreams();
     }
 
-    public function setup(Client $client, callable $onMessage, callable $write) {
+    /**
+     * @param \Aerys\Client $client
+     * @param callable $onMessage
+     * @param callable $write
+     * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
+     *
+     * @return \Generator
+     */
+    public function setup(Client $client, callable $onMessage, callable $write, string $settings = null): \Generator {
+        \assert(!$this->client, "The driver has already been setup");
+
         $this->client = $client;
         $this->onMessage = $onMessage;
         $this->write = $write;
+
+        return $this->parser($settings);
     }
 
     protected function dispatchInternalRequest(Request $request, int $streamId, string $url, array $headers = []) {
@@ -181,11 +193,11 @@ class Http2Driver implements HttpDriver {
             $this->writeFrame($headers, self::PUSH_PROMISE, self::END_HEADERS, $streamId);
         }
 
-        $this->pendingResponses++;
         ($this->onMessage)($request);
     }
 
     public function writer(Response $response, Request $request = null): \Generator {
+        \assert($this->client, "The driver has not been setup");
         \assert($request !== null); // HTTP/2 responses will always have an associated request.
 
         $hash = \spl_object_hash($request);
@@ -277,9 +289,7 @@ class Http2Driver implements HttpDriver {
         }
     }
 
-    // Note: bufferSize is increased in writeData(), but also here to respect data in streamWindowBuffers;
-    // thus needs to be decreased here when shifting data from streamWindowBuffers to writeData()
-    protected function writeData(string $data, int $stream, bool $last) {
+    private function writeData(string $data, int $stream, bool $last) {
         \assert(isset($this->streams[$stream]), "The stream was closed");
 
         $this->streams[$stream]->buffer .= $data;
@@ -307,7 +317,6 @@ class Http2Driver implements HttpDriver {
 
             if ($this->streams[$id]->end) {
                 $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::END_STREAM, $id);
-                $this->pendingResponses--;
                 $this->releaseStream($id);
             } else {
                 $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::NOFLAG, $id);
@@ -355,12 +364,11 @@ class Http2Driver implements HttpDriver {
     }
 
     /**
-     * @param string $settings HTTP2-Settings header content.
-     * @param bool $upgraded True if the connection was upgraded from an HTTP/1.1 upgrade request.
+     * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
      *
      * @return \Generator
      */
-    public function parser(string $settings = "", bool $upgraded = false): \Generator {
+    private function parser(string $settings = null): \Generator {
         $maxHeaderSize = $this->options->getMaxHeaderSize();
         $maxBodySize = $this->options->getMaxBodySize();
         $maxFramesPerSecond = $this->options->getMaxFramesPerSecond();
@@ -404,24 +412,21 @@ class Http2Driver implements HttpDriver {
             }
         };
 
-        if ($settings !== "") {
+        if ($settings !== null) {
             if (\strlen($settings) % 6 !== 0) {
                 $error = self::FRAME_SIZE_ERROR;
                 goto connection_error;
             }
 
-            do {
+            while ($settings !== "") {
                 if ($error = $setSetting($settings)) {
                     goto connection_error;
                 }
                 $settings = substr($settings, 6);
-            } while ($settings !== "");
-        }
+            }
 
-        if ($upgraded) {
             // Upgraded connections automatically assume an initial stream with ID 1.
             $this->streams[1] = new Internal\Http2Stream($this->initialWindowSize);
-            $this->pendingResponses++;
             $this->remainingStreams--;
 
             // Initial settings frame, sent immediately for upgraded connections.
@@ -458,7 +463,7 @@ class Http2Driver implements HttpDriver {
             goto connection_error;
         }
 
-        if (!$upgraded) {
+        if ($settings === null) {
             // Initial settings frame, delayed until after the preface is read for non-upgraded connections.
             $this->writeFrame(
                 pack(
@@ -968,7 +973,6 @@ class Http2Driver implements HttpDriver {
                         );
 
                         $this->streamIdMap[\spl_object_hash($request)] = $id;
-                        $this->pendingResponses++;
                         ($this->onMessage)($request);
 
                         continue;
@@ -1004,7 +1008,6 @@ class Http2Driver implements HttpDriver {
                     );
 
                     $this->streamIdMap[\spl_object_hash($request)] = $id;
-                    $this->pendingResponses++;
                     $bodyLengths[$id] = 0;
                     ($this->onMessage)($request);
 
@@ -1069,9 +1072,5 @@ class Http2Driver implements HttpDriver {
 
     public function pendingRequestCount(): int {
         return \count($this->bodyEmitters);
-    }
-
-    public function pendingResponseCount(): int {
-        return $this->pendingResponses;
     }
 }
