@@ -2,6 +2,7 @@
 
 namespace Aerys;
 
+use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\Http\InvalidHeaderException;
@@ -344,6 +345,12 @@ class Http1Driver implements HttpDriver {
             );
 
             $request = new Request($this->client, $method, $uri, $headers, $body, $protocol);
+
+            if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
+                $this->pendingResponses++;
+                $responseWriter = $this->writer(new Response(new InMemoryStream, [], Status::CONTINUE), $request);
+                $responseWriter->send(null); // Flush writer.
+            }
 
             $this->pendingResponses++;
 

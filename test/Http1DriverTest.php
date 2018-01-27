@@ -805,4 +805,35 @@ class Http1DriverTest extends TestCase {
 
         $driver->parser()->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
     }
+
+    public function testExpect100Continue() {
+        $received = "";
+        $driver = new Http1Driver(new Options, $this->createMock(TimeReference::class));
+        $driver->setup(
+            $this->createMock(Client::class),
+            function (Request $req) use (&$request) {
+                $request = $req;
+            },
+            function (string $data) use (&$received) {
+                $received .= $data;
+
+                return new Success;
+            }
+        );
+
+        $message = "POST / HTTP/1.1\r\n" .
+            "Host: localhost\r\n" .
+            "Content-Length: 10\r\n" .
+            "Expect: 100-continue\r\n" .
+            "\r\n";
+
+        $driver->parser()->send($message);
+
+        /** @var \Aerys\Request $request */
+        $this->assertInstanceOf(Request::class, $request);
+        $this->assertSame("POST", $request->getMethod());
+        $this->assertSame("100-continue", $request->getHeader("expect"));
+
+        $this->assertSame("HTTP/1.1 100 Continue\r\n\r\n", $received);
+    }
 }
