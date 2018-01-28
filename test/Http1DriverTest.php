@@ -727,7 +727,7 @@ class Http1DriverTest extends TestCase {
     }
 
     public function testHttp2Upgrade() {
-        $settings = \strtr(\base64_encode("somesettings"), "+/", "-_");
+        $settings = \strtr(\base64_encode(\pack("nN", 1, 1)), "+/", "-_");
         $payload = "GET /path HTTP/1.1\r\n" .
             "Host: foo.bar\r\n" .
             "Connection: upgrade\r\n" .
