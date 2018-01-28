@@ -280,31 +280,38 @@ class Request extends Message {
     /**
      * Retrieve a variable from the request's mutable local storage.
      *
-     * Each request has its own mutable local storage to which application
-     * callables and middleware may read and write data. Other callables
-     * which are aware of this data can then access it without the server
-     * being tightly coupled to specific implementations.
+     * Each request has its own mutable local storage to which responders and middleware may read and write data. Other
+     * responders or middleware which are aware of this data can then access it without the server being tightly coupled
+     * to specific implementations.
      *
-     * @param string $key
-     * @return mixed
+     * @param string $type Type name of the attribute to fetch.
+     *
+     * @return object
      */
-    public function getAttribute(string $key) {
-        return $this->attributes[$key] ?? null;
+    public function get(string $type) { /* : object */
+        $key = \strtolower(\ltrim($type, "\\"));
+
+        if (!isset($this->attributes[$key])) {
+            throw new MissingAttributeError("The requested attribute '{$type}' does not exist");
+        }
+
+        return $this->attributes[$key];
     }
 
     /**
      * Assign a variable to the request's mutable local storage.
      *
-     * Each request has its own mutable local storage to which application
-     * callables and middleware may read and write data. Other callables
-     * which are aware of this data can then access it without the server
-     * being tightly coupled to specific implementations.
+     * Each request has its own mutable local storage to which responders and middleware may read and write data. Other
+     * responders or middleware which are aware of this data can then access it without the server being tightly coupled
+     * to specific implementations.
      *
-     * @param string $key
-     * @param mixed $value
-     * @return void
+     * @param object $value Any object, can be accessed via {@see self::get()} by type name.
      */
-    public function setAttribute(string $key, $value) {
-        $this->attributes[$key] = $value;
+    public function attach(/* object */ $value) {
+        if (!\is_object($value)) {
+            throw new \TypeError("Expected an object, got " . \gettype($value));
+        }
+
+        $this->attributes[\strtolower(\ltrim(\get_class($value), "\\"))] = $value;
     }
 }

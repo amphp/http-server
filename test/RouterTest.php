@@ -8,6 +8,7 @@ use Aerys\Options;
 use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Response;
+use Aerys\RouteArguments;
 use Aerys\Router;
 use Aerys\Server;
 use Amp\Failure;
@@ -57,7 +58,7 @@ class RouterTest extends TestCase {
     public function testUseCanonicalRedirector() {
         $router = new Router;
         $router->addRoute("GET", "/{name}/{age}/?", new CallableResponder(function (Request $req) use (&$routeArgs) {
-            $routeArgs = $req->getAttribute(Router::class);
+            $routeArgs = $req->get(RouteArguments::class);
             return new Response;
         }));
         $router->prefix("/mediocre-dev");
@@ -77,6 +78,6 @@ class RouterTest extends TestCase {
         $response = Promise\wait($router->respond($request));
 
         $this->assertEquals(Status::OK, $response->getStatus());
-        $this->assertSame(["name" => "bob", "age" => "19"], $routeArgs);
+        $this->assertSame(["name" => "bob", "age" => "19"], $routeArgs->getAll());
     }
 }
