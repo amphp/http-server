@@ -17,6 +17,8 @@ use Amp\Uri\Uri;
 
 class Http2Driver implements HttpDriver {
     const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
+    const DEFAULT_WINDOW_SIZE = 1 << 16;
 
     const NOFLAG = "\x00";
     const ACK = "\x01";
@@ -91,10 +93,13 @@ class Http2Driver implements HttpDriver {
     private $timeReference;
 
     /** @var int */
-    private $window = 65536;
+    private $window = self::DEFAULT_WINDOW_SIZE;
 
     /** @var int */
-    private $initialWindowSize = 65536;
+    private $initialWindowSize = self::DEFAULT_WINDOW_SIZE;
+
+    /** @var int */
+    private $maxFrameSize = self::DEFAULT_MAX_FRAME_SIZE;
 
     /** @var bool */
     private $allowsPush = true;
@@ -116,9 +121,6 @@ class Http2Driver implements HttpDriver {
 
     /** @var int Number of streams that may be opened. */
     private $remainingStreams;
-
-    /** @var int Number of pending responses. */
-    private $pendingResponses = 0;
 
     /** @var callable */
     private $onMessage;
@@ -179,8 +181,8 @@ class Http2Driver implements HttpDriver {
         $this->streams[$id] = new Internal\Http2Stream($this->initialWindowSize);
 
         $headers = pack("N", $id) . Internal\HPack::encode($headers);
-        if (\strlen($headers) >= 16384) {
-            $split = str_split($headers, 16384);
+        if (\strlen($headers) >= $this->maxFrameSize) {
+            $split = str_split($headers, $this->maxFrameSize);
             $headers = array_shift($split);
             $this->writeFrame($headers, self::PUSH_PROMISE, self::NOFLAG, $streamId);
 
@@ -228,10 +230,8 @@ class Http2Driver implements HttpDriver {
 
             $headers = Internal\HPack::encode($headers);
 
-            // @TODO decide whether to use max-frame size
-
-            if (\strlen($headers) > 16384) {
-                $split = str_split($headers, 16384);
+            if (\strlen($headers) > $this->maxFrameSize) {
+                $split = str_split($headers, $this->maxFrameSize);
                 $headers = array_shift($split);
                 $this->writeFrame($headers, self::HEADERS, self::NOFLAG, $id);
 
@@ -307,8 +307,8 @@ class Http2Driver implements HttpDriver {
         if ($delta >= $length) {
             $this->window -= $length;
 
-            if ($length > 16384) {
-                $split = str_split($this->streams[$id]->buffer, 16384);
+            if ($length > $this->maxFrameSize) {
+                $split = str_split($this->streams[$id]->buffer, $this->maxFrameSize);
                 $this->streams[$id]->buffer = array_pop($split);
                 foreach ($split as $part) {
                     $this->writeFrame($part, self::DATA, self::NOFLAG, $id);
@@ -328,10 +328,10 @@ class Http2Driver implements HttpDriver {
 
         if ($delta > 0) {
             $data = $this->streams[$id]->buffer;
-            $end = $delta - 16384;
+            $end = $delta - $this->maxFrameSize;
 
-            for ($off = 0; $off < $end; $off += 16384) {
-                $this->writeFrame(substr($data, $off, 16384), self::DATA, self::NOFLAG, $id);
+            for ($off = 0; $off < $end; $off += $this->maxFrameSize) {
+                $this->writeFrame(substr($data, $off, $this->maxFrameSize), self::DATA, self::NOFLAG, $id);
             }
 
             $this->writeFrame(substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
@@ -383,9 +383,9 @@ class Http2Driver implements HttpDriver {
             $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value"] >= 0
 
             switch ($unpacked["setting"]) {
-                case self::MAX_HEADER_LIST_SIZE:
-                    if ($unpacked["value"] >= 4096) {
-                        return self::PROTOCOL_ERROR; // @TODO correct error??
+                case self::HEADER_TABLE_SIZE:
+                    if ($unpacked["value"] > 4096) {
+                        return self::PROTOCOL_ERROR;
                     }
 
                     $table->table_resize($unpacked["value"]);
@@ -407,8 +407,20 @@ class Http2Driver implements HttpDriver {
                     $this->allowsPush = (bool) $unpacked["value"];
                     return 0;
 
+                case self::MAX_FRAME_SIZE:
+                    if ($unpacked["value"] < 1 << 14 || $unpacked["value"] >= 1 << 24) {
+                        return self::PROTOCOL_ERROR;
+                    }
+
+                    $this->maxFrameSize = $unpacked["value"];
+                    return 0;
+
+                case self::MAX_HEADER_LIST_SIZE:
+                case self::MAX_CONCURRENT_STREAMS:
+                    return 0; // @TODO Respect these settings from the client.
+
                 default:
-                    return 0; // Unused setting
+                    return self::PROTOCOL_ERROR; // Unknown setting.
             }
         };
 
@@ -501,7 +513,12 @@ class Http2Driver implements HttpDriver {
                 }
 
                 $length = \unpack("N", "\0$buffer")[1];
-                // @TODO SETTINGS: MAX_FRAME_SIZE
+
+                if ($length > self::DEFAULT_MAX_FRAME_SIZE) { // Do we want to allow increasing max frame size?
+                    $error = self::FRAME_SIZE_ERROR;
+                    goto connection_error;
+                }
+
                 $type = $buffer[3];
                 $flags = $buffer[4];
                 $id = \unpack("N", \substr($buffer, 5, 4))[1];
