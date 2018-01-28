@@ -9,7 +9,6 @@ use Amp\Promise;
 use cash\LRUCache;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
-use Psr\Log\LoggerInterface as PsrLogger;
 use function FastRoute\simpleDispatcher;
 
 final class Router implements Responder, ServerObserver {

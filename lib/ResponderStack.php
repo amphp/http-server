@@ -4,7 +4,6 @@ namespace Aerys;
 
 use Amp\Http\Status;
 use Amp\Promise;
-use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 
 /**

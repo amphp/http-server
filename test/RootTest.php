@@ -12,7 +12,6 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\LoggerInterface as PsrLogger;
 
 class RootTest extends TestCase {
     /** @var \Amp\Loop\Driver */

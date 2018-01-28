@@ -6,7 +6,6 @@ use Amp\CallableMaker;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
-use Psr\Log\LoggerInterface as PsrLogger;
 
 class TimeReference implements ServerObserver {
     use CallableMaker;

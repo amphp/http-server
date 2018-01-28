@@ -5,8 +5,6 @@ namespace Aerys\Test\Websocket;
 use Aerys\Body;
 use Aerys\Client;
 use Aerys\DefaultErrorHandler;
-use Aerys\ErrorHandler;
-use Aerys\Logger;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;

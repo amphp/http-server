@@ -2,13 +2,11 @@
 
 namespace Aerys\Websocket;
 
-use Aerys\ErrorHandler;
 use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Server;
 use Aerys\ServerObserver;
 use Amp\Promise;
-use Psr\Log\LoggerInterface as PsrLogger;
 
 class Websocket implements Responder, ServerObserver {
     /** @var \Aerys\Websocket\Internal\Rfc6455Gateway */

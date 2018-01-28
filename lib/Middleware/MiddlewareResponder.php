@@ -2,7 +2,6 @@
 
 namespace Aerys\Middleware;
 
-use Aerys\ErrorHandler;
 use Aerys\Middleware;
 use Aerys\Request;
 use Aerys\Responder;
@@ -10,7 +9,6 @@ use Aerys\Server;
 use Aerys\ServerObserver;
 use Amp\Promise;
 use Amp\Success;
-use Psr\Log\LoggerInterface as PsrLogger;
 
 /**
  * Wraps a responder with a single middleware.

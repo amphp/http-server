@@ -14,7 +14,6 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Struct;
 use Amp\Success;
-use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 
 class Root implements Responder, ServerObserver {
