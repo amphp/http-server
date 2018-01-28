@@ -128,11 +128,16 @@ class Http2Driver implements HttpDriver {
     /** @var callable */
     private $write;
 
+    /** @var \Aerys\Internal\HPack */
+    private $table;
+
     public function __construct(Options $options, TimeReference $timeReference) {
         $this->options = $options;
         $this->timeReference = $timeReference;
 
         $this->remainingStreams = $this->options->getMaxConcurrentStreams();
+
+        $this->table = new Internal\HPack;
     }
 
     /**
@@ -377,52 +382,6 @@ class Http2Driver implements HttpDriver {
 
         $packedHeaders = [];
         $bodyLengths = [];
-        $table = new Internal\HPack;
-
-        $setSetting = function (string $buffer) use ($table): int {
-            $unpacked = \unpack("nsetting/Nvalue", $buffer); // $unpacked["value"] >= 0
-
-            switch ($unpacked["setting"]) {
-                case self::HEADER_TABLE_SIZE:
-                    if ($unpacked["value"] > 4096) {
-                        return self::PROTOCOL_ERROR;
-                    }
-
-                    $table->table_resize($unpacked["value"]);
-                    return 0;
-
-                case self::INITIAL_WINDOW_SIZE:
-                    if ($unpacked["value"] >= 1 << 31) {
-                        return self::FLOW_CONTROL_ERROR;
-                    }
-
-                    $this->initialWindowSize = $unpacked["value"];
-                    return 0;
-
-                case self::ENABLE_PUSH:
-                    if ($unpacked["value"] & ~1) {
-                        return self::PROTOCOL_ERROR;
-                    }
-
-                    $this->allowsPush = (bool) $unpacked["value"];
-                    return 0;
-
-                case self::MAX_FRAME_SIZE:
-                    if ($unpacked["value"] < 1 << 14 || $unpacked["value"] >= 1 << 24) {
-                        return self::PROTOCOL_ERROR;
-                    }
-
-                    $this->maxFrameSize = $unpacked["value"];
-                    return 0;
-
-                case self::MAX_HEADER_LIST_SIZE:
-                case self::MAX_CONCURRENT_STREAMS:
-                    return 0; // @TODO Respect these settings from the client.
-
-                default:
-                    return self::PROTOCOL_ERROR; // Unknown setting.
-            }
-        };
 
         if ($settings !== null) {
             if (\strlen($settings) % 6 !== 0) {
@@ -431,7 +390,7 @@ class Http2Driver implements HttpDriver {
             }
 
             while ($settings !== "") {
-                if ($error = $setSetting($settings)) {
+                if ($error = $this->updateSetting($settings)) {
                     goto connection_error;
                 }
                 $settings = substr($settings, 6);
@@ -771,7 +730,7 @@ class Http2Driver implements HttpDriver {
                                 $buffer .= yield;
                             }
 
-                            if ($error = $setSetting($buffer)) {
+                            if ($error = $this->updateSetting($buffer)) {
                                 goto connection_error;
                             }
 
@@ -921,7 +880,7 @@ class Http2Driver implements HttpDriver {
                 }
 
                 parse_headers: {
-                    $decoded = $table->decode($packed);
+                    $decoded = $this->table->decode($packed);
                     if ($decoded === null) {
                         $error = self::COMPRESSION_ERROR;
                         goto stream_error;
@@ -1089,5 +1048,59 @@ class Http2Driver implements HttpDriver {
 
     public function pendingRequestCount(): int {
         return \count($this->bodyEmitters);
+    }
+
+    /**
+     * @param string $buffer Entire settings frame payload. Only the first 6 bytes are examined.
+     *
+     * @return int Error code, or 0 if the setting was valid or unknown.
+     */
+    private function updateSetting(string $buffer): int {
+        $unpacked = \unpack("nsetting/Nvalue", $buffer);
+
+        if ($unpacked["value"] < 0) {
+            return self::PROTOCOL_ERROR;
+        }
+
+        switch ($unpacked["setting"]) {
+            case self::HEADER_TABLE_SIZE:
+                if ($unpacked["value"] > 4096) {
+                    return self::PROTOCOL_ERROR;
+                }
+
+                $this->table->table_resize($unpacked["value"]);
+                return 0;
+
+            case self::INITIAL_WINDOW_SIZE:
+                if ($unpacked["value"] >= 1 << 31) {
+                    return self::FLOW_CONTROL_ERROR;
+                }
+
+                $this->initialWindowSize = $unpacked["value"];
+                return 0;
+
+            case self::ENABLE_PUSH:
+                if ($unpacked["value"] & ~1) {
+                    return self::PROTOCOL_ERROR;
+                }
+
+                $this->allowsPush = (bool) $unpacked["value"];
+                return 0;
+
+            case self::MAX_FRAME_SIZE:
+                if ($unpacked["value"] < 1 << 14 || $unpacked["value"] >= 1 << 24) {
+                    return self::PROTOCOL_ERROR;
+                }
+
+                $this->maxFrameSize = $unpacked["value"];
+                return 0;
+
+            case self::MAX_HEADER_LIST_SIZE:
+            case self::MAX_CONCURRENT_STREAMS:
+                return 0; // @TODO Respect these settings from the client.
+
+            default:
+                return 0; // Unknown setting, ignore (6.5.2).
+        }
     }
 }
