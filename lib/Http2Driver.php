@@ -2,10 +2,9 @@
 
 namespace Aerys;
 
-// @TODO trailer headers??
 // @TODO add ServerObserver for properly sending GOAWAY frames
-// @TODO maybe display a real HTML error page for artificial limits exceeded
 
+use Aerys\Internal\Http2Stream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Deferred;
 use Amp\Delayed;
@@ -19,6 +18,8 @@ class Http2Driver implements HttpDriver {
     const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
     const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
     const DEFAULT_WINDOW_SIZE = 1 << 16;
+
+    const HEADER_NAME_REGEX = '/^[\x21-\x40\x5b-\x7e]+$/';
 
     const NOFLAG = "\x00";
     const ACK = "\x01";
@@ -183,7 +184,10 @@ class Http2Driver implements HttpDriver {
         $request = new Request($this->client, "GET", $url, $headers, null, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
-        $this->streams[$id] = new Internal\Http2Stream($this->initialWindowSize);
+        $this->streams[$id] = new Http2Stream(
+            $this->initialWindowSize,
+            Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
+        );
 
         $headers = pack("N", $id) . Internal\HPack::encode($headers);
         if (\strlen($headers) >= $this->maxFrameSize) {
@@ -299,7 +303,7 @@ class Http2Driver implements HttpDriver {
 
         $this->streams[$stream]->buffer .= $data;
         if ($last) {
-            $this->streams[$stream]->end = true;
+            $this->streams[$stream]->state |= Http2Stream::LOCAL_CLOSED;
         }
 
         $this->writeBufferedData($stream);
@@ -320,7 +324,7 @@ class Http2Driver implements HttpDriver {
                 }
             }
 
-            if ($this->streams[$id]->end) {
+            if ($this->streams[$id]->state & Http2Stream::LOCAL_CLOSED) {
                 $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::END_STREAM, $id);
                 $this->releaseStream($id);
             } else {
@@ -397,7 +401,10 @@ class Http2Driver implements HttpDriver {
             }
 
             // Upgraded connections automatically assume an initial stream with ID 1.
-            $this->streams[1] = new Internal\Http2Stream($this->initialWindowSize);
+            $this->streams[1] = new Http2Stream(
+                $this->initialWindowSize,
+                Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
+            );
             $this->remainingStreams--;
 
             // Initial settings frame, sent immediately for upgraded connections.
@@ -509,6 +516,11 @@ class Http2Driver implements HttpDriver {
                             goto stream_error;
                         }
 
+                        if ($this->streams[$id]->state & Http2Stream::REMOTE_CLOSED) {
+                            $error = self::STREAM_CLOSED;
+                            goto stream_error;
+                        }
+
                         if (($flags & self::PADDED) !== "\0") {
                             if ($buffer === "") {
                                 $buffer = yield;
@@ -549,6 +561,8 @@ class Http2Driver implements HttpDriver {
                         }
 
                         if (($flags & self::END_STREAM) !== "\0") {
+                            $this->streams[$id]->state |= Http2Stream::REMOTE_CLOSED;
+
                             $deferred = $this->trailerDeferreds[$id];
                             $emitter = $this->bodyEmitters[$id];
 
@@ -574,9 +588,18 @@ class Http2Driver implements HttpDriver {
                             goto connection_error;
                         }
 
-                        if (!isset($this->streams[$id]) && $this->remainingStreams-- <= 0) {
-                            $error = self::PROTOCOL_ERROR;
-                            goto connection_error;
+                        if (isset($this->streams[$id])) {
+                            if ($this->streams[$id]->state & Http2Stream::REMOTE_CLOSED) {
+                                $error = self::STREAM_CLOSED;
+                                goto stream_error;
+                            }
+                        } else {
+                            if ($this->remainingStreams-- <= 0) {
+                                $error = self::PROTOCOL_ERROR;
+                                goto connection_error;
+                            }
+
+                            $this->streams[$id] = new Http2Stream($this->initialWindowSize);
                         }
 
                         if (($flags & self::PADDED) !== "\0") {
@@ -594,7 +617,8 @@ class Http2Driver implements HttpDriver {
                             while (\strlen($buffer) < 5) {
                                 $buffer .= yield;
                             }
-                            /* Not yet needed?!
+
+                            /* Not needed until priority is handled.
                             $dependency = unpack("N", $buffer)[1];
                             if ($dependency < 0) {
                                 $dependency = ~$dependency;
@@ -602,8 +626,10 @@ class Http2Driver implements HttpDriver {
                             } else {
                                 $exclusive = false;
                             }
+
                             $weight = $buffer[4];
                             */
+
                             $buffer = \substr($buffer, 5);
                             $length -= 5;
                         }
@@ -625,7 +651,10 @@ class Http2Driver implements HttpDriver {
                         $packed = \substr($buffer, 0, $length - $padding);
                         $buffer = \substr($buffer, $length);
 
-                        $streamEnd = ($flags & self::END_STREAM) !== "\0";
+                        if (($flags & self::END_STREAM) !== "\0") {
+                            $this->streams[$id]->state |= Http2Stream::REMOTE_CLOSED;
+                        }
+
                         if (($flags & self::END_HEADERS) !== "\0") {
                             goto parse_headers;
                         }
@@ -649,20 +678,23 @@ class Http2Driver implements HttpDriver {
                             $buffer .= yield;
                         }
 
-                        /* @TODO PRIORITY frames not yet handled?!
-                         * $dependency = unpack("N", $buffer);
-                         * if ($dependency < 0) {
-                         * $dependency = ~$dependency;
-                         * $exclusive = true;
-                         * } else {
-                         * $exclusive = false;
-                         * }
-                         * if ($dependency == 0) {
-                         * $error = self::PROTOCOL_ERROR;
-                         * goto connection_error;
-                         * }
-                         * $weight = $buffer[4];
-                         */
+                        /* @TODO PRIORITY frames values not used.
+                        $dependency = unpack("N", $buffer);
+
+                        if ($dependency < 0) {
+                            $dependency = ~$dependency;
+                            $exclusive = true;
+                        } else {
+                            $exclusive = false;
+                        }
+
+                        if ($dependency == 0) {
+                            $error = self::PROTOCOL_ERROR;
+                            goto connection_error;
+                        }
+
+                        $weight = $buffer[4];
+                        */
 
                         $buffer = \substr($buffer, 5);
                         continue 2;
@@ -846,10 +878,15 @@ class Http2Driver implements HttpDriver {
                         continue 2;
 
                     case self::CONTINUATION:
-                        if (!isset($packedHeaders[$id])) {
+                        if (!isset($this->streams[$id], $packedHeaders[$id])) {
                             // technically it is a protocol error to send data to a never opened stream
                             // but we do not want to store what streams WE have closed via RST_STREAM,
                             // thus we're just reporting them as closed
+                            $error = self::STREAM_CLOSED;
+                            goto stream_error;
+                        }
+
+                        if ($this->streams[$id]->state & Http2Stream::REMOTE_CLOSED) {
                             $error = self::STREAM_CLOSED;
                             goto stream_error;
                         }
@@ -888,19 +925,18 @@ class Http2Driver implements HttpDriver {
 
                     $headers = [];
                     foreach ($decoded as list($name, $value)) {
-                        $headers[$name][] = $value;
-                    }
-
-                    if (isset($this->streams[$id])) {
-                        if (!isset($this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
+                        if (!\preg_match(self::HEADER_NAME_REGEX, $name)) {
                             $error = self::PROTOCOL_ERROR;
                             goto stream_error;
                         }
 
+                        $headers[$name][] = $value;
+                    }
+
+                    if (isset($this->trailerDeferreds[$id]) && $this->streams[$id]->state & Http2Stream::RESERVED) {
                         $deferred = $this->trailerDeferreds[$id];
                         $emitter = $this->bodyEmitters[$id];
                         unset($bodyLengths[$id]);
-                        $this->releaseStream($id);
 
                         // Trailers must not contain pseudo-headers.
                         foreach ($headers as $name => $value) {
@@ -910,10 +946,20 @@ class Http2Driver implements HttpDriver {
                             }
                         }
 
+                        $this->releaseStream($id);
+
                         $deferred->resolve(new Trailers($headers));
                         $emitter->complete();
+
                         continue;
                     }
+
+                    if ($this->streams[$id]->state & Http2Stream::RESERVED) {
+                        $error = self::PROTOCOL_ERROR;
+                        goto stream_error;
+                    }
+
+                    $this->streams[$id]->state |= Http2Stream::RESERVED;
 
                     $target = $headers[":path"][0] ?? "";
                     $scheme = $headers[":scheme"][0] ?? ($this->client->isEncrypted() ? "https" : "http");
@@ -936,9 +982,7 @@ class Http2Driver implements HttpDriver {
                         goto connection_error;
                     }
 
-                    $this->streams[$id] = new Internal\Http2Stream($this->initialWindowSize);
-
-                    if ($streamEnd) {
+                    if ($this->streams[$id]->state & Http2Stream::REMOTE_CLOSED) {
                         $request = new Request(
                             $this->client,
                             $headers[":method"][0],
@@ -991,9 +1035,8 @@ class Http2Driver implements HttpDriver {
                 }
 
                 stream_error: {
-                    if ($length > (1 << 14)) {
-                        $error = self::PROTOCOL_ERROR;
-                        goto connection_error;
+                    if (!isset($this->streams[$id])) {
+                        $this->streams[$id] = new Http2Stream($this->initialWindowSize);
                     }
 
                     $this->writeFrame(pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);

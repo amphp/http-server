@@ -147,7 +147,7 @@ class Http2DriverTest extends TestCase {
             ":path" => ["/foo"],
             ":scheme" => ["http"],
             ":method" => ["GET"],
-            "Trailers" => ["Expires"]
+            "trailers" => ["expires"]
         ];
 
         $msg = self::packFrame(pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
@@ -155,14 +155,14 @@ class Http2DriverTest extends TestCase {
         $msg .= self::packFrame("a", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
         $msg .= self::packFrame("", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
         $msg .= self::packFrame("b", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
-        $msg .= self::packHeader(["Expires" => ["date"]], false, 1);
+        $msg .= self::packHeader(["expires" => ["date"]], false, 1);
 
         $expectations = [
             "protocol"    => "2.0",
             "method"      => "GET",
             "uri"         => "/foo",
             "host"        => "localhost",
-            "headers"     => ["trailers" => ["Expires"]],
+            "headers"     => ["trailers" => ["expires"]],
             "body"        => "ab",
             "trailers"    => ["expires" => ["date"]],
         ];
