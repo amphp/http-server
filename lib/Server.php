@@ -359,10 +359,35 @@ class Server {
             --$this->clientCount;
         });
 
-        if ($this->clientCount++ === $this->options->getMaxConnections()
-            || $this->clientsPerIP[$net]++ === $this->options->getMaxConnectionsPerIp()
-        ) {
+        if ($this->clientCount++ === $this->options->getMaxConnections()) {
             \assert($this->logger->debug("Client denied: too many existing connections") || true);
+            $client->close();
+            return;
+        }
+
+        $ip = $client->getRemoteAddress();
+        $clientCount = $this->clientsPerIP[$net]++;
+
+        // Connections on localhost are excluded from the connections per IP setting.
+        // Checks IPv4 loopback (127.x), IPv6 loopback (::1) and IPv4-to-IPv6 mapped loopback.
+        // Also excludes all connections that are via unix sockets.
+        if ($clientCount === $this->options->getMaxConnectionsPerIp()
+            && $ip !== "::1" && \strncmp($ip, "127.", 4) !== 0 && !$client->isUnix()
+            && \strncmp(\inet_pton($ip), '\0\0\0\0\0\0\0\0\0\0\xff\xff\7f', 31)
+        ) {
+            \assert(function () use ($ip) {
+                $addr = $ip;
+                $packedIp = @\inet_pton($ip);
+
+                if (isset($packedIp[4])) {
+                    $addr .= "/56";
+                }
+
+                $this->logger->debug("Client denied: too many existing connections from {$addr}");
+
+                return true;
+            });
+
             $client->close();
             return;
         }

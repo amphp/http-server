@@ -237,6 +237,13 @@ class Client {
     }
 
     /**
+     * @return bool `true` if this client is connected via an unix domain socket.
+     */
+    public function isUnix(): bool {
+        return $this->serverPort === 0;
+    }
+
+    /**
      * @return bool True if the client is encrypted, false if plaintext.
      */
     public function isEncrypted(): bool {
