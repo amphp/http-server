@@ -216,7 +216,7 @@ class Http2Driver implements HttpDriver {
         unset($this->streamIdMap[$hash]);
 
         if (!isset($this->streams[$id])) {
-            return;
+            return; // Client closed the stream or connection.
         }
 
         try {
@@ -258,7 +258,7 @@ class Http2Driver implements HttpDriver {
                 return;
             }
 
-            $buffer = "";
+            $buffer = $part = "";
             $outputBufferSize = $this->options->getOutputBufferSize();
 
             while (null !== $part = yield) {
@@ -282,7 +282,7 @@ class Http2Driver implements HttpDriver {
 
             $this->writeData($buffer, $id, true);
         } finally {
-            if (isset($this->streams[$id]) && (!isset($headers) || isset($part))) {
+            if (isset($this->streams[$id]) && $part !== null) {
                 if (($buffer ?? "") !== "") {
                     $this->writeData($buffer, $id, false);
                 }
