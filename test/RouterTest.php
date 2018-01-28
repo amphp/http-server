@@ -45,7 +45,7 @@ class RouterTest extends TestCase {
     public function testUpdateFailsIfStartedWithoutAnyRoutes() {
         $router = new Router;
         $mock = $this->mockServer();
-        $result = $router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
+        $result = $router->onStart($mock);
         $this->assertInstanceOf(Failure::class, $result);
         $i = 0;
         $result->onResolve(function (\Throwable $e) use (&$i) {
@@ -64,7 +64,7 @@ class RouterTest extends TestCase {
         }));
         $router->prefix("/mediocre-dev");
         $mock = $this->mockServer();
-        Promise\wait($router->onStart($mock, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class)));
+        Promise\wait($router->onStart($mock));
 
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/mediocre-dev/bob/19/"));
 

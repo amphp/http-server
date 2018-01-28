@@ -55,11 +55,11 @@ final class ResponderStack implements Responder, ServerObserver {
         });
     }
 
-    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+    public function onStart(Server $server): Promise {
         $promises = [];
         foreach ($this->responders as $responder) {
             if ($responder instanceof ServerObserver) {
-                $promises[] = $responder->onStart($server, $logger, $errorHandler);
+                $promises[] = $responder->onStart($server);
             }
         }
 

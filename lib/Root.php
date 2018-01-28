@@ -823,20 +823,20 @@ class Root implements Responder, ServerObserver {
         $this->bufferedFileMaxSize = $bytes;
     }
 
-    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+    public function onStart(Server $server): Promise {
         $this->running = true;
 
         if (empty($this->mimeFileTypes)) {
             $this->loadMimeFileTypes(self::DEFAULT_MIME_TYPE_FILE);
         }
 
-        $this->errorHandler = $errorHandler;
+        $this->errorHandler = $server->getErrorHandler();
 
         $this->debug = $server->getOptions()->isInDebugMode();
         Loop::enable($this->cacheWatcher);
 
-        if ($this->fallback !== null && $this->fallback instanceof ServerObserver) {
-            return $this->fallback->onStart($server, $logger, $errorHandler);
+        if ($this->fallback instanceof ServerObserver) {
+            return $this->fallback->onStart($server);
         }
 
         return new Success;

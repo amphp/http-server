@@ -35,9 +35,9 @@ class MiddlewareResponder implements Responder, ServerObserver {
     }
 
     /** @inheritdoc */
-    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+    public function onStart(Server $server): Promise {
         if ($this->next instanceof ServerObserver) {
-            return $this->next->onStart($server, $logger, $errorHandler);
+            return $this->next->onStart($server);
         }
 
         return new Success;

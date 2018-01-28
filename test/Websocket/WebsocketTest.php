@@ -24,6 +24,7 @@ use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Socket\ClientSocket;
 use Amp\Uri\Uri;
+use Psr\Log\NullLogger;
 
 class NullApplication implements Application {
     /** @var TestCase */
@@ -103,7 +104,7 @@ class WebsocketTest extends TestCase {
             })->call($gateway);
         }
 
-        yield $gateway->onStart($server, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
+        yield $gateway->onStart($server);
 
         $client = $gateway->reapClient(new ClientSocket($client), $this->createMock(Request::class));
 
@@ -232,7 +233,12 @@ class WebsocketTest extends TestCase {
     public function testHandshake(Request $request, int $status, array $expectedHeaders = []) {
         Loop::run(function () use ($request, $status, $expectedHeaders) {
             $server = $this->createMock(Server::class);
-            $logger = $this->createMock(Logger::class);
+            $server->method('getLogger')
+                ->willReturn(new NullLogger);
+
+            $server->method('getErrorHandler')
+                ->willReturn(new DefaultErrorHandler);
+
             $application = $this->createMock(Application::class);
 
             $application->expects($status === Status::SWITCHING_PROTOCOLS ? $this->once() : $this->never())
@@ -241,7 +247,7 @@ class WebsocketTest extends TestCase {
 
             $gateway = new Rfc6455Gateway($application);
 
-            yield $gateway->onStart($server, $logger, new DefaultErrorHandler);
+            yield $gateway->onStart($server);
 
             /** @var Response $response */
             $response = yield $gateway->respond($request);

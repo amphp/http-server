@@ -599,9 +599,9 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         return array_keys($this->clients);
     }
 
-    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
-        $this->logger = $logger;
-        $this->errorHandler = $errorHandler;
+    public function onStart(Server $server): Promise {
+        $this->logger = $server->getLogger();
+        $this->errorHandler = $server->getErrorHandler();
         $this->timeoutWatcher = Loop::repeat(1000, $this->callableFromInstanceMethod("timeout"));
 
         return call([$this->application, "onStart"], $this->endpoint);

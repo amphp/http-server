@@ -3,8 +3,6 @@
 namespace Aerys\Test;
 
 use Aerys\DefaultErrorHandler;
-use Aerys\ErrorHandler;
-use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Root;
@@ -14,6 +12,7 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Uri\Uri;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class RootTest extends TestCase {
     /** @var \Amp\Loop\Driver */
@@ -96,7 +95,10 @@ class RootTest extends TestCase {
         $server->method('getOptions')
             ->willReturn((new Options)->withDebugMode(true));
 
-        $root->onStart($server, $this->createMock(Logger::class), new DefaultErrorHandler);
+        $server->method('getErrorHandler')
+            ->willReturn(new DefaultErrorHandler);
+
+        $root->onStart($server);
 
         foreach ([
             ["/", "test"],
@@ -206,7 +208,7 @@ class RootTest extends TestCase {
         $server->method('getOptions')
             ->willReturn((new Options)->withDebugMode(true));
 
-        $root->onStart($server, $this->createMock(Logger::class), $this->createMock(ErrorHandler::class));
+        $root->onStart($server);
 
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
@@ -281,7 +283,10 @@ class RootTest extends TestCase {
         $server->method('getOptions')
             ->willReturn((new Options)->withDebugMode(true));
 
-        $root->onStart($server, $this->createMock(Logger::class), new DefaultErrorHandler);
+        $server->method('getErrorHandler')
+            ->willReturn(new DefaultErrorHandler);
+
+        $root->onStart($server);
 
         $root->setOption("useEtagInode", false);
         $diskPath = \realpath(self::fixturePath())."/index.htm";
@@ -369,7 +374,10 @@ class RootTest extends TestCase {
         $server->method('getOptions')
             ->willReturn((new Options)->withDebugMode(true));
 
-        $root->onStart($server, $this->createMock(Logger::class), new DefaultErrorHandler);
+        $server->method('getErrorHandler')
+            ->willReturn(new DefaultErrorHandler);
+
+        $root->onStart($server);
 
         $root->setOption("useEtagInode", false);
         $diskPath = realpath(self::fixturePath())."/index.htm";

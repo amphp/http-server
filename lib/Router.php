@@ -231,7 +231,7 @@ final class Router implements Responder, ServerObserver {
         $this->fallback = $responder;
     }
 
-    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+    public function onStart(Server $server): Promise {
         if (empty($this->routes)) {
             return new Failure(new \Error(
                 "Router start failure: no routes registered"
@@ -243,6 +243,7 @@ final class Router implements Responder, ServerObserver {
         $options = $server->getOptions();
         $normalize = $options->shouldNormalizeMethodCase();
         $allowedMethods = $options->getAllowedMethods();
+        $logger = $server->getLogger();
 
         $this->routeDispatcher = simpleDispatcher(function (RouteCollector $rc) use ($normalize, $allowedMethods, $logger) {
             foreach ($this->routes as list($method, $uri, $responder)) {
@@ -260,7 +261,7 @@ final class Router implements Responder, ServerObserver {
             }
         });
 
-        $this->errorHandler = $errorHandler;
+        $this->errorHandler = $server->getErrorHandler();
 
         if ($this->fallback instanceof ServerObserver) {
             $this->observers->attach($this->fallback);
@@ -268,7 +269,7 @@ final class Router implements Responder, ServerObserver {
 
         $promises = [];
         foreach ($this->observers as $observer) {
-            $promises[] = $observer->onStart($server, $logger, $errorHandler);
+            $promises[] = $observer->onStart($server);
         }
 
         return Promise\all($promises);

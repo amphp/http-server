@@ -118,8 +118,8 @@ class Websocket implements Responder, ServerObserver {
     }
 
     /** {@inheritdoc} */
-    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
-        return $this->gateway->onStart($server, $logger, $errorHandler);
+    public function onStart(Server $server): Promise {
+        return $this->gateway->onStart($server);
     }
 
     /** {@inheritdoc} */

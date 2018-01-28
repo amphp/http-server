@@ -266,12 +266,12 @@ class Response extends Message {
 
     /**
      * @param string $url URL of resource to push to the client.
-     * @param string[]|string[][] Additional headers to attach to the request.
+     * @param string[][] Additional headers to attach to the request.
      */
     public function push(string $url, array $headers = []) {
         \assert((function ($headers) {
             foreach ($headers as $name => $header) {
-                if ($name[0] == ":" || !strncasecmp("host", $name, 4)) {
+                if ($name[0] === ":" || !strncasecmp("host", $name, 4)) {
                     return false;
                 }
             }

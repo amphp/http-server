@@ -37,7 +37,7 @@ class Server {
     /** @var \Aerys\Responder */
     private $responder;
 
-    /** @var \Aerys\ErrorHandler */
+    /** @var ErrorHandler */
     private $errorHandler;
 
     /** @var \Psr\Log\LoggerInterface */
@@ -68,8 +68,8 @@ class Server {
     private $timeouts;
 
     /**
-     * @param \Aerys\Responder $responder
-     * @param \Aerys\Options|null $options Null creates an Options object with all default options.
+     * @param \Aerys\Responder              $responder
+     * @param Options|null                  $options Null creates an Options object with all default options.
      * @param \Psr\Log\LoggerInterface|null $logger Null automatically uses an instance of \Aerys\ConsoleLogger.
      *
      * @throws \Error If $responder is not a callable or instance of Responder.
@@ -149,7 +149,7 @@ class Server {
     /**
      * Set the error handler instance to be used for generating error responses.
      *
-     * @param \Aerys\ErrorHandler $errorHandler
+     * @param ErrorHandler $errorHandler
      *
      * @throws \Error If the server has started.
      */
@@ -173,10 +173,28 @@ class Server {
     /**
      * Retrieve the server options object.
      *
-     * @return \Aerys\Options
+     * @return Options
      */
     public function getOptions(): Options {
         return $this->options;
+    }
+
+    /**
+     * Retrieve the error handler.
+     *
+     * @return ErrorHandler
+     */
+    public function getErrorHandler(): ErrorHandler {
+        return $this->errorHandler;
+    }
+
+    /**
+     * Retrieve the logger.
+     *
+     * @return PsrLogger
+     */
+    public function getLogger(): PsrLogger {
+        return $this->logger;
     }
 
     /**

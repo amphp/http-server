@@ -3,7 +3,6 @@
 namespace Aerys;
 
 use Amp\Promise;
-use Psr\Log\LoggerInterface as PsrLogger;
 
 /**
  * Allows reacting to server start and stop events.
@@ -14,13 +13,11 @@ interface ServerObserver {
      * connections. This method should be used to set up any necessary state for responding to requests, including
      * starting loop watchers such as timers.
      *
-     * @param Server       $server
-     * @param PsrLogger    $logger
-     * @param ErrorHandler $errorHandler
+     * @param Server $server
      *
      * @return Promise
      */
-    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise;
+    public function onStart(Server $server): Promise;
 
     /**
      * Invoked when the server has initiated stopping. No further requests are accepted and any connected clients

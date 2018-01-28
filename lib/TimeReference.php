@@ -28,7 +28,7 @@ class TimeReference implements ServerObserver {
     }
 
     /** @inheritdoc */
-    public function onStart(Server $server, PsrLogger $logger, ErrorHandler $errorHandler): Promise {
+    public function onStart(Server $server): Promise {
         $this->watcherId = Loop::repeat(1000, $this->callableFromInstanceMethod("updateTime"));
 
         return new Success;
