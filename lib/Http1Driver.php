@@ -117,6 +117,7 @@ class Http1Driver implements HttpDriver {
         }
 
         $outputBufferSize = $this->options->getOutputBufferSize();
+        $part = ""; // required for the finally, not directly overwritten, even if your IDE says so
 
         try {
             do {
@@ -141,10 +142,10 @@ class Http1Driver implements HttpDriver {
             }
 
             ($this->write)($buffer, $shouldClose);
-        } catch (\Throwable $e) {
-            ($this->write)("", true); // close connection
-
-            throw $e;
+        } finally {
+            if ($part !== null) { // unclean end, streaming error
+                $this->client->close();
+            }
         }
 
         $this->remainingRequests--;
