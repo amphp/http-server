@@ -118,28 +118,34 @@ class Http1Driver implements HttpDriver {
 
         $outputBufferSize = $this->options->getOutputBufferSize();
 
-        do {
-            if (\strlen($buffer) >= $outputBufferSize) {
-                ($this->write)($buffer);
-                $buffer = "";
+        try {
+            do {
+                if (\strlen($buffer) >= $outputBufferSize) {
+                    ($this->write)($buffer);
+                    $buffer = "";
+                }
+
+                if (null === $part = yield) {
+                    break;
+                }
+
+                if ($chunked && $length = \strlen($part)) {
+                    $buffer .= \sprintf("%x\r\n%s\r\n", $length, $part);
+                } else {
+                    $buffer .= $part;
+                }
+            } while (true);
+
+            if ($chunked) {
+                $buffer .= "0\r\n\r\n";
             }
 
-            if (null === $part = yield) {
-                break;
-            }
+            ($this->write)($buffer, $shouldClose);
+        } catch (\Throwable $e) {
+            ($this->write)("", true); // close connection
 
-            if ($chunked && $length = \strlen($part)) {
-                $buffer .= \sprintf("%x\r\n%s\r\n", $length, $part);
-            } else {
-                $buffer .= $part;
-            }
-        } while (true);
-
-        if ($chunked) {
-            $buffer .= "0\r\n\r\n";
+            throw $e;
         }
-
-        ($this->write)($buffer, $shouldClose);
 
         $this->remainingRequests--;
     }

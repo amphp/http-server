@@ -16,6 +16,11 @@ use Aerys\Websocket\Application;
 use Aerys\Websocket\Endpoint;
 use Aerys\Websocket\Message;
 use Aerys\Websocket\Websocket;
+use Amp\ByteStream\InputStream;
+use Amp\ByteStream\PendingReadError;
+use Amp\ByteStream\StreamException;
+use Amp\Failure;
+use Amp\Promise;
 
 // Return a function that defines and returns a Server instance.
 return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $console): Server {
@@ -69,6 +74,16 @@ return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $co
             $body .= $chunk;
         }
         return new Response\HtmlResponse("<html><body><h1>Stream Body Echo:</h1><pre>{$body}</pre></body></html>");
+    }));
+
+    $router->addRoute("GET", "/body-stream-error", new CallableResponder(function (Request $request): Response {
+        $body = new class implements InputStream {
+            public function read(): Promise {
+                return new Failure(new StreamException("Something went wrong..."));
+            }
+        };
+
+        return new Response($body);
     }));
 
     $router->addRoute("ZANZIBAR", "/zanzibar", new CallableResponder(function (Request $request): Response {

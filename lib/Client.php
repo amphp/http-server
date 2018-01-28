@@ -628,13 +628,21 @@ class Client {
                         yield $this->writeDeferred->promise();
                     }
 
-                    $chunk = yield $promise;
+                    try {
+                        $chunk = yield $promise;
 
-                    if ($this->status & self::CLOSED_WR) {
-                        return; // Client closed connection, abort reading body.
+                        if ($this->status & self::CLOSED_WR) {
+                            return; // Client closed connection, abort reading body.
+                        }
+
+                        $responseWriter->send($chunk); // Sends null when stream closes.
+                    } catch (\Throwable $e) {
+                        if ($this->status & self::CLOSED_WR) {
+                            return; // Client closed connection, abort reading body.
+                        }
+
+                        $responseWriter->throw($e);
                     }
-
-                    $responseWriter->send($chunk); // Sends null when stream closes.
                 } while ($chunk !== null && $responseWriter->valid());
             } catch (ClientException $exception) {
                 $this->close(); // Response already started, no choice but to close the connection.
