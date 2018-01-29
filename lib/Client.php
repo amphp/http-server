@@ -76,7 +76,7 @@ class Client {
     /** @var \Aerys\ErrorHandler */
     private $errorHandler;
 
-    /** @var callable[] */
+    /** @var callable[]|null */
     private $onClose = [];
 
     /** @var \Aerys\TimeoutCache */
@@ -278,16 +278,11 @@ class Client {
      * Forcefully closes the client connection.
      */
     public function close() {
-        $this->clear();
-
-        if ($this->status === self::CLOSED_RDWR) {
+        if ($this->onClose === null) {
             return; // Client already closed.
         }
 
-        foreach ($this->onClose as $callback) {
-            $callback($this);
-        }
-        $this->onClose = [];
+        $this->clear();
 
         if ($this->writeDeferred) {
             $this->writeDeferred->fail(new ClientException("Client disconnected"));
@@ -304,8 +299,12 @@ class Client {
             \assert($this->logger->debug("Close connection on {$this->serverAddress} #{$this->id}") || true);
         }
 
-        $this->httpDriver = null;
-        $this->requestParser = null;
+        $onClose = $this->onClose;
+        $this->onClose = null;
+
+        foreach ($onClose as $callback) {
+            $callback($this);
+        }
     }
 
     /**
@@ -314,6 +313,11 @@ class Client {
      * @param callable $callback
      */
     public function onClose(callable $callback) {
+        if ($this->onClose === null) {
+            $callback($this);
+            return;
+        }
+
         $this->onClose[] = $callback;
     }
 
@@ -341,7 +345,7 @@ class Client {
             try {
                 $promise = $this->requestParser->send($data);
 
-                if ($promise instanceof Promise && !$this->isExported && !($this->status & self::CLOSED_RD)) {
+                if ($promise instanceof Promise && !$this->isExported && !($this->status & self::CLOSED_RDWR)) {
                     // Parser wants to wait until a promise completes.
                     $this->paused = true;
                     $promise->onResolve($this->resume); // Resume will set $this->paused to false if called immediately.
@@ -361,12 +365,12 @@ class Client {
         }
 
         if (!\is_resource($socket) || @\feof($socket)) {
-            if ($this->status === self::CLOSED_WR || !$this->waitingOnResponse()) {
+            if ($this->status & self::CLOSED_WR || !$this->waitingOnResponse()) {
                 $this->close();
                 return;
             }
 
-            $this->status = self::CLOSED_RD;
+            $this->status |= self::CLOSED_RD;
             Loop::cancel($watcherId);
         }
     }
@@ -436,7 +440,8 @@ class Client {
             $promise = $this->writeDeferred->promise();
 
             if ($close) {
-                $this->status &= self::CLOSED_WR;
+                Loop::cancel($this->readWatcher);
+                $this->status |= self::CLOSED_WR;
                 $promise->onResolve([$this, "close"]);
             }
 
@@ -482,7 +487,7 @@ class Client {
 
     private function onError(ClientException $exception): Promise {
         Loop::cancel($this->readWatcher);
-        $this->status &= self::CLOSED_RD;
+        $this->status |= self::CLOSED_RD;
 
         $message = $exception->getMessage();
         $status = $exception->getCode() ?: Status::BAD_REQUEST;
@@ -507,7 +512,7 @@ class Client {
             return;
         }
 
-        if (!$this->isExported && !($this->status & self::CLOSED_RD)) {
+        if (!$this->isExported && !($this->status & self::CLOSED_RDWR)) {
             try {
                 $this->requestParser->send("");
                 $this->paused = false;
@@ -690,11 +695,11 @@ class Client {
         $status = Status::INTERNAL_SERVER_ERROR;
 
         // Return an HTML page with the exception in debug mode.
-        if ($request !== null && $this->options->isInDebugMode()) {
+        if ($this->options->isInDebugMode()) {
             $html = \str_replace(
                 ["{uri}", "{class}", "{message}", "{file}", "{line}", "{trace}"],
                 \array_map("htmlspecialchars", [
-                    $request->getUri(),
+                    $request ? $request->getUri() : "Exception thrown before request was fully read",
                     \get_class($exception),
                     $exception->getMessage(),
                     $exception->getFile(),
