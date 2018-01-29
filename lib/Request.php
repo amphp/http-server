@@ -305,6 +305,8 @@ class Request extends Message {
      * responders or middleware which are aware of this data can then access it without the server being tightly coupled
      * to specific implementations.
      *
+     * Note: Only value objects should be attached to requests, nothing that is covered by an interface.
+     *
      * @param object $value Any object, can be accessed via {@see self::get()} by type name.
      */
     public function attach(/* object */ $value) {
