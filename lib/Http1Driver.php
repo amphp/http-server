@@ -315,12 +315,10 @@ class Http1Driver implements HttpDriver {
                 && false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
             ) {
                 // Request instance will be overwritten below. This is for sending the switching protocols response.
-                $request = new Request($this->client, $method, $uri, $headers, null, $protocol);
-
                 $responseWriter = $this->writer(new Response(null, [
                     "connection" => "upgrade",
                     "upgrade" => "h2c",
-                ], Status::SWITCHING_PROTOCOLS), $request);
+                ], Status::SWITCHING_PROTOCOLS), new Request($this->client, $method, $uri, $headers, null, $protocol));
                 $responseWriter->send(null); // Flush before replacing
 
                 // Internal upgrade
@@ -342,16 +340,15 @@ class Http1Driver implements HttpDriver {
             }
 
             if (!($isChunked || $contentLength)) {
-                $request = new Request(
+                // Wait for response to be fully written.
+                $buffer .= yield ($this->onMessage)(new Request(
                     $this->client,
                     $method,
                     $uri,
                     $headers,
                     null,
                     $protocol
-                );
-
-                $buffer .= yield ($this->onMessage)($request); // Wait for response to be fully written.
+                ));
 
                 continue;
             }
@@ -380,6 +377,8 @@ class Http1Driver implements HttpDriver {
 
             $promise = ($this->onMessage)($request); // Do not yield promise until body is completely read.
 
+            // Must remove reference to Request and Body objects so they are destroyed when responder completes.
+            $request = null;
             $body = "";
 
             try {

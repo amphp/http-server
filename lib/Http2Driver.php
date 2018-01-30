@@ -995,6 +995,9 @@ class Http2Driver implements HttpDriver {
                         $this->streamIdMap[\spl_object_hash($request)] = $id;
                         ($this->onMessage)($request);
 
+                        // Must null reference to Request object so it is destroyed when responder completes.
+                        $request = null;
+
                         continue;
                     }
 
@@ -1030,6 +1033,9 @@ class Http2Driver implements HttpDriver {
                     $this->streamIdMap[\spl_object_hash($request)] = $id;
                     $bodyLengths[$id] = 0;
                     ($this->onMessage)($request);
+
+                    // Must null reference to Request and Body objects so they are destroyed when responder completes.
+                    $request = $body = null;
 
                     continue;
                 }

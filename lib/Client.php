@@ -282,6 +282,8 @@ class Client {
             return; // Client already closed.
         }
 
+        $this->status = self::CLOSED_RDWR;
+
         $this->clear();
 
         if ($this->writeDeferred) {
@@ -291,7 +293,6 @@ class Client {
         // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
         @\stream_socket_shutdown($this->socket, \STREAM_SHUT_RDWR);
         @\fclose($this->socket);
-        $this->status = self::CLOSED_RDWR;
 
         if ($this->serverAddress[0] !== "/") { // no unix domain socket
             \assert($this->logger->debug("Close {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
@@ -522,7 +523,7 @@ class Client {
                     return; // Exception already handled by responder.
                 }
 
-                $this->onError($exception);
+                $this->close();
             }
         }
     }
