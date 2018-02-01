@@ -442,7 +442,6 @@ class Server {
         }
 
         foreach ($this->clients as $client) {
-            // @TODO Alter client to return a promise indicating when all pending responses have completed.
             $client->close();
         }
 
@@ -455,25 +454,20 @@ class Server {
     }
 
     private function timeoutKeepAlives(int $now) {
-        $timeouts = [];
         foreach ($this->timeouts as $id => $expiresAt) {
-            if ($now > $expiresAt) {
-                $timeouts[] = $this->clients[$id];
-            } else {
+            if ($now < $expiresAt) {
                 break;
             }
-        }
 
-        /** @var \Aerys\Client $client */
-        foreach ($timeouts as $id => $client) {
+            $client = $this->clients[$id];
+
             // Do not close in case some longer response is taking more time to complete.
             if ($client->waitingOnResponse()) {
-                $this->timeouts->clear($id);
-            } else {
-                // Timeouts are only active while Client is doing nothing (not sending nor receiving) and no pending
-                // writes, hence we can just fully close here
-                $client->close();
+                continue;
             }
+
+            // Client is either idle or taking too long to send request, so simply close the connection.
+            $client->close();
         }
     }
 

@@ -32,7 +32,7 @@ class Client {
     private $clientPort;
 
     /** @var string */
-    private $clientNet;
+    private $clientNetworkId;
 
     /** @var string */
     private $serverAddress;
@@ -137,14 +137,14 @@ class Client {
         if ($portStartPos = \strrpos($peerName, ":")) {
             $this->clientAddress = substr($peerName, 0, $portStartPos);
             $this->clientPort = (int) substr($peerName, $portStartPos + 1);
-            $this->clientNet = @\inet_pton($this->clientAddress);
-            if (isset($this->clientNet[4])) {
-                $this->clientNet = \substr($this->clientNet, 0, 7 /* /56 block */);
+            $this->clientNetworkId = @\inet_pton($this->clientAddress);
+            if (isset($this->clientNetworkId[4])) {
+                $this->clientNetworkId = \substr($this->clientNetworkId, 0, 7 /* /56 block */);
             }
         } else {
             $this->clientAddress = $serverName;
             $this->clientPort = 0;
-            $this->clientNet = $serverName;
+            $this->clientNetworkId = $serverName;
         }
 
         $this->resume = $this->callableFromInstanceMethod("resume");
@@ -196,7 +196,7 @@ class Client {
      * @return bool
      */
     public function waitingOnResponse(): bool {
-        return $this->pendingResponses > $this->httpDriver->pendingRequestCount();
+        return $this->httpDriver !== null && $this->pendingResponses > $this->httpDriver->pendingRequestCount();
     }
 
     /**
@@ -244,7 +244,7 @@ class Client {
     }
 
     /**
-     * @return bool True if the client is encrypted, false if plaintext.
+     * @return bool `true` if the client is encrypted, `false` if plaintext.
      */
     public function isEncrypted(): bool {
         return $this->isEncrypted;
@@ -261,10 +261,17 @@ class Client {
     }
 
     /**
+     * @return bool `true` if the client has been exported from the server using Response::detach().
+     */
+    public function isExported(): bool {
+        return $this->isExported;
+    }
+
+    /**
      * @return string Unique network ID based on IP for matching the client with other clients from the same IP.
      */
     public function getNetworkId(): string {
-        return $this->clientNet;
+        return $this->clientNetworkId;
     }
 
     /**
@@ -338,8 +345,11 @@ class Client {
         $this->timeoutCache->clear($this->id);
     }
 
-    private function onReadable(string $watcherId, $socket) {
-        $data = @\stream_get_contents($socket, $this->options->getIoGranularity());
+    /**
+     * Called by the onReadable watcher (after encryption has been negotiated if applicable).
+     */
+    private function onReadable() {
+        $data = @\stream_get_contents($this->socket, $this->options->getIoGranularity());
         if ($data !== false && $data !== "") {
             $this->timeoutCache->renew($this->id);
 
@@ -365,20 +375,23 @@ class Client {
             return;
         }
 
-        if (!\is_resource($socket) || @\feof($socket)) {
+        if (!\is_resource($this->socket) || @\feof($this->socket)) {
             if ($this->status & self::CLOSED_WR || !$this->waitingOnResponse()) {
                 $this->close();
                 return;
             }
 
             $this->status |= self::CLOSED_RD;
-            Loop::cancel($watcherId);
+            Loop::cancel($this->readWatcher);
         }
     }
 
-    private function negotiateCrypto(string $watcherId, $socket) {
-        if ($handshake = @\stream_socket_enable_crypto($socket, true)) {
-            Loop::cancel($watcherId);
+    /**
+     * Called by the onReadable watcher after the client connects until encryption is enabled.
+     */
+    private function negotiateCrypto() {
+        if ($handshake = @\stream_socket_enable_crypto($this->socket, true)) {
+            Loop::cancel($this->readWatcher);
 
             $this->isEncrypted = true;
             $this->cryptoInfo = \stream_get_meta_data($this->socket)["crypto"];
@@ -400,6 +413,9 @@ class Client {
         }
     }
 
+    /**
+     * Called by the onWritable watcher.
+     */
     private function onWritable() {
         try {
             $this->writeBuffer = $this->send($this->writeBuffer);
@@ -417,6 +433,15 @@ class Client {
         }
     }
 
+    /**
+     * Adds the given data to the buffer of data to be written to the client socket. Returns a promise that resolves
+     * once the client write buffer has emptied.
+     *
+     * @param string $data The data to write.
+     * @param bool $close If true, close the client after the given chunk of data has been written.
+     *
+     * @return \Amp\Promise
+     */
     private function write(string $data, bool $close = false): Promise {
         if ($this->status & self::CLOSED_WR) {
             return new Failure(new ClientException("The client disconnected"));
@@ -456,6 +481,15 @@ class Client {
         return new Success;
     }
 
+    /**
+     * Attempts to write the given data directly to the client socket. Returns any unwritten data.
+     *
+     * @param string $data Data to write.
+     *
+     * @return string Remaining unwritten data.
+     *
+     * @throws \Aerys\ClientException If the client has disconnected.
+     */
     private function send(string $data): string {
         $bytesWritten = @\fwrite($this->socket, $data);
         if ($bytesWritten === false
@@ -471,6 +505,13 @@ class Client {
         return \substr($data, $bytesWritten);
     }
 
+    /**
+     * Invoked by the HTTP parser when a request is parsed.
+     *
+     * @param \Aerys\Request $request
+     *
+     * @return \Amp\Promise
+     */
     private function onMessage(Request $request): Promise {
         \assert($this->logger->debug(sprintf(
             "%s %s HTTP/%s @ %s:%s",
@@ -486,6 +527,13 @@ class Client {
         return new Coroutine($this->respond($request));
     }
 
+    /**
+     * Invoked when the HTTP parser throws an exception and a response is not actively being written.
+     *
+     * @param \Aerys\ClientException $exception
+     *
+     * @return \Amp\Promise
+     */
     private function onError(ClientException $exception): Promise {
         Loop::cancel($this->readWatcher);
         $this->status |= self::CLOSED_RD;
@@ -515,9 +563,9 @@ class Client {
 
         if (!$this->isExported && !($this->status & self::CLOSED_RDWR)) {
             try {
-                $this->requestParser->send("");
                 $this->paused = false;
                 Loop::enable($this->readWatcher);
+                $this->requestParser->send("");
             } catch (ClientException $exception) {
                 if ($this->status & self::CLOSED_RD) {
                     return; // Exception already handled by responder.
@@ -644,6 +692,7 @@ class Client {
                     $chunk = yield $promise;
 
                     if ($this->status & self::CLOSED_WR) {
+                        $this->close();
                         return; // Client closed connection, abort reading body.
                     }
 
@@ -658,31 +707,34 @@ class Client {
             }
         }
 
-        $this->pendingResponses--;
-
-        if ($this->status === self::CLOSED_RD && !$this->waitingOnResponse()) {
+        try {
             if ($this->writeDeferred) {
-                $this->writeDeferred->promise()->onResolve([$this, "close"]);
+                // Wait for response to finish writing.
+                yield $this->writeDeferred->promise();
+            }
+
+            $this->pendingResponses--;
+
+            if ($this->status === self::CLOSED_RD && !$this->waitingOnResponse()) {
+                $this->close();
                 return;
             }
 
-            $this->close();
-            return;
-        }
+            if ($this->status & self::CLOSED_RDWR) {
+                return;
+            }
 
-        if ($this->status & self::CLOSED_RD) {
-            return;
-        }
+            $this->timeoutCache->renew($this->id);
 
-        $this->timeoutCache->renew($this->id);
-
-        try {
             if ($response->isDetached()) {
-                $responseWriter->send(null);
                 $this->export($response);
             }
+        } catch (ClientException $exception) {
+            return; // Client closed.
         } catch (\Throwable $exception) {
+            // Detach function threw exception.
             $this->logger->error($exception);
+            $this->close();
         }
     }
 
@@ -739,8 +791,8 @@ class Client {
         $this->clear();
         $this->isExported = true;
 
-        \assert($this->logger->debug("Export {$this->clientAddress}:{$this->clientPort}") || true);
+        \assert($this->logger->debug("Export {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
 
-        $response->export(new Internal\DetachedSocket($this, $this->socket));
+        $response->export(new Internal\DetachedSocket($this, $this->socket, $this->options->getIoGranularity()));
     }
 }

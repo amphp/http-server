@@ -8,11 +8,14 @@ class TimeoutCache implements \IteratorAggregate {
     /** @var \cash\LRUCache */
     private $cache;
 
-    /** @var int */
-    private $time;
+    /** @var int Number of seconds to add to the current time when renewing the timeout. */
+    private $timeout;
 
-    /** @var \Aerys\TimeReference */
-    private $timeReference;
+    /** @var int[] Client IDs recently updated. */
+    private $updates = [];
+
+    /** @var int Current timestamp. */
+    private $now;
 
     /**
      * @param \Aerys\TimeReference $timeReference
@@ -28,8 +31,11 @@ class TimeoutCache implements \IteratorAggregate {
             }
         };
 
-        $this->time = $timeout;
-        $this->timeReference = $timeReference;
+        $this->timeout = $timeout;
+
+        $timeReference->onTimeUpdate(function (int $timestamp) {
+            $this->now = $timestamp;
+        });
     }
 
     /**
@@ -38,8 +44,7 @@ class TimeoutCache implements \IteratorAggregate {
      * @param int $id
      */
     public function renew(int $id) {
-        $timeoutAt = $this->timeReference->getCurrentTime() + $this->time;
-        $this->cache->put($id, $timeoutAt);
+        $this->updates[$id] = $this->now + $this->timeout;
     }
 
     /**
@@ -48,6 +53,7 @@ class TimeoutCache implements \IteratorAggregate {
      * @param int $id
      */
     public function clear(int $id) {
+        unset($this->updates[$id]);
         $this->cache->remove($id);
     }
 
@@ -55,6 +61,12 @@ class TimeoutCache implements \IteratorAggregate {
      * @return \Iterator Unmodifiable iterator over all IDs in the cache, starting with oldest.
      */
     public function getIterator(): \Iterator {
+        foreach ($this->updates as $id => $timeout) {
+            $this->cache->put($id, $timeout);
+        }
+
+        $this->updates = [];
+
         return $this->cache->getIterator();
     }
 }
