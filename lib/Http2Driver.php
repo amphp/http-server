@@ -219,6 +219,8 @@ class Http2Driver implements HttpDriver {
             return; // Client closed the stream or connection.
         }
 
+        $part = ""; // Must be set here for finally, not necessarily immediately overwritten.
+
         try {
             $headers = \array_merge([":status" => $response->getStatus()], $response->getHeaders());
 
@@ -248,9 +250,9 @@ class Http2Driver implements HttpDriver {
                 foreach ($split as $msgPart) {
                     $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $id);
                 }
-                $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $id);
+                $promise = $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $id);
             } else {
-                $this->writeFrame($headers, self::HEADERS, self::END_HEADERS, $id);
+                $promise = $this->writeFrame($headers, self::HEADERS, self::END_HEADERS, $id);
             }
 
             if ($request->getMethod() === "HEAD") {
@@ -261,16 +263,17 @@ class Http2Driver implements HttpDriver {
             $buffer = $part = "";
             $outputBufferSize = $this->options->getOutputBufferSize();
 
-            while (null !== $part = yield) {
+            while (null !== $part = yield $promise) {
                 // Stream may have been closed while waiting for body data.
                 if (!isset($this->streams[$id])) {
                     return;
                 }
 
+                $promise = null;
                 $buffer .= $part;
 
                 if (\strlen($buffer) >= $outputBufferSize) {
-                    $this->writeData($buffer, $id, false);
+                    $promise = $this->writeData($buffer, $id, false);
                     $buffer = "";
                 }
             }
@@ -298,7 +301,7 @@ class Http2Driver implements HttpDriver {
         }
     }
 
-    private function writeData(string $data, int $stream, bool $last) {
+    private function writeData(string $data, int $stream, bool $last): Promise {
         \assert(isset($this->streams[$stream]), "The stream was closed");
 
         $this->streams[$stream]->buffer .= $data;
@@ -306,10 +309,10 @@ class Http2Driver implements HttpDriver {
             $this->streams[$stream]->state |= Http2Stream::LOCAL_CLOSED;
         }
 
-        $this->writeBufferedData($stream);
+        return $this->writeBufferedData($stream);
     }
 
-    private function writeBufferedData(int $id) {
+    private function writeBufferedData(int $id): Promise {
         $delta = \min($this->window, $this->streams[$id]->window);
         $length = \strlen($this->streams[$id]->buffer);
 
@@ -325,14 +328,15 @@ class Http2Driver implements HttpDriver {
             }
 
             if ($this->streams[$id]->state & Http2Stream::LOCAL_CLOSED) {
-                $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::END_STREAM, $id);
+                $promise = $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::END_STREAM, $id);
                 $this->releaseStream($id);
             } else {
-                $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::NOFLAG, $id);
+                $promise = $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::NOFLAG, $id);
                 $this->streams[$id]->window -= $length;
                 $this->streams[$id]->buffer = "";
             }
-            return;
+
+            return $promise;
         }
 
         if ($delta > 0) {
@@ -343,12 +347,17 @@ class Http2Driver implements HttpDriver {
                 $this->writeFrame(substr($data, $off, $this->maxFrameSize), self::DATA, self::NOFLAG, $id);
             }
 
-            $this->writeFrame(substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
+            $promise = $this->writeFrame(substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
 
             $this->streams[$id]->buffer = substr($data, $delta);
             $this->streams[$id]->window -= $delta;
             $this->window -= $delta;
+
+            return $promise;
         }
+
+        $this->streams[$id]->deferred = $deferred = new Deferred;
+        return $deferred->promise();
     }
 
     protected function writePing(): Promise {
@@ -399,6 +408,8 @@ class Http2Driver implements HttpDriver {
                 }
                 $settings = substr($settings, 6);
             }
+
+            $this->window = $this->initialWindowSize;
 
             // Upgraded connections automatically assume an initial stream with ID 1.
             $this->streams[1] = new Http2Stream(
@@ -603,7 +614,7 @@ class Http2Driver implements HttpDriver {
                         }
 
                         if (($flags & self::PADDED) !== "\0") {
-                            if ($buffer == "") {
+                            if ($buffer === "") {
                                 $buffer = yield;
                             }
                             $padding = \ord($buffer);
@@ -745,7 +756,7 @@ class Http2Driver implements HttpDriver {
                             continue 2;
                         }
 
-                        if ($length % 6 != 0) {
+                        if ($length % 6 !== 0) {
                             $error = self::FRAME_SIZE_ERROR;
                             goto connection_error;
                         }
@@ -853,6 +864,12 @@ class Http2Driver implements HttpDriver {
                             if (isset($this->streams[$id])) {
                                 $this->streams[$id]->window += $windowSize;
 
+                                if ($this->streams[$id]->deferred) {
+                                    $deferred = $this->streams[$id]->deferred;
+                                    $this->streams[$id]->deferred = null;
+                                    $deferred->resolve();
+                                }
+
                                 if ($this->streams[$id]->buffer !== "") {
                                     $this->writeBufferedData($id);
                                 }
@@ -866,6 +883,12 @@ class Http2Driver implements HttpDriver {
                         foreach ($this->streams as $id => $stream) {
                             if ($stream->buffer === "") {
                                 continue;
+                            }
+
+                            if ($stream->deferred) {
+                                $deferred = $stream->deferred;
+                                $stream->deferred = null;
+                                $deferred->resolve();
                             }
 
                             $this->writeBufferedData($id);

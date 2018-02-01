@@ -121,12 +121,14 @@ class Http1Driver implements HttpDriver {
 
         try {
             do {
+                $promise = null;
+
                 if (\strlen($buffer) >= $outputBufferSize) {
-                    ($this->write)($buffer);
+                    $promise = ($this->write)($buffer);
                     $buffer = "";
                 }
 
-                if (null === $part = yield) {
+                if (null === $part = yield $promise) {
                     break;
                 }
 
