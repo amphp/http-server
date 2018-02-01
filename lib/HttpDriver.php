@@ -16,15 +16,17 @@ interface HttpDriver {
      *
      * @param \Aerys\Client $client The client associated with the data being sent to the returned generator.
      * @param callable $onMessage Invoked with an instance of Request when the returned parser has parsed a request.
-     * @param callable $write Invoked with raw data to be written to the client connection.
+     *    Returns a promise that is resolved once the response has been generated and written to the client.
+     * @param callable $write Invoked with raw data to be written to the client connection. Returns a promise that is
+     *     resolved when the data has been successfully written.
      *
      * @return \Generator Request parser.
      */
     public function setup(Client $client, callable $onMessage, callable $write): \Generator;
 
     /**
-     * Returns a generator used to write the response body. Data to be written is sent to the generator. The generator
-     * may return at any time to indicate that body data is no longer desired.
+     * Returns a generator to be run as a coroutine by Client. The coroutine should write the given response to the
+     * client using the write callback provided to setup().
      *
      * @param \Aerys\Response $response
      * @param \Aerys\Request|null $request

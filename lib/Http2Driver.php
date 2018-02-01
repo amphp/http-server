@@ -219,7 +219,7 @@ class Http2Driver implements HttpDriver {
             return; // Client closed the stream or connection.
         }
 
-        $part = ""; // Must be set here for finally, not necessarily immediately overwritten.
+        $part = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
         try {
             $headers = \array_merge([":status" => $response->getStatus()], $response->getHeaders());
@@ -244,15 +244,15 @@ class Http2Driver implements HttpDriver {
             if (\strlen($headers) > $this->maxFrameSize) {
                 $split = str_split($headers, $this->maxFrameSize);
                 $headers = array_shift($split);
-                $this->writeFrame($headers, self::HEADERS, self::NOFLAG, $id);
+                yield $this->writeFrame($headers, self::HEADERS, self::NOFLAG, $id);
 
                 $headers = array_pop($split);
                 foreach ($split as $msgPart) {
-                    $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $id);
+                    yield $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $id);
                 }
-                $promise = $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $id);
+                yield $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $id);
             } else {
-                $promise = $this->writeFrame($headers, self::HEADERS, self::END_HEADERS, $id);
+                yield $this->writeFrame($headers, self::HEADERS, self::END_HEADERS, $id);
             }
 
             if ($request->getMethod() === "HEAD") {
@@ -260,20 +260,21 @@ class Http2Driver implements HttpDriver {
                 return;
             }
 
-            $buffer = $part = "";
-            $outputBufferSize = $this->options->getOutputBufferSize();
+            $buffer = "";
 
-            while (null !== $part = yield $promise) {
+            $outputBufferSize = $this->options->getOutputBufferSize();
+            $body = $response->getBody();
+
+            while (null !== $part = yield $body->read()) {
                 // Stream may have been closed while waiting for body data.
                 if (!isset($this->streams[$id])) {
                     return;
                 }
 
-                $promise = null;
                 $buffer .= $part;
 
                 if (\strlen($buffer) >= $outputBufferSize) {
-                    $promise = $this->writeData($buffer, $id, false);
+                    yield $this->writeData($buffer, $id, false);
                     $buffer = "";
                 }
             }
@@ -283,14 +284,16 @@ class Http2Driver implements HttpDriver {
                 return;
             }
 
-            $this->writeData($buffer, $id, true);
+            yield $this->writeData($buffer, $id, true);
+        } catch (ClientException $exception) {
+            $error = self::CANCEL; // Set error code to be used in finally below.
         } finally {
             if (isset($this->streams[$id]) && $part !== null) {
                 if (($buffer ?? "") !== "") {
                     $this->writeData($buffer, $id, false);
                 }
 
-                $this->writeFrame(pack("N", self::INTERNAL_ERROR), self::RST_STREAM, self::NOFLAG, $id);
+                $this->writeFrame(pack("N", $error ?? self::INTERNAL_ERROR), self::RST_STREAM, self::NOFLAG, $id);
                 $this->releaseStream($id);
 
                 if (isset($this->bodyEmitters[$id])) {
@@ -881,14 +884,14 @@ class Http2Driver implements HttpDriver {
                         $this->window += $windowSize;
 
                         foreach ($this->streams as $id => $stream) {
-                            if ($stream->buffer === "") {
-                                continue;
-                            }
-
                             if ($stream->deferred) {
                                 $deferred = $stream->deferred;
                                 $stream->deferred = null;
                                 $deferred->resolve();
+                            }
+
+                            if ($stream->buffer === "") {
+                                continue;
                             }
 
                             $this->writeBufferedData($id);

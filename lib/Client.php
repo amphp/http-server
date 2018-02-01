@@ -673,38 +673,14 @@ class Client {
      * @return \Generator
      */
     private function sendResponse(Response $response, Request $request = null): \Generator {
-        $responseWriter = $this->httpDriver->writer($response, $request);
-        $responseWriter->current();
-
-        if ($responseWriter->valid()) {
-            $body = $response->getBody();
-            $streamCap = $this->options->getSoftStreamCap();
-
-            try {
-                do {
-                    $promise = $body->read();
-
-                    // If output buffer is beyond the soft stream cap, wait for buffer to empty.
-                    if ($this->writeDeferred && \strlen($this->writeBuffer) > $streamCap) {
-                        yield $this->writeDeferred->promise();
-                    }
-
-                    $chunk = yield $promise;
-
-                    if ($this->status & self::CLOSED_WR) {
-                        $this->close();
-                        return; // Client closed connection, abort reading body.
-                    }
-
-                    $responseWriter->send($chunk); // Sends null when stream closes.
-                } while ($chunk !== null && $responseWriter->valid());
-            } catch (ClientException $exception) {
-                $this->close(); // Response already started, no choice but to close the connection.
-                return;
-            } catch (\Throwable $exception) {
-                // Reading response body failed, abort writing the response to the client.
-                $this->logger->error($exception);
-            }
+        try {
+            yield from $this->httpDriver->writer($response, $request);
+        } catch (ClientException $exception) {
+            $this->close(); // Response already started, no choice but to close the connection.
+            return;
+        } catch (\Throwable $exception) {
+            // Reading response body failed, abort writing the response to the client.
+            $this->logger->error($exception);
         }
 
         try {

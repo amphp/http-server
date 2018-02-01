@@ -116,19 +116,18 @@ class Http1Driver implements HttpDriver {
             return;
         }
 
+        $body = $response->getBody();
         $outputBufferSize = $this->options->getOutputBufferSize();
-        $part = ""; // required for the finally, not directly overwritten, even if your IDE says so
+        $part = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
         try {
             do {
-                $promise = null;
-
-                if (\strlen($buffer) >= $outputBufferSize) {
-                    $promise = ($this->write)($buffer);
+                if (\strlen($buffer) > $outputBufferSize) {
+                    yield ($this->write)($buffer);
                     $buffer = "";
                 }
 
-                if (null === $part = yield $promise) {
+                if (null === $part = yield $body->read()) {
                     break;
                 }
 
@@ -143,14 +142,14 @@ class Http1Driver implements HttpDriver {
                 $buffer .= "0\r\n\r\n";
             }
 
-            ($this->write)($buffer, $shouldClose);
+            yield ($this->write)($buffer, $shouldClose);
         } finally {
-            if ($part !== null) { // unclean end, streaming error
+            if ($part !== null) {
                 $this->client->close();
             }
-        }
 
-        $this->remainingRequests--;
+            $this->remainingRequests--;
+        }
     }
 
     private function parser(): \Generator {
@@ -317,7 +316,7 @@ class Http1Driver implements HttpDriver {
                 && false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
             ) {
                 // Request instance will be overwritten below. This is for sending the switching protocols response.
-                $responseWriter = $this->writer(new Response(null, [
+                $responseWriter = $this->writer(new Response(new InMemoryStream, [
                     "connection" => "upgrade",
                     "upgrade" => "h2c",
                 ], Status::SWITCHING_PROTOCOLS), new Request($this->client, $method, $uri, $headers, null, $protocol));
@@ -603,6 +602,7 @@ class Http1Driver implements HttpDriver {
         $headers = $response->getHeaders();
 
         if ($response->getStatus() < Status::OK) {
+            unset($headers['content-length']); // 1xx responses do not have a body.
             return $headers;
         }
 

@@ -9,6 +9,9 @@ use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\TimeReference;
+use Amp\ByteStream\IteratorStream;
+use Amp\Coroutine;
+use Amp\Emitter;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Success;
@@ -228,11 +231,11 @@ class Http2DriverTest extends TestCase {
 
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), [], null, "2.0");
 
-        $writer = $driver->writer(new Response, $request);
+        $emitter = new Emitter;
+        $coroutine = new Coroutine($driver->writer(new Response(new IteratorStream($emitter->iterate())), $request));
 
-        $writer->send("foo");
-
-        unset($writer);
+        $emitter->emit("foo");
+        $emitter->fail(new \Exception);
 
         $data = self::packFrame(pack(
             "nNnNnN",
@@ -246,7 +249,6 @@ class Http2DriverTest extends TestCase {
 
         $data .= self::packFrame(HPack::encode([
             ":status" => 200,
-            "content-length" => ["0"],
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
 
@@ -300,18 +302,22 @@ class Http2DriverTest extends TestCase {
         // $onMessage callback should be invoked.
         $this->assertInstanceOf(Request::class, $request);
 
-        $writer = $driver->writer(new Response(null, ["content-type" => "text/html; charset=utf-8"]), $request);
-        $writer->valid(); // Start writer.
+        $emitter = new Emitter;
+        $writer = $driver->writer(new Response(
+            new IteratorStream($emitter->iterate()),
+            ["content-type" => "text/html; charset=utf-8"]
+        ), $request);
+
+        $coroutine = new Coroutine($writer);
 
         $this->assertEquals([HPack::encode([
             ":status" => 200,
             "content-type" => ["text/html; charset=utf-8"],
-            "content-length" => ["0"],
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1], array_pop($driver->frames));
 
-        $writer->send(str_repeat("_", 66002));
-        $writer->send(null);
+        $emitter->emit(str_repeat("_", 66002));
+        $emitter->complete();
 
         $recv = "";
         foreach ($driver->frames as list($data, $type, $flags, $stream)) {
@@ -359,17 +365,21 @@ class Http2DriverTest extends TestCase {
         // $onMessage callback should be invoked.
         $this->assertInstanceOf(Request::class, $request);
 
-        $writer = $driver->writer(new Response(null, ["content-type" => "text/html; charset=utf-8"]), $request);
-        $writer->valid(); // Start writer.
+        $emitter = new Emitter;
+        $writer = $driver->writer(new Response(
+            new IteratorStream($emitter->iterate()),
+            ["content-type" => "text/html; charset=utf-8"]
+        ), $request);
+
+        $coroutine = new Coroutine($writer);
 
         $this->assertEquals([HPack::encode([
             ":status" => 200,
             "content-type" => ["text/html; charset=utf-8"],
-            "content-length" => ["0"],
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], array_pop($driver->frames));
 
-        $writer->send("**");
+        $emitter->emit("**");
 
         $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
@@ -378,7 +388,7 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals("**", $data);
         $this->assertEquals(3, $stream);
 
-        $writer->send("*");
+        $emitter->emit("*");
         $this->assertCount(0, $driver->frames); // global window too small
 
         $parser->send(self::packFrame(pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
@@ -390,7 +400,7 @@ class Http2DriverTest extends TestCase {
         $this->assertEquals("*", $data);
         $this->assertEquals(3, $stream);
 
-        $writer->send(null);
+        $emitter->complete();
 
         $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);

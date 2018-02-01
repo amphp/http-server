@@ -141,9 +141,9 @@ class ClientTest extends TestCase {
             ->willReturnCallback(function (Response $written) use (&$response, &$body) {
                 $response = $written;
                 $body = "";
-                do {
-                    $body .= $part = yield true;
-                } while ($part !== null);
+                while (null !== $part = yield $response->getBody()->read()) {
+                    $body .= $part;
+                }
             });
 
         $options = (new Options)
@@ -321,9 +321,9 @@ class ClientTest extends TestCase {
             ->willReturnCallback(function (Response $written) use (&$body) {
                 $count = 3;
                 $body = "";
-                do {
-                    $body .= $part = yield;
-                } while ($part !== null && --$count); // Return to end reading stream.
+                while ($count-- && null !== $part = yield $written->getBody()->read()) {
+                    $body .= $part;
+                }
             });
 
         $bodyData = "{data}";
