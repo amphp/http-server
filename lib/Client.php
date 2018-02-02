@@ -193,7 +193,27 @@ class Client {
     }
 
     /**
-     * @return bool
+     * @return int Number of requests with pending responses.
+     */
+    public function pendingResponseCount(): int {
+        return $this->pendingResponses;
+    }
+
+    /**
+     * @return int Number of requests being read.
+     */
+    public function pendingRequestCount(): int {
+        if ($this->httpDriver === null) {
+            return 0;
+        }
+
+        return $this->httpDriver->pendingRequestCount();
+    }
+
+    /**
+     * @return bool `true` if the number of pending responses is greater than the number of pending requests.
+     *     Useful for determining if a responder is actively writing a response or if a request is taking too
+     *     long to arrive.
      */
     public function waitingOnResponse(): bool {
         return $this->httpDriver !== null && $this->pendingResponses > $this->httpDriver->pendingRequestCount();
@@ -294,7 +314,7 @@ class Client {
         $this->clear();
 
         if ($this->writeDeferred) {
-            $this->writeDeferred->fail(new ClientException("Client disconnected"));
+            $this->writeDeferred->resolve();
         }
 
         // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
@@ -333,6 +353,7 @@ class Client {
         $this->httpDriver = null;
         $this->requestParser = null;
         $this->resume = null;
+        $this->paused = true;
 
         if ($this->readWatcher) {
             Loop::cancel($this->readWatcher);
@@ -352,26 +373,7 @@ class Client {
         $data = @\stream_get_contents($this->socket, $this->options->getIoGranularity());
         if ($data !== false && $data !== "") {
             $this->timeoutCache->renew($this->id);
-
-            try {
-                $promise = $this->requestParser->send($data);
-
-                if ($promise instanceof Promise && !$this->isExported && !($this->status & self::CLOSED_RDWR)) {
-                    // Parser wants to wait until a promise completes.
-                    $this->paused = true;
-                    $promise->onResolve($this->resume); // Resume will set $this->paused to false if called immediately.
-                    if ($this->paused) { // Avoids potential for unnecessary disable followed by enable.
-                        Loop::disable($this->readWatcher);
-                    }
-                }
-            } catch (ClientException $exception) {
-                if ($this->status & self::CLOSED_RD) {
-                    return; // Exception already handled by responder.
-                }
-
-                $this->onError($exception);
-            }
-
+            $this->parse($data);
             return;
         }
 
@@ -383,6 +385,30 @@ class Client {
 
             $this->status |= self::CLOSED_RD;
             Loop::cancel($this->readWatcher);
+        }
+    }
+
+    /**
+     * Sends data to the request parser.
+     *
+     * @param string $data
+     */
+    private function parse(string $data = "") {
+        try {
+            $promise = $this->requestParser->send($data);
+
+            if ($promise instanceof Promise && !$this->isExported && !($this->status & self::CLOSED_RDWR)) {
+                // Parser wants to wait until a promise completes.
+                $this->paused = true;
+                $promise->onResolve($this->resume); // Resume will set $this->paused to false if called immediately.
+                if ($this->paused) { // Avoids potential for unnecessary disable followed by enable.
+                    Loop::disable($this->readWatcher);
+                }
+            }
+        } catch (\Throwable $exception) {
+            // Parser *should not* throw an exception, but in case it does...
+            $this->logger->critical($exception);
+            $this->close();
         }
     }
 
@@ -528,29 +554,6 @@ class Client {
     }
 
     /**
-     * Invoked when the HTTP parser throws an exception and a response is not actively being written.
-     *
-     * @param \Aerys\ClientException $exception
-     *
-     * @return \Amp\Promise
-     */
-    private function onError(ClientException $exception): Promise {
-        Loop::cancel($this->readWatcher);
-        $this->status |= self::CLOSED_RD;
-
-        $message = $exception->getMessage();
-        $status = $exception->getCode() ?: Status::BAD_REQUEST;
-
-        \assert($this->logger->debug(
-            "Client error on {$this->clientAddress}:{$this->clientPort}: {$message}"
-        ) || true);
-
-        $this->pendingResponses++;
-
-        return new Coroutine($this->sendErrorResponse($status, $message));
-    }
-
-    /**
      * Resumes the request parser after it has yielded a promise.
      *
      * @param \Throwable|null $exception
@@ -562,39 +565,10 @@ class Client {
         }
 
         if (!$this->isExported && !($this->status & self::CLOSED_RDWR)) {
-            try {
-                $this->paused = false;
-                Loop::enable($this->readWatcher);
-                $this->requestParser->send("");
-            } catch (ClientException $exception) {
-                if ($this->status & self::CLOSED_RD) {
-                    return; // Exception already handled by responder.
-                }
-
-                $this->close();
-            }
+            $this->paused = false;
+            Loop::enable($this->readWatcher);
+            $this->parse();
         }
-    }
-
-    /**
-     * Respond to a parse error when parsing a client message.
-     *
-     * @param int $status
-     * @param string $reason
-     *
-     * @return \Generator
-     */
-    private function sendErrorResponse(int $status, string $reason): \Generator {
-        /** @var \Aerys\Response $response */
-        try {
-            $response = yield $this->errorHandler->handle($status, $reason);
-        } catch (\Throwable $exception) {
-            $response = yield $this->makeExceptionResponse($exception);
-        }
-
-        $response->setHeader("connection", "close");
-
-        yield from $this->sendResponse($response);
     }
 
     /**
@@ -617,18 +591,18 @@ class Client {
             } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
                 $response = $this->makeOptionsResponse();
             } else {
-                $response = yield $this->responder->respond($request);
+                $response = yield $this->responder->respond(clone $request);
 
                 if (!$response instanceof Response) {
                     throw new \Error("At least one request handler must return an instance of " . Response::class);
                 }
             }
         } catch (ClientException $exception) {
-            yield $this->onError($exception);
+            $this->close();
             return;
         } catch (\Throwable $error) {
             $this->logger->error($error);
-            $response = yield $this->makeExceptionResponse($error, $request);
+            $response = yield from $this->makeExceptionResponse($error, $request);
         }
 
         yield from $this->sendResponse($response, $request);
@@ -673,54 +647,51 @@ class Client {
      * @return \Generator
      */
     private function sendResponse(Response $response, Request $request = null): \Generator {
+        if ($this->status & self::CLOSED_WR) {
+            return; // Client closed before response could be sent.
+        }
+
         try {
             yield from $this->httpDriver->writer($response, $request);
-        } catch (ClientException $exception) {
-            $this->close(); // Response already started, no choice but to close the connection.
-            return;
         } catch (\Throwable $exception) {
             // Reading response body failed, abort writing the response to the client.
             $this->logger->error($exception);
         }
 
-        try {
-            if ($this->writeDeferred) {
-                // Wait for response to finish writing.
-                yield $this->writeDeferred->promise();
-            }
-
-            $this->pendingResponses--;
-
-            if ($this->status === self::CLOSED_RD && !$this->waitingOnResponse()) {
-                $this->close();
-                return;
-            }
-
-            if ($this->status & self::CLOSED_RDWR) {
-                return;
-            }
-
-            $this->timeoutCache->renew($this->id);
-
-            if ($response->isDetached()) {
-                $this->export($response);
-            }
-        } catch (ClientException $exception) {
-            return; // Client closed.
-        } catch (\Throwable $exception) {
-            // Detach function threw exception.
-            $this->logger->error($exception);
-            $this->close();
+        if ($this->writeDeferred) {
+            // Wait for response to finish writing.
+            yield $this->writeDeferred->promise();
         }
+
+        $this->pendingResponses--;
+
+        if ($this->status === self::CLOSED_RD && !$this->waitingOnResponse()) {
+            $this->close();
+            return;
+        }
+
+        if ($this->status & self::CLOSED_RDWR) {
+            return;
+        }
+
+        if ($response->isDetached()) {
+            $this->export($response);
+            return;
+        }
+
+        $this->timeoutCache->renew($this->id);
     }
 
     /**
+     * Used if an exception is thrown from a responder. Returns a response containing the exception stack trace
+     * in debug mode or a response defined by the error handler in production mode.
+     *
      * @param \Throwable $exception
      * @param \Aerys\Request $request
      *
-     * @return \Amp\Promise<\Aerys\Response>
+     * @return \Generator
      */
-    private function makeExceptionResponse(\Throwable $exception, Request $request = null): Promise {
+    private function makeExceptionResponse(\Throwable $exception, Request $request = null): \Generator {
         $status = Status::INTERNAL_SERVER_ERROR;
 
         // Return an HTML page with the exception in debug mode.
@@ -738,12 +709,12 @@ class Client {
                 INTERNAL_SERVER_ERROR_HTML
             );
 
-            return new Success(new Response\HtmlResponse($html, [], $status));
+            return new Response\HtmlResponse($html, [], $status);
         }
 
         try {
             // Return a response defined by the error handler in production mode.
-            return $this->errorHandler->handle($status, Status::getReason($status), $request);
+            return yield $this->errorHandler->handle($status, Status::getReason($status), $request);
         } catch (\Throwable $exception) {
             // If the error handler throws, fallback to returning the default HTML error page.
             $this->logger->error($exception);
@@ -754,7 +725,7 @@ class Client {
                 DEFAULT_ERROR_HTML
             );
 
-            return new Success(new Response\HtmlResponse($html, [], $status));
+            return new Response\HtmlResponse($html, [], $status);
         }
     }
 
@@ -769,6 +740,11 @@ class Client {
 
         \assert($this->logger->debug("Export {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
 
-        $response->export(new Internal\DetachedSocket($this, $this->socket, $this->options->getIoGranularity()));
+        try {
+            $response->export(new Internal\DetachedSocket($this, $this->socket, $this->options->getIoGranularity()));
+        } catch (\Throwable $exception) {
+            $this->logger->error($exception);
+            $this->close();
+        }
     }
 }

@@ -4,6 +4,7 @@ namespace Aerys;
 
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
+use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\InvalidHeaderException;
@@ -57,12 +58,17 @@ class Http1Driver implements HttpDriver {
     /** @var callable */
     private $write;
 
-    public function __construct(Options $options, TimeReference $timeReference) {
+    /** @var \Aerys\ErrorHandler */
+    private $errorHandler;
+
+    public function __construct(Options $options, TimeReference $timeReference, ErrorHandler $errorHandler) {
         $this->options = $options;
         $this->timeReference = $timeReference;
+        $this->errorHandler = $errorHandler;
         $this->remainingRequests = $this->options->getMaxRequestsPerConnection();
     }
 
+    /** {@inheritdoc} */
     public function setup(Client $client, callable $onMessage, callable $write): \Generator {
         \assert(!$this->client, "The driver has already been setup");
 
@@ -73,12 +79,28 @@ class Http1Driver implements HttpDriver {
         return $this->parser();
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * Selects HTTP/2 or HTTP/1.x writer depending on connection status.
+     */
     public function writer(Response $response, Request $request = null): \Generator {
         if ($this->http2) {
-            yield from $this->http2->writer($response, $request);
-            return;
+            return $this->http2->writer($response, $request);
         }
 
+        return $this->send($response, $request);
+    }
+
+    /**
+     * HTTP/1.x response writer.
+     *
+     * @param \Aerys\Response $response
+     * @param \Aerys\Request|null $request
+     *
+     * @return \Generator
+     */
+    private function send(Response $response, Request $request = null): \Generator {
         \assert($this->client, "The driver has not been setup; call setup first");
 
         $shouldClose = false;
@@ -143,6 +165,8 @@ class Http1Driver implements HttpDriver {
             }
 
             yield ($this->write)($buffer, $shouldClose);
+        } catch (ClientException $exception) {
+            return; // Client will be closed in finally.
         } finally {
             if ($part !== null) {
                 $this->client->close();
@@ -159,230 +183,234 @@ class Http1Driver implements HttpDriver {
 
         $buffer = yield;
 
-        do {
-            if ($parser !== null) { // May be set from upgrade request or receive of PRI * HTTP/2.0 request.
-                /** @var \Generator $parser */
-                yield from $parser; // Yield from HTTP/2 parser for duration of connection.
-                return;
-            }
-
-            $contentLength = null;
-            $isChunked = false;
-
+        try {
             do {
-                $buffer = \ltrim($buffer, "\r\n");
-
-                if ($headerPos = \strpos($buffer, "\r\n\r\n")) {
-                    $rawHeaders = \substr($buffer, 0, $headerPos + 2);
-                    $buffer = (string) \substr($buffer, $headerPos + 4);
-                    break;
+                if ($parser !== null) { // May be set from upgrade request or receive of PRI * HTTP/2.0 request.
+                    /** @var \Generator $parser */
+                    yield from $parser; // Yield from HTTP/2 parser for duration of connection.
+                    return;
                 }
 
-                if (\strlen($buffer) > $maxHeaderSize) {
+                $contentLength = null;
+                $isChunked = false;
+
+                do {
+                    $buffer = \ltrim($buffer, "\r\n");
+
+                    if ($headerPos = \strpos($buffer, "\r\n\r\n")) {
+                        $rawHeaders = \substr($buffer, 0, $headerPos + 2);
+                        $buffer = (string) \substr($buffer, $headerPos + 4);
+                        break;
+                    }
+
+                    if (\strlen($buffer) > $maxHeaderSize) {
+                        throw new ClientException(
+                            "Bad Request: header size violation",
+                            Status::REQUEST_HEADER_FIELDS_TOO_LARGE
+                        );
+                    }
+
+                    $buffer .= yield;
+                } while (true);
+
+                $startLineEndPos = \strpos($rawHeaders, "\r\n");
+                $startLine = \substr($rawHeaders, 0, $startLineEndPos);
+                $rawHeaders = \substr($rawHeaders, $startLineEndPos + 2);
+
+                if (!\preg_match("/^([A-Z]+) (\S+) HTTP\/(\d+(?:\.\d+)?)$/i", $startLine, $matches)) {
+                    throw new ClientException("Bad Request: invalid request line", Status::BAD_REQUEST);
+                }
+
+                list(, $method, $target, $protocol) = $matches;
+
+                if ($protocol !== "1.1" && $protocol !== "1.0") {
+                    if ($protocol === "2.0" && $this->options->isHttp2Enabled()) {
+                        // Internal upgrade to HTTP/2.
+                        $this->http2 = new Http2Driver($this->options, $this->timeReference);
+                        $parser = $this->http2->setup($this->client, $this->onMessage, $this->write);
+
+                        $parser->send("$startLine\r\n$rawHeaders\r\n$buffer");
+                        continue; // Yield from the above parser immediately.
+                    }
+
+                    throw new ClientException("Unsupported version {$protocol}", Status::HTTP_VERSION_NOT_SUPPORTED);
+                }
+
+                if (!$rawHeaders) {
+                    throw new ClientException("Bad Request: missing host header", Status::BAD_REQUEST);
+                }
+
+                try {
+                    $headers = Rfc7230::parseHeaders($rawHeaders);
+                } catch (InvalidHeaderException $e) {
                     throw new ClientException(
-                        "Bad Request: header size violation",
-                        Status::REQUEST_HEADER_FIELDS_TOO_LARGE
-                    );
-                }
-
-                $buffer .= yield;
-            } while (true);
-
-            $startLineEndPos = \strpos($rawHeaders, "\r\n");
-            $startLine = \substr($rawHeaders, 0, $startLineEndPos);
-            $rawHeaders = \substr($rawHeaders, $startLineEndPos + 2);
-
-            if (!\preg_match("/^([A-Z]+) (\S+) HTTP\/(\d+(?:\.\d+)?)$/i", $startLine, $matches)) {
-                throw new ClientException("Bad Request: invalid request line", Status::BAD_REQUEST);
-            }
-
-            list(, $method, $target, $protocol) = $matches;
-
-            if ($protocol !== "1.1" && $protocol !== "1.0") {
-                if ($protocol === "2.0" && $this->options->isHttp2Enabled()) {
-                    // Internal upgrade to HTTP/2.
-                    $this->http2 = new Http2Driver($this->options, $this->timeReference);
-                    $parser = $this->http2->setup($this->client, $this->onMessage, $this->write);
-
-                    $parser->send("$startLine\r\n$rawHeaders\r\n$buffer");
-                    continue; // Yield from the above parser immediately.
-                }
-
-                throw new ClientException("Unsupported version {$protocol}", Status::HTTP_VERSION_NOT_SUPPORTED);
-            }
-
-            if (!$rawHeaders) {
-                throw new ClientException("Bad Request: missing host header", Status::BAD_REQUEST);
-            }
-
-            try {
-                $headers = Rfc7230::parseHeaders($rawHeaders);
-            } catch (InvalidHeaderException $e) {
-                throw new ClientException(
-                    "Bad Request: " . $e->getMessage(),
-                    Status::BAD_REQUEST
-                );
-            }
-
-            $contentLength = $headers["content-length"][0] ?? null;
-            if ($contentLength !== null) {
-                if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {
-                    throw new ClientException("Bad Request: invalid content length", Status::BAD_REQUEST);
-                }
-
-                $contentLength = (int) $contentLength;
-            }
-
-            if (isset($headers["transfer-encoding"])) {
-                $value = strtolower($headers["transfer-encoding"][0]);
-                if (!($isChunked = $value === "chunked") && $value !== "identity") {
-                    throw new ClientException(
-                        "Bad Request: unsupported transfer-encoding",
+                        "Bad Request: " . $e->getMessage(),
                         Status::BAD_REQUEST
                     );
                 }
-            }
 
-            if ($this->options->shouldNormalizeMethodCase()) {
-                $method = \strtoupper($method);
-            }
-
-            if (!isset($headers["host"][0])) {
-                throw new ClientException("Bad Request: missing host header", Status::BAD_REQUEST);
-            }
-
-            if (isset($headers["host"][1])) {
-                throw new ClientException("Bad Request: multiple host headers", Status::BAD_REQUEST);
-            }
-
-            if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\])(?::([1-9]\d*))?$#i", $headers["host"][0], $matches)) {
-                throw new ClientException("Bad Request: invalid host header", Status::BAD_REQUEST);
-            }
-
-            $host = $matches[1];
-            $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
-            $scheme = $this->client->isEncrypted() ? "https" : "http";
-            $host = \rawurldecode($host);
-            $authority = $port ? $host . ":" . $port : $host;
-
-            try {
-                if ($target[0] === "/") { // origin-form
-                    $uri = new Uri($scheme . "://" . $authority . $target);
-                } elseif ($target === "*") { // asterisk-form
-                    $uri = new Uri($scheme . "://" . $authority);
-                } elseif (\preg_match("#^https?://#i", $target)) { // absolute-form
-                    $uri = new Uri($target);
-
-                    if ($uri->getHost() !== $host || $uri->getPort() !== $port) {
-                        throw new ClientException(
-                            "Bad Request: target host mis-matched to host header",
-                            Status::BAD_REQUEST
-                        );
+                $contentLength = $headers["content-length"][0] ?? null;
+                if ($contentLength !== null) {
+                    if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {
+                        throw new ClientException("Bad Request: invalid content length", Status::BAD_REQUEST);
                     }
 
-                    if ($uri->getPath() === "") {
-                        throw new ClientException(
-                            "Bad Request: no request path provided in target",
-                            Status::BAD_REQUEST
-                        );
-                    }
-                } else { // authority-form
-                    if ($method !== "CONNECT") {
-                        throw new ClientException(
-                            "Bad Request: authority-form only valid for CONNECT requests",
-                            Status::BAD_REQUEST
-                        );
-                    }
+                    $contentLength = (int) $contentLength;
+                }
 
-                    $uri = new Uri($target);
-
-                    if ($uri->getPath() !== "") {
+                if (isset($headers["transfer-encoding"])) {
+                    $value = strtolower($headers["transfer-encoding"][0]);
+                    if (!($isChunked = $value === "chunked") && $value !== "identity") {
                         throw new ClientException(
-                            "Bad Request: authority-form does not allow a path component in the target",
+                            "Bad Request: unsupported transfer-encoding",
                             Status::BAD_REQUEST
                         );
                     }
                 }
-            } catch (InvalidUriException $exception) {
-                throw new ClientException("Bad Request: invalid target", Status::BAD_REQUEST, $exception);
-            }
 
-            // Handle HTTP/2 upgrade request.
-            if ($protocol === "1.1"
-                && isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0])
-                && $this->options->isHttp2Enabled()
-                && false !== stripos($headers["connection"][0], "upgrade")
-                && strtolower($headers["upgrade"][0]) === "h2c"
-                && false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
-            ) {
-                // Request instance will be overwritten below. This is for sending the switching protocols response.
-                $responseWriter = $this->writer(new Response(new InMemoryStream, [
-                    "connection" => "upgrade",
-                    "upgrade" => "h2c",
-                ], Status::SWITCHING_PROTOCOLS), new Request($this->client, $method, $uri, $headers, null, $protocol));
-                $responseWriter->send(null); // Flush before replacing
+                if ($this->options->shouldNormalizeMethodCase()) {
+                    $method = \strtoupper($method);
+                }
 
-                // Internal upgrade
-                $this->http2 = new Http2Driver($this->options, $this->timeReference);
-                $parser = $this->http2->setup($this->client, $this->onMessage, $this->write, $h2cSettings);
+                if (!isset($headers["host"][0])) {
+                    throw new ClientException("Bad Request: missing host header", Status::BAD_REQUEST);
+                }
 
-                $parser->current(); // Yield from this parser after reading the current request body.
+                if (isset($headers["host"][1])) {
+                    throw new ClientException("Bad Request: multiple host headers", Status::BAD_REQUEST);
+                }
 
-                // Not needed for HTTP/2 request.
-                unset($headers["upgrade"], $headers["connection"], $headers["http2-settings"]);
+                if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\])(?::([1-9]\d*))?$#i", $headers["host"][0], $matches)) {
+                    throw new ClientException("Bad Request: invalid host header", Status::BAD_REQUEST);
+                }
 
-                // Make request look like HTTP/2 request.
-                $headers[":method"] = [$method];
-                $headers[":authority"] = [$uri->getAuthority(false)];
-                $headers[":scheme"] = [$uri->getScheme()];
-                $headers[":path"] = [$target];
+                $host = $matches[1];
+                $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
+                $scheme = $this->client->isEncrypted() ? "https" : "http";
+                $host = \rawurldecode($host);
+                $authority = $port ? $host . ":" . $port : $host;
 
-                $protocol = "2.0";
-            }
+                try {
+                    if ($target[0] === "/") { // origin-form
+                        $uri = new Uri($scheme . "://" . $authority . $target);
+                    } elseif ($target === "*") { // asterisk-form
+                        $uri = new Uri($scheme . "://" . $authority);
+                    } elseif (\preg_match("#^https?://#i", $target)) { // absolute-form
+                        $uri = new Uri($target);
 
-            if (!($isChunked || $contentLength)) {
-                // Wait for response to be fully written.
-                $buffer .= yield ($this->onMessage)(new Request(
-                    $this->client,
-                    $method,
-                    $uri,
-                    $headers,
-                    null,
-                    $protocol
-                ));
+                        if ($uri->getHost() !== $host || $uri->getPort() !== $port) {
+                            throw new ClientException(
+                                "Bad Request: target host mis-matched to host header",
+                                Status::BAD_REQUEST
+                            );
+                        }
 
-                continue;
-            }
+                        if ($uri->getPath() === "") {
+                            throw new ClientException(
+                                "Bad Request: no request path provided in target",
+                                Status::BAD_REQUEST
+                            );
+                        }
+                    } else { // authority-form
+                        if ($method !== "CONNECT") {
+                            throw new ClientException(
+                                "Bad Request: authority-form only valid for CONNECT requests",
+                                Status::BAD_REQUEST
+                            );
+                        }
 
-            // HTTP/1.x clients only ever have a single body emitter.
-            $this->bodyEmitter = $emitter = new Emitter;
-            $trailerDeferred = new Deferred;
-            $maxBodySize = $this->options->getMaxBodySize();
+                        $uri = new Uri($target);
 
-            $body = new Body(
-                new IteratorStream($this->bodyEmitter->iterate()),
-                function (int $bodySize) use (&$maxBodySize) {
-                    if ($bodySize > $maxBodySize) {
-                        $maxBodySize = $bodySize;
+                        if ($uri->getPath() !== "") {
+                            throw new ClientException(
+                                "Bad Request: authority-form does not allow a path component in the target",
+                                Status::BAD_REQUEST
+                            );
+                        }
                     }
-                },
-                $trailerDeferred->promise()
-            );
+                } catch (InvalidUriException $exception) {
+                    throw new ClientException("Bad Request: invalid target", Status::BAD_REQUEST, $exception);
+                }
 
-            $request = new Request($this->client, $method, $uri, $headers, $body, $protocol);
+                // Handle HTTP/2 upgrade request.
+                if ($protocol === "1.1"
+                    && isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0])
+                    && $this->options->isHttp2Enabled()
+                    && false !== stripos($headers["connection"][0], "upgrade")
+                    && strtolower($headers["upgrade"][0]) === "h2c"
+                    && false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
+                ) {
+                    // Request instance will be overwritten below. This is for sending the switching protocols response.
+                    $buffer .= yield new Coroutine($this->writer(
+                        new Response(new InMemoryStream, [
+                            "connection" => "upgrade",
+                            "upgrade"    => "h2c",
+                        ], Status::SWITCHING_PROTOCOLS),
+                        new Request($this->client, $method, $uri, $headers, null, $protocol)
+                    ));
 
-            if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
-                $responseWriter = $this->writer(new Response(new InMemoryStream, [], Status::CONTINUE), $request);
-                $responseWriter->send(null); // Flush writer.
-            }
+                    // Internal upgrade
+                    $this->http2 = new Http2Driver($this->options, $this->timeReference);
+                    $parser = $this->http2->setup($this->client, $this->onMessage, $this->write, $h2cSettings);
 
-            $promise = ($this->onMessage)($request); // Do not yield promise until body is completely read.
+                    $parser->current(); // Yield from this parser after reading the current request body.
 
-            // Must remove reference to Request and Body objects so they are destroyed when responder completes.
-            $request = null;
-            $body = "";
+                    // Not needed for HTTP/2 request.
+                    unset($headers["upgrade"], $headers["connection"], $headers["http2-settings"]);
 
-            try {
+                    // Make request look like HTTP/2 request.
+                    $headers[":method"] = [$method];
+                    $headers[":authority"] = [$uri->getAuthority(false)];
+                    $headers[":scheme"] = [$uri->getScheme()];
+                    $headers[":path"] = [$target];
+
+                    $protocol = "2.0";
+                }
+
+                if (!($isChunked || $contentLength)) {
+                    // Wait for response to be fully written.
+                    $buffer .= yield ($this->onMessage)(new Request(
+                        $this->client,
+                        $method,
+                        $uri,
+                        $headers,
+                        null,
+                        $protocol
+                    ));
+
+                    continue;
+                }
+
+                // HTTP/1.x clients only ever have a single body emitter.
+                $this->bodyEmitter = $emitter = new Emitter;
+                $trailerDeferred = new Deferred;
+                $maxBodySize = $this->options->getMaxBodySize();
+
+                $body = new Body(
+                    new IteratorStream($this->bodyEmitter->iterate()),
+                    function (int $bodySize) use (&$maxBodySize) {
+                        if ($bodySize > $maxBodySize) {
+                            $maxBodySize = $bodySize;
+                        }
+                    },
+                    $trailerDeferred->promise()
+                );
+
+                $request = new Request($this->client, $method, $uri, $headers, $body, $protocol);
+
+                if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
+                    $buffer .= yield new Coroutine($this->writer(
+                        new Response(new InMemoryStream, [], Status::CONTINUE),
+                        $request
+                    ));
+                }
+
+                $promise = ($this->onMessage)($request); // Do not yield promise until body is completely read.
+
+                // Must remove reference to Request and Body objects so they are destroyed when responder completes.
+                $request = null;
+                $body = "";
+
                 if ($isChunked) {
                     $bodySize = 0;
                     while (true) {
@@ -570,26 +598,50 @@ class Http1Driver implements HttpDriver {
                 $emitter->complete();
 
                 $buffer .= yield $promise; // Wait for response to be fully written.
-            } catch (\Throwable $exception) {
-                // Catching and rethrowing to set $exception to be used in finally.
-                throw $exception;
-            } finally {
-                if ($this->bodyEmitter !== null) {
-                    $emitter = $this->bodyEmitter;
-                    $this->bodyEmitter = null;
-                    $emitter->fail($exception ?? new ClientException(
-                        "Client disconnected",
-                        Status::REQUEST_TIMEOUT
-                    ));
-                }
-
-                if ($trailerDeferred !== null) {
-                    $exception = $exception ?? new ClientException("Client disconnected", Status::REQUEST_TIMEOUT);
-                    $trailerDeferred->fail($exception);
-                    $trailerDeferred = null;
-                }
+            } while (true);
+        } catch (ClientException $exception) {
+            if ($this->bodyEmitter === null || $this->client->pendingResponseCount()) {
+                // Send an error response only if another response has not already been sent to the request.
+                yield new Coroutine($this->sendErrorResponse($exception));
             }
-        } while (true);
+            return;
+        } finally {
+            if ($this->bodyEmitter !== null) {
+                $emitter = $this->bodyEmitter;
+                $this->bodyEmitter = null;
+                $emitter->fail($exception ?? new ClientException(
+                    "Client disconnected",
+                    Status::REQUEST_TIMEOUT
+                ));
+            }
+
+            if (isset($trailerDeferred)) {
+                $trailerDeferred->fail($exception ?? new ClientException(
+                    "Client disconnected",
+                    Status::REQUEST_TIMEOUT
+                ));
+                $trailerDeferred = null;
+            }
+        }
+    }
+
+    /**
+     * Creates an error response from the error handler and sends that response to the client.
+     *
+     * @param \Aerys\ClientException $exception
+     *
+     * @return \Generator
+     */
+    private function sendErrorResponse(ClientException $exception): \Generator {
+        $message = $exception->getMessage();
+        $status = $exception->getCode() ?: Status::BAD_REQUEST;
+
+        /** @var \Aerys\Response $response */
+        $response = yield $this->errorHandler->handle($status, $message);
+
+        $response->setHeader("connection", "close");
+
+        yield from $this->writer($response);
     }
 
     public function pendingRequestCount(): int {
@@ -598,6 +650,15 @@ class Http1Driver implements HttpDriver {
             : ($this->bodyEmitter !== null ? 1 : 0);
     }
 
+    /**
+     * Filters and updates response headers based on protocol and connection header from the request.
+     *
+     * @param \Aerys\Response $response
+     * @param string $protocol Request protocol.
+     * @param array $connection Request connection header.
+     *
+     * @return string[][] Response headers to be written.
+     */
     private function filter(Response $response, string $protocol = "1.0", array $connection = []): array {
         $headers = $response->getHeaders();
 

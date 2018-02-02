@@ -395,7 +395,7 @@ class Server {
         $this->clients[$client->getId()] = $client;
 
         if ($this->options->isHttp1Enabled()) {
-            $client->start(new Http1Driver($this->options, $this->timeReference));
+            $client->start(new Http1Driver($this->options, $this->timeReference, $this->errorHandler));
             return;
         }
 
