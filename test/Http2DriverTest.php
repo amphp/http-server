@@ -26,7 +26,7 @@ class Http2DriverTest extends TestCase {
         $data = "";
         $headers = HPack::encode($headers);
         $all = str_split($headers, $split);
-        if ($split != PHP_INT_MAX) {
+        if ($split !== PHP_INT_MAX) {
             $flag = Http2Driver::PADDED;
             $len = 1;
             $all[0] = chr($len) . $all[0] . str_repeat("\0", $len);
@@ -240,7 +240,7 @@ class Http2DriverTest extends TestCase {
         $data = self::packFrame(pack(
             "nNnNnN",
             Http2Driver::INITIAL_WINDOW_SIZE,
-            $options->getMaxBodySize() + 256,
+            $options->getMaxBodySize(),
             Http2Driver::MAX_CONCURRENT_STREAMS,
             $options->getMaxConcurrentStreams(),
             Http2Driver::MAX_HEADER_LIST_SIZE,

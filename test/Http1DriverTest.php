@@ -784,7 +784,7 @@ class Http1DriverTest extends TestCase {
             Http2DriverTest::packFrame(pack(
                 "nNnNnN",
                 Http2Driver::INITIAL_WINDOW_SIZE,
-                $options->getMaxBodySize() + 256,
+                $options->getMaxBodySize(),
                 Http2Driver::MAX_CONCURRENT_STREAMS,
                 $options->getMaxConcurrentStreams(),
                 Http2Driver::MAX_HEADER_LIST_SIZE,
@@ -831,7 +831,7 @@ class Http1DriverTest extends TestCase {
                 $expected = Http2DriverTest::packFrame(pack(
                     "nNnNnN",
                     Http2Driver::INITIAL_WINDOW_SIZE,
-                    $options->getMaxBodySize() + 256,
+                    $options->getMaxBodySize(),
                     Http2Driver::MAX_CONCURRENT_STREAMS,
                     $options->getMaxConcurrentStreams(),
                     Http2Driver::MAX_HEADER_LIST_SIZE,

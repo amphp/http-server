@@ -18,7 +18,10 @@ class Http2Stream {
     const CLOSED = 0b0110;
 
     /** @var int */
-    public $window;
+    public $serverWindow;
+
+    /** @var int */
+    public $clientWindow;
 
     /** @var string */
     public $buffer = "";
@@ -29,8 +32,9 @@ class Http2Stream {
     /** @var \Amp\Deferred|null */
     public $deferred;
 
-    public function __construct(int $size = Http2Driver::DEFAULT_WINDOW_SIZE, int $state = self::OPEN) {
-        $this->window = $size;
+    public function __construct(int $serverSize, int $clientSize, int $state = self::OPEN) {
+        $this->serverWindow = $serverSize;
+        $this->clientWindow = $clientSize;
         $this->state = $state;
     }
 }

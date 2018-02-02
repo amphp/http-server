@@ -309,6 +309,9 @@ class Client {
             return; // Client already closed.
         }
 
+        $onClose = $this->onClose;
+        $this->onClose = null;
+
         $this->status = self::CLOSED_RDWR;
 
         $this->clear();
@@ -326,9 +329,6 @@ class Client {
         } else {
             \assert($this->logger->debug("Close connection on {$this->serverAddress} #{$this->id}") || true);
         }
-
-        $onClose = $this->onClose;
-        $this->onClose = null;
 
         foreach ($onClose as $callback) {
             $callback($this);

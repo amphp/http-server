@@ -332,6 +332,13 @@ class Http1Driver implements HttpDriver {
                     throw new ClientException("Bad Request: invalid target", Status::BAD_REQUEST, $exception);
                 }
 
+                if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
+                    $buffer .= yield new Coroutine($this->writer(
+                        new Response(new InMemoryStream, [], Status::CONTINUE),
+                        new Request($this->client, $method, $uri, $headers, null, $protocol)
+                    ));
+                }
+
                 // Handle HTTP/2 upgrade request.
                 if ($protocol === "1.1"
                     && isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0])
@@ -396,19 +403,18 @@ class Http1Driver implements HttpDriver {
                     $trailerDeferred->promise()
                 );
 
-                $request = new Request($this->client, $method, $uri, $headers, $body, $protocol);
+                // Do not yield promise until body is completely read.
+                $promise = ($this->onMessage)(new Request(
+                    $this->client,
+                    $method,
+                    $uri,
+                    $headers,
+                    $body,
+                    $protocol
+                ));
 
-                if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
-                    $buffer .= yield new Coroutine($this->writer(
-                        new Response(new InMemoryStream, [], Status::CONTINUE),
-                        $request
-                    ));
-                }
+                // DO NOT leave a reference to the Request or Body objects within the parser!
 
-                $promise = ($this->onMessage)($request); // Do not yield promise until body is completely read.
-
-                // Must remove reference to Request and Body objects so they are destroyed when responder completes.
-                $request = null;
                 $body = "";
 
                 if ($isChunked) {
