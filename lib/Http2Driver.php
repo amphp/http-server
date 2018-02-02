@@ -316,34 +316,41 @@ class Http2Driver implements HttpDriver {
     }
 
     private function writeBufferedData(int $id): Promise {
-        $delta = \min($this->window, $this->streams[$id]->window);
-        $length = \strlen($this->streams[$id]->buffer);
+        $stream = $this->streams[$id];
+        $delta = \min($this->window, $stream->window);
+        $length = \strlen($stream->buffer);
 
         if ($delta >= $length) {
             $this->window -= $length;
 
             if ($length > $this->maxFrameSize) {
-                $split = str_split($this->streams[$id]->buffer, $this->maxFrameSize);
-                $this->streams[$id]->buffer = array_pop($split);
+                $split = str_split($stream->buffer, $this->maxFrameSize);
+                $stream->buffer = array_pop($split);
                 foreach ($split as $part) {
                     $this->writeFrame($part, self::DATA, self::NOFLAG, $id);
                 }
             }
 
-            if ($this->streams[$id]->state & Http2Stream::LOCAL_CLOSED) {
-                $promise = $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::END_STREAM, $id);
+            if ($stream->state & Http2Stream::LOCAL_CLOSED) {
+                $promise = $this->writeFrame($stream->buffer, self::DATA, self::END_STREAM, $id);
                 $this->releaseStream($id);
             } else {
-                $promise = $this->writeFrame($this->streams[$id]->buffer, self::DATA, self::NOFLAG, $id);
-                $this->streams[$id]->window -= $length;
-                $this->streams[$id]->buffer = "";
+                $promise = $this->writeFrame($stream->buffer, self::DATA, self::NOFLAG, $id);
+                $stream->window -= $length;
+                $stream->buffer = "";
+            }
+
+            if ($stream->deferred) {
+                $deferred = $stream->deferred;
+                $stream->deferred = null;
+                $deferred->resolve();
             }
 
             return $promise;
         }
 
         if ($delta > 0) {
-            $data = $this->streams[$id]->buffer;
+            $data = $stream->buffer;
             $end = $delta - $this->maxFrameSize;
 
             for ($off = 0; $off < $end; $off += $this->maxFrameSize) {
@@ -352,14 +359,14 @@ class Http2Driver implements HttpDriver {
 
             $promise = $this->writeFrame(substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
 
-            $this->streams[$id]->buffer = substr($data, $delta);
-            $this->streams[$id]->window -= $delta;
+            $stream->buffer = substr($data, $delta);
+            $stream->window -= $delta;
             $this->window -= $delta;
 
             return $promise;
         }
 
-        $this->streams[$id]->deferred = $deferred = new Deferred;
+        $stream->deferred = $deferred = new Deferred;
         return $deferred->promise();
     }
 
@@ -370,10 +377,7 @@ class Http2Driver implements HttpDriver {
     }
 
     protected function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise {
-        \assert($stream === 0 || isset($this->streams[$stream]), "The stream was closed");
-
         $data = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
-
         return ($this->write)($data);
     }
 
@@ -867,12 +871,6 @@ class Http2Driver implements HttpDriver {
                             if (isset($this->streams[$id])) {
                                 $this->streams[$id]->window += $windowSize;
 
-                                if ($this->streams[$id]->deferred) {
-                                    $deferred = $this->streams[$id]->deferred;
-                                    $this->streams[$id]->deferred = null;
-                                    $deferred->resolve();
-                                }
-
                                 if ($this->streams[$id]->buffer !== "") {
                                     $this->writeBufferedData($id);
                                 }
@@ -884,12 +882,6 @@ class Http2Driver implements HttpDriver {
                         $this->window += $windowSize;
 
                         foreach ($this->streams as $id => $stream) {
-                            if ($stream->deferred) {
-                                $deferred = $stream->deferred;
-                                $stream->deferred = null;
-                                $deferred->resolve();
-                            }
-
                             if ($stream->buffer === "") {
                                 continue;
                             }
@@ -1067,26 +1059,19 @@ class Http2Driver implements HttpDriver {
                 }
 
                 stream_error: {
-                    if (!isset($this->streams[$id])) {
-                        $this->streams[$id] = new Http2Stream($this->initialWindowSize);
-                    }
-
                     $this->writeFrame(pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
                     unset($packedHeaders[$id], $bodyLengths[$id]);
 
-                    if (isset($this->trailerDeferreds[$id])) {
-                        $deferred = $this->trailerDeferreds[$id];
-                        $this->trailerDeferreds[$id] = null;
-                        $deferred->fail(new ClientException("Stream error", Status::BAD_REQUEST));
+                    if (isset($this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
+                        $exception = new ClientException("Stream error", Status::BAD_REQUEST);
+
+                        $this->trailerDeferreds[$id]->fail($exception);
+                        $this->bodyEmitters[$id]->fail($exception);
                     }
 
-                    if (isset($this->bodyEmitters[$id])) {
-                        $emitter = $this->bodyEmitters[$id];
-                        $this->bodyEmitters[$id] = null;
-                        $emitter->fail(new ClientException("Stream error", Status::BAD_REQUEST));
+                    if (isset($this->streams[$id])) {
+                        $this->releaseStream($id);
                     }
-
-                    $this->releaseStream($id);
 
                     // consume whole frame to be able to continue this connection
                     $length -= \strlen($buffer);
