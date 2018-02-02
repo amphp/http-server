@@ -342,6 +342,7 @@ class Http1Driver implements HttpDriver {
                 // Handle HTTP/2 upgrade request.
                 if ($protocol === "1.1"
                     && isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0])
+                    && !$this->client->isEncrypted()
                     && $this->options->isHttp2Enabled()
                     && false !== stripos($headers["connection"][0], "upgrade")
                     && strtolower($headers["upgrade"][0]) === "h2c"
@@ -651,9 +652,15 @@ class Http1Driver implements HttpDriver {
     }
 
     public function pendingRequestCount(): int {
-        return $this->http2
-            ? $this->http2->pendingRequestCount()
-            : ($this->bodyEmitter !== null ? 1 : 0);
+        if ($this->bodyEmitter) {
+            return 1;
+        }
+
+        if ($this->http2) {
+            return $this->http2->pendingRequestCount();
+        }
+
+        return 0;
     }
 
     /**
