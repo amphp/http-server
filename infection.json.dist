@@ -1,0 +1,11 @@
+{
+    "timeout": 10,
+    "source": {
+        "directories": [
+            "lib"
+        ]
+    },
+    "logs": {
+        "text": "build\/infection-log.txt"
+    }
+}
