@@ -8,7 +8,6 @@ use Aerys\Options;
 use Aerys\Request;
 use Aerys\Responder;
 use Aerys\Response;
-use Aerys\RouteArguments;
 use Aerys\Router;
 use Aerys\Server;
 use Amp\Failure;

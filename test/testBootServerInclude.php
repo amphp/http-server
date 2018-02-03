@@ -1,7 +1,6 @@
 <?php
 
 use Aerys\CallableResponder;
-use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;
 use Amp\Success;
