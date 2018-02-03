@@ -5,8 +5,5 @@ namespace PHPSTORM_META {
         \PHPUnit\Framework\TestCase::createMock("") => [
             "" == "@",
         ],
-        \Aerys\Request::get("") => [
-            "" == "@",
-        ],
     ];
 }

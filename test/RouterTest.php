@@ -58,7 +58,7 @@ class RouterTest extends TestCase {
     public function testUseCanonicalRedirector() {
         $router = new Router;
         $router->addRoute("GET", "/{name}/{age}/?", new CallableResponder(function (Request $req) use (&$routeArgs) {
-            $routeArgs = $req->get(RouteArguments::class);
+            $routeArgs = $req->getAttribute(Router::class);
             return new Response;
         }));
         $router->prefix("/mediocre-dev");
@@ -78,6 +78,6 @@ class RouterTest extends TestCase {
         $response = Promise\wait($router->respond($request));
 
         $this->assertEquals(Status::OK, $response->getStatus());
-        $this->assertSame(["name" => "bob", "age" => "19"], $routeArgs->getAll());
+        $this->assertSame(["name" => "bob", "age" => "19"], $routeArgs);
     }
 }

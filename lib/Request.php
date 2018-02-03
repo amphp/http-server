@@ -284,18 +284,16 @@ class Request extends Message {
      * responders or middleware which are aware of this data can then access it without the server being tightly coupled
      * to specific implementations.
      *
-     * @param string $type Type name of the attribute to fetch.
+     * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
      *
-     * @return object
+     * @return mixed
      */
-    public function get(string $type) { /* : object */
-        $key = \strtolower(\ltrim($type, "\\"));
-
-        if (!isset($this->attributes[$key])) {
-            throw new MissingAttributeError("The requested attribute '{$type}' does not exist");
+    public function getAttribute(string $name) {
+        if (!isset($this->attributes[$name])) {
+            throw new MissingAttributeError("The requested attribute '{$name}' does not exist");
         }
 
-        return $this->attributes[$key];
+        return $this->attributes[$name];
     }
 
     /**
@@ -305,15 +303,16 @@ class Request extends Message {
      * responders or middleware which are aware of this data can then access it without the server being tightly coupled
      * to specific implementations.
      *
-     * Note: Only value objects should be attached to requests, nothing that is covered by an interface.
+     * **Example**
      *
-     * @param object $value Any object, can be accessed via {@see self::get()} by type name.
+     * ```php
+     * $request->setAttribute(Router::class, $routeArguments);
+     * ```
+     *
+     * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
+     * @param mixed $value Value of the attribute, might be any value.
      */
-    public function attach(/* object */ $value) {
-        if (!\is_object($value)) {
-            throw new \TypeError("Expected an object, got " . \gettype($value));
-        }
-
-        $this->attributes[\strtolower(\ltrim(\get_class($value), "\\"))] = $value;
+    public function setAttribute(string $name, $value) {
+        $this->attributes[$name] = $value;
     }
 }

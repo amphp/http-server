@@ -15,30 +15,24 @@ use Amp\Uri\Uri;
 use function Aerys\Middleware\stack;
 use function Amp\Promise\wait;
 
-final class StackTestAttribute {
-    public $buffer;
-}
-
 class StackTest extends TestCase {
     public function testStackAppliesMiddlewaresInCorrectOrder() {
         $request = new Request($this->createMock(Client::class), "GET", new Uri("/foobar"));
 
         $stack = stack(new CallableResponder(function (Request $request) {
             $response = new HtmlResponse("OK");
-            $response->setHeader("stack", $request->get(StackTestAttribute::class)->buffer);
+            $response->setHeader("stack", $request->getAttribute(StackTest::class));
 
             return $response;
         }), new class implements Middleware {
             public function process(Request $request, Responder $responder): Promise {
-                $attr = new StackTestAttribute;
-                $attr->buffer = "a";
-                $request->attach($attr);
+                $request->setAttribute(StackTest::class, "a");
 
                 return $responder->respond($request);
             }
         }, new class implements Middleware {
             public function process(Request $request, Responder $responder): Promise {
-                $request->get(StackTestAttribute::class)->buffer .= "b";
+                $request->setAttribute(StackTest::class, $request->getAttribute(StackTest::class) . "b");
 
                 return $responder->respond($request);
             }

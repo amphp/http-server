@@ -68,14 +68,14 @@ final class Router implements Responder, ServerObserver {
 
         if ($cacheEntry = $this->cache->get($toMatch)) {
             list($responder, $routeArgs) = $cacheEntry;
-            $request->attach(new RouteArguments($routeArgs));
+            $request->setAttribute(self::class, $routeArgs);
         } else {
             $match = $this->routeDispatcher->dispatch($method, $path);
 
             switch ($match[0]) {
                 case Dispatcher::FOUND:
                     list(, $responder, $routeArgs) = $match;
-                    $request->attach(new RouteArguments($routeArgs));
+                    $request->setAttribute(self::class, $routeArgs);
                     break;
 
                 case Dispatcher::NOT_FOUND:
@@ -150,7 +150,7 @@ final class Router implements Responder, ServerObserver {
      * Matched URI route arguments are made available to responders as a request attribute
      * which may be accessed with:
      *
-     *     $request->get(RouteArguments::class)
+     *     $request->getAttribute(Router::class)
      *
      * Route URIs ending in "/?" (without the quotes) allow a URI match with or without
      * the trailing slash. Temporary redirects are used to redirect to the canonical URI
