@@ -680,8 +680,8 @@ class Http1Driver implements HttpDriver {
         }
 
         $contentLength = $headers["content-length"][0] ?? null;
-        $shouldClose = (\in_array("close", $connection))
-            || (isset($headers["connection"]) && \in_array("close", $headers["connection"]));
+        $shouldClose = \in_array("close", $connection, true)
+            || (isset($headers["connection"]) && \in_array("close", $headers["connection"], true));
 
         if ($contentLength !== null) {
             $shouldClose = $shouldClose || $protocol === "1.0";

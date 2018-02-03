@@ -3,7 +3,6 @@
 namespace Aerys\Test;
 
 use Aerys\Client;
-use Aerys\ClientException;
 use Aerys\DefaultErrorHandler;
 use Aerys\ErrorHandler;
 use Aerys\Http1Driver;
@@ -11,11 +10,12 @@ use Aerys\Http2Driver;
 use Aerys\Options;
 use Aerys\Request;
 use Aerys\Response;
-use Aerys\Server;
 use Aerys\TimeReference;
 use Aerys\Trailers;
 use Amp\Artax\Internal\Parser;
 use Amp\ByteStream\InMemoryStream;
+use Amp\Coroutine;
+use Amp\Http\Status;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Success;
@@ -732,6 +732,66 @@ class Http1DriverTest extends TestCase {
             "date" => [""], // Empty due to mock TimeReference
             "transfer-encoding" => ["chunked"],
         ], $data);
+    }
+
+    /** @dataProvider provideWriteResponses */
+    public function testResponseWrite(Request $request, Response $response, string $expectedBuffer, bool $expectedClosed) {
+        $driver = new Http1Driver(
+            (new Options)->withConnectionTimeout(60),
+            $this->createMock(TimeReference::class),
+            $this->createMock(ErrorHandler::class)
+        );
+
+        $buffer = "";
+        $closed = false;
+
+        $driver->setup(
+            $this->createMock(Client::class),
+            $this->createCallback(0),
+            function (string $data, bool $close) use (&$buffer, &$closed) {
+                $buffer .= $data;
+
+                if ($close) {
+                    $closed = true;
+                }
+
+                return new Success;
+            }
+        );
+
+        Promise\wait(new Coroutine($driver->writer($response, $request)));
+
+        $this->assertSame($buffer, $expectedBuffer);
+        $this->assertSame($closed, $expectedClosed);
+    }
+
+    public function provideWriteResponses() {
+        return [
+            [
+                new Request($this->createMock(Client::class), "HEAD", new Uri("/")),
+                new Response(new InMemoryStream, [], Status::OK),
+                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n",
+                false,
+            ],
+            [
+                new Request($this->createMock(Client::class), "GET", new Uri("/")),
+                new Response(new InMemoryStream, [], Status::OK),
+                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n0\r\n\r\n",
+                false,
+            ],
+            [
+                new Request($this->createMock(Client::class), "GET", new Uri("/")),
+                new Response(new InMemoryStream, ["content-length" => 0], Status::OK),
+                "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\n\r\n",
+                false,
+            ],
+            [
+                new Request($this->createMock(Client::class), "GET", new Uri("/"), [], null, "1.0"),
+                new Response(new InMemoryStream, [], Status::OK),
+                "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: \r\n\r\n",
+                true,
+            ],
+        ];
     }
 
     public function testWriterAbortAfterHeaders() {
