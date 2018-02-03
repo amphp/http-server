@@ -240,16 +240,11 @@ final class Router implements Responder, ServerObserver {
         $this->running = true;
 
         $options = $server->getOptions();
-        $normalize = $options->shouldNormalizeMethodCase();
         $allowedMethods = $options->getAllowedMethods();
         $logger = $server->getLogger();
 
-        $this->routeDispatcher = simpleDispatcher(function (RouteCollector $rc) use ($normalize, $allowedMethods, $logger) {
+        $this->routeDispatcher = simpleDispatcher(function (RouteCollector $rc) use ($allowedMethods, $logger) {
             foreach ($this->routes as list($method, $uri, $responder)) {
-                if ($normalize) {
-                    $method = \strtoupper($method);
-                }
-
                 if (!\in_array($method, $allowedMethods, true)) {
                     $logger->alert(
                         "Router URI '$uri' uses method '$method' that is not in the list of allowed methods"

@@ -178,7 +178,7 @@ class Http1Driver implements HttpDriver {
 
     private function parser(): \Generator {
         $maxHeaderSize = $this->options->getMaxHeaderSize();
-        $bodyEmitSize = $this->options->getIoGranularity();
+        $bodyEmitSize = $this->options->getInputBufferSize();
         $parser = null;
 
         $buffer = yield;
@@ -224,7 +224,7 @@ class Http1Driver implements HttpDriver {
                 list(, $method, $target, $protocol) = $matches;
 
                 if ($protocol !== "1.1" && $protocol !== "1.0") {
-                    if ($protocol === "2.0" && $this->options->isHttp2Enabled()) {
+                    if ($protocol === "2.0" && $this->options->isHttp2UpgradeAllowed()) {
                         // Internal upgrade to HTTP/2.
                         $this->http2 = new Http2Driver($this->options, $this->timeReference);
                         $parser = $this->http2->setup($this->client, $this->onMessage, $this->write);
@@ -266,10 +266,6 @@ class Http1Driver implements HttpDriver {
                             Status::BAD_REQUEST
                         );
                     }
-                }
-
-                if ($this->options->shouldNormalizeMethodCase()) {
-                    $method = \strtoupper($method);
                 }
 
                 if (!isset($headers["host"][0])) {
@@ -343,7 +339,7 @@ class Http1Driver implements HttpDriver {
                 if ($protocol === "1.1"
                     && isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0])
                     && !$this->client->isEncrypted()
-                    && $this->options->isHttp2Enabled()
+                    && $this->options->isHttp2UpgradeAllowed()
                     && false !== stripos($headers["connection"][0], "upgrade")
                     && strtolower($headers["upgrade"][0]) === "h2c"
                     && false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)

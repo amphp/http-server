@@ -10,7 +10,6 @@ final class Options {
     private $connectionTimeout = 15; // seconds
 
     private $socketBacklogSize = 128;
-    private $normalizeMethodCase = true;
     private $maxConcurrentStreams = 20;
     private $maxFramesPerSecond = 60;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
@@ -18,13 +17,12 @@ final class Options {
     private $maxBodySize = 131072;
     private $maxHeaderSize = 32768;
     private $ioGranularity = 32768; // recommended: at least 16 KB
-    private $softStreamCap = 131072; // should be multiple of outputBufferSize
 
+    private $inputBufferSize = 8192;
     private $outputBufferSize = 8192;
     private $shutdownTimeout = 3000; // milliseconds
 
-    private $enableHttp1 = true;
-    private $enableHttp2 = true;
+    private $allowHttp2Upgrade = true;
 
     /**
      * @return bool True if server is in debug mode, false if in production mode.
@@ -179,26 +177,6 @@ final class Options {
     }
 
     /**
-     * @return bool True to UPPERCASE all request method strings, false uses case as given in client request.
-     */
-    public function shouldNormalizeMethodCase(): bool {
-        return $this->normalizeMethodCase;
-    }
-
-    /**
-     * @param bool $flag True to UPPERCASE all request method strings, false uses case as given in client request.
-     *     Defaults to true.
-     *
-     * @return \Aerys\Options
-     */
-    public function withNormalizeMethodCase(bool $flag): self {
-        $new = clone $this;
-        $new->normalizeMethodCase = $flag;
-
-        return $new;
-    }
-
-    /**
      * @return int Maximum request body size in bytes.
      */
     public function getMaxBodySize(): int {
@@ -248,32 +226,6 @@ final class Options {
 
         $new = clone $this;
         $new->maxHeaderSize = $bytes;
-
-        return $new;
-    }
-
-    /**
-     * @return int
-     */
-    public function getSoftStreamCap(): int {
-        return $this->softStreamCap;
-    }
-
-    /**
-     * @param int $bytes Default is 131072 (128k).
-     *
-     * @return \Aerys\Options
-     * @throws \Error
-     */
-    public function withSoftStreamCap(int $bytes): self {
-        if ($bytes < 0) {
-            throw new \Error(
-                "Soft stream cap setting must be greater than or equal to zero"
-            );
-        }
-
-        $new = clone $this;
-        $new->softStreamCap = $bytes;
 
         return $new;
     }
@@ -364,10 +316,6 @@ final class Options {
      * @return string[] An array of allowed request methods.
      */
     public function getAllowedMethods(): array {
-        if ($this->normalizeMethodCase) {
-            return \array_unique(\array_map("strtoupper", $this->allowedMethods));
-        }
-
         return $this->allowedMethods;
     }
 
@@ -414,6 +362,34 @@ final class Options {
 
         $new = clone $this;
         $new->allowedMethods = $allowedMethods;
+
+        return $new;
+    }
+
+    /**
+     * @return int The minimum number of bytes to buffer in incoming bodies before emitting chunks to the responder.
+     */
+    public function getInputBufferSize(): int {
+        return $this->inputBufferSize;
+    }
+
+    /**
+     * @param int $bytes The minimum number of bytes to buffer in incoming bodies before emitting chunks to the
+     *     responder. Default is 8192 (8k).
+     *
+     * @return \Aerys\Options
+     *
+     * @throws \Error If the number of bytes is less than 1.
+     */
+    public function withInputBufferSize(int $bytes): self {
+        if ($bytes < 1) {
+            throw new \Error(
+                "Input buffer size must be greater than zero bytes"
+            );
+        }
+
+        $new = clone $this;
+        $new->inputBufferSize = $bytes;
 
         return $new;
     }
@@ -474,63 +450,32 @@ final class Options {
     }
 
     /**
-     * @return bool True if HTTP/1.x is enabled, false if HTTP/2 only. Defaults to true.
+     * @return bool `true` if HTTP/2 requests may be established through upgrade requests or prior knowledge.
      */
-    public function isHttp1Enabled(): bool {
-        return $this->enableHttp1;
+    public function isHttp2UpgradeAllowed(): bool {
+        return $this->allowHttp2Upgrade;
     }
 
     /**
-     * Enables HTTP/1.x support, which is enabled by default.
+     * Enables unencrypted upgrade or prior knowledge requests to HTTP/2.
+     *
+     * @return \Aerys\Options
      */
-    public function withHttp1(): self {
+    public function withHttp2Upgrade(): self {
         $new = clone $this;
-        $new->enableHttp1 = true;
+        $new->allowHttp2Upgrade = true;
 
         return $new;
     }
 
     /**
-     * Disables HTTP/1.x support. Not recommended now, but will be recommended for encrypted servers in the future.
+     * Disables unencrypted upgrade or prior knowledge requests to HTTP/2.
+     *
+     * @return \Aerys\Options
      */
-    public function withoutHttp1(): self {
-        if (!$this->enableHttp2) {
-            throw new \Error("One of HTTP/1.x or HTTP/2 must be enabled");
-        }
-
+    public function withoutHttp2Upgrade(): self {
         $new = clone $this;
-        $new->enableHttp1 = false;
-
-        return $new;
-    }
-
-    /**
-     * @return bool True if HTTP/2 is enabled, false if HTTP/1.x only. Defaults to true.
-     */
-    public function isHttp2Enabled(): bool {
-        return $this->enableHttp2;
-    }
-
-    /**
-     * Enables HTTP/2 support, which is enabled by default.
-     */
-    public function withHttp2(): self {
-        $new = clone $this;
-        $new->enableHttp2 = true;
-
-        return $new;
-    }
-
-    /**
-     * Disables HTTP/2 support.
-     */
-    public function withoutHttp2(): self {
-        if (!$this->enableHttp1) {
-            throw new \Error("One of HTTP/1.x or HTTP/2 must be enabled");
-        }
-
-        $new = clone $this;
-        $new->enableHttp2 = false;
+        $new->allowHttp2Upgrade = false;
 
         return $new;
     }
