@@ -697,12 +697,6 @@ class Http1DriverTest extends TestCase {
         $status = 200;
         $data = "foobar";
 
-        $server = $this->createMock(Server::class);
-        $server->method('onTimeUpdate')
-            ->willReturnCallback(function (callable $callback) {
-                $callback(0, "date");
-            });
-
         $driver = new Http1Driver(
             (new Options)->withConnectionTimeout(60),
             $this->createMock(TimeReference::class),

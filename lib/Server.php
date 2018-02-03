@@ -40,6 +40,9 @@ class Server {
     /** @var ErrorHandler */
     private $errorHandler;
 
+    /** @var \Aerys\HttpDriverFactory */
+    private $driverFactory;
+
     /** @var \Psr\Log\LoggerInterface */
     private $logger;
 
@@ -92,13 +95,9 @@ class Server {
         $this->timeReference->onTimeUpdate($this->callableFromInstanceMethod("timeoutKeepAlives"));
 
         $this->observers = new \SplObjectStorage;
-        $this->observers->attach($this->timeReference);
-
-        if ($this->responder instanceof ServerObserver) {
-            $this->observers->attach($this->responder);
-        }
 
         $this->errorHandler = new DefaultErrorHandler;
+        $this->driverFactory = new DefaultHttpDriverFactory;
     }
 
     /**
@@ -144,6 +143,21 @@ class Server {
         }
 
         $this->host->encrypt($certificate);
+    }
+
+    /**
+     * Define a custom HTTP driver factory.
+     *
+     * @param \Aerys\HttpDriverFactory $driverFactory
+     *
+     * @throws \Error If the server has started.
+     */
+    public function setDriverFactory(HttpDriverFactory $driverFactory) {
+        if ($this->state) {
+            throw new \Error("Cannot set the driver factory after the server has started");
+        }
+
+        $this->driverFactory = $driverFactory;
     }
 
     /**
@@ -198,6 +212,13 @@ class Server {
     }
 
     /**
+     * @return \Aerys\TimeReference
+     */
+    public function getTimeReference(): TimeReference {
+        return $this->timeReference;
+    }
+
+    /**
      * Attach an observer.
      *
      * @param ServerObserver $observer
@@ -210,13 +231,6 @@ class Server {
         }
 
         $this->observers->attach($observer);
-    }
-
-    /**
-     * @param callable $callback
-     */
-    public function onTimeUpdate(callable $callback) {
-        $this->timeReference->onTimeUpdate($callback);
     }
 
     /**
@@ -263,6 +277,16 @@ class Server {
 
         $this->boundServers = yield $bindSockets($this->generateAddressContextMap(), $socketBinder);
 
+        $this->observers->attach($this->timeReference);
+
+        if ($this->driverFactory instanceof ServerObserver) {
+            $this->observers->attach($this->driverFactory);
+        }
+
+        if ($this->responder instanceof ServerObserver) {
+            $this->observers->attach($this->responder);
+        }
+
         $this->state = self::STARTING;
         try {
             $promises = [];
@@ -301,24 +325,17 @@ class Server {
             ]];
 
             if ($tlsContext) {
+                $protocols = $this->driverFactory->getApplicationLayerProtocols();
+
                 if (self::hasAlpnSupport()) {
-                    $protocols = [];
-
-                    if ($this->options->isHttp2Enabled()) {
-                        $protocols[] = "h2";
-                    }
-
-                    if ($this->options->isHttp1Enabled()) {
-                        $protocols[] = "http1.1";
-                    }
-
                     $tlsContext["alpn_protocols"] = \implode(", ", $protocols);
-                } elseif ($this->options->isHttp2Enabled()) {
-                    $this->logger->alert("HTTP/2 requires ALPN support; HTTP/2 will not available over TLS");
+                } elseif ($protocols) {
+                    $this->logger->alert("ALPN not supported with the installed version of OpenSSL");
                 }
 
                 $context["ssl"] = $tlsContext;
             }
+
             $addrCtxMap[$address] = $context;
         }
 
@@ -394,12 +411,7 @@ class Server {
 
         $this->clients[$client->getId()] = $client;
 
-        if ($this->options->isHttp1Enabled()) {
-            $client->start(new Http1Driver($this->options, $this->timeReference, $this->errorHandler));
-            return;
-        }
-
-        $client->start(new Http2Driver($this->options, $this->timeReference));
+        $client->start($this->driverFactory);
     }
 
     /**

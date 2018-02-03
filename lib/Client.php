@@ -153,17 +153,39 @@ class Client {
     /**
      * Listen for requests on the client and parse them using the given HTTP driver.
      *
-     * @param \Aerys\HttpDriver $driver
+     * @param \Aerys\HttpDriverFactory $driverFactory
      *
      * @throws \Error If the client has already been started.
      */
-    public function start(HttpDriver $driver) {
-        if ($this->httpDriver) {
+    public function start(HttpDriverFactory $driverFactory) {
+        if ($this->readWatcher) {
             throw new \Error("Client already started");
         }
 
         $this->timeoutCache->renew($this->id);
 
+        $this->writeWatcher = Loop::onWritable($this->socket, $this->callableFromInstanceMethod("onWritable"));
+        Loop::disable($this->writeWatcher);
+
+        $context = \stream_context_get_options($this->socket);
+        if (isset($context["ssl"])) {
+            $this->readWatcher = Loop::onReadable(
+                $this->socket,
+                $this->callableFromInstanceMethod("negotiateCrypto"),
+                $driverFactory
+            );
+            return;
+        }
+
+        $this->setup($driverFactory->selectDriver($this));
+
+        $this->readWatcher = Loop::onReadable($this->socket, $this->callableFromInstanceMethod("onReadable"));
+    }
+
+    /**
+     * @param \Aerys\HttpDriver $driver
+     */
+    private function setup(HttpDriver $driver) {
         $this->httpDriver = $driver;
         $this->requestParser = $this->httpDriver->setup(
             $this,
@@ -172,17 +194,6 @@ class Client {
         );
 
         $this->requestParser->current();
-
-        $this->writeWatcher = Loop::onWritable($this->socket, $this->callableFromInstanceMethod("onWritable"));
-        Loop::disable($this->writeWatcher);
-
-        $context = \stream_context_get_options($this->socket);
-        if (isset($context["ssl"])) {
-            $this->readWatcher = Loop::onReadable($this->socket, $this->callableFromInstanceMethod("negotiateCrypto"));
-            return;
-        }
-
-        $this->readWatcher = Loop::onReadable($this->socket, $this->callableFromInstanceMethod("onReadable"));
     }
 
     /**
@@ -414,8 +425,12 @@ class Client {
 
     /**
      * Called by the onReadable watcher after the client connects until encryption is enabled.
+     *
+     * @param string $watcher
+     * @param resource $socket
+     * @param \Aerys\HttpDriverFactory $driverFactory
      */
-    private function negotiateCrypto() {
+    private function negotiateCrypto(string $watcher, $socket, HttpDriverFactory $driverFactory) {
         if ($handshake = @\stream_socket_enable_crypto($this->socket, true)) {
             Loop::cancel($this->readWatcher);
 
@@ -423,11 +438,13 @@ class Client {
             $this->cryptoInfo = \stream_get_meta_data($this->socket)["crypto"];
 
             \assert($this->logger->debug(\sprintf(
-                "Crypto negotiated %s%s:%d",
-                $this->cryptoInfo["alpn_protocol"] ?? null === "h2" ? "(h2) " : "",
+                "Crypto negotiated (ALPN: %s) %s:%d",
+                ($this->cryptoInfo["alpn_protocol"] ?? "none"),
                 $this->clientAddress,
                 $this->clientPort
             )) || true);
+
+            $this->setup($driverFactory->selectDriver($this));
 
             $this->readWatcher = Loop::onReadable($this->socket, $this->callableFromInstanceMethod("onReadable"));
             return;

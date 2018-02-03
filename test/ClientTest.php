@@ -8,6 +8,7 @@ use Aerys\Client;
 use Aerys\DefaultErrorHandler;
 use Aerys\ErrorHandler;
 use Aerys\HttpDriver;
+use Aerys\HttpDriverFactory;
 use Aerys\Logger;
 use Aerys\Options;
 use Aerys\Request;
@@ -146,6 +147,10 @@ class ClientTest extends TestCase {
                 }
             });
 
+        $factory = $this->createMock(HttpDriverFactory::class);
+        $factory->method('selectDriver')
+            ->willReturn($driver);
+
         $options = (new Options)
             ->withDebugMode(true);
 
@@ -158,7 +163,7 @@ class ClientTest extends TestCase {
             $this->createMock(TimeoutCache::class)
         );
 
-        $client->start($driver);
+        $client->start($factory);
 
         $emit($request);
 
@@ -326,6 +331,10 @@ class ClientTest extends TestCase {
                 }
             });
 
+        $factory = $this->createMock(HttpDriverFactory::class);
+        $factory->method('selectDriver')
+            ->willReturn($driver);
+
         $bodyData = "{data}";
 
         $options = (new Options)
@@ -354,7 +363,7 @@ class ClientTest extends TestCase {
             $this->createMock(TimeoutCache::class)
         );
 
-        $client->start($driver);
+        $client->start($factory);
 
         $emit(new Request($client, "GET", new Uri("/")));
 
@@ -369,6 +378,10 @@ class ClientTest extends TestCase {
                 yield from $parser($writer);
             });
 
+        $factory = $this->createMock(HttpDriverFactory::class);
+        $factory->method('selectDriver')
+            ->willReturn($driver);
+
         $options = (new Options)
             ->withDebugMode(true);
 
@@ -381,7 +394,7 @@ class ClientTest extends TestCase {
             $this->createMock(TimeoutCache::class)
         );
 
-        $client->start($driver);
+        $client->start($factory);
 
         return $client;
     }
