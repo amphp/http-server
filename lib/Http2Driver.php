@@ -226,7 +226,18 @@ class Http2Driver implements HttpDriver {
         $part = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
         try {
-            $headers = \array_merge([":status" => $response->getStatus()], $response->getHeaders());
+            $status = $response->getStatus();
+
+            if ($status < Status::OK) {
+                $response->setStatus(Status::HTTP_VERSION_NOT_SUPPORTED);
+                throw new ClientException("1xx response codes are not supported in HTTP/2", self::HTTP_1_1_REQUIRED);
+            }
+
+            if ($status === Status::HTTP_VERSION_NOT_SUPPORTED && $response->getHeader("upgrade")) {
+                throw new ClientException("Upgrade requests require HTTP/1.1", self::HTTP_1_1_REQUIRED);
+            }
+
+            $headers = \array_merge([":status" => $status], $response->getHeaders());
 
             // Remove headers that are obsolete in HTTP/2.
             unset($headers["connection"], $headers["keep-alive"], $headers["transfer-encoding"]);
@@ -290,19 +301,28 @@ class Http2Driver implements HttpDriver {
 
             yield $this->writeData($buffer, $id, true);
         } catch (ClientException $exception) {
-            $error = self::CANCEL; // Set error code to be used in finally below.
+            $error = $exception->getCode() ?? self::CANCEL; // Set error code to be used in finally below.
         } finally {
             if (isset($this->streams[$id]) && $part !== null) {
                 if (($buffer ?? "") !== "") {
                     $this->writeData($buffer, $id, false);
                 }
 
-                $this->writeFrame(pack("N", $error ?? self::INTERNAL_ERROR), self::RST_STREAM, self::NOFLAG, $id);
+                $error = $error ?? self::INTERNAL_ERROR;
+
+                $this->writeFrame(pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
                 $this->releaseStream($id);
 
-                if (isset($this->bodyEmitters[$id])) {
-                    $this->bodyEmitters[$id]->fail(new ClientException("Stream error", Status::INTERNAL_SERVER_ERROR));
-                    unset($this->bodyEmitters[$id]);
+                if (isset($this->bodyEmitters[$id], $this->trailerDeferreds)) {
+                    $exception = $exception ?? new ClientException("Stream error", $error);
+
+                    $emitter = $this->bodyEmitters[$id];
+                    $deferred = $this->trailerDeferreds[$id];
+
+                    unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
+
+                    $emitter->fail($exception);
+                    $deferred->fail($exception);
                 }
             }
         }
@@ -600,8 +620,7 @@ class Http2Driver implements HttpDriver {
                             $deferred = $this->trailerDeferreds[$id];
                             $emitter = $this->bodyEmitters[$id];
 
-                            unset($this->trailerDeferreds[$id]);
-                            unset($this->bodyEmitters[$id]);
+                            unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
 
                             $deferred->resolve(new Trailers([]));
                             $emitter->complete();
@@ -743,11 +762,16 @@ class Http2Driver implements HttpDriver {
 
                         $error = \unpack("N", $buffer)[1];
 
-                        if (isset($this->bodyEmitters[$id])) {
-                            $this->bodyEmitters[$id]->fail(
-                                new ClientException("Client ended stream", Status::BAD_REQUEST)
-                            );
-                            unset($this->bodyEmitters[$id]);
+                        if (isset($this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
+                            $exception = new ClientException("Client ended stream", self::STREAM_CLOSED);
+
+                            $emitter = $this->bodyEmitters[$id];
+                            $deferred = $this->trailerDeferreds[$id];
+
+                            unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
+
+                            $emitter->fail($exception);
+                            $deferred->fail($exception);
                         }
 
                         unset($packedHeaders[$id]);
@@ -964,8 +988,7 @@ class Http2Driver implements HttpDriver {
                         $deferred = $this->trailerDeferreds[$id];
                         $emitter = $this->bodyEmitters[$id];
 
-                        unset($this->trailerDeferreds[$id]);
-                        unset($this->bodyEmitters[$id]);
+                        unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
 
                         // Trailers must not contain pseudo-headers.
                         foreach ($headers as $name => $value) {
@@ -1086,7 +1109,7 @@ class Http2Driver implements HttpDriver {
                     unset($packedHeaders[$id]);
 
                     if (isset($this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
-                        $exception = new ClientException("Stream error", Status::BAD_REQUEST);
+                        $exception = new ClientException("Stream error", self::CANCEL);
 
                         $this->trailerDeferreds[$id]->fail($exception);
                         $this->bodyEmitters[$id]->fail($exception);
@@ -1109,7 +1132,7 @@ class Http2Driver implements HttpDriver {
             }
         } finally {
             if (!empty($this->bodyEmitters) || !empty($this->trailerDeferreds)) {
-                $exception = new ClientException("Client disconnected", Status::REQUEST_TIMEOUT);
+                $exception = new ClientException("Client disconnected", self::CANCEL);
 
                 foreach ($this->trailerDeferreds as $id => $deferred) {
                     unset($this->trailerDeferreds[$id]);

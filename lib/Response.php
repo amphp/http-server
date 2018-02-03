@@ -7,7 +7,6 @@ use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Status;
 use Amp\Loop;
-use Amp\Socket\Socket;
 
 class Response extends Message {
     /** @var \Amp\ByteStream\InputStream  */
@@ -26,7 +25,7 @@ class Response extends Message {
     private $push = [];
 
     /** @var array|null */
-    private $detach;
+    private $upgrade;
 
     /** @var callable[] */
     private $onDispose = [];
@@ -171,6 +170,10 @@ class Response extends Message {
     public function setStatus(int $code, string $reason = null) {
         $this->status = $this->validateStatusCode($code);
         $this->reason = $reason ?? Status::getReason($this->status);
+
+        if ($this->upgrade && $this->status !== Status::SWITCHING_PROTOCOLS) {
+            $this->upgrade = null;
+        }
     }
 
     /**
@@ -284,17 +287,28 @@ class Response extends Message {
     /**
      * @return bool True if a detach callback has been set, false if none.
      */
-    public function isDetached(): bool {
-        return $this->detach !== null;
+    public function isUpgraded(): bool {
+        return $this->upgrade !== null;
     }
 
     /**
-     * @param callable $detach Callback invoked once the response has been written to the client. The callback is given
+     * Sets a callback to be invoked once the response has been written to the client and changes the status of the
+     * response to 101 (Switching Protocols). The callback may be removed by changing the status to something else.
+     *
+     * @param callable $upgrade Callback invoked once the response has been written to the client. The callback is given
      *     an instance of \Amp\Socket\ServerSocket as the first parameter, followed by the given arguments.
-     * @param array ...$args Arguments to pass to the detach callback.
      */
-    public function detach(callable $detach, ...$args) {
-        $this->detach = [$detach, $args];
+    public function upgrade(callable $upgrade) {
+        $this->upgrade = $upgrade;
+        $this->status = Status::SWITCHING_PROTOCOLS;
+        $this->reason = Status::getReason($this->status);
+    }
+
+    /**
+     * @return callable|null Upgrade function.
+     */
+    public function getUpgradeCallable() { /* : ?callable */
+        return $this->upgrade;
     }
 
     /**
@@ -305,17 +319,5 @@ class Response extends Message {
      */
     public function onDispose(callable $onDispose) {
         $this->onDispose[] = $onDispose;
-    }
-
-    /**
-     * @internal
-     *
-     * @param \Amp\Socket\Socket $socket
-     */
-    public function export(Socket $socket) {
-        \assert(\is_array($this->detach));
-
-        list($detch, $args) = $this->detach;
-        $detch($socket, ...$args);
     }
 }

@@ -11,7 +11,6 @@ class Rfc6455Handshake extends Response {
 
     /**
      * @param string $acceptKey The client request's SEC-WEBSOCKET-KEY header value
-     * @param int    $code HTTP response code.
      */
     public function __construct(string $acceptKey) {
         $concatKeyStr = $acceptKey . self::ACCEPT_CONCAT;

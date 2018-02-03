@@ -19,7 +19,6 @@ use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Failure;
 use Amp\Http\Status;
-use Amp\Loop;
 use Amp\Promise;
 use Amp\Socket\Socket;
 use Amp\Success;
@@ -56,9 +55,6 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     /** @var int[] */
     private $heartbeatTimeouts = [];
 
-    /** @var string */
-    private $timeoutWatcher;
-
     /** @var int */
     private $now;
 
@@ -73,9 +69,6 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     private $queuedPingLimit = 3;
     private $maxFramesPerSecond = 100; // do not bother with setting it too low, fread(8192) may anyway include up to 2700 frames
 
-    // private callables that we pass to external code
-    private $reapClient;
-
     // Frame control bits
     const FIN      = 0b1;
     const RSV_NONE = 0b000;
@@ -88,10 +81,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
 
     public function __construct(Application $application) {
         $this->application = $application;
-        $this->now = time();
         $this->endpoint = new Rfc6455Endpoint($this);
-
-        $this->reapClient = $this->callableFromInstanceMethod("reapClient");
     }
 
     public function setOption(string $option, $value) {
@@ -133,7 +123,9 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         }
 
         if ($request->getProtocolVersion() !== "1.1") {
-            return yield $this->errorHandler->handle(Status::HTTP_VERSION_NOT_SUPPORTED, null, $request);
+            $response = yield $this->errorHandler->handle(Status::HTTP_VERSION_NOT_SUPPORTED, null, $request);
+            $response->setHeader("Upgrade", "websocket");
+            return $response;
         }
 
         if (null !== yield $request->getBody()->read()) {
@@ -194,7 +186,9 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         }
 
         if ($response->getStatus() === Status::SWITCHING_PROTOCOLS) {
-            $response->detach($this->reapClient, $request);
+            $response->upgrade(function (Socket $socket) use ($request) {
+                $this->reapClient($socket, $request);
+            });
         }
 
         return $response;
@@ -601,14 +595,13 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     public function onStart(Server $server): Promise {
         $this->logger = $server->getLogger();
         $this->errorHandler = $server->getErrorHandler();
-        $this->timeoutWatcher = Loop::repeat(1000, $this->callableFromInstanceMethod("timeout"));
+
+        $server->getTimeReference()->onTimeUpdate($this->callableFromInstanceMethod("timeout"));
 
         return call([$this->application, "onStart"], $this->endpoint);
     }
 
     public function onStop(Server $server): Promise {
-        Loop::cancel($this->timeoutWatcher);
-
         return call(function () {
             try {
                 yield call([$this->application, "onStop"]);
@@ -642,8 +635,8 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         }
     }
 
-    private function timeout() {
-        $this->now = $now = time();
+    private function timeout(int $now) {
+        $this->now = $now;
 
         foreach ($this->closeTimeouts as $clientId => $expiryTime) {
             if ($expiryTime < $now) {

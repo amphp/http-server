@@ -8,6 +8,7 @@ use Aerys\DefaultErrorHandler;
 use Aerys\Request;
 use Aerys\Response;
 use Aerys\Server;
+use Aerys\TimeReference;
 use Aerys\Websocket\Application;
 use Aerys\Websocket\Code;
 use Aerys\Websocket\Endpoint;
@@ -93,14 +94,10 @@ class WebsocketTest extends TestCase {
         stream_set_blocking($client, false);
 
         $server = $this->createMock(Server::class);
-        $gateway = new Rfc6455Gateway($application);
+        $server->method('getTimeReference')
+            ->willReturn(new TimeReference);
 
-        if ($timeoutTest) {
-            // okay, let's cheat a bit in order to properly test timeout...
-            (function () {
-                $this->now -= 10;
-            })->call($gateway);
-        }
+        $gateway = new Rfc6455Gateway($application);
 
         yield $gateway->onStart($server);
 

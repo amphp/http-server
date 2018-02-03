@@ -670,28 +670,24 @@ class Client {
 
         try {
             yield from $this->httpDriver->writer($response, $request);
+
+            if ($this->status === self::CLOSED_RD && !$this->waitingOnResponse()) {
+                $this->close();
+                return;
+            }
+
+            if ($this->status & self::CLOSED_RDWR) {
+                return;
+            }
         } catch (\Throwable $exception) {
-            // Reading response body failed, abort writing the response to the client.
+            // Sending the response failed.
             $this->logger->error($exception);
-        }
-
-        if ($this->writeDeferred) {
-            // Wait for response to finish writing.
-            yield $this->writeDeferred->promise();
-        }
-
-        $this->pendingResponses--;
-
-        if ($this->status === self::CLOSED_RD && !$this->waitingOnResponse()) {
-            $this->close();
             return;
+        } finally {
+            $this->pendingResponses--;
         }
 
-        if ($this->status & self::CLOSED_RDWR) {
-            return;
-        }
-
-        if ($response->isDetached()) {
+        if ($response->isUpgraded()) {
             $this->export($response);
             return;
         }
@@ -755,10 +751,11 @@ class Client {
         $this->clear();
         $this->isExported = true;
 
-        \assert($this->logger->debug("Export {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
+        \assert($this->logger->debug("Upgrade {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
 
         try {
-            $response->export(new Internal\DetachedSocket($this, $this->socket, $this->options->getIoGranularity()));
+            $upgrade = $response->getUpgradeCallable();
+            $upgrade(new Internal\DetachedSocket($this, $this->socket, $this->options->getIoGranularity()));
         } catch (\Throwable $exception) {
             $this->logger->error($exception);
             $this->close();
