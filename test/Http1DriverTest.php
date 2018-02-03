@@ -726,12 +726,12 @@ class Http1DriverTest extends TestCase {
 
         $this->assertFalse($fin);
         $this->verifyWrite($buffer, $status, $headers + [
-                "link" => ["</foo>; rel=preload"],
-                "connection" => ["keep-alive"],
-                "keep-alive" => ["timeout=60, max=1000"],
-                "date" => [""], // Empty due to mock TimeReference
-                "transfer-encoding" => ["chunked"],
-            ], $data);
+            "link" => ["</foo>; rel=preload"],
+            "connection" => ["keep-alive"],
+            "keep-alive" => ["timeout=60"],
+            "date" => [""], // Empty due to mock TimeReference
+            "transfer-encoding" => ["chunked"],
+        ], $data);
     }
 
     public function testWriterAbortAfterHeaders() {

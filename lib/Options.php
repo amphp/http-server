@@ -6,7 +6,6 @@ final class Options {
     private $debug = false;
     private $maxConnections = 10000;
     private $connectionsPerIP = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
-    private $maxRequestsPerConnection = 1000; // set to PHP_INT_MAX to disable
     private $connectionTimeout = 15; // seconds
 
     private $socketBacklogSize = 128;
@@ -91,33 +90,6 @@ final class Options {
 
         $new = clone $this;
         $new->connectionsPerIP = $count;
-
-        return $new;
-    }
-
-    /**
-     * @return int The maximum number of requests that can be made on a single connection.
-     */
-    public function getMaxRequestsPerConnection(): int {
-        return $this->maxRequestsPerConnection;
-    }
-
-    /**
-     * @param int $count Maximum number of requests that can be made on a single connection. Default is 1000.
-     *
-     * @return \Aerys\Options
-     *
-     * @throws \Error If the count is less than 1.
-     */
-    public function withMaxRequestsPerConnection(int $count): self {
-        if ($count < 1) {
-            throw new \Error(
-                "Maximum number of requests on a connection must be greater than zero. Set it to PHP_INT_MAX to allow an unlimited amount of requests"
-            );
-        }
-
-        $new = clone $this;
-        $new->maxRequestsPerConnection = $count;
 
         return $new;
     }

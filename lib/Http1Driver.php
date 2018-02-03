@@ -49,9 +49,6 @@ class Http1Driver implements HttpDriver {
     /** @var Emitter|null */
     private $bodyEmitter;
 
-    /** @var int */
-    private $remainingRequests;
-
     /** @var callable */
     private $onMessage;
 
@@ -65,7 +62,6 @@ class Http1Driver implements HttpDriver {
         $this->options = $options;
         $this->timeReference = $timeReference;
         $this->errorHandler = $errorHandler;
-        $this->remainingRequests = $this->options->getMaxRequestsPerConnection();
     }
 
     /** {@inheritdoc} */
@@ -171,8 +167,6 @@ class Http1Driver implements HttpDriver {
             if ($part !== null) {
                 $this->client->close();
             }
-
-            $this->remainingRequests--;
         }
     }
 
@@ -698,13 +692,8 @@ class Http1Driver implements HttpDriver {
             $shouldClose = true;
         }
 
-        $remainingRequests = $this->remainingRequests;
-        if ($shouldClose || $remainingRequests <= 0) {
+        if ($shouldClose) {
             $headers["connection"] = ["close"];
-        } elseif ($remainingRequests < (PHP_INT_MAX >> 1)) {
-            $headers["connection"] = ["keep-alive"];
-            $keepAlive = "timeout={$this->options->getConnectionTimeout()}, max={$remainingRequests}";
-            $headers["keep-alive"] = [$keepAlive];
         } else {
             $headers["connection"] = ["keep-alive"];
             $keepAlive = "timeout={$this->options->getConnectionTimeout()}";
