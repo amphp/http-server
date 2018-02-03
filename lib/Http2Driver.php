@@ -78,10 +78,7 @@ class Http2Driver implements HttpDriver {
         "via" => 1,
     ];
 
-    /**
-     * 64 bit for ping (@TODO we maybe want to timeout once a day and reset the first letter of counter to "a").
-     * @var string
-     */
+    /** @var string 64-bit for ping. */
     private $counter = "aaaaaaaa";
 
     /** @var \Aerys\Client */
@@ -114,8 +111,11 @@ class Http2Driver implements HttpDriver {
     /** @var \Aerys\Internal\Http2Stream[] */
     private $streams = [];
 
-    /** @var int[] */
+    /** @var int[] Map of request hashes to stream IDs. */
     private $streamIdMap = [];
+
+    /** @var int[] Map of URLs pushed on this connection. */
+    private $pushCache = [];
 
     /** @var \Amp\Deferred[] */
     private $trailerDeferreds = [];
@@ -168,6 +168,12 @@ class Http2Driver implements HttpDriver {
         if (!\preg_match("#^https?://#i", $url)) {
             $url = $uri->getScheme() . "://" . $uri->getAuthority(false) . "/" . \ltrim($url, "/");
         }
+
+        if (isset($this->pushCache[$url])) {
+            return; // Resource already pushed to this client.
+        }
+
+        $this->pushCache[$url] = $streamId;
 
         $url = new Uri($url);
 
