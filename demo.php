@@ -41,8 +41,8 @@ return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $co
     }));
 
     $router->addRoute("GET", "/router/{myarg}", new CallableResponder(function (Request $request): Response {
-        $routeArgs = $request->get(RouteArguments::class);
-        $body = "<html><body><h1>Route Args</h1><p>myarg =&gt; " . \htmlspecialchars($routeArgs->get('myarg')) . "</p></body></html>";
+        $routeArgs = $request->getAttribute(Router::class);
+        $body = "<html><body><h1>Route Args</h1><p>myarg =&gt; " . \htmlspecialchars($routeArgs['myarg']) . "</p></body></html>";
         return new Response\HtmlResponse($body);
     }));
 
