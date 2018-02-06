@@ -636,7 +636,7 @@ class Http2Driver implements HttpDriver {
                         }
 
                         if (($flags & self::END_STREAM) !== "\0") {
-                            $this->streams[$id]->state |= Http2Stream::REMOTE_CLOSED;
+                            $stream->state |= Http2Stream::REMOTE_CLOSED;
 
                             $deferred = $this->trailerDeferreds[$id];
                             $emitter = $this->bodyEmitters[$id];
@@ -997,7 +997,7 @@ class Http2Driver implements HttpDriver {
                 }
 
                 parse_headers: {
-                    $decoded = $this->table->decode($this->streams[$id]->headers);
+                    $decoded = $this->table->decode($stream->headers, $maxHeaderSize);
                     $stream->headers = null;
 
                     if ($decoded === null) {
@@ -1015,7 +1015,7 @@ class Http2Driver implements HttpDriver {
                         $headers[$name][] = $value;
                     }
 
-                    if (isset($this->trailerDeferreds[$id]) && $this->streams[$id]->state & Http2Stream::RESERVED) {
+                    if (isset($this->trailerDeferreds[$id]) && $stream->state & Http2Stream::RESERVED) {
                         $deferred = $this->trailerDeferreds[$id];
                         $emitter = $this->bodyEmitters[$id];
 
@@ -1068,7 +1068,7 @@ class Http2Driver implements HttpDriver {
                         goto connection_error;
                     }
 
-                    if ($this->streams[$id]->state & Http2Stream::REMOTE_CLOSED) {
+                    if ($stream->state & Http2Stream::REMOTE_CLOSED) {
                         $request = new Request(
                             $this->client,
                             $headers[":method"][0],
@@ -1199,7 +1199,7 @@ class Http2Driver implements HttpDriver {
                     return self::PROTOCOL_ERROR;
                 }
 
-                $this->table->table_resize($unpacked["value"]);
+                $this->table->tableResize($unpacked["value"]);
                 return 0;
 
             case self::INITIAL_WINDOW_SIZE:

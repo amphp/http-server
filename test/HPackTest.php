@@ -7,13 +7,15 @@ use PHPUnit\Framework\TestCase;
 
 /** @group hpack */
 class HPackTest extends TestCase {
+    const MAX_LENGTH = 8192;
+
     /**
      * @dataProvider provideDecodeCases
      */
     public function testDecode($cases) {
         $hpack = new HPack;
         foreach ($cases as $i => list($input, $output)) {
-            $result = $hpack->decode($input);
+            $result = $hpack->decode($input, self::MAX_LENGTH);
             $this->assertEquals($output, $result, "Failure on testcase #$i");
         }
     }
@@ -48,7 +50,7 @@ class HPackTest extends TestCase {
             $hpack = new HPack;
             $encoded = $hpack->encode($input);
             $hpack = new HPack;
-            $decoded = $hpack->decode($encoded);
+            $decoded = $hpack->decode($encoded, self::MAX_LENGTH);
             sort($output);
             sort($decoded);
             $this->assertEquals($output, $decoded, "Failure on testcase #$i (standalone)");
@@ -59,7 +61,7 @@ class HPackTest extends TestCase {
         $decHpack = new HPack;
         foreach ($cases as $i => list($input, $output)) {
             $encoded = $encHpack->encode($input);
-            $decoded = $decHpack->decode($encoded);
+            $decoded = $decHpack->decode($encoded, self::MAX_LENGTH);
             sort($output);
             sort($decoded);
             $this->assertEquals($output, $decoded, "Failure on testcase #$i (shared context)");
