@@ -11,6 +11,7 @@ final class Options {
     private $socketBacklogSize = 128;
     private $maxConcurrentStreams = 20;
     private $maxFramesPerSecond = 60;
+    private $minAverageFrameSize = 1024;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
 
     private $maxBodySize = 131072;
@@ -230,14 +231,44 @@ final class Options {
     }
 
     /**
-     * @return int Maximum number of HTTP/2 frames per second.
+     * @return int Minimum average frame size required if more than the maximum number of frames per second are
+     *     received on an HTTP/2 connection.
+     */
+    public function getMinAverageFrameSize(): int {
+        return $this->minAverageFrameSize;
+    }
+
+    /**
+     * @param int $size Minimum average frame size required if more than the maximum number of frames per second are
+     *     received on an HTTP/2 connection. Default is 1024 (1k).
+     *
+     * @return \Aerys\Options
+     *
+     * @throws \Error If the size is less than 1.
+     */
+    public function withMinAverageFrameSize(int $size): self {
+        if ($size < 1) {
+            throw new \Error(
+                "Minimum average frame size must be greater than zero"
+            );
+        }
+
+        $new = clone $this;
+        $new->minAverageFrameSize = $size;
+
+        return $new;
+    }
+
+    /**
+     * @return int Maximum number of HTTP/2 frames per second before the average length minimum is enforced.
      */
     public function getMaxFramesPerSecond(): int {
         return $this->maxFramesPerSecond;
     }
 
     /**
-     * @param int $frames Maximum number of HTTP/2 frames per second. Default is 60.
+     * @param int $frames Maximum number of HTTP/2 frames per second before the average length minimum is enforced.
+     *     Default is 60.
      *
      * @return \Aerys\Options
      *

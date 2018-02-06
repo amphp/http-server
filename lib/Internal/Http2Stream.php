@@ -17,6 +17,15 @@ class Http2Stream {
     const LOCAL_CLOSED = 0b0100;
     const CLOSED = 0b0110;
 
+    /** @var string|null Packed header string. */
+    public $headers;
+
+    /** @var int Current max body length. */
+    public $maxBodySize;
+
+    /** @var int Bytes received on the stream. */
+    public $received = 0;
+
     /** @var int */
     public $serverWindow;
 
@@ -34,6 +43,7 @@ class Http2Stream {
 
     public function __construct(int $serverSize, int $clientSize, int $state = self::OPEN) {
         $this->serverWindow = $serverSize;
+        $this->maxBodySize = $serverSize;
         $this->clientWindow = $clientSize;
         $this->state = $state;
     }

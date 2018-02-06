@@ -4,6 +4,7 @@ namespace Aerys\Test;
 
 use Aerys\Client;
 use Aerys\Http2Driver;
+use Aerys\HttpDriver;
 use Aerys\Internal\HPack;
 use Aerys\Options;
 use Aerys\Request;
@@ -328,15 +329,16 @@ class Http2DriverTest extends TestCase {
         }
         $driver->frames = [];
 
-        $this->assertEquals(65536, \strlen($recv)); // global window!!
+        $this->assertEquals(Http2Driver::DEFAULT_WINDOW_SIZE, \strlen($recv)); // global window!!
 
-        $parser->send(self::packFrame(pack("N", 464 /* until 66000 */), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
+        $chunkSize = 66000 - HTTP2Driver::DEFAULT_WINDOW_SIZE;
+        $parser->send(self::packFrame(pack("N", $chunkSize), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
 
         $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::NOFLAG, $flags);
-        $this->assertEquals(464, \strlen($data));
+        $this->assertEquals($chunkSize, \strlen($data));
         $this->assertEquals(1, $stream);
 
         $parser->send(self::packFrame(pack("N", 4), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
