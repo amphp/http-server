@@ -11,13 +11,13 @@ use Aerys\Response;
 use Aerys\Response\HtmlResponse;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
-use Amp\Uri\Uri;
+use League\Uri;
 use function Aerys\Middleware\stack;
 use function Amp\Promise\wait;
 
 class StackTest extends TestCase {
     public function testStackAppliesMiddlewaresInCorrectOrder() {
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/foobar"));
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/foobar"));
 
         $stack = stack(new CallableResponder(function (Request $request) {
             $response = new HtmlResponse("OK");

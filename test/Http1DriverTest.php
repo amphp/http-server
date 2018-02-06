@@ -19,7 +19,7 @@ use Amp\Http\Status;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Success;
-use Amp\Uri\Uri;
+use League\Uri;
 
 class Http1DriverTest extends TestCase {
     /**
@@ -156,12 +156,13 @@ class Http1DriverTest extends TestCase {
         /** @var \Aerys\Request $request */
         $body = Promise\wait($request->getBody()->buffer());
 
+        $defaultPort = $request->getUri()->getScheme() === "https" ? 443 : 80;
         $this->assertSame($expectations["protocol"], $request->getProtocolVersion(), "protocol mismatch");
         $this->assertSame($expectations["method"], $request->getMethod(), "method mismatch");
         $this->assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
         $this->assertSame($expectations["headers"], $request->getHeaders(), "headers mismatch");
         $this->assertSame($expectations["body"], $body, "body mismatch");
-        $this->assertSame(80, $request->getUri()->getPort());
+        $this->assertSame(80, $request->getUri()->getPort() ?? $defaultPort);
     }
 
     public function testIdentityBodyParseEmit() {
@@ -713,7 +714,7 @@ class Http1DriverTest extends TestCase {
             }
         );
 
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("http://test.local"));
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("http://test.local"));
 
         $writer = $driver->writer($response = new Response(new InMemoryStream, $headers), $request);
 
@@ -768,25 +769,25 @@ class Http1DriverTest extends TestCase {
     public function provideWriteResponses() {
         return [
             [
-                new Request($this->createMock(Client::class), "HEAD", new Uri("/")),
+                new Request($this->createMock(Client::class), "HEAD", Uri\Http::createFromString("/")),
                 new Response(new InMemoryStream, [], Status::OK),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createMock(Client::class), "GET", new Uri("/")),
+                new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/")),
                 new Response(new InMemoryStream, [], Status::OK),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n0\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createMock(Client::class), "GET", new Uri("/")),
+                new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/")),
                 new Response(new InMemoryStream, ["content-length" => 0], Status::OK),
                 "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createMock(Client::class), "GET", new Uri("/"), [], null, "1.0"),
+                new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "1.0"),
                 new Response(new InMemoryStream, [], Status::OK),
                 "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: \r\n\r\n",
                 true,

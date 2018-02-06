@@ -15,7 +15,7 @@ use Amp\Emitter;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Success;
-use Amp\Uri\Uri;
+use League\Uri;
 
 class Http2DriverTest extends TestCase {
     public static function packFrame($data, $type, $flags, $stream = 0) {
@@ -86,11 +86,12 @@ class Http2DriverTest extends TestCase {
                 }
             }
 
+            $defaultPort = $request->getUri()->getScheme() === "https" ? 443 : 80;
             $this->assertSame($expectations["protocol"], $request->getProtocolVersion(), "protocol mismatch");
             $this->assertSame($expectations["method"], $request->getMethod(), "method mismatch");
             $this->assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
             $this->assertSame($expectations["headers"], $headers, "headers mismatch");
-            $this->assertSame($expectations["port"] ?? 80, $request->getUri()->getPort(), "uriPort mismatch");
+            $this->assertSame($expectations["port"] ?? 80, $request->getUri()->getPort() ?? $defaultPort, "uriPort mismatch");
             $this->assertSame($expectations["host"], $request->getUri()->getHost(), "uriHost mismatch");
             $this->assertSame($expectations["body"], $body, "body mismatch");
             $this->assertSame($expectations["trailers"] ?? [], $trailers->getHeaders());
@@ -229,7 +230,7 @@ class Http2DriverTest extends TestCase {
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
 
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), [], null, "2.0");
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "2.0");
 
         $emitter = new Emitter;
         $coroutine = new Coroutine($driver->writer(new Response(new IteratorStream($emitter->iterate())), $request));

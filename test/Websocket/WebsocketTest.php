@@ -22,7 +22,7 @@ use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Socket\ClientSocket;
-use Amp\Uri\Uri;
+use League\Uri;
 use Psr\Log\NullLogger;
 
 class NullApplication implements Application {
@@ -268,7 +268,7 @@ class WebsocketTest extends TestCase {
         ];
 
         // 0 ----- valid Handshake request -------------------------------------------------------->
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers);
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), $headers);
         $testCases[] = [$request, Status::SWITCHING_PROTOCOLS, [
             "upgrade" => ["websocket"],
             "connection" => ["upgrade"],
@@ -276,40 +276,40 @@ class WebsocketTest extends TestCase {
         ]];
 
         // 1 ----- error conditions: Handshake with POST method ----------------------------------->
-        $request = new Request($this->createMock(Client::class), "POST", new Uri("/"), $headers);
+        $request = new Request($this->createMock(Client::class), "POST", Uri\Http::createFromString("/"), $headers);
         $testCases[] = [$request, Status::METHOD_NOT_ALLOWED, ["allow" => ["GET"]]];
 
         // 2 ----- error conditions: Handshake with 1.0 protocol ---------------------------------->
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers, null, "1.0");
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), $headers, null, "1.0");
         $testCases[] = [$request, Status::HTTP_VERSION_NOT_SUPPORTED];
 
         // 3 ----- error conditions: Handshake with non-empty body -------------------------------->
         $body = new Body(new InMemoryStream("Non-empty body"));
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $headers, $body);
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), $headers, $body);
         $testCases[] = [$request, Status::BAD_REQUEST];
 
         // 4 ----- error conditions: Upgrade: Websocket header required --------------------------->
         $invalidHeaders = $headers;
         $invalidHeaders["upgrade"] = ["no websocket!"];
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), $invalidHeaders, $body);
         $testCases[] = [$request, Status::UPGRADE_REQUIRED];
 
         // 5 ----- error conditions: Connection: Upgrade header required -------------------------->
         $invalidHeaders = $headers;
         $invalidHeaders["connection"] = ["no upgrade!"];
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), $invalidHeaders, $body);
         $testCases[] = [$request, Status::UPGRADE_REQUIRED];
 
         // 6 ----- error conditions: Sec-Websocket-Key header required ---------------------------->
         $invalidHeaders = $headers;
         unset($invalidHeaders["sec-websocket-key"]);
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), $invalidHeaders, $body);
         $testCases[] = [$request, Status::BAD_REQUEST];
 
         // 7 ----- error conditions: Sec-Websocket-Version header must be 13 ---------------------->
         $invalidHeaders = $headers;
         $invalidHeaders["sec-websocket-version"] = ["12"];
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/"), $invalidHeaders, $body);
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), $invalidHeaders, $body);
         $testCases[] = [$request, Status::BAD_REQUEST];
 
         return $testCases;

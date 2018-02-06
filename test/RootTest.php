@@ -10,7 +10,7 @@ use Aerys\Server;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
-use Amp\Uri\Uri;
+use League\Uri;
 use PHPUnit\Framework\TestCase;
 
 class RootTest extends TestCase {
@@ -107,7 +107,7 @@ class RootTest extends TestCase {
             $request = $this->createMock(Request::class);
             $request->expects($this->once())
                 ->method("getUri")
-                ->will($this->returnValue(new Uri($path)));
+                ->will($this->returnValue(Uri\Http::createFromString($path)));
             $request->expects($this->any())
                 ->method("getMethod")
                 ->will($this->returnValue("GET"));
@@ -133,7 +133,7 @@ class RootTest extends TestCase {
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri($relativePath)));
+            ->will($this->returnValue(Uri\Http::createFromString($relativePath)));
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
@@ -160,7 +160,7 @@ class RootTest extends TestCase {
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri($relativePath)));
+            ->will($this->returnValue(Uri\Http::createFromString($relativePath)));
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
@@ -185,7 +185,7 @@ class RootTest extends TestCase {
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri("/index.htm")));
+            ->will($this->returnValue(Uri\Http::createFromString("/index.htm")));
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));
@@ -212,7 +212,7 @@ class RootTest extends TestCase {
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri("/index.htm")));
+            ->will($this->returnValue(Uri\Http::createFromString("/index.htm")));
         $request->expects($this->once())
             ->method("getHeaderArray")
             ->will($this->returnValue(["no-cache"]));
@@ -238,7 +238,7 @@ class RootTest extends TestCase {
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri("/index.htm")));
+            ->will($this->returnValue(Uri\Http::createFromString("/index.htm")));
         $request->expects($this->exactly(2))
             ->method("getHeaderArray")
             ->will($this->onConsecutiveCalls([], ["no-cache"]));
@@ -262,7 +262,7 @@ class RootTest extends TestCase {
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri("/")));
+            ->will($this->returnValue(Uri\Http::createFromString("/")));
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("OPTIONS"));
@@ -292,7 +292,7 @@ class RootTest extends TestCase {
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri("/index.htm")));
+            ->will($this->returnValue(Uri\Http::createFromString("/index.htm")));
         $request->expects($this->atLeastOnce())
             ->method("getHeader")
             ->with("If-Match")
@@ -316,7 +316,7 @@ class RootTest extends TestCase {
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri("/index.htm")));
+            ->will($this->returnValue(Uri\Http::createFromString("/index.htm")));
         $request->expects($this->any())
             ->method("getHeader")
             ->will($this->returnCallback(function ($header) use ($etag) {
@@ -346,7 +346,7 @@ class RootTest extends TestCase {
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri("/index.htm")));
+            ->will($this->returnValue(Uri\Http::createFromString("/index.htm")));
         $request->expects($this->any())
             ->method("getHeader")
             ->will($this->returnCallback(function ($header) use ($etag) {
@@ -384,7 +384,7 @@ class RootTest extends TestCase {
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri("/index.htm")));
+            ->will($this->returnValue(Uri\Http::createFromString("/index.htm")));
         $request->expects($this->any())
             ->method("getHeader")
             ->will($this->returnCallback(function ($header) use ($etag) {
@@ -415,7 +415,7 @@ class RootTest extends TestCase {
             $request = $this->createMock(Request::class);
             $request->expects($this->once())
                 ->method("getUri")
-                ->will($this->returnValue(new Uri("/index.htm")));
+                ->will($this->returnValue(Uri\Http::createFromString("/index.htm")));
             $request->expects($this->any())
                 ->method("getHeader")
                 ->will($this->returnCallback(function ($header) use ($range) {
@@ -479,7 +479,7 @@ PART;
         $request = $this->createMock(Request::class);
         $request->expects($this->once())
             ->method("getUri")
-            ->will($this->returnValue(new Uri("/svg.svg")));
+            ->will($this->returnValue(Uri\Http::createFromString("/svg.svg")));
         $request->expects($this->any())
             ->method("getMethod")
             ->will($this->returnValue("GET"));

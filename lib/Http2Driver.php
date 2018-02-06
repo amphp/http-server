@@ -10,8 +10,7 @@ use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\Status;
 use Amp\Promise;
-use Amp\Uri\InvalidUriException;
-use Amp\Uri\Uri;
+use League\Uri;
 
 class Http2Driver implements HttpDriver {
     const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
@@ -167,7 +166,7 @@ class Http2Driver implements HttpDriver {
         $uri = $request->getUri();
 
         if (!\preg_match("#^https?://#i", $url)) {
-            $url = $uri->getScheme() . "://" . $uri->getAuthority(false) . "/" . \ltrim($url, "/");
+            $uri = $uri->withPath("/" . \ltrim($url, "/"));
         }
 
         if (isset($this->pushCache[$url])) {
@@ -176,22 +175,20 @@ class Http2Driver implements HttpDriver {
 
         $this->pushCache[$url] = $streamId;
 
-        $url = new Uri($url);
-
-        $path = $url->getPath();
-        if ($query = $url->getQuery()) {
+        $path = $uri->getPath();
+        if ($query = $uri->getQuery()) {
             $path .= "?" . $query;
         }
 
         $headers = \array_merge([
-            ":authority" => [$url->getAuthority(false)],
-            ":scheme" => [$url->getScheme()],
+            ":authority" => [$uri->getAuthority()],
+            ":scheme" => [$uri->getScheme()],
             ":path" => [$path],
             ":method" => ["GET"],
         ], \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), $headers);
 
         $id = $this->streamId += 2; // Server initiated stream IDs must be even.
-        $request = new Request($this->client, "GET", $url, $headers, null, "2.0");
+        $request = new Request($this->client, "GET", $uri, $headers, null, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
         $this->streams[$id] = new Http2Stream(
@@ -1062,8 +1059,8 @@ class Http2Driver implements HttpDriver {
                     $authority = $port ? $host . ":" . $port : $host;
 
                     try {
-                        $uri = new Uri($scheme . "://" . $authority . $target);
-                    } catch (InvalidUriException $exception) {
+                        $uri = Uri\Http::createFromString($scheme . "://" . $authority . $target);
+                    } catch (Uri\UriException $exception) {
                         $error = self::PROTOCOL_ERROR;
                         goto connection_error;
                     }

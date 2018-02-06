@@ -5,7 +5,7 @@ namespace Aerys;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\RequestCookie;
-use Amp\Uri\Uri;
+use League\Uri;
 
 class Request extends Message {
     /** @var Client */
@@ -14,7 +14,7 @@ class Request extends Message {
     /** @var string */
     private $method;
 
-    /** @var \Amp\Uri\Uri */
+    /** @var Uri\Http */
     private $uri;
 
     /** @var string */
@@ -40,7 +40,7 @@ class Request extends Message {
     public function __construct(
         Client $client,
         string $method,
-        Uri $uri,
+        Uri\Http $uri,
         array $headers = [],
         $body = null,
         string $protocol = "1.1"
@@ -78,18 +78,18 @@ class Request extends Message {
     /**
      * Retrieve the request URI.
      *
-     * @return \Amp\Uri\Uri
+     * @return Uri\Http
      */
-    public function getUri(): Uri {
+    public function getUri(): Uri\Http {
         return $this->uri;
     }
 
     /**
      * Sets a new URI for the request.
      *
-     * @param \Amp\Uri\Uri $uri
+     * @param Uri\Http $uri
      */
-    public function setUri(Uri $uri) {
+    public function setUri(Uri\Http $uri) {
         $this->uri = $uri;
     }
 

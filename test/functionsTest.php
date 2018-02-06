@@ -3,7 +3,7 @@
 namespace Aerys\Test;
 
 use Aerys\Request;
-use Amp\Uri\Uri;
+use League\Uri;
 use PHPUnit\Framework\TestCase;
 use function Amp\Promise\wait;
 
@@ -45,8 +45,8 @@ class functionsTest extends TestCase {
         $request = new class extends Request {
             public function __construct() {
             }
-            public function getUri(): Uri {
-                return new Uri("http://test.local/foo");
+            public function getUri(): Uri\Http {
+                return Uri\Http::createFromString("http://test.local/foo");
             }
         };
 

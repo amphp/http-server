@@ -10,8 +10,7 @@ use Amp\Emitter;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Rfc7230;
 use Amp\Http\Status;
-use Amp\Uri\InvalidUriException;
-use Amp\Uri\Uri;
+use League\Uri;
 
 class Http1Driver implements HttpDriver {
     /** @see https://tools.ietf.org/html/rfc7230#section-4.1.2 */
@@ -282,11 +281,11 @@ class Http1Driver implements HttpDriver {
 
                 try {
                     if ($target[0] === "/") { // origin-form
-                        $uri = new Uri($scheme . "://" . $authority . $target);
+                        $uri = Uri\Http::createFromString($scheme . "://" . $authority . $target);
                     } elseif ($target === "*") { // asterisk-form
-                        $uri = new Uri($scheme . "://" . $authority);
+                        $uri = Uri\Http::createFromString($scheme . "://" . $authority);
                     } elseif (\preg_match("#^https?://#i", $target)) { // absolute-form
-                        $uri = new Uri($target);
+                        $uri = Uri\Http::createFromString($target);
 
                         if ($uri->getHost() !== $host || $uri->getPort() !== $port) {
                             throw new ClientException(
@@ -309,7 +308,7 @@ class Http1Driver implements HttpDriver {
                             );
                         }
 
-                        $uri = new Uri($target);
+                        $uri = Uri\Http::createFromString($target);
 
                         if ($uri->getPath() !== "") {
                             throw new ClientException(
@@ -318,7 +317,7 @@ class Http1Driver implements HttpDriver {
                             );
                         }
                     }
-                } catch (InvalidUriException $exception) {
+                } catch (Uri\UriException $exception) {
                     throw new ClientException("Bad Request: invalid target", Status::BAD_REQUEST, $exception);
                 }
 
@@ -358,7 +357,7 @@ class Http1Driver implements HttpDriver {
 
                     // Make request look like HTTP/2 request.
                     $headers[":method"] = [$method];
-                    $headers[":authority"] = [$uri->getAuthority(false)];
+                    $headers[":authority"] = [$uri->getAuthority()];
                     $headers[":scheme"] = [$uri->getScheme()];
                     $headers[":path"] = [$target];
 

@@ -32,7 +32,8 @@ use Amp\Socket\Certificate;
 use Amp\Socket\ClientTlsContext;
 use Amp\Socket\ServerTlsContext;
 use Amp\Success;
-use Amp\Uri\Uri;
+use League\Uri;
+use League\Uri\Components\Query;
 use PHPUnit\Framework\TestCase;
 use function Amp\call;
 
@@ -62,7 +63,8 @@ class ClientTest extends TestCase {
             list($address, $server) = yield from $this->startServer(function (Request $req) {
                 $this->assertEquals("GET", $req->getMethod());
                 $this->assertEquals("/uri", $req->getUri()->getPath());
-                $this->assertEquals(["foo" => ["bar"], "baz" => ["1", "2"]], $req->getUri()->getAllQueryParameters());
+                $query = new Query($req->getUri()->getQuery());
+                $this->assertEquals(["foo" => "bar", "baz" => ["1", "2"]], $query->getPairs());
                 $this->assertEquals(["header"], $req->getHeaderArray("custom"));
                 $this->assertNotNull($req->getCookie("test"));
                 $this->assertSame("value", $req->getCookie("test")->getValue());
@@ -174,7 +176,7 @@ class ClientTest extends TestCase {
         $request = new Request(
             $this->createMock(Client::class),
             "GET", // method
-            new Uri("http://localhost:80/foo"), // URI
+            Uri\Http::createFromString("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]] // headers
         );
 
@@ -204,7 +206,7 @@ class ClientTest extends TestCase {
         $request = new Request(
             $this->createMock(Client::class),
             "GET", // method
-            new Uri("http://localhost:80/foo"), // URI
+            Uri\Http::createFromString("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]], // headers
             new Body(new IteratorStream($emitter->iterate())) // body
         );
@@ -251,7 +253,7 @@ class ClientTest extends TestCase {
                 new Request(
                     $this->createMock(Client::class),
                     "OPTIONS", // method
-                    new Uri("http://localhost:80"), // URI
+                    Uri\Http::createFromString("http://localhost:80"), // URI
                     ["host" => ["localhost"]], // headers
                     null // body
                 ),
@@ -261,7 +263,7 @@ class ClientTest extends TestCase {
                 new Request(
                     $this->createMock(Client::class),
                     "TRACE", // method
-                    new Uri("http://localhost:80/"), // URI
+                    Uri\Http::createFromString("http://localhost:80/"), // URI
                     ["host" => ["localhost"]] // headers
                 ),
                 Status::METHOD_NOT_ALLOWED
@@ -270,7 +272,7 @@ class ClientTest extends TestCase {
                 new Request(
                     $this->createMock(Client::class),
                     "UNKNOWN", // method
-                    new Uri("http://localhost:80/"), // URI
+                    Uri\Http::createFromString("http://localhost:80/"), // URI
                     ["host" => ["localhost"]] // headers
                 ),
                 Status::NOT_IMPLEMENTED
@@ -282,7 +284,7 @@ class ClientTest extends TestCase {
         $request = new Request(
             $this->createMock(Client::class),
             "OPTIONS", // method
-            new Uri("http://localhost:80"), // URI
+            Uri\Http::createFromString("http://localhost:80"), // URI
             ["host" => ["localhost"]], // headers
             null // body
         );
@@ -300,7 +302,7 @@ class ClientTest extends TestCase {
         $request = new Request(
             $this->createMock(Client::class),
             "GET", // method
-            new Uri("http://localhost:80/foo"), // URI
+            Uri\Http::createFromString("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]] // headers
         );
 
@@ -365,7 +367,7 @@ class ClientTest extends TestCase {
 
         $client->start($factory);
 
-        $emit(new Request($client, "GET", new Uri("/")));
+        $emit(new Request($client, "GET", Uri\Http::createFromString("/")));
 
         $this->assertSame(str_repeat($bodyData, 3), $body);
     }

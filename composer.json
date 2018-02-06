@@ -41,7 +41,8 @@
         "league/climate": "^3",
         "nikic/fast-route": "^1",
         "psr/log": "^1",
-        "cash/lrucache": "^1.0"
+        "cash/lrucache": "^1.0",
+        "league/uri": "^5.2"
     },
     "require-dev": {
         "amphp/phpunit-util": "^1",
@@ -70,7 +71,7 @@
     "bin": ["bin/aerys"],
     "config": {
         "platform": {
-            "php": "7.0.0"
+            "php": "7.0.13"
         }
     },
     "repositories": [

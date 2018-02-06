@@ -13,7 +13,7 @@ use Aerys\Server;
 use Amp\Failure;
 use Amp\Http\Status;
 use Amp\Promise;
-use Amp\Uri\Uri;
+use League\Uri;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface as PsrLogger;
 
@@ -64,7 +64,7 @@ class RouterTest extends TestCase {
         $mock = $this->mockServer();
         Promise\wait($router->onStart($mock));
 
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/mediocre-dev/bob/19/"));
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/mediocre-dev/bob/19/"));
 
         /** @var \Aerys\Response $response */
         $response = Promise\wait($router->respond($request));
@@ -72,7 +72,7 @@ class RouterTest extends TestCase {
         $this->assertEquals(Status::FOUND, $response->getStatus());
         $this->assertEquals("/mediocre-dev/bob/19", $response->getHeader("location"));
 
-        $request = new Request($this->createMock(Client::class), "GET", new Uri("/mediocre-dev/bob/19"));
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/mediocre-dev/bob/19"));
 
         $response = Promise\wait($router->respond($request));
 
