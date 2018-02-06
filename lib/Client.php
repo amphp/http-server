@@ -461,7 +461,9 @@ class Client {
      */
     private function onWritable() {
         try {
-            $this->writeBuffer = $this->send($this->writeBuffer);
+            $this->writeBuffer = $this->send($this->writeBuffer, true);
+
+            $this->timeoutCache->renew($this->id);
 
             if ($this->writeBuffer !== "") {
                 return;
@@ -496,7 +498,7 @@ class Client {
         }
 
         try {
-            $this->writeBuffer = $this->send($data);
+            $this->writeBuffer = $this->send($data, false);
         } catch (\Throwable $exception) {
             $this->close();
             return new Failure($exception);
@@ -521,6 +523,8 @@ class Client {
             $this->close();
         }
 
+        $this->timeoutCache->renew($this->id);
+
         return new Success;
     }
 
@@ -528,16 +532,15 @@ class Client {
      * Attempts to write the given data directly to the client socket. Returns any unwritten data.
      *
      * @param string $data Data to write.
+     * @param bool $strict If `true`, close the client if no bytes are able to be written.
      *
      * @return string Remaining unwritten data.
      *
      * @throws \Aerys\ClientException If the client has disconnected.
      */
-    private function send(string $data): string {
+    private function send(string $data, bool $strict = false): string {
         $bytesWritten = @\fwrite($this->socket, $data);
-        if ($bytesWritten === false
-            || ($bytesWritten === 0 && (!\is_resource($this->socket) || @\feof($this->socket)))
-        ) {
+        if ($bytesWritten === false || ($strict && $bytesWritten === 0)) {
             throw new ClientException("The client disconnected");
         }
 

@@ -473,11 +473,6 @@ class Server {
 
             $client = $this->clients[$id];
 
-            // Do not close in case some longer response is taking more time to complete.
-            if ($client->waitingOnResponse()) {
-                continue;
-            }
-
             // Client is either idle or taking too long to send request, so simply close the connection.
             $client->close();
         }
