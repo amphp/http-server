@@ -14,7 +14,8 @@ use Aerys\TimeReference;
 use Aerys\Trailers;
 use Amp\Artax\Internal\Parser;
 use Amp\ByteStream\InMemoryStream;
-use Amp\Coroutine;
+use Amp\ByteStream\IteratorStream;
+use Amp\Emitter;
 use Amp\Http\Status;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
@@ -630,12 +631,12 @@ class Http1DriverTest extends TestCase {
             $resultEmitter,
             function ($data, $close) use (&$pendingResponses, &$parser) {
                 $pendingResponses--;
-                $parser->send(""); // Resume parser after waiting for response to be written.
                 return new Success;
             }
         );
 
-        $parser->send($payloads[0] . $payloads[1]);
+        $parser->send($payloads[0] . $payloads[1]); // Send first to payloads simultaneously.
+
         $parser->send(""); // Continue past yield for body emit.
 
         $this->assertInstanceOf(Request::class, $request);
@@ -647,7 +648,8 @@ class Http1DriverTest extends TestCase {
 
         $writer = $driver->writer(new Response\EmptyResponse, $request);
         $request = null;
-        $writer->send(null);
+
+        $parser->send(""); // Resume parser after waiting for response to be written, should yield next request.
 
         $parser->send(""); // Continue past yield for body emit.
 
@@ -660,10 +662,10 @@ class Http1DriverTest extends TestCase {
 
         $writer = $driver->writer(new Response\EmptyResponse);
         $request = null;
-        $writer->send(null);
 
-        $parser->send($payloads[0]);
-        $parser->send(""); // Continue past yield for body emit.
+        $parser->send($payloads[0]); // Resume and send next body payload.
+
+        $parser->send(""); // Resume parser after waiting for response to be written.
 
         $this->assertInstanceOf(Request::class, $request);
 
@@ -674,7 +676,6 @@ class Http1DriverTest extends TestCase {
 
         $writer = $driver->writer(new Response\EmptyResponse);
         $request = null;
-        $writer->send(null);
 
         $this->assertSame(0, $pendingResponses);
     }
@@ -714,16 +715,18 @@ class Http1DriverTest extends TestCase {
             }
         );
 
+        $emitter = new Emitter;
+
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("http://test.local"));
-
-        $writer = $driver->writer($response = new Response(new InMemoryStream, $headers), $request);
-
+        $response = new Response(new IteratorStream($emitter->iterate()), $headers);
         $response->push("/foo");
 
+        $writer = $driver->writer($response, $request);
+
         foreach (str_split($data) as $c) {
-            $writer->send($c);
+            $emitter->emit($c);
         }
-        $writer->send(null);
+        $emitter->complete();
 
         $this->assertFalse($fin);
         $this->verifyWrite($buffer, $status, $headers + [
@@ -760,7 +763,7 @@ class Http1DriverTest extends TestCase {
             }
         );
 
-        Promise\wait(new Coroutine($driver->writer($response, $request)));
+        Promise\wait($driver->writer($response, $request));
 
         $this->assertSame($buffer, $expectedBuffer);
         $this->assertSame($closed, $expectedClosed);
@@ -814,12 +817,13 @@ class Http1DriverTest extends TestCase {
             }
         );
 
-        $writer = $driver->writer(new Response);
+        $emitter = new Emitter;
+        $writer = $driver->writer(new Response(new IteratorStream($emitter->iterate())));
 
-        $writer->send("foo");
+        $emitter->emit("foo");
 
         $this->assertNull($invoked);
-        $writer->send(null);
+        $emitter->complete();
         $this->assertTrue($invoked);
     }
 

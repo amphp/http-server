@@ -6,6 +6,7 @@ namespace Aerys;
 
 use Aerys\Internal\Http2Stream;
 use Amp\ByteStream\IteratorStream;
+use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\Status;
@@ -215,9 +216,12 @@ class Http2Driver implements HttpDriver {
         ($this->onMessage)($request);
     }
 
-    public function writer(Response $response, Request $request = null): \Generator {
+    public function writer(Response $response, Request $request = null): Promise {
+        return new Coroutine($this->send($response, $request));
+    }
+
+    public function send(Response $response, Request $request): \Generator {
         \assert($this->client, "The driver has not been setup");
-        \assert($request !== null); // HTTP/2 responses will always have an associated request.
 
         $hash = \spl_object_hash($request);
         $id = $this->streamIdMap[$hash] ?? 1; // Default ID of 1 for upgrade requests.

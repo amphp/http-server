@@ -36,6 +36,7 @@ use League\Uri;
 use League\Uri\Components\Query;
 use PHPUnit\Framework\TestCase;
 use function Amp\call;
+use function Amp\coroutine;
 
 class ClientTest extends TestCase {
     public function startServer(callable $handler) {
@@ -141,13 +142,13 @@ class ClientTest extends TestCase {
             });
 
         $driver->method("writer")
-            ->willReturnCallback(function (Response $written) use (&$response, &$body) {
+            ->willReturnCallback(coroutine(function (Response $written) use (&$response, &$body) {
                 $response = $written;
                 $body = "";
                 while (null !== $part = yield $response->getBody()->read()) {
                     $body .= $part;
                 }
-            });
+            }));
 
         $factory = $this->createMock(HttpDriverFactory::class);
         $factory->method('selectDriver')
@@ -325,13 +326,13 @@ class ClientTest extends TestCase {
             });
 
         $driver->method("writer")
-            ->willReturnCallback(function (Response $written) use (&$body) {
+            ->willReturnCallback(coroutine(function (Response $written) use (&$body) {
                 $count = 3;
                 $body = "";
                 while ($count-- && null !== $part = yield $written->getBody()->read()) {
                     $body .= $part;
                 }
-            });
+            }));
 
         $factory = $this->createMock(HttpDriverFactory::class);
         $factory->method('selectDriver')

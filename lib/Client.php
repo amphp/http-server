@@ -389,13 +389,7 @@ class Client {
         }
 
         if (!\is_resource($this->socket) || @\feof($this->socket)) {
-            if ($this->status & self::CLOSED_WR || !$this->waitingOnResponse()) {
-                $this->close();
-                return;
-            }
-
-            $this->status |= self::CLOSED_RD;
-            Loop::cancel($this->readWatcher);
+            $this->close();
         }
     }
 
@@ -460,22 +454,30 @@ class Client {
      * Called by the onWritable watcher.
      */
     private function onWritable() {
-        try {
-            $this->writeBuffer = $this->send($this->writeBuffer, true);
+        $bytesWritten = @\fwrite($this->socket, $this->writeBuffer);
 
-            $this->timeoutCache->renew($this->id);
-
-            if ($this->writeBuffer !== "") {
-                return;
-            }
-
-            Loop::disable($this->writeWatcher);
-            $deferred = $this->writeDeferred;
-            $this->writeDeferred = null;
-            $deferred->resolve();
-        } catch (\Throwable $exception) {
+        if ($bytesWritten === false) {
             $this->close();
+            return;
         }
+
+        if ($bytesWritten === 0) {
+            return;
+        }
+
+        $this->timeoutCache->renew($this->id);
+
+        if ($bytesWritten !== \strlen($this->writeBuffer)) {
+            $this->writeBuffer = \substr($this->writeBuffer, $bytesWritten);
+            return;
+        }
+
+        $this->writeBuffer = "";
+
+        Loop::disable($this->writeWatcher);
+        $deferred = $this->writeDeferred;
+        $this->writeDeferred = null;
+        $deferred->resolve();
     }
 
     /**
@@ -492,63 +494,39 @@ class Client {
             return new Failure(new ClientException("The client disconnected"));
         }
 
-        if ($this->writeDeferred) {
-            $this->writeBuffer .= $data;
-            return $this->writeDeferred->promise();
-        }
+        if (!$this->writeDeferred) {
+            $bytesWritten = @\fwrite($this->socket, $data);
 
-        try {
-            $this->writeBuffer = $this->send($data, false);
-        } catch (\Throwable $exception) {
-            $this->close();
-            return new Failure($exception);
-        }
-
-        if ($this->writeBuffer !== "") {
-            Loop::enable($this->writeWatcher);
-
-            $this->writeDeferred = new Deferred;
-            $promise = $this->writeDeferred->promise();
-
-            if ($close) {
-                Loop::cancel($this->readWatcher);
-                $this->status |= self::CLOSED_WR;
-                $promise->onResolve([$this, "close"]);
+            if ($bytesWritten === false) {
+                $this->close();
+                return new Failure(new ClientException("The client disconnected"));
             }
 
-            return $promise;
+            if ($bytesWritten === \strlen($data)) {
+                if ($close) {
+                    $this->close();
+                }
+
+                return new Success;
+            }
+
+            $this->writeDeferred = new Deferred;
+            $data = \substr($data, $bytesWritten);
         }
+
+        $this->writeBuffer .= $data;
+
+        Loop::enable($this->writeWatcher);
+
+        $promise = $this->writeDeferred->promise();
 
         if ($close) {
-            $this->close();
+            Loop::cancel($this->readWatcher);
+            $this->status |= self::CLOSED_WR;
+            $promise->onResolve([$this, "close"]);
         }
 
-        $this->timeoutCache->renew($this->id);
-
-        return new Success;
-    }
-
-    /**
-     * Attempts to write the given data directly to the client socket. Returns any unwritten data.
-     *
-     * @param string $data Data to write.
-     * @param bool $strict If `true`, close the client if no bytes are able to be written.
-     *
-     * @return string Remaining unwritten data.
-     *
-     * @throws \Aerys\ClientException If the client has disconnected.
-     */
-    private function send(string $data, bool $strict = false): string {
-        $bytesWritten = @\fwrite($this->socket, $data);
-        if ($bytesWritten === false || ($strict && $bytesWritten === 0)) {
-            throw new ClientException("The client disconnected");
-        }
-
-        if ($bytesWritten === \strlen($data)) {
-            return "";
-        }
-
-        return \substr($data, $bytesWritten);
+        return $promise;
     }
 
     /**
@@ -623,9 +601,22 @@ class Client {
         } catch (\Throwable $error) {
             $this->logger->error($error);
             $response = yield from $this->makeExceptionResponse($error, $request);
+        } finally {
+            $this->pendingResponses--;
         }
 
-        yield from $this->sendResponse($response, $request);
+        if ($this->status & self::CLOSED_WR) {
+            return; // Client closed before response could be sent.f
+        }
+
+        $promise = $this->httpDriver->writer($response, $request);
+
+        if ($response->isUpgraded()) {
+            $callback = $response->getUpgradeCallable();
+            $promise->onResolve(function () use ($callback) {
+                $this->export($callback);
+            });
+        }
     }
 
     private function makeServiceUnavailableResponse(): \Generator {
@@ -656,46 +647,6 @@ class Client {
 
     private function makeOptionsResponse(): Response {
         return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->getAllowedMethods())]);
-    }
-
-    /**
-     * Send the response to the client.
-     *
-     * @param \Aerys\Response $response
-     * @param \Aerys\Request|null $request
-     *
-     * @return \Generator
-     */
-    private function sendResponse(Response $response, Request $request = null): \Generator {
-        if ($this->status & self::CLOSED_WR) {
-            return; // Client closed before response could be sent.
-        }
-
-        try {
-            yield from $this->httpDriver->writer($response, $request);
-
-            if ($this->status === self::CLOSED_RD && !$this->waitingOnResponse()) {
-                $this->close();
-                return;
-            }
-
-            if ($this->status & self::CLOSED_RDWR) {
-                return;
-            }
-        } catch (\Throwable $exception) {
-            // Sending the response failed.
-            $this->logger->error($exception);
-            return;
-        } finally {
-            $this->pendingResponses--;
-        }
-
-        if ($response->isUpgraded()) {
-            $this->export($response);
-            return;
-        }
-
-        $this->timeoutCache->renew($this->id);
     }
 
     /**
@@ -748,16 +699,19 @@ class Client {
     /**
      * Invokes the export function on Response with the socket detached from the HTTP server.
      *
-     * @param \Aerys\Response $response
+     * @param callable $upgrade callable
      */
-    private function export(Response $response) {
+    private function export(callable $upgrade) {
+        if ($this->status & self::CLOSED_RDWR || $this->isExported) {
+            return;
+        }
+
         $this->clear();
         $this->isExported = true;
 
         \assert($this->logger->debug("Upgrade {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
 
         try {
-            $upgrade = $response->getUpgradeCallable();
             $upgrade(new Internal\DetachedSocket($this, $this->socket, $this->options->getIoGranularity()));
         } catch (\Throwable $exception) {
             $this->logger->error($exception);

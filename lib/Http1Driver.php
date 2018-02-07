@@ -10,6 +10,7 @@ use Amp\Emitter;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Rfc7230;
 use Amp\Http\Status;
+use Amp\Promise;
 use League\Uri;
 
 class Http1Driver implements HttpDriver {
@@ -57,6 +58,9 @@ class Http1Driver implements HttpDriver {
     /** @var \Aerys\ErrorHandler */
     private $errorHandler;
 
+    /** @var \Amp\Promise|null */
+    private $lastWrite;
+
     public function __construct(Options $options, TimeReference $timeReference, ErrorHandler $errorHandler) {
         $this->options = $options;
         $this->timeReference = $timeReference;
@@ -79,12 +83,12 @@ class Http1Driver implements HttpDriver {
      *
      * Selects HTTP/2 or HTTP/1.x writer depending on connection status.
      */
-    public function writer(Response $response, Request $request = null): \Generator {
+    public function writer(Response $response, Request $request = null): Promise {
         if ($this->http2) {
             return $this->http2->writer($response, $request);
         }
 
-        return $this->send($response, $request);
+        return $this->lastWrite = new Coroutine($this->send($response, $request));
     }
 
     /**
@@ -97,6 +101,10 @@ class Http1Driver implements HttpDriver {
      */
     private function send(Response $response, Request $request = null): \Generator {
         \assert($this->client, "The driver has not been setup; call setup first");
+
+        if ($this->lastWrite) {
+            yield $this->lastWrite; // Prevent writing another response until the first is finished.
+        }
 
         $shouldClose = false;
 
@@ -322,10 +330,10 @@ class Http1Driver implements HttpDriver {
                 }
 
                 if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
-                    $buffer .= yield new Coroutine($this->writer(
+                    $buffer .= yield $this->writer(
                         new Response(new InMemoryStream, [], Status::CONTINUE),
                         new Request($this->client, $method, $uri, $headers, null, $protocol)
-                    ));
+                    );
                 }
 
                 // Handle HTTP/2 upgrade request.
@@ -338,13 +346,13 @@ class Http1Driver implements HttpDriver {
                     && false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
-                    $buffer .= yield new Coroutine($this->writer(
+                    $buffer .= yield $this->writer(
                         new Response(new InMemoryStream, [
                             "connection" => "upgrade",
                             "upgrade"    => "h2c",
                         ], Status::SWITCHING_PROTOCOLS),
                         new Request($this->client, $method, $uri, $headers, null, $protocol)
-                    ));
+                    );
 
                     // Internal upgrade
                     $this->http2 = new Http2Driver($this->options, $this->timeReference);

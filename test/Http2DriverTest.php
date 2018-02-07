@@ -10,7 +10,6 @@ use Aerys\Request;
 use Aerys\Response;
 use Aerys\TimeReference;
 use Amp\ByteStream\IteratorStream;
-use Amp\Coroutine;
 use Amp\Emitter;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
@@ -233,7 +232,7 @@ class Http2DriverTest extends TestCase {
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "2.0");
 
         $emitter = new Emitter;
-        $coroutine = new Coroutine($driver->writer(new Response(new IteratorStream($emitter->iterate())), $request));
+        $coroutine = $driver->writer(new Response(new IteratorStream($emitter->iterate())), $request);
 
         $emitter->emit("foo");
         $emitter->fail(new \Exception);
@@ -309,8 +308,6 @@ class Http2DriverTest extends TestCase {
             ["content-type" => "text/html; charset=utf-8"]
         ), $request);
 
-        $coroutine = new Coroutine($writer);
-
         $this->assertEquals([HPack::encode([
             ":status" => 200,
             "content-type" => ["text/html; charset=utf-8"],
@@ -372,8 +369,6 @@ class Http2DriverTest extends TestCase {
             new IteratorStream($emitter->iterate()),
             ["content-type" => "text/html; charset=utf-8"]
         ), $request);
-
-        $coroutine = new Coroutine($writer);
 
         $this->assertEquals([HPack::encode([
             ":status" => 200,
@@ -439,11 +434,10 @@ class Http2DriverTest extends TestCase {
         // $onMessage callback should be invoked.
         $this->assertInstanceOf(Request::class, $request);
 
-        $writer = $driver->writer(new Response, $request);
+        $emitter = new Emitter;
+        $writer = $driver->writer(new Response(new IteratorStream($emitter->iterate())), $request);
 
-        $writer->send("{data}");
-
-        $this->assertTrue($writer->valid());
+        $emitter->emit("{data}");
 
         $parser->send(self::packFrame(
             \pack("N", Http2Driver::REFUSED_STREAM),
@@ -452,8 +446,8 @@ class Http2DriverTest extends TestCase {
             1
         ));
 
-        $writer->send("{data}");
+        $emitter->emit("{data}");
 
-        $this->assertFalse($writer->valid());
+        Promise\wait($writer); // Will throw if the writer is not complete.
     }
 }

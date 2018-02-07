@@ -2,6 +2,8 @@
 
 namespace Aerys;
 
+use Amp\Promise;
+
 interface HttpDriver {
     /**
      * HTTP methods that are *known*. Requests for methods not defined here or within Options should result in a 501
@@ -25,15 +27,15 @@ interface HttpDriver {
     public function setup(Client $client, callable $onMessage, callable $write): \Generator;
 
     /**
-     * Returns a generator to be run as a coroutine by Client. The coroutine should write the given response to the
-     * client using the write callback provided to setup().
+     * Returns a promise that resolves once the response has been written to the client. The writer should write the
+     * given response to the client using the write callback provided to setup().
      *
      * @param \Aerys\Response $response
      * @param \Aerys\Request|null $request
      *
-     * @return \Generator
+     * @return \Amp\Promise
      */
-    public function writer(Response $response, Request $request = null): \Generator;
+    public function writer(Response $response, Request $request = null): Promise;
 
     /**
      * @return int Number of requests that are being read by the parser.
