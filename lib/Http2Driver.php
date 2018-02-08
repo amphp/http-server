@@ -1059,14 +1059,29 @@ class Http2Driver implements HttpDriver {
 
                     $host = $matches[1];
                     $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
-                    $host = \rawurldecode($host);
-                    $authority = $port ? $host . ":" . $port : $host;
+
+                    if ($position = \strpos($target, "#")) {
+                        $fragment = \substr($target, $position + 1);
+                        $target = \substr($target, 0, $position);
+                    }
+
+                    if ($position = \strpos($target, "?")) {
+                        $query = \substr($target, $position + 1);
+                        $target = \substr($target, 0, $position);
+                    }
 
                     try {
-                        $uri = Uri\Http::createFromString($scheme . "://" . $authority . $target);
+                        $uri = Uri\Http::createFromComponents([
+                            "scheme"   => $scheme,
+                            "host"     => $host,
+                            "port"     => $port,
+                            "path"     => $target,
+                            "query"    => $query ?? null,
+                            "fragment" => $fragment ?? null,
+                        ]);
                     } catch (Uri\UriException $exception) {
                         $error = self::PROTOCOL_ERROR;
-                        goto connection_error;
+                        goto stream_error;
                     }
 
                     if ($stream->state & Http2Stream::REMOTE_CLOSED) {

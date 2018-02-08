@@ -284,14 +284,33 @@ class Http1Driver implements HttpDriver {
                 $host = $matches[1];
                 $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
                 $scheme = $this->client->isEncrypted() ? "https" : "http";
-                $host = \rawurldecode($host);
-                $authority = $port ? $host . ":" . $port : $host;
 
                 try {
                     if ($target[0] === "/") { // origin-form
-                        $uri = Uri\Http::createFromString($scheme . "://" . $authority . $target);
+                        if ($position = \strpos($target, "#")) {
+                            $fragment = \substr($target, $position + 1);
+                            $target = \substr($target, 0, $position);
+                        }
+
+                        if ($position = \strpos($target, "?")) {
+                            $query = \substr($target, $position + 1);
+                            $target = \substr($target, 0, $position);
+                        }
+
+                        $uri = Uri\Http::createFromComponents([
+                            "scheme"   => $scheme,
+                            "host"     => $host,
+                            "port"     => $port,
+                            "path"     => $target,
+                            "query"    => $query ?? null,
+                            "fragment" => $fragment ?? null,
+                        ]);
                     } elseif ($target === "*") { // asterisk-form
-                        $uri = Uri\Http::createFromString($scheme . "://" . $authority);
+                        $uri = Uri\Http::createFromComponents([
+                            "scheme" => $scheme,
+                            "host"   => $host,
+                            "port"   => $port,
+                        ]);
                     } elseif (\preg_match("#^https?://#i", $target)) { // absolute-form
                         $uri = Uri\Http::createFromString($target);
 

@@ -5,7 +5,7 @@ namespace Aerys;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\RequestCookie;
-use League\Uri;
+use Psr\Http\Message\UriInterface as PsrUri;
 
 class Request extends Message {
     /** @var Client */
@@ -14,7 +14,7 @@ class Request extends Message {
     /** @var string */
     private $method;
 
-    /** @var Uri\Http */
+    /** @var PsrUri */
     private $uri;
 
     /** @var string */
@@ -32,7 +32,7 @@ class Request extends Message {
     /**
      * @param Client $client The client sending the request.
      * @param string $method HTTP request method.
-     * @param Uri $uri The full URI being requested, including host, port, and protocol.
+     * @param PsrUri $uri The full URI being requested, including host, port, and protocol.
      * @param string[]|string[][] $headers An array of strings or an array of string arrays.
      * @param Body|InputStream|string|null $body
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
@@ -40,7 +40,7 @@ class Request extends Message {
     public function __construct(
         Client $client,
         string $method,
-        Uri\Http $uri,
+        PsrUri $uri,
         array $headers = [],
         $body = null,
         string $protocol = "1.1"
@@ -78,18 +78,18 @@ class Request extends Message {
     /**
      * Retrieve the request URI.
      *
-     * @return Uri\Http
+     * @return PsrUri
      */
-    public function getUri(): Uri\Http {
+    public function getUri(): PsrUri {
         return $this->uri;
     }
 
     /**
      * Sets a new URI for the request.
      *
-     * @param Uri\Http $uri
+     * @param PsrUri $uri
      */
-    public function setUri(Uri\Http $uri) {
+    public function setUri(PsrUri $uri) {
         $this->uri = $uri;
     }
 
