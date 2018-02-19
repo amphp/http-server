@@ -29,9 +29,10 @@ function bootServer(PsrLogger $logger, Console $console): \Generator {
         throw new \Error("The config file at $configFile must return a callable");
     }
 
-    $options = (new Options)->withDebugMode($console->isArgDefined("debug"));
-    if ($console->isArgDefined("user")) {
-        $options = $options->withUser($console->getArg("user"));
+    $options = new Options;
+
+    if ($console->isArgDefined("debug")) {
+        $options = $options->withDebugMode();
     }
 
     try {

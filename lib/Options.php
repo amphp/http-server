@@ -16,29 +16,41 @@ final class Options {
 
     private $maxBodySize = 131072;
     private $maxHeaderSize = 32768;
-    private $ioGranularity = 32768; // recommended: at least 16 KB
+    private $ioGranularity = 8192;
 
     private $inputBufferSize = 8192;
     private $outputBufferSize = 8192;
     private $shutdownTimeout = 3000; // milliseconds
 
-    private $allowHttp2Upgrade = true;
+    private $allowHttp2Upgrade = false;
 
     /**
-     * @return bool True if server is in debug mode, false if in production mode.
+     * @return bool `true` if server is in debug mode, `false` if in production mode.
      */
     public function isInDebugMode(): bool {
         return $this->debug;
     }
 
     /**
-     * @param bool $flag True for debug mode, false for production mode.
+     * Sets debug mode to `true`.
      *
      * @return \Aerys\Options
      */
-    public function withDebugMode(bool $flag): self {
+    public function withDebugMode(): self {
         $new = clone $this;
-        $new->debug = $flag;
+        $new->debug = true;
+
+        return $new;
+    }
+
+    /**
+     * Sets debug mode to `false`.
+     *
+     * @return \Aerys\Options
+     */
+    public function withoutDebugMode(): self {
+        $new = clone $this;
+        $new->debug = false;
 
         return $new;
     }
@@ -296,7 +308,7 @@ final class Options {
 
     /**
      * @param int $bytes The maximum number of bytes to read from a client per read. Larger numbers are better for
-     *     performance but can increase memory usage. Minimum recommended is 16384 (16k), default is 32768 (32k).
+     *     performance but can increase memory usage. Default is 8192 (8k).
      *
      * @return \Aerys\Options
      *
@@ -454,6 +466,7 @@ final class Options {
 
     /**
      * @return bool `true` if HTTP/2 requests may be established through upgrade requests or prior knowledge.
+     *     Disabled by default.
      */
     public function isHttp2UpgradeAllowed(): bool {
         return $this->allowHttp2Upgrade;

@@ -50,7 +50,7 @@ class ClientTest extends TestCase {
         $handler = new CallableResponder($handler);
 
         $logger = $this->createMock(Logger::class);
-        $options = (new Options)->withDebugMode(true);
+        $options = (new Options)->withDebugMode();
         $server = new Server($handler, $options, $logger);
         $server->expose("*", $port);
         $server->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
@@ -155,7 +155,7 @@ class ClientTest extends TestCase {
             ->willReturn($driver);
 
         $options = (new Options)
-            ->withDebugMode(true);
+            ->withDebugMode();
 
         $client = new Client(
             \fopen("php://memory", "w"),
@@ -341,7 +341,7 @@ class ClientTest extends TestCase {
         $bodyData = "{data}";
 
         $options = (new Options)
-            ->withDebugMode(true);
+            ->withDebugMode();
 
         $body = $this->createMock(InputStream::class);
         $body->expects($this->exactly(3))
@@ -386,7 +386,7 @@ class ClientTest extends TestCase {
             ->willReturn($driver);
 
         $options = (new Options)
-            ->withDebugMode(true);
+            ->withDebugMode();
 
         $client = new Client(
             $socket,

@@ -836,7 +836,7 @@ class Http1DriverTest extends TestCase {
             "http2-settings: $settings\r\n" .
             "\r\n";
 
-        $options = new Options;
+        $options = (new Options)->withHttp2Upgrade();
 
         $expected = [
             "HTTP/1.1 101 Switching Protocols",
@@ -875,7 +875,7 @@ class Http1DriverTest extends TestCase {
     }
 
     public function testNativeHttp2() {
-        $options = new Options;
+        $options = (new Options)->withHttp2Upgrade();
 
         $driver = new Http1Driver(
             $options,

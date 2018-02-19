@@ -92,7 +92,7 @@ class RootTest extends TestCase {
 
         $server = $this->createMock(Server::class);
         $server->method('getOptions')
-            ->willReturn((new Options)->withDebugMode(true));
+            ->willReturn((new Options)->withDebugMode());
 
         $server->method('getErrorHandler')
             ->willReturn(new DefaultErrorHandler);
@@ -205,7 +205,7 @@ class RootTest extends TestCase {
     public function testDebugModeIgnoresCacheIfCacheControlHeaderIndicatesToDoSo(Root $root) {
         $server = $this->createMock(Server::class);
         $server->method('getOptions')
-            ->willReturn((new Options)->withDebugMode(true));
+            ->willReturn((new Options)->withDebugMode());
 
         $root->onStart($server);
 
@@ -280,7 +280,7 @@ class RootTest extends TestCase {
 
         $server = $this->createMock(Server::class);
         $server->method('getOptions')
-            ->willReturn((new Options)->withDebugMode(true));
+            ->willReturn((new Options)->withDebugMode());
 
         $server->method('getErrorHandler')
             ->willReturn(new DefaultErrorHandler);
@@ -371,7 +371,7 @@ class RootTest extends TestCase {
 
         $server = $this->createMock(Server::class);
         $server->method('getOptions')
-            ->willReturn((new Options)->withDebugMode(true));
+            ->willReturn((new Options)->withDebugMode());
 
         $server->method('getErrorHandler')
             ->willReturn(new DefaultErrorHandler);
