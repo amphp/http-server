@@ -163,7 +163,7 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
         $this->assertSame($expectations["headers"], $request->getHeaders(), "headers mismatch");
         $this->assertSame($expectations["body"], $body, "body mismatch");
-        $this->assertSame(80, $request->getUri()->getPort() ?? $defaultPort);
+        $this->assertSame(80, $request->getUri()->getPort() ?: $defaultPort);
     }
 
     public function testIdentityBodyParseEmit() {

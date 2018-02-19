@@ -5,6 +5,7 @@ namespace Aerys\Test;
 use Aerys\Request;
 use League\Uri;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\UriInterface as PsrUri;
 use function Amp\Promise\wait;
 
 class functionsTest extends TestCase {
@@ -45,7 +46,7 @@ class functionsTest extends TestCase {
         $request = new class extends Request {
             public function __construct() {
             }
-            public function getUri(): Uri\Http {
+            public function getUri(): PsrUri {
                 return Uri\Http::createFromString("http://test.local/foo");
             }
         };

@@ -90,7 +90,7 @@ class Http2DriverTest extends TestCase {
             $this->assertSame($expectations["method"], $request->getMethod(), "method mismatch");
             $this->assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
             $this->assertSame($expectations["headers"], $headers, "headers mismatch");
-            $this->assertSame($expectations["port"] ?? 80, $request->getUri()->getPort() ?? $defaultPort, "uriPort mismatch");
+            $this->assertSame($expectations["port"] ?? 80, $request->getUri()->getPort() ?: $defaultPort, "uriPort mismatch");
             $this->assertSame($expectations["host"], $request->getUri()->getHost(), "uriHost mismatch");
             $this->assertSame($expectations["body"], $body, "body mismatch");
             $this->assertSame($expectations["trailers"] ?? [], $trailers->getHeaders());

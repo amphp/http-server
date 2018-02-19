@@ -50,6 +50,7 @@
         "amphp/phpunit-util": "^1",
         "amphp/artax": "^3",
         "friendsofphp/php-cs-fixer": "^2.3",
+        "league/uri-components": "^1.7",
         "http2jp/hpack-test-case": "^1",
         "phpunit/phpunit": "^6",
         "infection/infection": "^0.7.1"
