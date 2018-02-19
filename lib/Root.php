@@ -3,20 +3,23 @@
 namespace Aerys;
 
 use Aerys\Internal\ByteRange;
+use Aerys\Internal\FileInformation;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\ByteStream\IteratorStream;
+use Amp\CallableMaker;
 use Amp\Coroutine;
-use Amp\Emitter;
 use Amp\File;
 use Amp\Http\Status;
-use Amp\Loop;
+use Amp\Producer;
 use Amp\Promise;
-use Amp\Struct;
 use Amp\Success;
-use function Amp\call;
 
 class Root implements Responder, ServerObserver {
+    use CallableMaker;
+
+    const READ_CHUNK_SIZE = 8192;
+
     const PRECONDITION_NOT_MODIFIED = 1;
     const PRECONDITION_FAILED = 2;
     const PRECONDITION_IF_RANGE_OK = 3;
@@ -40,7 +43,6 @@ class Root implements Responder, ServerObserver {
     private $multipartBoundary;
     private $cache = [];
     private $cacheTimeouts = [];
-    private $cacheWatcher;
     private $now;
 
     private $mimeTypes = [];
@@ -72,25 +74,35 @@ class Root implements Responder, ServerObserver {
                 "Document root requires a readable directory"
             );
         }
+
         $this->root = \rtrim(\realpath($root), "/");
         $this->filesystem = $filesystem ?: File\filesystem();
         $this->multipartBoundary = \uniqid("", true);
-        $this->cacheWatcher = Loop::repeat(1000, function () {
-            $this->now = $now = time();
-            foreach ($this->cacheTimeouts as $path => $timeout) {
-                if ($now <= $timeout) {
-                    break;
-                }
-                $fileInfo = $this->cache[$path];
-                unset(
-                    $this->cache[$path],
-                    $this->cacheTimeouts[$path]
-                );
-                $this->bufferedFileCount -= isset($fileInfo->buffer);
-                $this->cacheEntryCount--;
+    }
+
+    /**
+     * Removes expired file information from the cache and updates the current 'now' value.
+     *
+     * @param int $now
+     */
+    private function clearExpiredCacheEntries(int $now) {
+        $this->now = $now;
+
+        foreach ($this->cacheTimeouts as $path => $timeout) {
+            if ($now <= $timeout) {
+                break;
             }
-        });
-        Loop::disable($this->cacheWatcher);
+
+            $fileInfo = $this->cache[$path];
+
+            unset(
+                $this->cache[$path],
+                $this->cacheTimeouts[$path]
+            );
+
+            $this->bufferedFileCount -= isset($fileInfo->buffer);
+            $this->cacheEntryCount--;
+        }
     }
 
     /**
@@ -191,7 +203,7 @@ class Root implements Responder, ServerObserver {
                 break;
             }
             if (substr($inputBuffer, 0, 4) === "/../") {
-                while (array_pop($outputStack) === "/") ;
+                while (array_pop($outputStack) === "/");
                 $inputBuffer = substr($inputBuffer, 3);
                 continue;
             }
@@ -245,7 +257,7 @@ class Root implements Responder, ServerObserver {
         return $this->cache[$reqPath] ?? null;
     }
 
-    private function shouldBufferContent($fileInfo): bool {
+    private function shouldBufferContent(FileInformation $fileInfo): bool {
         if ($fileInfo->size > $this->bufferedFileMaxSize) {
             return false;
         }
@@ -280,17 +292,7 @@ class Root implements Responder, ServerObserver {
     }
 
     private function lookup(string $path): \Generator {
-        $fileInfo = new class {
-            use Struct;
-
-            public $exists;
-            public $path;
-            public $size;
-            public $mtime;
-            public $inode;
-            public $buffer;
-            public $etag;
-        };
+        $fileInfo = new Internal\FileInformation;
 
         $fileInfo->exists = false;
         $fileInfo->path = $path;
@@ -333,7 +335,7 @@ class Root implements Responder, ServerObserver {
         }
     }
 
-    private function respondFromFileInfo($fileInfo, Request $request): \Generator {
+    private function respondFromFileInfo(FileInformation $fileInfo, Request $request): \Generator {
         if (!$fileInfo->exists) {
             if ($this->fallback !== null) {
                 return $this->fallback->respond($request);
@@ -439,7 +441,7 @@ class Root implements Responder, ServerObserver {
         return ($etag === $ifRange) ? self::PRECONDITION_IF_RANGE_OK : self::PRECONDITION_IF_RANGE_FAILED;
     }
 
-    private function doNonRangeResponse($fileInfo): \Generator {
+    private function doNonRangeResponse(FileInformation $fileInfo): \Generator {
         $headers = $this->makeCommonHeaders($fileInfo);
         $headers["Content-Length"] = (string) $fileInfo->size;
         $headers["Content-Type"] = $this->selectMimeTypeFromPath($fileInfo->path);
@@ -557,7 +559,7 @@ class Root implements Responder, ServerObserver {
         return $range;
     }
 
-    private function doRangeResponse(ByteRange $range, $fileInfo): \Generator {
+    private function doRangeResponse(ByteRange $range, FileInformation $fileInfo): \Generator {
         $headers = $this->makeCommonHeaders($fileInfo);
         $range->contentType = $mime = $this->selectMimeTypeFromPath($fileInfo->path);
 
@@ -585,60 +587,42 @@ class Root implements Responder, ServerObserver {
     }
 
     private function sendSingleRange(File\Handle $handle, int $startPos, int $endPos): InputStream {
-        $emitter = new Emitter;
-        $stream = new IteratorStream($emitter->iterate());
-
-        $coroutine = new Coroutine($this->readRangeFromHandle($handle, $emitter, $startPos, $endPos));
-        $coroutine->onResolve(function ($error) use ($emitter) {
-            if ($error) {
-                $emitter->fail($error);
-            } else {
-                $emitter->complete();
-            }
+        $iterator = new Producer(function (callable $emit) use ($handle, $startPos, $endPos) {
+            return $this->readRangeFromHandle($handle, $emit, $startPos, $endPos);
         });
 
-        return $stream;
+        return new IteratorStream($iterator);
     }
 
-    private function sendMultiRange($handle, $fileInfo, $range): InputStream {
-        $emitter = new Emitter;
-        $stream = new IteratorStream($emitter->iterate());
-
-        call(function () use ($handle, $range, $emitter, $fileInfo) {
+    private function sendMultiRange($handle, FileInformation $fileInfo, ByteRange $range): InputStream {
+        $iterator = new Producer(function (callable $emit) use ($handle, $range, $fileInfo) {
             foreach ($range->ranges as list($startPos, $endPos)) {
-                $header = sprintf(
+                yield $emit(sprintf(
                     "--%s\r\nContent-Type: %s\r\nContent-Range: bytes %d-%d/%d\r\n\r\n",
                     $range->boundary,
                     $range->contentType,
                     $startPos,
                     $endPos,
                     $fileInfo->size
-                );
-                yield $emitter->emit($header);
-                yield from $this->readRangeFromHandle($handle, $emitter, $startPos, $endPos);
-                yield $emitter->emit("\r\n");
+                ));
+                yield from $this->readRangeFromHandle($handle, $emit, $startPos, $endPos);
+                yield $emit("\r\n");
             }
-            $emitter->emit("--{$range->boundary}--");
-        })->onResolve(function ($error) use ($emitter) {
-            if ($error) {
-                $emitter->fail($error);
-            } else {
-                $emitter->complete();
-            }
+            yield $emit("--{$range->boundary}--");
         });
 
-        return $stream;
+        return new IteratorStream($iterator);
     }
 
-    private function readRangeFromHandle(File\Handle $handle, Emitter $emitter, int $startPos, int $endPos): \Generator {
+    private function readRangeFromHandle(File\Handle $handle, callable $emit, int $startPos, int $endPos): \Generator {
         $bytesRemaining = $endPos - $startPos + 1;
         yield $handle->seek($startPos);
 
         while ($bytesRemaining) {
-            $toBuffer = ($bytesRemaining > 8192) ? 8192 : $bytesRemaining;
+            $toBuffer = $bytesRemaining > self::READ_CHUNK_SIZE ? self::READ_CHUNK_SIZE : $bytesRemaining;
             $chunk = yield $handle->read($toBuffer);
             $bytesRemaining -= \strlen($chunk);
-            yield $emitter->emit($chunk);
+            yield $emit($chunk);
         }
     }
 
@@ -832,7 +816,8 @@ class Root implements Responder, ServerObserver {
         $this->errorHandler = $server->getErrorHandler();
 
         $this->debug = $server->getOptions()->isInDebugMode();
-        Loop::enable($this->cacheWatcher);
+
+        $server->getTimeReference()->onTimeUpdate($this->callableFromInstanceMethod("clearExpiredCacheEntries"));
 
         if ($this->fallback instanceof ServerObserver) {
             return $this->fallback->onStart($server);
@@ -842,8 +827,6 @@ class Root implements Responder, ServerObserver {
     }
 
     public function onStop(Server $server): Promise {
-        Loop::disable($this->cacheWatcher);
-
         $this->cache = [];
         $this->cacheTimeouts = [];
         $this->cacheEntryCount = 0;
