@@ -8,7 +8,6 @@ use Aerys\Responder;
 use Aerys\Server;
 use Aerys\ServerObserver;
 use Amp\Promise;
-use Amp\Success;
 
 /**
  * Wraps a responder with a single middleware.
@@ -34,19 +33,31 @@ class MiddlewareResponder implements Responder, ServerObserver {
 
     /** @inheritdoc */
     public function onStart(Server $server): Promise {
-        if ($this->next instanceof ServerObserver) {
-            return $this->next->onStart($server);
+        $promises = [];
+
+        if ($this->middleware instanceof ServerObserver) {
+            $promises[] = $this->middleware->onStart($server);
         }
 
-        return new Success;
+        if ($this->next instanceof ServerObserver) {
+            $promises[] = $this->next->onStart($server);
+        }
+
+        return Promise\all($promises);
     }
 
     /** @inheritdoc */
     public function onStop(Server $server): Promise {
-        if ($this->next instanceof ServerObserver) {
-            return $this->next->onStop($server);
+        $promises = [];
+
+        if ($this->middleware instanceof ServerObserver) {
+            $promises[] = $this->middleware->onStop($server);
         }
 
-        return new Success;
+        if ($this->next instanceof ServerObserver) {
+            $promises[] = $this->next->onStop($server);
+        }
+
+        return Promise\all($promises);
     }
 }
