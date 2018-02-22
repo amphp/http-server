@@ -238,13 +238,15 @@ class Http2DriverTest extends TestCase {
         $emitter->fail(new \Exception);
 
         $data = self::packFrame(pack(
-            "nNnNnN",
+            "nNnNnNnN",
             Http2Driver::INITIAL_WINDOW_SIZE,
             $options->getMaxBodySize(),
             Http2Driver::MAX_CONCURRENT_STREAMS,
             $options->getMaxConcurrentStreams(),
             Http2Driver::MAX_HEADER_LIST_SIZE,
-            $options->getMaxHeaderSize()
+            $options->getMaxHeaderSize(),
+            Http2Driver::MAX_FRAME_SIZE,
+            Http2Driver::DEFAULT_MAX_FRAME_SIZE
         ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0);
 
         $data .= self::packFrame(HPack::encode([

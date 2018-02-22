@@ -841,13 +841,15 @@ class Http1DriverTest extends TestCase {
         $expected = [
             "HTTP/1.1 101 Switching Protocols",
             Http2DriverTest::packFrame(pack(
-                "nNnNnN",
+                "nNnNnNnN",
                 Http2Driver::INITIAL_WINDOW_SIZE,
                 $options->getMaxBodySize(),
                 Http2Driver::MAX_CONCURRENT_STREAMS,
                 $options->getMaxConcurrentStreams(),
                 Http2Driver::MAX_HEADER_LIST_SIZE,
-                $options->getMaxHeaderSize()
+                $options->getMaxHeaderSize(),
+                Http2Driver::MAX_FRAME_SIZE,
+                Http2Driver::DEFAULT_MAX_FRAME_SIZE
             ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0)
         ];
 
@@ -888,13 +890,15 @@ class Http1DriverTest extends TestCase {
             $this->createCallback(0),
             function (string $data) use ($options) {
                 $expected = Http2DriverTest::packFrame(pack(
-                    "nNnNnN",
+                    "nNnNnNnN",
                     Http2Driver::INITIAL_WINDOW_SIZE,
                     $options->getMaxBodySize(),
                     Http2Driver::MAX_CONCURRENT_STREAMS,
                     $options->getMaxConcurrentStreams(),
                     Http2Driver::MAX_HEADER_LIST_SIZE,
-                    $options->getMaxHeaderSize()
+                    $options->getMaxHeaderSize(),
+                    Http2Driver::MAX_FRAME_SIZE,
+                    Http2Driver::DEFAULT_MAX_FRAME_SIZE
                 ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0);
 
                 $this->assertSame($expected, $data);

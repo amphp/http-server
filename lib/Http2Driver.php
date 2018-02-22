@@ -466,13 +466,15 @@ class Http2Driver implements HttpDriver {
             // Initial settings frame, sent immediately for upgraded connections.
             $this->writeFrame(
                 pack(
-                    "nNnNnN",
+                    "nNnNnNnN",
                     self::INITIAL_WINDOW_SIZE,
                     $maxBodySize,
                     self::MAX_CONCURRENT_STREAMS,
                     $this->options->getMaxConcurrentStreams(),
                     self::MAX_HEADER_LIST_SIZE,
-                    $maxHeaderSize
+                    $maxHeaderSize,
+                    self::MAX_FRAME_SIZE,
+                    self::DEFAULT_MAX_FRAME_SIZE
                 ),
                 self::SETTINGS,
                 self::NOFLAG
@@ -501,13 +503,15 @@ class Http2Driver implements HttpDriver {
             // Initial settings frame, delayed until after the preface is read for non-upgraded connections.
             $this->writeFrame(
                 pack(
-                    "nNnNnN",
+                    "nNnNnNnN",
                     self::INITIAL_WINDOW_SIZE,
                     $maxBodySize,
                     self::MAX_CONCURRENT_STREAMS,
                     $this->options->getMaxConcurrentStreams(),
                     self::MAX_HEADER_LIST_SIZE,
-                    $maxHeaderSize
+                    $maxHeaderSize,
+                    self::MAX_FRAME_SIZE,
+                    self::DEFAULT_MAX_FRAME_SIZE
                 ),
                 self::SETTINGS,
                 self::NOFLAG
@@ -592,11 +596,6 @@ class Http2Driver implements HttpDriver {
                             }
                         } else {
                             $padding = 0;
-                        }
-
-                        if ($length > (1 << 14)) {
-                            $error = self::PROTOCOL_ERROR;
-                            goto connection_error;
                         }
 
                         $this->serverWindow -= $length;
@@ -1210,14 +1209,6 @@ class Http2Driver implements HttpDriver {
         }
 
         switch ($unpacked["setting"]) {
-            case self::HEADER_TABLE_SIZE:
-                if ($unpacked["value"] > 4096) {
-                    return self::PROTOCOL_ERROR;
-                }
-
-                $this->table->tableResize($unpacked["value"]);
-                return 0;
-
             case self::INITIAL_WINDOW_SIZE:
                 if ($unpacked["value"] >= 1 << 31) {
                     return self::FLOW_CONTROL_ERROR;
@@ -1242,6 +1233,7 @@ class Http2Driver implements HttpDriver {
                 $this->maxFrameSize = $unpacked["value"];
                 return 0;
 
+            case self::HEADER_TABLE_SIZE:
             case self::MAX_HEADER_LIST_SIZE:
             case self::MAX_CONCURRENT_STREAMS:
                 return 0; // @TODO Respect these settings from the client.
