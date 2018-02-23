@@ -700,8 +700,8 @@ class Http1Driver implements HttpDriver {
 
         if (!empty($push)) {
             $headers["link"] = [];
-            foreach ($push as $url => $pushHeaders) {
-                $headers["link"][] = "<$url>; rel=preload";
+            foreach ($push as list($pushUri, $pushHeaders)) {
+                $headers["link"][] = "<$pushUri>; rel=preload";
             }
         }
 

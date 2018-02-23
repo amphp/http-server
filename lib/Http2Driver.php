@@ -12,6 +12,7 @@ use Amp\Emitter;
 use Amp\Http\Status;
 use Amp\Promise;
 use League\Uri;
+use Psr\Http\Message\UriInterface as PsrUri;
 
 class Http2Driver implements HttpDriver {
     const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
@@ -163,12 +164,18 @@ class Http2Driver implements HttpDriver {
         return $this->parser($settings);
     }
 
-    protected function dispatchInternalRequest(Request $request, int $streamId, string $url, array $headers = []) {
+    protected function dispatchInternalRequest(Request $request, int $streamId, PsrUri $url, array $headers = []) {
         $uri = $request->getUri();
 
-        if (!\preg_match("#^https?://#i", $url)) {
-            $uri = $uri->withPath("/" . \ltrim($url, "/"));
+        if ($url[0] ?? "" === "/") {
+            $uri = $uri->withPath($url->getPath())->withQuery($url->getQuery());
+        } elseif ($url->getScheme() !== "") {
+            $uri = $uri->withPath($uri->getPath() . "/" . $url->getPath())->withQuery($url->getQuery());
+        } else {
+            $uri = $url;
         }
+
+        $url = (string) $uri;
 
         if (isset($this->pushCache[$url])) {
             return; // Resource already pushed to this client.
@@ -253,11 +260,11 @@ class Http2Driver implements HttpDriver {
             $headers["date"] = [$this->timeReference->getCurrentDate()];
 
             if (!empty($push = $response->getPush())) {
-                foreach ($push as $url => $pushHeaders) {
+                foreach ($push as list($pushUri, $pushHeaders)) {
                     if ($this->allowsPush) {
-                        $this->dispatchInternalRequest($request, $id, $url, $pushHeaders);
+                        $this->dispatchInternalRequest($request, $id, $pushUri, $pushHeaders);
                     } else {
-                        $headers["link"][] = "<$url>; rel=preload";
+                        $headers["link"][] = "<$pushUri>; rel=preload";
                     }
                 }
             }

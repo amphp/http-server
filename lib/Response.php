@@ -7,6 +7,7 @@ use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Status;
 use Amp\Loop;
+use League\Uri;
 
 class Response extends Message {
     /** @var \Amp\ByteStream\InputStream  */
@@ -261,7 +262,7 @@ class Response extends Message {
     }
 
     /**
-     * @return string[][]
+     * @return array
      */
     public function getPush(): array {
         return $this->push;
@@ -270,18 +271,26 @@ class Response extends Message {
     /**
      * @param string $url URL of resource to push to the client.
      * @param string[][] Additional headers to attach to the request.
+     *
+     * @throws \Error If the given url is invalid.
      */
     public function push(string $url, array $headers = []) {
         \assert((function ($headers) {
             foreach ($headers as $name => $header) {
-                if ($name[0] === ":" || !strncasecmp("host", $name, 4)) {
+                if ($name[0] === ":" || !\strncasecmp("host", $name, 4)) {
                     return false;
                 }
             }
             return true;
         })($headers), "Headers must not contain colon prefixed headers or a Host header");
 
-        $this->push[$url] = $headers;
+        try {
+            $uri = Uri\Http::createFromString($url);
+        } catch (Uri\Exception $exception) {
+            throw new \Error($exception->getMessage());
+        }
+
+        $this->push[$url] = [$uri, $headers];
     }
 
     /**
