@@ -2,13 +2,13 @@
 
 namespace Aerys;
 
-use Amp\Coroutine;
 use Amp\Failure;
 use Amp\Http\Status;
 use Amp\Promise;
 use cash\LRUCache;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
+use function Amp\call;
 use function FastRoute\simpleDispatcher;
 
 final class Router implements Responder, ServerObserver {
@@ -57,53 +57,70 @@ final class Router implements Responder, ServerObserver {
      * @return Promise<\Aerys\Response>
      */
     public function respond(Request $request): Promise {
-        return new Coroutine($this->dispatch($request));
-    }
-
-    private function dispatch(Request $request) {
         $method = $request->getMethod();
         $path = $request->getUri()->getPath();
 
         $toMatch = "{$method}\0{$path}";
 
-        if ($cacheEntry = $this->cache->get($toMatch)) {
-            list($responder, $routeArgs) = $cacheEntry;
-            $request->setAttribute(self::class, $routeArgs);
-        } else {
+        if (null === $match = $this->cache->get($toMatch)) {
             $match = $this->routeDispatcher->dispatch($method, $path);
-
-            switch ($match[0]) {
-                case Dispatcher::FOUND:
-                    list(, $responder, $routeArgs) = $match;
-                    $request->setAttribute(self::class, $routeArgs);
-                    break;
-
-                case Dispatcher::NOT_FOUND:
-                    if ($this->fallback !== null) {
-                        return $this->fallback->respond($request);
-                    }
-
-                    return yield $this->errorHandler->handle(Status::NOT_FOUND, null, $request);
-
-                case Dispatcher::METHOD_NOT_ALLOWED:
-                    $allowedMethods = implode(",", $match[1]);
-
-                    /** @var \Aerys\Response $response */
-                    $response = yield $this->errorHandler->handle(Status::METHOD_NOT_ALLOWED, null, $request);
-                    $response->setHeader("Allow", $allowedMethods);
-                    return $response;
-
-                default:
-                    throw new \UnexpectedValueException(
-                        "Encountered unexpected Dispatcher code"
-                    );
-            }
-
-            $this->cache->put($toMatch, [$responder, $routeArgs]);
+            $this->cache->put($toMatch, $match);
         }
 
-        /** @var Responder $responder */
-        return yield $responder->respond($request);
+        switch ($match[0]) {
+            case Dispatcher::FOUND:
+                /**
+                 * @var Responder $responder
+                 * @var string[] $routeArgs
+                 */
+                list(, $responder, $routeArgs) = $match;
+                $request->setAttribute(self::class, $routeArgs);
+
+                return $responder->respond($request);
+
+            case Dispatcher::NOT_FOUND:
+                if ($this->fallback !== null) {
+                    return $this->fallback->respond($request);
+                }
+
+                return $this->makeNotFoundResponse($request);
+
+            case Dispatcher::METHOD_NOT_ALLOWED:
+                return $this->makeMethodNotAllowedResponse($match[1], $request);
+
+            default:
+                throw new \UnexpectedValueException(
+                    "Encountered unexpected Dispatcher code"
+                );
+        }
+    }
+
+    /**
+     * Create a response if no routes matched and no fallback has been set.
+     *
+     * @param Request $request
+     *
+     * @return Promise<\Aerys\Response>
+     */
+    private function makeNotFoundResponse(Request $request): Promise {
+        return $this->errorHandler->handle(Status::NOT_FOUND, null, $request);
+    }
+
+    /**
+     * Create a response if the requested method is not allowed for the matched path.
+     *
+     * @param string[] $methods
+     * @param Request $request
+     *
+     * @return Promise<\Aerys\Response>
+     */
+    private function makeMethodNotAllowedResponse(array $methods, Request $request): Promise {
+        return call(function () use ($methods, $request) {
+            /** @var \Aerys\Response $response */
+            $response = yield $this->errorHandler->handle(Status::METHOD_NOT_ALLOWED, null, $request);
+            $response->setHeader("Allow", \implode(",", $methods));
+            return $response;
+        });
     }
 
     /**
@@ -205,7 +222,7 @@ final class Router implements Responder, ServerObserver {
                 return new Response\TextResponse(
                     "Canonical resource location: {$path}",
                     ["Location" => $redirectTo],
-                    Status::FOUND
+                    Status::PERMANENT_REDIRECT
                 );
             })];
         } else {

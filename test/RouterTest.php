@@ -69,7 +69,7 @@ class RouterTest extends TestCase {
         /** @var \Aerys\Response $response */
         $response = Promise\wait($router->respond($request));
 
-        $this->assertEquals(Status::FOUND, $response->getStatus());
+        $this->assertEquals(Status::PERMANENT_REDIRECT, $response->getStatus());
         $this->assertEquals("/mediocre-dev/bob/19", $response->getHeader("location"));
 
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/mediocre-dev/bob/19"));
