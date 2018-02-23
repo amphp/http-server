@@ -79,7 +79,8 @@ class BodyParser implements Promise {
 
     public function onResolve(callable $onResolved) {
         if ($this->parsePromise) {
-            return $this->parsePromise->onResolve($onResolved);
+            $this->parsePromise->onResolve($onResolved);
+            return;
         }
 
         if ($this->incrementalParsePromise) {
@@ -113,7 +114,8 @@ class BodyParser implements Promise {
                 return new ParsedBody($fields, array_filter($metadata));
             });
 
-            return $this->parsePromise->onResolve($onResolved);
+            $this->parsePromise->onResolve($onResolved);
+            return;
         }
 
         // Use a faster parsing algorithm if incremental parsing has not been requested.
@@ -246,8 +248,12 @@ class BodyParser implements Promise {
     }
 
     private function initField(string $field, array $metadata = []): Emitter {
-        if ($this->inputVarCount++ == $this->maxInputVars || \strlen($field) > $this->maxFieldLength) {
-            throw new ClientException;
+        if ($this->inputVarCount++ == $this->maxInputVars) {
+            throw new ParseException("Maximum number of variables exceeded");
+        }
+
+        if (\strlen($field) > $this->maxFieldLength) {
+            throw new ParseException("Maximum field length exceeded");
         }
 
         if (isset($this->bodyDeferreds[$field])) {
@@ -332,12 +338,12 @@ class BodyParser implements Promise {
         while (\strlen($buffer) < \strlen($sep) + 4) {
             $buffer .= $chunk = yield $this->body->read();
             if ($chunk === null) {
-                throw new ClientException;
+                throw new ParseException("Boundary ended unexpectedly");
             }
         }
         $off = \strlen($sep);
         if (strncmp($buffer, $sep, $off)) {
-            throw new ClientException;
+            throw new ParseException("Invalid boundary");
         }
 
         $sep = "\r\n$sep";
@@ -348,7 +354,7 @@ class BodyParser implements Promise {
             while (($end = strpos($buffer, "\r\n\r\n", $off)) === false) {
                 $buffer .= $chunk = yield $this->body->read();
                 if ($chunk === null) {
-                    throw new ClientException;
+                    throw new ParseException("Body ended unexpectedly");
                 }
             }
 
@@ -357,7 +363,7 @@ class BodyParser implements Promise {
             foreach (explode("\r\n", substr($buffer, $off, $end - $off)) as $header) {
                 $split = explode(":", $header, 2);
                 if (!isset($split[1])) {
-                    throw new ClientException;
+                    throw new ParseException("Invalid content header");
                 }
                 $headers[strtolower($split[0])] = trim($split[1]);
             }
@@ -369,7 +375,7 @@ class BodyParser implements Promise {
             );
 
             if (!$count || !isset($matches[1])) {
-                throw new ClientException;
+                throw new ParseException("Invalid content-disposition header");
             }
             $field = $matches[1];
 
@@ -394,7 +400,7 @@ class BodyParser implements Promise {
             while (($end = strpos($buffer, $sep, $off)) === false) {
                 $buffer .= $chunk = yield $this->body->read();
                 if ($chunk === null) {
-                    $e = new ClientException;
+                    $e = new ParseException("Body ended unexpectedly");
                     $dataEmitter->fail($e);
                     throw $e;
                 }
@@ -415,7 +421,7 @@ class BodyParser implements Promise {
             while (\strlen($buffer) < 4) {
                 $buffer .= $chunk = yield $this->body->read();
                 if ($chunk === null) {
-                    throw new ClientException;
+                    throw new ParseException("Body ended unexpectedly");
                 }
             }
         }
@@ -427,8 +433,6 @@ class BodyParser implements Promise {
         $field = null;
 
         /** @var \Amp\Emitter|null $dataEmitter */
-        $dataEmitter = null;
-
         while (($new = yield $this->body->read()) !== null) {
             if ($new[0] === "&") {
                 if ($field !== null) {
@@ -475,7 +479,7 @@ class BodyParser implements Promise {
                     $buffer = substr($buffer, \strlen($new) + 1);
                     $noData = true;
                 } elseif (\strlen($buffer) > $this->maxFieldLength) {
-                    throw new ClientException;
+                    throw new ParseException("Maximum field length exceeded");
                 }
             }
 
