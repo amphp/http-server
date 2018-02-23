@@ -2,32 +2,39 @@
 
 namespace Aerys;
 
+use Amp\Http\Status;
+use League\Uri;
+
 /**
- * Create a redirect responder for use in a Host instance.
+ * Create a redirect responder.
  *
- * @param string $absoluteUri Absolute URI prefix to redirect to
+ * @param string $uri Absolute URI prefix to redirect to. Requested URI paths and queries are appended to
+ *     this URI.
  * @param int $redirectCode HTTP status code to set
- * @return callable Responder callable
+ *
+ * @return \Aerys\Responder
+ *
+ * @throws \Error If the given redirect URI is invalid or contains a query or fragment.
  */
-function redirect(string $absoluteUri, int $redirectCode = 307): Responder {
-    if (!$url = @parse_url($absoluteUri)) {
-        throw new \Error("Invalid redirect URI");
-    }
-    if (empty($url["scheme"]) || ($url["scheme"] !== "http" && $url["scheme"] !== "https")) {
-        throw new \Error("Invalid redirect URI; \"http\" or \"https\" scheme required");
-    }
-    if (isset($url["query"]) || isset($url["fragment"])) {
-        throw new \Error("Invalid redirect URI; Host redirect must not contain a query or fragment component");
+function redirect(string $uri, int $redirectCode = Status::TEMPORARY_REDIRECT): Responder {
+    try {
+        $uri = Uri\Http::createFromString($uri);
+    } catch (Uri\Exception $exception) {
+        throw new \Error($exception->getMessage());
     }
 
-    $absoluteUri = rtrim($absoluteUri, "/");
+    if ($uri->getQuery() || $uri->getFragment()) {
+        throw new \Error("Invalid redirect URI; Host redirect must not contain a query or fragment component");
+    }
 
     if ($redirectCode < 300 || $redirectCode > 399) {
         throw new \Error("Invalid redirect code; code in the range 300..399 required");
     }
 
-    return new CallableResponder(function (Request $req) use ($absoluteUri, $redirectCode) {
-        $uri = $req->getUri();
+    $redirectUri = rtrim((string) $uri, "/");
+
+    return new CallableResponder(function (Request $request) use ($redirectUri, $redirectCode): Response {
+        $uri = $request->getUri();
         $path = $uri->getPath();
         $query = $uri->getQuery();
 
@@ -35,7 +42,7 @@ function redirect(string $absoluteUri, int $redirectCode = 307): Responder {
             $path .= "?" . $query;
         }
 
-        return new Response\RedirectResponse($absoluteUri . $path, $redirectCode);
+        return new Response\RedirectResponse($redirectUri . $path, $redirectCode);
     });
 }
 
