@@ -419,6 +419,14 @@ class Http2Driver implements HttpDriver {
     private function releaseStream(int $id) {
         \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
 
+        if (isset($this->bodyEmitters[$id])) {
+            $this->bodyEmitters[$id]->complete();
+        }
+
+        if (isset($this->trailerDeferreds[$id])) {
+            $this->trailerDeferreds[$id]->resolve(new Trailers([]));
+        }
+
         unset($this->streams[$id], $this->trailerDeferreds[$id], $this->bodyEmitters[$id]);
         if ($id & 1) { // Client-initiated stream.
             $this->remainingStreams++;
@@ -637,6 +645,10 @@ class Http2Driver implements HttpDriver {
 
                         if (($flags & self::END_STREAM) !== "\0") {
                             $stream->state |= Http2Stream::REMOTE_CLOSED;
+
+                            if (!isset($this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
+                                continue 2; // Stream closed after emitting body fragment.
+                            }
 
                             $deferred = $this->trailerDeferreds[$id];
                             $emitter = $this->bodyEmitters[$id];
