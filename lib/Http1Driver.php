@@ -284,11 +284,11 @@ class Http1Driver implements HttpDriver {
                 $host = $matches[1];
                 $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
                 $scheme = $this->client->isEncrypted() ? "https" : "http";
+                $query = null;
 
                 try {
                     if ($target[0] === "/") { // origin-form
                         if ($position = \strpos($target, "#")) {
-                            $fragment = \substr($target, $position + 1);
                             $target = \substr($target, 0, $position);
                         }
 
@@ -298,12 +298,11 @@ class Http1Driver implements HttpDriver {
                         }
 
                         $uri = Uri\Http::createFromComponents([
-                            "scheme"   => $scheme,
-                            "host"     => $host,
-                            "port"     => $port,
-                            "path"     => $target,
-                            "query"    => $query ?? null,
-                            "fragment" => $fragment ?? null,
+                            "scheme" => $scheme,
+                            "host"   => $host,
+                            "port"   => $port,
+                            "path"   => $target,
+                            "query"  => $query,
                         ]);
                     } elseif ($target === "*") { // asterisk-form
                         $uri = Uri\Http::createFromComponents([

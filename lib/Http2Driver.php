@@ -1069,6 +1069,7 @@ class Http2Driver implements HttpDriver {
                     $target = $headers[":path"][0] ?? "";
                     $scheme = $headers[":scheme"][0] ?? ($this->client->isEncrypted() ? "https" : "http");
                     $host = $headers[":authority"][0] ?? "";
+                    $query = null;
 
                     if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\])(?::([1-9]\d*))?$#i", $host, $matches)) {
                         $error = self::PROTOCOL_ERROR;
@@ -1079,7 +1080,6 @@ class Http2Driver implements HttpDriver {
                     $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
 
                     if ($position = \strpos($target, "#")) {
-                        $fragment = \substr($target, $position + 1);
                         $target = \substr($target, 0, $position);
                     }
 
@@ -1090,12 +1090,11 @@ class Http2Driver implements HttpDriver {
 
                     try {
                         $uri = Uri\Http::createFromComponents([
-                            "scheme"   => $scheme,
-                            "host"     => $host,
-                            "port"     => $port,
-                            "path"     => $target,
-                            "query"    => $query ?? null,
-                            "fragment" => $fragment ?? null,
+                            "scheme" => $scheme,
+                            "host"   => $host,
+                            "port"   => $port,
+                            "path"   => $target,
+                            "query"  => $query,
                         ]);
                     } catch (Uri\UriException $exception) {
                         $error = self::PROTOCOL_ERROR;
