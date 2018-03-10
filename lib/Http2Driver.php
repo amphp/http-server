@@ -814,7 +814,9 @@ class Http2Driver implements HttpDriver {
                             $deferred->fail($exception);
                         }
 
-                        $this->releaseStream($id);
+                        if (isset($this->streams[$id])) {
+                            $this->releaseStream($id);
+                        }
 
                         $buffer = \substr($buffer, 4);
                         continue 2;
