@@ -1,8 +1,8 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\Internal\Host;
+use Amp\Http\Server\Internal\Host;
 use Amp\Socket\Certificate;
 use Amp\Socket\ServerTlsContext;
 use PHPUnit\Framework\TestCase;

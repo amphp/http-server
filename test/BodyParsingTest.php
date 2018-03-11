@@ -1,15 +1,16 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\Body;
-use Aerys\BodyParser;
-use Aerys\Client;
-use Aerys\Request;
+use Amp\Http\Server\Body;
+use Amp\Http\Server\BodyParser;
+use Amp\Http\Server\Client;
+use Amp\Http\Server\Request;
 use Amp\ByteStream\IteratorStream;
 use Amp\Loop;
 use PHPUnit\Framework\TestCase;
 use League\Uri;
+use function Amp\Http\Server\parseBody;
 
 class BodyParsingTest extends TestCase {
     /**
@@ -28,7 +29,7 @@ class BodyParsingTest extends TestCase {
         $emitter->complete();
 
         Loop::run(function () use ($request, &$result) {
-            $parsedBody = yield \Aerys\parseBody($request);
+            $parsedBody = yield parseBody($request);
             $result = $parsedBody->getAll();
         });
 
@@ -54,7 +55,7 @@ class BodyParsingTest extends TestCase {
         Loop::run(function () use ($request, $fields, $metadata) {
             $fieldlist = $fields;
 
-            $body = \Aerys\parseBody($request);
+            $body = parseBody($request);
 
             while (($field = yield $body->fetch()) !== null) {
                 $this->assertArrayHasKey($field, $fieldlist);
@@ -88,7 +89,7 @@ class BodyParsingTest extends TestCase {
                 $emitter->complete();
             });
 
-            $body = \Aerys\parseBody($request);
+            $body = parseBody($request);
             while (($field = yield $body->fetch()) !== null) {
                 $this->assertArrayHasKey($field, $fieldlist);
                 array_pop($fieldlist[$field]);
@@ -120,7 +121,7 @@ class BodyParsingTest extends TestCase {
             });
 
             $bodies = [];
-            $body = \Aerys\parseBody($request);
+            $body = parseBody($request);
             while (null !== $name = yield $body->fetch()) {
                 $bodies[] = [$body->stream($name), \array_shift($fields[$name])];
             }
@@ -156,7 +157,7 @@ class BodyParsingTest extends TestCase {
             });
 
             $bodies = [];
-            $body = \Aerys\parseBody($request);
+            $body = parseBody($request);
             while (null !== $name = yield $body->fetch()) {
                 if (isset($bodies[$name])) {
                     $remaining[$name][] = \array_shift($fields[$name]);

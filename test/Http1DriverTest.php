@@ -1,17 +1,17 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\Client;
-use Aerys\DefaultErrorHandler;
-use Aerys\ErrorHandler;
-use Aerys\Http1Driver;
-use Aerys\Http2Driver;
-use Aerys\Options;
-use Aerys\Request;
-use Aerys\Response;
-use Aerys\TimeReference;
-use Aerys\Trailers;
+use Amp\Http\Server\Client;
+use Amp\Http\Server\DefaultErrorHandler;
+use Amp\Http\Server\ErrorHandler;
+use Amp\Http\Server\Http1Driver;
+use Amp\Http\Server\Http2Driver;
+use Amp\Http\Server\Options;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\TimeReference;
+use Amp\Http\Server\Trailers;
 use Amp\Artax\Internal\Parser;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
@@ -114,7 +114,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertInstanceOf(Request::class, $request);
 
-        /** @var \Aerys\Request $request */
+        /** @var \Amp\Http\Server\Request $request */
         $body = Promise\wait($request->getBody()->buffer());
 
         $this->assertSame($expectations["protocol"], $request->getProtocolVersion(), "protocol mismatch");
@@ -154,7 +154,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertInstanceOf(Request::class, $request);
 
-        /** @var \Aerys\Request $request */
+        /** @var \Amp\Http\Server\Request $request */
         $body = Promise\wait($request->getBody()->buffer());
 
         $defaultPort = $request->getUri()->getScheme() === "https" ? 443 : 80;
@@ -204,7 +204,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertInstanceOf(Request::class, $request);
 
-        /** @var \Aerys\Request $request */
+        /** @var \Amp\Http\Server\Request $request */
         $body = Promise\wait($request->getBody()->buffer());
 
         $this->assertSame($originalBody, $body);
@@ -252,7 +252,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertInstanceOf(Request::class, $request);
 
-        /** @var \Aerys\Request $request */
+        /** @var \Amp\Http\Server\Request $request */
         $body = Promise\wait($request->getBody()->buffer());
 
         $this->assertSame($expectedBody, $body);
@@ -589,7 +589,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertInstanceOf(Request::class, $request);
 
-        /** @var \Aerys\Request $request */
+        /** @var \Amp\Http\Server\Request $request */
         $body = Promise\wait($request->getBody()->buffer());
 
         $this->assertSame($payload, $body);
@@ -641,7 +641,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertInstanceOf(Request::class, $request);
 
-        /** @var \Aerys\Request $request */
+        /** @var \Amp\Http\Server\Request $request */
         $body = Promise\wait($request->getBody()->buffer());
 
         $this->assertSame($results[0], $body);
@@ -655,7 +655,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertInstanceOf(Request::class, $request);
 
-        /** @var \Aerys\Request $request */
+        /** @var \Amp\Http\Server\Request $request */
         $body = Promise\wait($request->getBody()->buffer());
 
         $this->assertSame($results[1], $body);
@@ -669,7 +669,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertInstanceOf(Request::class, $request);
 
-        /** @var \Aerys\Request $request */
+        /** @var \Amp\Http\Server\Request $request */
         $body = Promise\wait($request->getBody()->buffer());
 
         $this->assertSame($results[0], $body);
@@ -939,7 +939,7 @@ class Http1DriverTest extends TestCase {
         $parser->send($message);
         $parser->send(""); // Continue past yield sending 100 Continue response.
 
-        /** @var \Aerys\Request $request */
+        /** @var \Amp\Http\Server\Request $request */
         $this->assertInstanceOf(Request::class, $request);
         $this->assertSame("POST", $request->getMethod());
         $this->assertSame("100-continue", $request->getHeader("expect"));
@@ -981,7 +981,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertInstanceOf(Request::class, $request);
 
-        /** @var \Aerys\Request $request */
+        /** @var \Amp\Http\Server\Request $request */
         $body = Promise\wait($request->getBody()->buffer());
 
         $this->assertSame("Body Content", $body);

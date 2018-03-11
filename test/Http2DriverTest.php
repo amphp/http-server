@@ -1,14 +1,14 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\Client;
-use Aerys\Http2Driver;
-use Aerys\Internal\HPack;
-use Aerys\Options;
-use Aerys\Request;
-use Aerys\Response;
-use Aerys\TimeReference;
+use Amp\Http\Server\Client;
+use Amp\Http\Server\Http2Driver;
+use Amp\Http\Server\Internal\HPack;
+use Amp\Http\Server\Options;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\TimeReference;
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\PHPUnit\TestCase;
@@ -74,7 +74,7 @@ class Http2DriverTest extends TestCase {
 
             $this->assertInstanceOf(Request::class, $request);
 
-            /** @var \Aerys\Request $request */
+            /** @var \Amp\Http\Server\Request $request */
             $body = Promise\wait($request->getBody()->buffer());
             $trailers = Promise\wait($request->getBody()->getTrailers());
 

@@ -1,15 +1,15 @@
 <?php
 
-namespace Aerys\Test\Websocket;
+namespace Amp\Http\Server\Test\Websocket;
 
-use Aerys\Request;
-use Aerys\Response;
-use Aerys\Websocket\Application;
-use Aerys\Websocket\Code;
-use Aerys\Websocket\Endpoint;
-use Aerys\Websocket\Internal\Rfc6455Client;
-use Aerys\Websocket\Internal\Rfc6455Gateway;
-use Aerys\Websocket\Message;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Websocket\Application;
+use Amp\Http\Server\Websocket\Code;
+use Amp\Http\Server\Websocket\Endpoint;
+use Amp\Http\Server\Websocket\Internal\Rfc6455Client;
+use Amp\Http\Server\Websocket\Internal\Rfc6455Gateway;
+use Amp\Http\Server\Websocket\Message;
 use Amp\PHPUnit\TestCase;
 use Amp\Socket\Socket;
 

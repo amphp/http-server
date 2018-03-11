@@ -20,8 +20,8 @@ switch (fread($testSock, 1)) {
             ],
         ]);
 
-        $console = new Aerys\Console($climate);
-        $ipcLogger = new Aerys\IpcLogger($console, $ipcSock);
+        $console = new Amp\Http\Server\Console($climate);
+        $ipcLogger = new Amp\Http\Server\IpcLogger($console, $ipcSock);
 
         Amp\Loop::run(function () use ($ipcLogger) {
             $ipcLogger->warning("testmessage");
@@ -36,7 +36,7 @@ switch (fread($testSock, 1)) {
         exit;
     case 3:
         $ipcSock = stream_socket_client($argv[2]);
-        $data = stream_get_contents($ipcSock, strlen(Aerys\WatcherProcess::STOP_SEQUENCE));
+        $data = stream_get_contents($ipcSock, strlen(Amp\Http\Server\WatcherProcess::STOP_SEQUENCE));
         fwrite($testSock, 3);
         fwrite($testSock, $data);
         exit;

@@ -1,11 +1,11 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\CommandClient;
-use Aerys\Console;
-use Aerys\Logger;
-use Aerys\WatcherProcess;
+use Amp\Http\Server\CommandClient;
+use Amp\Http\Server\Console;
+use Amp\Http\Server\Logger;
+use Amp\Http\Server\WatcherProcess;
 use Amp\Coroutine;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;

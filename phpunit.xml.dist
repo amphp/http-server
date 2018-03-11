@@ -18,13 +18,13 @@
         <ini name="error_reporting" value="-1" />
     </php>
     <testsuites>
-        <testsuite name="AerysTest">
+        <testsuite name="Amp HTTP Server Test">
             <directory>test</directory>
         </testsuite>
     </testsuites>
     <filter>
         <whitelist>
-            <directory suffix=".php">lib</directory>
+            <directory suffix=".php">src</directory>
         </whitelist>
     </filter>
     <listeners>

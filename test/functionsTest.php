@@ -1,13 +1,14 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\Request;
+use Amp\Http\Server\Request;
 use Amp\Http\Status;
 use League\Uri;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\UriInterface as PsrUri;
 use function Amp\Promise\wait;
+use function Amp\Http\Server\redirect;
 
 class functionsTest extends TestCase {
     /**
@@ -15,7 +16,7 @@ class functionsTest extends TestCase {
      * @expectedExceptionMessage The submitted uri `:` contains an invalid scheme
      */
     public function testBadRedirectUrl() {
-        \Aerys\redirect(":");
+        redirect(":");
     }
 
     /**
@@ -23,7 +24,7 @@ class functionsTest extends TestCase {
      * @expectedExceptionMessage The submitted uri `ssl://foo` is invalid for the following scheme(s): `http, https`
      */
     public function testBadRedirectScheme() {
-        \Aerys\redirect("ssl://foo");
+        redirect("ssl://foo");
     }
 
     /**
@@ -31,7 +32,7 @@ class functionsTest extends TestCase {
      * @expectedExceptionMessage Invalid redirect URI; Host redirect must not contain a query or fragment component
      */
     public function testBadRedirectPath() {
-        \Aerys\redirect("http://localhost/?foo");
+        redirect("http://localhost/?foo");
     }
 
     /**
@@ -39,11 +40,11 @@ class functionsTest extends TestCase {
      * @expectedExceptionMessage Invalid redirect code; code in the range 300..399 required
      */
     public function testBadRedirectCode() {
-        \Aerys\redirect("http://localhost", Status::CREATED);
+        redirect("http://localhost", Status::CREATED);
     }
 
     public function testSuccessfulAbsoluteRedirect() {
-        $action = \Aerys\redirect("https://localhost", Status::MOVED_PERMANENTLY);
+        $action = redirect("https://localhost", Status::MOVED_PERMANENTLY);
         $request = new class extends Request {
             public function __construct() {
             }
@@ -52,7 +53,7 @@ class functionsTest extends TestCase {
             }
         };
 
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = wait($action->respond($request));
 
         $this->assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
@@ -60,7 +61,7 @@ class functionsTest extends TestCase {
     }
 
     public function testSuccessfulRelativeRedirect() {
-        $action = \Aerys\redirect("/test", Status::TEMPORARY_REDIRECT);
+        $action = redirect("/test", Status::TEMPORARY_REDIRECT);
         $request = new class extends Request {
             public function __construct() {
             }
@@ -69,7 +70,7 @@ class functionsTest extends TestCase {
             }
         };
 
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = wait($action->respond($request));
 
         $this->assertSame(Status::TEMPORARY_REDIRECT, $response->getStatus());

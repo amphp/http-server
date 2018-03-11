@@ -6,15 +6,15 @@ if (!class_exists(Aerys\Process::class, false)) {
     exit(1);
 }
 
-use Aerys\Request;
-use Aerys\Response;
-use Aerys\Websocket;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Websocket;
 
 return function () {
     /* --- http://localhost:9001/ ------------------------------------------------------------------- */
 
     $websocket = new Websocket\Websocket(new class implements Websocket\Application {
-        /** @var \Aerys\Websocket\Endpoint */
+        /** @var \Amp\Http\Server\Websocket\Endpoint */
         private $endpoint;
 
         public function onStart(Websocket\Endpoint $endpoint) {

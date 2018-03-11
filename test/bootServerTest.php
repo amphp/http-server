@@ -1,10 +1,10 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\Console;
-use Aerys\Internal;
-use Aerys\Logger;
+use Amp\Http\Server\Console;
+use Amp\Http\Server\Internal;
+use Amp\Http\Server\Logger;
 use Amp\Coroutine;
 use League\CLImate\CLImate;
 use PHPUnit\Framework\TestCase;

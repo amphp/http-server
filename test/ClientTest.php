@@ -1,21 +1,21 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\Body;
-use Aerys\CallableResponder;
-use Aerys\Client;
-use Aerys\DefaultErrorHandler;
-use Aerys\ErrorHandler;
-use Aerys\HttpDriver;
-use Aerys\HttpDriverFactory;
-use Aerys\Logger;
-use Aerys\Options;
-use Aerys\Request;
-use Aerys\Responder;
-use Aerys\Response;
-use Aerys\Server;
-use Aerys\TimeoutCache;
+use Amp\Http\Server\Body;
+use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\Client;
+use Amp\Http\Server\DefaultErrorHandler;
+use Amp\Http\Server\ErrorHandler;
+use Amp\Http\Server\HttpDriver;
+use Amp\Http\Server\HttpDriverFactory;
+use Amp\Http\Server\Logger;
+use Amp\Http\Server\Options;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Responder;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Server;
+use Amp\Http\Server\TimeoutCache;
 use Amp\Artax\Cookie\ArrayCookieJar;
 use Amp\Artax\Cookie\Cookie;
 use Amp\Artax\DefaultClient;
@@ -181,7 +181,7 @@ class ClientTest extends TestCase {
             ["host" => ["localhost"]] // headers
         );
 
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         list($response, $body) = $this->tryRequest($request, function (Request $req) {
             $this->assertSame("localhost", $req->getHeader("Host"));
             $this->assertSame("/foo", $req->getUri()->getPath());
@@ -216,7 +216,7 @@ class ClientTest extends TestCase {
         $emitter->emit("BUZZ!");
         $emitter->complete();
 
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         list($response, $body) = $this->tryRequest($request, function (Request $req) {
             $buffer = "";
             while ((null !== $chunk = yield $req->getBody()->read())) {
@@ -238,7 +238,7 @@ class ClientTest extends TestCase {
      * @dataProvider providePreResponderRequests
      */
     public function testPreResponderFailures(Request $request, int $status) {
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         list($response) = $this->tryRequest($request, function (Request $req) {
             $this->fail("We should already have failed and never invoke the responder...");
         });
@@ -290,7 +290,7 @@ class ClientTest extends TestCase {
             null // body
         );
 
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         list($response) = $this->tryRequest($request, function (Request $req) {
             $this->fail("We should already have failed and never invoke the responder...");
         });
@@ -307,7 +307,7 @@ class ClientTest extends TestCase {
             ["host" => ["localhost"]] // headers
         );
 
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         list($response) = $this->tryRequest($request, function (Request $req) {
             throw new \Exception;
         });

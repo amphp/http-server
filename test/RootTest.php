@@ -1,12 +1,12 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\DefaultErrorHandler;
-use Aerys\Options;
-use Aerys\Request;
-use Aerys\Root;
-use Aerys\Server;
+use Amp\Http\Server\DefaultErrorHandler;
+use Amp\Http\Server\Options;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Root;
+use Amp\Http\Server\Server;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
@@ -113,7 +113,7 @@ class RootTest extends TestCase {
                 ->will($this->returnValue("GET"));
 
             $promise = $root->respond($request);
-            /** @var \Aerys\Response $response */
+            /** @var \Amp\Http\Server\Response $response */
             $response = Promise\wait($promise);
 
             $this->assertSame("text/html; charset=utf-8", $response->getHeader("content-type"));
@@ -139,7 +139,7 @@ class RootTest extends TestCase {
             ->will($this->returnValue("GET"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
         $stream = $response->getBody();
         $this->assertSame("test", Promise\wait($stream->read()));
@@ -166,7 +166,7 @@ class RootTest extends TestCase {
             ->will($this->returnValue("GET"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
         $this->assertSame(Status::NOT_FOUND, $response->getStatus());
     }
@@ -191,7 +191,7 @@ class RootTest extends TestCase {
             ->will($this->returnValue("GET"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
 
         $this->assertSame("text/html; charset=utf-8", $response->getHeader("content-type"));
@@ -221,7 +221,7 @@ class RootTest extends TestCase {
             ->will($this->returnValue("GET"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
 
         $this->assertSame("text/html; charset=utf-8", $response->getHeader("content-type"));
@@ -247,7 +247,7 @@ class RootTest extends TestCase {
             ->will($this->returnValue("GET"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
 
         $this->assertSame("text/html; charset=utf-8", $response->getHeader("content-type"));
@@ -268,7 +268,7 @@ class RootTest extends TestCase {
             ->will($this->returnValue("OPTIONS"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
 
         $this->assertSame("GET, HEAD, OPTIONS", $response->getHeader('allow'));
@@ -302,7 +302,7 @@ class RootTest extends TestCase {
             ->will($this->returnValue("GET"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
 
         $this->assertSame(Status::PRECONDITION_FAILED, $response->getStatus());
@@ -330,7 +330,7 @@ class RootTest extends TestCase {
             ->will($this->returnValue("GET"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
 
         $this->assertSame(Status::NOT_MODIFIED, $response->getStatus());
@@ -359,7 +359,7 @@ class RootTest extends TestCase {
             ->will($this->returnValue("GET"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
 
         $stream = $response->getBody();
@@ -398,7 +398,7 @@ class RootTest extends TestCase {
             ->will($this->returnValue("GET"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
 
         $this->assertSame(Status::RANGE_NOT_SATISFIABLE, $response->getStatus());
@@ -428,7 +428,7 @@ class RootTest extends TestCase {
                 ->method("getMethod")
                 ->will($this->returnValue("GET"));
 
-            /** @var \Aerys\Response $response */
+            /** @var \Amp\Http\Server\Response $response */
             $response = yield $root->respond($request);
 
             $this->assertSame(Status::PARTIAL_CONTENT, $response->getStatus());
@@ -485,7 +485,7 @@ PART;
             ->will($this->returnValue("GET"));
 
         $promise = $root->respond($request);
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($promise);
 
         $this->assertSame("image/svg+xml", $response->getHeader("content-type"));

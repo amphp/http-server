@@ -1,8 +1,8 @@
 <?php
 
-use Aerys\CallableResponder;
-use Aerys\Response;
-use Aerys\Server;
+use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Server;
 use Amp\Success;
 
 return function () {

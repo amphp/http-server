@@ -55,18 +55,18 @@
     },
     "autoload": {
         "psr-4": {
-            "Aerys\\": "lib/"
+            "Amp\\Http\\Server\\": "src"
         },
         "files": [
-            "lib/functions.php",
-            "lib/constants.php",
-            "lib/Internal/functions.php",
-            "lib/Middleware/functions.php"
+            "src/functions.php",
+            "src/constants.php",
+            "src/Internal/functions.php",
+            "src/Middleware/functions.php"
         ]
     },
     "autoload-dev": {
         "psr-4": {
-            "Aerys\\Test\\": "test/"
+            "Amp\\Http\\Server\\Test\\": "test/"
         }
     },
     "bin": ["bin/aerys"],

@@ -104,7 +104,7 @@ $climate->arguments->add([
     ]
 ]);
 
-$console = new Aerys\Console($climate);
+$console = new Amp\Http\Server\Console($climate);
 
 try {
     if ($console->isArgDefined("help")) {
@@ -122,10 +122,10 @@ try {
 }
 
 Amp\Loop::run(function () use ($console) {
-    $logger = new Aerys\ConsoleLogger($console);
+    $logger = new Amp\Http\Server\ConsoleLogger($console);
     $process = ($console->isArgDefined("debug") || PHP_SAPI === "phpdbg")
-        ? new Aerys\DebugProcess($logger)
-        : new Aerys\WatcherProcess($logger)
+        ? new Amp\Http\Server\DebugProcess($logger)
+        : new Amp\Http\Server\WatcherProcess($logger)
     ;
     return $process->start($console);
 });

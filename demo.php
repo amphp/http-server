@@ -1,30 +1,31 @@
 <?php
 
 // Ignore this if-statement, it serves only to prevent running this file directly.
-if (!class_exists(Aerys\Process::class, false)) {
+if (!class_exists(Amp\Http\Server\Process::class, false)) {
     echo "This file is not supposed to be invoked directly. To run it, use `php bin/aerys -c demo.php`.\n";
     exit(1);
 }
 
-use Aerys\CallableResponder;
-use Aerys\Request;
-use Aerys\Response;
-use Aerys\Root;
-use Aerys\RouteArguments;
-use Aerys\Router;
-use Aerys\Server;
-use Aerys\Websocket\Application;
-use Aerys\Websocket\Endpoint;
-use Aerys\Websocket\Message;
-use Aerys\Websocket\Websocket;
 use Amp\ByteStream\InputStream;
-use Amp\ByteStream\PendingReadError;
 use Amp\ByteStream\StreamException;
 use Amp\Failure;
+use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\Console;
+use Amp\Http\Server\Logger;
+use Amp\Http\Server\Options;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Root;
+use Amp\Http\Server\Router;
+use Amp\Http\Server\Server;
+use Amp\Http\Server\Websocket\Application;
+use Amp\Http\Server\Websocket\Endpoint;
+use Amp\Http\Server\Websocket\Message;
+use Amp\Http\Server\Websocket\Websocket;
 use Amp\Promise;
 
 // Return a function that defines and returns a Server instance.
-return function (Aerys\Options $options, Aerys\Logger $logger, Aerys\Console $console): Server {
+return function (Options $options, Logger $logger, Console $console): Server {
 
     /* --- Server options --------------------------------------------------------------------------- */
 

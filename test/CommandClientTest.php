@@ -1,11 +1,11 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\CommandClient;
+use Amp\Http\Server\CommandClient;
 use Amp\Loop;
 use PHPUnit\Framework\TestCase;
-use function Aerys\Internal\selectConfigFile;
+use function Amp\Http\Server\Internal\selectConfigFile;
 
 class CommandClientTest extends TestCase {
     public function testSendRestart() {

@@ -1,15 +1,15 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\CallableResponder;
-use Aerys\Client;
-use Aerys\Options;
-use Aerys\Request;
-use Aerys\Responder;
-use Aerys\Response;
-use Aerys\Router;
-use Aerys\Server;
+use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\Client;
+use Amp\Http\Server\Options;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Responder;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Router;
+use Amp\Http\Server\Server;
 use Amp\Failure;
 use Amp\Http\Status;
 use Amp\Promise;
@@ -33,7 +33,7 @@ class RouterTest extends TestCase {
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Aerys\Router::addRoute() requires a non-empty string HTTP method at Argument 1
+     * @expectedExceptionMessage Amp\Http\Server\Router::addRoute() requires a non-empty string HTTP method at Argument 1
      */
     public function testRouteThrowsOnEmptyMethodString() {
         $router = new Router;
@@ -66,7 +66,7 @@ class RouterTest extends TestCase {
 
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/mediocre-dev/bob/19/"));
 
-        /** @var \Aerys\Response $response */
+        /** @var \Amp\Http\Server\Response $response */
         $response = Promise\wait($router->respond($request));
 
         $this->assertEquals(Status::PERMANENT_REDIRECT, $response->getStatus());

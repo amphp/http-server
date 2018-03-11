@@ -1,18 +1,18 @@
 <?php
 
-namespace Aerys\Test\Middleware;
+namespace Amp\Http\Server\Test\Middleware;
 
-use Aerys\CallableResponder;
-use Aerys\Client;
-use Aerys\Middleware;
-use Aerys\Request;
-use Aerys\Responder;
-use Aerys\Response;
-use Aerys\Response\HtmlResponse;
+use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\Client;
+use Amp\Http\Server\Middleware;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Responder;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Response\HtmlResponse;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use League\Uri;
-use function Aerys\Middleware\stack;
+use function Amp\Http\Server\Middleware\stack;
 use function Amp\Promise\wait;
 
 class StackTest extends TestCase {

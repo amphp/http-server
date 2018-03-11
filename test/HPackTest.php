@@ -1,8 +1,8 @@
 <?php
 
-namespace Aerys\Test;
+namespace Amp\Http\Server\Test;
 
-use Aerys\Internal\HPack;
+use Amp\Http\Server\Internal\HPack;
 use PHPUnit\Framework\TestCase;
 
 /** @group hpack */

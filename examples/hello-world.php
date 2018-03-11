@@ -3,10 +3,10 @@
 
 require dirname(__DIR__) . "/vendor/autoload.php";
 
-use Aerys\CallableResponder;
-use Aerys\Request;
-use Aerys\Response;
-use Aerys\Server;
+use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Server;
 
 // Run this script, then visit http://localhost:8080/?name=Your-name in your browser.
 

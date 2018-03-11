@@ -1,19 +1,19 @@
 <?php
 
-namespace Aerys\Test\Websocket;
+namespace Amp\Http\Server\Test\Websocket;
 
-use Aerys\Body;
-use Aerys\Client;
-use Aerys\DefaultErrorHandler;
-use Aerys\Request;
-use Aerys\Response;
-use Aerys\Server;
-use Aerys\TimeReference;
-use Aerys\Websocket\Application;
-use Aerys\Websocket\Code;
-use Aerys\Websocket\Endpoint;
-use Aerys\Websocket\Internal\Rfc6455Gateway;
-use Aerys\Websocket\Message;
+use Amp\Http\Server\Body;
+use Amp\Http\Server\Client;
+use Amp\Http\Server\DefaultErrorHandler;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Server;
+use Amp\Http\Server\TimeReference;
+use Amp\Http\Server\Websocket\Application;
+use Amp\Http\Server\Websocket\Code;
+use Amp\Http\Server\Websocket\Endpoint;
+use Amp\Http\Server\Websocket\Internal\Rfc6455Gateway;
+use Amp\Http\Server\Websocket\Message;
 use Amp\ByteStream\InMemoryStream;
 use Amp\Deferred;
 use Amp\Delayed;

@@ -1,13 +1,13 @@
 <?php
 
-use Aerys\Request;
-use Aerys\Response;
-use Aerys\Root;
-use Aerys\Router;
-use Aerys\Server;
-use Aerys\Websocket\Application;
-use Aerys\Websocket\Endpoint;
-use Aerys\Websocket\Message;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Root;
+use Amp\Http\Server\Router;
+use Amp\Http\Server\Server;
+use Amp\Http\Server\Websocket\Application;
+use Amp\Http\Server\Websocket\Endpoint;
+use Amp\Http\Server\Websocket\Message;
 use Amp\Artax\Client;
 use Amp\Loop;
 
