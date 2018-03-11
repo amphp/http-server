@@ -68,6 +68,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     private $textOnly = false;
     private $queuedPingLimit = 3;
     private $maxFramesPerSecond = 100; // do not bother with setting it too low, fread(8192) may anyway include up to 2700 frames
+    private $compressionEnabled = false;
 
     // Frame control bits
     const FIN      = 0b1;
@@ -82,6 +83,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
     public function __construct(Application $application) {
         $this->application = $application;
         $this->endpoint = new Rfc6455Endpoint($this);
+        $this->compressionEnabled = \extension_loaded('zlib');
     }
 
     public function setOption(string $option, $value) {
@@ -98,6 +100,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
                     throw new \Error("$option must be a positive integer greater than 0");
                 }
                 break;
+            case "compressionEnabled":
             case "validateUtf8":
             case "textOnly":
                 if (null === $value = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)) {
@@ -174,7 +177,22 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             return $response;
         }
 
-        $response = yield call([$this->application, "onHandshake"], $request, new Rfc6455Handshake($acceptKey));
+        $response = new Rfc6455Handshake($acceptKey);
+
+        if ($this->compressionEnabled) {
+            $extensions = (string) $request->getHeader("Sec-Websocket-Extensions");
+
+            $extensions = array_map("trim", explode(',', $extensions));
+
+            foreach ($extensions as $extension) {
+                if ($compressionContext = Rfc7692Compression::fromHeader($extension, $headerLine)) {
+                    $response->setHeader("Sec-Websocket-Extensions", $headerLine);
+                }
+                break;
+            }
+        }
+
+        $response = yield call([$this->application, "onHandshake"], $request, $response);
 
         if (!$response instanceof Response) {
             throw new \Error(\sprintf(
@@ -187,19 +205,24 @@ class Rfc6455Gateway implements Responder, ServerObserver {
 
         if ($response->getStatus() === Status::SWITCHING_PROTOCOLS) {
             $response->upgrade(function (Socket $socket) use ($request) {
-                $this->reapClient($socket, $request);
+                $this->reapClient($socket, $request, $compressionContext ?? null);
             });
         }
 
         return $response;
     }
 
-    public function reapClient(Socket $socket, Request $request): Rfc6455Client {
+    public function reapClient(
+        Socket $socket,
+        Request $request,
+        Rfc7692Compression $compressionContext = null
+    ): Rfc6455Client {
         $client = new Rfc6455Client;
         $client->capacity = $this->maxBytesPerMinute;
         $client->connectedAt = $this->now;
         $client->id = (int) $socket->getResource();
         $client->socket = $socket;
+        $client->compressionContext = $compressionContext;
 
         $client->parser = $this->parser($client, $options = [
             "max_msg_size" => $this->maxMessageSize,
@@ -356,35 +379,36 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             case self::OP_CLOSE:
                 if ($client->closedAt) {
                     $this->unloadClient($client);
-                } else {
-                    $length = \strlen($data);
-                    if ($length === 0) {
-                        $code = Code::NONE;
-                        $reason = '';
-                    } elseif ($length < 2) {
-                        $code = Code::PROTOCOL_ERROR;
-                        $reason = 'Close code must be two bytes';
-                    } else {
-                        $code = current(unpack('n', substr($data, 0, 2)));
-                        $reason = substr($data, 2);
-
-                        if ($code < 1000 // Reserved and unused.
-                            || ($code >= 1004 && $code <= 1006) // Should not be sent over wire.
-                            || ($code >= 1014 && $code <= 1016) // Should only be sent by server.
-                            || ($code >= 1017 && $code <= 1999) // Reserved for future use
-                            || ($code >= 2000 && $code <= 2999) // Reserved for WebSocket extensions.
-                            || $code >= 5000 // 3000-3999 for libraries, 4000-4999 for applications, >= 5000 invalid.
-                        ) {
-                            $code = Code::PROTOCOL_ERROR;
-                            $reason = 'Invalid close code';
-                        } elseif ($this->validateUtf8 && !\preg_match('//u', $reason)) {
-                            $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
-                            $reason = 'Close reason must be valid UTF-8';
-                        }
-                    }
-
-                    Promise\rethrow(new Coroutine($this->doClose($client, $code, $reason)));
+                    break;
                 }
+
+                $length = \strlen($data);
+                if ($length === 0) {
+                    $code = Code::NONE;
+                    $reason = '';
+                } elseif ($length < 2) {
+                    $code = Code::PROTOCOL_ERROR;
+                    $reason = 'Close code must be two bytes';
+                } else {
+                    $code = current(unpack('n', substr($data, 0, 2)));
+                    $reason = substr($data, 2);
+
+                    if ($code < 1000 // Reserved and unused.
+                        || ($code >= 1004 && $code <= 1006) // Should not be sent over wire.
+                        || ($code >= 1014 && $code <= 1016) // Should only be sent by server.
+                        || ($code >= 1017 && $code <= 1999) // Reserved for future use
+                        || ($code >= 2000 && $code <= 2999) // Reserved for WebSocket extensions.
+                        || $code >= 5000 // 3000-3999 for libraries, 4000-4999 for applications, >= 5000 invalid.
+                    ) {
+                        $code = Code::PROTOCOL_ERROR;
+                        $reason = 'Invalid close code';
+                    } elseif ($this->validateUtf8 && !\preg_match('//u', $reason)) {
+                        $code = Code::INCONSISTENT_FRAME_DATA_TYPE;
+                        $reason = 'Close reason must be valid UTF-8';
+                    }
+                }
+
+                Promise\rethrow(new Coroutine($this->doClose($client, $code, $reason)));
                 break;
 
             case self::OP_PING:
@@ -452,9 +476,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         Promise\rethrow(new Coroutine($this->doClose($client, $code, $msg)));
     }
 
-    private function compile(string $msg, int $opcode, bool $fin): string {
-        $rsv = 0b000; // @TODO Add filter mechanism based on $client (e.g. gzip)
-
+    private function compile(string $msg, int $opcode, int $rsv, bool $fin): string {
         $len = \strlen($msg);
         $w = \chr(($fin << 7) | ($rsv << 4) | $opcode);
 
@@ -469,12 +491,12 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         return $w . $msg;
     }
 
-    private function write(Rfc6455Client $client, string $msg, int $opcode, bool $fin = true): Promise {
+    private function write(Rfc6455Client $client, string $msg, int $opcode, int $rsv = 0, bool $fin = true): Promise {
         if ($client->closedAt) {
             return new Failure(new ClientException);
         }
 
-        $frame = $this->compile($msg, $opcode, $fin);
+        $frame = $this->compile($msg, $opcode, $rsv, $fin);
 
         ++$client->framesSent;
         $client->bytesSent += \strlen($frame);
@@ -502,6 +524,13 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             yield $client->lastWrite;
         }
 
+        $rsv = 0;
+
+        if ($client->compressionContext && $opcode === self::OP_TEXT) {
+            $data = $client->compressionContext->compress($data);
+            $rsv |= Rfc7692Compression::RSV;
+        }
+
         try {
             $bytes = 0;
 
@@ -511,12 +540,13 @@ class Rfc6455Gateway implements Responder, ServerObserver {
                 $chunks = \str_split($data, \ceil($len / $slices));
                 $final = \array_pop($chunks);
                 foreach ($chunks as $chunk) {
-                    $bytes += yield $this->write($client, $chunk, $opcode, false);
+                    $bytes += yield $this->write($client, $chunk, $opcode, $rsv, false);
                     $opcode = self::OP_CONT;
+                    $rsv = 0; // RSV must be 0 in continuation frames.
                 }
-                $bytes += yield $this->write($client, $final, $opcode);
+                $bytes += yield $this->write($client, $final, $opcode, $rsv, true);
             } else {
-                $bytes = yield $this->write($client, $data, $opcode);
+                $bytes = yield $this->write($client, $data, $opcode, $rsv);
             }
         } catch (\Throwable $exception) {
             $this->close($client->id);
@@ -568,6 +598,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         if (!isset($this->clients[$clientId])) {
             return [];
         }
+
         $client = $this->clients[$clientId];
 
         return [
@@ -585,6 +616,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             'last_sent_at'  => $client->lastSentAt,
             'last_data_read_at'  => $client->lastDataReadAt,
             'last_data_sent_at'  => $client->lastDataSentAt,
+            'compression_enabled' => (bool) $client->compressionContext,
         ];
     }
 
@@ -695,6 +727,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
 
         $dataMsgBytesRecd = 0;
         $savedBuffer = '';
+        $compressed = false;
 
         $buffer = yield;
         $offset = 0;
@@ -702,6 +735,8 @@ class Rfc6455Gateway implements Responder, ServerObserver {
         $frames = 0;
 
         while (1) {
+            $payload = ''; // Free memory from last frame payload.
+
             if ($bufferSize < 2) {
                 $buffer = \substr($buffer, $offset);
                 $offset = 0;
@@ -718,17 +753,12 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             $offset += 2;
             $bufferSize -= 2;
 
-            $fin = (bool) ($firstByte & 0b10000000);
-            $rsv = ($firstByte & 0b01110000) >> 4; // unused (let's assume the bits are all zero)
+            $final = (bool) ($firstByte & 0b10000000);
+            $rsv = ($firstByte & 0b01110000) >> 4;
             $opcode = $firstByte & 0b00001111;
             $isMasked = (bool) ($secondByte & 0b10000000);
             $maskingKey = null;
             $frameLength = $secondByte & 0b01111111;
-
-            if ($rsv !== 0) {
-                $this->onParsedError($client, Code::PROTOCOL_ERROR, 'RSV must be 0 if no extensions are negotiated');
-                return;
-            }
 
             if ($opcode >= 3 && $opcode <= 7) {
                 $this->onParsedError($client, Code::PROTOCOL_ERROR, 'Use of reserved non-control frame opcode');
@@ -741,8 +771,20 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             }
 
             $isControlFrame = $opcode >= 0x08;
-            if ($validateUtf8 && $opcode !== self::OP_CONT && !$isControlFrame) {
-                $doUtf8Validation = $opcode === self::OP_TEXT;
+
+            if ($isControlFrame || $opcode === self::OP_CONT) { // Control and continuation frames
+                if ($rsv !== 0) {
+                    $this->onParsedError($client, Code::PROTOCOL_ERROR, 'RSV must be 0 for control or continuation frames');
+                    return;
+                }
+            } else { // Text and binary frames
+                if ($rsv !== 0 && (!$client->compressionContext || $rsv & ~Rfc7692Compression::RSV)) {
+                    $this->onParsedError($client, Code::PROTOCOL_ERROR, 'Invalid RSV value for negotiated extensions');
+                    return;
+                }
+
+                $doUtf8Validation = $validateUtf8 && $opcode === self::OP_TEXT;
+                $compressed = (bool) ($rsv & Rfc7692Compression::RSV);
             }
 
             if ($frameLength === 0x7E) {
@@ -807,7 +849,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
             }
 
             if ($isControlFrame) {
-                if (!$fin) {
+                if (!$final) {
                     $this->onParsedError(
                         $client,
                         Code::PROTOCOL_ERROR,
@@ -844,7 +886,7 @@ class Rfc6455Gateway implements Responder, ServerObserver {
                 return;
             }
 
-            if ($textOnly && $opcode === 0x02) {
+            if ($textOnly && $opcode === self::OP_BIN) {
                 $this->onParsedError(
                     $client,
                     Code::UNACCEPTABLE_TYPE,
@@ -876,10 +918,6 @@ class Rfc6455Gateway implements Responder, ServerObserver {
                 $frames = 0;
             }
 
-            if (!$isControlFrame) {
-                $dataMsgBytesRecd += $frameLength;
-            }
-
             $payload = \substr($buffer, $offset, $frameLength);
             $offset += $frameLength;
             $bufferSize -= $frameLength;
@@ -892,41 +930,65 @@ class Rfc6455Gateway implements Responder, ServerObserver {
 
             if ($isControlFrame) {
                 $this->onParsedControlFrame($client, $opcode, $payload);
-            } else {
-                if ($savedBuffer !== '') {
-                    $payload = $savedBuffer . $payload;
-                    $savedBuffer = '';
-                }
-
-                if ($doUtf8Validation) {
-                    if ($fin) {
-                        $i = \preg_match('//u', $payload) ? 0 : 3;
-                    } else {
-                        $string = $payload;
-                        for ($i = 0; !\preg_match('//u', $payload) && $i < 3; $i++) {
-                            $payload = \substr($payload, 0, -1);
-                        }
-                        if ($i > 0) {
-                            $savedBuffer = \substr($string, -$i);
-                        }
-                    }
-                    if ($i === 3) {
-                        $this->onParsedError(
-                            $client,
-                            Code::INCONSISTENT_FRAME_DATA_TYPE,
-                            'Invalid TEXT data; UTF-8 required'
-                        );
-                        return;
-                    }
-                }
-
-                if ($fin) {
-                    $dataMsgBytesRecd = 0;
-                }
-
-                $this->onParsedData($client, $opcode, $payload, $fin);
+                $frames++;
+                continue;
             }
 
+            $dataMsgBytesRecd += $frameLength;
+
+            if ($savedBuffer !== '') {
+                $payload = $savedBuffer . $payload;
+                $savedBuffer = '';
+            }
+
+            if ($compressed) {
+                if (!$final) {
+                    $savedBuffer = $payload;
+                    $frames++;
+                    continue;
+                }
+
+                $payload = $client->compressionContext->decompress($payload);
+
+                if ($payload === null) { // Decompression failed.
+                    $this->onParsedError(
+                        $client,
+                        Code::PROTOCOL_ERROR,
+                        'Invalid compressed data'
+                    );
+                    return;
+                }
+            }
+
+            if ($doUtf8Validation) {
+                if ($final) {
+                    $valid = \preg_match('//u', $payload);
+                } else {
+                    for ($i = 0; !($valid = \preg_match('//u', $payload)); $i++) {
+                        $savedBuffer .= \substr($payload, -1);
+                        $payload = \substr($payload, 0, -1);
+
+                        if ($i === 3) { // Remove a maximum of three bytes
+                            break;
+                        }
+                    }
+                }
+
+                if (!$valid) {
+                    $this->onParsedError(
+                        $client,
+                        Code::INCONSISTENT_FRAME_DATA_TYPE,
+                        'Invalid TEXT data; UTF-8 required'
+                    );
+                    return;
+                }
+            }
+
+            if ($final) {
+                $dataMsgBytesRecd = 0;
+            }
+
+            $this->onParsedData($client, $opcode, $payload, $final);
             $frames++;
         }
     }
