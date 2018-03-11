@@ -1,14 +1,12 @@
 {
-    "name": "amphp/aerys",
-    "homepage": "https://github.com/amphp/aerys",
-    "description": "A non-blocking HTTP/Websocket server",
+    "name": "amphp/http-server",
+    "homepage": "https://github.com/amphp/http-server",
+    "description": "A non-blocking HTTP application server.",
     "keywords": [
         "http",
-        "websocket",
         "server",
         "async",
         "non-blocking",
-        "aerys",
         "amp",
         "amphp"
     ],
