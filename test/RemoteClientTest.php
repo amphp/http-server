@@ -20,6 +20,7 @@ use Amp\Http\Server\HttpDriver;
 use Amp\Http\Server\HttpDriverFactory;
 use Amp\Http\Server\Logger;
 use Amp\Http\Server\Options;
+use Amp\Http\Server\RemoteClient;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Responder;
 use Amp\Http\Server\Response;
@@ -38,7 +39,7 @@ use PHPUnit\Framework\TestCase;
 use function Amp\call;
 use function Amp\coroutine;
 
-class ClientTest extends TestCase {
+class RemoteClientTest extends TestCase {
     public function startServer(callable $handler) {
         if (!$server = @stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
             $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
@@ -157,7 +158,7 @@ class ClientTest extends TestCase {
         $options = (new Options)
             ->withDebugMode();
 
-        $client = new Client(
+        $client = new RemoteClient(
             \fopen("php://memory", "w"),
             new CallableResponder($responder),
             new DefaultErrorHandler,
@@ -357,7 +358,7 @@ class ClientTest extends TestCase {
             ->method("respond")
             ->willReturn(new Success($response));
 
-        $client = new Client(
+        $client = new RemoteClient(
             \fopen("php://memory", "w"),
             $responder,
             new DefaultErrorHandler,
@@ -388,7 +389,7 @@ class ClientTest extends TestCase {
         $options = (new Options)
             ->withDebugMode();
 
-        $client = new Client(
+        $client = new RemoteClient(
             $socket,
             $this->createMock(Responder::class),
             $this->createMock(ErrorHandler::class),

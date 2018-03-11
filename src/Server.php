@@ -347,7 +347,7 @@ class Server {
             return;
         }
 
-        $client = new Client(
+        $client = new RemoteClient(
             $socket,
             $this->responder,
             $this->errorHandler,
