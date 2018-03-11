@@ -2,10 +2,10 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\Coroutine;
 use Amp\Http\Server\Console;
 use Amp\Http\Server\Internal;
 use Amp\Http\Server\Logger;
-use Amp\Coroutine;
 use League\CLImate\CLImate;
 use PHPUnit\Framework\TestCase;
 use function Amp\Promise\wait;

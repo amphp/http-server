@@ -2,6 +2,10 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\Artax\Internal\Parser;
+use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\IteratorStream;
+use Amp\Emitter;
 use Amp\Http\Server\Client;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
@@ -12,10 +16,6 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\TimeReference;
 use Amp\Http\Server\Trailers;
-use Amp\Artax\Internal\Parser;
-use Amp\ByteStream\InMemoryStream;
-use Amp\ByteStream\IteratorStream;
-use Amp\Emitter;
 use Amp\Http\Status;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;

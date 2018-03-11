@@ -7,8 +7,8 @@ use Amp\Http\Status;
 use League\Uri;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\UriInterface as PsrUri;
-use function Amp\Promise\wait;
 use function Amp\Http\Server\redirect;
+use function Amp\Promise\wait;
 
 class functionsTest extends TestCase {
     /**
@@ -76,5 +76,4 @@ class functionsTest extends TestCase {
         $this->assertSame(Status::TEMPORARY_REDIRECT, $response->getStatus());
         $this->assertSame("/test/foo", $response->getHeader("location"));
     }
-
 }

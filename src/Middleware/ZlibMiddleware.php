@@ -2,12 +2,12 @@
 
 namespace Amp\Http\Server\Middleware;
 
-use Amp\Http\Server\Middleware;
-use Amp\Http\Server\Request;
-use Amp\Http\Server\Responder;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
+use Amp\Http\Server\Middleware;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Responder;
 use Amp\Producer;
 use Amp\Promise;
 use cash\LRUCache;

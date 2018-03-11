@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\Failure;
 use Amp\Http\Server\CallableResponder;
 use Amp\Http\Server\Client;
 use Amp\Http\Server\Options;
@@ -10,7 +11,6 @@ use Amp\Http\Server\Responder;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Router;
 use Amp\Http\Server\Server;
-use Amp\Failure;
 use Amp\Http\Status;
 use Amp\Promise;
 use League\Uri;

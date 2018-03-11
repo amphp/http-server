@@ -2,6 +2,9 @@
 
 namespace Amp\Http\Server\Test\Websocket;
 
+use Amp\ByteStream\InMemoryStream;
+use Amp\Deferred;
+use Amp\Delayed;
 use Amp\Http\Server\Body;
 use Amp\Http\Server\Client;
 use Amp\Http\Server\DefaultErrorHandler;
@@ -14,9 +17,6 @@ use Amp\Http\Server\Websocket\Code;
 use Amp\Http\Server\Websocket\Endpoint;
 use Amp\Http\Server\Websocket\Internal\Rfc6455Gateway;
 use Amp\Http\Server\Websocket\Message;
-use Amp\ByteStream\InMemoryStream;
-use Amp\Deferred;
-use Amp\Delayed;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;

@@ -2,14 +2,14 @@
 
 namespace Amp\Http\Server;
 
-use Amp\Http\Server\Internal\ByteRange;
-use Amp\Http\Server\Internal\FileInformation;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\File;
+use Amp\Http\Server\Internal\ByteRange;
+use Amp\Http\Server\Internal\FileInformation;
 use Amp\Http\Status;
 use Amp\Producer;
 use Amp\Promise;

@@ -2,6 +2,13 @@
 
 namespace Amp\Http\Server\Websocket\Internal;
 
+use Amp\ByteStream\IteratorStream;
+use Amp\ByteStream\StreamException;
+use Amp\CallableMaker;
+use Amp\Coroutine;
+use Amp\Deferred;
+use Amp\Emitter;
+use Amp\Failure;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Responder;
@@ -11,13 +18,6 @@ use Amp\Http\Server\ServerObserver;
 use Amp\Http\Server\Websocket\Application;
 use Amp\Http\Server\Websocket\Code;
 use Amp\Http\Server\Websocket\Message;
-use Amp\ByteStream\IteratorStream;
-use Amp\ByteStream\StreamException;
-use Amp\CallableMaker;
-use Amp\Coroutine;
-use Amp\Deferred;
-use Amp\Emitter;
-use Amp\Failure;
 use Amp\Http\Status;
 use Amp\Promise;
 use Amp\Socket\Socket;

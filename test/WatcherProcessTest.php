@@ -2,11 +2,11 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\Coroutine;
 use Amp\Http\Server\CommandClient;
 use Amp\Http\Server\Console;
 use Amp\Http\Server\Logger;
 use Amp\Http\Server\WatcherProcess;
-use Amp\Coroutine;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;

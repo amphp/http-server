@@ -4,11 +4,11 @@ namespace Amp\Http\Server;
 
 // @TODO add ServerObserver for properly sending GOAWAY frames
 
-use Amp\Http\Server\Internal\Http2Stream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
+use Amp\Http\Server\Internal\Http2Stream;
 use Amp\Http\Status;
 use Amp\Promise;
 use League\Uri;

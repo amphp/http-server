@@ -2,8 +2,8 @@
 
 namespace Amp\Http\Server\Websocket\Internal;
 
-use Amp\Http\Server\Response;
 use Amp\ByteStream\InMemoryStream;
+use Amp\Http\Server\Response;
 use Amp\Http\Status;
 
 class Rfc6455Handshake extends Response {

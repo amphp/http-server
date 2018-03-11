@@ -2,6 +2,15 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\Artax\Cookie\ArrayCookieJar;
+use Amp\Artax\Cookie\Cookie;
+use Amp\Artax\DefaultClient;
+use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\InputStream;
+use Amp\ByteStream\IteratorStream;
+use Amp\Delayed;
+use Amp\Emitter;
+use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Server\Body;
 use Amp\Http\Server\CallableResponder;
 use Amp\Http\Server\Client;
@@ -16,15 +25,6 @@ use Amp\Http\Server\Responder;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
 use Amp\Http\Server\TimeoutCache;
-use Amp\Artax\Cookie\ArrayCookieJar;
-use Amp\Artax\Cookie\Cookie;
-use Amp\Artax\DefaultClient;
-use Amp\ByteStream\InMemoryStream;
-use Amp\ByteStream\InputStream;
-use Amp\ByteStream\IteratorStream;
-use Amp\Delayed;
-use Amp\Emitter;
-use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Socket;

@@ -2,8 +2,8 @@
 
 namespace Amp\Http\Server\Websocket;
 
-use Amp\Http\Server\Body;
 use Amp\ByteStream\InputStream;
+use Amp\Http\Server\Body;
 
 final class Message extends Body {
     /** @var bool */

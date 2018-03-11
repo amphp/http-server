@@ -2,6 +2,8 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\ByteStream\IteratorStream;
+use Amp\Emitter;
 use Amp\Http\Server\Client;
 use Amp\Http\Server\Http2Driver;
 use Amp\Http\Server\Internal\HPack;
@@ -9,8 +11,6 @@ use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\TimeReference;
-use Amp\ByteStream\IteratorStream;
-use Amp\Emitter;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Success;

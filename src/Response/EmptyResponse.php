@@ -2,8 +2,8 @@
 
 namespace Amp\Http\Server\Response;
 
-use Amp\Http\Server\Response;
 use Amp\ByteStream\InMemoryStream;
+use Amp\Http\Server\Response;
 use Amp\Http\Status;
 
 class EmptyResponse extends Response {

@@ -2,14 +2,14 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\ByteStream\IteratorStream;
 use Amp\Http\Server\Body;
 use Amp\Http\Server\BodyParser;
 use Amp\Http\Server\Client;
 use Amp\Http\Server\Request;
-use Amp\ByteStream\IteratorStream;
 use Amp\Loop;
-use PHPUnit\Framework\TestCase;
 use League\Uri;
+use PHPUnit\Framework\TestCase;
 use function Amp\Http\Server\parseBody;
 
 class BodyParsingTest extends TestCase {
