@@ -111,7 +111,7 @@ class Body implements InputStream {
     }
 
     /**
-     * @return \Amp\Promise<\Aerys\Trailers>
+     * @return \Amp\Promise<\Amp\Http\Server\Trailers>
      */
     public function getTrailers(): Promise {
         return $this->trailers;

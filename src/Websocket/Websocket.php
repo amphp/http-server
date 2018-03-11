@@ -15,7 +15,7 @@ class Websocket implements Responder, ServerObserver {
     /**
      * Creates a responder that accepts websocket connections.
      *
-     * @param \Aerys\Websocket\Application $application
+     * @param \Amp\Http\Server\Websocket\Application $application
      */
     public function __construct(Application $application) {
         $this->gateway = new Internal\Rfc6455Gateway($application);

@@ -12,7 +12,7 @@ use League\Uri;
  *     this URI.
  * @param int $redirectCode HTTP status code to set
  *
- * @return \Aerys\Responder
+ * @return \Amp\Http\Server\Responder
  *
  * @throws \Error If the given redirect URI is invalid or contains a query or fragment.
  */

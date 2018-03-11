@@ -99,11 +99,11 @@ class Client {
 
     /**
      * @param resource $socket Stream socket resource.
-     * @param \Aerys\Responder $responder
-     * @param \Aerys\ErrorHandler $errorHandler
+     * @param \Amp\Http\Server\Responder $responder
+     * @param \Amp\Http\Server\ErrorHandler $errorHandler
      * @param \Psr\Log\LoggerInterface $logger
-     * @param \Aerys\Options $options
-     * @param \Aerys\TimeoutCache $timeoutCache
+     * @param \Amp\Http\Server\Options $options
+     * @param \Amp\Http\Server\TimeoutCache $timeoutCache
      */
     public function __construct(
         /* resource */ $socket,
@@ -153,7 +153,7 @@ class Client {
     /**
      * Listen for requests on the client and parse them using the given HTTP driver.
      *
-     * @param \Aerys\HttpDriverFactory $driverFactory
+     * @param \Amp\Http\Server\HttpDriverFactory $driverFactory
      *
      * @throws \Error If the client has already been started.
      */
@@ -183,7 +183,7 @@ class Client {
     }
 
     /**
-     * @param \Aerys\HttpDriver $driver
+     * @param \Amp\Http\Server\HttpDriver $driver
      */
     private function setup(HttpDriver $driver) {
         $this->httpDriver = $driver;
@@ -197,7 +197,7 @@ class Client {
     }
 
     /**
-     * @return \Aerys\Options Server options object.
+     * @return \Amp\Http\Server\Options Server options object.
      */
     public function getOptions(): Options {
         return $this->options;
@@ -422,7 +422,7 @@ class Client {
      *
      * @param string $watcher
      * @param resource $socket
-     * @param \Aerys\HttpDriverFactory $driverFactory
+     * @param \Amp\Http\Server\HttpDriverFactory $driverFactory
      */
     private function negotiateCrypto(string $watcher, $socket, HttpDriverFactory $driverFactory) {
         if ($handshake = @\stream_socket_enable_crypto($this->socket, true)) {
@@ -532,7 +532,7 @@ class Client {
     /**
      * Invoked by the HTTP parser when a request is parsed.
      *
-     * @param \Aerys\Request $request
+     * @param \Amp\Http\Server\Request $request
      *
      * @return \Amp\Promise
      */
@@ -572,7 +572,7 @@ class Client {
     /**
      * Respond to a parsed request.
      *
-     * @param \Aerys\Request $request
+     * @param \Amp\Http\Server\Request $request
      *
      * @return \Generator
      */
@@ -654,7 +654,7 @@ class Client {
      * in debug mode or a response defined by the error handler in production mode.
      *
      * @param \Throwable $exception
-     * @param \Aerys\Request $request
+     * @param \Amp\Http\Server\Request $request
      *
      * @return \Generator
      */

@@ -10,8 +10,8 @@ class CallableResponder implements Responder {
     private $callable;
 
     /**
-     * @param callable $callable Callable accepting an \Aerys\Request object as the first argument and returning an
-     *     instance of \Aerys\Response. If the callable returns a generator, it will be run as a coroutine.
+     * @param callable $callable Callable accepting an \Amp\Http\Server\Request object as the first argument and returning an
+     *     instance of \Amp\Http\Server\Response. If the callable returns a generator, it will be run as a coroutine.
      */
     public function __construct(callable $callable) {
         $this->callable = $callable;

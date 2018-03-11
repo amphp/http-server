@@ -94,8 +94,8 @@ class Http1Driver implements HttpDriver {
     /**
      * HTTP/1.x response writer.
      *
-     * @param \Aerys\Response $response
-     * @param \Aerys\Request|null $request
+     * @param \Amp\Http\Server\Response $response
+     * @param \Amp\Http\Server\Request|null $request
      *
      * @return \Generator
      */
@@ -650,7 +650,7 @@ class Http1Driver implements HttpDriver {
     /**
      * Creates an error response from the error handler and sends that response to the client.
      *
-     * @param \Aerys\ClientException $exception
+     * @param \Amp\Http\Server\ClientException $exception
      *
      * @return \Generator
      */
@@ -681,7 +681,7 @@ class Http1Driver implements HttpDriver {
     /**
      * Filters and updates response headers based on protocol and connection header from the request.
      *
-     * @param \Aerys\Response $response
+     * @param \Amp\Http\Server\Response $response
      * @param string $protocol Request protocol.
      * @param array $connection Request connection header.
      *

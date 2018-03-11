@@ -15,7 +15,7 @@ final class ResponderStack implements Responder, ServerObserver {
     private $responders;
 
     /**
-     * @param \Aerys\Responder[] $responders
+     * @param \Amp\Http\Server\Responder[] $responders
      *
      * @throws \Error If the $responders array is empty or a non-Responder is in the array.
      */

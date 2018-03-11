@@ -147,7 +147,7 @@ class Http2Driver implements HttpDriver {
     }
 
     /**
-     * @param \Aerys\Client $client
+     * @param \Amp\Http\Server\Client $client
      * @param callable $onMessage
      * @param callable $write
      * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.

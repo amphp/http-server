@@ -54,7 +54,7 @@ final class Router implements Responder, ServerObserver {
      *
      * @param Request $request
      *
-     * @return Promise<\Aerys\Response>
+     * @return Promise<\Amp\Http\Server\Response>
      */
     public function respond(Request $request): Promise {
         $method = $request->getMethod();
@@ -100,7 +100,7 @@ final class Router implements Responder, ServerObserver {
      *
      * @param Request $request
      *
-     * @return Promise<\Aerys\Response>
+     * @return Promise<\Amp\Http\Server\Response>
      */
     private function makeNotFoundResponse(Request $request): Promise {
         return $this->errorHandler->handle(Status::NOT_FOUND, null, $request);
@@ -112,7 +112,7 @@ final class Router implements Responder, ServerObserver {
      * @param string[] $methods
      * @param Request $request
      *
-     * @return Promise<\Aerys\Response>
+     * @return Promise<\Amp\Http\Server\Response>
      */
     private function makeMethodNotAllowedResponse(array $methods, Request $request): Promise {
         return call(function () use ($methods, $request) {

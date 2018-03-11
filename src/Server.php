@@ -71,9 +71,9 @@ class Server {
     private $timeouts;
 
     /**
-     * @param \Aerys\Responder              $responder
+     * @param \Amp\Http\Server\Responder              $responder
      * @param Options|null                  $options Null creates an Options object with all default options.
-     * @param \Psr\Log\LoggerInterface|null $logger Null automatically uses an instance of \Aerys\ConsoleLogger.
+     * @param \Psr\Log\LoggerInterface|null $logger Null automatically uses an instance of \Amp\Http\Server\ConsoleLogger.
      *
      * @throws \Error If $responder is not a callable or instance of Responder.
      */
@@ -148,7 +148,7 @@ class Server {
     /**
      * Define a custom HTTP driver factory.
      *
-     * @param \Aerys\HttpDriverFactory $driverFactory
+     * @param \Amp\Http\Server\HttpDriverFactory $driverFactory
      *
      * @throws \Error If the server has started.
      */
@@ -212,7 +212,7 @@ class Server {
     }
 
     /**
-     * @return \Aerys\TimeReference
+     * @return \Amp\Http\Server\TimeReference
      */
     public function getTimeReference(): TimeReference {
         return $this->timeReference;

@@ -14,7 +14,7 @@ interface Middleware {
      * @param Request   $request
      * @param Responder $responder Request responder.
      *
-     * @return Promise<\Aerys\Response>
+     * @return Promise<\Amp\Http\Server\Response>
      */
     public function process(Request $request, Responder $responder): Promise;
 }

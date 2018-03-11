@@ -20,7 +20,7 @@ interface Application {
      * the server is allowed to start. Additionally, this method returns a
      * Promise the server will not start until that Promise resolves.
      *
-     * @param \Aerys\Websocket\Endpoint $endpoint
+     * @param \Amp\Http\Server\Websocket\Endpoint $endpoint
      */
     public function onStart(Endpoint $endpoint);
 
@@ -31,7 +31,7 @@ interface Application {
      * handshake it doesn't have to do anything in this method and all handshakes will
      * be automatically accepted.
      *
-     * Return an instance of \Aerys\Response to reject the websocket connection request.
+     * Return an instance of \Amp\Http\Server\Response to reject the websocket connection request.
      *
      * @param Request $request The HTTP request that instigated the handshake
      * @param Response $response The switching protocol response for adding headers, etc.

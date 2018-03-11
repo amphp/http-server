@@ -31,7 +31,7 @@ abstract class Process {
     /**
      * Start the process.
      *
-     * @param \Aerys\Console $console
+     * @param \Amp\Http\Server\Console $console
      *
      * @return \Amp\Promise<null>
      */

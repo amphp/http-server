@@ -23,7 +23,7 @@ class Rfc7692Compression {
      * @param string $headerIn Header from request.
      * @param string $headerOut Sec-Websocket-Extension response header.
      *
-     * @return \Aerys\Websocket\Internal\Rfc7692Compression|null
+     * @return \Amp\Http\Server\Websocket\Internal\Rfc7692Compression|null
      */
     public static function fromHeader(string $headerIn, string &$headerOut = null) { /* : ?self */
         $headerIn = \explode(';', \strtolower($headerIn));

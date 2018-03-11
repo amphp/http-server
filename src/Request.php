@@ -60,7 +60,7 @@ class Request extends Message {
     }
 
     /**
-     * @return \Aerys\Client The client sending the request.
+     * @return \Amp\Http\Server\Client The client sending the request.
      */
     public function getClient(): Client {
         return $this->client;
@@ -160,7 +160,7 @@ class Request extends Message {
     /**
      * Retrieve the request body.
      *
-     * @return \Aerys\Body
+     * @return \Amp\Http\Server\Body
      */
     public function getBody(): Body {
         if ($this->body === null) {

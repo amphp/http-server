@@ -6,9 +6,9 @@ use Amp\Promise;
 
 interface Responder {
     /**
-     * @param \Aerys\Request $request
+     * @param \Amp\Http\Server\Request $request
      *
-     * @return \Amp\Promise<\Aerys\Response>
+     * @return \Amp\Promise<\Amp\Http\Server\Response>
      */
     public function respond(Request $request): Promise;
 }

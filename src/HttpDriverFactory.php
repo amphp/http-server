@@ -6,9 +6,9 @@ interface HttpDriverFactory {
     /**
      * Selects an HTTP driver based on the given client.
      *
-     * @param \Aerys\Client $client
+     * @param \Amp\Http\Server\Client $client
      *
-     * @return \Aerys\HttpDriver
+     * @return \Amp\Http\Server\HttpDriver
      */
     public function selectDriver(Client $client): HttpDriver;
 
