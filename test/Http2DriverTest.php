@@ -23,7 +23,8 @@ class Http2DriverTest extends TestCase {
 
     public static function packHeader($headers, $continue = false, $stream = 1, $split = PHP_INT_MAX) {
         $data = "";
-        $headers = HPack::encode($headers);
+        $hpack = new HPack;
+        $headers = $hpack->encode($headers);
         $all = str_split($headers, $split);
         if ($split !== PHP_INT_MAX) {
             $flag = Http2Driver::PADDED;
@@ -249,7 +250,8 @@ class Http2DriverTest extends TestCase {
             Http2Driver::DEFAULT_MAX_FRAME_SIZE
         ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0);
 
-        $data .= self::packFrame(HPack::encode([
+        $hpack = new HPack;
+        $data .= self::packFrame($hpack->encode([
             ":status" => 200,
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
@@ -310,7 +312,8 @@ class Http2DriverTest extends TestCase {
             ["content-type" => "text/html; charset=utf-8"]
         ), $request);
 
-        $this->assertEquals([HPack::encode([
+        $hpack = new HPack;
+        $this->assertEquals([$hpack->encode([
             ":status" => 200,
             "content-type" => ["text/html; charset=utf-8"],
             "date" => [""],
@@ -372,7 +375,8 @@ class Http2DriverTest extends TestCase {
             ["content-type" => "text/html; charset=utf-8"]
         ), $request);
 
-        $this->assertEquals([HPack::encode([
+        $hpack = new HPack;
+        $this->assertEquals([$hpack->encode([
             ":status" => 200,
             "content-type" => ["text/html; charset=utf-8"],
             "date" => [""],

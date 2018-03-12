@@ -206,7 +206,7 @@ class Http2Driver implements HttpDriver {
             Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
         );
 
-        $headers = pack("N", $id) . HPack::encode($headers);
+        $headers = pack("N", $id) . $this->table->encode($headers);
         if (\strlen($headers) >= $this->maxFrameSize) {
             $split = str_split($headers, $this->maxFrameSize);
             $headers = array_shift($split);
@@ -270,7 +270,7 @@ class Http2Driver implements HttpDriver {
                 }
             }
 
-            $headers = HPack::encode($headers);
+            $headers = $this->table->encode($headers);
 
             if (\strlen($headers) > $this->maxFrameSize) {
                 $split = str_split($headers, $this->maxFrameSize);
