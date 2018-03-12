@@ -3,6 +3,10 @@
 namespace Amp\Http\Server;
 
 interface Client {
+    const CLOSED_RD = 1;
+    const CLOSED_WR = 2;
+    const CLOSED_RDWR = 3;
+
     /**
      * Listen for requests on the client and parse them using the given HTTP driver.
      *
@@ -98,4 +102,11 @@ interface Client {
      * Forcefully closes the client connection.
      */
     public function close();
+
+    /**
+     * Attaches a callback invoked with this client closes. The callback is passed this object as the first parameter.
+     *
+     * @param callable $callback
+     */
+    public function onClose(callable $callback);
 }

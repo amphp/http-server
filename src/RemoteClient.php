@@ -15,10 +15,6 @@ use Psr\Log\LoggerInterface as PsrLogger;
 class RemoteClient implements Client {
     use CallableMaker;
 
-    const CLOSED_RD = 1;
-    const CLOSED_WR = 2;
-    const CLOSED_RDWR = 3;
-
     /** @var int */
     private $id;
 
