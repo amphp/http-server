@@ -1,7 +1,7 @@
 {
     "name": "amphp/http-server",
     "homepage": "https://github.com/amphp/http-server",
-    "description": "A non-blocking HTTP application server.",
+    "description": "A non-blocking HTTP application server for PHP based on Amp.",
     "keywords": [
         "http",
         "server",
@@ -45,7 +45,6 @@
         "amphp/artax": "^3",
         "friendsofphp/php-cs-fixer": "^2.3",
         "league/uri-components": "^1.7",
-        "http2jp/hpack-test-case": "^1",
         "phpunit/phpunit": "^6",
         "infection/infection": "^0.7.1"
     },
@@ -68,19 +67,5 @@
         "platform": {
             "php": "7.0.13"
         }
-    },
-    "repositories": [
-        {
-            "type": "package",
-            "package": {
-                "name": "http2jp/hpack-test-case",
-                "version": "1.0",
-                "source": {
-                    "url": "https://github.com/http2jp/hpack-test-case",
-                    "type": "git",
-                    "reference": "origin/master"
-                }
-            }
-        }
-    ]
+    }
 }
