@@ -7,12 +7,14 @@ use Amp\Http\Server\CallableResponder;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
+use League\Uri\Components\Query;
 
 // Run this script, then visit http://localhost:8080/?name=Your-name in your browser.
 
 Amp\Loop::run(function () {
     $responder = new CallableResponder(function (Request $request) {
-        $name = $request->getUri()->getQueryParameter('name');
+        $query = new Query($request->getUri()->getQuery());
+        $name = $query->getParam('name');
         return new Response\TextResponse("Hello, " . ($name ?? "world") . "!");
     });
 

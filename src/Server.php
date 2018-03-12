@@ -9,6 +9,7 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
+use Psr\Log\NullLogger;
 
 class Server {
     use CallableMaker;
@@ -83,7 +84,7 @@ class Server {
         $this->host = new Internal\Host;
 
         $this->options = $options ?? new Options;
-        $this->logger = $logger ?? new ConsoleLogger(new Console);
+        $this->logger = $logger ?? new NullLogger;
 
         $this->timeReference = new TimeReference;
 

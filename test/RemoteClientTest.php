@@ -18,7 +18,6 @@ use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\HttpDriver;
 use Amp\Http\Server\HttpDriverFactory;
-use Amp\Http\Server\Logger;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\RemoteClient;
 use Amp\Http\Server\Request;
@@ -36,6 +35,7 @@ use Amp\Success;
 use League\Uri;
 use League\Uri\Components\Query;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 use function Amp\coroutine;
 
@@ -50,9 +50,8 @@ class RemoteClientTest extends TestCase {
 
         $handler = new CallableResponder($handler);
 
-        $logger = $this->createMock(Logger::class);
         $options = (new Options)->withDebugMode();
-        $server = new Server($handler, $options, $logger);
+        $server = new Server($handler, $options);
         $server->expose("*", $port);
         $server->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
 
@@ -162,7 +161,7 @@ class RemoteClientTest extends TestCase {
             \fopen("php://memory", "w"),
             new CallableResponder($responder),
             new DefaultErrorHandler,
-            $this->createMock(Logger::class),
+            $this->createMock(PsrLogger::class),
             $options,
             $this->createMock(TimeoutCache::class)
         );
@@ -362,7 +361,7 @@ class RemoteClientTest extends TestCase {
             \fopen("php://memory", "w"),
             $responder,
             new DefaultErrorHandler,
-            $this->createMock(Logger::class),
+            $this->createMock(PsrLogger::class),
             $options,
             $this->createMock(TimeoutCache::class)
         );
@@ -393,7 +392,7 @@ class RemoteClientTest extends TestCase {
             $socket,
             $this->createMock(Responder::class),
             $this->createMock(ErrorHandler::class),
-            $this->createMock(Logger::class),
+            $this->createMock(PsrLogger::class),
             $options,
             $this->createMock(TimeoutCache::class)
         );

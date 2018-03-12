@@ -8,6 +8,7 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
+use Amp\Http\Hpack;
 use Amp\Http\Server\Internal\Http2Stream;
 use Amp\Http\Status;
 use Amp\Promise;
@@ -134,7 +135,7 @@ class Http2Driver implements HttpDriver {
     /** @var callable */
     private $write;
 
-    /** @var \Amp\Http\Server\Internal\HPack */
+    /** @var \Amp\Http\HPack */
     private $table;
 
     public function __construct(Options $options, TimeReference $timeReference) {
@@ -143,7 +144,7 @@ class Http2Driver implements HttpDriver {
 
         $this->remainingStreams = $this->options->getMaxConcurrentStreams();
 
-        $this->table = new Internal\HPack;
+        $this->table = new HPack;
     }
 
     /**
@@ -205,7 +206,7 @@ class Http2Driver implements HttpDriver {
             Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
         );
 
-        $headers = pack("N", $id) . Internal\HPack::encode($headers);
+        $headers = pack("N", $id) . HPack::encode($headers);
         if (\strlen($headers) >= $this->maxFrameSize) {
             $split = str_split($headers, $this->maxFrameSize);
             $headers = array_shift($split);
@@ -269,7 +270,7 @@ class Http2Driver implements HttpDriver {
                 }
             }
 
-            $headers = Internal\HPack::encode($headers);
+            $headers = HPack::encode($headers);
 
             if (\strlen($headers) > $this->maxFrameSize) {
                 $split = str_split($headers, $this->maxFrameSize);

@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server\Internal;
 
-use Amp\Http\Server\Http2Driver;
 use Amp\Struct;
 
 /**
