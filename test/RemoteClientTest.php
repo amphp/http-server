@@ -73,7 +73,7 @@ class RemoteClientTest extends TestCase {
                 $data = \str_repeat("*", 100000);
                 $stream = new InMemoryStream("data/" . $data . "/data");
 
-                $res = new Response($stream);
+                $res = new Response(Status::OK, [], $stream);
 
                 $res->setCookie(new ResponseCookie("cookie", "with-value"));
                 $res->setHeader("custom", "header");
@@ -113,7 +113,7 @@ class RemoteClientTest extends TestCase {
                 $data = "data";
                 $data .= \str_repeat("_", $server->getOptions()->getOutputBufferSize() + 1);
 
-                return new Response(new InMemoryStream($data));
+                return new Response(Status::OK, [], $data);
             });
 
             $port = parse_url($address, PHP_URL_PORT);
@@ -188,7 +188,7 @@ class RemoteClientTest extends TestCase {
             $this->assertSame("GET", $req->getMethod());
             $this->assertSame("", yield $req->getBody()->buffer());
 
-            return new Response(new InMemoryStream("message"), ["FOO" => "bar"]);
+            return new Response(Status::OK, ["FOO" => "bar"], "message");
         });
 
         $this->assertInstanceOf(Response::class, $response);
@@ -219,10 +219,10 @@ class RemoteClientTest extends TestCase {
         /** @var \Amp\Http\Server\Response $response */
         list($response, $body) = $this->tryRequest($request, function (Request $req) {
             $buffer = "";
-            while ((null !== $chunk = yield $req->getBody()->read())) {
+            while (null !== $chunk = yield $req->getBody()->read()) {
                 $buffer .= $chunk;
             }
-            return new Response(new InMemoryStream($buffer));
+            return new Response(Status::OK, [], $buffer);
         });
 
         $this->assertInstanceOf(Response::class, $response);

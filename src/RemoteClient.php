@@ -642,7 +642,7 @@ class RemoteClient implements Client {
     }
 
     private function makeOptionsResponse(): Response {
-        return new Response\EmptyResponse(["Allow" => implode(", ", $this->options->getAllowedMethods())]);
+        return new Response(Status::NO_CONTENT, ["Allow" => implode(", ", $this->options->getAllowedMethods())]);
     }
 
     /**
@@ -672,7 +672,9 @@ class RemoteClient implements Client {
                 INTERNAL_SERVER_ERROR_HTML
             );
 
-            return new Response\HtmlResponse($html, [], $status);
+            return new Response($status, [
+                "content-type" => "text/html; charset=utf-8",
+            ], $html);
         }
 
         try {
@@ -688,7 +690,7 @@ class RemoteClient implements Client {
                 DEFAULT_ERROR_HTML
             );
 
-            return new Response\HtmlResponse($html, [], $status);
+            return new Response($status, [], $html);
         }
     }
 

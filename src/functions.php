@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server;
 
+use Amp\ByteStream\InMemoryStream;
 use Amp\Http\Status;
 use League\Uri;
 
@@ -10,7 +11,7 @@ use League\Uri;
  *
  * @param string $uri Absolute URI prefix to redirect to. Requested URI paths and queries are appended to
  *     this URI.
- * @param int $redirectCode HTTP status code to set
+ * @param int    $redirectCode HTTP status code to set
  *
  * @return \Amp\Http\Server\Responder
  *
@@ -42,7 +43,10 @@ function redirect(string $uri, int $redirectCode = Status::TEMPORARY_REDIRECT): 
             $path .= "?" . $query;
         }
 
-        return new Response\RedirectResponse($redirectUri . $path, $redirectCode);
+        return new Response($redirectCode, [
+            "location" => $redirectUri . $path,
+            "content-length" => 0,
+        ], new InMemoryStream);
     });
 }
 
@@ -50,7 +54,7 @@ function redirect(string $uri, int $redirectCode = Status::TEMPORARY_REDIRECT): 
  * Try parsing a the Request's body with either x-www-form-urlencoded or multipart/form-data.
  *
  * @param Request $request
- * @param int $size Optional max body size.
+ * @param int     $size Optional max body size.
  *
  * @return BodyParser (returns a ParsedBody instance when yielded)
  */

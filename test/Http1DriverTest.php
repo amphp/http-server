@@ -646,7 +646,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertSame($results[0], $body);
 
-        $writer = $driver->writer(new Response\EmptyResponse, $request);
+        $writer = $driver->writer(new Response, $request);
         $request = null;
 
         $parser->send(""); // Resume parser after waiting for response to be written, should yield next request.
@@ -660,7 +660,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertSame($results[1], $body);
 
-        $writer = $driver->writer(new Response\EmptyResponse);
+        $writer = $driver->writer(new Response);
         $request = null;
 
         $parser->send($payloads[0]); // Resume and send next body payload.
@@ -674,7 +674,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertSame($results[0], $body);
 
-        $writer = $driver->writer(new Response\EmptyResponse);
+        $writer = $driver->writer(new Response);
         $request = null;
 
         $this->assertSame(0, $pendingResponses);
@@ -718,7 +718,7 @@ class Http1DriverTest extends TestCase {
         $emitter = new Emitter;
 
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("http://test.local"));
-        $response = new Response(new IteratorStream($emitter->iterate()), $headers);
+        $response = new Response(Status::OK, $headers, new IteratorStream($emitter->iterate()));
         $response->push("/foo");
 
         $writer = $driver->writer($response, $request);
@@ -773,25 +773,25 @@ class Http1DriverTest extends TestCase {
         return [
             [
                 new Request($this->createMock(Client::class), "HEAD", Uri\Http::createFromString("/")),
-                new Response(new InMemoryStream, [], Status::OK),
+                new Response(Status::OK, [], new InMemoryStream),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n",
                 false,
             ],
             [
                 new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/")),
-                new Response(new InMemoryStream, [], Status::OK),
+                new Response(Status::OK, [], new InMemoryStream),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n0\r\n\r\n",
                 false,
             ],
             [
                 new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/")),
-                new Response(new InMemoryStream, ["content-length" => 0], Status::OK),
+                new Response(Status::OK, ["content-length" => 0], new InMemoryStream),
                 "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\n\r\n",
                 false,
             ],
             [
                 new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "1.0"),
-                new Response(new InMemoryStream, [], Status::OK),
+                new Response(Status::OK, [], new InMemoryStream),
                 "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: \r\n\r\n",
                 true,
             ],
@@ -818,7 +818,7 @@ class Http1DriverTest extends TestCase {
         );
 
         $emitter = new Emitter;
-        $writer = $driver->writer(new Response(new IteratorStream($emitter->iterate())));
+        $writer = $driver->writer(new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
 
         $emitter->emit("foo");
 

@@ -24,6 +24,9 @@ class DefaultErrorHandler implements ErrorHandler {
             );
         }
 
-        return new Success(new Response\HtmlResponse($this->cache[$statusCode], [], $statusCode, $reason));
+        $response = new Response($statusCode, [], $this->cache[$statusCode]);
+        $response->setStatus($statusCode, $reason);
+
+        return new Success($response);
     }
 }

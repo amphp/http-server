@@ -11,6 +11,7 @@ use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\TimeReference;
+use Amp\Http\Status;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Success;
@@ -106,19 +107,19 @@ class Http2DriverTest extends TestCase {
             ":path" => ["/foo"],
             ":scheme" => ["http"],
             ":method" => ["GET"],
-            "test" => ["successful"]
+            "test" => ["successful"],
         ];
         $msg = self::packFrame(pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
         $msg .= self::packHeader($headers, false, 1);
 
         $expectations = [
-            "protocol"    => "2.0",
-            "method"      => "GET",
-            "uri"         => "/foo",
-            "host"        => "localhost",
-            "port"        => 8888,
-            "headers"     => ["test" => ["successful"]],
-            "body"        => "",
+            "protocol" => "2.0",
+            "method" => "GET",
+            "uri" => "/foo",
+            "host" => "localhost",
+            "port" => 8888,
+            "headers" => ["test" => ["successful"]],
+            "body" => "",
         ];
 
         $return[] = [$msg, $expectations];
@@ -134,12 +135,12 @@ class Http2DriverTest extends TestCase {
         $msg .= self::packFrame("b", Http2Driver::DATA, Http2Driver::END_STREAM, 1);
 
         $expectations = [
-            "protocol"    => "2.0",
-            "method"      => "GET",
-            "uri"         => "/foo",
-            "host"        => "localhost",
-            "headers"     => ["test" => ["successful"]],
-            "body"        => "ab",
+            "protocol" => "2.0",
+            "method" => "GET",
+            "uri" => "/foo",
+            "host" => "localhost",
+            "headers" => ["test" => ["successful"]],
+            "body" => "ab",
         ];
 
         $return[] = [$msg, $expectations];
@@ -151,7 +152,7 @@ class Http2DriverTest extends TestCase {
             ":path" => ["/foo"],
             ":scheme" => ["http"],
             ":method" => ["GET"],
-            "trailers" => ["expires"]
+            "trailers" => ["expires"],
         ];
 
         $msg = self::packFrame(pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
@@ -162,13 +163,13 @@ class Http2DriverTest extends TestCase {
         $msg .= self::packHeader(["expires" => ["date"]], false, 1);
 
         $expectations = [
-            "protocol"    => "2.0",
-            "method"      => "GET",
-            "uri"         => "/foo",
-            "host"        => "localhost",
-            "headers"     => ["trailers" => ["expires"]],
-            "body"        => "ab",
-            "trailers"    => ["expires" => ["date"]],
+            "protocol" => "2.0",
+            "method" => "GET",
+            "uri" => "/foo",
+            "host" => "localhost",
+            "headers" => ["trailers" => ["expires"]],
+            "body" => "ab",
+            "trailers" => ["expires" => ["date"]],
         ];
 
         $return[] = [$msg, $expectations];
@@ -205,7 +206,8 @@ class Http2DriverTest extends TestCase {
 
         $parser = $driver->setup(
             $this->createMock(Client::class),
-            $onMessage ?? function () {},
+            $onMessage ?? function () {
+            },
             $writer ?? $this->createCallback(0)
         );
 
@@ -233,7 +235,7 @@ class Http2DriverTest extends TestCase {
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "2.0");
 
         $emitter = new Emitter;
-        $coroutine = $driver->writer(new Response(new IteratorStream($emitter->iterate())), $request);
+        $coroutine = $driver->writer(new Response(Status::OK, [], new IteratorStream($emitter->iterate())), $request);
 
         $emitter->emit("foo");
         $emitter->fail(new \Exception);
@@ -299,7 +301,7 @@ class Http2DriverTest extends TestCase {
             ":path" => "/",
             ":scheme" => "http",
             ":method" => "GET",
-            "test" => "successful"
+            "test" => "successful",
         ];
         $parser->send(self::packHeader($headers, false, 1));
 
@@ -308,8 +310,9 @@ class Http2DriverTest extends TestCase {
 
         $emitter = new Emitter;
         $writer = $driver->writer(new Response(
-            new IteratorStream($emitter->iterate()),
-            ["content-type" => "text/html; charset=utf-8"]
+            Status::OK,
+            ["content-type" => "text/html; charset=utf-8"],
+            new IteratorStream($emitter->iterate())
         ), $request);
 
         $hpack = new HPack;
@@ -371,8 +374,9 @@ class Http2DriverTest extends TestCase {
 
         $emitter = new Emitter;
         $writer = $driver->writer(new Response(
-            new IteratorStream($emitter->iterate()),
-            ["content-type" => "text/html; charset=utf-8"]
+            Status::OK,
+            ["content-type" => "text/html; charset=utf-8"],
+            new IteratorStream($emitter->iterate())
         ), $request);
 
         $hpack = new HPack;
@@ -441,7 +445,7 @@ class Http2DriverTest extends TestCase {
         $this->assertInstanceOf(Request::class, $request);
 
         $emitter = new Emitter;
-        $writer = $driver->writer(new Response(new IteratorStream($emitter->iterate())), $request);
+        $writer = $driver->writer(new Response(Status::OK, [], new IteratorStream($emitter->iterate())), $request);
 
         $emitter->emit("{data}");
 

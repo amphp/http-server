@@ -9,6 +9,7 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\Responder;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Response\HtmlResponse;
+use Amp\Http\Status;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use League\Uri;
@@ -20,7 +21,7 @@ class StackTest extends TestCase {
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/foobar"));
 
         $stack = stack(new CallableResponder(function (Request $request) {
-            $response = new HtmlResponse("OK");
+            $response = new Response(Status::OK, [], "OK");
             $response->setHeader("stack", $request->getAttribute(StackTest::class));
 
             return $response;

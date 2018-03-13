@@ -35,18 +35,16 @@ class Response extends Message {
      * @param \Amp\ByteStream\InputStream|string|null $stringOrStream
      * @param string[][] $headers
      * @param int $code Status code.
-     * @param string|null $reason Status code reason.
      *
      * @throws \Error If one of the arguments is invalid.
      */
     public function __construct(
-        $stringOrStream = null,
-        array $headers = [],
         int $code = Status::OK,
-        string $reason = null
+        array $headers = [],
+        $stringOrStream = null
     ) {
         $this->status = $this->validateStatusCode($code);
-        $this->reason = $reason ?? Status::getReason($this->status);
+        $this->reason = Status::getReason($this->status);
 
         if (!empty($headers)) {
             $this->setHeaders($headers);
