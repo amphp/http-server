@@ -35,9 +35,16 @@ composer require amphp/http-server
 ```php
 <?php
 
+use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Status;
+
 Amp\Loop::run(function () {
     $server = new Amp\Http\Server\Server(new CallableResponder(function (Request $request) {
-        return new Amp\Http\Server\Response("Hello, World!");
+        return new Response(Status::OK, [
+            "content-type" => "text/plain; charset=utf-8"
+        ], "Hello, World!");
     }));
     
     yield $server->start();
