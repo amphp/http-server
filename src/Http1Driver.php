@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server;
 
-use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
 use Amp\Deferred;
