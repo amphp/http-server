@@ -3,9 +3,10 @@
 namespace Amp\Http\Server;
 
 use Amp\ByteStream\InputStream;
+use Amp\ByteStream\Payload;
 use Amp\Promise;
 
-class FieldBody extends Body {
+final class FieldBody extends Payload {
     /** @var string */
     private $name;
 
