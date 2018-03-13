@@ -27,4 +27,10 @@ class TrailersTest extends TestCase {
         $trailers->addHeader('fooHeader', []);
         $this->assertFalse($trailers->hasHeader('fooHeader'));
     }
+
+    public function testAddHeaderReturnsTrueForEmptyArrayValueIfExisted() {
+        $trailers = new Trailers(['fooHeader' => 'foo']);
+        $trailers->addHeader('fooHeader', []);
+        $this->assertTrue($trailers->hasHeader('fooHeader'));
+    }
 }

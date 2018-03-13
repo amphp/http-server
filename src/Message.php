@@ -92,7 +92,6 @@ abstract class Message {
 
         if (\is_array($value)) {
             if (!$value) {
-                $this->removeHeader($name);
                 return;
             }
 
