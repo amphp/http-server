@@ -1,21 +1,18 @@
-# aerys
+# http-server
 
-[![Build Status](https://travis-ci.org/amphp/aerys.svg?branch=master)](https://travis-ci.org/amphp/aerys)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/amphp/aerys/blob/master/LICENSE)
-[![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/amphp/aerys.svg)](http://isitmaintained.com/project/amphp/aerys "Average time to resolve an issue")
+[![Build Status](https://travis-ci.org/amphp/http-server.svg?branch=master)](https://travis-ci.org/amphp/http-server)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/amphp/http-server/blob/master/LICENSE)
 
-Aerys is a non-blocking HTTP/1.1 and HTTP/2 application, WebSocket and static file server written in PHP based on the [`amp`](https://github.com/amphp/amp) concurrency framework.
+This package provides a non-blocking HTTP/1.1 and HTTP/2 application server written in PHP based on [Amp](https://github.com/amphp/amp).
+Several features are provided in separate packages, such as the [WebSocket component](https://github.com/amphp/websocket-server).
 
-Aerys has currently a few 0.x tags. APIs are still subject to very small changes and you may run into rogue ~~bugs~~ features. We love PRs, though :-)
+## Features
 
-## Selected Built-in Features ...
-
-- Static file serving
-- WebSockets
-- Dynamic app endpoint routing
-- Name-based virtual hosting
+- [Static file serving](https://github.com/amphp/http-server-static-content)
+- [WebSockets](https://github.com/amphp/websocket-server)
+- [Dynamic app endpoint routing](https://github.com/amphp/http-server-router)
 - Full TLS support
-- Customizable GZIP output compression
+- Customizable GZIP compression
 - HTTP/2.0 support
 - Middleware hooks
 
@@ -26,48 +23,33 @@ Aerys has currently a few 0.x tags. APIs are still subject to very small changes
 ## Installation
 
 ```bash
-composer require amphp/aerys
+composer require amphp/http-server
 ```
 
 ## Documentation
 
-- [Official Documentation](http://amphp.org/aerys/)
-- [Getting Started with Aerys](http://blog.kelunik.com/2015/10/21/getting-started-with-aerys.html)
-- [Getting Started with Aerys WebSockets](http://blog.kelunik.com/2015/10/20/getting-started-with-aerys-websockets.html)
+- [Official Documentation](http://amphp.org/http-server/)
 
-## Running a Server
-
-```bash
-php bin/aerys -c demo.php
-```
-
-Simply execute the `aerys` binary (with PHP 7) to start a server listening on `http://localhost/` using
-the default configuration file (packaged with the repository).
-
-Add a `-d` switch to see some debug output like the routes called etc.:
-
-```bash
-php bin/aerys -d -c demo.php
-```
-
-## Config File
-
-Use the `-c, --config` switches to define the config file:
-
-```bash
-php bin/aerys -c /path/to/my/config.php
-```
-
-Use the `-h, --help` switches for more instructions.
-
-## Static File Serving
-
-To start a static file server simply pass a root handler as part of your config file.
+## Example
 
 ```php
-return (new Aerys\Host)
-    ->expose("*", 1337)
-    ->use(Aerys\root(__DIR__ . "/public"));
+<?php
+
+Amp\Loop::run(function () {
+    $server = new Amp\Http\Server\Server(new CallableResponder(function (Request $request) {
+        return new Amp\Http\Server\Response("Hello, World!");
+    }));
+    
+    yield $server->start();
+    
+    Amp\Loop::onSignal(SIGINT, function () use ($server) {
+        yield $server->stop();
+    });
+});
+```
+
+```bash
+php example.php
 ```
 
 ## Security
