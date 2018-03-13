@@ -111,6 +111,17 @@ abstract class Message {
     }
 
     /**
+     * Checks if given header exists.
+     *
+     * @param string $name
+     *
+     * @return bool
+     */
+    public function hasHeader(string $name): bool {
+        return isset($this->headers[\strtolower($name)]);
+    }
+
+    /**
      * @param string $name
      *
      * @return bool
