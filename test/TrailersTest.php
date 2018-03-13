@@ -33,4 +33,28 @@ class TrailersTest extends TestCase {
         $trailers->addHeader('fooHeader', []);
         $this->assertTrue($trailers->hasHeader('fooHeader'));
     }
+
+    public function testAddHeaderWithNonExistingStringValue() {
+        $trailers = new Trailers([]);
+        $trailers->addHeader('fooHeader', 'bar');
+        $this->assertSame('bar', $trailers->getHeader('fooHeader'));
+    }
+
+    public function testAddHeaderWithExistingValue() {
+        $trailers = new Trailers(['fooHeader' => 'foo']);
+        $trailers->addHeader('fooHeader', 'bar');
+        $this->assertSame(['fooheader' => ['foo', 'bar']], $trailers->getHeaders());
+    }
+
+    public function testSetHeaderDoesNotKeepStringKeys() {
+        $trailers = new Trailers([]);
+        $trailers->setHeader('fooHeader', ['stringKey' => 'bazValue']);
+        $this->assertSame(['fooheader' => ['bazValue']], $trailers->getHeaders());
+    }
+
+    public function testAddHeaderDoesNotKeepStringKeys() {
+        $trailers = new Trailers([]);
+        $trailers->addHeader('fooHeader', ['stringKey' => 'barValue']);
+        $this->assertSame(['fooheader' => ['barValue']], $trailers->getHeaders());
+    }
 }
