@@ -4,7 +4,7 @@ namespace Amp\Http\Server\Test;
 
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
-use Amp\Http\Hpack;
+use Amp\Http\HPack;
 use Amp\Http\Server\Client;
 use Amp\Http\Server\Http2Driver;
 use Amp\Http\Server\Options;
