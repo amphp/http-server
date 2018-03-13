@@ -594,15 +594,15 @@ class RemoteClient implements Client {
         } catch (ClientException $exception) {
             $this->close();
             return;
-        } catch (\Throwable $error) {
-            $this->logger->error($error);
-            $response = yield from $this->makeExceptionResponse($error, $request);
+        } catch (\Throwable $exception) {
+            $this->logger->error($exception);
+            $response = yield from $this->makeExceptionResponse($request);
         } finally {
             $this->pendingResponses--;
         }
 
         if ($this->status & self::CLOSED_WR) {
-            return; // Client closed before response could be sent.f
+            return; // Client closed before response could be sent.
         }
 
         $promise = $this->httpDriver->writer($response, $request);
@@ -646,40 +646,17 @@ class RemoteClient implements Client {
     }
 
     /**
-     * Used if an exception is thrown from a responder. Returns a response containing the exception stack trace
-     * in debug mode or a response defined by the error handler in production mode.
+     * Used if an exception is thrown from a responder.
      *
-     * @param \Throwable $exception
      * @param \Amp\Http\Server\Request $request
      *
      * @return \Generator
      */
-    private function makeExceptionResponse(\Throwable $exception, Request $request = null): \Generator {
+    private function makeExceptionResponse(Request $request): \Generator {
         $status = Status::INTERNAL_SERVER_ERROR;
 
-        // Return an HTML page with the exception in debug mode.
-        if ($this->options->isInDebugMode()) {
-            $html = \str_replace(
-                ["{uri}", "{class}", "{message}", "{file}", "{line}", "{trace}"],
-                \array_map("htmlspecialchars", [
-                    $request ? $request->getUri() : "Exception thrown before request was fully read",
-                    \get_class($exception),
-                    $exception->getMessage(),
-                    $exception->getFile(),
-                    $exception->getLine(),
-                    $exception->getTraceAsString()
-                ]),
-                INTERNAL_SERVER_ERROR_HTML
-            );
-
-            return new Response($status, [
-                "content-type" => "text/html; charset=utf-8",
-            ], $html);
-        }
-
         try {
-            // Return a response defined by the error handler in production mode.
-            return yield $this->errorHandler->handle($status, Status::getReason($status), $request);
+            return yield $this->errorHandler->handle($status, null, $request);
         } catch (\Throwable $exception) {
             // If the error handler throws, fallback to returning the default HTML error page.
             $this->logger->error($exception);
