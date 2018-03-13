@@ -10,33 +10,33 @@ interface Client {
     /**
      * Listen for requests on the client and parse them using the given HTTP driver.
      *
-     * @param \Amp\Http\Server\HttpDriverFactory $driverFactory
+     * @param HttpDriverFactory $driverFactory
      *
      * @throws \Error If the client has already been started.
      */
     public function start(HttpDriverFactory $driverFactory);
 
     /**
-     * @return \Amp\Http\Server\Options Server options object.
+     * @return Options Server options object.
      */
     public function getOptions(): Options;
 
     /**
-     * @return int Number of requests with pending responses.
-     */
-    public function pendingResponseCount(): int;
-
-    /**
      * @return int Number of requests being read.
      */
-    public function pendingRequestCount(): int;
+    public function getPendingRequestCount(): int;
+
+    /**
+     * @return int Number of requests with pending responses.
+     */
+    public function getPendingResponseCount(): int;
 
     /**
      * @return bool `true` if the number of pending responses is greater than the number of pending requests.
      *     Useful for determining if a responder is actively writing a response or if a request is taking too
      *     long to arrive.
      */
-    public function waitingOnResponse(): bool;
+    public function isWaitingOnResponse(): bool;
 
     /**
      * Integer ID of this client.
@@ -89,7 +89,7 @@ interface Client {
     public function isExported(): bool;
 
     /**
-     * @return string Unique network ID based on IP for matching the client with other clients from the same IP.
+     * @return string Network ID based on IP for matching the client with other clients from the same IP.
      */
     public function getNetworkId(): string;
 
@@ -99,14 +99,14 @@ interface Client {
     public function getStatus(): int;
 
     /**
-     * Forcefully closes the client connection.
-     */
-    public function close();
-
-    /**
      * Attaches a callback invoked with this client closes. The callback is passed this object as the first parameter.
      *
      * @param callable $callback
      */
     public function onClose(callable $callback);
+
+    /**
+     * Forcefully closes the client connection.
+     */
+    public function close();
 }

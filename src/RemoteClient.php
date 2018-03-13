@@ -202,14 +202,14 @@ class RemoteClient implements Client {
     /**
      * @return int Number of requests with pending responses.
      */
-    public function pendingResponseCount(): int {
+    public function getPendingResponseCount(): int {
         return $this->pendingResponses;
     }
 
     /**
      * @return int Number of requests being read.
      */
-    public function pendingRequestCount(): int {
+    public function getPendingRequestCount(): int {
         if ($this->httpDriver === null) {
             return 0;
         }
@@ -222,7 +222,7 @@ class RemoteClient implements Client {
      *     Useful for determining if a responder is actively writing a response or if a request is taking too
      *     long to arrive.
      */
-    public function waitingOnResponse(): bool {
+    public function isWaitingOnResponse(): bool {
         return $this->httpDriver !== null && $this->pendingResponses > $this->httpDriver->pendingRequestCount();
     }
 

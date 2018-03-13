@@ -39,7 +39,7 @@ class Http1DriverTest extends TestCase {
         );
 
         $client = $this->createMock(Client::class);
-        $client->method('pendingResponseCount')
+        $client->method('getPendingResponseCount')
             ->willReturn(1);
 
         $parser = $driver->setup($client, $this->createCallback(0), $writer);
@@ -68,7 +68,7 @@ class Http1DriverTest extends TestCase {
         );
 
         $client = $this->createMock(Client::class);
-        $client->method('pendingResponseCount')
+        $client->method('getPendingResponseCount')
             ->willReturn(1);
 
         $parser = $driver->setup($client, $this->createCallback(0), $writer);

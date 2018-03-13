@@ -622,7 +622,7 @@ class Http1Driver implements HttpDriver {
                 $buffer .= yield $promise; // Wait for response to be fully written.
             } while (true);
         } catch (ClientException $exception) {
-            if ($this->bodyEmitter === null || $this->client->pendingResponseCount()) {
+            if ($this->bodyEmitter === null || $this->client->getPendingResponseCount()) {
                 // Send an error response only if another response has not already been sent to the request.
                 yield new Coroutine($this->sendErrorResponse($exception));
             }
