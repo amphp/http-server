@@ -63,7 +63,12 @@ abstract class Message {
         \assert($this->isNameValid($name), "Invalid header name");
 
         if (\is_array($value)) {
-            $value = \array_map("strval", $value);
+            if (!$value) {
+                $this->removeHeader($name);
+                return;
+            }
+
+            $value = \array_values(\array_map("strval", $value));
         } else {
             $value = [(string) $value];
         }
@@ -86,7 +91,12 @@ abstract class Message {
         \assert($this->isNameValid($name), "Invalid header name");
 
         if (\is_array($value)) {
-            $value = \array_map("strval", $value);
+            if (!$value) {
+                $this->removeHeader($name);
+                return;
+            }
+
+            $value = \array_values(\array_map("strval", $value));
         } else {
             $value = [(string) $value];
         }
