@@ -31,7 +31,7 @@
     "require": {
         "amphp/amp": "^2",
         "amphp/byte-stream": "^1",
-        "amphp/hpack": "dev-master as 0.1.0",
+        "amphp/hpack": "^1",
         "amphp/http": "^1",
         "amphp/socket": "^0.10",
         "league/uri-parser": "^1.3",
