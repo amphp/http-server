@@ -38,7 +38,7 @@ function redirect(string $uri, int $redirectCode = Status::TEMPORARY_REDIRECT): 
         $path = $uri->getPath();
         $query = $uri->getQuery();
 
-        if ($query) {
+        if ($query !== "") {
             $path .= "?" . $query;
         }
 
