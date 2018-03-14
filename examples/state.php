@@ -12,9 +12,15 @@ use Amp\Http\Status;
 
 Amp\Loop::run(function () {
     $server = new Amp\Http\Server\Server(new CallableResponder(function (Request $request) {
+        static $counter = 0;
+
+        // We can keep state between requests, but if you're using multiple server processes,
+        // such state will be separate per process.
+        // Note: You might see the counter increase by more than one per reload, because browser
+        // might try to load a favicon.ico or similar.
         return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8"
-        ], "Hello, World!");
+        ], "You're visitor #" . (++$counter) . ".");
     }));
 
     $server->expose("*", 1337);

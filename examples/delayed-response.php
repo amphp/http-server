@@ -3,6 +3,7 @@
 
 require dirname(__DIR__) . "/vendor/autoload.php";
 
+use Amp\Delayed;
 use Amp\Http\Server\CallableResponder;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
@@ -12,6 +13,10 @@ use Amp\Http\Status;
 
 Amp\Loop::run(function () {
     $server = new Amp\Http\Server\Server(new CallableResponder(function (Request $request) {
+        // We delay the response here, but this could also be non-blocking I/O.
+        // Further requests are still processed concurrently.
+        yield new Delayed(3000);
+
         return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8"
         ], "Hello, World!");
