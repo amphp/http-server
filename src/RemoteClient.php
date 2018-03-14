@@ -667,7 +667,9 @@ class RemoteClient implements Client {
                 DEFAULT_ERROR_HTML
             );
 
-            return new Response($status, [], $html);
+            return new Response($status, [
+                "content-type" => "text/html; charset=utf-8"
+            ], $html);
         }
     }
 

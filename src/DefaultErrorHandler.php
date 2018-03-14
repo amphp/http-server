@@ -24,7 +24,10 @@ class DefaultErrorHandler implements ErrorHandler {
             );
         }
 
-        $response = new Response($statusCode, [], $this->cache[$statusCode]);
+        $response = new Response($statusCode, [
+            "content-type" => "text/html; charset=utf-8"
+        ], $this->cache[$statusCode]);
+
         $response->setStatus($statusCode, $reason);
 
         return new Success($response);
