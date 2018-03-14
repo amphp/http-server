@@ -49,15 +49,3 @@ function redirect(string $uri, int $redirectCode = Status::TEMPORARY_REDIRECT): 
         ], new InMemoryStream);
     });
 }
-
-/**
- * Try parsing a the Request's body with either x-www-form-urlencoded or multipart/form-data.
- *
- * @param Request $request
- * @param int     $size Optional max body size.
- *
- * @return BodyParser (returns a ParsedBody instance when yielded)
- */
-function parseBody(Request $request, int $size = BodyParser::DEFAULT_MAX_BODY_SIZE): BodyParser {
-    return new BodyParser($request, $size);
-}
