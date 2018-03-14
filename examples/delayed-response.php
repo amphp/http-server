@@ -7,12 +7,19 @@ use Amp\Delayed;
 use Amp\Http\Server\CallableResponder;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\Server;
 use Amp\Http\Status;
+use Amp\Socket;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
 
 Amp\Loop::run(function () {
-    $server = new Amp\Http\Server\Server(new CallableResponder(function (Request $request) {
+    $servers = [
+        Socket\listen("0.0.0.0:1337"),
+        Socket\listen("[::]:1337"),
+    ];
+
+    $server = new Server($servers, new CallableResponder(function (Request $request) {
         // We delay the response here, but this could also be non-blocking I/O.
         // Further requests are still processed concurrently.
         yield new Delayed(3000);
@@ -21,8 +28,6 @@ Amp\Loop::run(function () {
             "content-type" => "text/plain; charset=utf-8"
         ], "Hello, World!");
     }));
-
-    $server->expose("*", 1337);
 
     yield $server->start();
 

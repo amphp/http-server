@@ -6,12 +6,19 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 use Amp\Http\Server\CallableResponder;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\Server;
 use Amp\Http\Status;
+use Amp\Socket;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
 
 Amp\Loop::run(function () {
-    $server = new Amp\Http\Server\Server(new CallableResponder(function (Request $request) {
+    $servers = [
+        Socket\listen("0.0.0.0:1337"),
+        Socket\listen("[::]:1337"),
+    ];
+
+    $server = new Server($servers, new CallableResponder(function (Request $request) {
         static $counter = 0;
 
         // We can keep state between requests, but if you're using multiple server processes,
@@ -22,8 +29,6 @@ Amp\Loop::run(function () {
             "content-type" => "text/plain; charset=utf-8"
         ], "You're visitor #" . (++$counter) . ".");
     }));
-
-    $server->expose("*", 1337);
 
     yield $server->start();
 

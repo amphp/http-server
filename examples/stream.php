@@ -9,13 +9,20 @@ use Amp\Http\Server\CallableResponder;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\Server;
 use Amp\Http\Status;
 use Amp\Producer;
+use Amp\Socket;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
 
 Amp\Loop::run(function () {
-    $server = new Amp\Http\Server\Server(new CallableResponder(function (Request $request) {
+    $servers = [
+        Socket\listen("0.0.0.0:1337"),
+        Socket\listen("[::]:1337"),
+    ];
+
+    $server = new Server($servers, new CallableResponder(function (Request $request) {
         // We stream the response here, one line every 100 ms.
         return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8"
@@ -26,8 +33,6 @@ Amp\Loop::run(function () {
             }
         })));
     }), (new Options)->withOutputBufferSize(1));
-
-    $server->expose("*", 1337);
 
     yield $server->start();
 

@@ -46,14 +46,17 @@ class RemoteClientTest extends TestCase {
         }
         $address = stream_socket_get_name($server, $wantPeer = false);
         fclose($server);
-        $port = parse_url($address, PHP_URL_PORT);
 
         $handler = new CallableResponder($handler);
 
+        $servers = [Socket\listen(
+            $address,
+            null,
+            (new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem"))
+        )];
+
         $options = (new Options)->withDebugMode();
-        $server = new Server($handler, $options);
-        $server->expose("*", $port);
-        $server->encrypt((new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem")));
+        $server = new Server($servers, $handler, $options);
 
         yield $server->start();
         return [$address, $server];

@@ -14,7 +14,7 @@ class DetachedSocket extends ServerSocket {
      * @param resource $resource
      * @param int $chunkSize
      */
-    public function __construct(Client $client, $resource, int $chunkSize = 65536) {
+    public function __construct(Client $client, $resource, int $chunkSize = ServerSocket::DEFAULT_CHUNK_SIZE) {
         parent::__construct($resource, $chunkSize);
         $this->client = $client;
     }
