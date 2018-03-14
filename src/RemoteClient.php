@@ -24,7 +24,7 @@ class RemoteClient implements Client {
     /** @var string */
     private $clientAddress;
 
-    /** @var int */
+    /** @var int|null */
     private $clientPort;
 
     /** @var string */
@@ -33,7 +33,7 @@ class RemoteClient implements Client {
     /** @var string */
     private $serverAddress;
 
-    /** @var int */
+    /** @var int|null */
     private $serverPort;
 
     /** @var bool */
@@ -126,7 +126,6 @@ class RemoteClient implements Client {
             $this->serverPort = (int) substr($serverName, $portStartPos + 1);
         } else {
             $this->serverAddress = $serverName;
-            $this->serverPort = 0;
         }
 
         $peerName = \stream_socket_get_name($this->socket, true);
@@ -139,7 +138,6 @@ class RemoteClient implements Client {
             }
         } else {
             $this->clientAddress = $serverName;
-            $this->clientPort = 0;
             $this->clientNetworkId = $serverName;
         }
 
@@ -192,23 +190,17 @@ class RemoteClient implements Client {
         $this->requestParser->current();
     }
 
-    /**
-     * @return \Amp\Http\Server\Options Server options object.
-     */
+    /** @inheritdoc */
     public function getOptions(): Options {
         return $this->options;
     }
 
-    /**
-     * @return int Number of requests with pending responses.
-     */
+    /** @inheritdoc */
     public function getPendingResponseCount(): int {
         return $this->pendingResponses;
     }
 
-    /**
-     * @return int Number of requests being read.
-     */
+    /** @inheritdoc */
     public function getPendingRequestCount(): int {
         if ($this->httpDriver === null) {
             return 0;
@@ -217,100 +209,67 @@ class RemoteClient implements Client {
         return $this->httpDriver->pendingRequestCount();
     }
 
-    /**
-     * @return bool `true` if the number of pending responses is greater than the number of pending requests.
-     *     Useful for determining if a responder is actively writing a response or if a request is taking too
-     *     long to arrive.
-     */
+    /** @inheritdoc */
     public function isWaitingOnResponse(): bool {
         return $this->httpDriver !== null && $this->pendingResponses > $this->httpDriver->pendingRequestCount();
     }
 
-    /**
-     * Integer ID of this client.
-     *
-     * @return int
-     */
+    /** @inheritdoc */
     public function getId(): int {
         return $this->id;
     }
 
-    /**
-     * @return string Remote IP address.
-     */
+    /** @inheritdoc */
     public function getRemoteAddress(): string {
         return $this->clientAddress;
     }
 
-    /**
-     * @return int Remote port number.
-     */
-    public function getRemotePort(): int {
+    /** @inheritdoc */
+    public function getRemotePort() {
         return $this->clientPort;
     }
 
-    /**
-     * @return string Local server IP address.
-     */
+    /** @inheritdoc */
     public function getLocalAddress(): string {
         return $this->serverAddress;
     }
 
-    /**
-     * @return int Local server port.
-     */
-    public function getLocalPort(): int {
+    /** @inheritdoc */
+    public function getLocalPort() {
         return $this->serverPort;
     }
 
-    /**
-     * @return bool `true` if this client is connected via an unix domain socket.
-     */
+    /** @inheritdoc */
     public function isUnix(): bool {
         return $this->serverPort === 0;
     }
 
-    /**
-     * @return bool `true` if the client is encrypted, `false` if plaintext.
-     */
+    /** @inheritdoc */
     public function isEncrypted(): bool {
         return $this->isEncrypted;
     }
 
-    /**
-     * If the client is encrypted, returns the array returned from stream_get_meta_data($this->socket)["crypto"].
-     * Otherwise returns an empty array.
-     *
-     * @return array
-     */
+    /** @inheritdoc */
     public function getCryptoContext(): array {
         return $this->cryptoInfo;
     }
 
-    /**
-     * @return bool `true` if the client has been exported from the server using Response::detach().
-     */
+    /** @inheritdoc */
     public function isExported(): bool {
         return $this->isExported;
     }
 
-    /**
-     * @return string Unique network ID based on IP for matching the client with other clients from the same IP.
-     */
+    /** @inheritdoc */
     public function getNetworkId(): string {
         return $this->clientNetworkId;
     }
 
-    /**
-     * @return int Integer mask of Client::CLOSED_* constants.
-     */
+    /** @inheritdoc */
     public function getStatus(): int {
         return $this->status;
     }
 
-    /**
-     * Forcefully closes the client connection.
-     */
+    /** @inheritdoc */
     public function close() {
         if ($this->onClose === null) {
             return; // Client already closed.
@@ -342,11 +301,7 @@ class RemoteClient implements Client {
         }
     }
 
-    /**
-     * Attaches a callback invoked with this client closes. The callback is passed this object as the first parameter.
-     *
-     * @param callable $callback
-     */
+    /** @inheritdoc */
     public function onClose(callable $callback) {
         if ($this->onClose === null) {
             $callback($this);

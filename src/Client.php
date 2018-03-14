@@ -46,24 +46,24 @@ interface Client {
     public function getId(): int;
 
     /**
-     * @return string Remote IP address.
+     * @return string Remote IP address or unix socket path.
      */
     public function getRemoteAddress(): string;
 
     /**
-     * @return int Remote port number.
+     * @return int|null Remote port number or null for unix sockets.
      */
-    public function getRemotePort(): int;
+    public function getRemotePort(); /* : ?int */
 
     /**
-     * @return string Local server IP address.
+     * @return string Local server IP address or unix socket path.
      */
     public function getLocalAddress(): string;
 
     /**
-     * @return int Local server port.
+     * @return int|null Local server port or null for unix sockets.
      */
-    public function getLocalPort(): int;
+    public function getLocalPort(); /* : ?int */
 
     /**
      * @return bool `true` if this client is connected via an unix domain socket.
