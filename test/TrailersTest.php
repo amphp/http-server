@@ -57,4 +57,20 @@ class TrailersTest extends TestCase {
         $trailers->addHeader('fooHeader', ['stringKey' => 'barValue']);
         $this->assertSame(['fooheader' => ['barValue']], $trailers->getHeaders());
     }
+
+    public function testSetHeadersIsAtomic() {
+        $trailers = new Trailers([]);
+
+        try {
+            $trailers->setHeaders([
+                'x' => 'y',
+                'foo' => "x: test\r\n",
+            ]);
+
+            $this->fail('Expected an exception.');
+        } catch (\AssertionError $e) {
+            $this->assertFalse($trailers->hasHeader('x'));
+            $this->assertFalse($trailers->hasHeader('foo'));
+        }
+    }
 }
