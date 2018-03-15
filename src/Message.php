@@ -46,8 +46,17 @@ abstract class Message {
      * @param string[] $headers
      */
     public function setHeaders(array $headers) {
-        foreach ($headers as $name => $value) {
-            $this->setHeader($name, $value);
+        // Ensure this is an atomic operation, either all headers are set or none.
+        $before = $this->headers;
+
+        try {
+            foreach ($headers as $name => $value) {
+                $this->setHeader($name, $value);
+            }
+        } catch (\Throwable $e) {
+            $this->headers = $before;
+
+            throw $e;
         }
     }
 
