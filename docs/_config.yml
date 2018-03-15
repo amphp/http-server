@@ -2,14 +2,14 @@ kramdown:
   input: GFM
   toc_levels: 2..3
 
-baseurl: "/aerys"
+baseurl: "/http-server"
 layouts_dir: ".shared/layout"
 includes_dir: ".shared/includes"
 
 exclude: ["Gemfile", "Gemfile.lock", "README.md", "vendor"]
 safe: true
 
-repository: amphp/aerys
+repository: amphp/http-server
 gems:
  - "jekyll-github-metadata"
  - "jekyll-relative-links"
@@ -20,22 +20,19 @@ defaults:
      type: "pages"
    values:
      layout: "docs"
-     description: "Aerys is a non-blocking HTTP/1.1 and HTTP/2 application, WebSocket and static file server written in PHP based on Amp."
-     keywords: ["amphp", "amp", "aerys", "http server", "http", "server", "application server", "php"]
+     description: "Amp's HTTP server is a non-blocking HTTP/1.1 and HTTP/2 application server written in PHP."
+     keywords: ["amphp", "amp", "http server", "http", "server", "application server", "php"]
 
-shared_asset_path: "/aerys/asset"
+shared_asset_path: "/http-server/asset"
 
 navigation:
- - http
- - websocket
- - host
+ - responder
+ - middleware
  - io
  - helpers
- - logging
  - options
  - http-advanced
  - performance
- - filters
  - production
  - more
  - classes

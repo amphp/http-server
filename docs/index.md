@@ -2,38 +2,36 @@
 title: Introduction
 permalink: /
 ---
-Aerys is a non-blocking HTTP/1.1 and HTTP/2 application, WebSocket and static file server written in PHP.
+Amp's HTTP server is a non-blocking HTTP/1.1 and HTTP/2 application server written in PHP.
+This means that there's no Apache or Nginx required to serve PHP applications with it.
+Multiple requests can be served concurrently and the application bootstrapping only needs to happen once, not once for every request.
 
 ## Installation
 
-```bash
-composer require amphp/aerys
-```
-
-## First Run
+The server can be installed as a [Composer](https://getcomposer.org/) dependency.
 
 ```bash
-vendor/bin/aerys -d -c demo.php
+composer require amphp/http-server
 ```
 
-{:.warning}
-> On production you'll want to drop the `-d` (debug mode) flag. For development it is pretty helpful though. `-c demo.php` tells the program where to find the config file.
+Several advanced components are available in separate packages, such as a [routing](https://github.com/amphp/http-server-router), [static content](https://github.com/amphp/http-server-static-content) and [WebSocket](https://github.com/amphp/websocket-server) component.
 
-## First Configuration
+## Examples
 
-```php
-<?php
+Several examples can be found in the [`./examples`](https://github.com/amphp/http-server/tree/master/examples) directory of the [repository](https://github.com/amphp/http-server).
+These can be executed as normal PHP scripts on the command line.
 
-return (new Aerys\Host)->use(Aerys\root("/var/www/public_html"));
+```bash
+php examples/hello-world.php
 ```
 
-Save it as `config.php` and load it via `sudo php vendor/bin/aerys -d -c config.php`. The `sudo` may be necessary as it binds by default on port 80 - for this case there is an [`user` option to drop the privileges](options.md#common-options).
+You can then access the example server at [`http://localhost:1337/`](http://localhost:1337/) in your browser.
 
-That's all needed to serve files from a static root. Put an `index.html` there and try opening [`http://localhost/`](http://localhost/) in the browser.
+## Logging
 
-The host instance is at the root of each virtual host served by Aerys. By default it serves your content over port 80 on localhost. To configure an alternative binding, have a look [here](classes/host.md).
-
-The `root($path)` function returns a handler for static file serving and expects a document root path to serve files from as first parameter.
+The `Server` uses a `NullLogger` by default.
+If you pass a `Psr\Log\LoggerInterface` instance to its constructor, you'll get helpful log messages.
 
 {:.note}
-> Debug mode is most helpful when zend.assertions is set to 1. If it isn't set to 1 in your config, load the server with `php -d zend.assertions=1 vendor/bin/aerys -d -c config.php`.
+> Internally generated log messages of the `DEBUG` level are only generated if `zend.assertions` is set to `1`.
+> If it isn't set to `1` in your config, load the server with `php -d zend.assertions=1 examples/hello-world.php`.
