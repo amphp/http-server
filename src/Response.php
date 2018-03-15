@@ -273,7 +273,7 @@ class Response extends Message {
      * @throws \Error If the given url is invalid.
      */
     public function push(string $url, array $headers = []) {
-        \assert((function ($headers) {
+        \assert((function (array $headers) {
             foreach ($headers as $name => $header) {
                 if ($name[0] === ":" || !\strncasecmp("host", $name, 4)) {
                     return false;
