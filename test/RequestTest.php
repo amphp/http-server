@@ -2,6 +2,8 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\ByteStream\InMemoryStream;
+use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Server\Client;
 use Amp\Http\Server\MissingAttributeError;
 use Amp\Http\Server\Request;
@@ -89,5 +91,64 @@ class RequestTest extends TestCase {
 
         $this->expectException(MissingAttributeError::class);
         $request->getAttribute('bar');
+    }
+
+    public function testSetBody() {
+        $client = $this->createMock(Client::class);
+        $request = new Request($client, 'POST', Http::createFromString('/'), [
+            'content-length' => '0',
+        ]);
+
+        $this->assertSame('0', $request->getHeader('content-length'));
+        $request->setBody('foobar');
+        $this->assertSame('6', $request->getHeader('content-length'));
+
+        // A stream being set MUST NOT alter the content length
+        $request->setBody(new InMemoryStream('foobar'));
+        $this->assertSame('6', $request->getHeader('content-length'));
+        $request->setBody(new InMemoryStream('foo'));
+        $this->assertSame('6', $request->getHeader('content-length'));
+
+        $request->setBody('');
+        $this->assertSame('0', $request->getHeader('content-length'));
+
+        $request = new Request($client, 'GET', Http::createFromString('/'));
+        $request->setBody('');
+        $this->assertFalse($request->hasHeader('content-length'));
+    }
+
+    public function testSetBodyWrongType() {
+        $client = $this->createMock(Client::class);
+        $request = new Request($client, 'POST', Http::createFromString('/'), [
+            'content-length' => '0',
+        ]);
+
+        $this->expectException(\TypeError::class);
+        $request->setBody(42);
+    }
+
+    public function testCookies() {
+        $client = $this->createMock(Client::class);
+        $request = new Request($client, 'GET', Http::createFromString('/'), [
+            'cookie' => new RequestCookie('foo', 'bar'),
+        ]);
+
+        $this->assertNull($request->getCookie('foobar'));
+        $this->assertInstanceOf(RequestCookie::class, $request->getCookie('foo'));
+        $this->assertCount(1, $request->getCookies());
+
+        $request->removeCookie('foo');
+        $this->assertCount(0, $request->getCookies());
+        $this->assertFalse($request->hasHeader('cookie'));
+
+        $request->setCookie(new RequestCookie('foo', 'baz'));
+        $this->assertCount(1, $request->getCookies());
+        $this->assertTrue($request->hasHeader('cookie'));
+
+        $request->removeCookie('foo');
+        $request->addHeader('cookie', new RequestCookie('foo'));
+        $this->assertCount(1, $request->getCookies());
+        $this->assertNotNull($cookie = $request->getCookie('foo'));
+        $this->assertSame('', $cookie->getValue());
     }
 }
