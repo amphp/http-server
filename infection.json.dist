@@ -2,7 +2,7 @@
     "timeout": 10,
     "source": {
         "directories": [
-            "lib"
+            "src"
         ]
     },
     "logs": {
