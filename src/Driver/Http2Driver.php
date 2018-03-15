@@ -1,6 +1,6 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\Driver;
 
 // @TODO add ServerObserver for properly sending GOAWAY frames
 
@@ -9,7 +9,13 @@ use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\Hpack;
+use Amp\Http\Server\Body;
+use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Internal\Http2Stream;
+use Amp\Http\Server\Options;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Promise;
 use League\Uri;
@@ -84,13 +90,13 @@ class Http2Driver implements HttpDriver {
     /** @var string 64-bit for ping. */
     private $counter = "aaaaaaaa";
 
-    /** @var \Amp\Http\Server\Client */
+    /** @var \Amp\Http\Server\Driver\Client */
     private $client;
 
     /** @var \Amp\Http\Server\Options */
     private $options;
 
-    /** @var \Amp\Http\Server\TimeReference */
+    /** @var \Amp\Http\Server\Driver\TimeReference */
     private $timeReference;
 
     /** @var int */
@@ -148,10 +154,10 @@ class Http2Driver implements HttpDriver {
     }
 
     /**
-     * @param \Amp\Http\Server\Client $client
-     * @param callable $onMessage
-     * @param callable $write
-     * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
+     * @param \Amp\Http\Server\Driver\Client $client
+     * @param callable                       $onMessage
+     * @param callable                       $write
+     * @param string|null                    $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
      *
      * @return \Generator
      */

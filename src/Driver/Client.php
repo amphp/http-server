@@ -1,6 +1,8 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\Driver;
+
+use Amp\Http\Server\Options;
 
 interface Client {
     const CLOSED_RD = 1;

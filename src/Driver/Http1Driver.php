@@ -1,6 +1,6 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
@@ -8,6 +8,13 @@ use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Rfc7230;
+use Amp\Http\Server\Body;
+use Amp\Http\Server\ClientException;
+use Amp\Http\Server\ErrorHandler;
+use Amp\Http\Server\Options;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Promise;
 use League\Uri;
@@ -33,7 +40,7 @@ class Http1Driver implements HttpDriver {
         "www-authenticate",
     ];
 
-    /** @var \Amp\Http\Server\Http2Driver|null */
+    /** @var \Amp\Http\Server\Driver\Http2Driver|null */
     private $http2;
 
     /** @var Client */

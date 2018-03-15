@@ -1,7 +1,9 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\Driver;
 
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Response;
 use Amp\Promise;
 
 interface HttpDriver {
@@ -16,10 +18,10 @@ interface HttpDriver {
      * yields a promise, no additional data is to be sent to the parser until the promise resolves. Each yield must be
      * prepared to receive additional client data, including those yielding promises.
      *
-     * @param \Amp\Http\Server\Client $client The client associated with the data being sent to the returned generator.
-     * @param callable $onMessage Invoked with an instance of Request when the returned parser has parsed a request.
+     * @param \Amp\Http\Server\Driver\Client $client The client associated with the data being sent to the returned generator.
+     * @param callable                       $onMessage Invoked with an instance of Request when the returned parser has parsed a request.
      *    Returns a promise that is resolved once the response has been generated and written to the client.
-     * @param callable $write Invoked with raw data to be written to the client connection. Returns a promise that is
+     * @param callable                       $write Invoked with raw data to be written to the client connection. Returns a promise that is
      *     resolved when the data has been successfully written.
      *
      * @return \Generator Request parser.

@@ -1,6 +1,6 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\Driver;
 
 use cash\LRUCache;
 
@@ -18,8 +18,8 @@ class TimeoutCache implements \IteratorAggregate {
     private $now;
 
     /**
-     * @param \Amp\Http\Server\TimeReference $timeReference
-     * @param int $timeout Number of seconds to add when renewing a timeout.
+     * @param \Amp\Http\Server\Driver\TimeReference $timeReference
+     * @param int                                   $timeout Number of seconds to add when renewing a timeout.
      */
     public function __construct(TimeReference $timeReference, int $timeout) {
         // Maybe we do need our own LRU-cache implementation?

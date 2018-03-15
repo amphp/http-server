@@ -1,8 +1,10 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\Driver;
 
 use Amp\CallableMaker;
+use Amp\Http\Server\Server;
+use Amp\Http\Server\ServerObserver;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;

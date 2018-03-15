@@ -1,7 +1,9 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\Driver;
 
+use Amp\Http\Server\Server;
+use Amp\Http\Server\ServerObserver;
 use Amp\Promise;
 use Amp\Success;
 
@@ -9,7 +11,7 @@ class DefaultHttpDriverFactory implements HttpDriverFactory, ServerObserver {
     /** @var \Amp\Http\Server\Options */
     private $options;
 
-    /** @var \Amp\Http\Server\TimeReference */
+    /** @var \Amp\Http\Server\Driver\TimeReference */
     private $timeReference;
 
     /** @var \Amp\Http\Server\ErrorHandler */

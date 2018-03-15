@@ -1,14 +1,14 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\Driver;
 
 interface HttpDriverFactory {
     /**
      * Selects an HTTP driver based on the given client.
      *
-     * @param \Amp\Http\Server\Client $client
+     * @param \Amp\Http\Server\Driver\Client $client
      *
-     * @return \Amp\Http\Server\HttpDriver
+     * @return \Amp\Http\Server\Driver\HttpDriver
      */
     public function selectDriver(Client $client): HttpDriver;
 

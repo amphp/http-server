@@ -5,6 +5,7 @@ namespace Amp\Http\Server;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\RequestCookie;
+use Amp\Http\Server\Driver\Client;
 use Psr\Http\Message\UriInterface as PsrUri;
 
 class Request extends Message {
@@ -60,7 +61,7 @@ class Request extends Message {
     }
 
     /**
-     * @return \Amp\Http\Server\Client The client sending the request.
+     * @return \Amp\Http\Server\Driver\Client The client sending the request.
      */
     public function getClient(): Client {
         return $this->client;

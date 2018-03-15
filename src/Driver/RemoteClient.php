@@ -1,11 +1,18 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\Driver;
 
 use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Failure;
+use Amp\Http\Server\ClientException;
+use Amp\Http\Server\ErrorHandler;
+use Amp\Http\Server\Internal;
+use Amp\Http\Server\Options;
+use Amp\Http\Server\Request;
+use Amp\Http\Server\Responder;
+use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
@@ -63,7 +70,7 @@ class RemoteClient implements Client {
     /** @var \Amp\Http\Server\Options */
     private $options;
 
-    /** @var \Amp\Http\Server\HttpDriver */
+    /** @var \Amp\Http\Server\Driver\HttpDriver */
     private $httpDriver;
 
     /** @var \Amp\Http\Server\Responder */
@@ -75,7 +82,7 @@ class RemoteClient implements Client {
     /** @var callable[]|null */
     private $onClose = [];
 
-    /** @var \Amp\Http\Server\TimeoutCache */
+    /** @var \Amp\Http\Server\Driver\TimeoutCache */
     private $timeoutCache;
 
     /** @var \Psr\Log\LoggerInterface */
@@ -94,12 +101,12 @@ class RemoteClient implements Client {
     private $resume;
 
     /**
-     * @param resource $socket Stream socket resource.
-     * @param \Amp\Http\Server\Responder $responder
-     * @param \Amp\Http\Server\ErrorHandler $errorHandler
-     * @param \Psr\Log\LoggerInterface $logger
-     * @param \Amp\Http\Server\Options $options
-     * @param \Amp\Http\Server\TimeoutCache $timeoutCache
+     * @param resource                             $socket Stream socket resource.
+     * @param \Amp\Http\Server\Responder           $responder
+     * @param \Amp\Http\Server\ErrorHandler        $errorHandler
+     * @param \Psr\Log\LoggerInterface             $logger
+     * @param \Amp\Http\Server\Options             $options
+     * @param \Amp\Http\Server\Driver\TimeoutCache $timeoutCache
      */
     public function __construct(
         /* resource */ $socket,
@@ -147,7 +154,7 @@ class RemoteClient implements Client {
     /**
      * Listen for requests on the client and parse them using the given HTTP driver.
      *
-     * @param \Amp\Http\Server\HttpDriverFactory $driverFactory
+     * @param \Amp\Http\Server\Driver\HttpDriverFactory $driverFactory
      *
      * @throws \Error If the client has already been started.
      */
@@ -177,7 +184,7 @@ class RemoteClient implements Client {
     }
 
     /**
-     * @param \Amp\Http\Server\HttpDriver $driver
+     * @param \Amp\Http\Server\Driver\HttpDriver $driver
      */
     private function setup(HttpDriver $driver) {
         $this->httpDriver = $driver;
@@ -371,9 +378,9 @@ class RemoteClient implements Client {
     /**
      * Called by the onReadable watcher after the client connects until encryption is enabled.
      *
-     * @param string $watcher
-     * @param resource $socket
-     * @param \Amp\Http\Server\HttpDriverFactory $driverFactory
+     * @param string                                    $watcher
+     * @param resource                                  $socket
+     * @param \Amp\Http\Server\Driver\HttpDriverFactory $driverFactory
      */
     private function negotiateCrypto(string $watcher, $socket, HttpDriverFactory $driverFactory) {
         if ($handshake = @\stream_socket_enable_crypto($this->socket, true)) {

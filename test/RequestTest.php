@@ -4,7 +4,7 @@ namespace Amp\Http\Server\Test;
 
 use Amp\ByteStream\InMemoryStream;
 use Amp\Http\Cookie\RequestCookie;
-use Amp\Http\Server\Client;
+use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\MissingAttributeError;
 use Amp\Http\Server\Request;
 use Amp\PHPUnit\TestCase;

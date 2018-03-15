@@ -3,7 +3,7 @@
 namespace Amp\Http\Server\Test\Middleware;
 
 use Amp\Http\Server\CallableResponder;
-use Amp\Http\Server\Client;
+use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Responder;

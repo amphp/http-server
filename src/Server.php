@@ -5,6 +5,12 @@ namespace Amp\Http\Server;
 use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Failure;
+use Amp\Http\Server\Driver\Client;
+use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
+use Amp\Http\Server\Driver\HttpDriverFactory;
+use Amp\Http\Server\Driver\RemoteClient;
+use Amp\Http\Server\Driver\TimeoutCache;
+use Amp\Http\Server\Driver\TimeReference;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Socket\Server as SocketServer;
@@ -39,13 +45,13 @@ class Server {
     /** @var ErrorHandler */
     private $errorHandler;
 
-    /** @var \Amp\Http\Server\HttpDriverFactory */
+    /** @var \Amp\Http\Server\Driver\HttpDriverFactory */
     private $driverFactory;
 
     /** @var \Psr\Log\LoggerInterface */
     private $logger;
 
-    /** @var \Amp\Http\Server\TimeReference */
+    /** @var \Amp\Http\Server\Driver\TimeReference */
     private $timeReference;
 
     /** @var \SplObjectStorage */
@@ -57,7 +63,7 @@ class Server {
     /** @var resource[] Server sockets. */
     private $boundServers = [];
 
-    /** @var \Amp\Http\Server\Client[] */
+    /** @var \Amp\Http\Server\Driver\Client[] */
     private $clients = [];
 
     /** @var int */
@@ -66,7 +72,7 @@ class Server {
     /** @var int[] */
     private $clientsPerIP = [];
 
-    /** @var \Amp\Http\Server\TimeoutCache */
+    /** @var \Amp\Http\Server\Driver\TimeoutCache */
     private $timeouts;
 
     /**
@@ -114,7 +120,7 @@ class Server {
     /**
      * Define a custom HTTP driver factory.
      *
-     * @param \Amp\Http\Server\HttpDriverFactory $driverFactory
+     * @param \Amp\Http\Server\Driver\HttpDriverFactory $driverFactory
      *
      * @throws \Error If the server has started.
      */
@@ -178,7 +184,7 @@ class Server {
     }
 
     /**
-     * @return \Amp\Http\Server\TimeReference
+     * @return \Amp\Http\Server\Driver\TimeReference
      */
     public function getTimeReference(): TimeReference {
         return $this->timeReference;
