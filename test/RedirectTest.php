@@ -10,7 +10,7 @@ use Psr\Http\Message\UriInterface as PsrUri;
 use function Amp\Http\Server\redirect;
 use function Amp\Promise\wait;
 
-class functionsTest extends TestCase {
+class RedirectTest extends TestCase {
     /**
      * @expectedException \Error
      * @expectedExceptionMessage The submitted uri `:` contains an invalid scheme
@@ -48,6 +48,7 @@ class functionsTest extends TestCase {
         $request = new class extends Request {
             public function __construct() {
             }
+
             public function getUri(): PsrUri {
                 return Uri\Http::createFromString("http://test.local/foo");
             }
@@ -61,10 +62,11 @@ class functionsTest extends TestCase {
     }
 
     public function testSuccessfulRelativeRedirect() {
-        $action = redirect("/test", Status::TEMPORARY_REDIRECT);
+        $action = redirect("/test");
         $request = new class extends Request {
             public function __construct() {
             }
+
             public function getUri(): PsrUri {
                 return Uri\Http::createFromString("http://test.local/foo");
             }
