@@ -26,7 +26,7 @@ defaults:
 shared_asset_path: "/http-server/asset"
 
 navigation:
- - responder
+ - request-handler
  - middleware
  - io
  - helpers
