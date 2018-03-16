@@ -1,0 +1,29 @@
+\documentclass[convert={density=300,outext=.png}]{standalone}
+
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usetikzlibrary{arrows}
+
+\usepackage{includes/colors}
+
+\tikzset{>=open triangle 60}
+\tikzset{box/.style={font=\ttfamily,rectangle,inner sep=+0.5cm,very thick,fill=white,draw=web-base,minimum height=1cm,align=center,text height={height{"T"}},text depth={depth{"g"}}}}
+
+\begin{document}
+\begin{tikzpicture}[auto,node distance=1cm]
+
+    \node (dummy) {};
+    \node[box,draw=web-accent,right=of dummy] (middleware-a) {Middleware A};
+    \node[box,draw=web-accent,right =of middleware-a] (middleware-b) {Middleware B};
+    \node[box,right=of middleware-b] (request-handler) {RequestHandler};
+
+    \draw[->,thick] ([yshift=+0.15cm]dummy.east) -- ([yshift=+0.15cm]middleware-a.west);
+    \draw[<-,thick] ([yshift=-0.15cm]dummy.east) -- ([yshift=-0.15cm]middleware-a.west);
+    \draw[->,thick] ([yshift=+0.15cm]middleware-a.east) -- ([yshift=+0.15cm]middleware-b.west);
+    \draw[<-,thick] ([yshift=-0.15cm]middleware-a.east) -- ([yshift=-0.15cm]middleware-b.west);
+    \draw[->,thick] ([yshift=+0.15cm]middleware-b.east) -- ([yshift=+0.15cm]request-handler.west);
+    \draw[<-,thick] ([yshift=-0.15cm]middleware-b.east) -- ([yshift=-0.15cm]request-handler.west);
+
+\end{tikzpicture}
+\end{document}
