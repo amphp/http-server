@@ -65,6 +65,10 @@ Amp\Loop::run(function () {
 php example.php
 ```
 
+## Contributing
+
+Please read [CONTRIBUTING.md](https://github.com/amphp/amp/blob/master/CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
+
 ## Security
 
 If you discover any security related issues, please email bobwei9@hotmail.com or me@kelunik.com instead of using the issue tracker.
