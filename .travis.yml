@@ -22,8 +22,8 @@ before_install:
     fi
 
 install:
-  - composer update -n --prefer-dist
-  - wget https://github.com/php-coveralls/php-coveralls/releases/download/v1.0.2/coveralls.phar
+  - travis_retry composer update -n --prefer-dist
+  - travis_retry wget https://github.com/php-coveralls/php-coveralls/releases/download/v1.0.2/coveralls.phar
   - chmod +x coveralls.phar
 
 script:
@@ -31,7 +31,7 @@ script:
   - PHP_CS_FIXER_IGNORE_ENV=1 php vendor/bin/php-cs-fixer --diff --dry-run -v fix
 
 after_script:
-  - ./coveralls.phar -v
+  - travis_retry ./coveralls.phar -v
 
 cache:
   directories:
