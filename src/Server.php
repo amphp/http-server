@@ -39,19 +39,19 @@ class Server {
     /** @var Options */
     private $options;
 
-    /** @var \Amp\Http\Server\Responder */
-    private $responder;
+    /** @var RequestHandler */
+    private $requestHandler;
 
     /** @var ErrorHandler */
     private $errorHandler;
 
-    /** @var \Amp\Http\Server\Driver\HttpDriverFactory */
+    /** @var HttpDriverFactory */
     private $driverFactory;
 
-    /** @var \Psr\Log\LoggerInterface */
+    /** @var PsrLogger */
     private $logger;
 
-    /** @var \Amp\Http\Server\Driver\TimeReference */
+    /** @var TimeReference */
     private $timeReference;
 
     /** @var \SplObjectStorage */
@@ -63,7 +63,7 @@ class Server {
     /** @var resource[] Server sockets. */
     private $boundServers = [];
 
-    /** @var \Amp\Http\Server\Driver\Client[] */
+    /** @var Client[] */
     private $clients = [];
 
     /** @var int */
@@ -72,20 +72,20 @@ class Server {
     /** @var int[] */
     private $clientsPerIP = [];
 
-    /** @var \Amp\Http\Server\Driver\TimeoutCache */
+    /** @var TimeoutCache */
     private $timeouts;
 
     /**
-     * @param \Amp\Socket\Server[] $servers
-     * @param Responder $responder
-     * @param Options|null $options Null creates an Options object with all default options.
-     * @param \Psr\Log\LoggerInterface|null $logger Null automatically uses an instance of \Psr\Log\NullLogger.
+     * @param SocketServer[] $servers
+     * @param RequestHandler $requestHandler
+     * @param Options|null   $options Null creates an Options object with all default options.
+     * @param PsrLogger|null $logger Null automatically uses an instance of `Psr\Log\NullLogger`.
      *
-     * @throws \TypeError If $servers contains anything other than instances of \Amp\Socket\Server.
+     * @throws \TypeError If $servers contains anything other than instances of `Amp\Socket\Server`.
      */
     public function __construct(
         array $servers,
-        Responder $responder,
+        RequestHandler $requestHandler,
         Options $options = null,
         PsrLogger $logger = null
     ) {
@@ -97,7 +97,7 @@ class Server {
             $this->boundServers[$server->getAddress()] = $server->getResource();
         }
 
-        $this->responder = $responder;
+        $this->requestHandler = $requestHandler;
 
         $this->options = $options ?? new Options;
         $this->logger = $logger ?? new NullLogger;
@@ -120,7 +120,7 @@ class Server {
     /**
      * Define a custom HTTP driver factory.
      *
-     * @param \Amp\Http\Server\Driver\HttpDriverFactory $driverFactory
+     * @param HttpDriverFactory $driverFactory
      *
      * @throws \Error If the server has started.
      */
@@ -184,7 +184,7 @@ class Server {
     }
 
     /**
-     * @return \Amp\Http\Server\Driver\TimeReference
+     * @return TimeReference
      */
     public function getTimeReference(): TimeReference {
         return $this->timeReference;
@@ -233,8 +233,8 @@ class Server {
             $this->observers->attach($this->driverFactory);
         }
 
-        if ($this->responder instanceof ServerObserver) {
-            $this->observers->attach($this->responder);
+        if ($this->requestHandler instanceof ServerObserver) {
+            $this->observers->attach($this->requestHandler);
         }
 
         $this->state = self::STARTING;
@@ -278,7 +278,7 @@ class Server {
 
         $client = new RemoteClient(
             $socket,
-            $this->responder,
+            $this->requestHandler,
             $this->errorHandler,
             $this->logger,
             $this->options,

@@ -7,7 +7,7 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\Responder;
+use Amp\Http\Server\RequestHandler;
 use Amp\Producer;
 use Amp\Promise;
 use cash\LRUCache;
@@ -52,18 +52,18 @@ class ZlibMiddleware implements Middleware {
         $this->contentRegex = $contentRegex;
     }
 
-    public function process(Request $request, Responder $responder): Promise {
-        return new Coroutine($this->deflate($request, $responder));
+    public function handleRequest(Request $request, RequestHandler $requestHandler): Promise {
+        return new Coroutine($this->deflate($request, $requestHandler));
     }
 
-    public function deflate(Request $request, Responder $responder): \Generator {
+    public function deflate(Request $request, RequestHandler $requestHandler): \Generator {
         /** @var \Amp\Http\Server\Response $response */
-        $response = yield $responder->respond($request);
+        $response = yield $requestHandler->handleRequest($request);
 
         $headers = $response->getHeaders();
 
         if (isset($headers["content-encoding"])) {
-            return $response; // Another responder or middleware has already encoded the response.
+            return $response; // Another request handler or middleware has already encoded the response.
         }
 
         $contentLength = $headers["content-length"][0] ?? null;

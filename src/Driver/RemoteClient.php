@@ -11,13 +11,14 @@ use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Internal;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\Responder;
+use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
+use const Amp\Http\Server\DEFAULT_ERROR_HTML;
 
 class RemoteClient implements Client {
     use CallableMaker;
@@ -67,28 +68,28 @@ class RemoteClient implements Client {
     /** @var bool */
     private $isExported = false;
 
-    /** @var \Amp\Http\Server\Options */
+    /** @var Options */
     private $options;
 
-    /** @var \Amp\Http\Server\Driver\HttpDriver */
+    /** @var HttpDriver */
     private $httpDriver;
 
-    /** @var \Amp\Http\Server\Responder */
-    private $responder;
+    /** @var RequestHandler */
+    private $requestHandler;
 
-    /** @var \Amp\Http\Server\ErrorHandler */
+    /** @var ErrorHandler */
     private $errorHandler;
 
     /** @var callable[]|null */
     private $onClose = [];
 
-    /** @var \Amp\Http\Server\Driver\TimeoutCache */
+    /** @var TimeoutCache */
     private $timeoutCache;
 
-    /** @var \Psr\Log\LoggerInterface */
+    /** @var PsrLogger */
     private $logger;
 
-    /** @var \Amp\Deferred|null */
+    /** @var Deferred|null */
     private $writeDeferred;
 
     /** @var int */
@@ -101,16 +102,16 @@ class RemoteClient implements Client {
     private $resume;
 
     /**
-     * @param resource                             $socket Stream socket resource.
-     * @param \Amp\Http\Server\Responder           $responder
-     * @param \Amp\Http\Server\ErrorHandler        $errorHandler
-     * @param \Psr\Log\LoggerInterface             $logger
-     * @param \Amp\Http\Server\Options             $options
-     * @param \Amp\Http\Server\Driver\TimeoutCache $timeoutCache
+     * @param resource       $socket Stream socket resource.
+     * @param RequestHandler $requestHandler
+     * @param ErrorHandler   $errorHandler
+     * @param PsrLogger      $logger
+     * @param Options        $options
+     * @param TimeoutCache   $timeoutCache
      */
     public function __construct(
         /* resource */ $socket,
-        Responder $responder,
+        RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
@@ -124,7 +125,7 @@ class RemoteClient implements Client {
         $this->options = $options;
         $this->timeoutCache = $timeoutCache;
         $this->logger = $logger;
-        $this->responder = $responder;
+        $this->requestHandler = $requestHandler;
         $this->errorHandler = $errorHandler;
 
         $serverName = \stream_socket_get_name($this->socket, false);
@@ -184,7 +185,7 @@ class RemoteClient implements Client {
     }
 
     /**
-     * @param \Amp\Http\Server\Driver\HttpDriver $driver
+     * @param HttpDriver $driver
      */
     private function setup(HttpDriver $driver) {
         $this->httpDriver = $driver;
@@ -490,7 +491,7 @@ class RemoteClient implements Client {
     /**
      * Invoked by the HTTP parser when a request is parsed.
      *
-     * @param \Amp\Http\Server\Request $request
+     * @param Request $request
      *
      * @return \Amp\Promise
      */
@@ -530,7 +531,7 @@ class RemoteClient implements Client {
     /**
      * Respond to a parsed request.
      *
-     * @param \Amp\Http\Server\Request $request
+     * @param Request $request
      *
      * @return \Generator
      */
@@ -547,7 +548,7 @@ class RemoteClient implements Client {
             } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
                 $response = $this->makeOptionsResponse();
             } else {
-                $response = yield $this->responder->respond(clone $request);
+                $response = yield $this->requestHandler->handleRequest(clone $request);
 
                 if (!$response instanceof Response) {
                     throw new \Error("At least one request handler must return an instance of " . Response::class);
@@ -577,14 +578,6 @@ class RemoteClient implements Client {
         }
     }
 
-    private function makeServiceUnavailableResponse(): \Generator {
-        $status = Status::SERVICE_UNAVAILABLE;
-        /** @var \Amp\Http\Server\Response $response */
-        $response = yield $this->errorHandler->handle($status, Status::getReason($status));
-        $response->setHeader("Connection", "close");
-        return $response;
-    }
-
     private function makeMethodNotAllowedResponse(): \Generator {
         $status = Status::METHOD_NOT_ALLOWED;
         /** @var \Amp\Http\Server\Response $response */
@@ -608,9 +601,9 @@ class RemoteClient implements Client {
     }
 
     /**
-     * Used if an exception is thrown from a responder.
+     * Used if an exception is thrown from a request handler.
      *
-     * @param \Amp\Http\Server\Request $request
+     * @param Request $request
      *
      * @return \Generator
      */

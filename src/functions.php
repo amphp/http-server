@@ -4,26 +4,19 @@ namespace Amp\Http\Server;
 
 use Amp\ByteStream\InMemoryStream;
 use Amp\Http\Status;
-use League\Uri;
+use Psr\Http\Message\UriInterface as PsrUri;
 
 /**
- * Create a redirect responder.
+ * Create a redirect handler.
  *
- * @param string $uri Absolute URI prefix to redirect to. Requested URI paths and queries are appended to
- *     this URI.
- * @param int    $redirectCode HTTP status code to set
+ * @param PsrUri $uri Absolute URI prefix to redirect to. Requested URI paths and queries are appended to this URI.
+ * @param int    $redirectCode HTTP status code to set.
  *
- * @return \Amp\Http\Server\Responder
+ * @return RequestHandler
  *
  * @throws \Error If the given redirect URI is invalid or contains a query or fragment.
  */
-function redirect(string $uri, int $redirectCode = Status::TEMPORARY_REDIRECT): Responder {
-    try {
-        $uri = Uri\Http::createFromString($uri);
-    } catch (Uri\Exception $exception) {
-        throw new \Error($exception->getMessage());
-    }
-
+function redirect(PsrUri $uri, int $redirectCode = Status::TEMPORARY_REDIRECT): RequestHandler {
     if ($uri->getQuery() || $uri->getFragment()) {
         throw new \Error("Invalid redirect URI; Host redirect must not contain a query or fragment component");
     }
@@ -34,7 +27,7 @@ function redirect(string $uri, int $redirectCode = Status::TEMPORARY_REDIRECT): 
 
     $redirectUri = rtrim((string) $uri, "/");
 
-    return new CallableResponder(function (Request $request) use ($redirectUri, $redirectCode): Response {
+    return new CallableRequestHandler(function (Request $request) use ($redirectUri, $redirectCode): Response {
         $uri = $request->getUri();
         $path = $uri->getPath();
         $query = $uri->getQuery();

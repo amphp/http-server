@@ -13,26 +13,10 @@ use function Amp\Promise\wait;
 class RedirectTest extends TestCase {
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage The submitted uri `:` contains an invalid scheme
-     */
-    public function testBadRedirectUrl() {
-        redirect(":");
-    }
-
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage The submitted uri `ssl://foo` is invalid for the following scheme(s): `http, https`
-     */
-    public function testBadRedirectScheme() {
-        redirect("ssl://foo");
-    }
-
-    /**
-     * @expectedException \Error
      * @expectedExceptionMessage Invalid redirect URI; Host redirect must not contain a query or fragment component
      */
     public function testBadRedirectPath() {
-        redirect("http://localhost/?foo");
+        redirect(Uri\Http::createFromString("http://localhost/?foo"));
     }
 
     /**
@@ -40,11 +24,11 @@ class RedirectTest extends TestCase {
      * @expectedExceptionMessage Invalid redirect code; code in the range 300..399 required
      */
     public function testBadRedirectCode() {
-        redirect("http://localhost", Status::CREATED);
+        redirect(Uri\Http::createFromString("http://localhost"), Status::CREATED);
     }
 
     public function testSuccessfulAbsoluteRedirect() {
-        $action = redirect("https://localhost", Status::MOVED_PERMANENTLY);
+        $action = redirect(Uri\Http::createFromString("https://localhost"), Status::MOVED_PERMANENTLY);
         $request = new class extends Request {
             public function __construct() {
             }
@@ -55,14 +39,14 @@ class RedirectTest extends TestCase {
         };
 
         /** @var \Amp\Http\Server\Response $response */
-        $response = wait($action->respond($request));
+        $response = wait($action->handleRequest($request));
 
         $this->assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
         $this->assertSame("https://localhost/foo", $response->getHeader("location"));
     }
 
     public function testSuccessfulRelativeRedirect() {
-        $action = redirect("/test");
+        $action = redirect(Uri\Http::createFromString("/test"));
         $request = new class extends Request {
             public function __construct() {
             }
@@ -73,7 +57,7 @@ class RedirectTest extends TestCase {
         };
 
         /** @var \Amp\Http\Server\Response $response */
-        $response = wait($action->respond($request));
+        $response = wait($action->handleRequest($request));
 
         $this->assertSame(Status::TEMPORARY_REDIRECT, $response->getStatus());
         $this->assertSame("/test/foo", $response->getHeader("location"));

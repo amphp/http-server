@@ -3,7 +3,7 @@
 
 require dirname(__DIR__) . "/vendor/autoload.php";
 
-use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\CallableRequestHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
@@ -18,7 +18,7 @@ Amp\Loop::run(function () {
         Socket\listen("[::]:1337"),
     ];
 
-    $server = new Server($servers, new CallableResponder(function (Request $request) {
+    $server = new Server($servers, new CallableRequestHandler(function (Request $request) {
         static $counter = 0;
 
         // We can keep state between requests, but if you're using multiple server processes,

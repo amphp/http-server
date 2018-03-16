@@ -35,7 +35,7 @@ interface Client {
 
     /**
      * @return bool `true` if the number of pending responses is greater than the number of pending requests.
-     *     Useful for determining if a responder is actively writing a response or if a request is taking too
+     *     Useful for determining if a request handler is actively writing a response or if a request is taking too
      *     long to arrive.
      */
     public function isWaitingOnResponse(): bool;

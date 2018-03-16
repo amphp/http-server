@@ -4,7 +4,7 @@
 require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\Delayed;
-use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\CallableRequestHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
@@ -19,7 +19,7 @@ Amp\Loop::run(function () {
         Socket\listen("[::]:1337"),
     ];
 
-    $server = new Server($servers, new CallableResponder(function (Request $request) {
+    $server = new Server($servers, new CallableRequestHandler(function (Request $request) {
         // We delay the response here, but this could also be non-blocking I/O.
         // Further requests are still processed concurrently.
         yield new Delayed(3000);

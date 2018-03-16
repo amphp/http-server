@@ -4,31 +4,31 @@ namespace Amp\Http\Server\Middleware;
 
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\Responder;
+use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Server;
 use Amp\Http\Server\ServerObserver;
 use Amp\Promise;
 
 /**
- * Wraps a responder with a single middleware.
+ * Wraps a request handler with a single middleware.
  *
  * @see stack()
  */
-class MiddlewareResponder implements Responder, ServerObserver {
+class MiddlewareRequestHandler implements RequestHandler, ServerObserver {
     /** @var Middleware */
     private $middleware;
 
-    /** @var Responder */
+    /** @var RequestHandler */
     private $next;
 
-    public function __construct(Middleware $middleware, Responder $responder) {
+    public function __construct(Middleware $middleware, RequestHandler $requestHandler) {
         $this->middleware = $middleware;
-        $this->next = $responder;
+        $this->next = $requestHandler;
     }
 
     /** {@inheritdoc} */
-    public function respond(Request $request): Promise {
-        return $this->middleware->process($request, $this->next);
+    public function handleRequest(Request $request): Promise {
+        return $this->middleware->handleRequest($request, $this->next);
     }
 
     /** @inheritdoc */

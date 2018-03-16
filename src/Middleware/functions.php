@@ -3,27 +3,27 @@
 namespace Amp\Http\Server\Middleware;
 
 use Amp\Http\Server\Middleware;
-use Amp\Http\Server\Responder;
+use Amp\Http\Server\RequestHandler;
 
 /**
- * Wraps a responder with the given set of middlewares.
+ * Wraps a request handler with the given set of middlewares.
  *
- * @param Responder    $responder Responder to wrap.
- * @param Middleware[] $middlewares Middlewares to apply; order determines the order of application.
+ * @param RequestHandler $requestHandler Request handler to wrap.
+ * @param Middleware[]   $middlewares Middlewares to apply; order determines the order of application.
  *
- * @return Responder Wrapped responder.
+ * @return RequestHandler Wrapped request handler.
  */
-function stack(Responder $responder, Middleware ...$middlewares) {
+function stack(RequestHandler $requestHandler, Middleware ...$middlewares) {
     if (!$middlewares) {
-        return $responder;
+        return $requestHandler;
     }
 
     $middleware = \end($middlewares);
 
     while ($middleware) {
-        $responder = new MiddlewareResponder($middleware, $responder);
+        $requestHandler = new MiddlewareRequestHandler($middleware, $requestHandler);
         $middleware = \prev($middlewares);
     }
 
-    return $responder;
+    return $requestHandler;
 }

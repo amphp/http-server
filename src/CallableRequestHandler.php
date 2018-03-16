@@ -5,7 +5,7 @@ namespace Amp\Http\Server;
 use Amp\Promise;
 use function Amp\call;
 
-class CallableResponder implements Responder {
+class CallableRequestHandler implements RequestHandler {
     /** @var callable */
     private $callable;
 
@@ -20,7 +20,7 @@ class CallableResponder implements Responder {
     /**
      * {@inheritdoc}
      */
-    public function respond(Request $request): Promise {
+    public function handleRequest(Request $request): Promise {
         return call($this->callable, $request);
     }
 }

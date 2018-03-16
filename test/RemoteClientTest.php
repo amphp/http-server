@@ -12,7 +12,7 @@ use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Server\Body;
-use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\CallableRequestHandler;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\HttpDriver;
@@ -22,7 +22,7 @@ use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\Responder;
+use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
 use Amp\Http\Status;
@@ -47,7 +47,7 @@ class RemoteClientTest extends TestCase {
         $address = stream_socket_get_name($server, $wantPeer = false);
         fclose($server);
 
-        $handler = new CallableResponder($handler);
+        $handler = new CallableRequestHandler($handler);
 
         $servers = [Socket\listen(
             $address,
@@ -134,7 +134,7 @@ class RemoteClientTest extends TestCase {
         });
     }
 
-    public function tryRequest(Request $request, callable $responder) {
+    public function tryRequest(Request $request, callable $requestHandler) {
         $driver = $this->createMock(HttpDriver::class);
 
         $driver->expects($this->once())
@@ -162,7 +162,7 @@ class RemoteClientTest extends TestCase {
 
         $client = new RemoteClient(
             \fopen("php://memory", "w"),
-            new CallableResponder($responder),
+            new CallableRequestHandler($requestHandler),
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
             $options,
@@ -238,12 +238,12 @@ class RemoteClientTest extends TestCase {
     }
 
     /**
-     * @dataProvider providePreResponderRequests
+     * @dataProvider providePreRequestHandlerRequests
      */
-    public function testPreResponderFailures(Request $request, int $status) {
+    public function testPreRequestHandlerFailure(Request $request, int $status) {
         /** @var \Amp\Http\Server\Response $response */
         list($response) = $this->tryRequest($request, function (Request $req) {
-            $this->fail("We should already have failed and never invoke the responder...");
+            $this->fail("We should already have failed and never invoke the request handler…");
         });
 
         $this->assertInstanceOf(Response::class, $response);
@@ -251,7 +251,7 @@ class RemoteClientTest extends TestCase {
         $this->assertEquals($status, $response->getStatus());
     }
 
-    public function providePreResponderRequests() {
+    public function providePreRequestHandlerRequests() {
         return [
             [
                 new Request(
@@ -295,7 +295,7 @@ class RemoteClientTest extends TestCase {
 
         /** @var \Amp\Http\Server\Response $response */
         list($response) = $this->tryRequest($request, function (Request $req) {
-            $this->fail("We should already have failed and never invoke the responder...");
+            $this->fail("We should already have failed and never invoke the request handler…");
         });
 
         $this->assertSame(Status::NO_CONTENT, $response->getStatus());
@@ -355,14 +355,14 @@ class RemoteClientTest extends TestCase {
         $response->method("getBody")
             ->willReturn($body);
 
-        $responder = $this->createMock(Responder::class);
-        $responder->expects($this->once())
-            ->method("respond")
+        $requestHandler = $this->createMock(RequestHandler::class);
+        $requestHandler->expects($this->once())
+            ->method("handleRequest")
             ->willReturn(new Success($response));
 
         $client = new RemoteClient(
             \fopen("php://memory", "w"),
-            $responder,
+            $requestHandler,
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
             $options,
@@ -393,7 +393,7 @@ class RemoteClientTest extends TestCase {
 
         $client = new RemoteClient(
             $socket,
-            $this->createMock(Responder::class),
+            $this->createMock(RequestHandler::class),
             $this->createMock(ErrorHandler::class),
             $this->createMock(PsrLogger::class),
             $options,

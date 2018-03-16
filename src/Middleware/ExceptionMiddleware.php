@@ -4,7 +4,7 @@ namespace Amp\Http\Server\Middleware;
 
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\Responder;
+use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
 use Amp\Http\Server\ServerObserver;
@@ -21,10 +21,10 @@ class ExceptionMiddleware implements Middleware, ServerObserver {
     /** @var \Amp\Http\Server\ErrorHandler */
     private $errorHandler;
 
-    public function process(Request $request, Responder $responder): Promise {
-        return call(function () use ($request, $responder) {
+    public function handleRequest(Request $request, RequestHandler $requestHandler): Promise {
+        return call(function () use ($request, $requestHandler) {
             try {
-                return yield $responder->respond($request);
+                return yield $requestHandler->handleRequest($request);
             } catch (\Throwable $exception) {
                 $status = Status::INTERNAL_SERVER_ERROR;
 

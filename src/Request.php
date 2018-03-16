@@ -290,9 +290,9 @@ class Request extends Message {
     /**
      * Retrieve a variable from the request's mutable local storage.
      *
-     * Each request has its own mutable local storage to which responders and middleware may read and write data. Other
-     * responders or middleware which are aware of this data can then access it without the server being tightly coupled
-     * to specific implementations.
+     * Each request has its own mutable local storage to which request handlers and middleware may read and write data.
+     * Other request handlers or middleware which are aware of this data can then access it without the server being
+     * tightly coupled to specific implementations.
      *
      * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
      *
@@ -309,9 +309,9 @@ class Request extends Message {
     /**
      * Assign a variable to the request's mutable local storage.
      *
-     * Each request has its own mutable local storage to which responders and middleware may read and write data. Other
-     * responders or middleware which are aware of this data can then access it without the server being tightly coupled
-     * to specific implementations.
+     * Each request has its own mutable local storage to which request handlers and middleware may read and write data.
+     * Other request handlers or middleware which are aware of this data can then access it without the server being
+     * tightly coupled to specific implementations.
      *
      * **Example**
      *

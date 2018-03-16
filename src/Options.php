@@ -34,7 +34,7 @@ final class Options {
     /**
      * Sets debug mode to `true`.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      */
     public function withDebugMode(): self {
         $new = clone $this;
@@ -46,7 +46,7 @@ final class Options {
     /**
      * Sets debug mode to `false`.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      */
     public function withoutDebugMode(): self {
         $new = clone $this;
@@ -65,7 +65,7 @@ final class Options {
     /**
      * @param int $count Maximum number of connections the server should accept at one time. Default is 10000.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If count is less than 1.
      */
@@ -117,7 +117,7 @@ final class Options {
     /**
      * @param int $seconds Number of seconds a connection may be idle before it is automatically closed. Default is 15.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If the number of seconds is less than 1.
      */
@@ -144,7 +144,7 @@ final class Options {
     /**
      * @param int $backlog Maximum backlog size of each listening server socket. Default is 128.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If the backlog size is less than 16.
      */
@@ -172,7 +172,7 @@ final class Options {
      * @param int $bytes Default maximum request body size in bytes. Individual requests may be increased by calling
      *     Request::getBody($newMaximum). Default is 131072 (128k).
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If the number of bytes is less than 0.
      */
@@ -199,7 +199,7 @@ final class Options {
     /**
      * @param int $bytes Maximum size of the request header section in bytes. Default is 32768 (32k).
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      * @throws \Error
      */
     public function withMaxHeaderSize(int $bytes): self {
@@ -225,7 +225,7 @@ final class Options {
     /**
      * @param int $streams Maximum number of concurrent HTTP/2 streams. Default is 20.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If the stream count is less than 1.
      */
@@ -254,7 +254,7 @@ final class Options {
      * @param int $size Minimum average frame size required if more than the maximum number of frames per second are
      *     received on an HTTP/2 connection. Default is 1024 (1k).
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If the size is less than 1.
      */
@@ -282,7 +282,7 @@ final class Options {
      * @param int $frames Maximum number of HTTP/2 frames per second before the average length minimum is enforced.
      *     Default is 60.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If the frame count is less than 1.
      */
@@ -310,7 +310,7 @@ final class Options {
      * @param int $bytes The maximum number of bytes to read from a client per read. Larger numbers are better for
      *     performance but can increase memory usage. Default is 8192 (8k).
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If the number of bytes is less than 1.
      */
@@ -338,7 +338,7 @@ final class Options {
      * @param string[] $allowedMethods An array of allowed request methods. Default is GET, POST, PUT, PATCH, HEAD,
      *     OPTIONS, DELETE.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If the array contains non-strings, empty method names, or does not contain GET or HEAD.
      */
@@ -382,17 +382,17 @@ final class Options {
     }
 
     /**
-     * @return int The minimum number of bytes to buffer in incoming bodies before emitting chunks to the responder.
+     * @return int The minimum number of bytes to buffer in incoming bodies before emitting chunks to the handler.
      */
     public function getInputBufferSize(): int {
         return $this->inputBufferSize;
     }
 
     /**
-     * @param int $bytes The minimum number of bytes to buffer in incoming bodies before emitting chunks to the
-     *     responder. Default is 8192 (8k).
+     * @param int $bytes The minimum number of bytes to buffer in incoming bodies before emitting chunks to the request
+     *     handler. Default is 8192 (8k).
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If the number of bytes is less than 1.
      */
@@ -420,7 +420,7 @@ final class Options {
      * @param int $bytes Number of body bytes to buffer before writes are made to the client. Smaller numbers push data
      *     sooner, but decreases performance. Default is 8192 (8k).
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      * @throws \Error
      */
     public function withOutputBufferSize(int $bytes): self {
@@ -447,7 +447,7 @@ final class Options {
      * @param int $milliseconds Number of milliseconds to wait when shutting down the server before forcefully shutting
      *     down. Default is 3000.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      *
      * @throws \Error If the timeout is less than 0.
      */
@@ -475,7 +475,7 @@ final class Options {
     /**
      * Enables unencrypted upgrade or prior knowledge requests to HTTP/2.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      */
     public function withHttp2Upgrade(): self {
         $new = clone $this;
@@ -487,7 +487,7 @@ final class Options {
     /**
      * Disables unencrypted upgrade or prior knowledge requests to HTTP/2.
      *
-     * @return \Amp\Http\Server\Options
+     * @return Options
      */
     public function withoutHttp2Upgrade(): self {
         $new = clone $this;
