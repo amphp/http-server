@@ -68,6 +68,15 @@ class Request extends Message {
     }
 
     /**
+     * Sets the request HTTP method.
+     *
+     * @param string $method
+     */
+    public function setMethod(string $method) {
+        $this->method = $method;
+    }
+
+    /**
      * Retrieve the HTTP method used to make this request.
      *
      * @return string

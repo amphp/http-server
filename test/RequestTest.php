@@ -17,6 +17,14 @@ class RequestTest extends TestCase {
         $this->assertSame($client, $request->getClient());
     }
 
+    public function testSetMethod() {
+        $client = $this->createMock(Client::class);
+        $request = new Request($client, 'GET', Http::createFromString('/'));
+        $this->assertSame('GET', $request->getMethod());
+        $request->setMethod('POST');
+        $this->assertSame('POST', $request->getMethod());
+    }
+
     public function testSetUri() {
         $client = $this->createMock(Client::class);
         $request = new Request($client, 'GET', Http::createFromString('/'));
