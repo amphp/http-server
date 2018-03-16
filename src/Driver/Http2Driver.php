@@ -8,7 +8,7 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
-use Amp\Http\Hpack;
+use Amp\Http\HPack;
 use Amp\Http\Server\Body;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Internal\Http2Stream;
