@@ -10,7 +10,7 @@ exclude: ["Gemfile", "Gemfile.lock", "README.md", "vendor"]
 safe: true
 
 repository: amphp/http-server
-gems:
+plugins:
  - "jekyll-github-metadata"
  - "jekyll-relative-links"
 
