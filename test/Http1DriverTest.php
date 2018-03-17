@@ -363,7 +363,34 @@ class Http1DriverTest extends TestCase {
 
         $return[] = [$msg, $expectations];
 
-        // 4 --- chunked entity body -------------------------------------------------------------->
+        // 4 --- HTTP/1.0 with header folding ---------------------------------------------------------->
+
+        $trace =
+            "GET /someurl.html HTTP/1.0\r\n" .
+            "Host: \r\n" .
+            " localhost\r\n" .
+            "X-My-Header: 42\r\n" .
+            "\r\n";
+
+        $msg = $trace . "\r\n";
+
+        $headers = [
+            'host' => ['localhost'],
+            'x-my-header' => ['42'],
+        ];
+
+        $expectations = [
+            "trace" => $trace,
+            "protocol" => "1.0",
+            "method" => "GET",
+            "uri" => "/someurl.html",
+            "headers" => $headers,
+            "body" => "",
+        ];
+
+        $return[] = [$msg, $expectations];
+
+        // 5 --- chunked entity body -------------------------------------------------------------->
 
         $trace =
             "GET /test HTTP/1.1\r\n" .
@@ -393,7 +420,7 @@ class Http1DriverTest extends TestCase {
 
         $return[] = [$msg, $expectations];
 
-        // 5 --- chunked entity body with trailer headers ----------------------------------------->
+        // 6 --- chunked entity body with trailer headers ----------------------------------------->
 
         $trace =
             "GET /test HTTP/1.1\r\n" .
@@ -465,7 +492,7 @@ class Http1DriverTest extends TestCase {
         // 3 -------------------------------------------------------------------------------------->
 
         $msg =
-            "GET /someurl.html HTTP/1.0\r\n" .
+            "GET /someurl.html HTTP/1.1\r\n" .
             "Host: \r\n" .
             " localhost\r\n" .
             "X-My-Header: 42\r\n" .
@@ -478,7 +505,7 @@ class Http1DriverTest extends TestCase {
         // 4 -------------------------------------------------------------------------------------->
 
         $msg =
-            "GET /someurl.html HTTP/1.0\r\n" .
+            "GET /someurl.html HTTP/1.1\r\n" .
             "Host: \r\n\tlocalhost\r\n" .
             "X-My-Header: 42\r\n" .
             "\r\n";

@@ -40,7 +40,7 @@ class Http1Driver implements HttpDriver {
         "www-authenticate",
     ];
 
-    /** @var \Amp\Http\Server\Driver\Http2Driver|null */
+    /** @var Http2Driver|null */
     private $http2;
 
     /** @var Client */
@@ -61,10 +61,10 @@ class Http1Driver implements HttpDriver {
     /** @var callable */
     private $write;
 
-    /** @var \Amp\Http\Server\ErrorHandler */
+    /** @var ErrorHandler */
     private $errorHandler;
 
-    /** @var \Amp\Promise|null */
+    /** @var Promise|null */
     private $lastWrite;
 
     public function __construct(Options $options, TimeReference $timeReference, ErrorHandler $errorHandler) {
@@ -248,6 +248,11 @@ class Http1Driver implements HttpDriver {
                 }
 
                 try {
+                    if ($protocol === "1.0") {
+                        // Header folding is deprecated for HTTP/1.1, but allowed in HTTP/1.0
+                        $rawHeaders = \preg_replace(Rfc7230::HEADER_FOLD_REGEX, ' ', $rawHeaders);
+                    }
+
                     $headers = Rfc7230::parseHeaders($rawHeaders);
                 } catch (InvalidHeaderException $e) {
                     throw new ClientException(
