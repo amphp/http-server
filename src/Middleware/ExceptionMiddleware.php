@@ -11,7 +11,6 @@ use Amp\Http\Server\ServerObserver;
 use Amp\Http\Status;
 use Amp\Promise;
 use Amp\Success;
-use const Amp\Http\Server\INTERNAL_SERVER_ERROR_HTML;
 use function Amp\call;
 
 class ExceptionMiddleware implements Middleware, ServerObserver {
@@ -23,6 +22,12 @@ class ExceptionMiddleware implements Middleware, ServerObserver {
 
     public function handleRequest(Request $request, RequestHandler $requestHandler): Promise {
         return call(function () use ($request, $requestHandler) {
+            static $internalErrorHtml = null;
+
+            if ($internalErrorHtml === null) {
+                $internalErrorHtml = \file_get_contents(\dirname(__DIR__, 2) . "/resources/internal-server-error.html");
+            }
+
             try {
                 return yield $requestHandler->handleRequest($request);
             } catch (\Throwable $exception) {
@@ -40,7 +45,7 @@ class ExceptionMiddleware implements Middleware, ServerObserver {
                             $exception->getLine(),
                             $exception->getTraceAsString()
                         ]),
-                        INTERNAL_SERVER_ERROR_HTML
+                        $internalErrorHtml
                     );
 
                     return new Response($status, [

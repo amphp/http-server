@@ -15,12 +15,18 @@ class DefaultErrorHandler implements ErrorHandler {
 
     /** {@inheritdoc} */
     public function handle(int $statusCode, string $reason = null, Request $request = null): Promise {
+        static $errorHtml;
+
+        if ($errorHtml === null) {
+            $errorHtml = \file_get_contents(\dirname(__DIR__) . "/resources/error.html");
+        }
+
         if (!isset($this->cache[$statusCode])) {
             $this->cache[$statusCode] = \str_replace(
                 ["{code}", "{reason}"],
                 // Using standard reason in HTML for caching purposes.
                 \array_map("htmlspecialchars", [$statusCode, Status::getReason($statusCode)]),
-                DEFAULT_ERROR_HTML
+                $errorHtml
             );
         }
 

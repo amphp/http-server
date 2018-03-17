@@ -7,6 +7,7 @@ use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Failure;
 use Amp\Http\Server\ClientException;
+use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Internal;
 use Amp\Http\Server\Options;
@@ -22,6 +23,9 @@ use const Amp\Http\Server\DEFAULT_ERROR_HTML;
 
 class RemoteClient implements Client {
     use CallableMaker;
+
+    /** @var DefaultErrorHandler */
+    private static $defaultErrorHandler;
 
     /** @var int */
     private $id;
@@ -127,6 +131,10 @@ class RemoteClient implements Client {
         $this->logger = $logger;
         $this->requestHandler = $requestHandler;
         $this->errorHandler = $errorHandler;
+
+        if (!self::$defaultErrorHandler) {
+            self::$defaultErrorHandler = new DefaultErrorHandler;
+        }
 
         $serverName = \stream_socket_get_name($this->socket, false);
         if ($portStartPos = \strrpos($serverName, ":")) {
@@ -616,15 +624,8 @@ class RemoteClient implements Client {
             // If the error handler throws, fallback to returning the default HTML error page.
             $this->logger->error($exception);
 
-            $html = \str_replace(
-                ["{code}", "{reason}"],
-                \array_map("htmlspecialchars", [$status, Status::getReason($status)]),
-                DEFAULT_ERROR_HTML
-            );
-
-            return new Response($status, [
-                "content-type" => "text/html; charset=utf-8"
-            ], $html);
+            // The default error handler will never throw, otherwise there's a bug
+            return yield self::$defaultErrorHandler->handle($status, null, $request);
         }
     }
 
