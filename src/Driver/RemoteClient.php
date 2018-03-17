@@ -19,7 +19,6 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
-use const Amp\Http\Server\DEFAULT_ERROR_HTML;
 
 class RemoteClient implements Client {
     use CallableMaker;
