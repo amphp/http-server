@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Middleware;
 
+use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
@@ -21,15 +22,17 @@ class ExceptionMiddleware implements Middleware, ServerObserver {
     private $errorHandler;
 
     public function handleRequest(Request $request, RequestHandler $requestHandler): Promise {
-        return call(function () use ($request, $requestHandler) {
-            static $internalErrorHtml = null;
+        static $internalErrorHtml;
 
-            if ($internalErrorHtml === null) {
-                $internalErrorHtml = \file_get_contents(\dirname(__DIR__, 2) . "/resources/internal-server-error.html");
-            }
+        if ($internalErrorHtml === null) {
+            $internalErrorHtml = \file_get_contents(\dirname(__DIR__, 2) . "/resources/internal-server-error.html");
+        }
 
+        return call(function () use ($request, $requestHandler, $internalErrorHtml) {
             try {
                 return yield $requestHandler->handleRequest($request);
+            } catch (ClientException $exception) {
+                throw $exception; // Ignore ClientExceptions.
             } catch (\Throwable $exception) {
                 $status = Status::INTERNAL_SERVER_ERROR;
 
