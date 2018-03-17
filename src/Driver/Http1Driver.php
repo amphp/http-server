@@ -8,7 +8,7 @@ use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Rfc7230;
-use Amp\Http\Server\Body;
+use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
@@ -415,7 +415,7 @@ class Http1Driver implements HttpDriver {
                 $trailerDeferred = new Deferred;
                 $maxBodySize = $this->options->getMaxBodySize();
 
-                $body = new Body(
+                $body = new RequestBody(
                     new IteratorStream($this->bodyEmitter->iterate()),
                     function (int $bodySize) use (&$maxBodySize) {
                         if ($bodySize > $maxBodySize) {

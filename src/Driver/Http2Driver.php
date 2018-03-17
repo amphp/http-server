@@ -9,7 +9,7 @@ use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\HPack;
-use Amp\Http\Server\Body;
+use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Internal\Http2Stream;
 use Amp\Http\Server\Options;
@@ -1132,7 +1132,7 @@ class Http2Driver implements HttpDriver {
                     $this->trailerDeferreds[$id] = $deferred = new Deferred;
                     $this->bodyEmitters[$id] = new Emitter;
 
-                    $body = new Body(
+                    $body = new RequestBody(
                         new IteratorStream($this->bodyEmitters[$id]->iterate()),
                         function (int $bodySize) use ($id) {
                             if (!isset($this->streams[$id], $this->bodyEmitters[$id])) {

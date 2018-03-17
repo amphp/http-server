@@ -11,7 +11,7 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Http\Cookie\ResponseCookie;
-use Amp\Http\Server\Body;
+use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\CallableRequestHandler;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Client;
@@ -212,7 +212,7 @@ class RemoteClientTest extends TestCase {
             "GET", // method
             Uri\Http::createFromString("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]], // headers
-            new Body(new IteratorStream($emitter->iterate())) // body
+            new RequestBody(new IteratorStream($emitter->iterate())) // body
         );
 
         $emitter->emit("fooBar");

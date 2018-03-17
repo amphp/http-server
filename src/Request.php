@@ -21,7 +21,7 @@ class Request extends Message {
     /** @var string */
     private $protocol;
 
-    /** @var \Amp\Http\Server\Body|null */
+    /** @var \Amp\Http\Server\RequestBody|null */
     private $body;
 
     /** @var RequestCookie[] */
@@ -31,12 +31,12 @@ class Request extends Message {
     private $attributes = [];
 
     /**
-     * @param Client $client The client sending the request.
-     * @param string $method HTTP request method.
-     * @param PsrUri $uri The full URI being requested, including host, port, and protocol.
-     * @param string[]|string[][] $headers An array of strings or an array of string arrays.
-     * @param Body|InputStream|string|null $body
-     * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
+     * @param Client                              $client The client sending the request.
+     * @param string                              $method HTTP request method.
+     * @param PsrUri                              $uri The full URI being requested, including host, port, and protocol.
+     * @param string[]|string[][]                 $headers An array of strings or an array of string arrays.
+     * @param RequestBody|InputStream|string|null $body
+     * @param string                              $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
      */
     public function __construct(
         Client $client,
@@ -170,11 +170,11 @@ class Request extends Message {
     /**
      * Retrieve the request body.
      *
-     * @return \Amp\Http\Server\Body
+     * @return \Amp\Http\Server\RequestBody
      */
-    public function getBody(): Body {
+    public function getBody(): RequestBody {
         if ($this->body === null) {
-            $this->body = new Body(new InMemoryStream);
+            $this->body = new RequestBody(new InMemoryStream);
         }
 
         return $this->body;
@@ -184,31 +184,31 @@ class Request extends Message {
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
      * to the length of the given string. Using an InputStream or Body instance will remove the Content-Length header.
      *
-     * @param Body|InputStream|string|null $stringOrStream
+     * @param RequestBody|InputStream|string|null $stringOrStream
      *
      * @throws \Error
      * @throws \TypeError
      */
     public function setBody($stringOrStream) {
-        if ($stringOrStream instanceof Body) {
+        if ($stringOrStream instanceof RequestBody) {
             $this->body = $stringOrStream;
             return;
         }
 
         if ($stringOrStream instanceof InputStream) {
-            $this->body = new Body($stringOrStream);
+            $this->body = new RequestBody($stringOrStream);
             return;
         }
 
         if ($stringOrStream !== null && !\is_string($stringOrStream)) {
             throw new \TypeError(\sprintf(
                 "The request body must a string, null, or an instance of %s or %s ",
-                Body::class,
+                RequestBody::class,
                 InputStream::class
             ));
         }
 
-        $this->body = new Body(new InMemoryStream($stringOrStream));
+        $this->body = new RequestBody(new InMemoryStream($stringOrStream));
         if ($length = \strlen($stringOrStream)) {
             $this->setHeader("content-length", (string) \strlen($stringOrStream));
         } elseif (!\in_array($this->method, ["GET", "HEAD", "OPTIONS", "TRACE"])) {
