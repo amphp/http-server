@@ -3,11 +3,11 @@
 namespace Amp\Http\Server\Test;
 
 use Amp\Http\Server\Request;
+use Amp\Http\Server\RequestHandler\RedirectHandler;
 use Amp\Http\Status;
 use League\Uri;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\UriInterface as PsrUri;
-use function Amp\Http\Server\redirect;
 use function Amp\Promise\wait;
 
 class RedirectTest extends TestCase {
@@ -16,19 +16,19 @@ class RedirectTest extends TestCase {
      * @expectedExceptionMessage Invalid redirect URI; Host redirect must not contain a query or fragment component
      */
     public function testBadRedirectPath() {
-        redirect(Uri\Http::createFromString("http://localhost/?foo"));
+        new RedirectHandler(Uri\Http::createFromString("http://localhost/?foo"));
     }
 
     /**
      * @expectedException \Error
-     * @expectedExceptionMessage Invalid redirect code; code in the range 300..399 required
+     * @expectedExceptionMessage Invalid status code; code in the range 300..399 required
      */
     public function testBadRedirectCode() {
-        redirect(Uri\Http::createFromString("http://localhost"), Status::CREATED);
+        new RedirectHandler(Uri\Http::createFromString("http://localhost"), Status::CREATED);
     }
 
     public function testSuccessfulAbsoluteRedirect() {
-        $action = redirect(Uri\Http::createFromString("https://localhost"), Status::MOVED_PERMANENTLY);
+        $action = new RedirectHandler(Uri\Http::createFromString("https://localhost"), Status::MOVED_PERMANENTLY);
         $request = new class extends Request {
             public function __construct() {
             }
@@ -46,7 +46,7 @@ class RedirectTest extends TestCase {
     }
 
     public function testSuccessfulRelativeRedirect() {
-        $action = redirect(Uri\Http::createFromString("/test"));
+        $action = new RedirectHandler(Uri\Http::createFromString("/test"));
         $request = new class extends Request {
             public function __construct() {
             }

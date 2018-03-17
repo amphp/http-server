@@ -1,7 +1,9 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\RequestHandler;
 
+use Amp\Http\Server\Request;
+use Amp\Http\Server\RequestHandler;
 use Amp\Promise;
 use function Amp\call;
 

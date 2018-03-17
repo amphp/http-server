@@ -2,11 +2,11 @@
 
 namespace Amp\Http\Server\Test\Middleware;
 
-use Amp\Http\Server\CallableRequestHandler;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
+use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\TestCase;

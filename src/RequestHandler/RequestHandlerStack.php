@@ -1,7 +1,12 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\RequestHandler;
 
+use Amp\Http\Server\Request;
+use Amp\Http\Server\RequestHandler;
+use Amp\Http\Server\Response;
+use Amp\Http\Server\Server;
+use Amp\Http\Server\ServerObserver;
 use Amp\Http\Status;
 use Amp\Promise;
 use function Amp\call;

@@ -3,8 +3,8 @@
 
 require dirname(__DIR__) . "/vendor/autoload.php";
 
-use Amp\Http\Server\CallableRequestHandler;
 use Amp\Http\Server\Request;
+use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
 use Amp\Http\Status;
