@@ -2,86 +2,126 @@
 title: Request
 permalink: /classes/request
 ---
+# Request
+
+The **`Request`** class represents an HTTP request. It's used in [request handlers](request-handler.md) and [`middleware`](middleware.md).
 
 * Table of Contents
 {:toc}
 
-The `Request` interface generally finds its only use in responder callables (or [`Websocket::onOpen()`](websocket.html#onopenint-clientid-handshakedata)). [`Middleware`s](middleware.md) do never see the `Request`; the `StandardRequest` class is supposed to be a simple request API reading from and manipulating [`InternalRequest`](internalrequest.md) under the hood.
+## Constructor
+
+```php
+public function __construct(
+    Client $client, 
+    string $method, 
+    Psr\Http\Message\UriInterface $uri, 
+    string[] | string[][] $headers = [], 
+    RequestBody | Amp\ByteStream\InputStream | string | null $body = null, 
+    string $protocol = "1.1"
+)
+```
+
+### Parameters
+
+|[`Client`](client.md)|`$client`|The client sending the request|
+|`string`|`$method`|HTTP request method|
+|[`Psr\Http\Message\UriInterface`](https://www.php-fig.org/psr/psr-7/#35-psrhttpmessageuriinterface)|`$uri`|The full URI being requested, including host, port, and protocol|
+|`string[]`<br />`string[][]`|`$headers`|An array of strings or an array of string arrays.|
+|[`RequestBody`](request-body.md)<br />[`Amp\ByteStream\InputStream`](https://amphp.org/byte-stream/)<br />`string`<br />`null`|`$body`|Request body|
+|`string`|`$protocol`|HTTP protocol version|
+
+## `getClient(): Client`
+
+Returns the [`Сlient`](client.md) sending the request
 
 ## `getMethod(): string`
 
-Returns the used method, e.g. `"GET"`.
+Returns the HTTP method used to make this request, e.g. `"GET"`.
 
-## `getUri(): string`
+## `setMethod(string $method)`
 
-Returns the requested URI (path and query string), e.g. `"/foo?bar"`.
+Sets the request HTTP method.
+
+## `getUri(): Psr\Http\Message\UriInterface`
+
+Returns the request [`URI`](https://www.php-fig.org/psr/psr-7/#35-psrhttpmessageuriinterface).
+
+## `setUri(Psr\Http\Message\UriInterface $uri)`
+
+Sets a new [`URI`](https://www.php-fig.org/psr/psr-7/#35-psrhttpmessageuriinterface) for the request.
 
 ## `getProtocolVersion(): string`
 
-Currently it will return one of the three supported versions: `"1.0"`, `"1.1"` or `"2.0"`.
+Returns the HTTP protocol version as a string (e.g. "1.0", "1.1", "2.0").
 
-## `getHeader(string): string | null`
+## `setProtocolVersion(string $protocol)`
 
-Gets the first value of all the headers with that name.
+Sets a new protocol version number for the request.
 
-## `getHeaderArray(string): array<string>`
+## `setHeader(string $name, string | string[] $value)`
 
-Gets an array with headers. HTTP allows for multiple headers with the same name, so this returns an array. Usually only a single header is needed and expected, in this case there is `getHeader()`.
+Sets the named header to the given value.
 
-## `getAllHeaders(): array<array<string>>`
-
-Returns all the headers in an associative map with the keys being normalized header names in lowercase.
-
-## `getParam(string): string | null`
-
-Gets the first value of all the query string parameters with that name.
-
-## `getParamArray(string): array<string>`
-
-Gets an array with the values of the query string parameters with that name.
-
-## `getAllParams(): array<array<string>>`
-
-Gets the decoded query string as associative array.
-
-## `getBody(int): Amp\ByteStream\Message`
-
-Returns a representation of the request body. The [`Amp\ByteStream\Message`](http://amphp.org/byte-stream/message) can be `yield`ed to get the actual string.
-
-The parameter `$bodySize` defaults to `-1` to take the globally configured maximum, otherwise it's the maximum body size.
-
-There also exists a [`parseBody()`](parsedbody.md) function for processing of a typical HTTP form data.
-
-## `getCookie(string): string | null`
-
-Gets a cookie value by name.
-
-## `getConnectionInfo(): array`
-
-Returns various information about the request, a map of the array is:
-
-```php
-[
-    "client_port"  => int,
-    "client_addr"  => string,
-    "server_port"  => int,
-    "server_addr"  => string,
-    "is_encrypted" => bool,
-    "crypto_info"  => array, # Like returned via stream_get_meta_data($socket)["crypto"]
-]
-```
-
-## `getLocalVar(string)` / `setLocalVar(string, $value)`
-
-These methods are only important when using [`Middleware`s](middleware.md). They manipulate the [`InternalRequest->locals`](internalrequest.html#locals) array.
-
-## `getOption(string)`
-
-Gets an [option](options.md) value.
-
-## `StandardRequest::__construct(InternalRequest)`
-
-The constructor accepts an [`InternalRequest`](internalrequest.md) object the `StandardRequest` class is reading and writing to.
+If header `$name` is not valid or `$value` is invalid, [`\Error`](http://php.net/manual/en/class.error.php) is thrown. 
 
 {:.note}
-> It may be helpful in integration tests to provide a `StandardRequest` class initialized with an adequately preset `InternalRequest` object.
+> To verify header `$name` and `$value` [`Message::setHeader`](message.md#setheaderstring-name-string--string-value) is used 
+
+## `addHeader(string $name, string | string[] $value)`
+
+Adds the value to the named header, or creates the header with the given value if it did not exist.
+
+If header `$name` is not valid or `$value` is invalid, [`\Error`](http://php.net/manual/en/class.error.php) is thrown. 
+
+{:.note}
+> To verify header `$name` and `$value` [`Message::addHeader`](message.md#addheaderstring-name-string--string-value) is used
+
+## `removeHeader(string $name)`
+
+Removes the given header if it exists.
+
+## `getBody(): RequestBody`
+
+Returns the request body. The [`RequestBody`](request-body.md) allows streamed and buffered access to an [`InputStream`](https://amphp.org/byte-stream/).
+
+## `setBody(RequestBody | InputStream | string | null $stringOrStream)`
+
+Sets the stream for the message body
+
+{:.note}
+> Using a string will automatically set the `Content-Length` header to the length of the given string. Using an [`InputStream`](https://amphp.org/byte-stream/) or [`Body`](request-body.md) instance will remove the `Content-Length` header.
+
+If `$stringOrStream` value is not valid, [`\TypeError`](http://php.net/manual/en/class.typeerror.php) is thrown. 
+
+## `getCookies(): RequestCookie[]`
+
+Returns all [cookies](https://amphp.org/http/cookies) in associative map
+
+## `getCookie(string): RequestCookie | null`
+
+Gets a [cookie](https://amphp.org/http/cookies) value by name or `null`.
+
+## `setCookie(RequestCookie $cookie)`
+
+Adds a [`Cookie`](https://amphp.org/http/cookies) to the request.
+
+If `$cookie` value is not valid, [`\Error`](http://php.net/manual/en/class.error.php) is thrown.
+
+## `removeCookie(string $name)`
+
+Removes a cookie from the request.
+
+## `getAttribute(string $name): mixed`
+
+Retrieve a variable from the request's mutable local storage. 
+
+{:.note}
+> Name of the attribute should be namespaced with a vendor and package namespace, like classes.
+
+## `setAttribute(string $name, mixed $value)`
+
+Assign a variable to the request's mutable local storage. 
+
+{:.note}
+> Name of the attribute should be namespaced with a vendor and package namespace, like classes.

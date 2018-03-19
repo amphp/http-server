@@ -68,21 +68,21 @@ class Request extends Message {
     }
 
     /**
-     * Sets the request HTTP method.
-     *
-     * @param string $method
-     */
-    public function setMethod(string $method) {
-        $this->method = $method;
-    }
-
-    /**
      * Retrieve the HTTP method used to make this request.
      *
      * @return string
      */
     public function getMethod(): string {
         return $this->method;
+    }
+
+    /**
+     * Sets the request HTTP method.
+     *
+     * @param string $method
+     */
+    public function setMethod(string $method) {
+        $this->method = $method;
     }
 
     /**
@@ -235,7 +235,7 @@ class Request extends Message {
     }
 
     /**
-     * Adds a cookie to the response.
+     * Adds a cookie to the request.
      *
      * @param RequestCookie $cookie
      */
@@ -245,7 +245,7 @@ class Request extends Message {
     }
 
     /**
-     * Removes a cookie from the response.
+     * Removes a cookie from the request.
      *
      * @param string $name
      */
