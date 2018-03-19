@@ -12,7 +12,7 @@ You can read this documentation either directly on GitHub or on our website. Whi
 
 Setup shared parts with [`git submodules`](https://git-scm.com/docs/git-submodule) from root directory:
 
-```shell
+```bash
 # initialize your local configuration file 
 git submodule init
 
@@ -22,7 +22,7 @@ git submodule update
 
 Our documentation is built using [Jekyll](https://jekyllrb.com/). To install it, run following commands:
 
-```shell
+```bash
 # Go to docs folder
 cd docs
 
