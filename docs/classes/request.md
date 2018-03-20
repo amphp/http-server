@@ -63,16 +63,12 @@ Sets a new protocol version number for the request.
 
 Sets the named header to the given value.
 
-If header `$name` is not valid or `$value` is invalid, [`\Error`](http://php.net/manual/en/class.error.php) is thrown. 
-
 {:.note}
 > To verify header `$name` and `$value` [`Message::setHeader`](message.md#setheaderstring-name-string--string-value) is used 
 
 ## `addHeader(string $name, string | string[] $value)`
 
 Adds the value to the named header, or creates the header with the given value if it did not exist.
-
-If header `$name` is not valid or `$value` is invalid, [`\Error`](http://php.net/manual/en/class.error.php) is thrown. 
 
 {:.note}
 > To verify header `$name` and `$value` [`Message::addHeader`](message.md#addheaderstring-name-string--string-value) is used
@@ -90,7 +86,7 @@ Returns the request body. The [`RequestBody`](request-body.md) allows streamed a
 Sets the stream for the message body
 
 {:.note}
-> Using a string will automatically set the `Content-Length` header to the length of the given string. Using an [`InputStream`](https://amphp.org/byte-stream/) or [`Body`](request-body.md) instance will remove the `Content-Length` header.
+> Using a string will automatically set the `Content-Length` header to the length of the given string.
 
 If `$stringOrStream` value is not valid, [`\TypeError`](http://php.net/manual/en/class.typeerror.php) is thrown. 
 
