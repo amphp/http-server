@@ -182,7 +182,7 @@ class Request extends Message {
 
     /**
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
-     * to the length of the given string. Using an InputStream or Body instance will remove the Content-Length header.
+     * to the length of the given string.
      *
      * @param RequestBody|InputStream|string|null $stringOrStream
      *
