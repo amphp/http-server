@@ -46,11 +46,11 @@ class Response extends Message {
         $this->status = $this->validateStatusCode($code);
         $this->reason = Status::getReason($this->status);
 
+        $this->setBody($stringOrStream);
+
         if (!empty($headers)) {
             $this->setHeaders($headers);
         }
-
-        $this->setBody($stringOrStream);
     }
 
     public function __destruct() {
@@ -85,6 +85,7 @@ class Response extends Message {
     public function setBody($stringOrStream) {
         if ($stringOrStream instanceof InputStream) {
             $this->body = $stringOrStream;
+            $this->removeHeader("content-length");
             return;
         }
 

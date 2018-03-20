@@ -51,12 +51,12 @@ class Request extends Message {
         $this->uri = $uri;
         $this->protocol = $protocol;
 
-        if (!empty($headers)) {
-            $this->setHeaders($headers);
-        }
-
         if ($body !== null) {
             $this->setBody($body);
+        }
+
+        if (!empty($headers)) {
+            $this->setHeaders($headers);
         }
     }
 
@@ -182,7 +182,7 @@ class Request extends Message {
 
     /**
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
-     * to the length of the given string.
+     * to the length of the given string. Using an InputStream or Body instance will remove the Content-Length header.
      *
      * @param RequestBody|InputStream|string|null $stringOrStream
      *
@@ -192,11 +192,13 @@ class Request extends Message {
     public function setBody($stringOrStream) {
         if ($stringOrStream instanceof RequestBody) {
             $this->body = $stringOrStream;
+            $this->removeHeader("content-length");
             return;
         }
 
         if ($stringOrStream instanceof InputStream) {
             $this->body = new RequestBody($stringOrStream);
+            $this->removeHeader("content-length");
             return;
         }
 
