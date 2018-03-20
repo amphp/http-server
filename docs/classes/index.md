@@ -2,11 +2,10 @@
 title: Classes
 permalink: /classes/
 ---
-The `http-server` package provides a set of classes and interfaces, as well as [functions](functions.md):
+The `http-server` package provides a set of classes and interfaces:
 
 - [`Client`](client.md) &mdash; Client connection related information
-- [`HttpDriver`](httpdriver.md) &mdash; Driver for interaction with the raw socket
-- [`Logger`](logger.md) &mdash; PSR-3 compatible logger
+- [`HttpDriver`](http-driver.md) &mdash; Driver for interaction with the raw socket
 - [`Message`](message.md) &mdash; An abstract class represents HTTP message
 - [`Options`](options.md) &mdash; Accessor of options
 - [`Request`](request.md) &mdash; Request class for request handler callables
@@ -14,4 +13,4 @@ The `http-server` package provides a set of classes and interfaces, as well as [
 - [`RequestHandler`](request-handler.md) &mdash; Request handler interface 
 - [`Response`](response.md) &mdash; General response interface for responder callables
 - [`Server`](server.md) &mdash; The server, tying everything together
-- [`ServerObserver`](serverobserver.md) &mdash; Registers method to be notified upon Server state changes
+- [`ServerObserver`](server-observer.md) &mdash; Registers method to be notified upon Server state changes

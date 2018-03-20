@@ -3,6 +3,9 @@ title: ServerObserver
 permalink: /classes/server-observer
 ---
 
+{:.warning}
+> This page needs an update.
+
 * Table of Contents
 {:toc}
 

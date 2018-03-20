@@ -3,6 +3,9 @@ title: Middleware
 permalink: /classes/middleware
 ---
 
+{:.warning}
+> This page needs an update.
+
 * Table of Contents
 {:toc}
 
