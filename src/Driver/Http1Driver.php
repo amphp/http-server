@@ -649,6 +649,7 @@ class Http1Driver implements HttpDriver, ServerObserver {
 
                 $buffer .= yield $promise; // Wait for response to be fully written.
                 $pendingResponse->resolve();
+                $pendingResponse = null;
                 $this->pendingResponse = null;
             } while (true);
         } catch (ClientException $exception) {
