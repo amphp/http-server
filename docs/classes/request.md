@@ -86,7 +86,7 @@ Returns the request body. The [`RequestBody`](request-body.md) allows streamed a
 Sets the stream for the message body
 
 {:.note}
-> Using a string will automatically set the `Content-Length` header to the length of the given string.
+> Using a string will automatically set the `Content-Length` header to the length of the given string. Using an [`InputStream`](https://amphp.org/byte-stream/) or [`Body`](request-body.md) instance will remove the `Content-Length` header.
 
 If `$stringOrStream` value is not valid, [`\TypeError`](http://php.net/manual/en/class.typeerror.php) is thrown. 
 

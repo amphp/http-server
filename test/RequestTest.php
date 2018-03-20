@@ -110,15 +110,14 @@ class RequestTest extends TestCase {
         $this->assertSame('0', $request->getHeader('content-length'));
         $request->setBody('foobar');
         $this->assertSame('6', $request->getHeader('content-length'));
-
-        // A stream being set MUST NOT alter the content length
-        $request->setBody(new InMemoryStream('foobar'));
-        $this->assertSame('6', $request->getHeader('content-length'));
-        $request->setBody(new InMemoryStream('foo'));
-        $this->assertSame('6', $request->getHeader('content-length'));
-
         $request->setBody('');
         $this->assertSame('0', $request->getHeader('content-length'));
+
+        // A stream being set MUST remove the content length header
+        $request->setBody(new InMemoryStream('foobar'));
+        $this->assertFalse($request->hasHeader('content-length'));
+        $request->setBody(new InMemoryStream('foo'));
+        $this->assertFalse($request->hasHeader('content-length'));
 
         $request = new Request($client, 'GET', Http::createFromString('/'));
         $request->setBody('');
