@@ -3,34 +3,22 @@ title: ServerObserver
 permalink: /classes/server-observer
 ---
 
-{:.warning}
-> This page needs an update.
+The `ServerObserver` interface is necessary to be able to watch for state changes of the [`Server`](server.md).
+Classes implementing it can also access the default server logger and error handler on startup.
+
+Classes aggregating request handlers SHOULD check if they implement `ServerObserver` and delegate these events.
 
 * Table of Contents
 {:toc}
 
-The `ServerObserver` interface is necessary to be able to watch for state changes of the [`Server`](server.md).
+## `onStart(Server): Promise`
 
-## `update(Server): Promise`
+Invoked when the server is starting.
+Server sockets have been opened, but are not yet accepting client connections.
+This method should be used to set up any necessary state for responding to requests, including starting loop watchers such as timers.
+Accepting connections is deferred until the returned promise resolves.
 
-The only method of this interface; it is called each time when the [`Server`](server.md) changes its state. It is guaranteed that nothing further happens until all the `Promise`s returned by each attached `ServerObserver` have been resolved (or eventually timed out).
+## `onStop(Server): Promise`
 
-## Example
-
-```php
-class MyObserver implements Aerys\Bootable, Aerys\ServerObserver {
-    function boot(Aerys\Server $server, Aerys\Logger $logger) {
-        $server->attach($this);
-    }
-
-    function update(Aerys\Server $server): Amp\Promise {
-        switch ($server->state()) {
-            case Aerys\Server::STARTING: /* ... */ break;
-            case Aerys\Server::STARTED: /* ... */ break;
-            case Aerys\Server::STOPPING: /* ... */ break;
-            case Aerys\Server::STOPPED: /* ... */ break;
-        }
-        return new Amp\Success;
-    }
-}
-```
+Invoked when the server has initiated stopping.
+No further requests are accepted and any connected clients should be closed gracefully and any loop watchers cancelled.
