@@ -14,12 +14,15 @@ use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\Server;
+use Amp\Http\Server\ServerObserver;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Promise;
+use Amp\Success;
 use League\Uri;
 
-class Http1Driver implements HttpDriver {
+class Http1Driver implements HttpDriver, ServerObserver {
     /** @see https://tools.ietf.org/html/rfc7230#section-4.1.2 */
     const DISALLOWED_TRAILERS = [
         "authorization",
@@ -55,6 +58,9 @@ class Http1Driver implements HttpDriver {
     /** @var Emitter|null */
     private $bodyEmitter;
 
+    /** @var Promise|null */
+    private $pendingResponse;
+
     /** @var callable */
     private $onMessage;
 
@@ -66,6 +72,9 @@ class Http1Driver implements HttpDriver {
 
     /** @var Promise|null */
     private $lastWrite;
+
+    /** @var bool */
+    private $stopping = false;
 
     public function __construct(Options $options, TimeReference $timeReference, ErrorHandler $errorHandler) {
         $this->options = $options;
@@ -100,7 +109,7 @@ class Http1Driver implements HttpDriver {
     /**
      * HTTP/1.x response writer.
      *
-     * @param \Amp\Http\Server\Response $response
+     * @param \Amp\Http\Server\Response     $response
      * @param \Amp\Http\Server\Request|null $request
      *
      * @return \Generator
@@ -186,6 +195,7 @@ class Http1Driver implements HttpDriver {
     private function parser(): \Generator {
         $maxHeaderSize = $this->options->getMaxHeaderSize();
         $bodyEmitSize = $this->options->getInputBufferSize();
+        $pendingResponse = null;
         $parser = null;
 
         $buffer = yield;
@@ -202,9 +212,16 @@ class Http1Driver implements HttpDriver {
                 $isChunked = false;
 
                 do {
+                    if ($this->stopping) {
+                        $this->client->close();
+                        return;
+                    }
+
                     $buffer = \ltrim($buffer, "\r\n");
 
                     if ($headerPos = \strpos($buffer, "\r\n\r\n")) {
+                        $pendingResponse = new Deferred;
+                        $this->pendingResponse = $pendingResponse->promise();
                         $rawHeaders = \substr($buffer, 0, $headerPos + 2);
                         $buffer = (string) \substr($buffer, $headerPos + 4);
                         break;
@@ -631,6 +648,8 @@ class Http1Driver implements HttpDriver {
                 $emitter->complete();
 
                 $buffer .= yield $promise; // Wait for response to be fully written.
+                $pendingResponse->resolve();
+                $this->pendingResponse = null;
             } while (true);
         } catch (ClientException $exception) {
             if ($this->bodyEmitter === null || $this->client->getPendingResponseCount()) {
@@ -646,6 +665,10 @@ class Http1Driver implements HttpDriver {
                     "Client disconnected",
                     Status::REQUEST_TIMEOUT
                 ));
+            }
+
+            if ($pendingResponse) {
+                $pendingResponse->resolve(); // never fail this, it's just used for clean shutdowns
             }
 
             if (isset($trailerDeferred)) {
@@ -693,8 +716,8 @@ class Http1Driver implements HttpDriver {
      * Filters and updates response headers based on protocol and connection header from the request.
      *
      * @param \Amp\Http\Server\Response $response
-     * @param string $protocol Request protocol.
-     * @param array $connection Request connection header.
+     * @param string                    $protocol Request protocol.
+     * @param array                     $connection Request connection header.
      *
      * @return string[][] Response headers to be written.
      */
@@ -739,5 +762,21 @@ class Http1Driver implements HttpDriver {
         $headers["date"] = [$this->timeReference->getCurrentDate()];
 
         return $headers;
+    }
+
+    /** @inheritdoc */
+    public function onStart(Server $server): Promise {
+        return new Success; // nothing to do
+    }
+
+    /** @inheritdoc */
+    public function onStop(Server $server): Promise {
+        $this->stopping = true;
+
+        if ($this->pendingResponse) {
+            return $this->pendingResponse;
+        }
+
+        return new Success;
     }
 }

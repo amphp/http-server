@@ -285,6 +285,8 @@ class Server {
             $this->timeouts
         );
 
+        $this->observers->attach($client);
+
         \assert($this->logger->debug("Accept {$client->getRemoteAddress()}:{$client->getRemotePort()} on " .
                 stream_socket_get_name($socket, false) . " #" . (int) $socket) || true);
 
@@ -298,6 +300,8 @@ class Server {
         }
 
         $client->onClose(function (Client $client) use ($net) {
+            $this->observers->detach($client);
+
             unset($this->clients[$client->getId()]);
 
             if (--$this->clientsPerIP[$net] === 0) {

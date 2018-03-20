@@ -14,13 +14,15 @@ use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\Server;
+use Amp\Http\Server\ServerObserver;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
-class RemoteClient implements Client {
+class RemoteClient implements Client, ServerObserver {
     use CallableMaker;
 
     /** @var DefaultErrorHandler */
@@ -636,5 +638,23 @@ class RemoteClient implements Client {
             $this->logger->error($exception);
             $this->close();
         }
+    }
+
+    /** @inheritdoc */
+    public function onStart(Server $server): Promise {
+        if ($this->httpDriver instanceof ServerObserver) {
+            return $this->httpDriver->onStart($server);
+        }
+
+        return new Success;
+    }
+
+    /** @inheritdoc */
+    public function onStop(Server $server): Promise {
+        if ($this->httpDriver instanceof ServerObserver) {
+            return $this->httpDriver->onStop($server);
+        }
+
+        return new Success;
     }
 }
