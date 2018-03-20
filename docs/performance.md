@@ -25,7 +25,7 @@ Thus it is imperative to reduce computation times of the handlers to a minimum.
 
 _This section will discuss disconnecting clients with streamed response bodies._
 
-{% include "undocumented.md" %}
+{% include undocumented.md %}
 
 ## Body
 
