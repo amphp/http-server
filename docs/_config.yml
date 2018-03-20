@@ -26,13 +26,8 @@ defaults:
 shared_asset_path: "/http-server/asset"
 
 navigation:
- - request-handler
- - middleware
+ - addons
  - io
- - helpers
- - options
- - http-advanced
  - performance
  - production
- - more
  - classes
