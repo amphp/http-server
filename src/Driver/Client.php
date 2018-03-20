@@ -53,7 +53,7 @@ interface Client {
     public function getRemoteAddress(): string;
 
     /**
-     * @return int|null Remote port number or null for unix sockets.
+     * @return int|null Remote port number or `null` for unix sockets.
      */
     public function getRemotePort(); /* : ?int */
 
@@ -63,7 +63,7 @@ interface Client {
     public function getLocalAddress(): string;
 
     /**
-     * @return int|null Local server port or null for unix sockets.
+     * @return int|null Local server port or `null` for unix sockets.
      */
     public function getLocalPort(); /* : ?int */
 
@@ -86,7 +86,7 @@ interface Client {
     public function getCryptoContext(): array;
 
     /**
-     * @return bool `true` if the client has been exported from the server using Response::detach().
+     * @return bool `true` if the client has been exported from the server using `Response::detach()`.
      */
     public function isExported(): bool;
 
@@ -96,7 +96,7 @@ interface Client {
     public function getNetworkId(): string;
 
     /**
-     * @return int Integer mask of Client::CLOSED_* constants.
+     * @return int Integer mask of `Client::CLOSED_*` constants.
      */
     public function getStatus(): int;
 

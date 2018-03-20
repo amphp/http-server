@@ -1,6 +1,6 @@
 ---
 title: HttpDriver
-permalink: /classes/httpdriver
+permalink: /classes/http-driver
 ---
 
 * Table of Contents

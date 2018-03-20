@@ -1,6 +1,6 @@
 ---
 title: ServerObserver
-permalink: /classes/serverobserver
+permalink: /classes/server-observer
 ---
 
 * Table of Contents

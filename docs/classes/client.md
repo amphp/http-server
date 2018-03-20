@@ -2,33 +2,84 @@
 title: Client
 permalink: /classes/client
 ---
-`Aerys\Client` is a value class exposing the whole data of the client's request via public properties. It is only accessible via [`InternalRequest`](internalrequest.md) as well as [`HttpDriver`](httpdriver.md).
+`Amp\Http\Server\Driver\Client` bundles all client-related details, such as the connection and used [`HttpDriver`](http-driver.md).
+A default implementation can be found in `Amp\Http\Server\Driver\RemoteClient`.
 
-Values marked with a <sup>†</sup> **_must_** not be altered in order to not bring the server down.
+* Table of Contents
+{:toc}
 
-`$id`<sup>†</sup> | An unique client id (unique as long as the client object is alive).
-`$socket`<sup>†</sup> | The client socket resource.
-`$clientAddr`<sup>†</sup> | The IP address of the client.
-`$clientPort`<sup>†</sup> | The port of the client.
-`$serverAddr`<sup>†</sup> | The IP address this server was accessed at.
-`$serverPort`<sup>†</sup> | The port the client connected to.
-`$isEncrypted`<sup>†</sup> | Whether the stream is encrypted
-`$cryptoInfo`<sup>†</sup> | Only relevant if `$isEncrypted == true`. Is equivalent to the `stream_get_meta_data($socket)["crypto"]` array.
-`$requestParser` | Is a Generator returned by [`HttpDriver::parser()`](httpdriver.md).
-`$readWatcher`<sup>†</sup> | The read watcher identifier returned by `Amp\onReadable` for the `$socket`. May be disabled or enabled to stop or resume reading from it, especially in [`HttpDriver`](httpdriver.md).
-`$writeWatcher`<sup>†</sup> | The write watcher identifier returned by `Amp\onWritable` for the `$socket`.
-`$writeBuffer` | The data pending to be written to the `$socket`. The Server will remove data from this buffer as soon as they're written.
-`$bufferSize` | Size of the internal buffers, supposed to be compared against `$options->softStreamCap`. It is decreased by the Server upon each successful `fwrite()` by the amount of written bytes.
-`$bufferDeferred` | Eventually containing a `Deferred` when `$bufferSize` is exceeding `$options->softStreamCap`.
-`$onWriteDrain` | A callable for when the `$writeBuffer` will be empty again. [The `Server` may overwrite it.]
-`$shouldClose` | Boolean whether the next request will terminate the connection.
-`$isDead`<sup>†</sup> | One of `0`, `Client::CLOSED_RD`, `Client::CLOSED_WR` or `Client::CLOSED_RDWR`, where `Client::CLOSED_RDWR === Client::CLOSED_RD | Client::CLOSED_WR` indicating whether read or write streams are closed (or both).
-`$isExported`<sup>†</sup> | Boolean whether the `$export` callable has been called.
-`$remainingRequests` | Number of remaining requests until the connection will be forcefully killed.
-`$pendingResponses` | The number of responses not yet completely replied to.
-`$options` | The [`Options`](options.md) instance.
-`$httpDriver` | The [`HttpDriver`](httpdriver.md) instance used by the client.
-`$exporter` | A callable requiring the `Client` object as first argument. It unregisters the client from the [`Server`](server.md) and returns a callable, which, when called, decrements counters related to rate-limiting. (Unstable, may be altered in near future)
-`$bodyEmitters` | An array of `Emitter`s whose `Iterator`s have been passed to [`InternalRequest->body`](internalrequest.md). You may `fail()` **and then** `unset()` them. If the `$client->bodyPromisors[$internalRequest->streamId]` entry exists, this means the body is still being processed.
-`$parserEmitLock` | A boolean available for use by a [`HttpDriver`](httpdriver.md) instance (to regulate parser halts and avoid resuming already active Generators).
-`$allowsPush` | Boolean whether the client allows push promises (HTTP/2 only).
+## `start(HttpDriverFactory)`
+
+Listen for requests on the client and parse them using the given HTTP driver.
+
+## `getOptions(): Options`
+
+Server options object.
+
+## `getPendingRequestCount()`
+
+Number of requests being read.
+
+## `getPendingResponseCount()`
+
+Number of requests with pending responses.
+
+## `isWaitingOnResponse()`
+
+`true` if the number of pending responses is greater than the number of pending requests.
+Useful for determining if a request handler is actively writing a response or if a request is taking too long to arrive.
+
+## `getId()`
+
+Integer ID of this client.
+This ID is unique per process as long as the connection persists, but might be reused afterwards.
+
+## `getRemoteAddress(): string`
+
+Remote IP address or unix socket path.
+
+## `getRemotePort(): ?int`
+
+Remote port number or `null` for unix sockets.
+
+## `getLocalAddress(): string`
+
+Local server IP address or unix socket path.
+
+## `getLocalPort(): ?int`
+
+Local server port or `null` for unix sockets.
+
+## `isUnix(): bool`
+
+`true` if this client is connected via an unix domain socket.
+
+## `isEncrypted(): bool`
+
+`true` if the client is encrypted, `false` if plaintext.
+
+## `getCryptoContext(): array`
+
+If the client is encrypted, returns the array returned from `stream_get_meta_data($this->socket)["crypto"]`.
+Otherwise returns an empty array.
+
+## `isExported(): bool`
+
+`true` if the client has been exported from the server using `Response::detach()`.
+
+## `getNetworkId(): string`
+
+Network ID based on IP for matching the client with other clients from the same IP.
+
+## `getStatus(): int`
+
+Integer mask of `Client::CLOSED_*` constants.
+
+## `onClose(callable)`
+
+Attaches a callback invoked with this client closes.
+The callback is passed this object as the first parameter.
+
+## `close()`
+
+Forcefully closes the client connection.
