@@ -288,16 +288,18 @@ class Server {
         \assert($this->logger->debug("Accept {$client->getRemoteAddress()}:{$client->getRemotePort()} on " .
                 stream_socket_get_name($socket, false) . " #" . (int) $socket) || true);
 
-        $net = $client->getNetworkId();
+        $net = $client->getRemoteAddress();
+        if (@\inet_pton($net) !== false && isset($net[4])) {
+            $net = \substr($net, 0, 7 /* /56 block for IPv6 */);
+        }
 
         if (!isset($this->clientsPerIP[$net])) {
             $this->clientsPerIP[$net] = 0;
         }
 
-        $client->onClose(function (Client $client) {
+        $client->onClose(function (Client $client) use ($net) {
             unset($this->clients[$client->getId()]);
 
-            $net = $client->getNetworkId();
             if (--$this->clientsPerIP[$net] === 0) {
                 unset($this->clientsPerIP[$net]);
             }

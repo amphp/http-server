@@ -91,11 +91,6 @@ interface Client {
     public function isExported(): bool;
 
     /**
-     * @return string Network ID based on IP for matching the client with other clients from the same IP.
-     */
-    public function getNetworkId(): string;
-
-    /**
      * @return int Integer mask of `Client::CLOSED_*` constants.
      */
     public function getStatus(): int;

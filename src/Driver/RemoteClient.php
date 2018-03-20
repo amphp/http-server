@@ -39,9 +39,6 @@ class RemoteClient implements Client {
     private $clientPort;
 
     /** @var string */
-    private $clientNetworkId;
-
-    /** @var string */
     private $serverAddress;
 
     /** @var int|null */
@@ -147,13 +144,8 @@ class RemoteClient implements Client {
         if ($portStartPos = \strrpos($peerName, ":")) {
             $this->clientAddress = substr($peerName, 0, $portStartPos);
             $this->clientPort = (int) substr($peerName, $portStartPos + 1);
-            $this->clientNetworkId = @\inet_pton($this->clientAddress);
-            if (isset($this->clientNetworkId[4])) {
-                $this->clientNetworkId = \substr($this->clientNetworkId, 0, 7 /* /56 block */);
-            }
         } else {
             $this->clientAddress = $serverName;
-            $this->clientNetworkId = $serverName;
         }
 
         $this->resume = $this->callableFromInstanceMethod("resume");
@@ -272,11 +264,6 @@ class RemoteClient implements Client {
     /** @inheritdoc */
     public function isExported(): bool {
         return $this->isExported;
-    }
-
-    /** @inheritdoc */
-    public function getNetworkId(): string {
-        return $this->clientNetworkId;
     }
 
     /** @inheritdoc */

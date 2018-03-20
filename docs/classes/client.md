@@ -32,7 +32,7 @@ Useful for determining if a request handler is actively writing a response or if
 ## `getId()`
 
 Integer ID of this client.
-This ID is unique per process as long as the connection persists, but might be reused afterwards.
+This ID is unique per process, see [PHP.net documentation for resource casts to integers](https://secure.php.net/manual/en/language.types.integer.php#language.types.integer.casting).
 
 ## `getRemoteAddress(): string`
 
@@ -66,10 +66,6 @@ Otherwise returns an empty array.
 ## `isExported(): bool`
 
 `true` if the client has been exported from the server using `Response::detach()`.
-
-## `getNetworkId(): string`
-
-Network ID based on IP for matching the client with other clients from the same IP.
 
 ## `getStatus(): int`
 
