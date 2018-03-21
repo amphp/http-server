@@ -154,36 +154,31 @@ final class Http1Driver implements HttpDriver {
             return;
         }
 
+        yield ($this->write)($buffer);
+
+        $buffer = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
         $body = $response->getBody();
-        $part = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
         try {
-            do {
+            while (null !== $buffer = yield $body->read()) {
+                if (!($length = \strlen($buffer))) {
+                    continue;
+                }
+
+                if ($chunked) {
+                    $buffer = \sprintf("%x\r\n%s\r\n", $length, $buffer);
+                }
+
                 yield ($this->write)($buffer);
-                $buffer = "";
 
-                if (null === $part = yield $body->read()) {
-                    break;
-                }
+                $buffer = ""; // Don't use null here, because of the finally
+            };
 
-                if ($chunked && $length = \strlen($part)) {
-                    $buffer .= \sprintf("%x\r\n%s\r\n", $length, $part);
-                } else {
-                    $buffer .= $part;
-                }
-
-                $part = ""; // Don't use null here, because of the finally
-            } while (true);
-
-            if ($chunked) {
-                $buffer .= "0\r\n\r\n";
-            }
-
-            yield ($this->write)($buffer, $shouldClose);
+            yield ($this->write)($chunked ? "0\r\n\r\n" : "", $shouldClose);
         } catch (ClientException $exception) {
             return; // Client will be closed in finally.
         } finally {
-            if ($part !== null) {
+            if ($buffer !== null) {
                 $this->client->close();
             }
         }
