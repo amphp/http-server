@@ -314,7 +314,7 @@ final class RemoteClient implements Client {
     }
 
     /** @inheritdoc */
-    public function end(int $timeout): Promise {
+    public function stop(int $timeout): Promise {
         if ($this->httpDriver === null) {
             $this->close();
             return new Success;

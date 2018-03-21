@@ -111,9 +111,9 @@ interface Client {
     /**
      * Gracefully close the client, responding to any pending requests before closing the connection.
      *
-     * @param int $timeout Number of microseconds before the connection is forcefully closed.
+     * @param int $timeout Number of milliseconds before the connection is forcefully closed.
      *
      * @return \Amp\Promise Resolved once any pending responses have been sent to the client.
      */
-    public function end(int $timeout): Promise;
+    public function stop(int $timeout): Promise;
 }

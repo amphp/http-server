@@ -388,7 +388,7 @@ final class Server {
 
         $promises = [];
         foreach ($this->clients as $client) {
-            $promises[] = $client->end($timeout);
+            $promises[] = $client->stop($timeout);
         }
 
         yield Promise\any($promises);
