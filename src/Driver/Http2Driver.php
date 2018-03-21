@@ -233,10 +233,8 @@ final class Http2Driver implements HttpDriver {
         $stream->pendingResponse = ($this->onMessage)($request);
     }
 
-    public function writer(Response $response, Request $request = null): Promise {
+    public function writer(Response $response, Request $request): Promise {
         \assert($this->client, "The driver has not been setup");
-
-        \assert($request, "The request cannot be null");
 
         $hash = \spl_object_hash($request);
         $id = $this->streamIdMap[$hash] ?? 1; // Default ID of 1 for upgrade requests.
@@ -928,9 +926,10 @@ final class Http2Driver implements HttpDriver {
                             // @TODO Log error, since the client says we made a boo-boo.
                         }
 
-                        $this->stop($lastId)->onResolve([$this->client, "close"]);
+                        yield $this->shutdown($lastId);
+                        $this->client->close();
 
-                        continue 2;
+                        return;
 
                     case self::WINDOW_UPDATE:
                         if ($length !== 4) {
@@ -1225,9 +1224,14 @@ final class Http2Driver implements HttpDriver {
         }
 
         connection_error: {
-            yield $this->writeFrame(pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
+            yield $this->shutdown(null, $error ?? self::PROTOCOL_ERROR);
             $this->client->close();
         }
+    }
+
+    /** @inheritdoc */
+    public function stop(): Promise {
+        return $this->shutdown();
     }
 
     /**
@@ -1236,10 +1240,10 @@ final class Http2Driver implements HttpDriver {
      *
      * @return Promise
      */
-    public function stop(int $lastId = null): Promise {
+    public function shutdown(int $lastId = null, int $reason = self::GRACEFUL_SHUTDOWN): Promise {
         $this->stopping = true;
 
-        return call(function () use ($lastId) {
+        return call(function () use ($lastId, $reason) {
             $promises = [];
             foreach ($this->streams as $id => $stream) {
                 if ($lastId && $id > $lastId) {
@@ -1253,7 +1257,7 @@ final class Http2Driver implements HttpDriver {
 
             $lastId = $lastId ?? ($id ?? 0);
 
-            yield $this->writeFrame(pack("NN", $lastId, self::GRACEFUL_SHUTDOWN), self::GOAWAY, self::NOFLAG);
+            yield $this->writeFrame(pack("NN", $lastId, $reason), self::GOAWAY, self::NOFLAG);
 
             yield $promises;
 

@@ -687,7 +687,8 @@ class Http1DriverTest extends TestCase {
 
         $this->assertSame($results[1], $body);
 
-        $writer = $driver->writer(new Response);
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"));
+        $writer = $driver->writer(new Response, $request);
         $request = null;
 
         $parser->send($payloads[0]); // Resume and send next body payload.
@@ -701,7 +702,8 @@ class Http1DriverTest extends TestCase {
 
         $this->assertSame($results[0], $body);
 
-        $writer = $driver->writer(new Response);
+        $request = new Request($this->createMock(Client::class), "POST", Uri\Http::createFromString("/"));
+        $writer = $driver->writer(new Response, $request);
         $request = null;
 
         $this->assertSame(0, $pendingResponses);
@@ -845,7 +847,8 @@ class Http1DriverTest extends TestCase {
         );
 
         $emitter = new Emitter;
-        $writer = $driver->writer(new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
+        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "1.0");
+        $writer = $driver->writer(new Response(Status::OK, [], new IteratorStream($emitter->iterate())), $request);
 
         $emitter->emit("foo");
 

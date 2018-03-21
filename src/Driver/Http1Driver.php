@@ -96,7 +96,7 @@ final class Http1Driver implements HttpDriver {
      *
      * Selects HTTP/2 or HTTP/1.x writer depending on connection status.
      */
-    public function writer(Response $response, Request $request = null): Promise {
+    public function writer(Response $response, Request $request): Promise {
         if ($this->http2) {
             return $this->http2->writer($response, $request);
         }
@@ -686,7 +686,7 @@ final class Http1Driver implements HttpDriver {
 
         $response->setHeader("connection", "close");
 
-        yield from $this->writer($response);
+        yield from $this->send($response);
     }
 
     public function pendingRequestCount(): int {
