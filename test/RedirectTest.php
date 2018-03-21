@@ -8,7 +8,6 @@ use Amp\Http\Server\RequestHandler\RedirectHandler;
 use Amp\Http\Status;
 use League\Uri;
 use PHPUnit\Framework\TestCase;
-use Psr\Http\Message\UriInterface as PsrUri;
 use function Amp\Promise\wait;
 
 class RedirectTest extends TestCase {
