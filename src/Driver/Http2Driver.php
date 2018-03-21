@@ -16,6 +16,7 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Promise;
+use Amp\Success;
 use League\Uri;
 use Psr\Http\Message\UriInterface as PsrUri;
 use function Amp\call;
@@ -134,12 +135,6 @@ final class Http2Driver implements HttpDriver {
     /** @var int Number of streams that may be opened. */
     private $remainingStreams;
 
-    /** @var \Amp\Promise|null */
-    private $pendingResponse;
-
-    /** @var \Amp\Promise|null */
-    private $lastWrite;
-
     /** @var bool */
     private $stopping = false;
 
@@ -162,10 +157,10 @@ final class Http2Driver implements HttpDriver {
     }
 
     /**
-     * @param \Amp\Http\Server\Driver\Client $client
-     * @param callable                       $onMessage
-     * @param callable                       $write
-     * @param string|null                    $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
+     * @param Client      $client
+     * @param callable    $onMessage
+     * @param callable    $write
+     * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
      *
      * @return \Generator
      */
@@ -214,7 +209,7 @@ final class Http2Driver implements HttpDriver {
         $request = new Request($this->client, "GET", $uri, $headers, null, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
-        $this->streams[$id] = new Http2Stream(
+        $this->streams[$id] = $stream = new Http2Stream(
             0, // No data will be incoming on this stream.
             $this->initialWindowSize,
             Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
@@ -235,24 +230,26 @@ final class Http2Driver implements HttpDriver {
             $this->writeFrame($headers, self::PUSH_PROMISE, self::END_HEADERS, $streamId);
         }
 
-        $this->pendingResponse = ($this->onMessage)($request);
+        $stream->pendingResponse = ($this->onMessage)($request);
     }
 
     public function writer(Response $response, Request $request = null): Promise {
-        return $this->lastWrite = new Coroutine($this->send($response, $request));
-    }
-
-    public function send(Response $response, Request $request): \Generator {
         \assert($this->client, "The driver has not been setup");
+
+        \assert($request, "The request cannot be null");
 
         $hash = \spl_object_hash($request);
         $id = $this->streamIdMap[$hash] ?? 1; // Default ID of 1 for upgrade requests.
         unset($this->streamIdMap[$hash]);
 
         if (!isset($this->streams[$id])) {
-            return; // Client closed the stream or connection.
+            return new Success; // Client closed the stream or connection.
         }
 
+        return $this->streams[$id]->pendingWrite = new Coroutine($this->send($id, $response, $request));
+    }
+
+    public function send(int $id, Response $response, Request $request): \Generator {
         $part = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
         try {
@@ -931,8 +928,9 @@ final class Http2Driver implements HttpDriver {
                             // @TODO Log error, since the client says we made a boo-boo.
                         }
 
-                        $this->client->close();
-                        return;
+                        $this->stop($lastId)->onResolve([$this->client, "close"]);
+
+                        continue 2;
 
                     case self::WINDOW_UPDATE:
                         if ($length !== 4) {
@@ -1133,7 +1131,7 @@ final class Http2Driver implements HttpDriver {
                         );
 
                         $this->streamIdMap[\spl_object_hash($request)] = $id;
-                        $this->pendingResponse = ($this->onMessage)($request);
+                        $stream->pendingResponse = ($this->onMessage)($request);
 
                         // Must null reference to Request object so it is destroyed when request handler completes.
                         $request = null;
@@ -1176,7 +1174,7 @@ final class Http2Driver implements HttpDriver {
                     );
 
                     $this->streamIdMap[\spl_object_hash($request)] = $id;
-                    $this->pendingResponse = ($this->onMessage)($request);
+                    $stream->pendingResponse = ($this->onMessage)($request);
 
                     // Must null reference to Request and Body objects
                     // so they are destroyed when request handler completes.
@@ -1232,19 +1230,45 @@ final class Http2Driver implements HttpDriver {
         }
     }
 
-    public function stop(): Promise {
+    /**
+     * @param int|null $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no frames have
+     *                         been opened.
+     *
+     * @return Promise
+     */
+    public function stop(int $lastId = null): Promise {
         $this->stopping = true;
 
-        return call(function () {
-            if ($this->pendingResponse) {
-                yield $this->pendingResponse;
+        return call(function () use ($lastId) {
+            $promises = [];
+            foreach ($this->streams as $id => $stream) {
+                if ($lastId && $id > $lastId) {
+                    break;
+                }
+
+                if ($stream->pendingResponse) {
+                    $promises[] = $stream->pendingResponse;
+                }
             }
 
-            if ($this->lastWrite) {
-                yield $this->lastWrite;
+            $lastId = $lastId ?? ($id ?? 0);
+
+            yield $this->writeFrame(pack("NN", $lastId, self::GRACEFUL_SHUTDOWN), self::GOAWAY, self::NOFLAG);
+
+            yield $promises;
+
+            $promises = [];
+            foreach ($this->streams as $id => $stream) {
+                if ($lastId && $id > $lastId) {
+                    break;
+                }
+
+                if ($stream->pendingWrite) {
+                    $promises[] = $stream->pendingWrite;
+                }
             }
 
-            return yield $this->writeFrame(pack("NN", 0, self::GRACEFUL_SHUTDOWN), self::GOAWAY, self::NOFLAG);
+            yield $promises;
         });
     }
 
