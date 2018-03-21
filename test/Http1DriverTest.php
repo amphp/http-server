@@ -663,40 +663,63 @@ class Http1DriverTest extends TestCase {
             }
         );
 
-        $parser->send($payloads[0] . $payloads[1]); // Send first to payloads simultaneously.
-        $parser->send(""); // Continue past yield for body emit.
+        $parser->send($payloads[0] . $payloads[1]); // Send first two payloads simultaneously.
 
         $this->assertInstanceOf(Request::class, $request);
 
         /** @var \Amp\Http\Server\Request $request */
-        $body = Promise\wait($request->getBody()->buffer());
+        $request->getBody()->buffer()->onResolve(function ($exception, $data) use (&$body) {
+            $body = $data;
+        });
+
+        while ($body === null) {
+            $parser->send(""); // Continue past yields to body emits.
+        }
 
         $this->assertSame($results[0], $body);
 
         $driver->write($request, new Response);
         $request = null;
+        $body = null;
 
-        $parser->send(""); // Resume parser after waiting for response to be written, should yield next request.
-        $parser->send(""); // Continue past yield for body emit.
+        while ($request === null) {
+            $parser->send(""); // Continue past yield to request emit.
+        }
 
         $this->assertInstanceOf(Request::class, $request);
 
         /** @var \Amp\Http\Server\Request $request */
-        $body = Promise\wait($request->getBody()->buffer());
+        $request->getBody()->buffer()->onResolve(function ($exception, $data) use (&$body) {
+            $body = $data;
+        });
+
+        while ($body === null) {
+            $parser->send(""); // Continue past yields to body emits.
+        }
 
         $this->assertSame($results[1], $body);
 
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"));
         $driver->write($request, new Response);
         $request = null;
+        $body = null;
 
         $parser->send($payloads[0]); // Resume and send next body payload.
-        $parser->send(""); // Resume parser after waiting for response to be written.
+
+        while ($request === null) {
+            $parser->send(""); // Continue past yield to request emit.
+        }
 
         $this->assertInstanceOf(Request::class, $request);
 
         /** @var \Amp\Http\Server\Request $request */
-        $body = Promise\wait($request->getBody()->buffer());
+        $request->getBody()->buffer()->onResolve(function ($exception, $data) use (&$body) {
+            $body = $data;
+        });
+
+        while ($body === null) {
+            $parser->send(""); // Continue past yields to body emits.
+        }
 
         $this->assertSame($results[0], $body);
 

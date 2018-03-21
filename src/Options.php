@@ -17,8 +17,6 @@ final class Options {
     private $headerSizeLimit = 32768;
     private $chunkSize = 8192;
 
-    private $inputBufferSize = 8192;
-
     private $compression = true;
     private $allowHttp2Upgrade = false;
 
@@ -351,34 +349,6 @@ final class Options {
 
         $new = clone $this;
         $new->allowedMethods = $allowedMethods;
-
-        return $new;
-    }
-
-    /**
-     * @return int The minimum number of bytes to buffer in incoming bodies before emitting chunks to the handler.
-     */
-    public function getInputBufferSize(): int {
-        return $this->inputBufferSize;
-    }
-
-    /**
-     * @param int $bytes The minimum number of bytes to buffer in incoming bodies before emitting chunks to the request
-     *     handler. Default is 8192 (8k).
-     *
-     * @return self
-     *
-     * @throws \Error If the number of bytes is less than 1.
-     */
-    public function withInputBufferSize(int $bytes): self {
-        if ($bytes < 1) {
-            throw new \Error(
-                "Input buffer size must be greater than zero bytes"
-            );
-        }
-
-        $new = clone $this;
-        $new->inputBufferSize = $bytes;
 
         return $new;
     }

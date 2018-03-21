@@ -186,7 +186,6 @@ final class Http1Driver implements HttpDriver {
 
     private function parser(): \Generator {
         $maxHeaderSize = $this->options->getHeaderSizeLimit();
-        $bodyEmitSize = $this->options->getInputBufferSize();
         $parser = null;
 
         $buffer = yield;
@@ -478,9 +477,9 @@ final class Http1Driver implements HttpDriver {
                             }
                         }
 
-                        $chunkLenRemaining = \hexdec($hex);
+                        $chunkLengthRemaining = \hexdec($hex);
 
-                        if ($chunkLenRemaining === 0) {
+                        if ($chunkLengthRemaining === 0) {
                             while (!isset($buffer[1])) {
                                 $buffer .= yield;
                             }
@@ -532,26 +531,30 @@ final class Http1Driver implements HttpDriver {
                             break; // finished (chunked loop)
                         }
 
-                        if ($bodySize + $chunkLenRemaining > $maxBodySize) {
+                        if ($bodySize + $chunkLengthRemaining > $maxBodySize) {
                             do {
                                 $remaining = $maxBodySize - $bodySize;
-                                $chunkLenRemaining -= $remaining - \strlen($body);
+                                $chunkLengthRemaining -= $remaining - \strlen($body);
                                 $body .= $buffer;
                                 $bodyBufferSize = \strlen($body);
 
                                 while ($bodyBufferSize < $remaining) {
-                                    if ($bodyBufferSize >= $bodyEmitSize) {
-                                        $buffer .= yield $emitter->emit($body);
-                                        $body = '';
+                                    if ($bodyBufferSize) {
+                                        $body = yield $emitter->emit($body);
                                         $bodySize += $bodyBufferSize;
                                         $remaining -= $bodyBufferSize;
+                                        $bodyBufferSize = \strlen($body);
                                     }
-                                    $body .= yield;
-                                    $bodyBufferSize = \strlen($body);
+
+                                    if (!$bodyBufferSize) {
+                                        $body = yield;
+                                        $bodyBufferSize = \strlen($body);
+                                    }
                                 }
+
                                 if ($remaining) {
-                                    $body .= yield $emitter->emit(substr($body, 0, $remaining));
-                                    $buffer = substr($body, $remaining);
+                                    $body .= yield $emitter->emit(\substr($body, 0, $remaining));
+                                    $buffer = \substr($body, $remaining);
                                     $body = "";
                                     $bodySize += $remaining;
                                 }
@@ -561,41 +564,36 @@ final class Http1Driver implements HttpDriver {
                                 }
 
                                 throw new ClientException("Payload too large", Status::PAYLOAD_TOO_LARGE);
-                            } while ($maxBodySize < $bodySize + $chunkLenRemaining);
+                            } while ($maxBodySize < $bodySize + $chunkLengthRemaining);
                         }
 
-                        $bodyBufferSize = 0;
-
                         while (true) {
-                            $bufferLen = \strlen($buffer);
+                            $bufferLength = \strlen($buffer);
+
+                            if (!$bufferLength) {
+                                $buffer = yield;
+                                $bufferLength = \strlen($buffer);
+                            }
+
                             // These first two (extreme) edge cases prevent errors where the packet boundary ends after
                             // the \r and before the \n at the end of a chunk.
-                            if ($bufferLen === $chunkLenRemaining || $bufferLen === $chunkLenRemaining + 1) {
+                            if ($bufferLength === $chunkLengthRemaining || $bufferLength === $chunkLengthRemaining + 1) {
                                 $buffer .= yield;
                                 continue;
-                            } elseif ($bufferLen >= $chunkLenRemaining + 2) {
-                                $body .= substr($buffer, 0, $chunkLenRemaining);
-                                $buffer = substr($buffer, $chunkLenRemaining + 2);
-                                $bodyBufferSize += $chunkLenRemaining;
+                            }
+
+                            if ($bufferLength >= $chunkLengthRemaining + 2) {
+                                $buffer .= yield $emitter->emit(\substr($buffer, 0, $chunkLengthRemaining));
+                                $buffer = \substr($buffer, $chunkLengthRemaining + 2);
                             } else {
-                                $body .= $buffer;
-                                $bodyBufferSize += $bufferLen;
-                                $chunkLenRemaining -= $bufferLen;
+                                $buffer = yield $emitter->emit($buffer);
+                                $chunkLengthRemaining -= $bufferLength;
                             }
 
-                            if ($bodyBufferSize >= $bodyEmitSize) {
-                                $buffer .= yield $emitter->emit($body);
-                                $body = '';
-                                $bodySize += $bodyBufferSize;
-                                $bodyBufferSize = 0;
-                            }
-
-                            if ($bufferLen >= $chunkLenRemaining + 2) {
-                                $chunkLenRemaining = null;
+                            if ($bufferLength >= $chunkLengthRemaining + 2) {
+                                $chunkLengthRemaining = null;
                                 continue 2; // next chunk (chunked loop)
                             }
-
-                            $buffer = yield;
                         }
                     }
 
@@ -608,7 +606,7 @@ final class Http1Driver implements HttpDriver {
 
                     // Note that $maxBodySize may change while looping.
                     while ($bodySize + $bodyBufferSize < \min($maxBodySize, $contentLength)) {
-                        if ($bodyBufferSize >= $bodyEmitSize) {
+                        if ($bodyBufferSize) {
                             $buffer = yield $emitter->emit($buffer);
                             $bodySize += $bodyBufferSize;
                         }
