@@ -9,7 +9,6 @@ use Amp\Failure;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
-use Amp\Http\Server\Internal;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;

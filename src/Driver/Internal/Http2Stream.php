@@ -1,6 +1,6 @@
 <?php
 
-namespace Amp\Http\Server\Internal;
+namespace Amp\Http\Server\Driver\Internal;
 
 use Amp\Struct;
 

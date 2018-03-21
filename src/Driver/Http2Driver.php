@@ -8,7 +8,7 @@ use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\HPack;
 use Amp\Http\Server\ClientException;
-use Amp\Http\Server\Internal\Http2Stream;
+use Amp\Http\Server\Driver\Internal\Http2Stream;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestBody;
@@ -117,7 +117,7 @@ final class Http2Driver implements HttpDriver {
     /** @var int Last used stream ID. */
     private $streamId = 0;
 
-    /** @var \Amp\Http\Server\Internal\Http2Stream[] */
+    /** @var \Amp\Http\Server\Driver\Internal\Http2Stream[] */
     private $streams = [];
 
     /** @var int[] Map of request hashes to stream IDs. */
