@@ -12,6 +12,7 @@ use Amp\Http\Server\Driver\RemoteClient;
 use Amp\Http\Server\Driver\SystemTimeReference;
 use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Driver\TimeReference;
+use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Loop;
 use Amp\MultiReasonException;
 use Amp\Promise;
@@ -105,17 +106,19 @@ final class Server {
             throw new \Error("Argument 1 can't be an empty array");
         }
 
-        $this->requestHandler = $requestHandler;
-
         $this->options = $options ?? new Options;
         $this->logger = $logger ?? new NullLogger;
-
         $this->timeReference = new SystemTimeReference;
-
         $this->timeouts = new TimeoutCache(
             $this->timeReference,
             $this->options->getConnectionTimeout()
         );
+
+        if ($this->options->isCompressionEnabled()) {
+            $requestHandler = Middleware\stack($requestHandler, new CompressionMiddleware);
+        }
+
+        $this->requestHandler = $requestHandler;
 
         $this->timeReference->onTimeUpdate($this->callableFromInstanceMethod("timeoutKeepAlives"));
 
