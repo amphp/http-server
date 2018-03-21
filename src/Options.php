@@ -15,7 +15,7 @@ final class Options {
 
     private $bodySizeLimit = 131072;
     private $headerSizeLimit = 32768;
-    private $ioGranularity = 8192;
+    private $chunkSize = 8192;
 
     private $inputBufferSize = 8192;
 
@@ -276,8 +276,8 @@ final class Options {
     /**
      * @return int The maximum number of bytes to read from a client per read.
      */
-    public function getIoGranularity(): int {
-        return $this->ioGranularity;
+    public function getChunkSize(): int {
+        return $this->chunkSize;
     }
 
     /**
@@ -288,15 +288,15 @@ final class Options {
      *
      * @throws \Error If the number of bytes is less than 1.
      */
-    public function withIoGranularity(int $bytes): self {
+    public function withChunkSize(int $bytes): self {
         if ($bytes < 1) {
             throw new \Error(
-                "IO granularity setting must be greater than zero"
+                "Chunk size setting must be greater than zero"
             );
         }
 
         $new = clone $this;
-        $new->ioGranularity = $bytes;
+        $new->chunkSize = $bytes;
 
         return $new;
     }

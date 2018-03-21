@@ -172,17 +172,17 @@ class OptionsTest extends TestCase {
         $options = new Options;
 
         // default
-        $this->assertSame(8192, $options->getIoGranularity());
+        $this->assertSame(8192, $options->getChunkSize());
 
         // change
-        $this->assertSame(1, $options->withIoGranularity(1)->getIoGranularity());
+        $this->assertSame(1, $options->withChunkSize(1)->getChunkSize());
 
         // change doesn't affect original
-        $this->assertSame(8192, $options->getIoGranularity());
+        $this->assertSame(8192, $options->getChunkSize());
 
         // invalid
         $this->expectException(\Error::class);
-        $options->withIoGranularity(0);
+        $options->withChunkSize(0);
     }
 
     public function testWithAllowedMethods() {

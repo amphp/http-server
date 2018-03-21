@@ -346,7 +346,7 @@ final class RemoteClient implements Client {
      * Called by the onReadable watcher (after encryption has been negotiated if applicable).
      */
     private function onReadable() {
-        $data = @\stream_get_contents($this->socket, $this->options->getIoGranularity());
+        $data = @\stream_get_contents($this->socket, $this->options->getChunkSize());
         if ($data !== false && $data !== "") {
             $this->timeoutCache->renew($this->id);
             $this->parse($data);
@@ -641,7 +641,7 @@ final class RemoteClient implements Client {
         \assert($this->logger->debug("Upgrade {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
 
         try {
-            $upgrade(new Internal\DetachedSocket($this, $this->socket, $this->options->getIoGranularity()));
+            $upgrade(new Internal\DetachedSocket($this, $this->socket, $this->options->getChunkSize()));
         } catch (\Throwable $exception) {
             $this->logger->error($exception);
             $this->close();
