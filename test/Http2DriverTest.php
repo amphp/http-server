@@ -7,6 +7,7 @@ use Amp\Emitter;
 use Amp\Http\HPack;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\Http2Driver;
+use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\TimeReference;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -177,30 +178,53 @@ class Http2DriverTest extends TestCase {
         return $return;
     }
 
-    public function setupDriver(callable $onMessage = null, callable $writer = null, Options $options = null): array {
-        $driver = new class($this, $options ?? new Options, $this->createMock(TimeReference::class)) extends Http2Driver {
+    public function setupDriver(callable $onMessage = null, Options $options = null): array {
+        $driver = new class($this, $options ?? new Options, $this->createMock(TimeReference::class)) implements HttpDriver {
             public $frames = [];
 
             /** @var TestCase */
             private $test;
 
+            /** @var Http2Driver */
+            private $driver;
+
             public function __construct($test, $options, $timeReference) {
-                parent::__construct($options, $timeReference);
+                $this->driver = new Http2Driver($options, $timeReference);
                 $this->test = $test;
             }
 
-            protected function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise {
-                if ($type === Http2Driver::RST_STREAM || $type === Http2Driver::GOAWAY) {
-                    $this->test->fail("RST_STREAM or GOAWAY frame received");
-                }
+            public function setup(Client $client, callable $onMessage, callable $write): \Generator {
+                return $this->driver->setup($client, $onMessage, function ($data) use ($write) {
+                    // $data = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
+                    $type = $data[3];
+                    $flags = $data[4];
+                    $stream = \unpack("N", \substr($data, 5, 4))[1];
+                    $data = \substr($data, 9);
 
-                if ($type === Http2Driver::WINDOW_UPDATE) {
-                    return new Success; // we don't test this as we always give a far too large window currently ;-)
-                }
+                    if ($type === Http2Driver::RST_STREAM || $type === Http2Driver::GOAWAY) {
+                        $this->test->fail("RST_STREAM or GOAWAY frame received");
+                    }
 
-                $this->frames[] = [$data, $type, $flags, $stream];
+                    if ($type === Http2Driver::WINDOW_UPDATE) {
+                        return new Success; // we don't test this as we always give a far too large window currently ;-)
+                    }
 
-                return new Success;
+                    $this->frames[] = [$data, $type, $flags, $stream];
+
+                    return new Success;
+                });
+            }
+
+            public function writer(Response $response, Request $request = null): Promise {
+                return $this->driver->writer($response, $request);
+            }
+
+            public function stop(): Promise {
+                return $this->driver->stop();
+            }
+
+            public function pendingRequestCount(): int {
+                return $this->driver->pendingRequestCount();
             }
         };
 
@@ -208,7 +232,7 @@ class Http2DriverTest extends TestCase {
             $this->createMock(Client::class),
             $onMessage ?? function () {
             },
-            $writer ?? $this->createCallback(0)
+            $this->createCallback(0)
         );
 
         return [$driver, $parser];
@@ -278,7 +302,7 @@ class Http2DriverTest extends TestCase {
     public function testFlowControl() {
         list($driver, $parser) = $this->setupDriver(function (Request $read) use (&$request) {
             $request = $read;
-        }, null, (new Options)->withOutputBufferSize(1));
+        }, (new Options)->withOutputBufferSize(1));
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
 

@@ -20,7 +20,7 @@ use League\Uri;
 use Psr\Http\Message\UriInterface as PsrUri;
 use function Amp\call;
 
-class Http2Driver implements HttpDriver {
+final class Http2Driver implements HttpDriver {
     const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
     const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
     const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
