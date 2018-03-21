@@ -101,6 +101,10 @@ final class Server {
             $this->boundServers[$server->getAddress()] = $server->getResource();
         }
 
+        if (!$servers) {
+            throw new \Error("Argument 1 can't be an empty array");
+        }
+
         $this->requestHandler = $requestHandler;
 
         $this->options = $options ?? new Options;

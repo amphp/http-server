@@ -14,6 +14,14 @@ use Amp\Promise;
 use Amp\Socket;
 
 class ServerTest extends TestCase {
+    public function testEmptySocketArray() {
+        $this->expectException(\Error::class);
+        $this->expectExceptionMessage('Argument 1 can\'t be an empty array');
+        new Server([], new CallableRequestHandler(function () {
+            return new Response;
+        }));
+    }
+
     public function testShutdownWaitsOnUnfinishedResponses() {
         $socket = Socket\listen("tcp://127.0.0.1:0");
         $server = new Server([$socket], new CallableRequestHandler(function () {
