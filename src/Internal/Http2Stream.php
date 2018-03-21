@@ -6,6 +6,8 @@ use Amp\Struct;
 
 /**
  * Used in Http2Driver.
+ *
+ * @internal
  */
 final class Http2Stream {
     use Struct;

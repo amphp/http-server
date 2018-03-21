@@ -5,6 +5,7 @@ namespace Amp\Http\Server\Internal;
 use Amp\Http\Server\Driver\Client;
 use Amp\Socket\ServerSocket;
 
+/** @internal */
 final class DetachedSocket extends ServerSocket {
     /** @var callable */
     private $client;
