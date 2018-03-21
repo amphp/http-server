@@ -20,7 +20,7 @@ use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
-class RemoteClient implements Client {
+final class RemoteClient implements Client {
     use CallableMaker;
 
     /** @var DefaultErrorHandler */

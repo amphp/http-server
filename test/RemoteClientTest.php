@@ -17,6 +17,7 @@ use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\RemoteClient;
 use Amp\Http\Server\Driver\TimeoutCache;
+use Amp\Http\Server\Driver\TimeReference;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -166,7 +167,7 @@ class RemoteClientTest extends TestCase {
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
             $options,
-            $this->createMock(TimeoutCache::class)
+            new TimeoutCache($this->createMock(TimeReference::class), 10)
         );
 
         $client->start($factory);
@@ -366,7 +367,7 @@ class RemoteClientTest extends TestCase {
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
             $options,
-            $this->createMock(TimeoutCache::class)
+            new TimeoutCache($this->createMock(TimeReference::class), 10)
         );
 
         $client->start($factory);
@@ -397,7 +398,7 @@ class RemoteClientTest extends TestCase {
             $this->createMock(ErrorHandler::class),
             $this->createMock(PsrLogger::class),
             $options,
-            $this->createMock(TimeoutCache::class)
+            new TimeoutCache($this->createMock(TimeReference::class), 10)
         );
 
         $client->start($factory);

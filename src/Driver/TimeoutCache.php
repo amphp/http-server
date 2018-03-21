@@ -4,7 +4,7 @@ namespace Amp\Http\Server\Driver;
 
 use cash\LRUCache;
 
-class TimeoutCache implements \IteratorAggregate {
+final class TimeoutCache implements \IteratorAggregate {
     /** @var \cash\LRUCache */
     private $cache;
 
