@@ -20,7 +20,6 @@ final class Options {
 
     private $inputBufferSize = 8192;
     private $outputBufferSize = 8192;
-    private $shutdownTimeout = 3000; // milliseconds
 
     private $allowHttp2Upgrade = false;
 
@@ -432,34 +431,6 @@ final class Options {
 
         $new = clone $this;
         $new->outputBufferSize = $bytes;
-
-        return $new;
-    }
-
-    /**
-     * @return int Number of milliseconds to wait when shutting down the server before forcefully shutting down.
-     */
-    public function getShutdownTimeout(): int {
-        return $this->shutdownTimeout;
-    }
-
-    /**
-     * @param int $milliseconds Number of milliseconds to wait when shutting down the server before forcefully shutting
-     *     down. Default is 3000.
-     *
-     * @return Options
-     *
-     * @throws \Error If the timeout is less than 0.
-     */
-    public function withShutdownTimeout(int $milliseconds): self {
-        if ($milliseconds < 0) {
-            throw new \Error(
-                "Shutdown timeout size must be greater than or equal to zero"
-            );
-        }
-
-        $new = clone $this;
-        $new->shutdownTimeout = $milliseconds;
 
         return $new;
     }

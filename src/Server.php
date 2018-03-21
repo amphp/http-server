@@ -363,8 +363,7 @@ final class Server {
     public function stop(int $timeout = self::DEFAULT_SHUTDOWN_TIMEOUT): Promise {
         switch ($this->state) {
             case self::STARTED:
-                $stopPromise = new Coroutine($this->doStop($timeout));
-                return Promise\timeout($stopPromise, $this->options->getShutdownTimeout());
+                return new Coroutine($this->doStop($timeout));
             case self::STOPPED:
                 return new Success;
             default:
