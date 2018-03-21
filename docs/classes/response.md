@@ -3,92 +3,113 @@ title: Response
 permalink: /classes/response
 ---
 
-{:.warning}
-> This page needs an update.
-
 * Table of Contents
 {:toc}
 
-The `Response` interface (extends `\Amp\ByteStream\OutputStream`) generally finds its only use in responder callables (or [`Websocket::onOpen()`](websocket.md#onopenint-clientid-handshakedata)). [`Middleware`s](middleware.md) do never see the `Response`; the `StandardResponse` class is communicating headers, data and flushes to a Generator under the hood.
+The **`Response`** class represents an HTTP response. The **`Response`** promise is returned by [request handlers](request-handler.md) and [middleware](middleware.md).
 
-## `setStatus(int $code): Response`
+## Constructor
 
-Sets the numeric HTTP status code (between 100 and 599).
+```php
+public function __construct(
+    int $code = Status::OK, 
+    string[] | string[][] $headers = [], 
+    Amp\ByteStream\InputStream | string | null $stringOrStream = null
+)
+```
 
-If not assigned this value defaults to 200.
+### Parameters
 
-## `setReason(string $phrase): Response`
+|`int`|`$code`|HTTP response status code|
+|`string[]`<br />`string[][]`|`$headers`|An array of strings or an array of string arrays.|
+|[`Amp\ByteStream\InputStream`](https://amphp.org/byte-stream/)<br />`string`<br />`null`|`$stringOrStream`|Response body|
 
-Sets the optional HTTP reason phrase.
+## Destructor
 
-## `addHeader(string $field, string $value): Response`
-
-Appends the specified header.
-
-## `setHeader(string $field, string $value): Response`
-
-Sets the specified header.
-
-This method will replace any existing headers for the specified field.
-
-## `setCookie(string $name, string $value, array $flags = []): Response`
-
-Provides an easy API to set cookie headers.
-
-Those who prefer using addHeader() may do so.
-
-Valid `$flags` are per [RFC 6265](https://tools.ietf.org/html/rfc6265#section-5.2.1):
-
-- `"Expires" => date("r", $timestamp)` - A timestamp when the cookie will become invalid (set to a date in the past to delete it)
-- `"Max-Age" => $seconds` - A number in seconds when the cookie must be expired by the client
-- `"Domain" => $domain` - The domain where the cookie is available
-- `"Path" => $path` - The path the cookie is restricted to
-- `"Secure"` - Only send this cookie to the server over TLS
-- `"HttpOnly"` - The client must hide this cookie from any scripts (e.g. Javascript)
-
-## `write(string $partialBodyChunk): \Amp\Promise`
-
-Incrementally streams parts of the response body.
-
-Applications that can afford to buffer an entire response in memory or can wait for all body data to generate may use `Response::end()` to output the entire response in a single call.
+Invokes dispose handlers (i.e. functions that registered via [`onDispose`](#ondisposecallable-ondispose) method).
 
 {:.note}
-> Headers are sent upon the first invocation of Response::write().
+> Uncaught exceptions from the dispose handlers will be forwarded to the [event loop](https://amphp.org/amp/event-loop/) error handler.
 
-## `flush()`
+## `getBody(): Amp\ByteStream\InputStream`
 
-Forces a flush message [`false` inside `Middleware`s and `HttpDriver`] to be propagated and any buffers forwarded to the client.
+Returns the [stream](https://amphp.org/byte-stream/) for the message body.
 
-Calling this method only makes sense when streaming output via `Response::write()`. Invoking it before calling `write()` or after `end()` is a logic error.
+## `setBody(\Amp\ByteStream\InputStream | string | null $stringOrStream)`
 
-## `end(string $finalBodyChunk = null)`
-
-End any streaming response output with an optional final message by `$finalBodyChunk`.
-
-User applications are **not** required to call `Response::end()` after streaming or sending response data (though it's not incorrect to do so) &mdash; the server will automatically call `end()` as needed.
-
-Passing the optional `$finalBodyChunk` parameter is a shortcut equivalent to
-the following:
-
-    $response->write($finalBodyChunk);
-    $response->end();
+Sets the [stream](https://amphp.org/byte-stream/) for the message body.
 
 {:.note}
-> Thus it is also fine to call this function without previous `write()` calls, to send it all at once.
+> Using a string will automatically set the `Content-Length` header to the length of the given string. Setting a [`stream`](https://amphp.org/byte-stream/) will remove the `Content-Length` header.
 
-## `push(string $url, array $headers = null): Response`
+## `setHeader(string $name, string | string[] $value)`
 
-Indicate resources which a client very likely needs to fetch. (e.g. `Link: preload` header or HTTP/2 Push Promises)
+Sets the named header to the given value.
 
-If a push promise is actually being sent, it will be dispatched with the `$headers` if not `null`, else the server will try to reuse some headers from the  request
+## `addHeader(string $name, string | string[] $value)`
 
-## `state(): int`
+Adds the value to the named header, or creates the header with the given value if it did not exist.
 
-Retrieves the current response state
+## `removeHeader(string $name)`
 
-The response state is a bitmask of the following flags:
+Removes the given header if it exists.
 
- - `Response::NONE`
- - `Response::STARTED`
- - `Response::STREAMING`
- - `Response::ENDED`
+## `getStatus(): int`
+
+Returns the response status code.
+
+## `getReason(): string`
+
+Returns the reason phrase describing the status code.
+
+## `setStatus(int $code, string | null $reason)`
+
+Sets the numeric HTTP status code (between 100 and 599) and reason phrase. Use null for the reason phrase to use the default phrase associated with the status code.
+
+## `getCookies(): ResponseCookie[]`
+
+Returns all [cookies](https://amphp.org/http/cookies) in an associative map.
+
+## `getCookie(string $name): ResponseCookie | null`
+
+Gets a [cookie](https://amphp.org/http/cookies) value by name or `null` if no cookie with that name is present.
+
+## `setCookie(ResponseCookie $cookie)`
+
+Adds a [cookie](https://amphp.org/http/cookies) to the response.
+
+## `removeCookie(string $name)`
+
+Removes a [cookie](https://amphp.org/http/cookies) from the response.
+
+## `getPush(): string[][]`
+
+Returns list of push resources in an associative map:
+
+```php
+[
+    string $url => [ Psr\Http\Message\UriInterface $uri, string[][] $headers ],
+]
+```
+
+## `push(string $url, string[][] $headers)`
+
+Indicate resources which a client likely needs to fetch. (e.g. `Link: preload` or HTTP/2 Server Push).
+
+## `isUpgraded(): bool`
+
+Returns `true` if a detach callback has been set, `false` if none.
+
+## `upgrade(callable $upgrade)`
+
+Sets a callback to be invoked once the response has been written to the client and changes the status of the response to `101 Switching Protocols`.
+
+The callback may be removed by changing the status to something else.
+
+## `getUpgradeCallable(): callable | null`
+
+Returns the upgrade function if present.
+
+## `onDispose(callable $onDispose)`
+
+Registers a function that is invoked when the Response is discarded. A response is discarded either once it has been written to the client or if it gets replaced in a middleware chain.

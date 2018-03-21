@@ -268,6 +268,8 @@ final class Response extends Message {
     }
 
     /**
+     * Indicate resources which a client likely needs to fetch (e.g. Link: preload or HTTP/2 Server Push).
+     *
      * @param string $url URL of resource to push to the client.
      * @param string[][] Additional headers to attach to the request.
      *
@@ -313,6 +315,8 @@ final class Response extends Message {
     }
 
     /**
+     * Returns the upgrade function if present.
+     *
      * @return callable|null Upgrade function.
      */
     public function getUpgradeCallable() { /* : ?callable */
@@ -321,7 +325,7 @@ final class Response extends Message {
 
     /**
      * Registers a function that is invoked when the Response is discarded. A response is discarded either once it has
-     * been written to the client or if it replaced in a middleware chain.
+     * been written to the client or if it gets replaced in a middleware chain.
      *
      * @param callable $onDispose
      */
