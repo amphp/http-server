@@ -191,7 +191,7 @@ final class Http1Driver implements HttpDriver {
     }
 
     private function parser(): \Generator {
-        $maxHeaderSize = $this->options->getMaxHeaderSize();
+        $maxHeaderSize = $this->options->getHeaderSizeLimit();
         $bodyEmitSize = $this->options->getInputBufferSize();
         $parser = null;
 
@@ -430,7 +430,7 @@ final class Http1Driver implements HttpDriver {
                 // HTTP/1.x clients only ever have a single body emitter.
                 $this->bodyEmitter = $emitter = new Emitter;
                 $trailerDeferred = new Deferred;
-                $maxBodySize = $this->options->getMaxBodySize();
+                $maxBodySize = $this->options->getBodySizeLimit();
 
                 $body = new RequestBody(
                     new IteratorStream($this->bodyEmitter->iterate()),

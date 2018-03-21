@@ -10,7 +10,7 @@ use Amp\Promise;
 class RequestBodyTest extends TestCase {
     public function testIncreaseWithoutCallback() {
         $body = new RequestBody(new InMemoryStream("foobar"));
-        $body->increaseMaxSize(1);
+        $body->increaseSizeLimit(1);
         $this->assertSame("foobar", Promise\wait($body->buffer()));
     }
 }

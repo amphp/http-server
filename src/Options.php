@@ -4,17 +4,17 @@ namespace Amp\Http\Server;
 
 final class Options {
     private $debug = false;
-    private $maxConnections = 10000;
-    private $connectionsPerIP = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
+    private $connectionLimit = 10000;
+    private $connectionsPerIpLimit = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
     private $connectionTimeout = 15; // seconds
 
-    private $maxConcurrentStreams = 20;
-    private $maxFramesPerSecond = 60;
-    private $minAverageFrameSize = 1024;
+    private $concurrentStreamLimit = 20;
+    private $framesPerSecondLimit = 60;
+    private $minimumAverageFrameSize = 1024;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
 
-    private $maxBodySize = 131072;
-    private $maxHeaderSize = 32768;
+    private $bodySizeLimit = 131072;
+    private $headerSizeLimit = 32768;
     private $ioGranularity = 8192;
 
     private $inputBufferSize = 8192;
@@ -57,8 +57,8 @@ final class Options {
     /**
      * @return int The maximum number of connections that can be handled by the server at a single time.
      */
-    public function getMaxConnections(): int {
-        return $this->maxConnections;
+    public function getConnectionLimit(): int {
+        return $this->connectionLimit;
     }
 
     /**
@@ -68,15 +68,15 @@ final class Options {
      *
      * @throws \Error If count is less than 1.
      */
-    public function withMaxConnections(int $count): self {
+    public function withConnectionLimit(int $count): self {
         if ($count < 1) {
             throw new \Error(
-                "Max connections setting must be greater than or equal to one"
+                "Connection limit setting must be greater than or equal to one"
             );
         }
 
         $new = clone $this;
-        $new->maxConnections = $count;
+        $new->connectionLimit = $count;
 
         return $new;
     }
@@ -84,8 +84,8 @@ final class Options {
     /**
      * @return int The maximum number of connections allowed from a single IP.
      */
-    public function getMaxConnectionsPerIp(): int {
-        return $this->connectionsPerIP;
+    public function getConnectionsPerIpLimit(): int {
+        return $this->connectionsPerIpLimit;
     }
 
     /**
@@ -95,7 +95,7 @@ final class Options {
      *
      * @throws \Error If the count is less than 1.
      */
-    public function withMaxConnectionsPerIp(int $count): self {
+    public function withConnectionsPerIpLimit(int $count): self {
         if ($count < 1) {
             throw new \Error(
                 "Connections per IP maximum must be greater than or equal to one"
@@ -103,7 +103,7 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->connectionsPerIP = $count;
+        $new->connectionsPerIpLimit = $count;
 
         return $new;
     }
@@ -138,19 +138,19 @@ final class Options {
     /**
      * @return int Maximum request body size in bytes.
      */
-    public function getMaxBodySize(): int {
-        return $this->maxBodySize;
+    public function getBodySizeLimit(): int {
+        return $this->bodySizeLimit;
     }
 
     /**
      * @param int $bytes Default maximum request body size in bytes. Individual requests may be increased by calling
-     *     Request::getBody($newMaximum). Default is 131072 (128k).
+     *     `RequestBody::increaseSizeLimit($newLimit)`. Default is 131072 (128k).
      *
      * @return self
      *
      * @throws \Error If the number of bytes is less than 0.
      */
-    public function withMaxBodySize(int $bytes): self {
+    public function withBodySizeLimit(int $bytes): self {
         if ($bytes < 0) {
             throw new \Error(
                 "Max body size setting must be greater than or equal to zero"
@@ -158,7 +158,7 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->maxBodySize = $bytes;
+        $new->bodySizeLimit = $bytes;
 
         return $new;
     }
@@ -166,8 +166,8 @@ final class Options {
     /**
      * @return int Maximum size of the request header section in bytes.
      */
-    public function getMaxHeaderSize(): int {
-        return $this->maxHeaderSize;
+    public function getHeaderSizeLimit(): int {
+        return $this->headerSizeLimit;
     }
 
     /**
@@ -177,7 +177,7 @@ final class Options {
      *
      * @throws \Error
      */
-    public function withMaxHeaderSize(int $bytes): self {
+    public function withHeaderSizeLimit(int $bytes): self {
         if ($bytes <= 0) {
             throw new \Error(
                 "Max header size setting must be greater than zero"
@@ -185,7 +185,7 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->maxHeaderSize = $bytes;
+        $new->headerSizeLimit = $bytes;
 
         return $new;
     }
@@ -193,8 +193,8 @@ final class Options {
     /**
      * @return int Maximum number of concurrent HTTP/2 streams.
      */
-    public function getMaxConcurrentStreams(): int {
-        return $this->maxConcurrentStreams;
+    public function getConcurrentStreamLimit(): int {
+        return $this->concurrentStreamLimit;
     }
 
     /**
@@ -204,7 +204,7 @@ final class Options {
      *
      * @throws \Error If the stream count is less than 1.
      */
-    public function withMaxConcurrentStreams(int $streams): self {
+    public function withConcurrentStreamLimit(int $streams): self {
         if ($streams < 1) {
             throw new \Error(
                 "Max number of concurrent streams setting must be greater than zero"
@@ -212,7 +212,7 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->maxConcurrentStreams = $streams;
+        $new->concurrentStreamLimit = $streams;
 
         return $new;
     }
@@ -221,8 +221,8 @@ final class Options {
      * @return int Minimum average frame size required if more than the maximum number of frames per second are
      *     received on an HTTP/2 connection.
      */
-    public function getMinAverageFrameSize(): int {
-        return $this->minAverageFrameSize;
+    public function getMinimumAverageFrameSize(): int {
+        return $this->minimumAverageFrameSize;
     }
 
     /**
@@ -233,7 +233,7 @@ final class Options {
      *
      * @throws \Error If the size is less than 1.
      */
-    public function withMinAverageFrameSize(int $size): self {
+    public function withMinimumAverageFrameSize(int $size): self {
         if ($size < 1) {
             throw new \Error(
                 "Minimum average frame size must be greater than zero"
@@ -241,7 +241,7 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->minAverageFrameSize = $size;
+        $new->minimumAverageFrameSize = $size;
 
         return $new;
     }
@@ -249,8 +249,8 @@ final class Options {
     /**
      * @return int Maximum number of HTTP/2 frames per second before the average length minimum is enforced.
      */
-    public function getMaxFramesPerSecond(): int {
-        return $this->maxFramesPerSecond;
+    public function getFramesPerSecondLimit(): int {
+        return $this->framesPerSecondLimit;
     }
 
     /**
@@ -261,7 +261,7 @@ final class Options {
      *
      * @throws \Error If the frame count is less than 1.
      */
-    public function withMaxFramesPerSecond(int $frames): self {
+    public function withFramesPerSecondLimit(int $frames): self {
         if ($frames < 1) {
             throw new \Error(
                 "Max number of HTTP/2 frames per second setting must be greater than zero"
@@ -269,7 +269,7 @@ final class Options {
         }
 
         $new = clone $this;
-        $new->maxFramesPerSecond = $frames;
+        $new->framesPerSecondLimit = $frames;
 
         return $new;
     }

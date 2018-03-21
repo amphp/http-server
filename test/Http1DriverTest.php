@@ -486,7 +486,7 @@ class Http1DriverTest extends TestCase {
             "\r\n";
         $errCode = 431;
         $errMsg = "Bad Request: header size violation";
-        $opts = (new Options)->withMaxHeaderSize(128);
+        $opts = (new Options)->withHeaderSizeLimit(128);
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 3 -------------------------------------------------------------------------------------->
@@ -593,12 +593,12 @@ class Http1DriverTest extends TestCase {
     public function testUpgradeBodySizeContentLength($data, $payload) {
         $resultEmitter = function (Request $req) use (&$request) {
             $body = $req->getBody();
-            $body->increaseMaxSize(26);
+            $body->increaseSizeLimit(26);
             $request = $req;
         };
 
         $driver = new Http1Driver(
-            (new Options)->withMaxBodySize(4),
+            (new Options)->withBodySizeLimit(4),
             $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class)
         );
@@ -873,11 +873,11 @@ class Http1DriverTest extends TestCase {
             Http2DriverTest::packFrame(pack(
                 "nNnNnNnN",
                 Http2Driver::INITIAL_WINDOW_SIZE,
-                $options->getMaxBodySize(),
+                $options->getBodySizeLimit(),
                 Http2Driver::MAX_CONCURRENT_STREAMS,
-                $options->getMaxConcurrentStreams(),
+                $options->getConcurrentStreamLimit(),
                 Http2Driver::MAX_HEADER_LIST_SIZE,
-                $options->getMaxHeaderSize(),
+                $options->getHeaderSizeLimit(),
                 Http2Driver::MAX_FRAME_SIZE,
                 Http2Driver::DEFAULT_MAX_FRAME_SIZE
             ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0)
@@ -922,11 +922,11 @@ class Http1DriverTest extends TestCase {
                 $expected = Http2DriverTest::packFrame(pack(
                     "nNnNnNnN",
                     Http2Driver::INITIAL_WINDOW_SIZE,
-                    $options->getMaxBodySize(),
+                    $options->getBodySizeLimit(),
                     Http2Driver::MAX_CONCURRENT_STREAMS,
-                    $options->getMaxConcurrentStreams(),
+                    $options->getConcurrentStreamLimit(),
                     Http2Driver::MAX_HEADER_LIST_SIZE,
-                    $options->getMaxHeaderSize(),
+                    $options->getHeaderSizeLimit(),
                     Http2Driver::MAX_FRAME_SIZE,
                     Http2Driver::DEFAULT_MAX_FRAME_SIZE
                 ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0);

@@ -318,7 +318,7 @@ final class Server {
             --$this->clientCount;
         });
 
-        if ($this->clientCount++ === $this->options->getMaxConnections()) {
+        if ($this->clientCount++ === $this->options->getConnectionLimit()) {
             \assert($this->logger->debug("Client denied: too many existing connections") || true);
             $client->close();
             return;
@@ -330,7 +330,7 @@ final class Server {
         // Connections on localhost are excluded from the connections per IP setting.
         // Checks IPv4 loopback (127.x), IPv6 loopback (::1) and IPv4-to-IPv6 mapped loopback.
         // Also excludes all connections that are via unix sockets.
-        if ($clientCount === $this->options->getMaxConnectionsPerIp()
+        if ($clientCount === $this->options->getConnectionsPerIpLimit()
             && $ip !== "::1" && \strncmp($ip, "127.", 4) !== 0 && !$client->isUnix()
             && \strncmp(\inet_pton($ip), '\0\0\0\0\0\0\0\0\0\0\xff\xff\7f', 31)
         ) {

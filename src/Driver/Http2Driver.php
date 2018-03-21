@@ -151,7 +151,7 @@ final class Http2Driver implements HttpDriver {
         $this->options = $options;
         $this->timeReference = $timeReference;
 
-        $this->remainingStreams = $this->options->getMaxConcurrentStreams();
+        $this->remainingStreams = $this->options->getConcurrentStreamLimit();
 
         $this->table = new HPack;
     }
@@ -456,10 +456,10 @@ final class Http2Driver implements HttpDriver {
      * @return \Generator
      */
     private function parser(string $settings = null): \Generator {
-        $maxHeaderSize = $this->options->getMaxHeaderSize();
-        $maxBodySize = $this->options->getMaxBodySize();
-        $maxFramesPerSecond = $this->options->getMaxFramesPerSecond();
-        $minAverageFrameSize = $this->options->getMinAverageFrameSize();
+        $maxHeaderSize = $this->options->getHeaderSizeLimit();
+        $maxBodySize = $this->options->getBodySizeLimit();
+        $maxFramesPerSecond = $this->options->getFramesPerSecondLimit();
+        $minAverageFrameSize = $this->options->getMinimumAverageFrameSize();
 
         $frameCount = 0;
         $bytesReceived = 0;
@@ -495,7 +495,7 @@ final class Http2Driver implements HttpDriver {
                     self::INITIAL_WINDOW_SIZE,
                     $maxBodySize,
                     self::MAX_CONCURRENT_STREAMS,
-                    $this->options->getMaxConcurrentStreams(),
+                    $this->options->getConcurrentStreamLimit(),
                     self::MAX_HEADER_LIST_SIZE,
                     $maxHeaderSize,
                     self::MAX_FRAME_SIZE,
@@ -532,7 +532,7 @@ final class Http2Driver implements HttpDriver {
                     self::INITIAL_WINDOW_SIZE,
                     $maxBodySize,
                     self::MAX_CONCURRENT_STREAMS,
-                    $this->options->getMaxConcurrentStreams(),
+                    $this->options->getConcurrentStreamLimit(),
                     self::MAX_HEADER_LIST_SIZE,
                     $maxHeaderSize,
                     self::MAX_FRAME_SIZE,
