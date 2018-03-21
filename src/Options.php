@@ -18,7 +18,6 @@ final class Options {
     private $ioGranularity = 8192;
 
     private $inputBufferSize = 8192;
-    private $outputBufferSize = 8192;
 
     private $compression = true;
     private $allowHttp2Upgrade = false;
@@ -380,33 +379,6 @@ final class Options {
 
         $new = clone $this;
         $new->inputBufferSize = $bytes;
-
-        return $new;
-    }
-
-    /**
-     * @return int Number of body bytes to buffer before writes are made to the client.
-     */
-    public function getOutputBufferSize(): int {
-        return $this->outputBufferSize;
-    }
-
-    /**
-     * @param int $bytes Number of body bytes to buffer before writes are made to the client. Smaller numbers push data
-     *     sooner, but decreases performance. Default is 8192 (8k).
-     *
-     * @return self
-     * @throws \Error
-     */
-    public function withOutputBufferSize(int $bytes): self {
-        if ($bytes <= 0) {
-            throw new \Error(
-                "Output buffer size must be greater than zero bytes"
-            );
-        }
-
-        $new = clone $this;
-        $new->outputBufferSize = $bytes;
 
         return $new;
     }

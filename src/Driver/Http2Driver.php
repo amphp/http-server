@@ -301,22 +301,16 @@ final class Http2Driver implements HttpDriver {
             }
 
             $buffer = "";
-
-            $outputBufferSize = $this->options->getOutputBufferSize();
             $body = $response->getBody();
 
-            while (null !== $part = yield $body->read()) {
+            while (null !== $buffer = yield $body->read()) {
                 // Stream may have been closed while waiting for body data.
                 if (!isset($this->streams[$id])) {
                     return;
                 }
 
-                $buffer .= $part;
-
-                if (\strlen($buffer) >= $outputBufferSize) {
-                    yield $this->writeData($buffer, $id, false);
-                    $buffer = "";
-                }
+                yield $this->writeData($buffer, $id, false);
+                $buffer = "";
             }
 
             // Stream may have been closed while waiting for body data.
@@ -324,7 +318,7 @@ final class Http2Driver implements HttpDriver {
                 return;
             }
 
-            yield $this->writeData($buffer, $id, true);
+            yield $this->writeData("", $id, true);
         } catch (ClientException $exception) {
             $error = $exception->getCode() ?? self::CANCEL; // Set error code to be used in finally below.
         } finally {

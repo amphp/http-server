@@ -155,15 +155,12 @@ final class Http1Driver implements HttpDriver {
         }
 
         $body = $response->getBody();
-        $outputBufferSize = $this->options->getOutputBufferSize();
         $part = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
         try {
             do {
-                if (\strlen($buffer) > $outputBufferSize) {
-                    yield ($this->write)($buffer);
-                    $buffer = "";
-                }
+                yield ($this->write)($buffer);
+                $buffer = "";
 
                 if (null === $part = yield $body->read()) {
                     break;
@@ -174,6 +171,8 @@ final class Http1Driver implements HttpDriver {
                 } else {
                     $buffer .= $part;
                 }
+
+                $part = ""; // Don't use null here, because of the finally
             } while (true);
 
             if ($chunked) {

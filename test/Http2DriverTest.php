@@ -302,7 +302,7 @@ class Http2DriverTest extends TestCase {
     public function testFlowControl() {
         list($driver, $parser) = $this->setupDriver(function (Request $read) use (&$request) {
             $request = $read;
-        }, (new Options)->withOutputBufferSize(1));
+        });
 
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
 
