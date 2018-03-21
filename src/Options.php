@@ -8,7 +8,6 @@ final class Options {
     private $connectionsPerIP = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
     private $connectionTimeout = 15; // seconds
 
-    private $socketBacklogSize = 128;
     private $maxConcurrentStreams = 20;
     private $maxFramesPerSecond = 60;
     private $minAverageFrameSize = 1024;
@@ -132,33 +131,6 @@ final class Options {
 
         $new = clone $this;
         $new->connectionTimeout = $seconds;
-
-        return $new;
-    }
-
-    /**
-     * @return int Maximum backlog size of each listening server socket.
-     */
-    public function getSocketBacklogSize(): int {
-        return $this->socketBacklogSize;
-    }
-
-    /**
-     * @param int $backlog Maximum backlog size of each listening server socket. Default is 128.
-     *
-     * @return self
-     *
-     * @throws \Error If the backlog size is less than 16.
-     */
-    public function withSocketBacklogSize(int $backlog): self {
-        if ($backlog < 16) {
-            throw new \Error(
-                "Socket backlog size setting must be greater than or equal to 16"
-            );
-        }
-
-        $new = clone $this;
-        $new->socketBacklogSize = $backlog;
 
         return $new;
     }
