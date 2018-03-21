@@ -215,16 +215,16 @@ class Http2DriverTest extends TestCase {
                 });
             }
 
-            public function writer(Request $request, Response $response): Promise {
-                return $this->driver->writer($request, $response);
+            public function write(Request $request, Response $response): Promise {
+                return $this->driver->write($request, $response);
             }
 
             public function stop(): Promise {
                 return $this->driver->stop();
             }
 
-            public function pendingRequestCount(): int {
-                return $this->driver->pendingRequestCount();
+            public function getPendingRequestCount(): int {
+                return $this->driver->getPendingRequestCount();
             }
         };
 
@@ -259,7 +259,7 @@ class Http2DriverTest extends TestCase {
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "2.0");
 
         $emitter = new Emitter;
-        $coroutine = $driver->writer($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
+        $coroutine = $driver->write($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
 
         $emitter->emit("foo");
         $emitter->fail(new \Exception);
@@ -333,7 +333,7 @@ class Http2DriverTest extends TestCase {
         $this->assertInstanceOf(Request::class, $request);
 
         $emitter = new Emitter;
-        $writer = $driver->writer($request, new Response(
+        $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
             new IteratorStream($emitter->iterate())
@@ -397,7 +397,7 @@ class Http2DriverTest extends TestCase {
         $this->assertInstanceOf(Request::class, $request);
 
         $emitter = new Emitter;
-        $writer = $driver->writer($request, new Response(
+        $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
             new IteratorStream($emitter->iterate())
@@ -469,7 +469,7 @@ class Http2DriverTest extends TestCase {
         $this->assertInstanceOf(Request::class, $request);
 
         $emitter = new Emitter;
-        $writer = $driver->writer($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
+        $writer = $driver->write($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
 
         $emitter->emit("{data}");
 

@@ -673,7 +673,7 @@ class Http1DriverTest extends TestCase {
 
         $this->assertSame($results[0], $body);
 
-        $writer = $driver->writer($request, new Response);
+        $writer = $driver->write($request, new Response);
         $request = null;
 
         $parser->send(""); // Resume parser after waiting for response to be written, should yield next request.
@@ -688,7 +688,7 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($results[1], $body);
 
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"));
-        $writer = $driver->writer($request, new Response);
+        $writer = $driver->write($request, new Response);
         $request = null;
 
         $parser->send($payloads[0]); // Resume and send next body payload.
@@ -703,7 +703,7 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($results[0], $body);
 
         $request = new Request($this->createMock(Client::class), "POST", Uri\Http::createFromString("/"));
-        $writer = $driver->writer($request, new Response);
+        $writer = $driver->write($request, new Response);
         $request = null;
 
         $this->assertSame(0, $pendingResponses);
@@ -750,7 +750,7 @@ class Http1DriverTest extends TestCase {
         $response = new Response(Status::OK, $headers, new IteratorStream($emitter->iterate()));
         $response->push("/foo");
 
-        $writer = $driver->writer($request, $response);
+        $writer = $driver->write($request, $response);
 
         foreach (str_split($data) as $c) {
             $emitter->emit($c);
@@ -792,7 +792,7 @@ class Http1DriverTest extends TestCase {
             }
         );
 
-        Promise\wait($driver->writer($request, $response));
+        Promise\wait($driver->write($request, $response));
 
         $this->assertSame($buffer, $expectedBuffer);
         $this->assertSame($closed, $expectedClosed);
@@ -848,7 +848,7 @@ class Http1DriverTest extends TestCase {
 
         $emitter = new Emitter;
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "1.0");
-        $writer = $driver->writer($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
+        $writer = $driver->write($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
 
         $emitter->emit("foo");
 

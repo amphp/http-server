@@ -233,7 +233,7 @@ final class Http2Driver implements HttpDriver {
         $stream->pendingResponse = ($this->onMessage)($request);
     }
 
-    public function writer(Request $request, Response $response): Promise {
+    public function write(Request $request, Response $response): Promise {
         \assert($this->client, "The driver has not been setup");
 
         $hash = \spl_object_hash($request);
@@ -1276,7 +1276,7 @@ final class Http2Driver implements HttpDriver {
         });
     }
 
-    public function pendingRequestCount(): int {
+    public function getPendingRequestCount(): int {
         return \count($this->bodyEmitters);
     }
 

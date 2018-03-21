@@ -14,6 +14,8 @@ interface HttpDriver {
     const KNOWN_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"];
 
     /**
+     * Setup the driver.
+     *
      * Data read from the client connection should be sent to the generator returned from this method. If the generator
      * yields a promise, no additional data is to be sent to the parser until the promise resolves. Each yield must be
      * prepared to receive additional client data, including those yielding promises.
@@ -30,15 +32,19 @@ interface HttpDriver {
     public function setup(Client $client, callable $onMessage, callable $write): \Generator;
 
     /**
-     * Returns a promise that resolves once the response has been written to the client. The writer should write the
-     * given response to the client using the write callback provided to setup().
+     * Write the given response to the client using the write callback provided to `setup()`.
      *
      * @param Request  $request
      * @param Response $response
      *
-     * @return \Amp\Promise
+     * @return Promise Resolves once the response has been written to the client.
      */
-    public function writer(Request $request, Response $response): Promise;
+    public function write(Request $request, Response $response): Promise;
+
+    /**
+     * @return int Number of requests that are being read by the parser.
+     */
+    public function getPendingRequestCount(): int;
 
     /**
      * Stops processing further requests, returning a promise that is resolved when all currently pending requests
@@ -47,9 +53,4 @@ interface HttpDriver {
      * @return Promise
      */
     public function stop(): Promise;
-
-    /**
-     * @return int Number of requests that are being read by the parser.
-     */
-    public function pendingRequestCount(): int;
 }

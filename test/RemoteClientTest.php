@@ -145,7 +145,7 @@ class RemoteClientTest extends TestCase {
                 yield;
             });
 
-        $driver->method("writer")
+        $driver->method("write")
             ->willReturnCallback(coroutine(function (Request $request, Response $written) use (&$response, &$body) {
                 $response = $written;
                 $body = "";
@@ -329,7 +329,7 @@ class RemoteClientTest extends TestCase {
                 yield;
             });
 
-        $driver->method("writer")
+        $driver->method("write")
             ->willReturnCallback(coroutine(function (Request $request, Response $written) use (&$body) {
                 $count = 3;
                 $body = "";

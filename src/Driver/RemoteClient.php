@@ -213,12 +213,12 @@ final class RemoteClient implements Client {
             return 0;
         }
 
-        return $this->httpDriver->pendingRequestCount();
+        return $this->httpDriver->getPendingRequestCount();
     }
 
     /** @inheritdoc */
     public function isWaitingOnResponse(): bool {
-        return $this->httpDriver !== null && $this->pendingResponses > $this->httpDriver->pendingRequestCount();
+        return $this->httpDriver !== null && $this->pendingResponses > $this->httpDriver->getPendingRequestCount();
     }
 
     /** @inheritdoc */
@@ -574,7 +574,7 @@ final class RemoteClient implements Client {
             return; // Client closed before response could be sent.
         }
 
-        $promise = $this->httpDriver->writer($request, $response);
+        $promise = $this->httpDriver->write($request, $response);
 
         if ($response->isUpgraded()) {
             yield $promise; // Wait on writing response when the response is an upgrade response.

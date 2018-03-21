@@ -96,9 +96,9 @@ final class Http1Driver implements HttpDriver {
      *
      * Selects HTTP/2 or HTTP/1.x writer depending on connection status.
      */
-    public function writer(Request $request, Response $response): Promise {
+    public function write(Request $request, Response $response): Promise {
         if ($this->http2) {
-            return $this->http2->writer($request, $response);
+            return $this->http2->write($request, $response);
         }
 
         return $this->lastWrite = new Coroutine($this->send($response, $request));
@@ -371,7 +371,7 @@ final class Http1Driver implements HttpDriver {
                 }
 
                 if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
-                    $buffer .= yield $this->writer(
+                    $buffer .= yield $this->write(
                         new Request($this->client, $method, $uri, $headers, null, $protocol),
                         new Response(Status::CONTINUE, [])
                     );
@@ -387,7 +387,7 @@ final class Http1Driver implements HttpDriver {
                     && false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
-                    $buffer .= yield $this->writer(
+                    $buffer .= yield $this->write(
                         new Request($this->client, $method, $uri, $headers, null, $protocol),
                         new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
@@ -689,13 +689,13 @@ final class Http1Driver implements HttpDriver {
         yield from $this->send($response);
     }
 
-    public function pendingRequestCount(): int {
+    public function getPendingRequestCount(): int {
         if ($this->bodyEmitter) {
             return 1;
         }
 
         if ($this->http2) {
-            return $this->http2->pendingRequestCount();
+            return $this->http2->getPendingRequestCount();
         }
 
         return 0;
