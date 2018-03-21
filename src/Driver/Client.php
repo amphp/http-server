@@ -3,6 +3,7 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\Http\Server\Options;
+use Amp\Promise;
 
 interface Client {
     const CLOSED_RD = 1;
@@ -106,4 +107,13 @@ interface Client {
      * Forcefully closes the client connection.
      */
     public function close();
+
+    /**
+     * Gracefully close the client, responding to any pending requests before closing the connection.
+     *
+     * @param int $timeout Number of microseconds before the connection is forcefully closed.
+     *
+     * @return \Amp\Promise Resolved once any pending responses have been sent to the client.
+     */
+    public function end(int $timeout): Promise;
 }

@@ -14,15 +14,13 @@ use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Http\Server\Server;
-use Amp\Http\Server\ServerObserver;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
-class RemoteClient implements Client, ServerObserver {
+class RemoteClient implements Client {
     use CallableMaker;
 
     /** @var DefaultErrorHandler */
@@ -315,6 +313,18 @@ class RemoteClient implements Client, ServerObserver {
         $this->onClose[] = $callback;
     }
 
+    /** @inheritdoc */
+    public function end(int $timeout): Promise {
+        if ($this->httpDriver === null) {
+            $this->close();
+            return new Success;
+        }
+
+        $promise = Promise\timeout($this->httpDriver->stop(), $timeout);
+        $promise->onResolve([$this, "close"]);
+        return $promise;
+    }
+
     private function clear() {
         $this->httpDriver = null;
         $this->requestParser = null;
@@ -567,17 +577,15 @@ class RemoteClient implements Client, ServerObserver {
         $promise = $this->httpDriver->writer($response, $request);
 
         if ($response->isUpgraded()) {
-            $callback = $response->getUpgradeCallable();
-            $promise->onResolve(function () use ($callback) {
-                $this->export($callback);
-            });
+            yield $promise; // Wait on writing response when the response is an upgrade response.
+            $this->export($response->getUpgradeCallable());
         }
     }
 
     private function makeMethodNotAllowedResponse(): \Generator {
         $status = Status::METHOD_NOT_ALLOWED;
         /** @var \Amp\Http\Server\Response $response */
-        $response = yield $this->errorHandler->handle($status, Status::getReason($status));
+        $response = yield $this->errorHandler->handle($status);
         $response->setHeader("Connection", "close");
         $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
         return $response;
@@ -586,7 +594,7 @@ class RemoteClient implements Client, ServerObserver {
     private function makeNotImplementedResponse(): \Generator {
         $status = Status::NOT_IMPLEMENTED;
         /** @var \Amp\Http\Server\Response $response */
-        $response = yield $this->errorHandler->handle($status, Status::getReason($status));
+        $response = yield $this->errorHandler->handle($status);
         $response->setHeader("Connection", "close");
         $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
         return $response;
@@ -638,23 +646,5 @@ class RemoteClient implements Client, ServerObserver {
             $this->logger->error($exception);
             $this->close();
         }
-    }
-
-    /** @inheritdoc */
-    public function onStart(Server $server): Promise {
-        if ($this->httpDriver instanceof ServerObserver) {
-            return $this->httpDriver->onStart($server);
-        }
-
-        return new Success;
-    }
-
-    /** @inheritdoc */
-    public function onStop(Server $server): Promise {
-        if ($this->httpDriver instanceof ServerObserver) {
-            return $this->httpDriver->onStop($server);
-        }
-
-        return new Success;
     }
 }

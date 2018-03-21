@@ -2,8 +2,6 @@
 
 namespace Amp\Http\Server\Driver;
 
-// @TODO add ServerObserver for properly sending GOAWAY frames
-
 use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
 use Amp\Deferred;
@@ -20,6 +18,7 @@ use Amp\Http\Status;
 use Amp\Promise;
 use League\Uri;
 use Psr\Http\Message\UriInterface as PsrUri;
+use function Amp\call;
 
 class Http2Driver implements HttpDriver {
     const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
@@ -135,6 +134,15 @@ class Http2Driver implements HttpDriver {
     /** @var int Number of streams that may be opened. */
     private $remainingStreams;
 
+    /** @var \Amp\Promise|null */
+    private $pendingResponse;
+
+    /** @var \Amp\Promise|null */
+    private $lastWrite;
+
+    /** @var bool */
+    private $stopping = false;
+
     /** @var callable */
     private $onMessage;
 
@@ -227,11 +235,11 @@ class Http2Driver implements HttpDriver {
             $this->writeFrame($headers, self::PUSH_PROMISE, self::END_HEADERS, $streamId);
         }
 
-        ($this->onMessage)($request);
+        $this->pendingResponse = ($this->onMessage)($request);
     }
 
     public function writer(Response $response, Request $request = null): Promise {
-        return new Coroutine($this->send($response, $request));
+        return $this->lastWrite = new Coroutine($this->send($response, $request));
     }
 
     public function send(Response $response, Request $request): \Generator {
@@ -1070,6 +1078,10 @@ class Http2Driver implements HttpDriver {
 
                     $stream->state |= Http2Stream::RESERVED;
 
+                    if ($this->stopping) {
+                        continue; // Do not dispatch more requests if stopping.
+                    }
+
                     if (!isset($headers[":method"][0])) {
                         $error = self::PROTOCOL_ERROR;
                         goto stream_error;
@@ -1121,7 +1133,7 @@ class Http2Driver implements HttpDriver {
                         );
 
                         $this->streamIdMap[\spl_object_hash($request)] = $id;
-                        ($this->onMessage)($request);
+                        $this->pendingResponse = ($this->onMessage)($request);
 
                         // Must null reference to Request object so it is destroyed when request handler completes.
                         $request = null;
@@ -1164,7 +1176,7 @@ class Http2Driver implements HttpDriver {
                     );
 
                     $this->streamIdMap[\spl_object_hash($request)] = $id;
-                    ($this->onMessage)($request);
+                    $this->pendingResponse = ($this->onMessage)($request);
 
                     // Must null reference to Request and Body objects
                     // so they are destroyed when request handler completes.
@@ -1218,6 +1230,22 @@ class Http2Driver implements HttpDriver {
             yield $this->writeFrame(pack("NN", 0, $error), self::GOAWAY, self::NOFLAG);
             $this->client->close();
         }
+    }
+
+    public function stop(): Promise {
+        $this->stopping = true;
+
+        return call(function () {
+            if ($this->pendingResponse) {
+                yield $this->pendingResponse;
+            }
+
+            if ($this->lastWrite) {
+                yield $this->lastWrite;
+            }
+
+            return yield $this->writeFrame(pack("NN", 0, self::GRACEFUL_SHUTDOWN), self::GOAWAY, self::NOFLAG);
+        });
     }
 
     public function pendingRequestCount(): int {

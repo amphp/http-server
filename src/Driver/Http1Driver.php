@@ -14,15 +14,13 @@ use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
-use Amp\Http\Server\Server;
-use Amp\Http\Server\ServerObserver;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Promise;
-use Amp\Success;
 use League\Uri;
+use function Amp\call;
 
-class Http1Driver implements HttpDriver, ServerObserver {
+class Http1Driver implements HttpDriver {
     /** @see https://tools.ietf.org/html/rfc7230#section-4.1.2 */
     const DISALLOWED_TRAILERS = [
         "authorization",
@@ -195,7 +193,6 @@ class Http1Driver implements HttpDriver, ServerObserver {
     private function parser(): \Generator {
         $maxHeaderSize = $this->options->getMaxHeaderSize();
         $bodyEmitSize = $this->options->getInputBufferSize();
-        $pendingResponse = null;
         $parser = null;
 
         $buffer = yield;
@@ -213,15 +210,13 @@ class Http1Driver implements HttpDriver, ServerObserver {
 
                 do {
                     if ($this->stopping) {
-                        $this->client->close();
-                        return;
+                        // Yielding an unresolved promise prevents further data from being read.
+                        yield (new Deferred)->promise();
                     }
 
                     $buffer = \ltrim($buffer, "\r\n");
 
                     if ($headerPos = \strpos($buffer, "\r\n\r\n")) {
-                        $pendingResponse = new Deferred;
-                        $this->pendingResponse = $pendingResponse->promise();
                         $rawHeaders = \substr($buffer, 0, $headerPos + 2);
                         $buffer = (string) \substr($buffer, $headerPos + 4);
                         break;
@@ -420,7 +415,7 @@ class Http1Driver implements HttpDriver, ServerObserver {
 
                 if (!($isChunked || $contentLength)) {
                     // Wait for response to be fully written.
-                    $buffer .= yield ($this->onMessage)(new Request(
+                    $buffer .= yield $this->pendingResponse = ($this->onMessage)(new Request(
                         $this->client,
                         $method,
                         $uri,
@@ -448,7 +443,7 @@ class Http1Driver implements HttpDriver, ServerObserver {
                 );
 
                 // Do not yield promise until body is completely read.
-                $promise = ($this->onMessage)(new Request(
+                $this->pendingResponse = ($this->onMessage)(new Request(
                     $this->client,
                     $method,
                     $uri,
@@ -647,10 +642,7 @@ class Http1Driver implements HttpDriver, ServerObserver {
                 $this->bodyEmitter = null;
                 $emitter->complete();
 
-                $buffer .= yield $promise; // Wait for response to be fully written.
-                $pendingResponse->resolve();
-                $pendingResponse = null;
-                $this->pendingResponse = null;
+                $buffer .= yield $this->pendingResponse; // Wait for response to be fully written.
             } while (true);
         } catch (ClientException $exception) {
             if ($this->bodyEmitter === null || $this->client->getPendingResponseCount()) {
@@ -666,10 +658,6 @@ class Http1Driver implements HttpDriver, ServerObserver {
                     "Client disconnected",
                     Status::REQUEST_TIMEOUT
                 ));
-            }
-
-            if ($pendingResponse) {
-                $pendingResponse->resolve(); // never fail this, it's just used for clean shutdowns
             }
 
             if (isset($trailerDeferred)) {
@@ -765,19 +753,17 @@ class Http1Driver implements HttpDriver, ServerObserver {
         return $headers;
     }
 
-    /** @inheritdoc */
-    public function onStart(Server $server): Promise {
-        return new Success; // nothing to do
-    }
-
-    /** @inheritdoc */
-    public function onStop(Server $server): Promise {
+    public function stop(): Promise {
         $this->stopping = true;
 
-        if ($this->pendingResponse) {
-            return $this->pendingResponse;
-        }
+        return call(function () {
+            if ($this->pendingResponse) {
+                yield $this->pendingResponse;
+            }
 
-        return new Success;
+            if ($this->lastWrite) {
+                yield $this->lastWrite;
+            }
+        });
     }
 }

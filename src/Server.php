@@ -12,6 +12,7 @@ use Amp\Http\Server\Driver\RemoteClient;
 use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Driver\TimeReference;
 use Amp\Loop;
+use Amp\MultiReasonException;
 use Amp\Promise;
 use Amp\Socket\Server as SocketServer;
 use Amp\Success;
@@ -32,6 +33,8 @@ class Server {
         self::STARTED => "STARTED",
         self::STOPPING => "STOPPING",
     ];
+
+    const DEFAULT_SHUTDOWN_TIMEOUT = 3000;
 
     /** @var int */
     private $state = self::STOPPED;
@@ -245,7 +248,7 @@ class Server {
             }
             yield $promises;
         } catch (\Throwable $exception) {
-            yield from $this->doStop();
+            yield from $this->doStop(self::DEFAULT_SHUTDOWN_TIMEOUT);
             throw new \RuntimeException("onStart observer initialization failure", 0, $exception);
         }
 
@@ -285,8 +288,6 @@ class Server {
             $this->timeouts
         );
 
-        $this->observers->attach($client);
-
         \assert($this->logger->debug("Accept {$client->getRemoteAddress()}:{$client->getRemotePort()} on " .
                 stream_socket_get_name($socket, false) . " #" . (int) $socket) || true);
 
@@ -300,8 +301,6 @@ class Server {
         }
 
         $client->onClose(function (Client $client) use ($net) {
-            $this->observers->detach($client);
-
             unset($this->clients[$client->getId()]);
 
             if (--$this->clientsPerIP[$net] === 0) {
@@ -352,12 +351,14 @@ class Server {
     /**
      * Stop the server.
      *
+     * @param int $timeout Number of seconds to allow clients to gracefully shutdown before forcefully closing.
+     *
      * @return Promise
      */
-    public function stop(): Promise {
+    public function stop(int $timeout = self::DEFAULT_SHUTDOWN_TIMEOUT): Promise {
         switch ($this->state) {
             case self::STARTED:
-                $stopPromise = new Coroutine($this->doStop());
+                $stopPromise = new Coroutine($this->doStop($timeout));
                 return Promise\timeout($stopPromise, $this->options->getShutdownTimeout());
             case self::STOPPED:
                 return new Success;
@@ -368,7 +369,7 @@ class Server {
         }
     }
 
-    private function doStop(): \Generator {
+    private function doStop(int $timeout): \Generator {
         \assert($this->logger->debug("Stopping") || true);
         $this->state = self::STOPPING;
 
@@ -378,25 +379,25 @@ class Server {
         $this->boundServers = [];
         $this->acceptWatcherIds = [];
 
-        try {
-            $promises = [];
-            foreach ($this->observers as $observer) {
-                $promises[] = $observer->onStop($this);
-            }
-            yield $promises;
-        } catch (\Throwable $exception) {
-            // Exception will be rethrown below once all clients are disconnected.
+        $promises = [];
+        foreach ($this->clients as $client) {
+            $promises[] = $client->end($timeout);
         }
 
-        foreach ($this->clients as $client) {
-            $client->close();
+        yield Promise\any($promises);
+
+        $promises = [];
+        foreach ($this->observers as $observer) {
+            $promises[] = $observer->onStop($this);
         }
+
+        list($exceptions) = yield Promise\any($promises);
 
         \assert($this->logger->debug("Stopped") || true);
         $this->state = self::STOPPED;
 
-        if (isset($exception)) {
-            throw new \RuntimeException("onStop observer failure", 0, $exception);
+        if (!empty($exceptions)) {
+            throw new MultiReasonException($exceptions, "onStop observer failure");
         }
     }
 

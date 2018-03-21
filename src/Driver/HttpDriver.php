@@ -40,6 +40,14 @@ interface HttpDriver {
     public function writer(Response $response, Request $request = null): Promise;
 
     /**
+     * Stops processing further requests, returning a promise that is resolved when all currently pending requests
+     * have been fulfilled and any remaining data is send to the client (such as GOAWAY frames for HTTP/2).
+     *
+     * @return Promise
+     */
+    public function stop(): Promise;
+
+    /**
      * @return int Number of requests that are being read by the parser.
      */
     public function pendingRequestCount(): int;
