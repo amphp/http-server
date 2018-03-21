@@ -12,7 +12,7 @@ use Amp\Producer;
 use Amp\Promise;
 use cash\LRUCache;
 
-class ZlibMiddleware implements Middleware {
+final class ZlibMiddleware implements Middleware {
     const MAX_CACHE_SIZE = 1024;
 
     /** @link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits */

@@ -7,7 +7,7 @@ use Amp\Http\Server\RequestHandler;
 use Amp\Promise;
 use function Amp\call;
 
-class CallableRequestHandler implements RequestHandler {
+final class CallableRequestHandler implements RequestHandler {
     /** @var callable */
     private $callable;
 

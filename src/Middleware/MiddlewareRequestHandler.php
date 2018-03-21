@@ -14,7 +14,7 @@ use Amp\Promise;
  *
  * @see stack()
  */
-class MiddlewareRequestHandler implements RequestHandler, ServerObserver {
+final class MiddlewareRequestHandler implements RequestHandler, ServerObserver {
     /** @var Middleware */
     private $middleware;
 

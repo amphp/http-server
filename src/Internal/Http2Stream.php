@@ -7,7 +7,7 @@ use Amp\Struct;
 /**
  * Used in Http2Driver.
  */
-class Http2Stream {
+final class Http2Stream {
     use Struct;
 
     const OPEN = 0;

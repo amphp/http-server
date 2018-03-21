@@ -14,7 +14,7 @@ use Amp\Promise;
 use Amp\Success;
 use function Amp\call;
 
-class ExceptionMiddleware implements Middleware, ServerObserver {
+final class ExceptionMiddleware implements Middleware, ServerObserver {
     /** @var bool */
     private $debug = false;
 
