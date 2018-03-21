@@ -9,6 +9,7 @@ use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\RemoteClient;
+use Amp\Http\Server\Driver\SystemTimeReference;
 use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Driver\TimeReference;
 use Amp\Loop;
@@ -105,7 +106,7 @@ class Server {
         $this->options = $options ?? new Options;
         $this->logger = $logger ?? new NullLogger;
 
-        $this->timeReference = new TimeReference;
+        $this->timeReference = new SystemTimeReference;
 
         $this->timeouts = new TimeoutCache(
             $this->timeReference,
