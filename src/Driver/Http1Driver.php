@@ -372,7 +372,8 @@ final class Http1Driver implements HttpDriver {
 
                 if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
                     $buffer .= yield $this->writer(
-                        new Request($this->client, $method, $uri, $headers, null, $protocol), new Response(Status::CONTINUE, [])
+                        new Request($this->client, $method, $uri, $headers, null, $protocol),
+                        new Response(Status::CONTINUE, [])
                     );
                 }
 
@@ -387,7 +388,8 @@ final class Http1Driver implements HttpDriver {
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
                     $buffer .= yield $this->writer(
-                        new Request($this->client, $method, $uri, $headers, null, $protocol), new Response(Status::SWITCHING_PROTOCOLS, [
+                        new Request($this->client, $method, $uri, $headers, null, $protocol),
+                        new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
                             "upgrade"    => "h2c",
                         ])
