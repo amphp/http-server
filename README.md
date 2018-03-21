@@ -35,25 +35,29 @@ composer require amphp/http-server
 ```php
 <?php
 
-use Amp\Http\Server\CallableResponder;
+use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
+use Amp\Socket;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
 
 Amp\Loop::run(function () {
-    $server = new Amp\Http\Server\Server(new CallableResponder(function (Request $request) {
+    $sockets = [
+        Socket\listen("0.0.0.0:1337"),
+        Socket\listen("[::]:1337"),
+    ];
+    
+    $server = new Amp\Http\Server\Server($sockets, new CallableRequestHandler(function (Request $request) {
         return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8"
         ], "Hello, World!");
     }));
 
-    $server->expose("*", 1337);
-
     yield $server->start();
 
-    // Stop the server when SIGINT is received.
+    // Stop the server gracefully when SIGINT is received.
     // This is technically optional, but it is best to call Server::stop().
     Amp\Loop::onSignal(SIGINT, function (string $watcherId) use ($server) {
         Amp\Loop::cancel($watcherId);
@@ -72,7 +76,7 @@ Please read [`CONTRIBUTING.md`](https://github.com/amphp/amp/blob/master/CONTRIB
 
 ## Security
 
-If you discover any security related issues, please email bobwei9@hotmail.com or me@kelunik.com instead of using the issue tracker.
+If you discover any security related issues, please email [`contact@amphp.org`](mailto:contact@amphp.org) instead of using the issue tracker.
 
 ## License
 
