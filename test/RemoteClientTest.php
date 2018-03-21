@@ -146,7 +146,7 @@ class RemoteClientTest extends TestCase {
             });
 
         $driver->method("writer")
-            ->willReturnCallback(coroutine(function (Response $written) use (&$response, &$body) {
+            ->willReturnCallback(coroutine(function (Request $request, Response $written) use (&$response, &$body) {
                 $response = $written;
                 $body = "";
                 while (null !== $part = yield $response->getBody()->read()) {
@@ -330,7 +330,7 @@ class RemoteClientTest extends TestCase {
             });
 
         $driver->method("writer")
-            ->willReturnCallback(coroutine(function (Response $written) use (&$body) {
+            ->willReturnCallback(coroutine(function (Request $request, Response $written) use (&$body) {
                 $count = 3;
                 $body = "";
                 while ($count-- && null !== $part = yield $written->getBody()->read()) {

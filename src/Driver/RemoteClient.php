@@ -574,7 +574,7 @@ final class RemoteClient implements Client {
             return; // Client closed before response could be sent.
         }
 
-        $promise = $this->httpDriver->writer($response, $request);
+        $promise = $this->httpDriver->writer($request, $response);
 
         if ($response->isUpgraded()) {
             yield $promise; // Wait on writing response when the response is an upgrade response.

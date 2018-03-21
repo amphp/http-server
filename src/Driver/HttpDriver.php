@@ -33,12 +33,12 @@ interface HttpDriver {
      * Returns a promise that resolves once the response has been written to the client. The writer should write the
      * given response to the client using the write callback provided to setup().
      *
-     * @param Response $response
      * @param Request  $request
+     * @param Response $response
      *
      * @return \Amp\Promise
      */
-    public function writer(Response $response, Request $request): Promise;
+    public function writer(Request $request, Response $response): Promise;
 
     /**
      * Stops processing further requests, returning a promise that is resolved when all currently pending requests

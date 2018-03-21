@@ -96,9 +96,9 @@ final class Http1Driver implements HttpDriver {
      *
      * Selects HTTP/2 or HTTP/1.x writer depending on connection status.
      */
-    public function writer(Response $response, Request $request): Promise {
+    public function writer(Request $request, Response $response): Promise {
         if ($this->http2) {
-            return $this->http2->writer($response, $request);
+            return $this->http2->writer($request, $response);
         }
 
         return $this->lastWrite = new Coroutine($this->send($response, $request));
@@ -372,8 +372,7 @@ final class Http1Driver implements HttpDriver {
 
                 if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
                     $buffer .= yield $this->writer(
-                        new Response(Status::CONTINUE, []),
-                        new Request($this->client, $method, $uri, $headers, null, $protocol)
+                        new Request($this->client, $method, $uri, $headers, null, $protocol), new Response(Status::CONTINUE, [])
                     );
                 }
 
@@ -388,11 +387,10 @@ final class Http1Driver implements HttpDriver {
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
                     $buffer .= yield $this->writer(
-                        new Response(Status::SWITCHING_PROTOCOLS, [
+                        new Request($this->client, $method, $uri, $headers, null, $protocol), new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
                             "upgrade"    => "h2c",
-                        ]),
-                        new Request($this->client, $method, $uri, $headers, null, $protocol)
+                        ])
                     );
 
                     // Internal upgrade
