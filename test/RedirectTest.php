@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\RedirectHandler;
 use Amp\Http\Status;
@@ -29,14 +30,8 @@ class RedirectTest extends TestCase {
 
     public function testSuccessfulAbsoluteRedirect() {
         $action = new RedirectHandler(Uri\Http::createFromString("https://localhost"), Status::MOVED_PERMANENTLY);
-        $request = new class extends Request {
-            public function __construct() {
-            }
-
-            public function getUri(): PsrUri {
-                return Uri\Http::createFromString("http://test.local/foo");
-            }
-        };
+        $uri = Uri\Http::createFromString("http://test.local/foo");
+        $request = new Request($this->createMock(Client::class), "GET", $uri);
 
         /** @var \Amp\Http\Server\Response $response */
         $response = wait($action->handleRequest($request));
@@ -47,14 +42,8 @@ class RedirectTest extends TestCase {
 
     public function testSuccessfulRelativeRedirect() {
         $action = new RedirectHandler(Uri\Http::createFromString("/test"));
-        $request = new class extends Request {
-            public function __construct() {
-            }
-
-            public function getUri(): PsrUri {
-                return Uri\Http::createFromString("http://test.local/foo");
-            }
-        };
+        $uri = Uri\Http::createFromString("http://test.local/foo");
+        $request = new Request($this->createMock(Client::class), "GET", $uri);
 
         /** @var \Amp\Http\Server\Response $response */
         $response = wait($action->handleRequest($request));

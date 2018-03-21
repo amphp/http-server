@@ -7,7 +7,7 @@ use Amp\Http\Server\ServerObserver;
 use Amp\Promise;
 use Amp\Success;
 
-class DefaultHttpDriverFactory implements HttpDriverFactory, ServerObserver {
+final class DefaultHttpDriverFactory implements HttpDriverFactory, ServerObserver {
     /** @var \Amp\Http\Server\Options */
     private $options;
 

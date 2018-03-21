@@ -20,7 +20,7 @@ use Amp\Promise;
 use League\Uri;
 use function Amp\call;
 
-class Http1Driver implements HttpDriver {
+final class Http1Driver implements HttpDriver {
     /** @see https://tools.ietf.org/html/rfc7230#section-4.1.2 */
     const DISALLOWED_TRAILERS = [
         "authorization",

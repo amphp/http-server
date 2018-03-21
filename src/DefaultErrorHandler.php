@@ -9,7 +9,7 @@ use Amp\Success;
 /**
  * ErrorHandler instance used by default if none is given.
  */
-class DefaultErrorHandler implements ErrorHandler {
+final class DefaultErrorHandler implements ErrorHandler {
     /** @var string[] */
     private $cache = [];
 

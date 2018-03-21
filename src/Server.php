@@ -20,7 +20,7 @@ use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Psr\Log\NullLogger;
 
-class Server {
+final class Server {
     use CallableMaker;
 
     const STOPPED  = 0;

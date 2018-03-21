@@ -9,7 +9,7 @@ use Amp\Http\Status;
 use Amp\Loop;
 use League\Uri;
 
-class Response extends Message {
+final class Response extends Message {
     /** @var \Amp\ByteStream\InputStream  */
     private $body;
 

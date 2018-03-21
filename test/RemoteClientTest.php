@@ -352,9 +352,7 @@ class RemoteClientTest extends TestCase {
             ->method("read")
             ->willReturn(new Success($bodyData));
 
-        $response = $this->createMock(Response::class);
-        $response->method("getBody")
-            ->willReturn($body);
+        $response = new Response(Status::OK, [], $body);
 
         $requestHandler = $this->createMock(RequestHandler::class);
         $requestHandler->expects($this->once())

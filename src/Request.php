@@ -8,7 +8,7 @@ use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Server\Driver\Client;
 use Psr\Http\Message\UriInterface as PsrUri;
 
-class Request extends Message {
+final class Request extends Message {
     /** @var Client */
     private $client;
 
