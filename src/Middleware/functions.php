@@ -3,6 +3,7 @@
 namespace Amp\Http\Server\Middleware;
 
 use Amp\Http\Server\Middleware;
+use Amp\Http\Server\Middleware\Internal\MiddlewareRequestHandler;
 use Amp\Http\Server\RequestHandler;
 
 /**

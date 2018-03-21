@@ -1,6 +1,6 @@
 <?php
 
-namespace Amp\Http\Server\Middleware;
+namespace Amp\Http\Server\Middleware\Internal;
 
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
@@ -13,6 +13,7 @@ use Amp\Promise;
  * Wraps a request handler with a single middleware.
  *
  * @see stack()
+ * @internal
  */
 final class MiddlewareRequestHandler implements RequestHandler, ServerObserver {
     /** @var Middleware */
