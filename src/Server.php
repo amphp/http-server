@@ -250,15 +250,19 @@ final class Server {
         }
 
         $this->state = self::STARTING;
-        try {
-            $promises = [];
-            foreach ($this->observers as $observer) {
-                $promises[] = $observer->onStart($this, $this->logger, $this->errorHandler);
+
+        $promises = [];
+        foreach ($this->observers as $observer) {
+            $promises[] = $observer->onStart($this, $this->logger, $this->errorHandler);
+        }
+        list($exceptions) = yield Promise\any($promises);
+
+        if (!empty($exceptions)) {
+            try {
+                yield from $this->doStop(self::DEFAULT_SHUTDOWN_TIMEOUT);
+            } finally {
+                throw new MultiReasonException($exceptions, "onStart observer initialization failure");
             }
-            yield $promises;
-        } catch (\Throwable $exception) {
-            yield from $this->doStop(self::DEFAULT_SHUTDOWN_TIMEOUT);
-            throw new \RuntimeException("onStart observer initialization failure", 0, $exception);
         }
 
         $this->state = self::STARTED;
