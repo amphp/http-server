@@ -272,8 +272,11 @@ final class Server {
         $onAcceptable = $this->callableFromInstanceMethod("onAcceptable");
         foreach ($this->boundServers as $serverName => $server) {
             $context = \stream_context_get_options($server);
+            $scheme = "http";
 
             if (isset($context["ssl"])) {
+                $scheme = "https";
+
                 if (self::hasAlpnSupport()) {
                     \stream_context_set_option($server, "ssl", "alpn_protocols", \implode(", ", $protocols));
                 } elseif ($protocols) {
@@ -282,7 +285,7 @@ final class Server {
             }
 
             $this->acceptWatcherIds[$serverName] = Loop::onReadable($server, $onAcceptable);
-            $this->logger->info("Listening on {$serverName}");
+            $this->logger->info("Listening on {$scheme}://{$serverName}/");
         }
     }
 
