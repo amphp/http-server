@@ -81,18 +81,24 @@ final class CompressionMiddleware implements Middleware {
 
         $contentType = $headers["content-type"][0];
 
-        // @TODO Perform a more sophisticated check for gzip acceptance.
-        // This check isn't technically correct as the gzip parameter
-        // could have a q-value of zero indicating "never accept gzip."
-        do {
-            foreach ($request->getHeaderArray("accept-encoding") as $value) {
-                if (\preg_match('/gzip|deflate/i', $value, $matches)) {
-                    $encoding = \strtolower($matches[0]);
-                    break 2;
+        $weight = 0;
+        foreach ($request->getHeaderArray("accept-encoding") as $values) {
+            foreach (\array_map("trim", \explode(",", $values)) as $value) {
+                if (\preg_match('/(gzip|deflate)(?:; ?q=(\d(?:\.\d{1,3})?)+)?/i', $value, $matches)) {
+                    $qValue = (float) ($matches[2] ?? 1);
+                    if ($qValue <= $weight) {
+                        continue;
+                    }
+
+                    $weight = $qValue;
+                    $encoding = \strtolower($matches[1]);
                 }
             }
+        }
+
+        if (!isset($encoding)) {
             return $response;
-        } while (false);
+        }
 
         $doDeflate = $this->contentTypeCache->get($contentType);
 
