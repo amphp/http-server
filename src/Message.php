@@ -43,7 +43,7 @@ abstract class Message {
     /**
      * Sets the headers from the given array.
      *
-     * @param string[] $headers
+     * @param string[]|string[][] $headers
      */
     public function setHeaders(array $headers) {
         // Ensure this is an atomic operation, either all headers are set or none.

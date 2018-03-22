@@ -98,6 +98,24 @@ final class Response extends Message {
     }
 
     /**
+     * Sets the headers from the given array. Any cookie headers will automatically populate the contained array of
+     * ResponseCookie objects.
+     *
+     * @param string[]|string[][] $headers
+     */
+    public function setHeaders(array $headers) {
+        $cookies = $this->cookies;
+
+        try {
+            parent::setHeaders($headers);
+        } catch (\Throwable $e) {
+            $this->cookies = $cookies;
+
+            throw $e;
+        }
+    }
+
+    /**
      * Sets the named header to the given value.
      *
      * @param string $name
