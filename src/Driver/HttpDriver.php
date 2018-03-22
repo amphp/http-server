@@ -22,8 +22,8 @@ interface HttpDriver {
      *
      * @param Client   $client    The client associated with the data being sent to the returned generator.
      * @param callable $onMessage Invoked with an instance of Request when the returned parser has parsed a request.
-     *                            Returns a promise that is resolved once the response has been generated and written to
-     *                            the client.
+     *                            Returns a promise that is resolved once the response has been generated and writing
+     *                            the response to the client initiated (but not necessarily complete).
      * @param callable $write     Invoked with raw data to be written to the client connection. Returns a promise that
      *                            is resolved when the data has been successfully written.
      *

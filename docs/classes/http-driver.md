@@ -3,58 +3,35 @@ title: HttpDriver
 permalink: /classes/http-driver
 ---
 
-{:.warning}
-> This page needs an update.
-
 * Table of Contents
 {:toc}
 
-`HttpDriver` is an interface managing the raw input from and to the client socket directly.
+`HttpDriver` is an interface for handling the raw input received from the client socket and writing the raw output back to the client.
 
-It is only possible to have one driver per **port**. There are some few possible applications of it (e.g. a PROXY protocol wrapping HTTP/1.1 communication). There are currently two classes implementing it `Http1Driver` (for HTTP/1) and `Http2Driver` (for HTTP/2).
+Each connected client uses a separate instance of `HttpDriver`, created by an instance of `HttpDriverFactory`. This instance may be set using `Server::setHttpDriverFactory()`. By default, `DefaultHttpDriverFactory` is used.
 
-## `setup(array $parseEmitters, callable $responseWriter)`
+There are currently two classes implementing `HttpDriver`: `Http1Driver` (for HTTP/1.0 and HTTP/1.1) and `Http2Driver` (for HTTP/2).
 
-Called upon initialization (possibly even before [`Bootable::boot`](bootable.md) was called).
+## `setup(Client $client, callable $onMessage, callable $write): \Generator`
 
-`$parseEmitter` is an array of `callable`s, keyed by `HttpDriver` constants.
+This method is called only once, immediately after the `HttpDriver` object is returned from the `HttpDriverFactory::selectDriver()` method.
 
-When an instance of `InternalRequest` is passed, in particular `client`, `headers`, `method`, `protocol`, `trace` and `uri*` properties should be initialized.
+`$client` is the connected `Client` instance.
 
-Several callables have an optional `$streamId` parameter. If only one request is handled simultaneously on a same connection, this parameter can be ignored, otherwise one must set it to the same value than `InternalRequest->streamId` to enable the server to feed the body data to the right request.
+`$onMessage` is a `callable(Request $request): Promise` accepting an instance of `Request`, returning a `Promise` that is resolved once a response has been generated and the writing of the response is initialized by calling `HttpDriver::write()`. Note that writing the response is not necessarily complete when the promise resolves.
 
-Depending on the callback type, different signatures are expected:
+`$write` is a `callable(string $data, bool $close = false): Promise` that is used to write raw bytes in `$data` to the client. If `$close` is `true`, the client is closed after the bytes have been written.
 
-- `HttpDriver::RESULT`: the request has no entity body. Expects an `InternalRequest` as only parameter.
-- `HttpDriver::ENTITY_HEADERS`: the request will be followed by subsequent body (`HttpDriver::ENTITY_PART` / `HttpDriver::ENITITY_RESULT`). Expects `InternalRequest` as only parameter.
-- `HttpDriver::ENTITY_PART`: contains the next part of the entity body. The signature is `(Client, string $body, int $streamId = 0)`
-- `HttpDriver::ENTITY_RESULT`: signals the end of the entity body. The signature is `(Client, int $streamId = 0)`.
-- `HttpDriver::SIZE_WARNING`: to be used when the body size exceeds the current size limits (by default `Options->maxBodySize`, might have been upgraded via `upgradeBodySize()`). Before emitting this, all the data up to the limit **must** be emitted via `HttpDriver::ENTITY_PART` first. The signature is `(Client, int $streamId = 0)`.
-- `HttpDriver::ERROR`: signals a protocol error. Here are two additional trailing arguments to this callback: a HTTP status code followed by a string error message. The signature is `(Client, int $status, string $message)`.
+This method returns a generator that is sent the raw data read from the client. The generator yields `null` or `Promise` instances. If the generator yields a promise, no additional data is to be sent to the parser until the promise resolves. Each yield must be prepared to receive additional client data, including those yielding promises. The generator should not throw an exception.
 
-`$responseWriter` is a `callable(Client $client, bool $final = false)`, supposed to be called after updates to [`$client->writeBuffer`](client.md) with the `$final` parameter signaling the response end [this is important for managing timeouts and counters].
+## `write(Request $request, Response $response): Promise`
 
-## `filters(InternalRequest $ireq, array<callable> $userFilters): array<callable>`
+Writes the response to the client. The returned promise is resolved once the entire response has been written.
 
-Returns an array of callables working according to the [`Filter`](filter.md) protocol. [Not actual `Filter` instances, but only the direct `callable`!]
+## `getPendingRequestCount(): int`
 
-## `writer(InternalRequest $ireq): \Generator`
+Returns the number of request bodies currently being read by the parser.
 
-The Generator is receiving with the first `yield` an array with the headers containing a map of field name to array of string values (pseudo-headers starting with a colon do not map to an array, but directly to a value).
+## `stop(): Promise`
 
-Subsequent `yield`s are string data with eventual intermittent `false` to signal flushing.
-
-Then a final `null` will be returned by `yield`.
-
-## `upgradeBodySize(InternalRequest $ireq)`
-
-May be called any time the body size limits wish to be increased.
-
-It should take the necessary measures so that further `HttpDriver::ENTITY_PART` may be sent.
-
-## `parser(Client $client): \Generator`
-
-Inside the parser `yield` always returns raw string data from the socket.
-
-{:.note}
-> You _can_ rely on keep-alive timeout terminating the `\Amp\ByteStream\Message` with a `ClientException`, when no further data comes in. No need to manually handle that here.
+This method signals the driver should stop dispatching further requests from the parser. The returned promise is resolved once all currently pending requests have been fully read and replied to.
