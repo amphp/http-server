@@ -106,6 +106,10 @@ If `$cookie` value is not valid, [`\Error`](http://php.net/manual/en/class.error
 
 Removes a cookie from the request.
 
+## `hasAttribute(string $name): bool`
+
+Check whether an attribute with the given name exists in the request's mutable local storage.
+
 ## `getAttribute(string $name): mixed`
 
 Retrieve a variable from the request's mutable local storage. 
