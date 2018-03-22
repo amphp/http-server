@@ -6,7 +6,6 @@ The `http-server` package provides a set of classes and interfaces:
 
 - [`Client`](client.md) &mdash; Client connection related information
 - [`HttpDriver`](http-driver.md) &mdash; Driver for interaction with the raw socket
-- [`Message`](message.md) &mdash; An abstract class represents HTTP message
 - [`Options`](options.md) &mdash; Accessor of options
 - [`Request`](request.md) &mdash; Request class for request handler callables
 - [`RequestBody`](request-body.md) &mdash; Request body
