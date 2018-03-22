@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Internal;
 
+/** @internal */
 abstract class Message {
     /** @var string[][] */
     private $headers = [];
