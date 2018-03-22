@@ -14,7 +14,7 @@ final class DefaultErrorHandler implements ErrorHandler {
     private $cache = [];
 
     /** {@inheritdoc} */
-    public function handle(int $statusCode, string $reason = null, Request $request = null): Promise {
+    public function handleError(int $statusCode, string $reason = null, Request $request = null): Promise {
         static $errorHtml;
 
         if ($errorHtml === null) {

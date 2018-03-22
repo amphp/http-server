@@ -56,7 +56,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver {
                     ], $html);
                 }
 
-                return yield $this->errorHandler->handle($status, null, $request);
+                return yield $this->errorHandler->handleError($status, null, $request);
             }
         });
     }

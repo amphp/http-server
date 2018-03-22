@@ -674,7 +674,7 @@ final class Http1Driver implements HttpDriver {
         $status = $exception->getCode() ?: Status::BAD_REQUEST;
 
         /** @var \Amp\Http\Server\Response $response */
-        $response = yield $this->errorHandler->handle($status, $message);
+        $response = yield $this->errorHandler->handleError($status, $message);
 
         $response->setHeader("connection", "close");
 

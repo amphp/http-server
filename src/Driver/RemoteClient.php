@@ -584,7 +584,7 @@ final class RemoteClient implements Client {
     private function makeMethodNotAllowedResponse(): \Generator {
         $status = Status::METHOD_NOT_ALLOWED;
         /** @var \Amp\Http\Server\Response $response */
-        $response = yield $this->errorHandler->handle($status);
+        $response = yield $this->errorHandler->handleError($status);
         $response->setHeader("Connection", "close");
         $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
         return $response;
@@ -593,7 +593,7 @@ final class RemoteClient implements Client {
     private function makeNotImplementedResponse(): \Generator {
         $status = Status::NOT_IMPLEMENTED;
         /** @var \Amp\Http\Server\Response $response */
-        $response = yield $this->errorHandler->handle($status);
+        $response = yield $this->errorHandler->handleError($status);
         $response->setHeader("Connection", "close");
         $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
         return $response;
@@ -614,13 +614,13 @@ final class RemoteClient implements Client {
         $status = Status::INTERNAL_SERVER_ERROR;
 
         try {
-            return yield $this->errorHandler->handle($status, null, $request);
+            return yield $this->errorHandler->handleError($status, null, $request);
         } catch (\Throwable $exception) {
             // If the error handler throws, fallback to returning the default HTML error page.
             $this->logger->error($exception);
 
             // The default error handler will never throw, otherwise there's a bug
-            return yield self::$defaultErrorHandler->handle($status, null, $request);
+            return yield self::$defaultErrorHandler->handleError($status, null, $request);
         }
     }
 
