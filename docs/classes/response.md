@@ -40,19 +40,23 @@ Returns the [stream](https://amphp.org/byte-stream/) for the message body.
 Sets the [stream](https://amphp.org/byte-stream/) for the message body.
 
 {:.note}
-> Using a string will automatically set the `Content-Length` header to the length of the given string. Setting a [`stream`](https://amphp.org/byte-stream/) will remove the `Content-Length` header.
+> Using a string will automatically set the `Content-Length` header to the length of the given string.
+> Setting an [`InputStream`](https://amphp.org/byte-stream/#inputstream) will remove the `Content-Length` header.
+> If you know the exact content length of your stream, you can add a `content-length` header _after_ calling `setBody()`.
 
 ## `setHeader(string $name, string | string[] $value)`
 
-Sets the named header to the given value.
+Sets the header to the given value(s).
+All previous header lines with the given name will be replaced.
 
 ## `addHeader(string $name, string | string[] $value)`
 
-Adds the value to the named header, or creates the header with the given value if it did not exist.
+Adds an additional header line with the given name.
 
 ## `removeHeader(string $name)`
 
 Removes the given header if it exists.
+If multiple header lines with the same name exist, all of them are removed.
 
 ## `getStatus(): int`
 
