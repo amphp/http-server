@@ -4,7 +4,7 @@ permalink: /classes/request
 ---
 # Request
 
-The **`Request`** class represents an HTTP request. It's used in [request handlers](request-handler.md) and [`middleware`](middleware.md).
+The **`Request`** class represents an HTTP request. It's used in [request handlers](request-handler.md) and [middleware](middleware.md).
 
 * Table of Contents
 {:toc}
