@@ -1,6 +1,6 @@
 <?php
 
-namespace Amp\Http\Server;
+namespace Amp\Http\Server\Internal;
 
 abstract class Message {
     /** @var string[][] */

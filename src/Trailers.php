@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server;
 
-final class Trailers extends Message {
+final class Trailers extends Internal\Message {
     /**
      * @param string[][[] $headers
      */
