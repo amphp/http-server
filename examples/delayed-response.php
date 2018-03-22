@@ -3,15 +3,17 @@
 
 require dirname(__DIR__) . "/vendor/autoload.php";
 
+use Amp\ByteStream\ResourceOutputStream;
 use Amp\Delayed;
-use Amp\Log\Logger;
-use Amp\Log\Writer\ConsoleWriter;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
 use Amp\Http\Status;
+use Amp\Log\ConsoleFormatter;
+use Amp\Log\StreamHandler;
 use Amp\Socket;
+use Monolog\Logger;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
 
@@ -21,7 +23,10 @@ Amp\Loop::run(function () {
         Socket\listen("[::]:1337"),
     ];
 
-    $logger = new Logger(new ConsoleWriter);
+    $logHandler = new StreamHandler(new ResourceOutputStream(\STDOUT));
+    $logHandler->setFormatter(new ConsoleFormatter);
+    $logger = new Logger('server');
+    $logger->pushHandler($logHandler);
 
     $server = new Server($servers, new CallableRequestHandler(function (Request $request) {
         // We delay the response here, but this could also be non-blocking I/O.
@@ -29,7 +34,7 @@ Amp\Loop::run(function () {
         yield new Delayed(3000);
 
         return new Response(Status::OK, [
-            "content-type" => "text/plain; charset=utf-8"
+            "content-type" => "text/plain; charset=utf-8",
         ], "Hello, World!");
     }), $logger);
 

@@ -3,11 +3,13 @@
 
 require dirname(__DIR__) . "/vendor/autoload.php";
 
-use Amp\Log\Logger;
-use Amp\Log\Writer\ConsoleWriter;
+use Amp\ByteStream\ResourceOutputStream;
+use Amp\Log\ConsoleFormatter;
+use Amp\Log\StreamHandler;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Server;
 use Amp\Socket;
+use Monolog\Logger;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
 
@@ -17,7 +19,10 @@ Amp\Loop::run(function () {
         Socket\listen("[::]:1337"),
     ];
 
-    $logger = new Logger(new ConsoleWriter);
+    $logHandler = new StreamHandler(new ResourceOutputStream(\STDOUT));
+    $logHandler->setFormatter(new ConsoleFormatter);
+    $logger = new Logger('server');
+    $logger->pushHandler($logHandler);
 
     $server = new Server($servers, new CallableRequestHandler(function () {
         throw new \Exception("Something went wrong :-(");
