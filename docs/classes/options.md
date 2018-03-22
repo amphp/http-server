@@ -3,180 +3,225 @@ title: Options
 permalink: /classes/options
 ---
 
-{:.warning}
-> This page needs an update.
-
 * Table of Contents
 {:toc}
 
-The `Options` class exposes no methods, just properties. The properties may only be set during `Server` startup, after that, they're locked from further writes.
+The `Options` class represents possible settings for the [HTTP server](server.md). The `Options` is an immutable class, it never modifies itself but returns a new object instead.
 
-## `$debug`
+## `isInDebugMode(): bool`
 
-Indicates whether debug mode is active.
+Indicates whether the server is in debug mode (`true`) or in production mode (`false`).
 
-Type: boolean
+{:.note}
+> The server mode is set to production by default.
 
-## `$user`
+## `withDebugMode(): Options`
 
-Only relevant under *nix systems when the server is started as root; it indicates to which user the server will switch to after startup.
+Sets the server mode to debug.
 
-Type: string &mdash; Default: current user
+## `withoutDebugMode(): Options`
 
-## `$maxConnections`
+Sets the server mode to production.
 
-Maximum number of total simultaneous connections the server accepts. If that number is exceeded, new connections are dropped.
+## `getConnectionLimit(): int`
 
-Type: integer greater than 0 &mdash; Default: `1000`
+Returns the maximum number of connections that can be handled by the server at a single time. If that number is exceeded, new connections are dropped.
 
-## `$connectionsPerIP`
+{:.note}
+> Default connection limit is `10000`.
 
-Maximum number of allowed connections from an individual /32 IPv4 or /56 IPv6 range.
+## `withConnectionLimit(): Options`
 
-Type: integer greater than 0 &mdash; Default: `30`
+Sets the maximum number of connections the server should accept at one time. If that number is exceeded, new connections are dropped.
 
-## `$maxRequestsPerConnection`
+{:.warning}
+> Connection limit must be greater than or equal to one.
 
-Maximum number of requests on a single connection. (On HTTP/1.1 it controls the Keep-Alive header.)
+{:.note}
+> Default connection limit is `10000`.
 
-Set to `PHP_INT_MAX` to effectively disable this limit.
+## `getConnectionsPerIpLimit(): int`
 
-Type: integer greater than 0 &mdash; Default: `1000`
+Returns the maximum number of connections allowed from an individual /32 IPv4 or /56 IPv6 range.
 
-## `$connectionTimeout`
+{:.note}
+> Default connections per IP limit is `30`.
 
-Time in seconds until a connection is closed (if no further data comes in).
+## `withConnectionsPerIpLimit(int $count): Options`
 
-Type: integer greater than 0 &mdash; Default: `6`
+Sets the maximum number of connections to allow from a single IP address.
 
-## `$defaultContentType`
+{:.warning}
+> Connections per IP limit must be greater than or equal to one.
 
-Content type of responses, if not otherwise specified by the request handler.
+{:.note}
+> Default connections per IP limit is `30`.
 
-Type: string &mdash; Default: `"text/html"`
+## `getConnectionTimeout(): int`
 
-## `$defaultTextCharset`
+Returns amount of time in seconds a connection may be idle before it is automatically closed.
 
-Text charset of text/ content types, if not otherwise specified by the request handler.
+{:.note}
+> Default connection timeout is `15` seconds.
 
-Type: string &mdash; Default: `"utf-8"`
+## `withConnectionTimeout(int $seconds): Options`
 
-## `$sendServerToken`
+Sets the number of seconds a connection may be idle before it is automatically closed.
 
-Whether a `Server` header field should be sent along with the response.
+{:.warning}
+> Connection timeout must be greater than or equal to one second.
 
-Type: boolean &mdash; Default: `false`
+{:.note}
+> Default connection timeout is `15` seconds.
 
-## `$socketBacklogSize`
+## `getBodySizeLimit(): int`
 
-Size of the backlog, i.e. how many connections may be pending in an unaccepted state.
+Returns maximum HTTP request body size in bytes.
 
-Type: integer greater than or equal to 16 &mdash; Default: `128
+{:.note}
+> Default body size limit is `131072` bytes (128k).
 
-## `$normalizeMethodCase`
+## `withBodySizeLimit(int $bytes): Options`
 
-Whether method names shall be lowercased.
+Sets maximum request body size in bytes. Individual request body may be increased by calling [`RequestBody::increaseSizeLimit`](request-body.md).
 
-Type: boolean &mdash; Default: `true`
+{:.warning}
+> Body size limit must be greater than or equal to zero.
 
-## `$maxConcurrentStreams`
+{:.note}
+> Default body size limit is `131072` bytes (128k).
 
-Maximum number of concurrent HTTP/2 streams per connection.
+## `getHeaderSizeLimit(): int`
 
-Type: integer greater than 0 &mdash; Default: `20`
+Returns maximum size of the request header section in bytes.
 
-## `$maxFramesPerSecond`
+{:.note}
+> Default header size limit is `32768` bytes (32k).
 
-Maximum number of frames a HTTP/2 client is allowed to send per second.
+## `withHeaderSizeLimit(int $bytes): Options`
 
-Type: integer &mdash; Default: `60`
+Sets maximum size of the request header section in bytes.
 
-## `$allowedMethods`
+{:.warning}
+> Header size limit must be greater than zero.
 
-Array of allowed HTTP methods. [The [`Router`](router.md) class will extend this array with the used methods.]
+{:.note}
+> Default header size limit is `32768` bytes (32k).
 
-Type: array&lt;string> &mdash; Default: `["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"]`
+## `getConcurrentStreamLimit(): int`
 
-## `$deflateEnable`
+Returns the maximum number of concurrent HTTP/2 streams per connection.
 
-Whether HTTP body compression should be active.
+{:.note}
+> Default concurrent streams limit is `20`.
 
-Type: boolean &mdash; Default: `extension_loaded("zlib")`
+## `withConcurrentStreamLimit(int $streams): Options`
 
-## `$deflateContentTypes`
+Sets the maximum number of concurrent HTTP/2 streams per connection.
 
-A regular expression to match the content-type against in order to determine whether a request shall be deflated or not.
+{:.warning}
+> Concurrent streams limit must be greater than zero.
 
-Type: string &mdash; Default: `"#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i"`
+{:.note}
+> Default concurrent streams limit is `20`.
 
-## `$configPath`
+## `getMinimumAverageFrameSize(): int`
 
-Path to the used configuration file
+Returns minimum average frame size required if more than the maximum number of frames per second are received on an HTTP/2 connection.
 
-Type: string
+{:.note}
+> Default minimum average frame size is `1024` bytes (1k).
 
-## `$maxFieldLen`
+## `withMinimumAverageFrameSize(int $size): Options`
 
-Maximum length of a field name of parsed bodies.
+Sets minimum average frame size required if more than the maximum number of frames per second are received on an HTTP/2 connection.
 
-Type: integer greater than 0 &mdash; Default: `16384`
+{:.warning}
+> Minimum average frame size must be greater than zero.
 
-## `$maxInputVars`
+{:.note}
+> Default minimum average frame size is `1024` bytes (1k).
 
-Maximum number of input vars (in query string or parsed body).
+## `getFramesPerSecondLimit(): int`
 
-Type: integer greater or equal to 0 &mdash; Default: `200`
+Returns the maximum number of HTTP/2 frames per second before the average length minimum is enforced.
 
-## `$maxBodySize`
+{:.note}
+> Default frames per second limit is `60`.
 
-Default maximum size of HTTP bodies. [Can be increased by calling [`HttpDriver::upgradeBodySize($ireq)`](httpdriver.md) or more commonly [`Response::getBody($size)`](response.md).]
+## `withFramesPerSecondLimit(int $frames): Options`
 
-Type: integer greater than or equal to 0 &mdash; Default: `131072` (128 KiB)
+Sets the maximum number of HTTP/2 frames per second before the average length minimum is enforced.
 
-## `$maxHeaderSize`
+{:.warning}
+> Maximum number of HTTP/2 frames per second setting must be greater than zero.
 
-Maximum header size of a HTTP request.
+{:.note}
+> Default frames per second limit is `60`.
 
-Type: integer greater than 0 &mdash; Default: `32768`
+## `getChunkSize(): int`
 
-## `$ioGranularity`
+Returns the maximum number of bytes to read from a client per read.
 
-Granularity at which reads from the socket and into the bodies are performed.
+{:.note}
+> Default frames per second limit is `8192` (8k).
 
-Type: integer greater than 0 &mdash; Default: `32768`
+## `withChunkSize(int $bytes): Options`
 
-## `$softStreamCap`
+Sets the maximum number of bytes to read from a client per read.
 
-Limit at which the internal buffers are considered saturated and resolution of `Promise`s returned by `Response::write()` is delayed until the buffer sizes fall below it.
+{:.warning}
+> Maximum number of HTTP/2 frames per second setting must be greater than zero.
 
-Type: integer greater than or equal to 0 &mdash; Default: `131072`
+{:.note}
+> Default frames per second limit is `8192` (8k).
 
-## `$deflateMinimumLength`
+## `getAllowedMethods(): array`
 
-Minimum length before any compression is applied.
+Returns an array of allowed request methods.
 
-Type: integer greater than or equal to 0 &mdash; Default: `860`
+{:.note}
+> Default allowed methods are:
+> `["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"]`
 
-## `$deflateBufferSize`
+## `withAllowedMethods(array $allowedMethods): Options`
 
-Buffer size before data is compressed (except it is ended or flushed before).
+Sets an array of allowed request methods.
 
-Type: integer greater than 0 &mdash; Default: `8192`
+{:.warning}
+> Allowed methods must be an array of non-empty strings and contain GET and HEAD methods:
+> `["GET", "HEAD"]`
 
-## `$chunkBufferSize`
+{:.note}
+> Default allowed methods are:
+> `["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"]`
 
-Buffer size before data is being chunked (except it is ended or flushed before).
+## `isHttp2UpgradeAllowed(): bool`
 
-Type: integer greater than 0 &mdash; Default: `8192`
+Returns `true` if HTTP/2 requests may be established through upgrade requests or prior knowledge.
 
-## `$outputBufferSize`
+{:.note}
+> HTTP/2 requests through upgrade requests are disabled by default.
 
-Buffer size before data is written onto the stream (except it is ended or flush before).
+## `withHttp2Upgrade(): Options `
 
-Type: integer greater than 0 &mdash; Default: `8192`
+Enables unencrypted upgrade or prior knowledge requests to HTTP/2.
 
-## `$shutdownTimeout`
+## `withoutHttp2Upgrade(): Options`
 
-Milliseconds before the Server is forcefully shut down after graceful stopping has been initiated.
+Disables unencrypted upgrade or prior knowledge requests to HTTP/2.
 
-Type: integer greater or equal to 0 &mdash; Default: `3000`
+## `isCompressionEnabled(): bool`
+
+Returns `true` if compression is enabled.
+
+{:.note}
+> Compression is enabled by default.
+
+## `withCompression(): Options`
+
+Enables compression-by-default.
+
+## `withoutCompression(): Options`
+
+Disables compression-by-default.

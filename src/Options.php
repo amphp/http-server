@@ -175,7 +175,7 @@ final class Options {
      * @throws \Error
      */
     public function withHeaderSizeLimit(int $bytes): self {
-        if ($bytes <= 0) {
+        if ($bytes < 1) {
             throw new \Error(
                 "Max header size setting must be greater than zero"
             );
