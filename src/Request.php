@@ -308,6 +308,21 @@ final class Request extends Internal\Message {
     }
 
     /**
+     * Check whether a variable with the given name exists in the request's mutable local storage.
+     *
+     * Each request has its own mutable local storage to which request handlers and middleware may read and write data.
+     * Other request handlers or middleware which are aware of this data can then access it without the server being
+     * tightly coupled to specific implementations.
+     *
+     * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
+     *
+     * @return bool
+     */
+    public function hasAttribute(string $name): bool {
+        return \array_key_exists($name, $this->attributes);
+    }
+
+    /**
      * Retrieve a variable from the request's mutable local storage.
      *
      * Each request has its own mutable local storage to which request handlers and middleware may read and write data.
@@ -319,7 +334,7 @@ final class Request extends Internal\Message {
      * @return mixed
      */
     public function getAttribute(string $name) {
-        if (!isset($this->attributes[$name])) {
+        if (!$this->hasAttribute($name)) {
             throw new MissingAttributeError("The requested attribute '{$name}' does not exist");
         }
 
