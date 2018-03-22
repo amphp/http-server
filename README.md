@@ -6,6 +6,8 @@
 This package provides a non-blocking HTTP/1.1 and HTTP/2 application server written in PHP based on [Amp](https://github.com/amphp/amp).
 Several features are provided in separate packages, such as the [WebSocket component](https://github.com/amphp/websocket-server).
 
+The packages was previously named [`amphp/aerys`](https://github.com/amphp/aerys), but has been renamed to be easier to remember, as many people were having issues with the old name.
+
 ## Features
 
 - [Static file serving](https://github.com/amphp/http-server-static-content)
