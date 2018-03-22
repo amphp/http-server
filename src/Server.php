@@ -82,8 +82,7 @@ final class Server {
     /**
      * @param SocketServer[] $servers
      * @param RequestHandler $requestHandler
-     * @param PsrLogger|null $logger  Null automatically uses an instance of `Psr\Log\NullLogger`.
-     *
+     * @param PsrLogger      $logger
      * @param Options|null   $options Null creates an Options object with all default options.
      *
      * @throws \Error
@@ -107,8 +106,8 @@ final class Server {
             throw new \Error("Argument 1 can't be an empty array");
         }
 
-        $this->options = $options ?? new Options;
         $this->logger = $logger;
+        $this->options = $options ?? new Options;
         $this->timeReference = new SystemTimeReference;
         $this->timeouts = new TimeoutCache(
             $this->timeReference,
