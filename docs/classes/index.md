@@ -13,3 +13,4 @@ The `http-server` package provides a set of classes and interfaces:
 - [`Response`](response.md) &mdash; General response interface for responder callables
 - [`Server`](server.md) &mdash; The server, tying everything together
 - [`ServerObserver`](server-observer.md) &mdash; Registers method to be notified upon Server state changes
+- [`Trailers`](trailers.md) &mdash; Access request trailers

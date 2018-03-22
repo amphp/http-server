@@ -22,7 +22,7 @@ final class RequestBody extends Payload {
     /**
      * @param \Amp\ByteStream\InputStream $stream
      * @param callable|null               $upgradeSize Callback used to increase the maximum size of the body.
-     * @param Promise|null                $trailers Promise for array of trailing headers.
+     * @param Promise|null                $trailers Promise for trailing headers.
      */
     public function __construct(InputStream $stream, callable $upgradeSize = null, Promise $trailers = null) {
         parent::__construct($stream);
