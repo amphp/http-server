@@ -3,6 +3,8 @@
 
 require dirname(__DIR__) . "/vendor/autoload.php";
 
+use Amp\Log\Logger;
+use Amp\Log\Writer\ConsoleWriter;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
@@ -18,6 +20,8 @@ Amp\Loop::run(function () {
         Socket\listen("[::]:1337"),
     ];
 
+    $logger = new Logger(new ConsoleWriter);
+
     $server = new Server($servers, new CallableRequestHandler(function (Request $request) {
         static $counter = 0;
 
@@ -28,7 +32,7 @@ Amp\Loop::run(function () {
         return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8"
         ], "You're visitor #" . (++$counter) . ".");
-    }));
+    }), $logger);
 
     yield $server->start();
 

@@ -43,6 +43,7 @@
     "require-dev": {
         "amphp/phpunit-util": "^1",
         "amphp/artax": "^3",
+        "amphp/log": "dev-master as 0.1.0",
         "friendsofphp/php-cs-fixer": "^2.3",
         "league/uri-components": "^1.7",
         "phpunit/phpunit": "^6",

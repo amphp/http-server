@@ -5,6 +5,8 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream\IteratorStream;
 use Amp\Delayed;
+use Amp\Log\Logger;
+use Amp\Log\Writer\ConsoleWriter;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
@@ -22,6 +24,8 @@ Amp\Loop::run(function () {
         Socket\listen("[::]:1337"),
     ];
 
+    $logger = new Logger(new ConsoleWriter);
+
     $server = new Server($servers, new CallableRequestHandler(function (Request $request) {
         // We stream the response here, one line every 100 ms.
         return new Response(Status::OK, [
@@ -32,7 +36,7 @@ Amp\Loop::run(function () {
                 yield $emit("Line {$i}\r\n");
             }
         })));
-    }), (new Options)->withOutputBufferSize(1));
+    }), $logger, (new Options)->withoutCompression());
 
     yield $server->start();
 

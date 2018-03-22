@@ -12,6 +12,7 @@ use Amp\Http\Status;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Socket;
+use Psr\Log\LoggerInterface as PsrLogger;
 
 class ServerTest extends TestCase {
     public function testEmptySocketArray() {
@@ -19,7 +20,7 @@ class ServerTest extends TestCase {
         $this->expectExceptionMessage('Argument 1 can\'t be an empty array');
         new Server([], new CallableRequestHandler(function () {
             return new Response;
-        }));
+        }), $this->createMock(PsrLogger::class));
     }
 
     public function testShutdownWaitsOnUnfinishedResponses() {
@@ -28,7 +29,7 @@ class ServerTest extends TestCase {
             yield new Delayed(2000);
 
             return new Response(Status::NO_CONTENT);
-        }));
+        }), $this->createMock(PsrLogger::class));
 
         Promise\wait($server->start());
 

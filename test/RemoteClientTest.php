@@ -57,7 +57,7 @@ class RemoteClientTest extends TestCase {
         )];
 
         $options = (new Options)->withDebugMode();
-        $server = new Server($servers, $handler, $options);
+        $server = new Server($servers, $handler, $this->createMock(PsrLogger::class), $options);
 
         yield $server->start();
         return [$address, $server];

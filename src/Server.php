@@ -19,7 +19,6 @@ use Amp\Promise;
 use Amp\Socket\Server as SocketServer;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
-use Psr\Log\NullLogger;
 
 final class Server {
     use CallableMaker;
@@ -83,16 +82,18 @@ final class Server {
     /**
      * @param SocketServer[] $servers
      * @param RequestHandler $requestHandler
-     * @param Options|null   $options Null creates an Options object with all default options.
-     * @param PsrLogger|null $logger Null automatically uses an instance of `Psr\Log\NullLogger`.
+     * @param PsrLogger|null $logger  Null automatically uses an instance of `Psr\Log\NullLogger`.
      *
+     * @param Options|null   $options Null creates an Options object with all default options.
+     *
+     * @throws \Error
      * @throws \TypeError If $servers contains anything other than instances of `Amp\Socket\Server`.
      */
     public function __construct(
         array $servers,
         RequestHandler $requestHandler,
-        Options $options = null,
-        PsrLogger $logger = null
+        PsrLogger $logger,
+        Options $options = null
     ) {
         foreach ($servers as $server) {
             if (!$server instanceof SocketServer) {
@@ -107,7 +108,7 @@ final class Server {
         }
 
         $this->options = $options ?? new Options;
-        $this->logger = $logger ?? new NullLogger;
+        $this->logger = $logger;
         $this->timeReference = new SystemTimeReference;
         $this->timeouts = new TimeoutCache(
             $this->timeReference,
