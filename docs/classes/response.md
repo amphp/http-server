@@ -44,6 +44,29 @@ Sets the [stream](https://amphp.org/byte-stream/) for the message body.
 > Setting an [`InputStream`](https://amphp.org/byte-stream/#inputstream) will remove the `Content-Length` header.
 > If you know the exact content length of your stream, you can add a `content-length` header _after_ calling `setBody()`.
 
+## `getHeaders(): array`
+
+Returns the headers as a string-indexed array of arrays of strings or an empty array if no headers have been set.
+
+## `hasHeader(string $name): bool`
+
+Checks if given header exists.
+
+## `getHeaderArray(string $name): array`
+
+Returns the array of values for the given header or an empty array if the header does not exist.
+
+## `getHeader(string $name): ?string`
+
+Returns the value of the given header.
+If multiple headers are present for the named header, only the first header value will be returned.
+Use `getHeaderArray()` to return an array of all values for the particular header.
+Returns `null` if the header does not exist.
+
+## `setHeaders(array $headers)`
+
+Sets the headers from the given array.
+
 ## `setHeader(string $name, string | string[] $value)`
 
 Sets the header to the given value(s).

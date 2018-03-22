@@ -7,7 +7,7 @@ abstract class Message {
     private $headers = [];
 
     /**
-     * Returns the response headers as a string-indexed array of arrays of strings or an empty array if no headers
+     * Returns the headers as a string-indexed array of arrays of strings or an empty array if no headers
      * have been set.
      *
      * @return string[][]
@@ -28,7 +28,7 @@ abstract class Message {
     }
 
     /**
-     * Returns the value of the given header. If multiple headers were present for the named header, only the first
+     * Returns the value of the given header. If multiple headers are present for the named header, only the first
      * header value will be returned. Use getHeaderArray() to return an array of all values for the particular header.
      * Returns null if the header does not exist.
      *
