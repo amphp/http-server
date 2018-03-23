@@ -1,3 +1,49 @@
+### 0.8.0
+
+This version is a major refactor, with many components being moved to separate libraries.
+
+- Routing is now in [amphp/http-server-router](https://github.com/amphp/http-server-router)
+- Static file serving (formerly `Root`) is now in [amphp/http-server-static-files](https://github.com/amphp/http-static-files)
+- Form body parsing is now in [amphp/http-server-form-parser](https://github.com/amphp/http-server-form-parser)
+- Multi-processing has been refactored to be general purpose and moved to [amphp/cluster](https://github.com/amphp/cluster)
+- The WebSocket server component is now in [amphp/websocket-server](https://github.com/amphp/websocket-server)
+
+A server is now created using an array of socket servers, an instance of `RequestHandler`, and a PSR-3 logger instance.
+
+```php
+use Amp\Http\Server\RequestHandler\CallableRequestHandler;
+use Amp\Http\Server\Server;
+use Psr\Log\NullLogger;
+
+Amp\Loop::run(function () {
+    $sockets = [
+        Amp\Socket\listen("0.0.0.0:1337"),
+        Amp\Socket\listen("[::]:1337"),
+    ];
+    
+    $server = new Server($sockets, new CallableRequestHandler(function (Request $request) {
+        return new Response(Status::OK, [
+            "content-type" => "text/plain; charset=utf-8"
+        ], "Hello, World!");
+    }), new NullLogger);
+
+    yield $server->start();
+
+    // Stop the server gracefully when SIGINT is received.
+    // This is technically optional, but it is best to call Server::stop().
+    Amp\Loop::onSignal(SIGINT, function (string $watcherId) use ($server) {
+        Amp\Loop::cancel($watcherId);
+        yield $server->stop();
+    });
+});
+```
+
+Request handling has been changed significantly. Requests are now handled through interfaces modeled after [PSR-15](https://www.php-fig.org/psr/psr-15/), modified to be used in a non-blocking context.
+
+Requests are handled by objects of classes implementing `RequestHandler`, which may be wrapped with any number of objects of classes implementing `Middleware`. Middleware is combined with a request handler using the `Middleware\stack()` function, returning an instance of `RequestHandler` that can be used with `Server` or anywhere else a `RequestHandler` may be used (such as routes in the routing library).
+
+Please see the [documentation](https://amphp.org/http-server) for more information.
+
 ### 0.7.4
 
  - Fixed an issue where the timing of WebSocket writes could cause out of order messages.
