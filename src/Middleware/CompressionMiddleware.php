@@ -84,7 +84,7 @@ final class CompressionMiddleware implements Middleware {
         $weight = 0;
         foreach ($request->getHeaderArray("accept-encoding") as $values) {
             foreach (\array_map("trim", \explode(",", $values)) as $value) {
-                if (\preg_match('/(gzip|deflate)(?:; ?q=(\d(?:\.\d{1,3})?)+)?/i', $value, $matches)) {
+                if (\preg_match('/^(gzip|deflate)(?:;q=(1(?:\.0{1,3})?|0(?:\.\d{1,3})?))?$/i', $value, $matches)) {
                     $qValue = (float) ($matches[2] ?? 1);
                     if ($qValue <= $weight) {
                         continue;
@@ -124,8 +124,7 @@ final class CompressionMiddleware implements Middleware {
 
                 if ($chunk === null) {
                     // Body is not large enough to compress.
-                    $response->setHeader("content-length", \strlen($bodyBuffer));
-                    $response->setBody(new InMemoryStream($bodyBuffer));
+                    $response->setBody($bodyBuffer);
                     return $response;
                 }
             } while (true);
