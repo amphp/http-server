@@ -18,6 +18,9 @@ final class ExceptionMiddleware implements Middleware, ServerObserver {
     /** @var bool */
     private $debug = false;
 
+    /** @var \Psr\Log\LoggerInterface */
+    private $logger;
+
     /** @var \Amp\Http\Server\ErrorHandler */
     private $errorHandler;
 
@@ -35,6 +38,8 @@ final class ExceptionMiddleware implements Middleware, ServerObserver {
                 throw $exception; // Ignore ClientExceptions.
             } catch (\Throwable $exception) {
                 $status = Status::INTERNAL_SERVER_ERROR;
+
+                $this->logger->error($exception);
 
                 // Return an HTML page with the exception in debug mode.
                 if ($this->debug) {
@@ -63,6 +68,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver {
 
     public function onStart(Server $server): Promise {
         $this->debug = $server->getOptions()->isInDebugMode();
+        $this->logger = $server->getLogger();
         $this->errorHandler = $server->getErrorHandler();
         return new Success;
     }
