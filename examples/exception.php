@@ -1,9 +1,10 @@
 #!/usr/bin/env php
 <?php
 
-require dirname(__DIR__) . "/vendor/autoload.php";
+require __DIR__ . "/support/bootstrap.php";
 
 use Amp\ByteStream\ResourceOutputStream;
+use Amp\Http\Server\Support\Recommender;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
@@ -27,6 +28,8 @@ Amp\Loop::run(function () {
     $server = new Server($servers, new CallableRequestHandler(function () {
         throw new \Exception("Something went wrong :-(");
     }), $logger);
+
+    $server->attach(new Recommender);
 
     yield $server->start();
 

@@ -1,13 +1,14 @@
 #!/usr/bin/env php
 <?php
 
-require dirname(__DIR__) . "/vendor/autoload.php";
+require __DIR__ . "/support/bootstrap.php";
 
 use Amp\ByteStream\ResourceOutputStream;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
+use Amp\Http\Server\Support\Recommender;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
@@ -38,6 +39,8 @@ Amp\Loop::run(function () {
             "content-type" => "text/plain; charset=utf-8",
         ], "You're visitor #" . (++$counter) . ".");
     }), $logger);
+
+    $server->attach(new Recommender);
 
     yield $server->start();
 
