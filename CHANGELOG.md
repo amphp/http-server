@@ -1,3 +1,9 @@
+### 0.8.1
+
+- Fixed an issue where latency was increased dramatically on some systems compared to v0.7.x (#252).
+- Fixed the `content-length` header being removed by `CompressionMiddleware` if the body was not long enough to be compressed.
+- `ExceptionMiddleware` now writes the exception to the log to mimic the default behavior if it were not used.
+
 ### 0.8.0
 
 This version is a major refactor, with many components being moved to separate libraries.
