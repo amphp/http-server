@@ -174,8 +174,8 @@ final class Http1Driver implements HttpDriver {
                 $buffer = $chunk = ""; // Don't use null here, because of the finally
             }
 
-            if ($chunked || $shouldClose) {
-                yield ($this->write)($chunked ? "0\r\n\r\n" : "", $shouldClose);
+            if ($buffer !== "" || $chunked || $shouldClose) {
+                yield ($this->write)($chunked ? "{$buffer}0\r\n\r\n" : $buffer, $shouldClose);
             }
         } catch (ClientException $exception) {
             return; // Client will be closed in finally.

@@ -863,12 +863,12 @@ class Http1DriverTest extends TestCase {
             function (string $data, bool $close = false) use (&$invoked) {
                 static $i = 0;
 
-                // Headers are written first, then all body chunks separately
+                // Headers are written with the first body chunk, then all remaining body chunks separately
                 if (++$i === 1) {
                     $expected = "HTTP/1.0 200 OK";
                     $this->assertEquals($expected, \substr($data, 0, \strlen($expected)));
                     $this->assertFalse($close);
-                } elseif ($i === 3) {
+                } elseif ($i === 2) {
                     $this->assertTrue($close);
                     $invoked = true;
                 }
