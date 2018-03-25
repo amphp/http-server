@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server\Middleware;
 
-use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Coroutine;
 use Amp\Http\Server\Middleware;
