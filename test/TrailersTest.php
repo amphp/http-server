@@ -59,6 +59,10 @@ class TrailersTest extends TestCase {
     }
 
     public function testSetHeadersIsAtomic() {
+        if (\ini_get('zend.assertions') !== '1' || !\ini_get('assert.exception')) {
+            $this->markTestSkipped('Assertions need to be enabled and throw for this test.');
+        }
+
         $trailers = new Trailers([]);
 
         try {

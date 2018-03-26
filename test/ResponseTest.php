@@ -29,10 +29,16 @@ class ResponseTest extends TestCase {
         });
     }
 
+    public function testSetBodyWithConvertibleType() {
+        $response = new Response;
+        $response->setBody(42);
+        $this->assertTrue(true);
+    }
+
     public function testSetBodyWithWrongType() {
         $response = new Response;
         $this->expectException(\TypeError::class);
-        $response->setBody(42);
+        $response->setBody(new \stdClass);
     }
 
     public function testCookies() {
