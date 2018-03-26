@@ -220,17 +220,23 @@ final class Request extends Internal\Message {
             return;
         }
 
-        if ($stringOrStream !== null && !\is_string($stringOrStream)) {
+        try {
+            // Use method with string type declaration, so we don't need to implement our own check.
+            $this->setBodyFromString($stringOrStream ?? "");
+        } catch (\TypeError $e) {
+            // Provide a better error message in case of a failure.
             throw new \TypeError(\sprintf(
-                "The request body must a string, null, or an instance of %s or %s ",
-                RequestBody::class,
+                "The request body must a string, null, or an instance of %s",
                 InputStream::class
             ));
         }
+    }
 
-        $this->body = new RequestBody(new InMemoryStream($stringOrStream));
-        if ($length = \strlen($stringOrStream)) {
-            $this->setHeader("content-length", (string) \strlen($stringOrStream));
+    private function setBodyFromString(string $body) {
+        $this->body = new RequestBody(new InMemoryStream($body));
+
+        if ($length = \strlen($body)) {
+            $this->setHeader("content-length", (string) \strlen($body));
         } elseif (!\in_array($this->method, ["GET", "HEAD", "OPTIONS", "TRACE"])) {
             $this->setHeader("content-length", "0");
         } else {

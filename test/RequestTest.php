@@ -124,14 +124,24 @@ class RequestTest extends TestCase {
         $this->assertFalse($request->hasHeader('content-length'));
     }
 
-    public function testSetBodyWrongType() {
+    public function testSetBodyWithConvertibleType() {
+        $client = $this->createMock(Client::class);
+        $request = new Request($client, 'POST', Http::createFromString('/'), [
+            'content-length' => '0',
+        ]);
+
+        $request->setBody(42);
+        $this->assertTrue(true);
+    }
+
+    public function testSetBodyWithWrongType() {
         $client = $this->createMock(Client::class);
         $request = new Request($client, 'POST', Http::createFromString('/'), [
             'content-length' => '0',
         ]);
 
         $this->expectException(\TypeError::class);
-        $request->setBody(42);
+        $request->setBody(new \stdClass);
     }
 
     public function testCookies() {

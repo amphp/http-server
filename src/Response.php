@@ -89,12 +89,18 @@ final class Response extends Internal\Message {
             return;
         }
 
-        if ($stringOrStream !== null && !\is_string($stringOrStream)) {
+        try {
+            // Use method with string type declaration, so we don't need to implement our own check.
+            $this->setBodyFromString($stringOrStream ?? "");
+        } catch (\TypeError $e) {
+            // Provide a better error message in case of a failure.
             throw new \TypeError("The response body must a string, null, or instance of " . InputStream::class);
         }
+    }
 
-        $this->body = new InMemoryStream($stringOrStream);
-        $this->setHeader("content-length", (string) \strlen($stringOrStream));
+    private function setBodyFromString(string $body) {
+        $this->body = new InMemoryStream($body);
+        $this->setHeader("content-length", (string) \strlen($body));
     }
 
     /**
