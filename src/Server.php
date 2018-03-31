@@ -366,7 +366,7 @@ final class Server {
     /**
      * Stop the server.
      *
-     * @param int $timeout Number of seconds to allow clients to gracefully shutdown before forcefully closing.
+     * @param int $timeout Number of milliseconds to allow clients to gracefully shutdown before forcefully closing.
      *
      * @return Promise
      */
