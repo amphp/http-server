@@ -244,7 +244,8 @@ final class Http2Driver implements HttpDriver {
             return new Success; // Client closed the stream or connection.
         }
 
-        return $this->streams[$id]->pendingWrite = new Coroutine($this->send($id, $response, $request));
+        $stream = $this->streams[$id]; // $this->streams[$id] may be unset in send().
+        return $stream->pendingWrite = new Coroutine($this->send($id, $response, $request));
     }
 
     public function send(int $id, Response $response, Request $request): \Generator {
@@ -297,6 +298,7 @@ final class Http2Driver implements HttpDriver {
 
             if ($request->getMethod() === "HEAD") {
                 $this->writeData("", $id, true);
+                $part = null;
                 return;
             }
 
