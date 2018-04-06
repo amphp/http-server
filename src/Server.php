@@ -123,6 +123,7 @@ final class Server {
         $this->timeReference->onTimeUpdate($this->callableFromInstanceMethod("timeoutKeepAlives"));
 
         $this->observers = new \SplObjectStorage;
+        $this->observers->attach(new Internal\PerformanceRecommender);
 
         $this->errorHandler = new DefaultErrorHandler;
         $this->driverFactory = new DefaultHttpDriverFactory;
@@ -304,7 +305,7 @@ final class Server {
         );
 
         \assert($this->logger->debug("Accept {$client->getRemoteAddress()}:{$client->getRemotePort()} on " .
-                stream_socket_get_name($socket, false) . " #" . (int) $socket) || true);
+            "{$client->getLocalAddress()}:{$client->getLocalPort()} #{$client->getId()}") || true);
 
         $net = $client->getRemoteAddress();
         if (@\inet_pton($net) !== false && isset($net[4])) {

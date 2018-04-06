@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 
-require __DIR__ . "/support/bootstrap.php";
+require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream\IteratorStream;
 use Amp\ByteStream\ResourceOutputStream;
@@ -11,7 +11,6 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
-use Amp\Http\Server\Support\Recommender;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
@@ -43,8 +42,6 @@ Amp\Loop::run(function () {
             }
         })));
     }), $logger, (new Options)->withoutCompression());
-
-    $server->attach(new Recommender);
 
     yield $server->start();
 
