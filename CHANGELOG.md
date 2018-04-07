@@ -1,3 +1,8 @@
+### 0.8.2
+
+- Fixed an issue when an HTTP/2 response is written immediately (#258).
+- Performance recommendations are now logged as warnings when starting the server depending the mode set in options (debug or production), the value of the zend.assertions ini setting, and if the xdebug extension is loaded (related to #256).
+
 ### 0.8.1
 
 - Fixed an issue where latency was increased dramatically on some systems compared to v0.7.x (#252).
@@ -9,7 +14,7 @@
 This version is a major refactor, with many components being moved to separate libraries.
 
 - Routing is now in [amphp/http-server-router](https://github.com/amphp/http-server-router)
-- Static file serving (formerly `Root`) is now in [amphp/http-server-static-files](https://github.com/amphp/http-static-files)
+- Static file serving (formerly `Root`) is now in [amphp/http-server-static-content](https://github.com/amphp/http-static-content)
 - Form body parsing is now in [amphp/http-server-form-parser](https://github.com/amphp/http-server-form-parser)
 - Multi-processing has been refactored to be general purpose and moved to [amphp/cluster](https://github.com/amphp/cluster)
 - The WebSocket server component is now in [amphp/websocket-server](https://github.com/amphp/websocket-server)
