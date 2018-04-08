@@ -2,6 +2,7 @@
 
 - Fixed an issue when an HTTP/2 response is written immediately (#258).
 - Performance recommendations are now logged as warnings when starting the server depending the mode set in options (debug or production), the value of the zend.assertions ini setting, and if the xdebug extension is loaded (related to #256).
+- `Request::setBody()` and `Response::setBody()` now additionally accepts any value that can be cast to a string (such as integers, floats, and objects with a `__toString()` method) as the body content (#254).
 
 ### 0.8.1
 
