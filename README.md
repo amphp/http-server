@@ -43,7 +43,6 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\Socket;
-use Psr\Log\NullLogger;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
 
@@ -57,7 +56,7 @@ Amp\Loop::run(function () {
         return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8"
         ], "Hello, World!");
-    }), new NullLogger);
+    }));
 
     yield $server->start();
 
