@@ -116,7 +116,7 @@ final class Server {
 
         if ($this->options->isCompressionEnabled()) {
             if (!\extension_loaded('zlib')) {
-                $this->logger->error(
+                $this->logger->warning(
                     "The zlib extension is not loaded which prevents using compression. " .
                     "Either activate the zlib extension or disable compression in the server's options."
                 );
