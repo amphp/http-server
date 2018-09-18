@@ -115,7 +115,14 @@ final class Server {
         );
 
         if ($this->options->isCompressionEnabled()) {
-            $requestHandler = Middleware\stack($requestHandler, new CompressionMiddleware);
+            if (!\extension_loaded('zlib')) {
+                $this->logger->error(
+                    "The zlib extension is not loaded which prevents using compression. " .
+                    "Either activate the zlib extension or disable compression in the server's options."
+                );
+            } else {
+                $requestHandler = Middleware\stack($requestHandler, new CompressionMiddleware);
+            }
         }
 
         $this->requestHandler = $requestHandler;
