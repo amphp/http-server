@@ -1,4 +1,4 @@
-# http-server
+<h1 align="center"><img src="https://raw.githubusercontent.com/amphp/logo/master/repos/http-server.png?v=21-09-2018" alt="HTTP Server" width="350"></h1>
 
 [![Build Status](https://travis-ci.org/amphp/http-server.svg?branch=master)](https://travis-ci.org/amphp/http-server)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/amphp/http-server/blob/master/LICENSE)
