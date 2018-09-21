@@ -1,3 +1,7 @@
+### 0.8.3
+
+ - Disabled compression if `ext-zlib` isn't available (#267)
+
 ### 0.8.2
 
 - Fixed an issue when an HTTP/2 response is written immediately (#258).
