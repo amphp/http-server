@@ -30,7 +30,7 @@ Returns the maximum number of connections that can be handled by the server at a
 {:.note}
 > Default connection limit is `10000`.
 
-## `withConnectionLimit(): Options`
+## `withConnectionLimit(int $limit): Options`
 
 Sets the maximum number of connections the server should accept at one time. If that number is exceeded, new connections are dropped.
 

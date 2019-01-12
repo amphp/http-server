@@ -13,12 +13,12 @@ Classes have to implement the `Middleware` interface for that.
 > Middleware generally follows other words like soft- and hardware with its plural.
 > However, we use the term _middlewares_ to refer to multiple objects implementing the `Middleware` interface.
 
-## `handleRequest(): Promise`
+## `handleRequest(Request $request, RequestHandler $next): Promise`
 
 `handleRequest(Request, RequestHandler): Promise` is the only method of the `Middleware` interface.
-If the `Middleware` doesn't handle the request itself, it should delegate the response creation to the received `RequestHandler`.
+If the `Middleware` doesn't handle the request itself, it should delegate the response creation to the received `RequestHandler`. The promise returned from this method should resolve to an instance of `Response`.
 
-## `stack()`
+## `stack(RequestHandler $handler, Middleware ...$middlewares): RequestHandler`
 
 Multiple middlewares can be stacked by using `Amp\Http\Server\Middleware\stack()`, which accepts a `RequestHandler` as first argument and a variable number of `Middleware` instances.
 
@@ -39,13 +39,13 @@ $middleware = new class implements Middleware {
         return call(function () {
             $requestTime = microtime(true);
             
-            $response = $next->handleRequest($request);
+            $response = yield $next->handleRequest($request);
             $response->setHeader("x-request-time", microtime(true) - $requestTime);
             
-            return $response;        
+            return $response;
         });
     }
 };
 
-$server = new Server($servers, Middleware\stack($handler, $middleware));
+$server = new Server($servers, Middleware\stack($handler, $middleware), $logger);
 ```

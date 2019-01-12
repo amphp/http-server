@@ -8,7 +8,7 @@ A default implementation can be found in `Amp\Http\Server\Driver\RemoteClient`.
 * Table of Contents
 {:toc}
 
-## `start(HttpDriverFactory)`
+## `start(HttpDriverFactory $factory)`
 
 Listen for requests on the client and parse them using the given HTTP driver.
 
@@ -71,7 +71,7 @@ Otherwise returns an empty array.
 
 Integer mask of `Client::CLOSED_*` constants.
 
-## `onClose(callable)`
+## `onClose(callable $onClose)`
 
 Attaches a callback invoked with this client closes.
 The callback is passed this object as the first parameter.

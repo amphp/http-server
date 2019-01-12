@@ -21,7 +21,7 @@ public function __construct(
 |`callable`<br>`null`|`$upgradeSize`|Callback used to increase the maximum size of the body.|
 |`Promise`<br>`null`|`$trailers`|Promise for trailing headers.|
 
-## `increaseSizeLimit(int)`
+## `increaseSizeLimit(int $limit)`
 
 Increases the size limit dynamically if an `$upgradeSize` callback is present.
 Otherwise this is a no-op.
