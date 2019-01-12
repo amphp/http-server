@@ -557,7 +557,7 @@ class Http1DriverTest extends TestCase {
             "Host: localhost\r\n" .
             "\r\n";
         $errCode = 400;
-        $errMsg = "Bad Request: authority-form does not allow a path component in the target";
+        $errMsg = "Bad Request: invalid connect target";
         $opts = new Options;
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
