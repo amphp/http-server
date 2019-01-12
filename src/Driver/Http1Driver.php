@@ -352,14 +352,17 @@ final class Http1Driver implements HttpDriver {
                             );
                         }
 
-                        $uri = Uri\Http::createFromString($target);
-
-                        if ($uri->getPath() !== "") {
+                        if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\]):([1-9]\d*)$#i", $target, $matches)) {
                             throw new ClientException(
-                                "Bad Request: authority-form does not allow a path component in the target",
+                                "Bad Request: invalid connect target",
                                 Status::BAD_REQUEST
                             );
                         }
+
+                        $uri = Uri\Http::createFromComponents([
+                            "host" => $matches[1],
+                            "port" => (int) $matches[2],
+                        ]);
                     }
                 } catch (Uri\UriException $exception) {
                     throw new ClientException("Bad Request: invalid target", Status::BAD_REQUEST, $exception);
