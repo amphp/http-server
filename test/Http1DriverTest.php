@@ -22,11 +22,13 @@ use Amp\Promise;
 use Amp\Success;
 use League\Uri;
 
-class Http1DriverTest extends TestCase {
+class Http1DriverTest extends TestCase
+{
     /**
      * @dataProvider provideUnparsableRequests
      */
-    public function testBadRequestBufferedParse(string $unparsable, int $errCode, string $errMsg, Options $options) {
+    public function testBadRequestBufferedParse(string $unparsable, int $errCode, string $errMsg, Options $options)
+    {
         $written = "";
         $writer = function (string $data) use (&$written): Promise {
             $written .= $data;
@@ -56,7 +58,8 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideUnparsableRequests
      */
-    public function testBadRequestIncrementalParse(string $unparsable, int $errCode, string $errMsg, Options $options) {
+    public function testBadRequestIncrementalParse(string $unparsable, int $errCode, string $errMsg, Options $options)
+    {
         $written = "";
         $writer = function (string $data) use (&$written): Promise {
             $written .= $data;
@@ -91,7 +94,8 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideParsableRequests
      */
-    public function testBufferedRequestParse(string $msg, array $expectations) {
+    public function testBufferedRequestParse(string $msg, array $expectations)
+    {
         $resultEmitter = function (Request $req) use (&$request) {
             $request = $req;
             return new Success;
@@ -129,7 +133,8 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideParsableRequests
      */
-    public function testIncrementalRequestParse($msg, $expectations) {
+    public function testIncrementalRequestParse($msg, $expectations)
+    {
         $resultEmitter = function (Request $req) use (&$request) {
             $request = $req;
         };
@@ -168,7 +173,8 @@ class Http1DriverTest extends TestCase {
         $this->assertSame(80, $request->getUri()->getPort() ?: $defaultPort);
     }
 
-    public function testIdentityBodyParseEmit() {
+    public function testIdentityBodyParseEmit()
+    {
         $originalBody = "12345";
         $length = \strlen($originalBody);
         $msg =
@@ -196,7 +202,7 @@ class Http1DriverTest extends TestCase {
             $this->createCallback(0)
         );
 
-        for ($i = 0, $c = strlen($msg); $i < $c; $i++) {
+        for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
             $promise = $parser->send($msg[$i]);
         }
 
@@ -212,7 +218,8 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($originalBody, $body);
     }
 
-    public function testChunkedBodyParseEmit() {
+    public function testChunkedBodyParseEmit()
+    {
         $msg =
             "POST https://test.local:1337/post-endpoint HTTP/1.0\r\n" .
             "Host: test.local:1337\r\n" .
@@ -260,7 +267,8 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($expectedBody, $body);
     }
 
-    public function provideParsableRequests() {
+    public function provideParsableRequests()
+    {
         $return = [];
 
         // 0 --- basic request -------------------------------------------------------------------->
@@ -269,7 +277,7 @@ class Http1DriverTest extends TestCase {
             "GET / HTTP/1.1" . "\r\n" .
             "Host: localhost" . "\r\n" .
             "\r\n";
-        $trace = substr($msg, 0, -2);
+        $trace = \substr($msg, 0, -2);
         $expectations = [
             "trace" => $trace,
             "protocol" => "1.1",
@@ -291,9 +299,9 @@ class Http1DriverTest extends TestCase {
             "Content-Length: 3\r\n" .
             "\r\n" .
             "123";
-        $trace = explode("\r\n", $msg);
-        array_pop($trace);
-        $trace = implode("\r\n", $trace);
+        $trace = \explode("\r\n", $msg);
+        \array_pop($trace);
+        $trace = \implode("\r\n", $trace);
 
         $headers = [
             "host" => ["localhost:80"],
@@ -315,7 +323,7 @@ class Http1DriverTest extends TestCase {
         // 2 --- OPTIONS request ------------------------------------------------------------------>
 
         $msg = "OPTIONS * HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        $trace = substr($msg, 0, -2);
+        $trace = \substr($msg, 0, -2);
 
         $expectations = [
             "trace" => $trace,
@@ -460,7 +468,8 @@ class Http1DriverTest extends TestCase {
         return $return;
     }
 
-    public function provideUnparsableRequests() {
+    public function provideUnparsableRequests()
+    {
         $return = [];
 
         // 0 -------------------------------------------------------------------------------------->
@@ -484,7 +493,7 @@ class Http1DriverTest extends TestCase {
         $msg =
             "GET /someurl.html HTTP/1.0\r\n" .
             "Host: localhost\r\n" .
-            "X-My-Header: " . str_repeat("x", 1024) . "r\n" .
+            "X-My-Header: " . \str_repeat("x", 1024) . "r\n" .
             "\r\n";
         $errCode = 431;
         $errMsg = "Bad Request: header size violation";
@@ -592,7 +601,8 @@ class Http1DriverTest extends TestCase {
     /**
      * @dataProvider provideUpgradeBodySizeData
      */
-    public function testUpgradeBodySizeContentLength($data, $payload) {
+    public function testUpgradeBodySizeContentLength($data, $payload)
+    {
         $resultEmitter = function (Request $req) use (&$request) {
             $body = $req->getBody();
             $body->increaseSizeLimit(26);
@@ -624,7 +634,8 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($payload, $body);
     }
 
-    public function provideUpgradeBodySizeData() {
+    public function provideUpgradeBodySizeData()
+    {
         $body = "abcdefghijklmnopqrstuvwxyz";
 
         $payload = $body;
@@ -638,8 +649,9 @@ class Http1DriverTest extends TestCase {
         return $return;
     }
 
-    public function testPipelinedRequests() {
-        list($payloads, $results) = array_map(null, ...$this->provideUpgradeBodySizeData());
+    public function testPipelinedRequests()
+    {
+        list($payloads, $results) = \array_map(null, ...$this->provideUpgradeBodySizeData());
 
         $responses = 0;
 
@@ -730,7 +742,8 @@ class Http1DriverTest extends TestCase {
         $this->assertSame(3, $responses);
     }
 
-    public function verifyWrite($input, $status, $headers, $data) {
+    public function verifyWrite($input, $status, $headers, $data)
+    {
         $actualBody = "";
         $parser = new Parser(static function ($chunk) use (&$actualBody) {
             $actualBody .= $chunk;
@@ -744,7 +757,8 @@ class Http1DriverTest extends TestCase {
         $this->assertEquals($data, $actualBody);
     }
 
-    public function testWrite() {
+    public function testWrite()
+    {
         $headers = ["test" => ["successful"]];
         $status = 200;
         $data = "foobar";
@@ -775,7 +789,7 @@ class Http1DriverTest extends TestCase {
 
         $driver->write($request, $response);
 
-        foreach (str_split($data) as $c) {
+        foreach (\str_split($data) as $c) {
             $emitter->emit($c);
         }
         $emitter->complete();
@@ -791,7 +805,8 @@ class Http1DriverTest extends TestCase {
     }
 
     /** @dataProvider provideWriteResponses */
-    public function testResponseWrite(Request $request, Response $response, string $expectedBuffer, bool $expectedClosed) {
+    public function testResponseWrite(Request $request, Response $response, string $expectedBuffer, bool $expectedClosed)
+    {
         $driver = new Http1Driver(
             (new Options)->withConnectionTimeout(60),
             $this->createMock(TimeReference::class),
@@ -821,7 +836,8 @@ class Http1DriverTest extends TestCase {
         $this->assertSame($closed, $expectedClosed);
     }
 
-    public function provideWriteResponses() {
+    public function provideWriteResponses()
+    {
         return [
             [
                 new Request($this->createMock(Client::class), "HEAD", Uri\Http::createFromString("/")),
@@ -850,7 +866,8 @@ class Http1DriverTest extends TestCase {
         ];
     }
 
-    public function testWriteAbortAfterHeaders() {
+    public function testWriteAbortAfterHeaders()
+    {
         $driver = new Http1Driver(
             new Options,
             $this->createMock(TimeReference::class),
@@ -887,7 +904,8 @@ class Http1DriverTest extends TestCase {
         $this->assertTrue($invoked);
     }
 
-    public function testHttp2Upgrade() {
+    public function testHttp2Upgrade()
+    {
         $settings = \strtr(\base64_encode(\pack("nN", 1, 1)), "+/", "-_");
         $payload = "GET /path HTTP/1.1\r\n" .
             "Host: foo.bar\r\n" .
@@ -900,7 +918,7 @@ class Http1DriverTest extends TestCase {
 
         $expected = [
             "HTTP/1.1 101 Switching Protocols",
-            Http2DriverTest::packFrame(pack(
+            Http2DriverTest::packFrame(\pack(
                 "nNnNnNnN",
                 Http2Driver::INITIAL_WINDOW_SIZE,
                 $options->getBodySizeLimit(),
@@ -936,7 +954,8 @@ class Http1DriverTest extends TestCase {
         $parser->send($payload);
     }
 
-    public function testNativeHttp2() {
+    public function testNativeHttp2()
+    {
         $options = (new Options)->withHttp2Upgrade();
 
         $driver = new Http1Driver(
@@ -949,7 +968,7 @@ class Http1DriverTest extends TestCase {
             $this->createMock(Client::class),
             $this->createCallback(0),
             function (string $data) use ($options) {
-                $expected = Http2DriverTest::packFrame(pack(
+                $expected = Http2DriverTest::packFrame(\pack(
                     "nNnNnNnN",
                     Http2Driver::INITIAL_WINDOW_SIZE,
                     $options->getBodySizeLimit(),
@@ -970,7 +989,8 @@ class Http1DriverTest extends TestCase {
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
     }
 
-    public function testExpect100Continue() {
+    public function testExpect100Continue()
+    {
         $received = "";
 
         $driver = new Http1Driver(
@@ -1007,7 +1027,8 @@ class Http1DriverTest extends TestCase {
         $this->assertSame("HTTP/1.1 100 Continue\r\n\r\n", $received);
     }
 
-    public function testTrailerHeaders() {
+    public function testTrailerHeaders()
+    {
         $driver = new Http1Driver(
             new Options,
             $this->createMock(TimeReference::class),

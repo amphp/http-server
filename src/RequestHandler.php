@@ -4,7 +4,8 @@ namespace Amp\Http\Server;
 
 use Amp\Promise;
 
-interface RequestHandler {
+interface RequestHandler
+{
     /**
      * @param Request $request
      *

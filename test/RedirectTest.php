@@ -10,12 +10,14 @@ use League\Uri;
 use PHPUnit\Framework\TestCase;
 use function Amp\Promise\wait;
 
-class RedirectTest extends TestCase {
+class RedirectTest extends TestCase
+{
     /**
      * @expectedException \Error
      * @expectedExceptionMessage Invalid redirect URI; Host redirect must not contain a query or fragment component
      */
-    public function testBadRedirectPath() {
+    public function testBadRedirectPath()
+    {
         new RedirectHandler(Uri\Http::createFromString("http://localhost/?foo"));
     }
 
@@ -23,11 +25,13 @@ class RedirectTest extends TestCase {
      * @expectedException \Error
      * @expectedExceptionMessage Invalid status code; code in the range 300..399 required
      */
-    public function testBadRedirectCode() {
+    public function testBadRedirectCode()
+    {
         new RedirectHandler(Uri\Http::createFromString("http://localhost"), Status::CREATED);
     }
 
-    public function testSuccessfulAbsoluteRedirect() {
+    public function testSuccessfulAbsoluteRedirect()
+    {
         $action = new RedirectHandler(Uri\Http::createFromString("https://localhost"), Status::MOVED_PERMANENTLY);
         $uri = Uri\Http::createFromString("http://test.local/foo");
         $request = new Request($this->createMock(Client::class), "GET", $uri);
@@ -39,7 +43,8 @@ class RedirectTest extends TestCase {
         $this->assertSame("https://localhost/foo", $response->getHeader("location"));
     }
 
-    public function testSuccessfulRelativeRedirect() {
+    public function testSuccessfulRelativeRedirect()
+    {
         $action = new RedirectHandler(Uri\Http::createFromString("/test"));
         $uri = Uri\Http::createFromString("http://test.local/foo");
         $request = new Request($this->createMock(Client::class), "GET", $uri);

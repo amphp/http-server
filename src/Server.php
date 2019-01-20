@@ -20,7 +20,8 @@ use Amp\Socket\Server as SocketServer;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
-final class Server {
+final class Server
+{
     use CallableMaker;
 
     const STOPPED  = 0;
@@ -143,7 +144,8 @@ final class Server {
      *
      * @throws \Error If the server has started.
      */
-    public function setDriverFactory(HttpDriverFactory $driverFactory) {
+    public function setDriverFactory(HttpDriverFactory $driverFactory)
+    {
         if ($this->state) {
             throw new \Error("Cannot set the driver factory after the server has started");
         }
@@ -158,7 +160,8 @@ final class Server {
      *
      * @throws \Error If the server has started.
      */
-    public function setErrorHandler(ErrorHandler $errorHandler) {
+    public function setErrorHandler(ErrorHandler $errorHandler)
+    {
         if ($this->state) {
             throw new \Error("Cannot set the error handler after the server has started");
         }
@@ -171,7 +174,8 @@ final class Server {
      *
      * @return int
      */
-    public function getState(): int {
+    public function getState(): int
+    {
         return $this->state;
     }
 
@@ -180,7 +184,8 @@ final class Server {
      *
      * @return Options
      */
-    public function getOptions(): Options {
+    public function getOptions(): Options
+    {
         return $this->options;
     }
 
@@ -189,7 +194,8 @@ final class Server {
      *
      * @return ErrorHandler
      */
-    public function getErrorHandler(): ErrorHandler {
+    public function getErrorHandler(): ErrorHandler
+    {
         return $this->errorHandler;
     }
 
@@ -198,14 +204,16 @@ final class Server {
      *
      * @return PsrLogger
      */
-    public function getLogger(): PsrLogger {
+    public function getLogger(): PsrLogger
+    {
         return $this->logger;
     }
 
     /**
      * @return TimeReference
      */
-    public function getTimeReference(): TimeReference {
+    public function getTimeReference(): TimeReference
+    {
         return $this->timeReference;
     }
 
@@ -216,7 +224,8 @@ final class Server {
      *
      * @throws \Error If the server has started.
      */
-    public function attach(ServerObserver $observer) {
+    public function attach(ServerObserver $observer)
+    {
         if ($this->state) {
             throw new \Error("Cannot attach observers after the server has started");
         }
@@ -229,7 +238,8 @@ final class Server {
      *
      * @return \Amp\Promise
      */
-    public function start(): Promise {
+    public function start(): Promise
+    {
         try {
             if ($this->state === self::STOPPED) {
                 return new Coroutine($this->doStart());
@@ -243,7 +253,8 @@ final class Server {
         }
     }
 
-    private function doStart(): \Generator {
+    private function doStart(): \Generator
+    {
         \assert($this->logger->debug("Starting") || true);
 
         $this->observers->attach($this->timeReference);
@@ -297,7 +308,8 @@ final class Server {
         }
     }
 
-    private function onAcceptable(string $watcherId, $server) {
+    private function onAcceptable(string $watcherId, $server)
+    {
         if (!$socket = @\stream_socket_accept($server, 0)) {
             return;
         }
@@ -378,7 +390,8 @@ final class Server {
      *
      * @return Promise
      */
-    public function stop(int $timeout = self::DEFAULT_SHUTDOWN_TIMEOUT): Promise {
+    public function stop(int $timeout = self::DEFAULT_SHUTDOWN_TIMEOUT): Promise
+    {
         switch ($this->state) {
             case self::STARTED:
                 return new Coroutine($this->doStop($timeout));
@@ -391,7 +404,8 @@ final class Server {
         }
     }
 
-    private function doStop(int $timeout): \Generator {
+    private function doStop(int $timeout): \Generator
+    {
         \assert($this->logger->debug("Stopping") || true);
         $this->state = self::STOPPING;
 
@@ -423,7 +437,8 @@ final class Server {
         }
     }
 
-    private function timeoutKeepAlives(int $now) {
+    private function timeoutKeepAlives(int $now)
+    {
         foreach ($this->timeouts as $id => $expiresAt) {
             if ($now < $expiresAt) {
                 break;
@@ -436,7 +451,8 @@ final class Server {
         }
     }
 
-    public function __debugInfo() {
+    public function __debugInfo()
+    {
         return [
             "state" => $this->state,
             "timeReference" => $this->timeReference,
@@ -452,7 +468,8 @@ final class Server {
      * @see https://wiki.openssl.org/index.php/Manual:OPENSSL_VERSION_NUMBER(3)
      * @return bool
      */
-    private static function hasAlpnSupport(): bool {
+    private static function hasAlpnSupport(): bool
+    {
         if (!\defined("OPENSSL_VERSION_NUMBER")) {
             return false;
         }

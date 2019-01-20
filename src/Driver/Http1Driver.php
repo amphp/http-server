@@ -20,7 +20,8 @@ use Amp\Promise;
 use League\Uri;
 use function Amp\call;
 
-final class Http1Driver implements HttpDriver {
+final class Http1Driver implements HttpDriver
+{
     /** @see https://tools.ietf.org/html/rfc7230#section-4.1.2 */
     const DISALLOWED_TRAILERS = [
         "authorization",
@@ -74,14 +75,16 @@ final class Http1Driver implements HttpDriver {
     /** @var bool */
     private $stopping = false;
 
-    public function __construct(Options $options, TimeReference $timeReference, ErrorHandler $errorHandler) {
+    public function __construct(Options $options, TimeReference $timeReference, ErrorHandler $errorHandler)
+    {
         $this->options = $options;
         $this->timeReference = $timeReference;
         $this->errorHandler = $errorHandler;
     }
 
     /** {@inheritdoc} */
-    public function setup(Client $client, callable $onMessage, callable $write): \Generator {
+    public function setup(Client $client, callable $onMessage, callable $write): \Generator
+    {
         \assert(!$this->client, "The driver has already been setup");
 
         $this->client = $client;
@@ -96,7 +99,8 @@ final class Http1Driver implements HttpDriver {
      *
      * Selects HTTP/2 or HTTP/1.x writer depending on connection status.
      */
-    public function write(Request $request, Response $response): Promise {
+    public function write(Request $request, Response $response): Promise
+    {
         if ($this->http2) {
             return $this->http2->write($request, $response);
         }
@@ -112,7 +116,8 @@ final class Http1Driver implements HttpDriver {
      *
      * @return \Generator
      */
-    private function send(Response $response, Request $request = null): \Generator {
+    private function send(Response $response, Request $request = null): \Generator
+    {
         \assert($this->client, "The driver has not been setup; call setup first");
 
         if ($this->lastWrite) {
@@ -186,7 +191,8 @@ final class Http1Driver implements HttpDriver {
         }
     }
 
-    private function parser(): \Generator {
+    private function parser(): \Generator
+    {
         $maxHeaderSize = $this->options->getHeaderSizeLimit();
         $parser = null;
 
@@ -278,7 +284,7 @@ final class Http1Driver implements HttpDriver {
                 }
 
                 if (isset($headers["transfer-encoding"])) {
-                    $value = strtolower($headers["transfer-encoding"][0]);
+                    $value = \strtolower($headers["transfer-encoding"][0]);
                     if (!($isChunked = $value === "chunked") && $value !== "identity") {
                         throw new ClientException(
                             "Bad Request: unsupported transfer-encoding",
@@ -380,9 +386,9 @@ final class Http1Driver implements HttpDriver {
                     && isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0])
                     && !$this->client->isEncrypted()
                     && $this->options->isHttp2UpgradeAllowed()
-                    && false !== stripos($headers["connection"][0], "upgrade")
-                    && strtolower($headers["upgrade"][0]) === "h2c"
-                    && false !== $h2cSettings = base64_decode(strtr($headers["http2-settings"][0], "-_", "+/"), true)
+                    && false !== \stripos($headers["connection"][0], "upgrade")
+                    && \strtolower($headers["upgrade"][0]) === "h2c"
+                    && false !== $h2cSettings = \base64_decode(\strtr($headers["http2-settings"][0], "-_", "+/"), true)
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
                     $buffer .= yield $this->write(
@@ -622,8 +628,8 @@ final class Http1Driver implements HttpDriver {
                     $remaining = \min($maxBodySize, $contentLength) - $bodySize;
 
                     if ($remaining) {
-                        $buffer .= yield $emitter->emit(substr($buffer, 0, $remaining));
-                        $buffer = substr($buffer, $remaining);
+                        $buffer .= yield $emitter->emit(\substr($buffer, 0, $remaining));
+                        $buffer = \substr($buffer, $remaining);
                     }
 
                     if ($contentLength > $maxBodySize) {
@@ -674,7 +680,8 @@ final class Http1Driver implements HttpDriver {
      *
      * @return \Generator
      */
-    private function sendErrorResponse(ClientException $exception): \Generator {
+    private function sendErrorResponse(ClientException $exception): \Generator
+    {
         $message = $exception->getMessage();
         $status = $exception->getCode() ?: Status::BAD_REQUEST;
 
@@ -686,7 +693,8 @@ final class Http1Driver implements HttpDriver {
         yield from $this->send($response);
     }
 
-    public function getPendingRequestCount(): int {
+    public function getPendingRequestCount(): int
+    {
         if ($this->bodyEmitter) {
             return 1;
         }
@@ -707,7 +715,8 @@ final class Http1Driver implements HttpDriver {
      *
      * @return string[][] Response headers to be written.
      */
-    private function filter(Response $response, string $protocol = "1.0", array $connection = []): array {
+    private function filter(Response $response, string $protocol = "1.0", array $connection = []): array
+    {
         $headers = $response->getHeaders();
 
         if ($response->getStatus() < Status::OK) {
@@ -750,7 +759,8 @@ final class Http1Driver implements HttpDriver {
         return $headers;
     }
 
-    public function stop(): Promise {
+    public function stop(): Promise
+    {
         $this->stopping = true;
 
         return call(function () {

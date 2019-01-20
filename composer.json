@@ -44,7 +44,7 @@
         "amphp/phpunit-util": "^1",
         "amphp/artax": "^3",
         "amphp/log": "^1",
-        "friendsofphp/php-cs-fixer": "^2.3",
+        "amphp/php-cs-fixer-config": "dev-master",
         "league/uri-components": "^1.7",
         "monolog/monolog": "^1.23",
         "phpunit/phpunit": "^6",

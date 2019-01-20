@@ -19,7 +19,8 @@ use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
-final class RemoteClient implements Client {
+final class RemoteClient implements Client
+{
     use CallableMaker;
 
     /** @var DefaultErrorHandler */
@@ -133,16 +134,16 @@ final class RemoteClient implements Client {
 
         $serverName = \stream_socket_get_name($this->socket, false);
         if ($portStartPos = \strrpos($serverName, ":")) {
-            $this->serverAddress = substr($serverName, 0, $portStartPos);
-            $this->serverPort = (int) substr($serverName, $portStartPos + 1);
+            $this->serverAddress = \substr($serverName, 0, $portStartPos);
+            $this->serverPort = (int) \substr($serverName, $portStartPos + 1);
         } else {
             $this->serverAddress = $serverName;
         }
 
         $peerName = \stream_socket_get_name($this->socket, true);
         if ($portStartPos = \strrpos($peerName, ":")) {
-            $this->clientAddress = substr($peerName, 0, $portStartPos);
-            $this->clientPort = (int) substr($peerName, $portStartPos + 1);
+            $this->clientAddress = \substr($peerName, 0, $portStartPos);
+            $this->clientPort = (int) \substr($peerName, $portStartPos + 1);
         } else {
             $this->clientAddress = $serverName;
         }
@@ -157,7 +158,8 @@ final class RemoteClient implements Client {
      *
      * @throws \Error If the client has already been started.
      */
-    public function start(HttpDriverFactory $driverFactory) {
+    public function start(HttpDriverFactory $driverFactory)
+    {
         if ($this->readWatcher) {
             throw new \Error("Client already started");
         }
@@ -185,7 +187,8 @@ final class RemoteClient implements Client {
     /**
      * @param HttpDriver $driver
      */
-    private function setup(HttpDriver $driver) {
+    private function setup(HttpDriver $driver)
+    {
         $this->httpDriver = $driver;
         $this->requestParser = $this->httpDriver->setup(
             $this,
@@ -197,17 +200,20 @@ final class RemoteClient implements Client {
     }
 
     /** @inheritdoc */
-    public function getOptions(): Options {
+    public function getOptions(): Options
+    {
         return $this->options;
     }
 
     /** @inheritdoc */
-    public function getPendingResponseCount(): int {
+    public function getPendingResponseCount(): int
+    {
         return $this->pendingResponses;
     }
 
     /** @inheritdoc */
-    public function getPendingRequestCount(): int {
+    public function getPendingRequestCount(): int
+    {
         if ($this->httpDriver === null) {
             return 0;
         }
@@ -216,62 +222,74 @@ final class RemoteClient implements Client {
     }
 
     /** @inheritdoc */
-    public function isWaitingOnResponse(): bool {
+    public function isWaitingOnResponse(): bool
+    {
         return $this->httpDriver !== null && $this->pendingResponses > $this->httpDriver->getPendingRequestCount();
     }
 
     /** @inheritdoc */
-    public function getId(): int {
+    public function getId(): int
+    {
         return $this->id;
     }
 
     /** @inheritdoc */
-    public function getRemoteAddress(): string {
+    public function getRemoteAddress(): string
+    {
         return $this->clientAddress;
     }
 
     /** @inheritdoc */
-    public function getRemotePort() {
+    public function getRemotePort()
+    {
         return $this->clientPort;
     }
 
     /** @inheritdoc */
-    public function getLocalAddress(): string {
+    public function getLocalAddress(): string
+    {
         return $this->serverAddress;
     }
 
     /** @inheritdoc */
-    public function getLocalPort() {
+    public function getLocalPort()
+    {
         return $this->serverPort;
     }
 
     /** @inheritdoc */
-    public function isUnix(): bool {
+    public function isUnix(): bool
+    {
         return $this->serverPort === 0;
     }
 
     /** @inheritdoc */
-    public function isEncrypted(): bool {
+    public function isEncrypted(): bool
+    {
         return $this->isEncrypted;
     }
 
     /** @inheritdoc */
-    public function getCryptoContext(): array {
+    public function getCryptoContext(): array
+    {
         return $this->cryptoInfo;
     }
 
     /** @inheritdoc */
-    public function isExported(): bool {
+    public function isExported(): bool
+    {
         return $this->isExported;
     }
 
     /** @inheritdoc */
-    public function getStatus(): int {
+    public function getStatus(): int
+    {
         return $this->status;
     }
 
     /** @inheritdoc */
-    public function close() {
+    public function close()
+    {
         if ($this->onClose === null) {
             return; // Client already closed.
         }
@@ -303,7 +321,8 @@ final class RemoteClient implements Client {
     }
 
     /** @inheritdoc */
-    public function onClose(callable $callback) {
+    public function onClose(callable $callback)
+    {
         if ($this->onClose === null) {
             $callback($this);
             return;
@@ -313,7 +332,8 @@ final class RemoteClient implements Client {
     }
 
     /** @inheritdoc */
-    public function stop(int $timeout): Promise {
+    public function stop(int $timeout): Promise
+    {
         if ($this->httpDriver === null) {
             $this->close();
             return new Success;
@@ -324,7 +344,8 @@ final class RemoteClient implements Client {
         return $promise;
     }
 
-    private function clear() {
+    private function clear()
+    {
         $this->httpDriver = null;
         $this->requestParser = null;
         $this->resume = null;
@@ -344,7 +365,8 @@ final class RemoteClient implements Client {
     /**
      * Called by the onReadable watcher (after encryption has been negotiated if applicable).
      */
-    private function onReadable() {
+    private function onReadable()
+    {
         $data = @\stream_get_contents($this->socket, $this->options->getChunkSize());
         if ($data !== false && $data !== "") {
             $this->timeoutCache->renew($this->id);
@@ -362,7 +384,8 @@ final class RemoteClient implements Client {
      *
      * @param string $data
      */
-    private function parse(string $data = "") {
+    private function parse(string $data = "")
+    {
         try {
             $promise = $this->requestParser->send($data);
 
@@ -388,7 +411,8 @@ final class RemoteClient implements Client {
      * @param resource                                  $socket
      * @param \Amp\Http\Server\Driver\HttpDriverFactory $driverFactory
      */
-    private function negotiateCrypto(string $watcher, $socket, HttpDriverFactory $driverFactory) {
+    private function negotiateCrypto(string $watcher, $socket, HttpDriverFactory $driverFactory)
+    {
         if ($handshake = @\stream_socket_enable_crypto($this->socket, true)) {
             Loop::cancel($this->readWatcher);
 
@@ -417,7 +441,8 @@ final class RemoteClient implements Client {
     /**
      * Called by the onWritable watcher.
      */
-    private function onWritable() {
+    private function onWritable()
+    {
         $bytesWritten = @\fwrite($this->socket, $this->writeBuffer);
 
         if ($bytesWritten === false) {
@@ -453,7 +478,8 @@ final class RemoteClient implements Client {
      *
      * @return \Amp\Promise
      */
-    private function write(string $data, bool $close = false): Promise {
+    private function write(string $data, bool $close = false): Promise
+    {
         if ($this->status & self::CLOSED_WR) {
             return new Failure(new ClientException("The client disconnected"));
         }
@@ -500,8 +526,9 @@ final class RemoteClient implements Client {
      *
      * @return \Amp\Promise
      */
-    private function onMessage(Request $request): Promise {
-        \assert($this->logger->debug(sprintf(
+    private function onMessage(Request $request): Promise
+    {
+        \assert($this->logger->debug(\sprintf(
             "%s %s HTTP/%s @ %s:%s",
             $request->getMethod(),
             $request->getUri(),
@@ -520,7 +547,8 @@ final class RemoteClient implements Client {
      *
      * @param \Throwable|null $exception
      */
-    private function resume(\Throwable $exception = null) {
+    private function resume(\Throwable $exception = null)
+    {
         if ($exception) {
             $this->close();
             return;
@@ -540,7 +568,8 @@ final class RemoteClient implements Client {
      *
      * @return \Generator
      */
-    private function respond(Request $request): \Generator {
+    private function respond(Request $request): \Generator
+    {
         try {
             $method = $request->getMethod();
 
@@ -581,7 +610,8 @@ final class RemoteClient implements Client {
         }
     }
 
-    private function makeMethodNotAllowedResponse(): \Generator {
+    private function makeMethodNotAllowedResponse(): \Generator
+    {
         $status = Status::METHOD_NOT_ALLOWED;
         /** @var \Amp\Http\Server\Response $response */
         $response = yield $this->errorHandler->handleError($status);
@@ -590,7 +620,8 @@ final class RemoteClient implements Client {
         return $response;
     }
 
-    private function makeNotImplementedResponse(): \Generator {
+    private function makeNotImplementedResponse(): \Generator
+    {
         $status = Status::NOT_IMPLEMENTED;
         /** @var \Amp\Http\Server\Response $response */
         $response = yield $this->errorHandler->handleError($status);
@@ -599,8 +630,9 @@ final class RemoteClient implements Client {
         return $response;
     }
 
-    private function makeOptionsResponse(): Response {
-        return new Response(Status::NO_CONTENT, ["Allow" => implode(", ", $this->options->getAllowedMethods())]);
+    private function makeOptionsResponse(): Response
+    {
+        return new Response(Status::NO_CONTENT, ["Allow" => \implode(", ", $this->options->getAllowedMethods())]);
     }
 
     /**
@@ -610,7 +642,8 @@ final class RemoteClient implements Client {
      *
      * @return \Generator
      */
-    private function makeExceptionResponse(Request $request): \Generator {
+    private function makeExceptionResponse(Request $request): \Generator
+    {
         $status = Status::INTERNAL_SERVER_ERROR;
 
         try {
@@ -629,7 +662,8 @@ final class RemoteClient implements Client {
      *
      * @param callable $upgrade callable
      */
-    private function export(callable $upgrade) {
+    private function export(callable $upgrade)
+    {
         if ($this->status & self::CLOSED_RDWR || $this->isExported) {
             return;
         }

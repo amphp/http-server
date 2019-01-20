@@ -4,7 +4,8 @@ namespace Amp\Http\Server;
 
 use Amp\Promise;
 
-interface ErrorHandler {
+interface ErrorHandler
+{
     /**
      * @param int          $statusCode Error status code, 4xx or 5xx.
      * @param string|null  $reason Reason message. Will use the status code's default reason if not provided.

@@ -5,8 +5,10 @@ namespace Amp\Http\Server\Test;
 use Amp\Http\Server\Options;
 use Amp\PHPUnit\TestCase;
 
-class OptionsTest extends TestCase {
-    public function testWithDebugMode() {
+class OptionsTest extends TestCase
+{
+    public function testWithDebugMode()
+    {
         $options = new Options;
 
         // default
@@ -19,7 +21,8 @@ class OptionsTest extends TestCase {
         $this->assertFalse($options->isInDebugMode());
     }
 
-    public function testWithoutDebugMode() {
+    public function testWithoutDebugMode()
+    {
         $options = (new Options)->withDebugMode();
 
         // default
@@ -32,7 +35,8 @@ class OptionsTest extends TestCase {
         $this->assertTrue($options->isInDebugMode());
     }
 
-    public function testWithConnectionLimit() {
+    public function testWithConnectionLimit()
+    {
         $options = new Options;
 
         // default
@@ -49,7 +53,8 @@ class OptionsTest extends TestCase {
         $options->withConnectionLimit(0);
     }
 
-    public function testWithConnectionsPerIpLimit() {
+    public function testWithConnectionsPerIpLimit()
+    {
         $options = new Options;
 
         // default
@@ -66,7 +71,8 @@ class OptionsTest extends TestCase {
         $options->withConnectionsPerIpLimit(0);
     }
 
-    public function testWithConnectionTimeout() {
+    public function testWithConnectionTimeout()
+    {
         $options = new Options;
 
         // default
@@ -83,7 +89,8 @@ class OptionsTest extends TestCase {
         $options->withConnectionTimeout(0);
     }
 
-    public function testWithBodySizeLimit() {
+    public function testWithBodySizeLimit()
+    {
         $options = new Options;
 
         // default
@@ -100,7 +107,8 @@ class OptionsTest extends TestCase {
         $options->withBodySizeLimit(-1);
     }
 
-    public function testWithHeaderSizeLimit() {
+    public function testWithHeaderSizeLimit()
+    {
         $options = new Options;
 
         // default
@@ -117,7 +125,8 @@ class OptionsTest extends TestCase {
         $options->withHeaderSizeLimit(0);
     }
 
-    public function testWithConcurrentStreamLimit() {
+    public function testWithConcurrentStreamLimit()
+    {
         $options = new Options;
 
         // default
@@ -134,7 +143,8 @@ class OptionsTest extends TestCase {
         $options->withConcurrentStreamLimit(0);
     }
 
-    public function testWithMinimumAverageFrameSize() {
+    public function testWithMinimumAverageFrameSize()
+    {
         $options = new Options;
 
         // default
@@ -151,7 +161,8 @@ class OptionsTest extends TestCase {
         $options->withMinimumAverageFrameSize(0);
     }
 
-    public function testWithFramesPerSecondLimit() {
+    public function testWithFramesPerSecondLimit()
+    {
         $options = new Options;
 
         // default
@@ -168,7 +179,8 @@ class OptionsTest extends TestCase {
         $options->withFramesPerSecondLimit(0);
     }
 
-    public function testWithChunkSize() {
+    public function testWithChunkSize()
+    {
         $options = new Options;
 
         // default
@@ -185,7 +197,8 @@ class OptionsTest extends TestCase {
         $options->withChunkSize(0);
     }
 
-    public function testWithAllowedMethods() {
+    public function testWithAllowedMethods()
+    {
         $options = new Options;
 
         // default
@@ -198,31 +211,36 @@ class OptionsTest extends TestCase {
         $this->assertSame(["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"], $options->getAllowedMethods());
     }
 
-    public function testWithAllowedMethodsWithoutGet() {
+    public function testWithAllowedMethodsWithoutGet()
+    {
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Servers must support GET");
         (new Options)->withAllowedMethods(["HEAD"]);
     }
 
-    public function testWithAllowedMethodsWithInvalidType() {
+    public function testWithAllowedMethodsWithInvalidType()
+    {
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Invalid type at key 0 of allowed methods array: integer");
         (new Options)->withAllowedMethods([42]);
     }
 
-    public function testWithAllowedMethodsWithEmptyMethod() {
+    public function testWithAllowedMethodsWithEmptyMethod()
+    {
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Invalid empty HTTP method");
         (new Options)->withAllowedMethods(["HEAD", "GET", ""]);
     }
 
-    public function testWithAllowedMethodsWithoutHead() {
+    public function testWithAllowedMethodsWithoutHead()
+    {
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Servers must support HEAD");
         (new Options)->withAllowedMethods(["GET"]);
     }
 
-    public function testWithHttpUpgrade() {
+    public function testWithHttpUpgrade()
+    {
         $options = new Options;
 
         // default
@@ -235,7 +253,8 @@ class OptionsTest extends TestCase {
         $this->assertFalse($options->isHttp2UpgradeAllowed());
     }
 
-    public function testWithoutHttpUpgrade() {
+    public function testWithoutHttpUpgrade()
+    {
         $options = (new Options)->withHttp2Upgrade();
 
         // default
@@ -248,7 +267,8 @@ class OptionsTest extends TestCase {
         $this->assertTrue($options->isHttp2UpgradeAllowed());
     }
 
-    public function testWithCompression() {
+    public function testWithCompression()
+    {
         $options = new Options;
 
         // default
@@ -261,7 +281,8 @@ class OptionsTest extends TestCase {
         $this->assertTrue($options->isCompressionEnabled());
     }
 
-    public function testWithoutCompression() {
+    public function testWithoutCompression()
+    {
         $options = (new Options)->withoutCompression();
 
         // default

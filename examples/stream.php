@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 
-require dirname(__DIR__) . "/vendor/autoload.php";
+require \dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream\IteratorStream;
 use Amp\ByteStream\ResourceOutputStream;

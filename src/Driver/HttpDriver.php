@@ -6,7 +6,8 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Promise;
 
-interface HttpDriver {
+interface HttpDriver
+{
     /**
      * HTTP methods that are *known*. Requests for methods not defined here or within Options should result in a 501
      * (not implemented) response.

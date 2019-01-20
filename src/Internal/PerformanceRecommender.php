@@ -7,9 +7,11 @@ use Amp\Http\Server\ServerObserver;
 use Amp\Promise;
 use Amp\Success;
 
-final class PerformanceRecommender implements ServerObserver {
+final class PerformanceRecommender implements ServerObserver
+{
     /** @inheritdoc */
-    public function onStart(Server $server): Promise {
+    public function onStart(Server $server): Promise
+    {
         $logger = $server->getLogger();
 
         if ($server->getOptions()->isInDebugMode()) {
@@ -38,7 +40,8 @@ final class PerformanceRecommender implements ServerObserver {
     }
 
     /** @inheritdoc */
-    public function onStop(Server $server): Promise {
+    public function onStop(Server $server): Promise
+    {
         return new Success;
     }
 }

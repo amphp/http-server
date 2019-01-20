@@ -15,25 +15,29 @@ use Amp\Promise;
  * @see stack()
  * @internal
  */
-final class MiddlewareRequestHandler implements RequestHandler, ServerObserver {
+final class MiddlewareRequestHandler implements RequestHandler, ServerObserver
+{
     /** @var Middleware */
     private $middleware;
 
     /** @var RequestHandler */
     private $next;
 
-    public function __construct(Middleware $middleware, RequestHandler $requestHandler) {
+    public function __construct(Middleware $middleware, RequestHandler $requestHandler)
+    {
         $this->middleware = $middleware;
         $this->next = $requestHandler;
     }
 
     /** {@inheritdoc} */
-    public function handleRequest(Request $request): Promise {
+    public function handleRequest(Request $request): Promise
+    {
         return $this->middleware->handleRequest($request, $this->next);
     }
 
     /** @inheritdoc */
-    public function onStart(Server $server): Promise {
+    public function onStart(Server $server): Promise
+    {
         $promises = [];
 
         if ($this->middleware instanceof ServerObserver) {
@@ -48,7 +52,8 @@ final class MiddlewareRequestHandler implements RequestHandler, ServerObserver {
     }
 
     /** @inheritdoc */
-    public function onStop(Server $server): Promise {
+    public function onStop(Server $server): Promise
+    {
         $promises = [];
 
         if ($this->middleware instanceof ServerObserver) {

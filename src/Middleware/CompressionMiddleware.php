@@ -11,7 +11,8 @@ use Amp\Producer;
 use Amp\Promise;
 use cash\LRUCache;
 
-final class CompressionMiddleware implements Middleware {
+final class CompressionMiddleware implements Middleware
+{
     const MAX_CACHE_SIZE = 1024;
 
     /** @link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits */
@@ -51,11 +52,13 @@ final class CompressionMiddleware implements Middleware {
         $this->contentRegex = $contentRegex;
     }
 
-    public function handleRequest(Request $request, RequestHandler $requestHandler): Promise {
+    public function handleRequest(Request $request, RequestHandler $requestHandler): Promise
+    {
         return new Coroutine($this->deflate($request, $requestHandler));
     }
 
-    public function deflate(Request $request, RequestHandler $requestHandler): \Generator {
+    public function deflate(Request $request, RequestHandler $requestHandler): \Generator
+    {
         /** @var \Amp\Http\Server\Response $response */
         $response = yield $requestHandler->handleRequest($request);
 

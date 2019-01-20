@@ -9,12 +9,14 @@ use Amp\Success;
 /**
  * ErrorHandler instance used by default if none is given.
  */
-final class DefaultErrorHandler implements ErrorHandler {
+final class DefaultErrorHandler implements ErrorHandler
+{
     /** @var string[] */
     private $cache = [];
 
     /** {@inheritdoc} */
-    public function handleError(int $statusCode, string $reason = null, Request $request = null): Promise {
+    public function handleError(int $statusCode, string $reason = null, Request $request = null): Promise
+    {
         static $errorHtml;
 
         if ($errorHtml === null) {

@@ -9,14 +9,17 @@ use Amp\Loop;
 use Amp\PHPUnit\TestCase;
 use Amp\PHPUnit\TestException;
 
-class ResponseTest extends TestCase {
-    public function testDispose() {
+class ResponseTest extends TestCase
+{
+    public function testDispose()
+    {
         $response = new Response;
         $response->onDispose($this->createCallback(1));
         $response = null;
     }
 
-    public function testDisposeThrowing() {
+    public function testDisposeThrowing()
+    {
         $response = new Response;
         $response->onDispose(function () {
             throw new TestException;
@@ -29,19 +32,22 @@ class ResponseTest extends TestCase {
         });
     }
 
-    public function testSetBodyWithConvertibleType() {
+    public function testSetBodyWithConvertibleType()
+    {
         $response = new Response;
         $response->setBody(42);
         $this->assertTrue(true);
     }
 
-    public function testSetBodyWithWrongType() {
+    public function testSetBodyWithWrongType()
+    {
         $response = new Response;
         $this->expectException(\TypeError::class);
         $response->setBody(new \stdClass);
     }
 
-    public function testCookies() {
+    public function testCookies()
+    {
         $request = new Response(Status::OK, [
             'set-cookie' => new ResponseCookie('foo', 'bar'),
         ]);
@@ -65,17 +71,20 @@ class ResponseTest extends TestCase {
         $this->assertSame('', $cookie->getValue());
     }
 
-    public function testStatusCodeOutOfRangeBelow() {
+    public function testStatusCodeOutOfRangeBelow()
+    {
         $this->expectException(\Error::class);
         new Response(99);
     }
 
-    public function testStatusCodeOutOfRangeAbove() {
+    public function testStatusCodeOutOfRangeAbove()
+    {
         $this->expectException(\Error::class);
         new Response(600);
     }
 
-    public function testUndoUpgrade() {
+    public function testUndoUpgrade()
+    {
         $response = new Response;
         $this->assertNull($response->getUpgradeCallable());
 

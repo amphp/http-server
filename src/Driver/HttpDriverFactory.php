@@ -2,7 +2,8 @@
 
 namespace Amp\Http\Server\Driver;
 
-interface HttpDriverFactory {
+interface HttpDriverFactory
+{
     /**
      * Selects an HTTP driver based on the given client.
      *

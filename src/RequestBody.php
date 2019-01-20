@@ -12,7 +12,8 @@ use Amp\Success;
  *
  * Additionally, this class allows increasing the body size limit dynamically and allows access to the request trailers.
  */
-final class RequestBody extends Payload {
+final class RequestBody extends Payload
+{
     /** @var callable|null */
     private $upgradeSize;
 
@@ -24,7 +25,8 @@ final class RequestBody extends Payload {
      * @param callable|null               $upgradeSize Callback used to increase the maximum size of the body.
      * @param Promise|null                $trailers Promise for trailing headers.
      */
-    public function __construct(InputStream $stream, callable $upgradeSize = null, Promise $trailers = null) {
+    public function __construct(InputStream $stream, callable $upgradeSize = null, Promise $trailers = null)
+    {
         parent::__construct($stream);
         $this->upgradeSize = $upgradeSize;
         $this->trailers = $trailers ?? new Success(new Trailers([]));
@@ -35,7 +37,8 @@ final class RequestBody extends Payload {
      *
      * @param int $size
      */
-    public function increaseSizeLimit(int $size) {
+    public function increaseSizeLimit(int $size)
+    {
         if (!$this->upgradeSize) {
             return;
         }
@@ -46,7 +49,8 @@ final class RequestBody extends Payload {
     /**
      * @return Promise<\Amp\Http\Server\Trailers>
      */
-    public function getTrailers(): Promise {
+    public function getTrailers(): Promise
+    {
         return $this->trailers;
     }
 }

@@ -8,7 +8,8 @@ use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Server\Driver\Client;
 use Psr\Http\Message\UriInterface as PsrUri;
 
-final class Request extends Internal\Message {
+final class Request extends Internal\Message
+{
     /** @var Client */
     private $client;
 
@@ -63,7 +64,8 @@ final class Request extends Internal\Message {
     /**
      * @return \Amp\Http\Server\Driver\Client The client sending the request.
      */
-    public function getClient(): Client {
+    public function getClient(): Client
+    {
         return $this->client;
     }
 
@@ -72,7 +74,8 @@ final class Request extends Internal\Message {
      *
      * @return string
      */
-    public function getMethod(): string {
+    public function getMethod(): string
+    {
         return $this->method;
     }
 
@@ -81,7 +84,8 @@ final class Request extends Internal\Message {
      *
      * @param string $method
      */
-    public function setMethod(string $method) {
+    public function setMethod(string $method)
+    {
         $this->method = $method;
     }
 
@@ -90,7 +94,8 @@ final class Request extends Internal\Message {
      *
      * @return PsrUri
      */
-    public function getUri(): PsrUri {
+    public function getUri(): PsrUri
+    {
         return $this->uri;
     }
 
@@ -99,7 +104,8 @@ final class Request extends Internal\Message {
      *
      * @param PsrUri $uri
      */
-    public function setUri(PsrUri $uri) {
+    public function setUri(PsrUri $uri)
+    {
         $this->uri = $uri;
     }
 
@@ -109,7 +115,8 @@ final class Request extends Internal\Message {
      *
      * @return string
      */
-    public function getProtocolVersion(): string {
+    public function getProtocolVersion(): string
+    {
         return $this->protocol;
     }
 
@@ -118,7 +125,8 @@ final class Request extends Internal\Message {
      *
      * @param string $protocol
      */
-    public function setProtocolVersion(string $protocol) {
+    public function setProtocolVersion(string $protocol)
+    {
         $this->protocol = $protocol;
     }
 
@@ -128,7 +136,8 @@ final class Request extends Internal\Message {
      *
      * @param string[]|string[][] $headers
      */
-    public function setHeaders(array $headers) {
+    public function setHeaders(array $headers)
+    {
         $cookies = $this->cookies;
 
         try {
@@ -148,7 +157,8 @@ final class Request extends Internal\Message {
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, $value) {
+    public function setHeader(string $name, $value)
+    {
         parent::setHeader($name, $value);
 
         if (\stripos($name, "cookie") === 0) {
@@ -164,7 +174,8 @@ final class Request extends Internal\Message {
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, $value) {
+    public function addHeader(string $name, $value)
+    {
         parent::addHeader($name, $value);
 
         if (\stripos($name, "cookie") === 0) {
@@ -177,7 +188,8 @@ final class Request extends Internal\Message {
      *
      * @param string $name
      */
-    public function removeHeader(string $name) {
+    public function removeHeader(string $name)
+    {
         parent::removeHeader($name);
 
         if (\stripos($name, "cookie") === 0) {
@@ -190,7 +202,8 @@ final class Request extends Internal\Message {
      *
      * @return \Amp\Http\Server\RequestBody
      */
-    public function getBody(): RequestBody {
+    public function getBody(): RequestBody
+    {
         if ($this->body === null) {
             $this->body = new RequestBody(new InMemoryStream);
         }
@@ -207,7 +220,8 @@ final class Request extends Internal\Message {
      * @throws \Error
      * @throws \TypeError
      */
-    public function setBody($stringOrStream) {
+    public function setBody($stringOrStream)
+    {
         if ($stringOrStream instanceof RequestBody) {
             $this->body = $stringOrStream;
             $this->removeHeader("content-length");
@@ -232,7 +246,8 @@ final class Request extends Internal\Message {
         }
     }
 
-    private function setBodyFromString(string $body) {
+    private function setBodyFromString(string $body)
+    {
         $this->body = new RequestBody(new InMemoryStream($body));
 
         if ($length = \strlen($body)) {
@@ -247,7 +262,8 @@ final class Request extends Internal\Message {
     /**
      * @return RequestCookie[]
      */
-    public function getCookies(): array {
+    public function getCookies(): array
+    {
         return $this->cookies;
     }
 
@@ -256,7 +272,8 @@ final class Request extends Internal\Message {
      *
      * @return RequestCookie|null
      */
-    public function getCookie(string $name) { /* : ?RequestCookie */
+    public function getCookie(string $name)
+    { /* : ?RequestCookie */
         return $this->cookies[$name] ?? null;
     }
 
@@ -265,7 +282,8 @@ final class Request extends Internal\Message {
      *
      * @param RequestCookie $cookie
      */
-    public function setCookie(RequestCookie $cookie) {
+    public function setCookie(RequestCookie $cookie)
+    {
         $this->cookies[$cookie->getName()] = $cookie;
         $this->setHeadersFromCookies();
     }
@@ -275,7 +293,8 @@ final class Request extends Internal\Message {
      *
      * @param string $name
      */
-    public function removeCookie(string $name) {
+    public function removeCookie(string $name)
+    {
         if (isset($this->cookies[$name])) {
             unset($this->cookies[$name]);
             $this->setHeadersFromCookies();
@@ -287,7 +306,8 @@ final class Request extends Internal\Message {
      *
      * @throws \Error
      */
-    private function setCookiesFromHeaders() {
+    private function setCookiesFromHeaders()
+    {
         $this->cookies = [];
 
         $headers = $this->getHeaderArray("cookie");
@@ -303,7 +323,8 @@ final class Request extends Internal\Message {
     /**
      * Sets headers based on cookie values.
      */
-    private function setHeadersFromCookies() {
+    private function setHeadersFromCookies()
+    {
         $values = [];
 
         foreach ($this->cookies as $cookie) {
@@ -324,7 +345,8 @@ final class Request extends Internal\Message {
      *
      * @return bool
      */
-    public function hasAttribute(string $name): bool {
+    public function hasAttribute(string $name): bool
+    {
         return \array_key_exists($name, $this->attributes);
     }
 
@@ -339,7 +361,8 @@ final class Request extends Internal\Message {
      *
      * @return mixed
      */
-    public function getAttribute(string $name) {
+    public function getAttribute(string $name)
+    {
         if (!$this->hasAttribute($name)) {
             throw new MissingAttributeError("The requested attribute '{$name}' does not exist");
         }
@@ -363,7 +386,8 @@ final class Request extends Internal\Message {
      * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
      * @param mixed $value Value of the attribute, might be any value.
      */
-    public function setAttribute(string $name, $value) {
+    public function setAttribute(string $name, $value)
+    {
         $this->attributes[$name] = $value;
     }
 }

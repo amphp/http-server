@@ -2,7 +2,8 @@
 
 namespace Amp\Http\Server\Driver;
 
-interface TimeReference {
+interface TimeReference
+{
     /**
      * @return int
      */

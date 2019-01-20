@@ -2,11 +2,13 @@
 
 namespace Amp\Http\Server;
 
-final class Trailers extends Internal\Message {
+final class Trailers extends Internal\Message
+{
     /**
      * @param string[][] $headers
      */
-    public function __construct(array $headers) {
+    public function __construct(array $headers)
+    {
         if (!empty($headers)) {
             $this->setHeaders($headers);
         }

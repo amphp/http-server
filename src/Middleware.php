@@ -9,7 +9,8 @@ use Amp\Promise;
  *
  * @see stack() for how to apply a middleware to a request handler.
  */
-interface Middleware {
+interface Middleware
+{
     /**
      * @param Request        $request
      * @param RequestHandler $requestHandler

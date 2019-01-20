@@ -3,7 +3,8 @@
 namespace Amp\Http\Server\Internal;
 
 /** @internal */
-abstract class Message {
+abstract class Message
+{
     /** @var string[][] */
     private $headers = [];
 
@@ -13,7 +14,8 @@ abstract class Message {
      *
      * @return string[][]
      */
-    public function getHeaders(): array {
+    public function getHeaders(): array
+    {
         return $this->headers;
     }
 
@@ -24,7 +26,8 @@ abstract class Message {
      *
      * @return string[]
      */
-    public function getHeaderArray(string $name): array {
+    public function getHeaderArray(string $name): array
+    {
         return $this->headers[\strtolower($name)] ?? [];
     }
 
@@ -37,7 +40,8 @@ abstract class Message {
      *
      * @return string|null
      */
-    public function getHeader(string $name) {
+    public function getHeader(string $name)
+    {
         return $this->headers[\strtolower($name)][0] ?? null;
     }
 
@@ -46,7 +50,8 @@ abstract class Message {
      *
      * @param string[]|string[][] $headers
      */
-    public function setHeaders(array $headers) {
+    public function setHeaders(array $headers)
+    {
         // Ensure this is an atomic operation, either all headers are set or none.
         $before = $this->headers;
 
@@ -69,7 +74,8 @@ abstract class Message {
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, $value) {
+    public function setHeader(string $name, $value)
+    {
         \assert($this->isNameValid($name), "Invalid header name");
 
         if (\is_array($value)) {
@@ -97,7 +103,8 @@ abstract class Message {
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, $value) {
+    public function addHeader(string $name, $value)
+    {
         \assert($this->isNameValid($name), "Invalid header name");
 
         if (\is_array($value)) {
@@ -125,7 +132,8 @@ abstract class Message {
      *
      * @param string $name
      */
-    public function removeHeader(string $name) {
+    public function removeHeader(string $name)
+    {
         unset($this->headers[\strtolower($name)]);
     }
 
@@ -136,7 +144,8 @@ abstract class Message {
      *
      * @return bool
      */
-    public function hasHeader(string $name): bool {
+    public function hasHeader(string $name): bool
+    {
         return isset($this->headers[\strtolower($name)]);
     }
 
@@ -145,7 +154,8 @@ abstract class Message {
      *
      * @return bool
      */
-    private function isNameValid(string $name): bool {
+    private function isNameValid(string $name): bool
+    {
         return (bool) \preg_match('/^[A-Za-z0-9`~!#$%^&_|\'\-:]+$/', $name);
     }
 
@@ -159,7 +169,8 @@ abstract class Message {
      * @throws \Error If the given value cannot be converted to a string and is not an array of values that can be
      *     converted to strings.
      */
-    private function isValueValid(array $values): bool {
+    private function isValueValid(array $values): bool
+    {
         foreach ($values as $value) {
             if (\preg_match("/[^\t\r\n\x20-\x7e\x80-\xfe]|\r\n/", $value)) {
                 return false;

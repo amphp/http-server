@@ -15,8 +15,10 @@ use League\Uri;
 use function Amp\Http\Server\Middleware\stack;
 use function Amp\Promise\wait;
 
-class StackTest extends TestCase {
-    public function testStackAppliesMiddlewaresInCorrectOrder() {
+class StackTest extends TestCase
+{
+    public function testStackAppliesMiddlewaresInCorrectOrder()
+    {
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/foobar"));
 
         $stack = stack(new CallableRequestHandler(function (Request $request) {
@@ -25,13 +27,15 @@ class StackTest extends TestCase {
 
             return $response;
         }), new class implements Middleware {
-            public function handleRequest(Request $request, RequestHandler $requestHandler): Promise {
+            public function handleRequest(Request $request, RequestHandler $requestHandler): Promise
+            {
                 $request->setAttribute(StackTest::class, "a");
 
                 return $requestHandler->handleRequest($request);
             }
         }, new class implements Middleware {
-            public function handleRequest(Request $request, RequestHandler $requestHandler): Promise {
+            public function handleRequest(Request $request, RequestHandler $requestHandler): Promise
+            {
                 $request->setAttribute(StackTest::class, $request->getAttribute(StackTest::class) . "b");
 
                 return $requestHandler->handleRequest($request);

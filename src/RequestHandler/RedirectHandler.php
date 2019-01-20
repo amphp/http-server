@@ -11,7 +11,8 @@ use Amp\Promise;
 use Amp\Success;
 use Psr\Http\Message\UriInterface as PsrUri;
 
-final class RedirectHandler implements RequestHandler {
+final class RedirectHandler implements RequestHandler
+{
     private $redirectUri;
     private $statusCode;
 
@@ -23,7 +24,8 @@ final class RedirectHandler implements RequestHandler {
      *
      * @throws \Error If the given redirect URI is invalid or contains a query or fragment.
      */
-    public function __construct(PsrUri $uri, int $statusCode = Status::TEMPORARY_REDIRECT) {
+    public function __construct(PsrUri $uri, int $statusCode = Status::TEMPORARY_REDIRECT)
+    {
         if ($uri->getQuery() || $uri->getFragment()) {
             throw new \Error("Invalid redirect URI; Host redirect must not contain a query or fragment component");
         }
@@ -32,11 +34,12 @@ final class RedirectHandler implements RequestHandler {
             throw new \Error("Invalid status code; code in the range 300..399 required");
         }
 
-        $this->redirectUri = rtrim((string) $uri, "/");
+        $this->redirectUri = \rtrim((string) $uri, "/");
         $this->statusCode = $statusCode;
     }
 
-    public function handleRequest(Request $request): Promise {
+    public function handleRequest(Request $request): Promise
+    {
         $uri = $request->getUri();
         $path = $uri->getPath();
         $query = $uri->getQuery();

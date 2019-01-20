@@ -5,7 +5,8 @@ namespace Amp\Http\Server\Driver;
 use Amp\Http\Server\Options;
 use Amp\Promise;
 
-interface Client {
+interface Client
+{
     const CLOSED_RD = 1;
     const CLOSED_WR = 2;
     const CLOSED_RDWR = 3;

@@ -9,7 +9,8 @@ use Amp\Struct;
  *
  * @internal
  */
-final class Http2Stream {
+final class Http2Stream
+{
     use Struct;
 
     const OPEN = 0;
@@ -48,7 +49,8 @@ final class Http2Stream {
     /** @var \Amp\Deferred|null */
     public $deferred;
 
-    public function __construct(int $serverSize, int $clientSize, int $state = self::OPEN) {
+    public function __construct(int $serverSize, int $clientSize, int $state = self::OPEN)
+    {
         $this->serverWindow = $serverSize;
         $this->maxBodySize = $serverSize;
         $this->clientWindow = $clientSize;

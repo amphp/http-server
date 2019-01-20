@@ -14,7 +14,8 @@ use Amp\Promise;
 use Amp\Success;
 use function Amp\call;
 
-final class ExceptionMiddleware implements Middleware, ServerObserver {
+final class ExceptionMiddleware implements Middleware, ServerObserver
+{
     /** @var bool */
     private $debug = false;
 
@@ -24,7 +25,8 @@ final class ExceptionMiddleware implements Middleware, ServerObserver {
     /** @var \Amp\Http\Server\ErrorHandler */
     private $errorHandler;
 
-    public function handleRequest(Request $request, RequestHandler $requestHandler): Promise {
+    public function handleRequest(Request $request, RequestHandler $requestHandler): Promise
+    {
         static $internalErrorHtml;
 
         if ($internalErrorHtml === null) {
@@ -66,14 +68,16 @@ final class ExceptionMiddleware implements Middleware, ServerObserver {
         });
     }
 
-    public function onStart(Server $server): Promise {
+    public function onStart(Server $server): Promise
+    {
         $this->debug = $server->getOptions()->isInDebugMode();
         $this->logger = $server->getLogger();
         $this->errorHandler = $server->getErrorHandler();
         return new Success;
     }
 
-    public function onStop(Server $server): Promise {
+    public function onStop(Server $server): Promise
+    {
         return new Success;
     }
 }

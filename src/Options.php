@@ -2,7 +2,8 @@
 
 namespace Amp\Http\Server;
 
-final class Options {
+final class Options
+{
     private $debug = false;
     private $connectionLimit = 10000;
     private $connectionsPerIpLimit = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
@@ -23,7 +24,8 @@ final class Options {
     /**
      * @return bool `true` if server is in debug mode, `false` if in production mode.
      */
-    public function isInDebugMode(): bool {
+    public function isInDebugMode(): bool
+    {
         return $this->debug;
     }
 
@@ -32,7 +34,8 @@ final class Options {
      *
      * @return self
      */
-    public function withDebugMode(): self {
+    public function withDebugMode(): self
+    {
         $new = clone $this;
         $new->debug = true;
 
@@ -44,7 +47,8 @@ final class Options {
      *
      * @return self
      */
-    public function withoutDebugMode(): self {
+    public function withoutDebugMode(): self
+    {
         $new = clone $this;
         $new->debug = false;
 
@@ -54,7 +58,8 @@ final class Options {
     /**
      * @return int The maximum number of connections that can be handled by the server at a single time.
      */
-    public function getConnectionLimit(): int {
+    public function getConnectionLimit(): int
+    {
         return $this->connectionLimit;
     }
 
@@ -65,7 +70,8 @@ final class Options {
      *
      * @throws \Error If count is less than 1.
      */
-    public function withConnectionLimit(int $count): self {
+    public function withConnectionLimit(int $count): self
+    {
         if ($count < 1) {
             throw new \Error(
                 "Connection limit setting must be greater than or equal to one"
@@ -81,7 +87,8 @@ final class Options {
     /**
      * @return int The maximum number of connections allowed from a single IP.
      */
-    public function getConnectionsPerIpLimit(): int {
+    public function getConnectionsPerIpLimit(): int
+    {
         return $this->connectionsPerIpLimit;
     }
 
@@ -92,7 +99,8 @@ final class Options {
      *
      * @throws \Error If the count is less than 1.
      */
-    public function withConnectionsPerIpLimit(int $count): self {
+    public function withConnectionsPerIpLimit(int $count): self
+    {
         if ($count < 1) {
             throw new \Error(
                 "Connections per IP maximum must be greater than or equal to one"
@@ -108,7 +116,8 @@ final class Options {
     /**
      * @return int Number of seconds a connection may be idle before it is automatically closed.
      */
-    public function getConnectionTimeout(): int {
+    public function getConnectionTimeout(): int
+    {
         return $this->connectionTimeout;
     }
 
@@ -119,7 +128,8 @@ final class Options {
      *
      * @throws \Error If the number of seconds is less than 1.
      */
-    public function withConnectionTimeout(int $seconds): self {
+    public function withConnectionTimeout(int $seconds): self
+    {
         if ($seconds < 1) {
             throw new \Error(
                 "Keep alive timeout setting must be greater than or equal to one second"
@@ -135,7 +145,8 @@ final class Options {
     /**
      * @return int Maximum request body size in bytes.
      */
-    public function getBodySizeLimit(): int {
+    public function getBodySizeLimit(): int
+    {
         return $this->bodySizeLimit;
     }
 
@@ -147,7 +158,8 @@ final class Options {
      *
      * @throws \Error If the number of bytes is less than 0.
      */
-    public function withBodySizeLimit(int $bytes): self {
+    public function withBodySizeLimit(int $bytes): self
+    {
         if ($bytes < 0) {
             throw new \Error(
                 "Max body size setting must be greater than or equal to zero"
@@ -163,7 +175,8 @@ final class Options {
     /**
      * @return int Maximum size of the request header section in bytes.
      */
-    public function getHeaderSizeLimit(): int {
+    public function getHeaderSizeLimit(): int
+    {
         return $this->headerSizeLimit;
     }
 
@@ -174,7 +187,8 @@ final class Options {
      *
      * @throws \Error
      */
-    public function withHeaderSizeLimit(int $bytes): self {
+    public function withHeaderSizeLimit(int $bytes): self
+    {
         if ($bytes < 1) {
             throw new \Error(
                 "Max header size setting must be greater than zero"
@@ -190,7 +204,8 @@ final class Options {
     /**
      * @return int Maximum number of concurrent HTTP/2 streams.
      */
-    public function getConcurrentStreamLimit(): int {
+    public function getConcurrentStreamLimit(): int
+    {
         return $this->concurrentStreamLimit;
     }
 
@@ -201,7 +216,8 @@ final class Options {
      *
      * @throws \Error If the stream count is less than 1.
      */
-    public function withConcurrentStreamLimit(int $streams): self {
+    public function withConcurrentStreamLimit(int $streams): self
+    {
         if ($streams < 1) {
             throw new \Error(
                 "Max number of concurrent streams setting must be greater than zero"
@@ -218,7 +234,8 @@ final class Options {
      * @return int Minimum average frame size required if more than the maximum number of frames per second are
      *     received on an HTTP/2 connection.
      */
-    public function getMinimumAverageFrameSize(): int {
+    public function getMinimumAverageFrameSize(): int
+    {
         return $this->minimumAverageFrameSize;
     }
 
@@ -230,7 +247,8 @@ final class Options {
      *
      * @throws \Error If the size is less than 1.
      */
-    public function withMinimumAverageFrameSize(int $size): self {
+    public function withMinimumAverageFrameSize(int $size): self
+    {
         if ($size < 1) {
             throw new \Error(
                 "Minimum average frame size must be greater than zero"
@@ -246,7 +264,8 @@ final class Options {
     /**
      * @return int Maximum number of HTTP/2 frames per second before the average length minimum is enforced.
      */
-    public function getFramesPerSecondLimit(): int {
+    public function getFramesPerSecondLimit(): int
+    {
         return $this->framesPerSecondLimit;
     }
 
@@ -258,7 +277,8 @@ final class Options {
      *
      * @throws \Error If the frame count is less than 1.
      */
-    public function withFramesPerSecondLimit(int $frames): self {
+    public function withFramesPerSecondLimit(int $frames): self
+    {
         if ($frames < 1) {
             throw new \Error(
                 "Max number of HTTP/2 frames per second setting must be greater than zero"
@@ -274,7 +294,8 @@ final class Options {
     /**
      * @return int The maximum number of bytes to read from a client per read.
      */
-    public function getChunkSize(): int {
+    public function getChunkSize(): int
+    {
         return $this->chunkSize;
     }
 
@@ -286,7 +307,8 @@ final class Options {
      *
      * @throws \Error If the number of bytes is less than 1.
      */
-    public function withChunkSize(int $bytes): self {
+    public function withChunkSize(int $bytes): self
+    {
         if ($bytes < 1) {
             throw new \Error(
                 "Chunk size setting must be greater than zero"
@@ -302,7 +324,8 @@ final class Options {
     /**
      * @return string[] An array of allowed request methods.
      */
-    public function getAllowedMethods(): array {
+    public function getAllowedMethods(): array
+    {
         return $this->allowedMethods;
     }
 
@@ -314,7 +337,8 @@ final class Options {
      *
      * @throws \Error If the array contains non-strings, empty method names, or does not contain GET or HEAD.
      */
-    public function withAllowedMethods(array $allowedMethods): self {
+    public function withAllowedMethods(array $allowedMethods): self
+    {
         foreach ($allowedMethods as $key => $method) {
             if (!\is_string($method)) {
                 throw new \Error(
@@ -357,7 +381,8 @@ final class Options {
      * @return bool `true` if HTTP/2 requests may be established through upgrade requests or prior knowledge.
      *     Disabled by default.
      */
-    public function isHttp2UpgradeAllowed(): bool {
+    public function isHttp2UpgradeAllowed(): bool
+    {
         return $this->allowHttp2Upgrade;
     }
 
@@ -366,7 +391,8 @@ final class Options {
      *
      * @return self
      */
-    public function withHttp2Upgrade(): self {
+    public function withHttp2Upgrade(): self
+    {
         $new = clone $this;
         $new->allowHttp2Upgrade = true;
 
@@ -378,7 +404,8 @@ final class Options {
      *
      * @return self
      */
-    public function withoutHttp2Upgrade(): self {
+    public function withoutHttp2Upgrade(): self
+    {
         $new = clone $this;
         $new->allowHttp2Upgrade = false;
 
@@ -388,7 +415,8 @@ final class Options {
     /**
      * @return bool `true` if compression-by-default is enabled.
      */
-    public function isCompressionEnabled(): bool {
+    public function isCompressionEnabled(): bool
+    {
         return $this->compression;
     }
 
@@ -397,7 +425,8 @@ final class Options {
      *
      * @return self
      */
-    public function withCompression(): self {
+    public function withCompression(): self
+    {
         $new = clone $this;
         $new->compression = true;
 
@@ -409,7 +438,8 @@ final class Options {
      *
      * @return self
      */
-    public function withoutCompression(): self {
+    public function withoutCompression(): self
+    {
         $new = clone $this;
         $new->compression = false;
 

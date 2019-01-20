@@ -9,7 +9,8 @@ use Amp\Http\Status;
 use Amp\Loop;
 use League\Uri;
 
-final class Response extends Internal\Message {
+final class Response extends Internal\Message
+{
     /** @var \Amp\ByteStream\InputStream  */
     private $body;
 
@@ -53,7 +54,8 @@ final class Response extends Internal\Message {
         }
     }
 
-    public function __destruct() {
+    public function __destruct()
+    {
         foreach ($this->onDispose as $callable) {
             try {
                 $callable();
@@ -70,7 +72,8 @@ final class Response extends Internal\Message {
      *
      * @return \Amp\ByteStream\InputStream
      */
-    public function getBody(): InputStream {
+    public function getBody(): InputStream
+    {
         return $this->body;
     }
 
@@ -82,7 +85,8 @@ final class Response extends Internal\Message {
      *
      * @throws \TypeError If the body given is not a string or instance of \Amp\ByteStream\InputStream
      */
-    public function setBody($stringOrStream) {
+    public function setBody($stringOrStream)
+    {
         if ($stringOrStream instanceof InputStream) {
             $this->body = $stringOrStream;
             $this->removeHeader("content-length");
@@ -98,7 +102,8 @@ final class Response extends Internal\Message {
         }
     }
 
-    private function setBodyFromString(string $body) {
+    private function setBodyFromString(string $body)
+    {
         $this->body = new InMemoryStream($body);
         $this->setHeader("content-length", (string) \strlen($body));
     }
@@ -109,7 +114,8 @@ final class Response extends Internal\Message {
      *
      * @param string[]|string[][] $headers
      */
-    public function setHeaders(array $headers) {
+    public function setHeaders(array $headers)
+    {
         $cookies = $this->cookies;
 
         try {
@@ -129,7 +135,8 @@ final class Response extends Internal\Message {
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, $value) {
+    public function setHeader(string $name, $value)
+    {
         parent::setHeader($name, $value);
 
         if (\stripos($name, "set-cookie") === 0) {
@@ -145,7 +152,8 @@ final class Response extends Internal\Message {
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, $value) {
+    public function addHeader(string $name, $value)
+    {
         parent::addHeader($name, $value);
 
         if (\stripos($name, "set-cookie") === 0) {
@@ -158,7 +166,8 @@ final class Response extends Internal\Message {
      *
      * @param string $name
      */
-    public function removeHeader(string $name) {
+    public function removeHeader(string $name)
+    {
         parent::removeHeader($name);
 
         if (\stripos($name, "set-cookie") === 0) {
@@ -171,7 +180,8 @@ final class Response extends Internal\Message {
      *
      * @return int
      */
-    public function getStatus(): int {
+    public function getStatus(): int
+    {
         return $this->status;
     }
 
@@ -180,7 +190,8 @@ final class Response extends Internal\Message {
      *
      * @return string
      */
-    public function getReason(): string {
+    public function getReason(): string
+    {
         return $this->reason;
     }
 
@@ -191,7 +202,8 @@ final class Response extends Internal\Message {
      * @param int $code 100 - 599
      * @param string|null $reason
      */
-    public function setStatus(int $code, string $reason = null) {
+    public function setStatus(int $code, string $reason = null)
+    {
         $this->status = $this->validateStatusCode($code);
         $this->reason = $reason ?? Status::getReason($this->status);
 
@@ -203,7 +215,8 @@ final class Response extends Internal\Message {
     /**
      * @return ResponseCookie[]
      */
-    public function getCookies(): array {
+    public function getCookies(): array
+    {
         return $this->cookies;
     }
 
@@ -212,7 +225,8 @@ final class Response extends Internal\Message {
      *
      * @return ResponseCookie|null
      */
-    public function getCookie(string $name) { /* : ?ResponseCookie */
+    public function getCookie(string $name)
+    { /* : ?ResponseCookie */
         return $this->cookies[$name] ?? null;
     }
 
@@ -221,7 +235,8 @@ final class Response extends Internal\Message {
      *
      * @param ResponseCookie $cookie
      */
-    public function setCookie(ResponseCookie $cookie) {
+    public function setCookie(ResponseCookie $cookie)
+    {
         $this->cookies[$cookie->getName()] = $cookie;
         $this->setHeadersFromCookies();
     }
@@ -231,7 +246,8 @@ final class Response extends Internal\Message {
      *
      * @param string $name
      */
-    public function removeCookie(string $name) {
+    public function removeCookie(string $name)
+    {
         if (isset($this->cookies[$name])) {
             unset($this->cookies[$name]);
             $this->setHeadersFromCookies();
@@ -245,7 +261,8 @@ final class Response extends Internal\Message {
      *
      * @throws \Error
      */
-    private function validateStatusCode(int $code): int {
+    private function validateStatusCode(int $code): int
+    {
         if ($code < 100 || $code > 599) {
             throw new \Error(
                 'Invalid status code. Must be an integer between 100 and 599, inclusive.'
@@ -260,7 +277,8 @@ final class Response extends Internal\Message {
      *
      * @throws \Error
      */
-    private function setCookiesFromHeaders() {
+    private function setCookiesFromHeaders()
+    {
         $this->cookies = [];
 
         $headers = $this->getHeaderArray("set-cookie");
@@ -274,7 +292,8 @@ final class Response extends Internal\Message {
     /**
      * Sets headers based on cookie values.
      */
-    private function setHeadersFromCookies() {
+    private function setHeadersFromCookies()
+    {
         $values = [];
 
         foreach ($this->cookies as $cookie) {
@@ -287,7 +306,8 @@ final class Response extends Internal\Message {
     /**
      * @return array
      */
-    public function getPush(): array {
+    public function getPush(): array
+    {
         return $this->push;
     }
 
@@ -299,7 +319,8 @@ final class Response extends Internal\Message {
      *
      * @throws \Error If the given url is invalid.
      */
-    public function push(string $url, array $headers = []) {
+    public function push(string $url, array $headers = [])
+    {
         \assert((function (array $headers) {
             foreach ($headers as $name => $header) {
                 if ($name[0] === ":" || !\strncasecmp("host", $name, 4)) {
@@ -321,7 +342,8 @@ final class Response extends Internal\Message {
     /**
      * @return bool True if a detach callback has been set, false if none.
      */
-    public function isUpgraded(): bool {
+    public function isUpgraded(): bool
+    {
         return $this->upgrade !== null;
     }
 
@@ -332,7 +354,8 @@ final class Response extends Internal\Message {
      * @param callable $upgrade Callback invoked once the response has been written to the client. The callback is given
      *     an instance of \Amp\Socket\ServerSocket as the first parameter, followed by the given arguments.
      */
-    public function upgrade(callable $upgrade) {
+    public function upgrade(callable $upgrade)
+    {
         $this->upgrade = $upgrade;
         $this->status = Status::SWITCHING_PROTOCOLS;
         $this->reason = Status::getReason($this->status);
@@ -343,7 +366,8 @@ final class Response extends Internal\Message {
      *
      * @return callable|null Upgrade function.
      */
-    public function getUpgradeCallable() { /* : ?callable */
+    public function getUpgradeCallable()
+    { /* : ?callable */
         return $this->upgrade;
     }
 
@@ -353,7 +377,8 @@ final class Response extends Internal\Message {
      *
      * @param callable $onDispose
      */
-    public function onDispose(callable $onDispose) {
+    public function onDispose(callable $onDispose)
+    {
         $this->onDispose[] = $onDispose;
     }
 }

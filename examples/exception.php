@@ -1,13 +1,13 @@
 #!/usr/bin/env php
 <?php
 
-require dirname(__DIR__) . "/vendor/autoload.php";
+require \dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream\ResourceOutputStream;
-use Amp\Log\ConsoleFormatter;
-use Amp\Log\StreamHandler;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Server;
+use Amp\Log\ConsoleFormatter;
+use Amp\Log\StreamHandler;
 use Amp\Socket;
 use Monolog\Logger;
 

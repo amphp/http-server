@@ -4,7 +4,8 @@ namespace Amp\Http\Server\Driver;
 
 use cash\LRUCache;
 
-final class TimeoutCache implements \IteratorAggregate {
+final class TimeoutCache implements \IteratorAggregate
+{
     /** @var \cash\LRUCache */
     private $cache;
 
@@ -21,10 +22,12 @@ final class TimeoutCache implements \IteratorAggregate {
      * @param \Amp\Http\Server\Driver\TimeReference $timeReference
      * @param int                                   $timeout Number of seconds to add when renewing a timeout.
      */
-    public function __construct(TimeReference $timeReference, int $timeout) {
+    public function __construct(TimeReference $timeReference, int $timeout)
+    {
         // Maybe we do need our own LRU-cache implementation?
         $this->cache = new class(\PHP_INT_MAX) extends LRUCache implements \IteratorAggregate {
-            public function getIterator(): \Iterator {
+            public function getIterator(): \Iterator
+            {
                 foreach ($this->data as $key => $data) {
                     yield $key => $data;
                 }
@@ -43,7 +46,8 @@ final class TimeoutCache implements \IteratorAggregate {
      *
      * @param int $id
      */
-    public function renew(int $id) {
+    public function renew(int $id)
+    {
         $this->updates[$id] = $this->now + $this->timeout;
     }
 
@@ -52,7 +56,8 @@ final class TimeoutCache implements \IteratorAggregate {
      *
      * @param int $id
      */
-    public function clear(int $id) {
+    public function clear(int $id)
+    {
         unset($this->updates[$id]);
         $this->cache->remove($id);
     }
@@ -60,7 +65,8 @@ final class TimeoutCache implements \IteratorAggregate {
     /**
      * @return \Iterator Unmodifiable iterator over all IDs in the cache, starting with oldest.
      */
-    public function getIterator(): \Iterator {
+    public function getIterator(): \Iterator
+    {
         foreach ($this->updates as $id => $timeout) {
             $this->cache->put($id, $timeout);
         }
