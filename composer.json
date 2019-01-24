@@ -58,7 +58,8 @@
             "Amp\\Http\\Server\\": "src"
         },
         "files": [
-            "src/Middleware/functions.php"
+            "src/Middleware/functions.php",
+            "src/functions.php"
         ]
     },
     "autoload-dev": {

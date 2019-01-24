@@ -8,6 +8,7 @@ use Amp\Http\Server\RequestHandler\RedirectHandler;
 use Amp\Http\Status;
 use League\Uri;
 use PHPUnit\Framework\TestCase;
+use function Amp\Http\Server\redirectTo;
 use function Amp\Promise\wait;
 
 class RedirectTest extends TestCase
@@ -54,5 +55,18 @@ class RedirectTest extends TestCase
 
         $this->assertSame(Status::TEMPORARY_REDIRECT, $response->getStatus());
         $this->assertSame("/test/foo", $response->getHeader("location"));
+    }
+
+    public function testRedirectTo()
+    {
+        $response = redirectTo('/foobar', Status::PERMANENT_REDIRECT);
+
+        $this->assertSame(Status::PERMANENT_REDIRECT, $response->getStatus());
+        $this->assertSame('/foobar', $response->getHeader('location'));
+    }
+
+    public function testRedirectTo_DefaultStatus()
+    {
+        $this->assertSame(302, redirectTo('/foobar')->getStatus());
     }
 }
