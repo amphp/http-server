@@ -36,12 +36,12 @@ $handler = new CallableRequestHandler(function (Request $request) {
 
 $middleware = new class implements Middleware {
     public function handleRequest(Request $request, RequestHandler $next): Promise {
-        return call(function () {
+        return call(function () use ($request, $next) {
             $requestTime = microtime(true);
-            
+
             $response = yield $next->handleRequest($request);
             $response->setHeader("x-request-time", microtime(true) - $requestTime);
-            
+
             return $response;
         });
     }
