@@ -426,7 +426,7 @@ final class Http1Driver implements HttpDriver
                         $headers,
                         null,
                         $protocol
-                    ));
+                    ), $buffer);
 
                     continue;
                 }

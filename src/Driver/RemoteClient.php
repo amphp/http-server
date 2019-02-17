@@ -523,12 +523,13 @@ final class RemoteClient implements Client
      * Invoked by the HTTP parser when a request is parsed.
      *
      * @param Request $request
+     * @param string $buffer Remaining buffer in the parser.
      *
      * @return \Amp\Promise
      */
-    private function onMessage(Request $request): Promise
+    private function onMessage(Request $request, string $buffer = ''): Promise
     {
-        \assert($this->logger->debug(\sprintf(
+        \assert($this->logger->debug(sprintf(
             "%s %s HTTP/%s @ %s:%s",
             $request->getMethod(),
             $request->getUri(),
@@ -539,7 +540,7 @@ final class RemoteClient implements Client
 
         $this->pendingResponses++;
 
-        return new Coroutine($this->respond($request));
+        return new Coroutine($this->respond($request, $buffer));
     }
 
     /**
@@ -565,10 +566,11 @@ final class RemoteClient implements Client
      * Respond to a parsed request.
      *
      * @param Request $request
+     * @param string $buffer
      *
      * @return \Generator
      */
-    private function respond(Request $request): \Generator
+    private function respond(Request $request, string $buffer): \Generator
     {
         try {
             $method = $request->getMethod();
@@ -606,7 +608,7 @@ final class RemoteClient implements Client
 
         if ($response->isUpgraded()) {
             yield $promise; // Wait on writing response when the response is an upgrade response.
-            $this->export($response->getUpgradeCallable());
+            $this->export($response->getUpgradeCallable(), $buffer);
         }
     }
 
@@ -661,8 +663,9 @@ final class RemoteClient implements Client
      * Invokes the export function on Response with the socket detached from the HTTP server.
      *
      * @param callable $upgrade callable
+     * @param string $buffer Remaining buffer read from the socket.
      */
-    private function export(callable $upgrade)
+    private function export(callable $upgrade, string $buffer)
     {
         if ($this->status & self::CLOSED_RDWR || $this->isExported) {
             return;
@@ -674,7 +677,7 @@ final class RemoteClient implements Client
         \assert($this->logger->debug("Upgrade {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
 
         try {
-            $upgrade(new Internal\DetachedSocket($this, $this->socket, $this->options->getChunkSize()));
+            $upgrade(new Internal\DetachedSocket($this, $this->socket, $buffer, $this->options->getChunkSize()));
         } catch (\Throwable $exception) {
             $this->logger->error($exception);
             $this->close();
