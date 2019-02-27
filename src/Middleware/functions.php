@@ -14,7 +14,7 @@ use Amp\Http\Server\RequestHandler;
  *
  * @return RequestHandler Wrapped request handler.
  */
-function stack(RequestHandler $requestHandler, Middleware ...$middlewares)
+function stack(RequestHandler $requestHandler, Middleware ...$middlewares): RequestHandler
 {
     if (!$middlewares) {
         return $requestHandler;
