@@ -9,8 +9,8 @@ final class Options
     private $connectionsPerIpLimit = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
     private $connectionTimeout = 15; // seconds
 
-    private $concurrentStreamLimit = 20;
-    private $framesPerSecondLimit = 60;
+    private $concurrentStreamLimit = 256;
+    private $framesPerSecondLimit = 1024;
     private $minimumAverageFrameSize = 1024;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
 
