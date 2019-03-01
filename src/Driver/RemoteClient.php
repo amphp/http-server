@@ -18,6 +18,7 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
+use function Amp\call;
 
 final class RemoteClient implements Client
 {
@@ -316,7 +317,7 @@ final class RemoteClient implements Client
         }
 
         foreach ($onClose as $callback) {
-            $callback($this);
+            Promise\rethrow(call($callback, $this));
         }
     }
 
@@ -324,7 +325,7 @@ final class RemoteClient implements Client
     public function onClose(callable $callback)
     {
         if ($this->onClose === null) {
-            $callback($this);
+            Promise\rethrow(call($callback, $this));
             return;
         }
 
