@@ -5,11 +5,12 @@ namespace Amp\Http\Server;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\ResponseCookie;
+use Amp\Http\Message;
 use Amp\Http\Status;
 use Amp\Loop;
 use League\Uri;
 
-final class Response extends Internal\Message
+final class Response extends Message
 {
     /** @var \Amp\ByteStream\InputStream  */
     private $body;

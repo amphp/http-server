@@ -5,10 +5,11 @@ namespace Amp\Http\Server;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\RequestCookie;
+use Amp\Http\Message;
 use Amp\Http\Server\Driver\Client;
 use Psr\Http\Message\UriInterface as PsrUri;
 
-final class Request extends Internal\Message
+final class Request extends Message
 {
     /** @var Client */
     private $client;
