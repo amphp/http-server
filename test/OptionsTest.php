@@ -130,13 +130,13 @@ class OptionsTest extends TestCase
         $options = new Options;
 
         // default
-        $this->assertSame(20, $options->getConcurrentStreamLimit());
+        $this->assertSame(256, $options->getConcurrentStreamLimit());
 
         // change
         $this->assertSame(1, $options->withConcurrentStreamLimit(1)->getConcurrentStreamLimit());
 
         // change doesn't affect original
-        $this->assertSame(20, $options->getConcurrentStreamLimit());
+        $this->assertSame(256, $options->getConcurrentStreamLimit());
 
         // invalid
         $this->expectException(\Error::class);
@@ -166,13 +166,13 @@ class OptionsTest extends TestCase
         $options = new Options;
 
         // default
-        $this->assertSame(60, $options->getFramesPerSecondLimit());
+        $this->assertSame(1024, $options->getFramesPerSecondLimit());
 
         // change
         $this->assertSame(1, $options->withFramesPerSecondLimit(1)->getFramesPerSecondLimit());
 
         // change doesn't affect original
-        $this->assertSame(60, $options->getFramesPerSecondLimit());
+        $this->assertSame(1024, $options->getFramesPerSecondLimit());
 
         // invalid
         $this->expectException(\Error::class);
