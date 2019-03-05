@@ -180,14 +180,15 @@ final class Http2Driver implements HttpDriver
     protected function dispatchInternalRequest(Request $request, int $streamId, PsrUri $url, array $headers = [])
     {
         $uri = $request->getUri();
+        $path = $url->getPath();
 
-        if ($url[0] ?? "" === "/") {
-            $uri = $uri->withPath($url->getPath())->withQuery($url->getQuery());
-        } elseif ($url->getScheme() !== "") {
-            $uri = $uri->withPath($uri->getPath() . "/" . $url->getPath())->withQuery($url->getQuery());
-        } else {
-            $uri = $url;
+        if (($path[0] ?? "") === "/") { // Absolute path
+            $uri = $uri->withPath($path);
+        } else { // Relative path
+            $uri = $uri->withPath(\rtrim($uri->getPath(), "/") . "/" . $path);
         }
+
+        $uri = $uri->withQuery($url->getQuery());
 
         $url = (string) $uri;
 
@@ -278,6 +279,7 @@ final class Http2Driver implements HttpDriver
 
             if (!empty($push = $response->getPush())) {
                 foreach ($push as list($pushUri, $pushHeaders)) {
+                    \assert($pushUri instanceof PsrUri && \is_array($pushHeaders));
                     if ($this->allowsPush) {
                         $this->dispatchInternalRequest($request, $id, $pushUri, $pushHeaders);
                     } else {

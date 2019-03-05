@@ -20,12 +20,12 @@ use League\Uri;
 
 class Http2DriverTest extends TestCase
 {
-    public static function packFrame($data, $type, $flags, $stream = 0)
+    public static function packFrame(string $data, string $type, string $flags, int $stream = 0): string
     {
         return \substr(\pack("N", \strlen($data)), 1, 3) . $type . $flags . \pack("N", $stream) . $data;
     }
 
-    public static function packHeader($headers, $continue = false, $stream = 1, $split = PHP_INT_MAX)
+    public static function packHeader(array $headers, bool $continue = false, int $stream = 1, int $split = \PHP_INT_MAX): string
     {
         $data = "";
         $hpack = new HPack;
@@ -56,9 +56,9 @@ class Http2DriverTest extends TestCase
     /**
      * @dataProvider provideSimpleCases
      */
-    public function testSimpleCases($msg, $expectations)
+    public function testSimpleCases(string $msg, array $expectations)
     {
-        $msg = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n$msg";
+        $msg = Http2Driver::PREFACE . $msg;
 
         for ($mode = 0; $mode <= 1; $mode++) {
             list($driver, $parser) = $this->setupDriver(function (Request $req) use (&$request, &$parser) {
@@ -104,7 +104,7 @@ class Http2DriverTest extends TestCase
         }
     }
 
-    public function provideSimpleCases()
+    public function provideSimpleCases(): array
     {
         // 0 --- basic request -------------------------------------------------------------------->
 
@@ -266,7 +266,7 @@ class Http2DriverTest extends TestCase
             "" // Simulate upgrade request.
         );
 
-        $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+        $parser->send(Http2Driver::PREFACE);
 
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "2.0");
 
@@ -290,7 +290,7 @@ class Http2DriverTest extends TestCase
 
         $hpack = new HPack;
         $data .= self::packFrame($hpack->encode([
-            ":status" => 200,
+            ":status" => Status::OK,
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
 
@@ -304,7 +304,7 @@ class Http2DriverTest extends TestCase
     {
         list($driver, $parser) = $this->setupDriver();
 
-        $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+        $parser->send(Http2Driver::PREFACE);
         $driver->frames = []; // ignore settings and window updates...
 
         $parser->send(self::packFrame("blahbleh", Http2Driver::PING, Http2Driver::NOFLAG));
@@ -318,7 +318,7 @@ class Http2DriverTest extends TestCase
             $request = $read;
         });
 
-        $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+        $parser->send(Http2Driver::PREFACE);
 
         foreach ($driver->frames as list($data, $type, $flags, $stream)) {
             $this->assertEquals(Http2Driver::SETTINGS, $type);
@@ -355,7 +355,7 @@ class Http2DriverTest extends TestCase
 
         $hpack = new HPack;
         $this->assertEquals([$hpack->encode([
-            ":status" => 200,
+            ":status" => Status::OK,
             "content-type" => ["text/html; charset=utf-8"],
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1], \array_pop($driver->frames));
@@ -419,7 +419,7 @@ class Http2DriverTest extends TestCase
 
         $hpack = new HPack;
         $this->assertEquals([$hpack->encode([
-            ":status" => 200,
+            ":status" => Status::OK,
             "content-type" => ["text/html; charset=utf-8"],
             "date" => [""],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], \array_pop($driver->frames));
@@ -470,7 +470,7 @@ class Http2DriverTest extends TestCase
             }
         );
 
-        $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+        $parser->send(Http2Driver::PREFACE);
 
         $headers = [
             ":authority" => "localhost",
@@ -498,5 +498,55 @@ class Http2DriverTest extends TestCase
         $emitter->emit("{data}");
 
         Promise\wait($writer); // Will throw if the writer is not complete.
+    }
+
+    public function testPush()
+    {
+        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class));
+
+        $requests = [];
+
+        $parser = $driver->setup(
+            $this->createMock(Client::class),
+            function (Request $read) use (&$requests) {
+                $requests[] = $read;
+                return new Success;
+            },
+            function () {
+                return new Success;
+            }
+        );
+
+        $parser->send(Http2Driver::PREFACE);
+
+        $headers = [
+            ":authority" => "localhost",
+            ":path" => "/base",
+            ":scheme" => "http",
+            ":method" => "GET",
+        ];
+        $parser->send(self::packHeader($headers, false, 1));
+
+        $response = new Response(Status::CREATED);
+        $response->push("/absolute/path");
+        $response->push("relative/path");
+        $response->push("path/with/query?key=value");
+
+        $this->assertInstanceOf(Request::class, $requests[0]);
+
+        $writer = $driver->write($requests[0], $response);
+
+        Promise\wait($writer);
+
+        $paths = ["/base", "/absolute/path", "/base/relative/path", "/base/path/with/query"];
+
+        $this->assertCount(\count($paths), $requests);
+
+        foreach ($requests as $id => $requested) {
+            $this->assertSame($paths[$id], $requested->getUri()->getPath());
+        }
+
+        $request = $requests[\count($requests) - 1];
+        $this->assertSame("key=value", $request->getUri()->getQuery());
     }
 }
