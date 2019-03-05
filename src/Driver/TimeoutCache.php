@@ -28,9 +28,7 @@ final class TimeoutCache implements \IteratorAggregate
         $this->cache = new class(\PHP_INT_MAX) extends LRUCache implements \IteratorAggregate {
             public function getIterator(): \Iterator
             {
-                foreach ($this->data as $key => $data) {
-                    yield $key => $data;
-                }
+                yield from $this->data;
             }
         };
 
