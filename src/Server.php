@@ -6,9 +6,10 @@ use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Failure;
 use Amp\Http\Server\Driver\Client;
+use Amp\Http\Server\Driver\ClientFactory;
+use Amp\Http\Server\Driver\DefaultClientFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
-use Amp\Http\Server\Driver\RemoteClient;
 use Amp\Http\Server\Driver\SystemTimeReference;
 use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Driver\TimeReference;
@@ -49,6 +50,9 @@ final class Server
 
     /** @var ErrorHandler */
     private $errorHandler;
+
+    /** @var ClientFactory */
+    private $clientFactory;
 
     /** @var HttpDriverFactory */
     private $driverFactory;
@@ -109,6 +113,7 @@ final class Server
 
         $this->logger = $logger;
         $this->options = $options ?? new Options;
+        $this->clientFactory = $clientFactory ?? new DefaultClientFactory;
         $this->timeReference = new SystemTimeReference;
         $this->timeouts = new TimeoutCache(
             $this->timeReference,
@@ -151,6 +156,22 @@ final class Server
         }
 
         $this->driverFactory = $driverFactory;
+    }
+
+    /**
+     * Define a custom Client factory.
+     *
+     * @param ClientFactory $clientFactory
+     *
+     * @throws \Error If the server has started.
+     */
+    public function setClientFactory(ClientFactory $clientFactory)
+    {
+        if ($this->state) {
+            throw new \Error("Cannot set the client factory after the server has started");
+        }
+
+        $this->clientFactory = $clientFactory;
     }
 
     /**
@@ -246,7 +267,7 @@ final class Server
             }
 
             return new Failure(new \Error(
-                "Cannot start server: already ".self::STATES[$this->state]
+                "Cannot start server: already " . self::STATES[$this->state]
             ));
         } catch (\Throwable $uncaught) {
             return new Failure($uncaught);
@@ -314,7 +335,7 @@ final class Server
             return;
         }
 
-        $client = new RemoteClient(
+        $client = $this->clientFactory->createClient(
             $socket,
             $this->requestHandler,
             $this->errorHandler,
@@ -399,7 +420,7 @@ final class Server
                 return new Success;
             default:
                 return new Failure(new \Error(
-                    "Cannot stop server: currently ".self::STATES[$this->state]
+                    "Cannot stop server: currently " . self::STATES[$this->state]
                 ));
         }
     }
