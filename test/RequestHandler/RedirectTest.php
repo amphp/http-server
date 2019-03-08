@@ -1,6 +1,6 @@
 <?php
 
-namespace Amp\Http\Server\Test;
+namespace Amp\Http\Server\Test\RequestHandler;
 
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Request;

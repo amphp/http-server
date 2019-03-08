@@ -1,6 +1,6 @@
 <?php
 
-namespace Amp\Http\Server\Test;
+namespace Amp\Http\Server\Test\Driver;
 
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
