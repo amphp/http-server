@@ -111,7 +111,6 @@ final class RemoteClient implements Client
      * @param TimeoutCache   $timeoutCache
      */
     public function __construct(
-        /* resource */ 
         $socket,
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
