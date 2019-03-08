@@ -55,7 +55,7 @@ class RemoteClientTest extends TestCase
         $servers = [Socket\listen(
             $address,
             null,
-            (new ServerTlsContext)->withDefaultCertificate(new Certificate(__DIR__."/server.pem"))
+            (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"))
         )];
 
         $options = (new Options)->withDebugMode();
@@ -434,8 +434,8 @@ class RemoteClientTest extends TestCase
         $tlsContext = null;
 
         if ($tls) {
-            $tlsContext = new Socket\ServerTlsContext;
-            $tlsContext = $tlsContext->withDefaultCertificate(new Socket\Certificate(__DIR__ . "/server.pem"));
+            $tlsContext = (new Socket\ServerTlsContext)
+                ->withDefaultCertificate(new Socket\Certificate(\dirname(__DIR__) . "/server.pem"));
         }
 
         if ($unixSocket) {
