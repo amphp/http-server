@@ -16,10 +16,6 @@ use Amp\Http\Server\RequestHandler;
  */
 function stack(RequestHandler $requestHandler, Middleware ...$middlewares): RequestHandler
 {
-    if (!$middlewares) {
-        return $requestHandler;
-    }
-
     $middleware = \end($middlewares);
 
     while ($middleware) {

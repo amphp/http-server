@@ -47,4 +47,10 @@ class StackTest extends TestCase
 
         $this->assertSame("ab", $response->getHeader("stack"));
     }
+
+    public function testEmptyMiddlewareSet()
+    {
+        $mock = $this->createMock(RequestHandler::class);
+        $this->assertSame($mock, stack($mock));
+    }
 }
