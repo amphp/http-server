@@ -197,6 +197,24 @@ class OptionsTest extends TestCase
         $options->withChunkSize(0);
     }
 
+    public function testWithStreamThreshold()
+    {
+        $options = new Options;
+
+        // default
+        $this->assertSame(1024, $options->getStreamThreshold());
+
+        // change
+        $this->assertSame(1, $options->withStreamThreshold(1)->getStreamThreshold());
+
+        // change doesn't affect original
+        $this->assertSame(1024, $options->getStreamThreshold());
+
+        // invalid
+        $this->expectException(\Error::class);
+        $options->withStreamThreshold(0);
+    }
+
     public function testWithAllowedMethods()
     {
         $options = new Options;
