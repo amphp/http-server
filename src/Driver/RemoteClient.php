@@ -111,7 +111,8 @@ final class RemoteClient implements Client
      * @param TimeoutCache   $timeoutCache
      */
     public function __construct(
-        /* resource */ $socket,
+        /* resource */ 
+        $socket,
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
@@ -536,7 +537,7 @@ final class RemoteClient implements Client
      */
     private function onMessage(Request $request, string $buffer = ''): Promise
     {
-        \assert($this->logger->debug(sprintf(
+        \assert($this->logger->debug(\sprintf(
             "%s %s HTTP/%s @ %s:%s",
             $request->getMethod(),
             $request->getUri(),
