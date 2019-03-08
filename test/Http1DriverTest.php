@@ -869,7 +869,7 @@ class Http1DriverTest extends TestCase
     public function testWriteAbortAfterHeaders()
     {
         $driver = new Http1Driver(
-            new Options,
+            (new Options)->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
             $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class)
         );

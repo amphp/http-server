@@ -316,7 +316,7 @@ class Http2DriverTest extends TestCase
     {
         list($driver, $parser) = $this->setupDriver(function (Request $read) use (&$request) {
             $request = $read;
-        });
+        }, (new Options)->withStreamThreshold(1)); // Set stream threshold to 1 to force immediate writes to client.
 
         $parser->send(Http2Driver::PREFACE);
 

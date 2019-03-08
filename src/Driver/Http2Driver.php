@@ -256,7 +256,7 @@ final class Http2Driver implements HttpDriver
 
     public function send(int $id, Response $response, Request $request): \Generator
     {
-        $part = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
+        $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
         try {
             $status = $response->getStatus();
@@ -306,21 +306,31 @@ final class Http2Driver implements HttpDriver
 
             if ($request->getMethod() === "HEAD") {
                 $this->writeData("", $id, true);
-                $part = null;
+                $chunk = null;
                 return;
             }
 
             $buffer = "";
             $body = $response->getBody();
+            $streamThreshold = $this->options->getStreamThreshold();
 
-            while (null !== $buffer = yield $body->read()) {
+            while (null !== $chunk = yield $body->read()) {
+                $buffer .= $chunk;
+
                 // Stream may have been closed while waiting for body data.
                 if (!isset($this->streams[$id])) {
                     return;
                 }
 
-                yield $this->writeData($buffer, $id, false);
-                $buffer = "";
+                if (\strlen($buffer) < $streamThreshold) {
+                    continue;
+                }
+
+                $promise = $this->writeData($buffer, $id, false);
+
+                $buffer = $chunk = ""; // Don't use null here because of finally.
+
+                yield $promise;
             }
 
             // Stream may have been closed while waiting for body data.
@@ -328,11 +338,11 @@ final class Http2Driver implements HttpDriver
                 return;
             }
 
-            yield $this->writeData("", $id, true);
+            yield $this->writeData($buffer, $id, true);
         } catch (ClientException $exception) {
             $error = $exception->getCode() ?? self::CANCEL; // Set error code to be used in finally below.
         } finally {
-            if (isset($this->streams[$id]) && $part !== null) {
+            if (isset($this->streams[$id]) && $chunk !== null) {
                 if (($buffer ?? "") !== "") {
                     $this->writeData($buffer, $id, false);
                 }

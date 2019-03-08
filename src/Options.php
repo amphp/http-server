@@ -17,6 +17,7 @@ final class Options
     private $bodySizeLimit = 131072;
     private $headerSizeLimit = 32768;
     private $chunkSize = 8192;
+    private $streamThreshold = 1024;
 
     private $compression = true;
     private $allowHttp2Upgrade = false;
@@ -317,6 +318,36 @@ final class Options
 
         $new = clone $this;
         $new->chunkSize = $bytes;
+
+        return $new;
+    }
+
+    /**
+     * @return int The minimum number of bytes to write to a client time for streamed responses.
+     */
+    public function getStreamThreshold(): int
+    {
+        return $this->streamThreshold;
+    }
+
+    /**
+     * @param int $bytes TThe minimum number of bytes to write to a client time for streamed responses. Larger numbers
+     *     are better for performance but can increase memory usage. Default is 1024 (1k).
+     *
+     * @return self
+     *
+     * @throws \Error If the number of bytes is less than 1.
+     */
+    public function withStreamThreshold(int $bytes): self
+    {
+        if ($bytes < 1) {
+            throw new \Error(
+                "Stream threshold setting must be greater than zero"
+            );
+        }
+
+        $new = clone $this;
+        $new->streamThreshold = $bytes;
 
         return $new;
     }

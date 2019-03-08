@@ -161,6 +161,7 @@ final class Http1Driver implements HttpDriver
 
         $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
         $body = $response->getBody();
+        $streamThreshold = $this->options->getStreamThreshold();
 
         try {
             while (null !== $chunk = yield $body->read()) {
@@ -172,11 +173,19 @@ final class Http1Driver implements HttpDriver
                     $chunk = \sprintf("%x\r\n%s\r\n", $length, $chunk);
                 }
 
+                $buffer .= $chunk;
+
+                if (\strlen($buffer) < $streamThreshold) {
+                    continue;
+                }
+
                 // Initially the buffer won't be empty and contains the headers.
                 // We save a separate write or the headers here.
-                yield ($this->write)($buffer . $chunk);
+                $promise = ($this->write)($buffer);
 
                 $buffer = $chunk = ""; // Don't use null here, because of the finally
+
+                yield $promise;
             }
 
             if ($buffer !== "" || $chunked || $shouldClose) {
