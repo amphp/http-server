@@ -2,7 +2,9 @@
 
 namespace Amp\Http\Server;
 
-function redirectTo(string $uri, int $statusCode = 302): Response
+use Amp\Http\Status;
+
+function redirectTo(string $uri, int $statusCode = Status::FOUND): Response
 {
     return new Response($statusCode, ['location' => $uri]);
 }

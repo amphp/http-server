@@ -57,6 +57,19 @@ class RedirectTest extends TestCase
         $this->assertSame("/test/foo", $response->getHeader("location"));
     }
 
+    public function testRedirectWithQuery()
+    {
+        $action = new RedirectHandler(Uri\Http::createFromString("/new/path"), Status::MOVED_PERMANENTLY);
+        $uri = Uri\Http::createFromString("http://test.local/foo?key=value");
+        $request = new Request($this->createMock(Client::class), "GET", $uri);
+
+        /** @var \Amp\Http\Server\Response $response */
+        $response = wait($action->handleRequest($request));
+
+        $this->assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
+        $this->assertSame("/new/path/foo?key=value", $response->getHeader("location"));
+    }
+
     public function testRedirectTo()
     {
         $response = redirectTo('/foobar', Status::PERMANENT_REDIRECT);

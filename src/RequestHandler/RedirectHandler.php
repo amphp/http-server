@@ -2,14 +2,13 @@
 
 namespace Amp\Http\Server\RequestHandler;
 
-use Amp\ByteStream\InMemoryStream;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
-use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Http\Message\UriInterface as PsrUri;
+use function Amp\Http\Server\redirectTo;
 
 final class RedirectHandler implements RequestHandler
 {
@@ -48,9 +47,6 @@ final class RedirectHandler implements RequestHandler
             $path .= "?" . $query;
         }
 
-        return new Success(new Response($this->statusCode, [
-            "location" => $this->redirectUri . $path,
-            "content-length" => 0,
-        ], new InMemoryStream));
+        return new Success(redirectTo($this->redirectUri . $path, $this->statusCode));
     }
 }
