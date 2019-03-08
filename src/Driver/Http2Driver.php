@@ -315,20 +315,20 @@ final class Http2Driver implements HttpDriver
             $streamThreshold = $this->options->getStreamThreshold();
 
             while (null !== $chunk = yield $body->read()) {
-                $buffer .= $chunk;
-
                 // Stream may have been closed while waiting for body data.
                 if (!isset($this->streams[$id])) {
                     return;
                 }
 
                 if (\strlen($buffer) < $streamThreshold) {
+                    $buffer .= $chunk;
                     continue;
                 }
 
                 $promise = $this->writeData($buffer, $id, false);
 
-                $buffer = $chunk = ""; // Don't use null here because of finally.
+                $buffer = $chunk;
+                $chunk = ""; // Don't use null here because of finally.
 
                 yield $promise;
             }

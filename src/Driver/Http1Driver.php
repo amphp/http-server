@@ -173,9 +173,8 @@ final class Http1Driver implements HttpDriver
                     $chunk = \sprintf("%x\r\n%s\r\n", $length, $chunk);
                 }
 
-                $buffer .= $chunk;
-
                 if (\strlen($buffer) < $streamThreshold) {
+                    $buffer .= $chunk;
                     continue;
                 }
 
@@ -183,7 +182,8 @@ final class Http1Driver implements HttpDriver
                 // We save a separate write or the headers here.
                 $promise = ($this->write)($buffer);
 
-                $buffer = $chunk = ""; // Don't use null here, because of the finally
+                $buffer = $chunk;
+                $chunk = ""; // Don't use null here, because of the finally
 
                 yield $promise;
             }
