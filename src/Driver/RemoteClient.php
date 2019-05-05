@@ -499,6 +499,10 @@ final class RemoteClient implements Client
                 return new Failure(new ClientException("The client disconnected"));
             }
 
+            if ($bytesWritten !== 0) {
+                $this->timeoutCache->renew($this->id);
+            }
+
             if ($bytesWritten === \strlen($data)) {
                 if ($close) {
                     $this->close();
