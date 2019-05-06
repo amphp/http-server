@@ -25,9 +25,9 @@ final class Server
 {
     use CallableMaker;
 
-    const STOPPED  = 0;
+    const STOPPED = 0;
     const STARTING = 1;
-    const STARTED  = 2;
+    const STARTED = 2;
     const STOPPING = 3;
 
     const STATES = [
@@ -345,7 +345,7 @@ final class Server
         );
 
         \assert($this->logger->debug("Accept {$client->getRemoteAddress()}:{$client->getRemotePort()} on " .
-            "{$client->getLocalAddress()}:{$client->getLocalPort()} #{$client->getId()}") || true);
+                "{$client->getLocalAddress()}:{$client->getLocalPort()} #{$client->getId()}") || true);
 
         $net = $client->getRemoteAddress();
         if (@\inet_pton($net) !== false && isset($net[4])) {
@@ -466,6 +466,11 @@ final class Server
             }
 
             $client = $this->clients[$id];
+
+            if ($client->isWaitingOnResponse()) {
+                $this->timeouts->renew($id);
+                continue;
+            }
 
             // Client is either idle or taking too long to send request, so simply close the connection.
             $client->close();
