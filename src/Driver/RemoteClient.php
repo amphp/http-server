@@ -96,7 +96,7 @@ final class RemoteClient implements Client
     /** @var int */
     private $pendingResponses = 0;
 
-    /** @var bool  */
+    /** @var bool */
     private $paused = false;
 
     /** @var callable */
@@ -161,7 +161,7 @@ final class RemoteClient implements Client
     /**
      * Listen for requests on the client and parse them using the given HTTP driver.
      *
-     * @param \Amp\Http\Server\Driver\HttpDriverFactory $driverFactory
+     * @param HttpDriverFactory $driverFactory
      *
      * @throws \Error If the client has already been started.
      */
@@ -191,21 +191,6 @@ final class RemoteClient implements Client
         $this->readWatcher = Loop::onReadable($this->socket, $this->callableFromInstanceMethod("onReadable"));
     }
 
-    /**
-     * @param HttpDriver $driver
-     */
-    private function setup(HttpDriver $driver)
-    {
-        $this->httpDriver = $driver;
-        $this->requestParser = $this->httpDriver->setup(
-            $this,
-            $this->callableFromInstanceMethod("onMessage"),
-            $this->callableFromInstanceMethod("write")
-        );
-
-        $this->requestParser->current();
-    }
-
     /** @inheritdoc */
     public function getOptions(): Options
     {
@@ -231,7 +216,7 @@ final class RemoteClient implements Client
     /** @inheritdoc */
     public function isWaitingOnResponse(): bool
     {
-        return $this->httpDriver !== null && $this->pendingResponses > $this->httpDriver->getPendingRequestCount();
+        return $this->pendingResponses > 0;
     }
 
     /** @inheritdoc */
@@ -351,6 +336,21 @@ final class RemoteClient implements Client
         return $promise;
     }
 
+    /**
+     * @param HttpDriver $driver
+     */
+    private function setup(HttpDriver $driver)
+    {
+        $this->httpDriver = $driver;
+        $this->requestParser = $this->httpDriver->setup(
+            $this,
+            $this->callableFromInstanceMethod("onMessage"),
+            $this->callableFromInstanceMethod("write")
+        );
+
+        $this->requestParser->current();
+    }
+
     private function clear()
     {
         $this->httpDriver = null;
@@ -414,9 +414,9 @@ final class RemoteClient implements Client
     /**
      * Called by the onReadable watcher after the client connects until encryption is enabled.
      *
-     * @param string                                    $watcher
-     * @param resource                                  $socket
-     * @param \Amp\Http\Server\Driver\HttpDriverFactory $driverFactory
+     * @param string            $watcher
+     * @param resource          $socket
+     * @param HttpDriverFactory $driverFactory
      */
     private function negotiateCrypto(string $watcher, $socket, HttpDriverFactory $driverFactory)
     {
@@ -427,11 +427,11 @@ final class RemoteClient implements Client
             $this->cryptoInfo = \stream_get_meta_data($this->socket)["crypto"];
 
             \assert($this->logger->debug(\sprintf(
-                "Crypto negotiated (ALPN: %s) %s:%d",
-                ($this->cryptoInfo["alpn_protocol"] ?? "none"),
-                $this->clientAddress,
-                $this->clientPort
-            )) || true);
+                    "Crypto negotiated (ALPN: %s) %s:%d",
+                    ($this->cryptoInfo["alpn_protocol"] ?? "none"),
+                    $this->clientAddress,
+                    $this->clientPort
+                )) || true);
 
             $this->setup($driverFactory->selectDriver($this));
 
@@ -481,9 +481,9 @@ final class RemoteClient implements Client
      * once the client write buffer has emptied.
      *
      * @param string $data The data to write.
-     * @param bool $close If true, close the client after the given chunk of data has been written.
+     * @param bool   $close If true, close the client after the given chunk of data has been written.
      *
-     * @return \Amp\Promise
+     * @return Promise
      */
     private function write(string $data, bool $close = false): Promise
     {
@@ -534,20 +534,20 @@ final class RemoteClient implements Client
      * Invoked by the HTTP parser when a request is parsed.
      *
      * @param Request $request
-     * @param string $buffer Remaining buffer in the parser.
+     * @param string  $buffer Remaining buffer in the parser.
      *
-     * @return \Amp\Promise
+     * @return Promise
      */
     private function onMessage(Request $request, string $buffer = ''): Promise
     {
         \assert($this->logger->debug(\sprintf(
-            "%s %s HTTP/%s @ %s:%s",
-            $request->getMethod(),
-            $request->getUri(),
-            $request->getProtocolVersion(),
-            $this->clientAddress,
-            $this->clientPort
-        )) || true);
+                "%s %s HTTP/%s @ %s:%s",
+                $request->getMethod(),
+                $request->getUri(),
+                $request->getProtocolVersion(),
+                $this->clientAddress,
+                $this->clientPort
+            )) || true);
 
         $this->pendingResponses++;
 
@@ -577,56 +577,57 @@ final class RemoteClient implements Client
      * Respond to a parsed request.
      *
      * @param Request $request
-     * @param string $buffer
+     * @param string  $buffer
      *
      * @return \Generator
      */
     private function respond(Request $request, string $buffer): \Generator
     {
         try {
-            $method = $request->getMethod();
+            try {
+                $method = $request->getMethod();
 
-            if (!\in_array($method, $this->options->getAllowedMethods(), true)) {
-                if (!\in_array($method, HttpDriver::KNOWN_METHODS, true)) {
-                    $response = yield from $this->makeNotImplementedResponse();
+                if (!\in_array($method, $this->options->getAllowedMethods(), true)) {
+                    if (!\in_array($method, HttpDriver::KNOWN_METHODS, true)) {
+                        $response = yield from $this->makeNotImplementedResponse();
+                    } else {
+                        $response = yield from $this->makeMethodNotAllowedResponse();
+                    }
+                } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
+                    $response = $this->makeOptionsResponse();
                 } else {
-                    $response = yield from $this->makeMethodNotAllowedResponse();
-                }
-            } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
-                $response = $this->makeOptionsResponse();
-            } else {
-                $response = yield $this->requestHandler->handleRequest(clone $request);
+                    $response = yield $this->requestHandler->handleRequest(clone $request);
 
-                if (!$response instanceof Response) {
-                    throw new \Error("At least one request handler must return an instance of " . Response::class);
+                    if (!$response instanceof Response) {
+                        throw new \Error("At least one request handler must return an instance of " . Response::class);
+                    }
                 }
+            } catch (ClientException $exception) {
+                $this->close();
+                return;
+            } catch (\Throwable $exception) {
+                $this->logger->error($exception);
+                $response = yield from $this->makeExceptionResponse($request);
             }
-        } catch (ClientException $exception) {
-            $this->close();
-            return;
-        } catch (\Throwable $exception) {
-            $this->logger->error($exception);
-            $response = yield from $this->makeExceptionResponse($request);
+
+            if ($this->status & self::CLOSED_WR) {
+                return; // Client closed before response could be sent.
+            }
+
+            yield $this->httpDriver->write($request, $response);
+
+            if ($response->isUpgraded()) {
+                $this->export($response->getUpgradeCallable(), $buffer);
+            }
         } finally {
             $this->pendingResponses--;
-        }
-
-        if ($this->status & self::CLOSED_WR) {
-            return; // Client closed before response could be sent.
-        }
-
-        $promise = $this->httpDriver->write($request, $response);
-
-        if ($response->isUpgraded()) {
-            yield $promise; // Wait on writing response when the response is an upgrade response.
-            $this->export($response->getUpgradeCallable(), $buffer);
         }
     }
 
     private function makeMethodNotAllowedResponse(): \Generator
     {
         $status = Status::METHOD_NOT_ALLOWED;
-        /** @var \Amp\Http\Server\Response $response */
+        /** @var Response $response */
         $response = yield $this->errorHandler->handleError($status);
         $response->setHeader("Connection", "close");
         $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
@@ -636,7 +637,7 @@ final class RemoteClient implements Client
     private function makeNotImplementedResponse(): \Generator
     {
         $status = Status::NOT_IMPLEMENTED;
-        /** @var \Amp\Http\Server\Response $response */
+        /** @var Response $response */
         $response = yield $this->errorHandler->handleError($status);
         $response->setHeader("Connection", "close");
         $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
@@ -674,7 +675,7 @@ final class RemoteClient implements Client
      * Invokes the export function on Response with the socket detached from the HTTP server.
      *
      * @param callable $upgrade callable
-     * @param string $buffer Remaining buffer read from the socket.
+     * @param string   $buffer Remaining buffer read from the socket.
      */
     private function export(callable $upgrade, string $buffer)
     {
