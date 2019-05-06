@@ -17,6 +17,7 @@ use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Promise;
 use Amp\Success;
+use Amp\TimeoutException;
 use League\Uri;
 use Psr\Http\Message\UriInterface as PsrUri;
 use function Amp\call;
@@ -177,67 +178,6 @@ final class Http2Driver implements HttpDriver
         return $this->parser($settings);
     }
 
-    protected function dispatchInternalRequest(Request $request, int $streamId, PsrUri $url, array $headers = [])
-    {
-        $uri = $request->getUri();
-        $path = $url->getPath();
-
-        if (($path[0] ?? "") === "/") { // Absolute path
-            $uri = $uri->withPath($path);
-        } else { // Relative path
-            $uri = $uri->withPath(\rtrim($uri->getPath(), "/") . "/" . $path);
-        }
-
-        $uri = $uri->withQuery($url->getQuery());
-
-        $url = (string) $uri;
-
-        if (isset($this->pushCache[$url])) {
-            return; // Resource already pushed to this client.
-        }
-
-        $this->pushCache[$url] = $streamId;
-
-        $path = $uri->getPath();
-        if ($query = $uri->getQuery()) {
-            $path .= "?" . $query;
-        }
-
-        $headers = \array_merge([
-            ":authority" => [$uri->getAuthority()],
-            ":scheme" => [$uri->getScheme()],
-            ":path" => [$path],
-            ":method" => ["GET"],
-        ], \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), $headers);
-
-        $id = $this->streamId += 2; // Server initiated stream IDs must be even.
-        $request = new Request($this->client, "GET", $uri, $headers, null, "2.0");
-        $this->streamIdMap[\spl_object_hash($request)] = $id;
-
-        $this->streams[$id] = $stream = new Http2Stream(
-            0, // No data will be incoming on this stream.
-            $this->initialWindowSize,
-            Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
-        );
-
-        $headers = \pack("N", $id) . $this->table->encode($headers);
-        if (\strlen($headers) >= $this->maxFrameSize) {
-            $split = \str_split($headers, $this->maxFrameSize);
-            $headers = \array_shift($split);
-            $this->writeFrame($headers, self::PUSH_PROMISE, self::NOFLAG, $streamId);
-
-            $headers = \array_pop($split);
-            foreach ($split as $msgPart) {
-                $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $streamId);
-            }
-            $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $streamId);
-        } else {
-            $this->writeFrame($headers, self::PUSH_PROMISE, self::END_HEADERS, $streamId);
-        }
-
-        $stream->pendingResponse = ($this->onMessage)($request);
-    }
-
     public function write(Request $request, Response $response): Promise
     {
         \assert($this->client, "The driver has not been setup");
@@ -314,21 +254,47 @@ final class Http2Driver implements HttpDriver
             $body = $response->getBody();
             $streamThreshold = $this->options->getStreamThreshold();
 
-            while (null !== $chunk = yield $body->read()) {
+            $readPromise = $body->read();
+
+            while (true) {
+                try {
+                    if ($buffer !== "") {
+                        $chunk = yield Promise\timeout($readPromise, 100);
+                    } else {
+                        $chunk = yield $readPromise;
+                    }
+
+                    if ($chunk === null) {
+                        break;
+                    }
+
+                    $readPromise = $body->read(); // directly start new read
+                } catch (TimeoutException $e) {
+                    goto flush;
+                }
+
                 // Stream may have been closed while waiting for body data.
                 if (!isset($this->streams[$id])) {
                     return;
                 }
 
-                if (\strlen($buffer) < $streamThreshold) {
-                    $buffer .= $chunk;
+                $length = \strlen($chunk);
+
+                if ($length === 0) {
                     continue;
                 }
 
+                $buffer .= $chunk;
+
+                if (\strlen($buffer) < $streamThreshold) {
+                    continue;
+                }
+
+                flush:
+
                 $promise = $this->writeData($buffer, $id, false);
 
-                $buffer = $chunk;
-                $chunk = ""; // Don't use null here because of finally.
+                $buffer = $chunk = ""; // Don't use null here because of finally.
 
                 yield $promise;
             }
@@ -365,6 +331,134 @@ final class Http2Driver implements HttpDriver
                 }
             }
         }
+    }
+
+    /** @inheritdoc */
+    public function stop(): Promise
+    {
+        return $this->shutdown();
+    }
+
+    /**
+     * @param int|null $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no frames have
+     *                         been opened.
+     *
+     * @return Promise
+     */
+    public function shutdown(int $lastId = null, int $reason = self::GRACEFUL_SHUTDOWN): Promise
+    {
+        $this->stopping = true;
+
+        return call(function () use ($lastId, $reason) {
+            $promises = [];
+            foreach ($this->streams as $id => $stream) {
+                if ($lastId && $id > $lastId) {
+                    break;
+                }
+
+                if ($stream->pendingResponse) {
+                    $promises[] = $stream->pendingResponse;
+                }
+            }
+
+            $lastId = $lastId ?? ($id ?? 0);
+
+            yield $this->writeFrame(\pack("NN", $lastId, $reason), self::GOAWAY, self::NOFLAG);
+
+            yield $promises;
+
+            $promises = [];
+            foreach ($this->streams as $id => $stream) {
+                if ($lastId && $id > $lastId) {
+                    break;
+                }
+
+                if ($stream->pendingWrite) {
+                    $promises[] = $stream->pendingWrite;
+                }
+            }
+
+            yield $promises;
+        });
+    }
+
+    public function getPendingRequestCount(): int
+    {
+        return \count($this->bodyEmitters);
+    }
+
+    protected function dispatchInternalRequest(Request $request, int $streamId, PsrUri $url, array $headers = [])
+    {
+        $uri = $request->getUri();
+        $path = $url->getPath();
+
+        if (($path[0] ?? "") === "/") { // Absolute path
+            $uri = $uri->withPath($path);
+        } else { // Relative path
+            $uri = $uri->withPath(\rtrim($uri->getPath(), "/") . "/" . $path);
+        }
+
+        $uri = $uri->withQuery($url->getQuery());
+
+        $url = (string) $uri;
+
+        if (isset($this->pushCache[$url])) {
+            return; // Resource already pushed to this client.
+        }
+
+        $this->pushCache[$url] = $streamId;
+
+        $path = $uri->getPath();
+        if ($query = $uri->getQuery()) {
+            $path .= "?" . $query;
+        }
+
+        $headers = \array_merge([
+            ":authority" => [$uri->getAuthority()],
+            ":scheme" => [$uri->getScheme()],
+            ":path" => [$path],
+            ":method" => ["GET"],
+        ], \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), $headers);
+
+        $id = $this->streamId += 2; // Server initiated stream IDs must be even.
+        $request = new Request($this->client, "GET", $uri, $headers, null, "2.0");
+        $this->streamIdMap[\spl_object_hash($request)] = $id;
+
+        $this->streams[$id] = $stream = new Http2Stream(
+            0, // No data will be incoming on this stream.
+            $this->initialWindowSize,
+            Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
+        );
+
+        $headers = \pack("N", $id) . $this->table->encode($headers);
+        if (\strlen($headers) >= $this->maxFrameSize) {
+            $split = \str_split($headers, $this->maxFrameSize);
+            $headers = \array_shift($split);
+            $this->writeFrame($headers, self::PUSH_PROMISE, self::NOFLAG, $streamId);
+
+            $headers = \array_pop($split);
+            foreach ($split as $msgPart) {
+                $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $streamId);
+            }
+            $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $streamId);
+        } else {
+            $this->writeFrame($headers, self::PUSH_PROMISE, self::END_HEADERS, $streamId);
+        }
+
+        $stream->pendingResponse = ($this->onMessage)($request);
+    }
+
+    protected function writePing(): Promise
+    {
+        // no need to receive the PONG frame, that's anyway registered by the keep-alive handler
+        $data = $this->counter++;
+        return $this->writeFrame($data, self::PING, self::NOFLAG);
+    }
+
+    protected function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise
+    {
+        $data = \substr(\pack("N", \strlen($data)), 1, 3) . $type . $flags . \pack("N", $stream) . $data;
+        return ($this->write)($data);
     }
 
     private function writeData(string $data, int $stream, bool $last): Promise
@@ -436,19 +530,6 @@ final class Http2Driver implements HttpDriver
         }
 
         return $stream->deferred->promise();
-    }
-
-    protected function writePing(): Promise
-    {
-        // no need to receive the PONG frame, that's anyway registered by the keep-alive handler
-        $data = $this->counter++;
-        return $this->writeFrame($data, self::PING, self::NOFLAG);
-    }
-
-    protected function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise
-    {
-        $data = \substr(\pack("N", \strlen($data)), 1, 3) . $type . $flags . \pack("N", $stream) . $data;
-        return ($this->write)($data);
     }
 
     private function releaseStream(int $id)
@@ -795,22 +876,23 @@ final class Http2Driver implements HttpDriver
                         }
 
                         /* @TODO PRIORITY frames values not used.
-                        $dependency = unpack("N", $buffer);
-
-                        if ($dependency < 0) {
-                            $dependency = ~$dependency;
-                            $exclusive = true;
-                        } else {
-                            $exclusive = false;
-                        }
-
-                        if ($dependency == 0) {
-                            $error = self::PROTOCOL_ERROR;
-                            goto connection_error;
-                        }
-
-                        $weight = $buffer[4];
-                        */
+                         *
+                         * $dependency = unpack("N", $buffer);
+                         *
+                         * if ($dependency < 0) {
+                         *     $dependency = ~$dependency;
+                         *     $exclusive = true;
+                         * } else {
+                         *     $exclusive = false;
+                         * }
+                         *
+                         * if ($dependency == 0) {
+                         *     $error = self::PROTOCOL_ERROR;
+                         *     goto connection_error;
+                         * }
+                         *
+                         * $weight = $buffer[4];
+                         */
 
                         $buffer = \substr($buffer, 5);
                         continue 2;
@@ -1129,10 +1211,10 @@ final class Http2Driver implements HttpDriver
                     try {
                         $uri = Uri\Http::createFromComponents([
                             "scheme" => $scheme,
-                            "host"   => $host,
-                            "port"   => $port,
-                            "path"   => $target,
-                            "query"  => $query,
+                            "host" => $host,
+                            "port" => $port,
+                            "path" => $target,
+                            "query" => $query,
                         ]);
                     } catch (Uri\UriException $exception) {
                         $error = self::PROTOCOL_ERROR;
@@ -1247,60 +1329,6 @@ final class Http2Driver implements HttpDriver
             yield $this->shutdown(null, $error ?? self::PROTOCOL_ERROR);
             $this->client->close();
         }
-    }
-
-    /** @inheritdoc */
-    public function stop(): Promise
-    {
-        return $this->shutdown();
-    }
-
-    /**
-     * @param int|null $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no frames have
-     *                         been opened.
-     *
-     * @return Promise
-     */
-    public function shutdown(int $lastId = null, int $reason = self::GRACEFUL_SHUTDOWN): Promise
-    {
-        $this->stopping = true;
-
-        return call(function () use ($lastId, $reason) {
-            $promises = [];
-            foreach ($this->streams as $id => $stream) {
-                if ($lastId && $id > $lastId) {
-                    break;
-                }
-
-                if ($stream->pendingResponse) {
-                    $promises[] = $stream->pendingResponse;
-                }
-            }
-
-            $lastId = $lastId ?? ($id ?? 0);
-
-            yield $this->writeFrame(\pack("NN", $lastId, $reason), self::GOAWAY, self::NOFLAG);
-
-            yield $promises;
-
-            $promises = [];
-            foreach ($this->streams as $id => $stream) {
-                if ($lastId && $id > $lastId) {
-                    break;
-                }
-
-                if ($stream->pendingWrite) {
-                    $promises[] = $stream->pendingWrite;
-                }
-            }
-
-            yield $promises;
-        });
-    }
-
-    public function getPendingRequestCount(): int
-    {
-        return \count($this->bodyEmitters);
     }
 
     /**

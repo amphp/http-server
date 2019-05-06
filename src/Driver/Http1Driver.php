@@ -17,6 +17,7 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Promise;
+use Amp\TimeoutException;
 use League\Uri;
 use function Amp\call;
 
@@ -108,6 +109,34 @@ final class Http1Driver implements HttpDriver
         return $this->lastWrite = new Coroutine($this->send($response, $request));
     }
 
+    public function getPendingRequestCount(): int
+    {
+        if ($this->bodyEmitter) {
+            return 1;
+        }
+
+        if ($this->http2) {
+            return $this->http2->getPendingRequestCount();
+        }
+
+        return 0;
+    }
+
+    public function stop(): Promise
+    {
+        $this->stopping = true;
+
+        return call(function () {
+            if ($this->pendingResponse) {
+                yield $this->pendingResponse;
+            }
+
+            if ($this->lastWrite) {
+                yield $this->lastWrite;
+            }
+        });
+    }
+
     /**
      * HTTP/1.x response writer.
      *
@@ -155,7 +184,7 @@ final class Http1Driver implements HttpDriver
         $buffer .= "\r\n";
 
         if ($request !== null && $request->getMethod() === "HEAD") {
-            ($this->write)($buffer, $shouldClose);
+            yield ($this->write)($buffer, $shouldClose);
             return;
         }
 
@@ -164,8 +193,28 @@ final class Http1Driver implements HttpDriver
         $streamThreshold = $this->options->getStreamThreshold();
 
         try {
-            while (null !== $chunk = yield $body->read()) {
-                if (!($length = \strlen($chunk))) {
+            $readPromise = $body->read();
+
+            while (true) {
+                try {
+                    if ($buffer !== "") {
+                        $chunk = yield Promise\timeout($readPromise, 100);
+                    } else {
+                        $chunk = yield $readPromise;
+                    }
+
+                    if ($chunk === null) {
+                        break;
+                    }
+
+                    $readPromise = $body->read(); // directly start new read
+                } catch (TimeoutException $e) {
+                    goto flush;
+                }
+
+                $length = \strlen($chunk);
+
+                if ($length === 0) {
                     continue;
                 }
 
@@ -173,17 +222,19 @@ final class Http1Driver implements HttpDriver
                     $chunk = \sprintf("%x\r\n%s\r\n", $length, $chunk);
                 }
 
+                $buffer .= $chunk;
+
                 if (\strlen($buffer) < $streamThreshold) {
-                    $buffer .= $chunk;
                     continue;
                 }
+
+                flush:
 
                 // Initially the buffer won't be empty and contains the headers.
                 // We save a separate write or the headers here.
                 $promise = ($this->write)($buffer);
 
-                $buffer = $chunk;
-                $chunk = ""; // Don't use null here, because of the finally
+                $buffer = $chunk = ""; // Don't use null here, because of the finally
 
                 yield $promise;
             }
@@ -332,16 +383,16 @@ final class Http1Driver implements HttpDriver
 
                         $uri = Uri\Http::createFromComponents([
                             "scheme" => $scheme,
-                            "host"   => $host,
-                            "port"   => $port,
-                            "path"   => $target,
-                            "query"  => $query,
+                            "host" => $host,
+                            "port" => $port,
+                            "path" => $target,
+                            "query" => $query,
                         ]);
                     } elseif ($target === "*") { // asterisk-form
                         $uri = Uri\Http::createFromComponents([
                             "scheme" => $scheme,
-                            "host"   => $host,
-                            "port"   => $port,
+                            "host" => $host,
+                            "port" => $port,
                         ]);
                     } elseif (\preg_match("#^https?://#i", $target)) { // absolute-form
                         $uri = Uri\Http::createFromString($target);
@@ -404,7 +455,7 @@ final class Http1Driver implements HttpDriver
                         new Request($this->client, $method, $uri, $headers, null, $protocol),
                         new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
-                            "upgrade"    => "h2c",
+                            "upgrade" => "h2c",
                         ])
                     );
 
@@ -667,16 +718,16 @@ final class Http1Driver implements HttpDriver
                 $emitter = $this->bodyEmitter;
                 $this->bodyEmitter = null;
                 $emitter->fail($exception ?? new ClientException(
-                    "Client disconnected",
-                    Status::REQUEST_TIMEOUT
-                ));
+                        "Client disconnected",
+                        Status::REQUEST_TIMEOUT
+                    ));
             }
 
             if (isset($trailerDeferred)) {
                 $trailerDeferred->fail($exception ?? new ClientException(
-                    "Client disconnected",
-                    Status::REQUEST_TIMEOUT
-                ));
+                        "Client disconnected",
+                        Status::REQUEST_TIMEOUT
+                    ));
                 $trailerDeferred = null;
             }
         }
@@ -700,19 +751,6 @@ final class Http1Driver implements HttpDriver
         $response->setHeader("connection", "close");
 
         yield from $this->send($response);
-    }
-
-    public function getPendingRequestCount(): int
-    {
-        if ($this->bodyEmitter) {
-            return 1;
-        }
-
-        if ($this->http2) {
-            return $this->http2->getPendingRequestCount();
-        }
-
-        return 0;
     }
 
     /**
@@ -766,20 +804,5 @@ final class Http1Driver implements HttpDriver
         $headers["date"] = [$this->timeReference->getCurrentDate()];
 
         return $headers;
-    }
-
-    public function stop(): Promise
-    {
-        $this->stopping = true;
-
-        return call(function () {
-            if ($this->pendingResponse) {
-                yield $this->pendingResponse;
-            }
-
-            if ($this->lastWrite) {
-                yield $this->lastWrite;
-            }
-        });
     }
 }

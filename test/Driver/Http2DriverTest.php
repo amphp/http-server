@@ -210,7 +210,7 @@ class Http2DriverTest extends TestCase
                     $data = \substr($data, 9);
 
                     if ($type === Http2Driver::RST_STREAM || $type === Http2Driver::GOAWAY) {
-                        $this->test->fail("RST_STREAM or GOAWAY frame received");
+                        TestCase::fail("RST_STREAM or GOAWAY frame received");
                     }
 
                     if ($type === Http2Driver::WINDOW_UPDATE) {
@@ -426,8 +426,6 @@ class Http2DriverTest extends TestCase
 
         $emitter->emit("**");
 
-        $emitter->emit("*");
-
         $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = \array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
@@ -447,15 +445,13 @@ class Http2DriverTest extends TestCase
         $this->assertEquals("*", $data);
         $this->assertEquals(3, $stream);
 
-        $parser->send(self::packFrame(\pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
-
         $emitter->complete();
 
         $this->assertCount(1, $driver->frames);
         list($data, $type, $flags, $stream) = \array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::END_STREAM, $flags);
-        $this->assertEquals("*", $data);
+        $this->assertEquals("", $data);
         $this->assertEquals(3, $stream);
     }
 
