@@ -17,7 +17,7 @@ final class Options
     private $bodySizeLimit = 131072;
     private $headerSizeLimit = 32768;
     private $chunkSize = 8192;
-    private $streamThreshold = 1024;
+    private $streamThreshold = 8192;
 
     private $compression = true;
     private $allowHttp2Upgrade = false;
