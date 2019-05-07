@@ -94,6 +94,9 @@ final class RemoteClient implements Client
     private $writeDeferred;
 
     /** @var int */
+    private $pendingHandlers = 0;
+
+    /** @var int */
     private $pendingResponses = 0;
 
     /** @var bool */
@@ -216,7 +219,7 @@ final class RemoteClient implements Client
     /** @inheritdoc */
     public function isWaitingOnResponse(): bool
     {
-        return $this->pendingResponses > 0;
+        return $this->httpDriver !== null && $this->pendingHandlers > $this->httpDriver->getPendingRequestCount();
     }
 
     /** @inheritdoc */
@@ -549,8 +552,6 @@ final class RemoteClient implements Client
                 $this->clientPort
             )) || true);
 
-        $this->pendingResponses++;
-
         return new Coroutine($this->respond($request, $buffer));
     }
 
@@ -583,6 +584,9 @@ final class RemoteClient implements Client
      */
     private function respond(Request $request, string $buffer): \Generator
     {
+        $this->pendingHandlers++;
+        $this->pendingResponses++;
+
         try {
             try {
                 $method = $request->getMethod();
@@ -608,6 +612,8 @@ final class RemoteClient implements Client
             } catch (\Throwable $exception) {
                 $this->logger->error($exception);
                 $response = yield from $this->makeExceptionResponse($request);
+            } finally {
+                $this->pendingHandlers--;
             }
 
             if ($this->status & self::CLOSED_WR) {
