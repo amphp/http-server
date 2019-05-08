@@ -718,16 +718,16 @@ final class Http1Driver implements HttpDriver
                 $emitter = $this->bodyEmitter;
                 $this->bodyEmitter = null;
                 $emitter->fail($exception ?? new ClientException(
-                        "Client disconnected",
-                        Status::REQUEST_TIMEOUT
-                    ));
+                    "Client disconnected",
+                    Status::REQUEST_TIMEOUT
+                ));
             }
 
             if (isset($trailerDeferred)) {
                 $trailerDeferred->fail($exception ?? new ClientException(
-                        "Client disconnected",
-                        Status::REQUEST_TIMEOUT
-                    ));
+                    "Client disconnected",
+                    Status::REQUEST_TIMEOUT
+                ));
                 $trailerDeferred = null;
             }
         }
