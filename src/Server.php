@@ -104,7 +104,7 @@ final class Server
                 throw new \TypeError(\sprintf("Only instances of %s should be given", SocketServer::class));
             }
 
-            $this->boundServers[$server->getAddress()] = $server->getResource();
+            $this->boundServers[(string) $server->getAddress()] = $server->getResource();
         }
 
         if (!$servers) {

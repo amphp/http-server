@@ -51,11 +51,11 @@ class RemoteClientTest extends TestCase
         \fclose($server);
 
         $handler = new CallableRequestHandler($handler);
+        $tlsContext = (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"));
 
         $servers = [Socket\listen(
             $address,
-            null,
-            (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"))
+            (new Socket\BindContext())->withTlsContext($tlsContext)
         )];
 
         $options = (new Options)->withDebugMode();
@@ -90,7 +90,8 @@ class RemoteClientTest extends TestCase
 
             $cookies = new ArrayCookieJar;
             $cookies->store(new Cookie("test", "value", null, "/", "localhost"));
-            $context = (new ClientTlsContext)->withoutPeerVerification();
+            $context = (new Socket\ConnectContext)
+                ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
             $client = new DefaultClient($cookies, null, $context);
             $port = \parse_url($address, PHP_URL_PORT);
             $promise = $client->request(
@@ -101,7 +102,7 @@ class RemoteClientTest extends TestCase
             $res = yield $promise;
             $this->assertEquals(200, $res->getStatus());
             $this->assertEquals(["header"], $res->getHeaderArray("custom"));
-            $body = yield $res->getBody();
+            $body = yield $res->getBody()->buffer();
             $this->assertEquals("data/" . \str_repeat("*", 100000) . "/data", $body);
             $this->assertEquals("with-value", $cookies->get("localhost", "/", "cookie")[0]->getValue());
 
@@ -125,8 +126,10 @@ class RemoteClientTest extends TestCase
             });
 
             $port = \parse_url($address, PHP_URL_PORT);
-            $context = (new ClientTlsContext)->withoutPeerVerification();
-            $socket = yield Socket\cryptoConnect("tcp://localhost:$port/", null, $context);
+            $context = (new Socket\ConnectContext)
+                ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
+            $socket = yield Socket\connect("tcp://localhost:$port/", $context);
+            yield $socket->setupTls();
 
             $request = "POST / HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 4\r\n\r\nbody";
             yield $socket->write($request);
