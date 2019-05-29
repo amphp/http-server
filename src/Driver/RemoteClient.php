@@ -16,6 +16,7 @@ use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
+use Amp\Socket\ResourceSocket;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
@@ -695,7 +696,8 @@ final class RemoteClient implements Client
         \assert($this->logger->debug("Upgrade {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
 
         try {
-            $upgrade(new Internal\DetachedSocket($this, $this->socket, $buffer, $this->options->getChunkSize()));
+            $socket = ResourceSocket::fromServerSocket($this->socket, $this->options->getChunkSize());
+            $upgrade(new Internal\DetachedSocket($this, $socket, $buffer));
         } catch (\Throwable $exception) {
             $this->logger->error($exception);
             $this->close();

@@ -341,7 +341,7 @@ final class Response extends Message
     }
 
     /**
-     * @return bool True if a detach callback has been set, false if none.
+     * @return bool True if an upgrade callback has been set, false if none.
      */
     public function isUpgraded(): bool
     {
@@ -353,7 +353,7 @@ final class Response extends Message
      * response to 101 (Switching Protocols). The callback may be removed by changing the status to something else.
      *
      * @param callable $upgrade Callback invoked once the response has been written to the client. The callback is given
-     *     an instance of \Amp\Socket\ServerSocket as the first parameter, followed by the given arguments.
+     *     an instance of \Amp\Socket\EncryptableSocket as the first parameter.
      */
     public function upgrade(callable $upgrade)
     {
