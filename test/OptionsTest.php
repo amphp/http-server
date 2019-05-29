@@ -202,13 +202,13 @@ class OptionsTest extends TestCase
         $options = new Options;
 
         // default
-        $this->assertSame(1024, $options->getStreamThreshold());
+        $this->assertSame(8192, $options->getStreamThreshold());
 
         // change
         $this->assertSame(1, $options->withStreamThreshold(1)->getStreamThreshold());
 
         // change doesn't affect original
-        $this->assertSame(1024, $options->getStreamThreshold());
+        $this->assertSame(8192, $options->getStreamThreshold());
 
         // invalid
         $this->expectException(\Error::class);
