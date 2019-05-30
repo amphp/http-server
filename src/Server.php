@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server;
 
-use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Failure;
 use Amp\Http\Server\Driver\Client;
@@ -23,8 +22,6 @@ use Psr\Log\LoggerInterface as PsrLogger;
 
 final class Server
 {
-    use CallableMaker;
-
     const STOPPED = 0;
     const STARTING = 1;
     const STARTED = 2;
@@ -133,7 +130,7 @@ final class Server
 
         $this->requestHandler = $requestHandler;
 
-        $this->timeReference->onTimeUpdate($this->callableFromInstanceMethod("timeoutKeepAlives"));
+        $this->timeReference->onTimeUpdate(\Closure::fromCallable([$this, 'timeoutKeepAlives']));
 
         $this->observers = new \SplObjectStorage;
         $this->observers->attach(new Internal\PerformanceRecommender);
@@ -149,7 +146,7 @@ final class Server
      *
      * @throws \Error If the server has started.
      */
-    public function setDriverFactory(HttpDriverFactory $driverFactory)
+    public function setDriverFactory(HttpDriverFactory $driverFactory): void
     {
         if ($this->state) {
             throw new \Error("Cannot set the driver factory after the server has started");
@@ -165,7 +162,7 @@ final class Server
      *
      * @throws \Error If the server has started.
      */
-    public function setClientFactory(ClientFactory $clientFactory)
+    public function setClientFactory(ClientFactory $clientFactory): void
     {
         if ($this->state) {
             throw new \Error("Cannot set the client factory after the server has started");
@@ -181,7 +178,7 @@ final class Server
      *
      * @throws \Error If the server has started.
      */
-    public function setErrorHandler(ErrorHandler $errorHandler)
+    public function setErrorHandler(ErrorHandler $errorHandler): void
     {
         if ($this->state) {
             throw new \Error("Cannot set the error handler after the server has started");
@@ -245,7 +242,7 @@ final class Server
      *
      * @throws \Error If the server has started.
      */
-    public function attach(ServerObserver $observer)
+    public function attach(ServerObserver $observer): void
     {
         if ($this->state) {
             throw new \Error("Cannot attach observers after the server has started");
@@ -309,7 +306,7 @@ final class Server
 
         $protocols = $this->driverFactory->getApplicationLayerProtocols();
 
-        $onAcceptable = $this->callableFromInstanceMethod("onAcceptable");
+        $onAcceptable = \Closure::fromCallable([$this, 'onAcceptable']);
         foreach ($this->boundServers as $serverName => $server) {
             $context = \stream_context_get_options($server);
             $scheme = "http";
@@ -329,7 +326,7 @@ final class Server
         }
     }
 
-    private function onAcceptable(string $watcherId, $server)
+    private function onAcceptable(string $watcherId, $server): void
     {
         if (!$socket = @\stream_socket_accept($server, 0)) {
             return;
@@ -458,7 +455,7 @@ final class Server
         }
     }
 
-    private function timeoutKeepAlives(int $now)
+    private function timeoutKeepAlives(int $now): void
     {
         foreach ($this->timeouts as $id => $expiresAt) {
             if ($now < $expiresAt) {
@@ -477,7 +474,7 @@ final class Server
         }
     }
 
-    public function __debugInfo()
+    public function __debugInfo(): array
     {
         return [
             "state" => $this->state,

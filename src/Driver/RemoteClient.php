@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Failure;
@@ -23,8 +22,6 @@ use function Amp\call;
 
 final class RemoteClient implements Client
 {
-    use CallableMaker;
-
     /** @var DefaultErrorHandler */
     private static $defaultErrorHandler;
 
@@ -159,7 +156,7 @@ final class RemoteClient implements Client
             $this->clientAddress = $serverName;
         }
 
-        $this->resume = $this->callableFromInstanceMethod("resume");
+        $this->resume = \Closure::fromCallable([$this, 'resume']);
     }
 
     /**
@@ -177,14 +174,14 @@ final class RemoteClient implements Client
 
         $this->timeoutCache->renew($this->id);
 
-        $this->writeWatcher = Loop::onWritable($this->socket, $this->callableFromInstanceMethod("onWritable"));
+        $this->writeWatcher = Loop::onWritable($this->socket, \Closure::fromCallable([$this, 'onWritable']));
         Loop::disable($this->writeWatcher);
 
         $context = \stream_context_get_options($this->socket);
         if (isset($context["ssl"])) {
             $this->readWatcher = Loop::onReadable(
                 $this->socket,
-                $this->callableFromInstanceMethod("negotiateCrypto"),
+                \Closure::fromCallable([$this, 'negotiateCrypto']),
                 $driverFactory
             );
             return;
@@ -192,7 +189,7 @@ final class RemoteClient implements Client
 
         $this->setup($driverFactory->selectDriver($this));
 
-        $this->readWatcher = Loop::onReadable($this->socket, $this->callableFromInstanceMethod("onReadable"));
+        $this->readWatcher = Loop::onReadable($this->socket, \Closure::fromCallable([$this, 'onReadable']));
     }
 
     /** @inheritdoc */
@@ -236,7 +233,7 @@ final class RemoteClient implements Client
     }
 
     /** @inheritdoc */
-    public function getRemotePort()
+    public function getRemotePort(): ?int
     {
         return $this->clientPort;
     }
@@ -248,7 +245,7 @@ final class RemoteClient implements Client
     }
 
     /** @inheritdoc */
-    public function getLocalPort()
+    public function getLocalPort(): ?int
     {
         return $this->serverPort;
     }
@@ -284,7 +281,7 @@ final class RemoteClient implements Client
     }
 
     /** @inheritdoc */
-    public function close()
+    public function close(): void
     {
         if ($this->onClose === null) {
             return; // Client already closed.
@@ -317,7 +314,7 @@ final class RemoteClient implements Client
     }
 
     /** @inheritdoc */
-    public function onClose(callable $callback)
+    public function onClose(callable $callback): void
     {
         if ($this->onClose === null) {
             Promise\rethrow(call($callback, $this));
@@ -343,19 +340,19 @@ final class RemoteClient implements Client
     /**
      * @param HttpDriver $driver
      */
-    private function setup(HttpDriver $driver)
+    private function setup(HttpDriver $driver): void
     {
         $this->httpDriver = $driver;
         $this->requestParser = $this->httpDriver->setup(
             $this,
-            $this->callableFromInstanceMethod("onMessage"),
-            $this->callableFromInstanceMethod("write")
+            \Closure::fromCallable([$this, 'onMessage']),
+            \Closure::fromCallable([$this, 'write'])
         );
 
         $this->requestParser->current();
     }
 
-    private function clear()
+    private function clear(): void
     {
         $this->httpDriver = null;
         $this->requestParser = null;
@@ -376,7 +373,7 @@ final class RemoteClient implements Client
     /**
      * Called by the onReadable watcher (after encryption has been negotiated if applicable).
      */
-    private function onReadable()
+    private function onReadable(): void
     {
         $data = @\stream_get_contents($this->socket, $this->options->getChunkSize());
         if ($data !== false && $data !== "") {
@@ -395,7 +392,7 @@ final class RemoteClient implements Client
      *
      * @param string $data
      */
-    private function parse(string $data = "")
+    private function parse(string $data = ""): void
     {
         try {
             $promise = $this->requestParser->send($data);
@@ -422,7 +419,7 @@ final class RemoteClient implements Client
      * @param resource          $socket
      * @param HttpDriverFactory $driverFactory
      */
-    private function negotiateCrypto(string $watcher, $socket, HttpDriverFactory $driverFactory)
+    private function negotiateCrypto(string $watcher, $socket, HttpDriverFactory $driverFactory): void
     {
         if ($handshake = @\stream_socket_enable_crypto($this->socket, true)) {
             Loop::cancel($this->readWatcher);
@@ -439,7 +436,7 @@ final class RemoteClient implements Client
 
             $this->setup($driverFactory->selectDriver($this));
 
-            $this->readWatcher = Loop::onReadable($this->socket, $this->callableFromInstanceMethod("onReadable"));
+            $this->readWatcher = Loop::onReadable($this->socket, \Closure::fromCallable([$this, 'onReadable']));
             return;
         }
 
@@ -452,7 +449,7 @@ final class RemoteClient implements Client
     /**
      * Called by the onWritable watcher.
      */
-    private function onWritable()
+    private function onWritable(): void
     {
         $bytesWritten = @\fwrite($this->socket, $this->writeBuffer);
 
@@ -561,7 +558,7 @@ final class RemoteClient implements Client
      *
      * @param \Throwable|null $exception
      */
-    private function resume(\Throwable $exception = null)
+    private function resume(\Throwable $exception = null): void
     {
         if ($exception) {
             $this->close();
@@ -684,7 +681,7 @@ final class RemoteClient implements Client
      * @param callable $upgrade callable
      * @param string   $buffer Remaining buffer read from the socket.
      */
-    private function export(callable $upgrade, string $buffer)
+    private function export(callable $upgrade, string $buffer): void
     {
         if ($this->status & self::CLOSED_RDWR || $this->isExported) {
             return;

@@ -86,7 +86,7 @@ final class Response extends Message
      *
      * @throws \TypeError If the body given is not a string or instance of \Amp\ByteStream\InputStream
      */
-    public function setBody($stringOrStream)
+    public function setBody($stringOrStream): void
     {
         if ($stringOrStream instanceof InputStream) {
             $this->body = $stringOrStream;
@@ -103,7 +103,7 @@ final class Response extends Message
         }
     }
 
-    private function setBodyFromString(string $body)
+    private function setBodyFromString(string $body): void
     {
         $this->body = new InMemoryStream($body);
         $this->setHeader("content-length", (string) \strlen($body));
@@ -115,7 +115,7 @@ final class Response extends Message
      *
      * @param string[]|string[][] $headers
      */
-    public function setHeaders(array $headers)
+    public function setHeaders(array $headers): void
     {
         $cookies = $this->cookies;
 
@@ -136,7 +136,7 @@ final class Response extends Message
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, $value)
+    public function setHeader(string $name, $value): void
     {
         parent::setHeader($name, $value);
 
@@ -153,7 +153,7 @@ final class Response extends Message
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, $value)
+    public function addHeader(string $name, $value): void
     {
         parent::addHeader($name, $value);
 
@@ -167,7 +167,7 @@ final class Response extends Message
      *
      * @param string $name
      */
-    public function removeHeader(string $name)
+    public function removeHeader(string $name): void
     {
         parent::removeHeader($name);
 
@@ -203,7 +203,7 @@ final class Response extends Message
      * @param int $code 100 - 599
      * @param string|null $reason
      */
-    public function setStatus(int $code, string $reason = null)
+    public function setStatus(int $code, string $reason = null): void
     {
         $this->status = $this->validateStatusCode($code);
         $this->reason = $reason ?? Status::getReason($this->status);
@@ -226,8 +226,8 @@ final class Response extends Message
      *
      * @return ResponseCookie|null
      */
-    public function getCookie(string $name)
-    { /* : ?ResponseCookie */
+    public function getCookie(string $name): ?ResponseCookie
+    {
         return $this->cookies[$name] ?? null;
     }
 
@@ -236,7 +236,7 @@ final class Response extends Message
      *
      * @param ResponseCookie $cookie
      */
-    public function setCookie(ResponseCookie $cookie)
+    public function setCookie(ResponseCookie $cookie): void
     {
         $this->cookies[$cookie->getName()] = $cookie;
         $this->setHeadersFromCookies();
@@ -247,7 +247,7 @@ final class Response extends Message
      *
      * @param string $name
      */
-    public function removeCookie(string $name)
+    public function removeCookie(string $name): void
     {
         if (isset($this->cookies[$name])) {
             unset($this->cookies[$name]);
@@ -278,7 +278,7 @@ final class Response extends Message
      *
      * @throws \Error
      */
-    private function setCookiesFromHeaders()
+    private function setCookiesFromHeaders(): void
     {
         $this->cookies = [];
 
@@ -293,7 +293,7 @@ final class Response extends Message
     /**
      * Sets headers based on cookie values.
      */
-    private function setHeadersFromCookies()
+    private function setHeadersFromCookies(): void
     {
         $values = [];
 
@@ -320,7 +320,7 @@ final class Response extends Message
      *
      * @throws \Error If the given url is invalid.
      */
-    public function push(string $url, array $headers = [])
+    public function push(string $url, array $headers = []): void
     {
         \assert((function (array $headers) {
             foreach ($headers as $name => $header) {
@@ -355,7 +355,7 @@ final class Response extends Message
      * @param callable $upgrade Callback invoked once the response has been written to the client. The callback is given
      *     an instance of \Amp\Socket\EncryptableSocket as the first parameter.
      */
-    public function upgrade(callable $upgrade)
+    public function upgrade(callable $upgrade): void
     {
         $this->upgrade = $upgrade;
         $this->status = Status::SWITCHING_PROTOCOLS;
@@ -367,8 +367,8 @@ final class Response extends Message
      *
      * @return callable|null Upgrade function.
      */
-    public function getUpgradeCallable()
-    { /* : ?callable */
+    public function getUpgradeCallable(): ?callable
+    {
         return $this->upgrade;
     }
 
@@ -378,7 +378,7 @@ final class Response extends Message
      *
      * @param callable $onDispose
      */
-    public function onDispose(callable $onDispose)
+    public function onDispose(callable $onDispose): void
     {
         $this->onDispose[] = $onDispose;
     }

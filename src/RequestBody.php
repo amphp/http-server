@@ -37,7 +37,7 @@ final class RequestBody extends Payload
      *
      * @param int $size
      */
-    public function increaseSizeLimit(int $size)
+    public function increaseSizeLimit(int $size): void
     {
         if (!$this->upgradeSize) {
             return;

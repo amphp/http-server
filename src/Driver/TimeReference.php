@@ -23,5 +23,5 @@ interface TimeReference
      *
      * @param callable $callback
      */
-    public function onTimeUpdate(callable $callback);
+    public function onTimeUpdate(callable $callback): void;
 }

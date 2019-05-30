@@ -85,7 +85,7 @@ final class Request extends Message
      *
      * @param string $method
      */
-    public function setMethod(string $method)
+    public function setMethod(string $method): void
     {
         $this->method = $method;
     }
@@ -105,7 +105,7 @@ final class Request extends Message
      *
      * @param PsrUri $uri
      */
-    public function setUri(PsrUri $uri)
+    public function setUri(PsrUri $uri): void
     {
         $this->uri = $uri;
     }
@@ -126,7 +126,7 @@ final class Request extends Message
      *
      * @param string $protocol
      */
-    public function setProtocolVersion(string $protocol)
+    public function setProtocolVersion(string $protocol): void
     {
         $this->protocol = $protocol;
     }
@@ -137,7 +137,7 @@ final class Request extends Message
      *
      * @param string[]|string[][] $headers
      */
-    public function setHeaders(array $headers)
+    public function setHeaders(array $headers): void
     {
         $cookies = $this->cookies;
 
@@ -158,7 +158,7 @@ final class Request extends Message
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, $value)
+    public function setHeader(string $name, $value): void
     {
         parent::setHeader($name, $value);
 
@@ -175,7 +175,7 @@ final class Request extends Message
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, $value)
+    public function addHeader(string $name, $value): void
     {
         parent::addHeader($name, $value);
 
@@ -189,7 +189,7 @@ final class Request extends Message
      *
      * @param string $name
      */
-    public function removeHeader(string $name)
+    public function removeHeader(string $name): void
     {
         parent::removeHeader($name);
 
@@ -221,7 +221,7 @@ final class Request extends Message
      * @throws \Error
      * @throws \TypeError
      */
-    public function setBody($stringOrStream)
+    public function setBody($stringOrStream): void
     {
         if ($stringOrStream instanceof RequestBody) {
             $this->body = $stringOrStream;
@@ -247,7 +247,7 @@ final class Request extends Message
         }
     }
 
-    private function setBodyFromString(string $body)
+    private function setBodyFromString(string $body): void
     {
         $this->body = new RequestBody(new InMemoryStream($body));
 
@@ -273,8 +273,8 @@ final class Request extends Message
      *
      * @return RequestCookie|null
      */
-    public function getCookie(string $name)
-    { /* : ?RequestCookie */
+    public function getCookie(string $name): ?RequestCookie
+    {
         return $this->cookies[$name] ?? null;
     }
 
@@ -283,7 +283,7 @@ final class Request extends Message
      *
      * @param RequestCookie $cookie
      */
-    public function setCookie(RequestCookie $cookie)
+    public function setCookie(RequestCookie $cookie): void
     {
         $this->cookies[$cookie->getName()] = $cookie;
         $this->setHeadersFromCookies();
@@ -294,7 +294,7 @@ final class Request extends Message
      *
      * @param string $name
      */
-    public function removeCookie(string $name)
+    public function removeCookie(string $name): void
     {
         if (isset($this->cookies[$name])) {
             unset($this->cookies[$name]);
@@ -307,7 +307,7 @@ final class Request extends Message
      *
      * @throws \Error
      */
-    private function setCookiesFromHeaders()
+    private function setCookiesFromHeaders(): void
     {
         $this->cookies = [];
 
@@ -324,7 +324,7 @@ final class Request extends Message
     /**
      * Sets headers based on cookie values.
      */
-    private function setHeadersFromCookies()
+    private function setHeadersFromCookies(): void
     {
         $values = [];
 
@@ -387,7 +387,7 @@ final class Request extends Message
      * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
      * @param mixed $value Value of the attribute, might be any value.
      */
-    public function setAttribute(string $name, $value)
+    public function setAttribute(string $name, $value): void
     {
         $this->attributes[$name] = $value;
     }

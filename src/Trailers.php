@@ -16,22 +16,22 @@ final class Trailers extends Message
         }
     }
 
-    public function setHeaders(array $headers)
+    public function setHeaders(array $headers): void
     {
         parent::setHeaders($headers);
     }
 
-    public function setHeader(string $name, $value)
+    public function setHeader(string $name, $value): void
     {
         parent::setHeader($name, $value);
     }
 
-    public function addHeader(string $name, $value)
+    public function addHeader(string $name, $value): void
     {
         parent::addHeader($name, $value);
     }
 
-    public function removeHeader(string $name)
+    public function removeHeader(string $name): void
     {
         parent::removeHeader($name);
     }

@@ -57,7 +57,7 @@ interface Client
     /**
      * @return int|null Remote port number or `null` for unix sockets.
      */
-    public function getRemotePort(); /* : ?int */
+    public function getRemotePort(): ?int;
 
     /**
      * @return string Local server IP address or unix socket path.
@@ -67,7 +67,7 @@ interface Client
     /**
      * @return int|null Local server port or `null` for unix sockets.
      */
-    public function getLocalPort(); /* : ?int */
+    public function getLocalPort(): ?int;
 
     /**
      * @return bool `true` if this client is connected via an unix domain socket.
@@ -102,12 +102,12 @@ interface Client
      *
      * @param callable $callback
      */
-    public function onClose(callable $callback);
+    public function onClose(callable $callback): void;
 
     /**
      * Forcefully closes the client connection.
      */
-    public function close();
+    public function close(): void;
 
     /**
      * Gracefully close the client, responding to any pending requests before closing the connection.

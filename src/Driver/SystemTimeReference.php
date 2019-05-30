@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\CallableMaker;
 use Amp\Http\Server\Server;
 use Amp\Http\Server\ServerObserver;
 use Amp\Loop;
@@ -11,8 +10,6 @@ use Amp\Success;
 
 final class SystemTimeReference implements TimeReference, ServerObserver
 {
-    use CallableMaker;
-
     /** @var string */
     private $watcherId;
 
@@ -33,7 +30,7 @@ final class SystemTimeReference implements TimeReference, ServerObserver
     /** @inheritdoc */
     public function onStart(Server $server): Promise
     {
-        $this->watcherId = Loop::repeat(1000, $this->callableFromInstanceMethod("updateTime"));
+        $this->watcherId = Loop::repeat(1000, \Closure::fromCallable([$this, 'updateTime']));
         $this->updateTime();
 
         return new Success;
@@ -60,7 +57,7 @@ final class SystemTimeReference implements TimeReference, ServerObserver
     }
 
     /** @inheritdoc */
-    public function onTimeUpdate(callable $callback)
+    public function onTimeUpdate(callable $callback): void
     {
         $this->callbacks[] = $callback;
         $callback($this->currentTime, $this->currentHttpDate);

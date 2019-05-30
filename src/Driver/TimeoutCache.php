@@ -44,7 +44,7 @@ final class TimeoutCache implements \IteratorAggregate
      *
      * @param int $id
      */
-    public function renew(int $id)
+    public function renew(int $id): void
     {
         $this->updates[$id] = $this->now + $this->timeout;
     }
@@ -54,7 +54,7 @@ final class TimeoutCache implements \IteratorAggregate
      *
      * @param int $id
      */
-    public function clear(int $id)
+    public function clear(int $id): void
     {
         unset($this->updates[$id]);
         $this->cache->remove($id);
