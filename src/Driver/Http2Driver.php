@@ -1186,6 +1186,7 @@ final class Http2Driver implements HttpDriver
                         goto stream_error;
                     }
 
+                    $method = $headers[":method"][0];
                     $target = $headers[":path"][0] ?? "";
                     $scheme = $headers[":scheme"][0] ?? ($this->client->isEncrypted() ? "https" : "http");
                     $host = $headers[":authority"][0] ?? "";
@@ -1197,7 +1198,7 @@ final class Http2Driver implements HttpDriver
                     }
 
                     $host = $matches[1];
-                    $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
+                    $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalAddress()->getPort();
 
                     if ($position = \strpos($target, "#")) {
                         $target = \substr($target, 0, $position);
@@ -1224,7 +1225,7 @@ final class Http2Driver implements HttpDriver
                     if ($stream->state & Http2Stream::REMOTE_CLOSED) {
                         $request = new Request(
                             $this->client,
-                            $headers[":method"][0],
+                            $method,
                             $uri,
                             $headers,
                             null,
@@ -1267,7 +1268,7 @@ final class Http2Driver implements HttpDriver
 
                     $request = new Request(
                         $this->client,
-                        $headers[":method"][0],
+                        $method,
                         $uri,
                         $headers,
                         $body,

@@ -366,7 +366,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 $host = $matches[1];
-                $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalPort();
+                $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalAddress()->getPort();
                 $scheme = $this->client->isEncrypted() ? "https" : "http";
                 $query = null;
 

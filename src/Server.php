@@ -101,7 +101,7 @@ final class Server
                 throw new \TypeError(\sprintf("Only instances of %s should be given", SocketServer::class));
             }
 
-            $this->boundServers[(string) $server->getAddress()] = $server->getResource();
+            $this->boundServers[$server->getAddress()->toString()] = $server->getResource();
         }
 
         if (!$servers) {
@@ -341,10 +341,10 @@ final class Server
             $this->timeouts
         );
 
-        \assert($this->logger->debug("Accept {$client->getRemoteAddress()}:{$client->getRemotePort()} on " .
-                "{$client->getLocalAddress()}:{$client->getLocalPort()} #{$client->getId()}") || true);
+        \assert($this->logger->debug("Accept {$client->getRemoteAddress()} on " .
+                "{$client->getLocalAddress()} #{$client->getId()}") || true);
 
-        $net = $client->getRemoteAddress();
+        $ip = $net = $client->getRemoteAddress()->getHost();
         if (@\inet_pton($net) !== false && isset($net[4])) {
             $net = \substr($net, 0, 7 /* /56 block for IPv6 */);
         }
@@ -369,7 +369,6 @@ final class Server
             return;
         }
 
-        $ip = $client->getRemoteAddress();
         $clientCount = $this->clientsPerIP[$net]++;
 
         // Connections on localhost are excluded from the connections per IP setting.
@@ -379,18 +378,17 @@ final class Server
             && $ip !== "::1" && \strncmp($ip, "127.", 4) !== 0 && !$client->isUnix()
             && \strncmp(\inet_pton($ip), '\0\0\0\0\0\0\0\0\0\0\xff\xff\7f', 31)
         ) {
-            \assert(function () use ($ip) {
-                $addr = $ip;
+            \assert((function () use ($ip) {
                 $packedIp = @\inet_pton($ip);
 
                 if (isset($packedIp[4])) {
-                    $addr .= "/56";
+                    $ip .= "/56";
                 }
 
-                $this->logger->debug("Client denied: too many existing connections from {$addr}");
+                $this->logger->debug("Client denied: too many existing connections from {$ip}");
 
                 return true;
-            });
+            })());
 
             $client->close();
             return;

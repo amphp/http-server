@@ -7,7 +7,6 @@ use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\Http\Server\DefaultErrorHandler;
-use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\Driver\TimeReference;
@@ -17,12 +16,11 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Success;
 use League\Uri;
 
-class Http1DriverTest extends TestCase
+class Http1DriverTest extends HttpDriverTest
 {
     /**
      * @dataProvider provideUnparsableRequests
@@ -41,7 +39,7 @@ class Http1DriverTest extends TestCase
             new DefaultErrorHandler // Using concrete instance to generate error response.
         );
 
-        $client = $this->createMock(Client::class);
+        $client = $this->createClientMock();
         $client->method('getPendingResponseCount')
             ->willReturn(1);
 
@@ -72,7 +70,7 @@ class Http1DriverTest extends TestCase
             new DefaultErrorHandler // Using concrete instance to generate error response.
         );
 
-        $client = $this->createMock(Client::class);
+        $client = $this->createClientMock();
         $client->method('getPendingResponseCount')
             ->willReturn(1);
 
@@ -108,7 +106,7 @@ class Http1DriverTest extends TestCase
         );
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $resultEmitter,
             $this->createCallback(0)
         );
@@ -146,7 +144,7 @@ class Http1DriverTest extends TestCase
         );
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $resultEmitter,
             $this->createCallback(0)
         );
@@ -197,7 +195,7 @@ class Http1DriverTest extends TestCase
         );
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $resultEmitter,
             $this->createCallback(0)
         );
@@ -246,7 +244,7 @@ class Http1DriverTest extends TestCase
         );
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $resultEmitter,
             $this->createCallback(0)
         );
@@ -616,7 +614,7 @@ class Http1DriverTest extends TestCase
         );
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $resultEmitter,
             $this->createCallback(0)
         );
@@ -668,7 +666,7 @@ class Http1DriverTest extends TestCase
         );
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $resultEmitter,
             function () {
                 return new Success;
@@ -711,7 +709,7 @@ class Http1DriverTest extends TestCase
 
         $this->assertSame($results[1], $body);
 
-        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"));
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"));
         $driver->write($request, new Response);
         $request = null;
         $body = null;
@@ -735,7 +733,7 @@ class Http1DriverTest extends TestCase
 
         $this->assertSame($results[0], $body);
 
-        $request = new Request($this->createMock(Client::class), "POST", Uri\Http::createFromString("/"));
+        $request = new Request($this->createClientMock(), "POST", Uri\Http::createFromString("/"));
         $driver->write($request, new Response);
         $request = null;
 
@@ -772,7 +770,7 @@ class Http1DriverTest extends TestCase
         $buffer = "";
 
         $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$buffer, &$fin) {
                 $buffer .= $data;
@@ -783,7 +781,7 @@ class Http1DriverTest extends TestCase
 
         $emitter = new Emitter;
 
-        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("http://test.local"));
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("http://test.local"));
         $response = new Response(Status::OK, $headers, new IteratorStream($emitter->iterate()));
         $response->push("/foo");
 
@@ -817,7 +815,7 @@ class Http1DriverTest extends TestCase
         $closed = false;
 
         $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$buffer, &$closed) {
                 $buffer .= $data;
@@ -840,25 +838,25 @@ class Http1DriverTest extends TestCase
     {
         return [
             [
-                new Request($this->createMock(Client::class), "HEAD", Uri\Http::createFromString("/")),
+                new Request($this->createClientMock(), "HEAD", Uri\Http::createFromString("/")),
                 new Response(Status::OK, [], new InMemoryStream),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/")),
+                new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
                 new Response(Status::OK, [], new InMemoryStream),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n0\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/")),
+                new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
                 new Response(Status::OK, ["content-length" => 0], new InMemoryStream),
                 "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "1.0"),
+                new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "1.0"),
                 new Response(Status::OK, [], new InMemoryStream),
                 "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: \r\n\r\n",
                 true,
@@ -875,7 +873,7 @@ class Http1DriverTest extends TestCase
         );
 
         $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$invoked) {
                 static $i = 0;
@@ -895,7 +893,7 @@ class Http1DriverTest extends TestCase
         );
 
         $emitter = new Emitter;
-        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "1.0");
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "1.0");
         $driver->write($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
 
         $emitter->emit("foo");
@@ -938,7 +936,7 @@ class Http1DriverTest extends TestCase
         );
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             function (Request $request) {
                 $this->assertSame("foo.bar", $request->getUri()->getHost());
                 $this->assertSame("/path", $request->getUri()->getPath());
@@ -965,7 +963,7 @@ class Http1DriverTest extends TestCase
         );
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $this->createCallback(0),
             function (string $data) use ($options) {
                 $expected = Http2DriverTest::packFrame(\pack(
@@ -1000,7 +998,7 @@ class Http1DriverTest extends TestCase
         );
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             function (Request $req) use (&$request) {
                 $request = $req;
             },
@@ -1036,7 +1034,7 @@ class Http1DriverTest extends TestCase
         );
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             function (Request $req) use (&$request) {
                 $request = $req;
             },

@@ -18,7 +18,7 @@ use Amp\Promise;
 use Amp\Success;
 use League\Uri;
 
-class Http2DriverTest extends TestCase
+class Http2DriverTest extends HttpDriverTest
 {
     public static function packFrame(string $data, string $type, string $flags, int $stream = 0): string
     {
@@ -240,7 +240,7 @@ class Http2DriverTest extends TestCase
         };
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $onMessage ?? function () {
             },
             $this->createCallback(0)
@@ -255,7 +255,7 @@ class Http2DriverTest extends TestCase
         $options = new Options;
         $driver = new Http2Driver($options, $this->createMock(TimeReference::class));
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$buffer) {
                 // HTTP/2 shall only reset streams, not abort the connection
@@ -268,7 +268,7 @@ class Http2DriverTest extends TestCase
 
         $parser->send(Http2Driver::PREFACE);
 
-        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/"), [], null, "2.0");
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2.0");
 
         $emitter = new Emitter;
         $coroutine = $driver->write($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
@@ -460,7 +460,7 @@ class Http2DriverTest extends TestCase
         $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class));
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             function (Request $read) use (&$request) {
                 $request = $read;
                 return new Success;
@@ -507,7 +507,7 @@ class Http2DriverTest extends TestCase
         $requests = [];
 
         $parser = $driver->setup(
-            $this->createMock(Client::class),
+            $this->createClientMock(),
             function (Request $read) use (&$requests) {
                 $requests[] = $read;
                 return new Success;

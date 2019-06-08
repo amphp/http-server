@@ -34,21 +34,13 @@ Useful for determining if a request handler is actively writing a response or if
 Integer ID of this client.
 This ID is unique per process, see [PHP.net documentation for resource casts to integers](https://secure.php.net/manual/en/language.types.integer.php#language.types.integer.casting).
 
-## `getRemoteAddress(): string`
+## `getRemoteAddress(): SocketAddress`
 
-Remote IP address or unix socket path.
+Remote address or unix socket path.
 
-## `getRemotePort(): ?int`
+## `getLocalAddress(): SocketAddress`
 
-Remote port number or `null` for unix sockets.
-
-## `getLocalAddress(): string`
-
-Local server IP address or unix socket path.
-
-## `getLocalPort(): ?int`
-
-Local server port or `null` for unix sockets.
+Local server address or unix socket path.
 
 ## `isUnix(): bool`
 

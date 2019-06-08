@@ -16,6 +16,7 @@ use Amp\Http\Status;
 use Amp\Loop;
 use Amp\Promise;
 use Amp\Socket\ResourceSocket;
+use Amp\Socket\SocketAddress;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
@@ -31,17 +32,11 @@ final class RemoteClient implements Client
     /** @var resource Stream socket resource */
     private $socket;
 
-    /** @var string */
+    /** @var SocketAddress */
     private $clientAddress;
 
-    /** @var int|null */
-    private $clientPort;
-
-    /** @var string */
+    /** @var SocketAddress */
     private $serverAddress;
-
-    /** @var int|null */
-    private $serverPort;
 
     /** @var bool */
     private $isEncrypted = false;
@@ -134,27 +129,8 @@ final class RemoteClient implements Client
             self::$defaultErrorHandler = new DefaultErrorHandler;
         }
 
-        $serverName = \stream_socket_get_name($this->socket, false);
-        if ($portStartPos = \strrpos($serverName, ":")) {
-            $this->serverAddress = \substr($serverName, 0, $portStartPos);
-            $this->serverPort = (int) \substr($serverName, $portStartPos + 1);
-            if (\strpos($serverName, ':') < $portStartPos && $serverName[0] !== '[') {
-                $this->serverAddress = '[' . $this->serverAddress . ']';
-            }
-        } else {
-            $this->serverAddress = $serverName;
-        }
-
-        $peerName = \stream_socket_get_name($this->socket, true);
-        if ($portStartPos = \strrpos($peerName, ":")) {
-            $this->clientAddress = \substr($peerName, 0, $portStartPos);
-            $this->clientPort = (int) \substr($peerName, $portStartPos + 1);
-            if (\strpos($peerName, ':') < $portStartPos && $peerName[0] !== '[') {
-                $this->clientAddress = '[' . $this->clientAddress . ']';
-            }
-        } else {
-            $this->clientAddress = $serverName;
-        }
+        $this->serverAddress = SocketAddress::fromLocalResource($this->socket);
+        $this->clientAddress = SocketAddress::fromPeerResource($this->socket);
 
         $this->resume = \Closure::fromCallable([$this, 'resume']);
     }
@@ -227,33 +203,21 @@ final class RemoteClient implements Client
     }
 
     /** @inheritdoc */
-    public function getRemoteAddress(): string
+    public function getRemoteAddress(): SocketAddress
     {
         return $this->clientAddress;
     }
 
     /** @inheritdoc */
-    public function getRemotePort(): ?int
-    {
-        return $this->clientPort;
-    }
-
-    /** @inheritdoc */
-    public function getLocalAddress(): string
+    public function getLocalAddress(): SocketAddress
     {
         return $this->serverAddress;
     }
 
     /** @inheritdoc */
-    public function getLocalPort(): ?int
-    {
-        return $this->serverPort;
-    }
-
-    /** @inheritdoc */
     public function isUnix(): bool
     {
-        return $this->serverPort === 0;
+        return $this->serverAddress->getPort() === 0;
     }
 
     /** @inheritdoc */
@@ -302,8 +266,8 @@ final class RemoteClient implements Client
         @\stream_socket_shutdown($this->socket, \STREAM_SHUT_RDWR);
         @\fclose($this->socket);
 
-        if ($this->serverAddress[0] !== "/") { // no unix domain socket
-            \assert($this->logger->debug("Close {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
+        if (($this->serverAddress->getHost()[0] ?? "") !== "/") { // no unix domain socket
+            \assert($this->logger->debug("Close {$this->clientAddress} #{$this->id}") || true);
         } else {
             \assert($this->logger->debug("Close connection on {$this->serverAddress} #{$this->id}") || true);
         }
@@ -428,10 +392,9 @@ final class RemoteClient implements Client
             $this->cryptoInfo = \stream_get_meta_data($this->socket)["crypto"];
 
             \assert($this->logger->debug(\sprintf(
-                    "Crypto negotiated (ALPN: %s) %s:%d",
+                    "Crypto negotiated (ALPN: %s) %s",
                     ($this->cryptoInfo["alpn_protocol"] ?? "none"),
-                    $this->clientAddress,
-                    $this->clientPort
+                    $this->clientAddress
                 )) || true);
 
             $this->setup($driverFactory->selectDriver($this));
@@ -441,7 +404,7 @@ final class RemoteClient implements Client
         }
 
         if ($handshake === false) {
-            \assert($this->logger->debug("Crypto handshake error {$this->clientAddress}:{$this->clientPort}") || true);
+            \assert($this->logger->debug("Crypto handshake error {$this->clientAddress}") || true);
             $this->close();
         }
     }
@@ -542,12 +505,11 @@ final class RemoteClient implements Client
     private function onMessage(Request $request, string $buffer = ''): Promise
     {
         \assert($this->logger->debug(\sprintf(
-                "%s %s HTTP/%s @ %s:%s",
+                "%s %s HTTP/%s @ %s",
                 $request->getMethod(),
                 $request->getUri(),
                 $request->getProtocolVersion(),
-                $this->clientAddress,
-                $this->clientPort
+                $this->clientAddress
             )) || true);
 
         return new Coroutine($this->respond($request, $buffer));
@@ -690,7 +652,7 @@ final class RemoteClient implements Client
         $this->clear();
         $this->isExported = true;
 
-        \assert($this->logger->debug("Upgrade {$this->clientAddress}:{$this->clientPort} #{$this->id}") || true);
+        \assert($this->logger->debug("Upgrade {$this->clientAddress} #{$this->id}") || true);
 
         try {
             $socket = ResourceSocket::fromServerSocket($this->socket, $this->options->getChunkSize());

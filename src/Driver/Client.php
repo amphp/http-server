@@ -4,6 +4,7 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\Http\Server\Options;
 use Amp\Promise;
+use Amp\Socket\SocketAddress;
 
 interface Client
 {
@@ -50,24 +51,14 @@ interface Client
     public function getId(): int;
 
     /**
-     * @return string Remote IP address or unix socket path.
+     * @return SocketAddress Remote client address.
      */
-    public function getRemoteAddress(): string;
+    public function getRemoteAddress(): SocketAddress;
 
     /**
-     * @return int|null Remote port number or `null` for unix sockets.
+     * @return SocketAddress Local server address.
      */
-    public function getRemotePort(): ?int;
-
-    /**
-     * @return string Local server IP address or unix socket path.
-     */
-    public function getLocalAddress(): string;
-
-    /**
-     * @return int|null Local server port or `null` for unix sockets.
-     */
-    public function getLocalPort(): ?int;
+    public function getLocalAddress(): SocketAddress;
 
     /**
      * @return bool `true` if this client is connected via an unix domain socket.

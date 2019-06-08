@@ -37,6 +37,10 @@ final class CompressionMiddleware implements Middleware
         int $chunkSize = self::DEFAULT_CHUNK_SIZE,
         string $contentRegex = self::DEFAULT_CONTENT_TYPE_REGEX
     ) {
+        if (!\extension_loaded('zlib')) {
+            throw new \Error(__CLASS__ . ' requires ext-zlib');
+        }
+
         if ($minimumLength < 1) {
             throw new \Error("The minimum length must be positive");
         }

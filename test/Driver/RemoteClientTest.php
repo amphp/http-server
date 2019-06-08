@@ -456,7 +456,7 @@ class RemoteClientTest extends TestCase
                 $socket = yield $server->accept();
 
                 if ($tls) {
-                    yield $socket->enableCrypto();
+                    yield $socket->setupTls();
                 }
 
                 yield $socket->write("a");
