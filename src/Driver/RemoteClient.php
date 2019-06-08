@@ -638,7 +638,7 @@ final class RemoteClient implements Client
     }
 
     /**
-     * Invokes the export function on Response with the socket detached from the HTTP server.
+     * Invokes the export function on Response with the socket upgraded from the HTTP server.
      *
      * @param callable $upgrade callable
      * @param string   $buffer Remaining buffer read from the socket.
@@ -656,7 +656,7 @@ final class RemoteClient implements Client
 
         try {
             $socket = ResourceSocket::fromServerSocket($this->socket, $this->options->getChunkSize());
-            $upgrade(new Internal\DetachedSocket($this, $socket, $buffer));
+            $upgrade(new UpgradedSocket($this, $socket, $buffer));
         } catch (\Throwable $exception) {
             $this->logger->error($exception);
             $this->close();

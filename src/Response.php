@@ -353,7 +353,7 @@ final class Response extends Message
      * response to 101 (Switching Protocols). The callback may be removed by changing the status to something else.
      *
      * @param callable $upgrade Callback invoked once the response has been written to the client. The callback is given
-     *     an instance of \Amp\Socket\EncryptableSocket as the first parameter.
+     *     an instance of Amp\Http\Server\Driver\UpgradedSocket as the first parameter.
      */
     public function upgrade(callable $upgrade): void
     {

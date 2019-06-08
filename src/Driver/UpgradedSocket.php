@@ -1,17 +1,15 @@
 <?php
 
-namespace Amp\Http\Server\Driver\Internal;
+namespace Amp\Http\Server\Driver;
 
 use Amp\CancellationToken;
-use Amp\Http\Server\Driver\Client;
 use Amp\Promise;
 use Amp\Socket\EncryptableSocket;
 use Amp\Socket\ResourceSocket;
 use Amp\Socket\SocketAddress;
 use Amp\Success;
 
-/** @internal */
-final class DetachedSocket implements EncryptableSocket
+final class UpgradedSocket implements EncryptableSocket
 {
     /** @var Client */
     private $client;
@@ -48,18 +46,12 @@ final class DetachedSocket implements EncryptableSocket
     public function close(): void
     {
         $this->socket->close();
-
         $this->client->close();
-        $this->client = null;
     }
 
     public function __destruct()
     {
-        $this->socket->close();
-
-        if ($this->client) {
-            $this->client->close();
-        }
+        $this->close();
     }
 
     public function write(string $data): Promise
@@ -107,7 +99,7 @@ final class DetachedSocket implements EncryptableSocket
         return $this->socket->setupTls($token);
     }
 
-    public function shutdownTls(): Promise
+    public function shutdownTls(?CancellationToken $token = null): Promise
     {
         return $this->socket->shutdownTls();
     }
