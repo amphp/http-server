@@ -44,6 +44,6 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory, ServerObserve
     /** {@inheritdoc} */
     public function getApplicationLayerProtocols(): array
     {
-        return ["h2", "http1.1"];
+        return ["h2", "http/1.1"];
     }
 }
