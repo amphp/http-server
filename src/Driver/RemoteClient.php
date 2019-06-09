@@ -548,45 +548,49 @@ final class RemoteClient implements Client
         $this->pendingResponses++;
 
         try {
-            try {
-                $method = $request->getMethod();
+            $method = $request->getMethod();
 
-                if (!\in_array($method, $this->options->getAllowedMethods(), true)) {
-                    if (!\in_array($method, HttpDriver::KNOWN_METHODS, true)) {
-                        $response = yield from $this->makeNotImplementedResponse();
-                    } else {
-                        $response = yield from $this->makeMethodNotAllowedResponse();
-                    }
-                } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
-                    $response = $this->makeOptionsResponse();
+            if (!\in_array($method, $this->options->getAllowedMethods(), true)) {
+                if (!\in_array($method, HttpDriver::KNOWN_METHODS, true)) {
+                    $response = yield from $this->makeNotImplementedResponse();
                 } else {
-                    $response = yield $this->requestHandler->handleRequest(clone $request);
-
-                    if (!$response instanceof Response) {
-                        throw new \Error("At least one request handler must return an instance of " . Response::class);
-                    }
+                    $response = yield from $this->makeMethodNotAllowedResponse();
                 }
-            } catch (ClientException $exception) {
-                $this->close();
-                return;
-            } catch (\Throwable $exception) {
-                $this->logger->error($exception);
-                $response = yield from $this->makeExceptionResponse($request);
-            } finally {
-                $this->pendingHandlers--;
-            }
+            } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
+                $response = $this->makeOptionsResponse();
+            } else {
+                $response = yield $this->requestHandler->handleRequest(clone $request);
 
-            if ($this->status & self::CLOSED_WR) {
-                return; // Client closed before response could be sent.
+                if (!$response instanceof Response) {
+                    throw new \Error("At least one request handler must return an instance of " . Response::class);
+                }
             }
-
-            yield $this->httpDriver->write($request, $response);
-
-            if ($response->isUpgraded()) {
-                $this->export($response->getUpgradeCallable(), $buffer);
-            }
+        } catch (ClientException $exception) {
+            $this->close();
+            return;
+        } catch (\Throwable $exception) {
+            $this->logger->error($exception);
+            $response = yield from $this->makeExceptionResponse($request);
         } finally {
+            $this->pendingHandlers--;
+        }
+
+        if ($this->status & self::CLOSED_WR) {
+            return; // Client closed before response could be sent.
+        }
+
+        $promise = $this->httpDriver->write($request, $response);
+
+        $promise->onResolve(function (): void {
             $this->pendingResponses--;
+        });
+
+        if ($response->isUpgraded()) {
+            $this->isExported = true;
+            $callback = $response->getUpgradeCallable();
+            $promise->onResolve(function () use ($callback, $buffer): void {
+                $this->export($callback, $buffer);
+            });
         }
     }
 
@@ -645,12 +649,11 @@ final class RemoteClient implements Client
      */
     private function export(callable $upgrade, string $buffer): void
     {
-        if ($this->status & self::CLOSED_RDWR || $this->isExported) {
+        if ($this->status & self::CLOSED_RDWR) {
             return;
         }
 
         $this->clear();
-        $this->isExported = true;
 
         \assert($this->logger->debug("Upgrade {$this->clientAddress} #{$this->id}") || true);
 
