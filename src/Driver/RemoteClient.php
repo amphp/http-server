@@ -430,11 +430,11 @@ final class RemoteClient implements Client
             $this->cryptoInfo = \stream_get_meta_data($this->socket)["crypto"];
 
             \assert($this->logger->debug(\sprintf(
-                    "Crypto negotiated (ALPN: %s) %s:%d",
-                    ($this->cryptoInfo["alpn_protocol"] ?? "none"),
-                    $this->clientAddress,
-                    $this->clientPort
-                )) || true);
+                "Crypto negotiated (ALPN: %s) %s:%d",
+                ($this->cryptoInfo["alpn_protocol"] ?? "none"),
+                $this->clientAddress,
+                $this->clientPort
+            )) || true);
 
             $this->setup($driverFactory->selectDriver($this));
 
@@ -544,13 +544,13 @@ final class RemoteClient implements Client
     private function onMessage(Request $request, string $buffer = ''): Promise
     {
         \assert($this->logger->debug(\sprintf(
-                "%s %s HTTP/%s @ %s:%s",
-                $request->getMethod(),
-                $request->getUri(),
-                $request->getProtocolVersion(),
-                $this->clientAddress,
-                $this->clientPort
-            )) || true);
+            "%s %s HTTP/%s @ %s:%s",
+            $request->getMethod(),
+            $request->getUri(),
+            $request->getProtocolVersion(),
+            $this->clientAddress,
+            $this->clientPort
+        )) || true);
 
         return new Coroutine($this->respond($request, $buffer));
     }
