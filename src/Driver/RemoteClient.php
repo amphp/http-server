@@ -140,9 +140,6 @@ final class RemoteClient implements Client
         if ($portStartPos = \strrpos($serverName, ":")) {
             $this->serverAddress = \substr($serverName, 0, $portStartPos);
             $this->serverPort = (int) \substr($serverName, $portStartPos + 1);
-            if (\strpos($serverName, ':') < $portStartPos && $serverName[0] !== '[') {
-                $this->serverAddress = '[' . $this->serverAddress . ']';
-            }
         } else {
             $this->serverAddress = $serverName;
         }
@@ -151,9 +148,6 @@ final class RemoteClient implements Client
         if ($portStartPos = \strrpos($peerName, ":")) {
             $this->clientAddress = \substr($peerName, 0, $portStartPos);
             $this->clientPort = (int) \substr($peerName, $portStartPos + 1);
-            if (\strpos($peerName, ':') < $portStartPos && $peerName[0] !== '[') {
-                $this->clientAddress = '[' . $this->clientAddress . ']';
-            }
         } else {
             $this->clientAddress = $serverName;
         }
