@@ -375,7 +375,7 @@ final class Server
         // Checks IPv4 loopback (127.x), IPv6 loopback (::1) and IPv4-to-IPv6 mapped loopback.
         // Also excludes all connections that are via unix sockets.
         if ($clientCount === $this->options->getConnectionsPerIpLimit()
-            && $ip !== "::1" && \strncmp($ip, "127.", 4) !== 0 && $client->getLocalAddress()->getPort() !== 0
+            && $ip !== "::1" && \strncmp($ip, "127.", 4) !== 0 && $client->getLocalAddress()->getPort() !== null
             && \strncmp(\inet_pton($ip), '\0\0\0\0\0\0\0\0\0\0\xff\xff\7f', 31)
         ) {
             \assert((function () use ($ip) {
