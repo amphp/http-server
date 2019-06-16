@@ -5,6 +5,7 @@ namespace Amp\Http\Server\Driver;
 use Amp\Http\Server\Options;
 use Amp\Promise;
 use Amp\Socket\SocketAddress;
+use Amp\Socket\TlsInfo;
 
 interface Client
 {
@@ -61,22 +62,16 @@ interface Client
     public function getLocalAddress(): SocketAddress;
 
     /**
-     * @return bool `true` if this client is connected via an unix domain socket.
-     */
-    public function isUnix(): bool;
-
-    /**
      * @return bool `true` if the client is encrypted, `false` if plaintext.
      */
     public function isEncrypted(): bool;
 
     /**
-     * If the client is encrypted, returns the array returned from stream_get_meta_data($this->socket)["crypto"].
-     * Otherwise returns an empty array.
+     * If the client is encrypted a TlsInfo object is returned, otherwise null.
      *
-     * @return array
+     * @return TlsInfo|null
      */
-    public function getCryptoContext(): array;
+    public function getTlsInfo(): ?TlsInfo;
 
     /**
      * @return bool `true` if the client has been exported from the server using `Response::detach()`.

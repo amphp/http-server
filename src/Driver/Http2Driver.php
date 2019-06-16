@@ -620,7 +620,7 @@ final class Http2Driver implements HttpDriver
 
         $buffer = \substr($buffer, \strlen(self::PREFACE));
 
-        if ($this->client->isEncrypted() && ($this->client->getCryptoContext()["alpn_protocol"] ?? null) !== "h2") {
+        if ($this->client->isEncrypted() && $this->client->getTlsInfo()->getApplicationLayerProtocol() !== "h2") {
             $error = self::CONNECT_ERROR;
             goto connection_error;
         }

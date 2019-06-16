@@ -34,7 +34,7 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory, ServerObserve
     /** {@inheritdoc} */
     public function selectDriver(Client $client): HttpDriver
     {
-        if ($client->isEncrypted() && ($client->getCryptoContext()["alpn_protocol"] ?? null) === "h2") {
+        if ($client->isEncrypted() && $client->getTlsInfo()->getApplicationLayerProtocol() === "h2") {
             return new Http2Driver($this->options, $this->timeReference);
         }
 

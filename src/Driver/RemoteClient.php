@@ -17,6 +17,7 @@ use Amp\Loop;
 use Amp\Promise;
 use Amp\Socket\ResourceSocket;
 use Amp\Socket\SocketAddress;
+use Amp\Socket\TlsInfo;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
@@ -41,8 +42,8 @@ final class RemoteClient implements Client
     /** @var bool */
     private $isEncrypted = false;
 
-    /** @var mixed[] Array from stream_get_meta_data($this->socket)["crypto"] or an empty array. */
-    private $cryptoInfo = [];
+    /** @var TlsInfo|null */
+    private $tlsInfo = [];
 
     /** @var \Generator */
     private $requestParser;
@@ -215,21 +216,15 @@ final class RemoteClient implements Client
     }
 
     /** @inheritdoc */
-    public function isUnix(): bool
-    {
-        return $this->serverAddress->getPort() === 0;
-    }
-
-    /** @inheritdoc */
     public function isEncrypted(): bool
     {
         return $this->isEncrypted;
     }
 
     /** @inheritdoc */
-    public function getCryptoContext(): array
+    public function getTlsInfo(): ?TlsInfo
     {
-        return $this->cryptoInfo;
+        return $this->tlsInfo;
     }
 
     /** @inheritdoc */
@@ -389,11 +384,12 @@ final class RemoteClient implements Client
             Loop::cancel($this->readWatcher);
 
             $this->isEncrypted = true;
-            $this->cryptoInfo = \stream_get_meta_data($this->socket)["crypto"];
+            $this->tlsInfo = TlsInfo::fromStreamResource($this->socket);
+            \assert($this->tlsInfo !== null);
 
             \assert($this->logger->debug(\sprintf(
                     "Crypto negotiated (ALPN: %s) %s",
-                    ($this->cryptoInfo["alpn_protocol"] ?? "none"),
+                    ($this->tlsInfo->getApplicationLayerProtocol() ?? "none"),
                     $this->clientAddress
                 )) || true);
 
