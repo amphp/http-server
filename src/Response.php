@@ -99,7 +99,7 @@ final class Response extends Message
             $this->setBodyFromString($stringOrStream ?? "");
         } catch (\TypeError $e) {
             // Provide a better error message in case of a failure.
-            throw new \TypeError("The response body must a string, null, or instance of " . InputStream::class);
+            throw new \TypeError("The response body must be a string, null, or instance of " . InputStream::class);
         }
     }
 
