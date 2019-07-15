@@ -159,7 +159,7 @@ final class RemoteClient implements Client
      *
      * @throws \Error If the client has already been started.
      */
-    public function start(HttpDriverFactory $driverFactory)
+    public function start(HttpDriverFactory $driverFactory): void
     {
         if ($this->readWatcher) {
             throw new \Error("Client already started");

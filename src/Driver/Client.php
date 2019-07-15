@@ -20,7 +20,7 @@ interface Client
      *
      * @throws \Error If the client has already been started.
      */
-    public function start(HttpDriverFactory $driverFactory);
+    public function start(HttpDriverFactory $driverFactory): void;
 
     /**
      * @return Options Server options object.

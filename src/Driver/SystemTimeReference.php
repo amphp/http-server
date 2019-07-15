@@ -66,7 +66,7 @@ final class SystemTimeReference implements TimeReference, ServerObserver
     /**
      * Updates the context with the current time.
      */
-    private function updateTime()
+    private function updateTime(): void
     {
         // Date string generation is (relatively) expensive. Since we only need HTTP
         // dates at a granularity of one second we're better off to generate this
