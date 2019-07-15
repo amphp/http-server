@@ -130,6 +130,22 @@ final class RemoteClient implements Client
             self::$defaultErrorHandler = new DefaultErrorHandler;
         }
 
+        $serverName = \stream_socket_get_name($this->socket, false);
+        if ($portStartPos = \strrpos($serverName, ":")) {
+            $this->serverAddress = \substr($serverName, 0, $portStartPos);
+            $this->serverPort = (int) \substr($serverName, $portStartPos + 1);
+        } else {
+            $this->serverAddress = $serverName;
+        }
+
+        $peerName = \stream_socket_get_name($this->socket, true);
+        if ($portStartPos = \strrpos($peerName, ":")) {
+            $this->clientAddress = \substr($peerName, 0, $portStartPos);
+            $this->clientPort = (int) \substr($peerName, $portStartPos + 1);
+        } else {
+            $this->clientAddress = $serverName;
+        }
+
         $this->serverAddress = SocketAddress::fromLocalResource($this->socket);
         $this->clientAddress = SocketAddress::fromPeerResource($this->socket);
 
@@ -388,10 +404,11 @@ final class RemoteClient implements Client
             \assert($this->tlsInfo !== null);
 
             \assert($this->logger->debug(\sprintf(
-                    "Crypto negotiated (ALPN: %s) %s",
-                    ($this->tlsInfo->getApplicationLayerProtocol() ?? "none"),
-                    $this->clientAddress
-                )) || true);
+                "Crypto negotiated (ALPN: %s) %s:%d",
+                ($this->cryptoInfo["alpn_protocol"] ?? "none"),
+                $this->clientAddress,
+                $this->clientPort
+            )) || true);
 
             $this->setup($driverFactory->selectDriver($this));
 
@@ -501,12 +518,13 @@ final class RemoteClient implements Client
     private function onMessage(Request $request, string $buffer = ''): Promise
     {
         \assert($this->logger->debug(\sprintf(
-                "%s %s HTTP/%s @ %s",
-                $request->getMethod(),
-                $request->getUri(),
-                $request->getProtocolVersion(),
-                $this->clientAddress
-            )) || true);
+            "%s %s HTTP/%s @ %s:%s",
+            $request->getMethod(),
+            $request->getUri(),
+            $request->getProtocolVersion(),
+            $this->clientAddress,
+            $this->clientPort
+        )) || true);
 
         return new Coroutine($this->respond($request, $buffer));
     }

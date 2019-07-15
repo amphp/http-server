@@ -271,11 +271,11 @@ final class Http2Driver implements HttpDriver
                     $readPromise = $body->read(); // directly start new read
                 } catch (TimeoutException $e) {
                     goto flush;
-                }
-
-                // Stream may have been closed while waiting for body data.
-                if (!isset($this->streams[$id])) {
-                    return;
+                } finally {
+                    // Stream may have been closed while waiting for body data.
+                    if (!isset($this->streams[$id])) {
+                        return;
+                    }
                 }
 
                 $length = \strlen($chunk);
@@ -290,13 +290,13 @@ final class Http2Driver implements HttpDriver
                     continue;
                 }
 
-                flush:
+                flush: {
+                    $promise = $this->writeData($buffer, $id, false);
 
-                $promise = $this->writeData($buffer, $id, false);
+                    $buffer = $chunk = ""; // Don't use null here because of finally.
 
-                $buffer = $chunk = ""; // Don't use null here because of finally.
-
-                yield $promise;
+                    yield $promise;
+                }
             }
 
             // Stream may have been closed while waiting for body data.
@@ -512,6 +512,9 @@ final class Http2Driver implements HttpDriver
             $data = $stream->buffer;
             $end = $delta - $this->maxFrameSize;
 
+            $stream->clientWindow -= $delta;
+            $this->clientWindow -= $delta;
+
             for ($off = 0; $off < $end; $off += $this->maxFrameSize) {
                 $this->writeFrame(\substr($data, $off, $this->maxFrameSize), self::DATA, self::NOFLAG, $id);
             }
@@ -519,8 +522,6 @@ final class Http2Driver implements HttpDriver
             $promise = $this->writeFrame(\substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
 
             $stream->buffer = \substr($data, $delta);
-            $stream->clientWindow -= $delta;
-            $this->clientWindow -= $delta;
 
             return $promise;
         }
@@ -662,7 +663,7 @@ final class Http2Driver implements HttpDriver
                     $buffer .= yield;
                 }
 
-                $length = \unpack("N", "\0$buffer")[1];
+                $length = \unpack("N", "\0" . \substr($buffer, 0, 3))[1];
                 $bytesReceived += $length;
 
                 if ($length > self::DEFAULT_MAX_FRAME_SIZE) { // Do we want to allow increasing max frame size?
