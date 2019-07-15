@@ -759,7 +759,7 @@ final class Http2Driver implements HttpDriver
                         $body = \substr($buffer, 0, $length - $padding);
                         $buffer = \substr($buffer, $length);
                         if ($body !== "") {
-                            $this->bodyEmitters[$id]->emit($body);
+                            $buffer .= yield $this->bodyEmitters[$id]->emit($body);
                         }
 
                         if (($flags & self::END_STREAM) !== "\0") {
