@@ -7,6 +7,7 @@ use Amp\Promise;
 use Amp\Socket\EncryptableSocket;
 use Amp\Socket\ResourceSocket;
 use Amp\Socket\SocketAddress;
+use Amp\Socket\TlsInfo;
 use Amp\Success;
 
 final class UpgradedSocket implements EncryptableSocket
@@ -107,5 +108,10 @@ final class UpgradedSocket implements EncryptableSocket
     public function getTlsState(): int
     {
         return $this->socket->getTlsState();
+    }
+
+    public function getTlsInfo(): ?TlsInfo
+    {
+        return $this->socket->getTlsInfo();
     }
 }
