@@ -70,13 +70,15 @@ class Http2DriverTest extends HttpDriverTest
             if ($mode === 1) {
                 for ($i = 0, $length = \strlen($msg); $i < $length; $i++) {
                     $promise = $parser->send($msg[$i]);
+                    while ($promise instanceof Promise) {
+                        $promise = $parser->send(null);
+                    }
                 }
             } else {
                 $promise = $parser->send($msg);
-            }
-
-            while ($promise instanceof Promise) {
-                $promise = $parser->send("");
+                while ($promise instanceof Promise) {
+                    $promise = $parser->send("");
+                }
             }
 
             $this->assertInstanceOf(Request::class, $request);

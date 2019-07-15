@@ -113,7 +113,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $promise = $parser->send($msg);
         while ($promise instanceof Promise) {
-            $promise = $parser->send("");
+            $promise = $parser->send(null);
         }
 
         $this->assertInstanceOf(Request::class, $request);
@@ -151,10 +151,9 @@ class Http1DriverTest extends HttpDriverTest
 
         for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
             $promise = $parser->send($msg[$i]);
-        }
-
-        while ($promise instanceof Promise) {
-            $promise = $parser->send("");
+            while ($promise instanceof Promise) {
+                $promise = $parser->send(null);
+            }
         }
 
         $this->assertInstanceOf(Request::class, $request);
@@ -205,7 +204,7 @@ class Http1DriverTest extends HttpDriverTest
         }
 
         while ($promise instanceof Promise) {
-            $promise = $parser->send("");
+            $promise = $parser->send(null);
         }
 
         $this->assertInstanceOf(Request::class, $request);
@@ -251,10 +250,9 @@ class Http1DriverTest extends HttpDriverTest
 
         for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
             $promise = $parser->send($msg[$i]);
-        }
-
-        while ($promise instanceof Promise) {
-            $promise = $parser->send("");
+            while ($promise instanceof Promise) {
+                $promise = $parser->send(null);
+            }
         }
 
         $this->assertInstanceOf(Request::class, $request);
@@ -621,7 +619,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $promise = $parser->send($data);
         while ($promise instanceof Promise) {
-            $promise = $parser->send("");
+            $promise = $parser->send(null);
         }
 
         $this->assertInstanceOf(Request::class, $request);
@@ -683,7 +681,7 @@ class Http1DriverTest extends HttpDriverTest
         });
 
         while ($body === null) {
-            $parser->send(""); // Continue past yields to body emits.
+            $parser->send(null); // Continue past yields to body emits.
         }
 
         $this->assertSame($results[0], $body);
@@ -693,7 +691,7 @@ class Http1DriverTest extends HttpDriverTest
         $body = null;
 
         while ($request === null) {
-            $parser->send(""); // Continue past yield to request emit.
+            $parser->send(null); // Continue past yield to request emit.
         }
 
         $this->assertInstanceOf(Request::class, $request);
@@ -704,7 +702,7 @@ class Http1DriverTest extends HttpDriverTest
         });
 
         while ($body === null) {
-            $parser->send(""); // Continue past yields to body emits.
+            $parser->send(null); // Continue past yields to body emits.
         }
 
         $this->assertSame($results[1], $body);
@@ -714,10 +712,12 @@ class Http1DriverTest extends HttpDriverTest
         $request = null;
         $body = null;
 
+        $parser->send(null); // Resume parser after last request.
+
         $parser->send($payloads[0]); // Resume and send next body payload.
 
         while ($request === null) {
-            $parser->send(""); // Continue past yield to request emit.
+            $parser->send(null); // Continue past yield to request emit.
         }
 
         $this->assertInstanceOf(Request::class, $request);
@@ -728,7 +728,7 @@ class Http1DriverTest extends HttpDriverTest
         });
 
         while ($body === null) {
-            $parser->send(""); // Continue past yields to body emits.
+            $parser->send(null); // Continue past yields to body emits.
         }
 
         $this->assertSame($results[0], $body);
@@ -1015,7 +1015,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
 
         $parser->send($message);
-        $parser->send(""); // Continue past yield sending 100 Continue response.
+        $parser->send(null); // Continue past yield sending 100 Continue response.
 
         /** @var \Amp\Http\Server\Request $request */
         $this->assertInstanceOf(Request::class, $request);
@@ -1055,7 +1055,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $promise = $parser->send($message);
         while ($promise instanceof Promise) {
-            $promise = $parser->send("");
+            $promise = $parser->send(null);
         }
 
         $this->assertInstanceOf(Request::class, $request);
