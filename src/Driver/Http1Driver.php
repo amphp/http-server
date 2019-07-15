@@ -435,7 +435,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
-                    $buffer .= yield $this->write(
+                    yield $this->write(
                         new Request($this->client, $method, $uri, $headers, null, $protocol),
                         new Response(Status::CONTINUE, [])
                     );
@@ -451,7 +451,7 @@ final class Http1Driver implements HttpDriver
                     && false !== $h2cSettings = \base64_decode(\strtr($headers["http2-settings"][0], "-_", "+/"), true)
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
-                    $buffer .= yield $this->write(
+                    yield $this->write(
                         new Request($this->client, $method, $uri, $headers, null, $protocol),
                         new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
@@ -479,7 +479,7 @@ final class Http1Driver implements HttpDriver
 
                 if (!($isChunked || $contentLength)) {
                     // Wait for response to be fully written.
-                    $buffer .= yield $this->pendingResponse = ($this->onMessage)(new Request(
+                    yield $this->pendingResponse = ($this->onMessage)(new Request(
                         $this->client,
                         $method,
                         $uri,
@@ -611,7 +611,8 @@ final class Http1Driver implements HttpDriver
 
                                 while ($bodyBufferSize < $remaining) {
                                     if ($bodyBufferSize) {
-                                        $body = yield $emitter->emit($body);
+                                        yield $emitter->emit($body);
+                                        $body = "";
                                         $bodySize += $bodyBufferSize;
                                         $remaining -= $bodyBufferSize;
                                         $bodyBufferSize = \strlen($body);
@@ -624,7 +625,7 @@ final class Http1Driver implements HttpDriver
                                 }
 
                                 if ($remaining) {
-                                    $body .= yield $emitter->emit(\substr($body, 0, $remaining));
+                                    yield $emitter->emit(\substr($body, 0, $remaining));
                                     $buffer = \substr($body, $remaining);
                                     $body = "";
                                     $bodySize += $remaining;
@@ -654,10 +655,11 @@ final class Http1Driver implements HttpDriver
                             }
 
                             if ($bufferLength >= $chunkLengthRemaining + 2) {
-                                $buffer .= yield $emitter->emit(\substr($buffer, 0, $chunkLengthRemaining));
+                                yield $emitter->emit(\substr($buffer, 0, $chunkLengthRemaining));
                                 $buffer = \substr($buffer, $chunkLengthRemaining + 2);
                             } else {
-                                $buffer = yield $emitter->emit($buffer);
+                                yield $emitter->emit($buffer);
+                                $buffer = "";
                                 $chunkLengthRemaining -= $bufferLength;
                             }
 
@@ -669,7 +671,7 @@ final class Http1Driver implements HttpDriver
                     }
 
                     if ($body !== "") {
-                        $buffer .= yield $emitter->emit($body);
+                        yield $emitter->emit($body);
                     }
                 } else {
                     $bodySize = 0;
@@ -688,7 +690,7 @@ final class Http1Driver implements HttpDriver
                     $remaining = \min($maxBodySize, $contentLength) - $bodySize;
 
                     if ($remaining) {
-                        $buffer .= yield $emitter->emit(\substr($buffer, 0, $remaining));
+                        yield $emitter->emit(\substr($buffer, 0, $remaining));
                         $buffer = \substr($buffer, $remaining);
                     }
 
@@ -705,7 +707,7 @@ final class Http1Driver implements HttpDriver
                 $this->bodyEmitter = null;
                 $emitter->complete();
 
-                $buffer .= yield $this->pendingResponse; // Wait for response to be fully written.
+                yield $this->pendingResponse; // Wait for response to be fully written.
             } while (true);
         } catch (ClientException $exception) {
             if ($this->bodyEmitter === null || $this->client->getPendingResponseCount()) {

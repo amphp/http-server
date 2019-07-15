@@ -6,7 +6,7 @@ use cash\LRUCache;
 
 final class TimeoutCache implements \IteratorAggregate
 {
-    /** @var \cash\LRUCache */
+    /** @var LRUCache */
     private $cache;
 
     /** @var int Number of seconds to add to the current time when renewing the timeout. */
@@ -19,8 +19,8 @@ final class TimeoutCache implements \IteratorAggregate
     private $now;
 
     /**
-     * @param \Amp\Http\Server\Driver\TimeReference $timeReference
-     * @param int                                   $timeout Number of seconds to add when renewing a timeout.
+     * @param TimeReference $timeReference
+     * @param int           $timeout Number of seconds to add when renewing a timeout.
      */
     public function __construct(TimeReference $timeReference, int $timeout)
     {

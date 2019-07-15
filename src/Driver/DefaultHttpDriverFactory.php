@@ -2,6 +2,8 @@
 
 namespace Amp\Http\Server\Driver;
 
+use Amp\Http\Server\ErrorHandler;
+use Amp\Http\Server\Options;
 use Amp\Http\Server\Server;
 use Amp\Http\Server\ServerObserver;
 use Amp\Promise;
@@ -9,13 +11,13 @@ use Amp\Success;
 
 final class DefaultHttpDriverFactory implements HttpDriverFactory, ServerObserver
 {
-    /** @var \Amp\Http\Server\Options */
+    /** @var Options */
     private $options;
 
-    /** @var \Amp\Http\Server\Driver\TimeReference */
+    /** @var TimeReference */
     private $timeReference;
 
-    /** @var \Amp\Http\Server\ErrorHandler */
+    /** @var ErrorHandler */
     private $errorHandler;
 
     public function onStart(Server $server): Promise

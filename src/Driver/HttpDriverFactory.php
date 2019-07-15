@@ -7,9 +7,9 @@ interface HttpDriverFactory
     /**
      * Selects an HTTP driver based on the given client.
      *
-     * @param \Amp\Http\Server\Driver\Client $client
+     * @param Client $client
      *
-     * @return \Amp\Http\Server\Driver\HttpDriver
+     * @return HttpDriver
      */
     public function selectDriver(Client $client): HttpDriver;
 

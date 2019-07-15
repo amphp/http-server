@@ -365,12 +365,14 @@ final class RemoteClient implements Client
     /**
      * Sends data to the request parser.
      *
-     * @param string $data
+     * @param string|null $data
      */
-    private function parse(string $data = ""): void
+    private function parse(?string $data = null): void
     {
         try {
             $promise = $this->requestParser->send($data);
+
+            \assert($promise === null || $promise instanceof Promise);
 
             if ($promise instanceof Promise && !$this->isExported && !($this->status & self::CLOSED_RDWR)) {
                 // Parser wants to wait until a promise completes.
