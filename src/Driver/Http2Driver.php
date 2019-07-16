@@ -89,6 +89,13 @@ final class Http2Driver implements HttpDriver
         "via" => 1,
     ];
 
+    const KNOWN_PSEUDO_HEADERS = [
+        ":method" => 1,
+        ":authority" => 1,
+        ":path" => 1,
+        ":scheme" => 1,
+    ];
+
     /** @var string 64-bit for ping. */
     private $counter = "aaaaaaaa";
 
@@ -116,8 +123,11 @@ final class Http2Driver implements HttpDriver
     /** @var bool */
     private $allowsPush = true;
 
-    /** @var int Last used stream ID. */
-    private $streamId = 0;
+    /** @var int Last used local stream ID. */
+    private $localStreamId = 0;
+
+    /** @var int Last used remote stream ID. */
+    private $remoteStreamId = 0;
 
     /** @var \Amp\Http\Server\Driver\Internal\Http2Stream[] */
     private $streams = [];
@@ -420,7 +430,7 @@ final class Http2Driver implements HttpDriver
             ":method" => ["GET"],
         ], \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), $headers);
 
-        $id = $this->streamId += 2; // Server initiated stream IDs must be even.
+        $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
         $request = new Request($this->client, "GET", $uri, $headers, null, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
@@ -675,26 +685,23 @@ final class Http2Driver implements HttpDriver
                 $flags = $buffer[4];
                 $id = \unpack("N", \substr($buffer, 5, 4))[1];
 
-                // the highest bit must be zero... but RFC does not specify what should happen when it is set to 1?
-                /*if ($id < 0) {
-                    $id = ~$id;
-                }*/
+                // If the highest bit is 1, ignore it.
+                if ($id & 0x80000000) {
+                    $id &= 0x7fffffff;
+                }
 
                 $buffer = \substr($buffer, 9);
 
                 switch ($type) {
                     case self::DATA:
-                        if ($id === 0) {
+                        if (!isset($this->streams[$id], $this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
+                            if ($id > 0 && $id <= $this->remoteStreamId) {
+                                $error = self::STREAM_CLOSED;
+                                goto stream_error;
+                            }
+
                             $error = self::PROTOCOL_ERROR;
                             goto connection_error;
-                        }
-
-                        if (!isset($this->streams[$id], $this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
-                            // Technically it is a protocol error to send data to a never opened stream
-                            // but we do not want to store what streams WE have closed via RST_STREAM,
-                            // thus we're just reporting them as closed
-                            $error = self::STREAM_CLOSED;
-                            goto stream_error;
                         }
 
                         $stream = $this->streams[$id];
@@ -794,12 +801,13 @@ final class Http2Driver implements HttpDriver
                                 goto stream_error;
                             }
                         } else {
-                            if ($this->remainingStreams-- <= 0) {
+                            if ($id === 0 || !($id & 1) || $this->remainingStreams-- <= 0 || $id <= $this->remoteStreamId) {
                                 $error = self::PROTOCOL_ERROR;
                                 goto connection_error;
                             }
 
                             $stream = $this->streams[$id] = new Http2Stream($maxBodySize, $this->initialWindowSize);
+                            $this->remoteStreamId = $id;
                         }
 
                         if (($flags & self::PADDED) !== "\0") {
@@ -904,7 +912,7 @@ final class Http2Driver implements HttpDriver
                             goto connection_error;
                         }
 
-                        if ($id === 0) {
+                        if ($id === 0 || !isset($this->streams[$id])) {
                             $error = self::PROTOCOL_ERROR;
                             goto connection_error;
                         }
@@ -1012,9 +1020,9 @@ final class Http2Driver implements HttpDriver
                         }
 
                         $lastId = \unpack("N", $buffer)[1];
-                        // the highest bit must be zero... but RFC does not specify what should happen when it is set to 1?
-                        if ($lastId < 0) {
-                            $lastId = ~$lastId;
+                        // If the highest bit is 1, ignore it.
+                        if ($lastId & 0x80000000) {
+                            $lastId &= 0x7fffffff;
                         }
                         $error = \unpack("N", \substr($buffer, 4, 4))[1];
 
@@ -1057,12 +1065,15 @@ final class Http2Driver implements HttpDriver
 
                         if ($id) {
                             // May receive a WINDOW_UPDATE frame for a closed stream.
-                            if (isset($this->streams[$id])) {
-                                $this->streams[$id]->clientWindow += $windowSize;
+                            if (!isset($this->streams[$id])) {
+                                $error = self::PROTOCOL_ERROR;
+                                goto connection_error;
+                            }
 
-                                if ($this->streams[$id]->buffer !== "") {
-                                    $this->writeBufferedData($id);
-                                }
+                            $this->streams[$id]->clientWindow += $windowSize;
+
+                            if ($this->streams[$id]->buffer !== "") {
+                                $this->writeBufferedData($id);
                             }
 
                             continue 2;
@@ -1086,22 +1097,19 @@ final class Http2Driver implements HttpDriver
 
                     case self::CONTINUATION:
                         if (!isset($this->streams[$id])) {
-                            // technically it is a protocol error to send data to a never opened stream
-                            // but we do not want to store what streams WE have closed via RST_STREAM,
-                            // thus we're just reporting them as closed
-                            $error = self::STREAM_CLOSED;
-                            goto stream_error;
+                            if ($id > 0 && $id < $this->remoteStreamId) {
+                                $error = self::STREAM_CLOSED;
+                                goto stream_error;
+                            }
+
+                            $error = self::PROTOCOL_ERROR;
+                            goto connection_error;
                         }
 
                         $stream = $this->streams[$id];
 
                         if ($stream->headers === null) {
                             $error = self::PROTOCOL_ERROR;
-                            goto stream_error;
-                        }
-
-                        if ($stream->state & Http2Stream::REMOTE_CLOSED) {
-                            $error = self::STREAM_CLOSED;
                             goto stream_error;
                         }
 
@@ -1127,9 +1135,14 @@ final class Http2Driver implements HttpDriver
 
                         continue 2;
 
-                    default:
-                        $error = self::PROTOCOL_ERROR;
-                        goto connection_error;
+                    default: // Ignore and discard unknown frame per spec.
+                        while (\strlen($buffer) < $length) {
+                            $buffer .= yield;
+                        }
+
+                        $buffer = \substr($buffer, $length);
+
+                        continue 2;
                 }
 
                 parse_headers: {
@@ -1138,14 +1151,24 @@ final class Http2Driver implements HttpDriver
 
                     if ($decoded === null) {
                         $error = self::COMPRESSION_ERROR;
-                        goto stream_error;
+                        goto connection_error;
                     }
 
                     $headers = [];
+                    $pseudoFinished = false;
                     foreach ($decoded as list($name, $value)) {
                         if (!\preg_match(self::HEADER_NAME_REGEX, $name)) {
                             $error = self::PROTOCOL_ERROR;
                             goto stream_error;
+                        }
+
+                        if ($name[0] === ':') {
+                            if ($pseudoFinished || !isset(self::KNOWN_PSEUDO_HEADERS[$name])) {
+                                $error = self::PROTOCOL_ERROR;
+                                goto connection_error;
+                            }
+                        } else {
+                            $pseudoFinished = true;
                         }
 
                         $headers[$name][] = $value;
@@ -1179,15 +1202,24 @@ final class Http2Driver implements HttpDriver
                     $stream->state |= Http2Stream::RESERVED;
 
                     if ($this->stopping) {
-                        continue; // Do not dispatch more requests if stopping.
+                        $error = self::REFUSED_STREAM;
+                        goto stream_error;
                     }
 
-                    if (!isset($headers[":method"][0])) {
+                    if (!isset($headers[":method"][0], $headers[":path"][0], $headers[":scheme"][0])
+                        || isset($headers[":method"][1])
+                        || isset($headers[":path"][1])
+                        || isset($headers[":scheme"][1])
+                        || isset($headers["connection"])
+                        || $headers[":path"][0] === ''
+                        || (isset($headers["te"]) && \implode($headers["te"]) !== "trailers")
+                    ) {
                         $error = self::PROTOCOL_ERROR;
                         goto stream_error;
                     }
 
-                    $target = $headers[":path"][0] ?? "";
+                    $method = $headers[":method"][0];
+                    $target = $headers[":path"][0];
                     $scheme = $headers[":scheme"][0] ?? ($this->client->isEncrypted() ? "https" : "http");
                     $host = $headers[":authority"][0] ?? "";
                     $query = null;
@@ -1225,7 +1257,7 @@ final class Http2Driver implements HttpDriver
                     if ($stream->state & Http2Stream::REMOTE_CLOSED) {
                         $request = new Request(
                             $this->client,
-                            $headers[":method"][0],
+                            $method,
                             $uri,
                             $headers,
                             null,
@@ -1268,7 +1300,7 @@ final class Http2Driver implements HttpDriver
 
                     $request = new Request(
                         $this->client,
-                        $headers[":method"][0],
+                        $method,
                         $uri,
                         $headers,
                         $body,
