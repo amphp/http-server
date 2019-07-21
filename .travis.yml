@@ -35,6 +35,7 @@ install:
 script:
   - php -dzend.assertions=1 -dassert.exception=1 vendor/bin/phpunit --coverage-text --verbose --coverage-clover build/logs/clover.xml
   - PHP_CS_FIXER_IGNORE_ENV=1 php vendor/bin/php-cs-fixer --diff --dry-run -v fix
+  - ./h2spec -p 1338 --tls --insecure --strict
 
 after_script:
   - travis_retry ./coveralls.phar -v
