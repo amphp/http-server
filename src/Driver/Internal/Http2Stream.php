@@ -55,6 +55,9 @@ final class Http2Stream
     /** @var int */
     public $dependency = 0;
 
+    /** @var int|null */
+    public $expectedLength;
+
     public function __construct(int $serverSize, int $clientSize, int $state = self::OPEN)
     {
         $this->serverWindow = $serverSize;
