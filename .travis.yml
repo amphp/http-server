@@ -22,10 +22,6 @@ before_install:
   - if [ "$TRAVIS_PHP_VERSION" != "7.0" ]; then
       phpenv config-rm xdebug.ini || echo "No xdebug config.";
     fi
-  - travis_retry wget https://github.com/summerwind/h2spec/releases/latest/download/h2spec_linux_amd64.tar.gz
-  - tar -xzf h2spec_linux_amd64.tar.gz
-  - php test/test-server.php &
-  - SERVER_PID=$!
 
 install:
   - travis_retry composer update -n --prefer-dist
@@ -35,11 +31,10 @@ install:
 script:
   - php -dzend.assertions=1 -dassert.exception=1 vendor/bin/phpunit --coverage-text --verbose --coverage-clover build/logs/clover.xml
   - PHP_CS_FIXER_IGNORE_ENV=1 php vendor/bin/php-cs-fixer --diff --dry-run -v fix
-  - ./h2spec -p 1338 --tls --insecure --strict
+  - sh travis/h2spec.sh
 
 after_script:
   - travis_retry ./coveralls.phar -v
-  - kill $SERVER_PID
 
 cache:
   directories:
