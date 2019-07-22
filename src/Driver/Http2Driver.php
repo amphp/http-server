@@ -829,8 +829,10 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $stream = $this->streams[$id] = new Http2Stream($maxBodySize, $this->initialWindowSize);
-                            $this->remoteStreamId = $id;
                         }
+
+                        // Headers frames can be received on previously opened streams (trailer headers).
+                        $this->remoteStreamId = \max($id, $this->remoteStreamId);
 
                         $padding = 0;
 
@@ -919,7 +921,7 @@ final class Http2Driver implements HttpDriver
                         }
 
                         if (!isset($this->streams[$id])) {
-                            if ($id === 0 || !($id & 1)) {
+                            if ($id === 0 || !($id & 1) || $this->remainingStreams-- <= 0) {
                                 $error = self::PROTOCOL_ERROR;
                                 goto connection_error;
                             }
@@ -1341,7 +1343,7 @@ final class Http2Driver implements HttpDriver
                         $deferred->promise()
                     );
 
-                    if ($this->serverWindow <= $maxBodySize >> 1) {
+                    if ($this->serverWindow <= 0) {
                         $increment = $maxBodySize - $this->serverWindow;
                         $this->serverWindow = $maxBodySize;
                         $this->writeFrame(\pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG);
@@ -1449,8 +1451,6 @@ final class Http2Driver implements HttpDriver
                 foreach ($this->streams as $stream) {
                     $stream->clientWindow += $difference;
                 }
-
-                $this->clientWindow += $difference;
 
                 // Settings ACK should be sent before HEADER or DATA frames.
                 Loop::defer($this->callableFromInstanceMethod('sendBufferedData'));

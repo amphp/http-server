@@ -12,7 +12,9 @@ use Amp\Http\Server\Server;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
+use Amp\Promise;
 use Amp\Socket;
+use Amp\TimeoutException;
 use Monolog\Logger;
 
 // Used for testing against h2spec (https://github.com/summerwind/h2spec)
@@ -32,9 +34,12 @@ Amp\Loop::run(static function () {
 
     $server = new Server($servers, new CallableRequestHandler(static function (Request $request) {
         try {
-            $body = yield $request->getBody()->buffer(); // Buffer entire request body into memory (unused here).
+            // Buffer entire body, but timeout after 100ms.
+            $body = yield Promise\timeout($request->getBody()->buffer(), 100);
         } catch (ClientException $exception) {
             // Ignore failure to read body due to RST_STREAM frames.
+        } catch (TimeoutException $exception) {
+            // Ignore failure to read body tue to timeout.
         }
 
         return new Response(Status::OK, [
