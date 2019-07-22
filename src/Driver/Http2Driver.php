@@ -1109,7 +1109,11 @@ final class Http2Driver implements HttpDriver
                         $windowSize = \unpack("N", $buffer)[1];
                         $buffer = \substr($buffer, 4);
 
-                        if ($id && isset($this->streams[$id])) {
+                        if ($id) {
+                            if (!isset($this->streams[$id])) {
+                                continue 2;
+                            }
+
                             $stream = $this->streams[$id];
 
                             if ($stream->clientWindow + $windowSize > (2 << 30) - 1) {
@@ -1118,15 +1122,14 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $stream->clientWindow += $windowSize;
-                        }
+                        } else {
+                            if ($this->clientWindow + $windowSize > (2 << 30) - 1) {
+                                $error = self::FLOW_CONTROL_ERROR;
+                                goto connection_error;
+                            }
 
-                        if ($this->clientWindow + $windowSize > (2 << 30) - 1) {
-                            $error = self::FLOW_CONTROL_ERROR;
-                            if ($id) goto stream_error;
-                            goto connection_error;
+                            $this->clientWindow += $windowSize;
                         }
-
-                        $this->clientWindow += $windowSize;
 
                         Loop::defer($this->callableFromInstanceMethod('sendBufferedData'));
 
