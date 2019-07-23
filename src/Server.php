@@ -113,7 +113,7 @@ final class Server
 
         $this->logger = $logger;
         $this->options = $options ?? new Options;
-        $this->clientFactory = $clientFactory ?? new DefaultClientFactory;
+        $this->clientFactory = new DefaultClientFactory;
         $this->timeReference = new SystemTimeReference;
         $this->timeouts = new TimeoutCache(
             $this->timeReference,
