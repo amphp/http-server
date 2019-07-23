@@ -330,19 +330,7 @@ final class Http2Driver implements HttpDriver
                 $error = $error ?? self::INTERNAL_ERROR;
 
                 $this->writeFrame(\pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
-                $this->releaseStream($id);
-
-                if (isset($this->bodyEmitters[$id], $this->trailerDeferreds)) {
-                    $exception = $exception ?? new ClientException("Stream error", $error);
-
-                    $emitter = $this->bodyEmitters[$id];
-                    $deferred = $this->trailerDeferreds[$id];
-
-                    unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
-
-                    $emitter->fail($exception);
-                    $deferred->fail($exception);
-                }
+                $this->releaseStream($id, $exception ?? new ClientException("Stream error", $error));
             }
         }
     }
@@ -549,19 +537,24 @@ final class Http2Driver implements HttpDriver
         return $stream->deferred->promise();
     }
 
-    private function releaseStream(int $id)
+    private function releaseStream(int $id, \Throwable $exception = null)
     {
         \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
 
         if (isset($this->bodyEmitters[$id])) {
-            $this->bodyEmitters[$id]->complete();
+            $emitter = $this->bodyEmitters[$id];
+            unset($this->bodyEmitters[$id]);
+            $emitter->fail($exception ?? new ClientException("Client disconnected", self::CANCEL));
         }
 
         if (isset($this->trailerDeferreds[$id])) {
-            $this->trailerDeferreds[$id]->resolve(new Trailers([]));
+            $deferred = $this->trailerDeferreds[$id];
+            unset($this->trailerDeferreds[$id]);
+            $deferred->resolve($exception ?? new ClientException("Client disconnected", self::CANCEL));
         }
 
-        unset($this->streams[$id], $this->trailerDeferreds[$id], $this->bodyEmitters[$id]);
+        unset($this->streams[$id]);
+
         if ($id & 1) { // Client-initiated stream.
             $this->remainingStreams++;
         }
@@ -1381,15 +1374,8 @@ final class Http2Driver implements HttpDriver
                 stream_error: {
                     $this->writeFrame(\pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
 
-                    if (isset($this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
-                        $exception = new ClientException("Stream error", $error);
-
-                        $this->trailerDeferreds[$id]->fail($exception);
-                        $this->bodyEmitters[$id]->fail($exception);
-                    }
-
                     if (isset($this->streams[$id])) {
-                        $this->releaseStream($id);
+                        $this->releaseStream($id, new ClientException("Stream error", $error));
                     }
 
                     // consume whole frame to be able to continue this connection
@@ -1404,17 +1390,10 @@ final class Http2Driver implements HttpDriver
                 }
             }
         } finally {
-            if (!empty($this->bodyEmitters) || !empty($this->trailerDeferreds)) {
+            if (!empty($this->streams)) {
                 $exception = new ClientException("Client disconnected", self::CANCEL);
-
-                foreach ($this->trailerDeferreds as $id => $deferred) {
-                    unset($this->trailerDeferreds[$id]);
-                    $deferred->fail($exception);
-                }
-
-                foreach ($this->bodyEmitters as $id => $emitter) {
-                    unset($this->bodyEmitters[$id]);
-                    $emitter->fail($exception);
+                foreach ($this->streams as $id => $stream) {
+                    $this->releaseStream($id, $exception);
                 }
             }
         }
