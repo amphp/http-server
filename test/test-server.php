@@ -1,12 +1,12 @@
 #!/usr/bin/env php
 <?php
 
-require dirname(__DIR__) . "/vendor/autoload.php";
+require \dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream\ResourceOutputStream;
 use Amp\Http\Server\ClientException;
-use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Request;
+use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
 use Amp\Http\Status;
@@ -29,6 +29,7 @@ Amp\Loop::run(static function () {
 
     $logHandler = new StreamHandler(new ResourceOutputStream(STDOUT));
     $logHandler->setFormatter(new ConsoleFormatter);
+    $logHandler->setLevel(Logger::INFO);
     $logger = new Logger('server');
     $logger->pushHandler($logHandler);
 
