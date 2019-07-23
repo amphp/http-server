@@ -776,7 +776,9 @@ final class Http2Driver implements HttpDriver
                                 $stream->expectedLength -= \strlen($body);
                             }
 
-                            $buffer .= yield $this->bodyEmitters[$id]->emit($body);
+                            if (isset($this->bodyEmitters[$id])) { // Stream may close while reading body chunk.
+                                $buffer .= yield $this->bodyEmitters[$id]->emit($body);
+                            }
                         }
 
                         if (($flags & self::END_STREAM) !== "\0") {
