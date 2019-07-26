@@ -1192,7 +1192,7 @@ final class Http2Driver implements HttpDriver
                         }
 
                         if ($name[0] === ':') {
-                            if ($pseudoFinished || !isset(self::KNOWN_PSEUDO_HEADERS[$name])) {
+                            if ($pseudoFinished || !isset(self::KNOWN_PSEUDO_HEADERS[$name]) || isset($headers[$name])) {
                                 $error = self::PROTOCOL_ERROR;
                                 goto connection_error;
                             }
@@ -1241,9 +1241,6 @@ final class Http2Driver implements HttpDriver
                     }
 
                     if (!isset($headers[":method"][0], $headers[":path"][0], $headers[":scheme"][0])
-                        || isset($headers[":method"][1])
-                        || isset($headers[":path"][1])
-                        || isset($headers[":scheme"][1])
                         || isset($headers["connection"])
                         || $headers[":path"][0] === ''
                         || (isset($headers["te"]) && \implode($headers["te"]) !== "trailers")
