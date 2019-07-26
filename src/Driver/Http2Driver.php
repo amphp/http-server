@@ -959,20 +959,8 @@ final class Http2Driver implements HttpDriver
 
                         $error = \unpack("N", $buffer)[1];
 
-                        if (isset($this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
-                            $exception = new ClientException("Client ended stream", self::STREAM_CLOSED);
-
-                            $emitter = $this->bodyEmitters[$id];
-                            $deferred = $this->trailerDeferreds[$id];
-
-                            unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
-
-                            $emitter->fail($exception);
-                            $deferred->fail($exception);
-                        }
-
                         if (isset($this->streams[$id])) {
-                            $this->releaseStream($id);
+                            $this->releaseStream($id, new ClientException("Client ended stream", $error));
                         }
 
                         $buffer = \substr($buffer, 4);
