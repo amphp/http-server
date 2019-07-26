@@ -3,7 +3,6 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\IteratorStream;
-use Amp\CallableMaker;
 use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
@@ -26,8 +25,6 @@ use function Amp\call;
 
 final class Http2Driver implements HttpDriver
 {
-    use CallableMaker;
-
     const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
     const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
     const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
@@ -208,7 +205,7 @@ final class Http2Driver implements HttpDriver
         return $stream->pendingWrite = new Coroutine($this->send($id, $response, $request));
     }
 
-    public function send(int $id, Response $response, Request $request): \Generator
+    private function send(int $id, Response $response, Request $request): \Generator
     {
         $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
@@ -389,7 +386,7 @@ final class Http2Driver implements HttpDriver
         return \count($this->bodyEmitters);
     }
 
-    protected function dispatchInternalRequest(Request $request, int $streamId, PsrUri $url, array $headers = [])
+    private function dispatchInternalRequest(Request $request, int $streamId, PsrUri $url, array $headers = []): void
     {
         $uri = $request->getUri();
         $path = $url->getPath();
@@ -450,14 +447,14 @@ final class Http2Driver implements HttpDriver
         $stream->pendingResponse = ($this->onMessage)($request);
     }
 
-    protected function writePing(): Promise
+    private function writePing(): Promise
     {
         // no need to receive the PONG frame, that's anyway registered by the keep-alive handler
         $data = $this->counter++;
         return $this->writeFrame($data, self::PING, self::NOFLAG);
     }
 
-    protected function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise
+    private function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise
     {
         $data = \substr(\pack("N", \strlen($data)), 1, 3) . $type . $flags . \pack("N", $stream) . $data;
         return ($this->write)($data);
@@ -537,7 +534,7 @@ final class Http2Driver implements HttpDriver
         return $stream->deferred->promise();
     }
 
-    private function releaseStream(int $id, \Throwable $exception = null)
+    private function releaseStream(int $id, \Throwable $exception = null): void
     {
         \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
 
@@ -1128,7 +1125,7 @@ final class Http2Driver implements HttpDriver
                             $this->clientWindow += $windowSize;
                         }
 
-                        Loop::defer($this->callableFromInstanceMethod('sendBufferedData'));
+                        Loop::defer(\Closure::fromCallable([$this, 'sendBufferedData']));
 
                         continue 2;
 
@@ -1434,7 +1431,7 @@ final class Http2Driver implements HttpDriver
                 }
 
                 // Settings ACK should be sent before HEADER or DATA frames.
-                Loop::defer($this->callableFromInstanceMethod('sendBufferedData'));
+                Loop::defer(\Closure::fromCallable([$this, 'sendBufferedData']));
 
                 return 0;
 
@@ -1464,7 +1461,7 @@ final class Http2Driver implements HttpDriver
         }
     }
 
-    private function sendBufferedData()
+    private function sendBufferedData(): void
     {
         foreach ($this->streams as $id => $stream) {
             if ($this->clientWindow <= 0) {
