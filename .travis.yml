@@ -7,6 +7,7 @@ php:
   - 7.1
   - 7.2
   - 7.3
+  - 7.4snapshot
   - nightly
 
 matrix:
@@ -30,6 +31,7 @@ install:
 script:
   - php -dzend.assertions=1 -dassert.exception=1 vendor/bin/phpunit --coverage-text --verbose --coverage-clover build/logs/clover.xml
   - PHP_CS_FIXER_IGNORE_ENV=1 php vendor/bin/php-cs-fixer --diff --dry-run -v fix
+  - sh travis/h2spec.sh
 
 after_script:
   - travis_retry ./coveralls.phar -v
