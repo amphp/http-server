@@ -3,7 +3,6 @@ sudo: false
 language: php
 
 php:
-  - 7.0
   - 7.1
   - 7.2
   - 7.3
@@ -19,9 +18,7 @@ env:
   - AMP_DEBUG=true
 
 before_install:
-  - if [ "$TRAVIS_PHP_VERSION" != "7.0" ]; then
-      phpenv config-rm xdebug.ini || echo "No xdebug config.";
-    fi
+    phpenv config-rm xdebug.ini || echo "No xdebug config.";
 
 install:
   - travis_retry composer update -n --prefer-dist
