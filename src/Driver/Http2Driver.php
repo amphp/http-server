@@ -956,20 +956,8 @@ final class Http2Driver implements HttpDriver
 
                         $error = \unpack("N", $buffer)[1];
 
-                        if (isset($this->bodyEmitters[$id], $this->trailerDeferreds[$id])) {
-                            $exception = new ClientException("Client ended stream", self::STREAM_CLOSED);
-
-                            $emitter = $this->bodyEmitters[$id];
-                            $deferred = $this->trailerDeferreds[$id];
-
-                            unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
-
-                            $emitter->fail($exception);
-                            $deferred->fail($exception);
-                        }
-
                         if (isset($this->streams[$id])) {
-                            $this->releaseStream($id);
+                            $this->releaseStream($id, new ClientException("Client ended stream", $error));
                         }
 
                         $buffer = \substr($buffer, 4);
@@ -1201,7 +1189,7 @@ final class Http2Driver implements HttpDriver
                         }
 
                         if ($name[0] === ':') {
-                            if ($pseudoFinished || !isset(self::KNOWN_PSEUDO_HEADERS[$name])) {
+                            if ($pseudoFinished || !isset(self::KNOWN_PSEUDO_HEADERS[$name]) || isset($headers[$name])) {
                                 $error = self::PROTOCOL_ERROR;
                                 goto connection_error;
                             }
@@ -1250,9 +1238,6 @@ final class Http2Driver implements HttpDriver
                     }
 
                     if (!isset($headers[":method"][0], $headers[":path"][0], $headers[":scheme"][0])
-                        || isset($headers[":method"][1])
-                        || isset($headers[":path"][1])
-                        || isset($headers[":scheme"][1])
                         || isset($headers["connection"])
                         || $headers[":path"][0] === ''
                         || (isset($headers["te"]) && \implode($headers["te"]) !== "trailers")
