@@ -341,10 +341,11 @@ final class Http2Driver implements HttpDriver
     /**
      * @param int|null $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no frames have
      *                         been opened.
+     * @param int      $reason Error code.
      *
      * @return Promise
      */
-    public function shutdown(int $lastId = null, int $reason = self::GRACEFUL_SHUTDOWN): Promise
+    private function shutdown(int $lastId = null, int $reason = self::GRACEFUL_SHUTDOWN): Promise
     {
         $this->stopping = true;
 
