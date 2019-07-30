@@ -18,8 +18,8 @@ use Monolog\Logger;
 
 Amp\Loop::run(function () {
     $servers = [
-        Socket\listen("0.0.0.0:1337"),
-        Socket\listen("[::]:1337"),
+        Socket\Server::listen("0.0.0.0:1337"),
+        Socket\Server::listen("[::]:1337"),
     ];
 
     $logHandler = new StreamHandler(new ResourceOutputStream(\STDOUT));
@@ -42,7 +42,7 @@ Amp\Loop::run(function () {
     yield $server->start();
 
     // Stop the server when SIGINT is received (this is technically optional, but it is best to call Server::stop()).
-    Amp\Loop::onSignal(SIGINT, function (string $watcherId) use ($server) {
+    Amp\Loop::onSignal(\SIGINT, function (string $watcherId) use ($server) {
         Amp\Loop::cancel($watcherId);
         yield $server->stop();
     });

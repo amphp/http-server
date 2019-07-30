@@ -19,8 +19,8 @@ use Monolog\Logger;
 
 Amp\Loop::run(function () {
     $servers = [
-        Socket\listen("0.0.0.0:1337"),
-        Socket\listen("[::]:1337"),
+        Socket\Server::listen("0.0.0.0:1337"),
+        Socket\Server::listen("[::]:1337"),
     ];
 
     $logHandler = new StreamHandler(new ResourceOutputStream(\STDOUT));

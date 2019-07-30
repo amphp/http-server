@@ -22,9 +22,12 @@ use Monolog\Logger;
 Amp\Loop::run(static function () {
     $cert = new Socket\Certificate(__DIR__ . '/server.pem');
 
+    $context = (new Socket\BindContext)
+        ->withTlsContext((new Socket\ServerTlsContext)->withDefaultCertificate($cert));
+
     $servers = [
-        Socket\listen("0.0.0.0:1338", null, (new Socket\ServerTlsContext)->withDefaultCertificate($cert)),
-        Socket\listen("[::]:1338", null, (new Socket\ServerTlsContext)->withDefaultCertificate($cert)),
+        Socket\Server::listen("0.0.0.0:1338", $context),
+        Socket\Server::listen("[::]:1338", $context),
     ];
 
     $logHandler = new StreamHandler(new ResourceOutputStream(STDOUT));
@@ -50,7 +53,7 @@ Amp\Loop::run(static function () {
 
     yield $server->start();
 
-    Amp\Loop::onSignal(SIGINT, static function (string $watcherId) use ($server) {
+    Amp\Loop::onSignal(\SIGINT, static function (string $watcherId) use ($server) {
         Amp\Loop::cancel($watcherId);
         yield $server->stop();
     });

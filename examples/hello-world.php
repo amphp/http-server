@@ -13,16 +13,19 @@ use Amp\Log\StreamHandler;
 use Amp\Socket;
 use Monolog\Logger;
 
-// Run this script, then visit http://localhost:1337/ in your browser.
+// Run this script, then visit http://localhost:1337/ or https://localhost:1338/ in your browser.
 
 Amp\Loop::run(static function () {
     $cert = new Socket\Certificate(__DIR__ . '/../test/server.pem');
 
+    $context = (new Socket\BindContext)
+        ->withTlsContext((new Socket\ServerTlsContext)->withDefaultCertificate($cert));
+
     $servers = [
-        Socket\listen("0.0.0.0:1337"),
-        Socket\listen("[::]:1337"),
-        Socket\listen("0.0.0.0:1338", null, (new Socket\ServerTlsContext)->withDefaultCertificate($cert)),
-        Socket\listen("[::]:1338", null, (new Socket\ServerTlsContext)->withDefaultCertificate($cert)),
+        Socket\Server::listen("0.0.0.0:1337"),
+        Socket\Server::listen("[::]:1337"),
+        Socket\Server::listen("0.0.0.0:1338", $context),
+        Socket\Server::listen("[::]:1338", $context),
     ];
 
     $logHandler = new StreamHandler(new ResourceOutputStream(STDOUT));
@@ -39,7 +42,7 @@ Amp\Loop::run(static function () {
     yield $server->start();
 
     // Stop the server when SIGINT is received (this is technically optional, but it is best to call Server::stop()).
-    Amp\Loop::onSignal(SIGINT, static function (string $watcherId) use ($server) {
+    Amp\Loop::onSignal(\SIGINT, static function (string $watcherId) use ($server) {
         Amp\Loop::cancel($watcherId);
         yield $server->stop();
     });
