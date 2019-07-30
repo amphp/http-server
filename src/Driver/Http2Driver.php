@@ -1181,6 +1181,7 @@ final class Http2Driver implements HttpDriver
                     }
 
                     $headers = [];
+                    $pseudo = [];
                     $pseudoFinished = false;
                     foreach ($decoded as list($name, $value)) {
                         if (!\preg_match(self::HEADER_NAME_REGEX, $name)) {
@@ -1189,14 +1190,16 @@ final class Http2Driver implements HttpDriver
                         }
 
                         if ($name[0] === ':') {
-                            if ($pseudoFinished || !isset(self::KNOWN_PSEUDO_HEADERS[$name]) || isset($headers[$name])) {
+                            if ($pseudoFinished || !isset(self::KNOWN_PSEUDO_HEADERS[$name]) || isset($pseudo[$name])) {
                                 $error = self::PROTOCOL_ERROR;
                                 goto connection_error;
                             }
-                        } else {
-                            $pseudoFinished = true;
+
+                            $pseudo[$name] = $value;
+                            continue;
                         }
 
+                        $pseudoFinished = true;
                         $headers[$name][] = $value;
                     }
 
@@ -1237,19 +1240,19 @@ final class Http2Driver implements HttpDriver
                         goto stream_error;
                     }
 
-                    if (!isset($headers[":method"][0], $headers[":path"][0], $headers[":scheme"][0])
+                    if (!isset($pseudo[":method"], $pseudo[":path"], $pseudo[":scheme"])
                         || isset($headers["connection"])
-                        || $headers[":path"][0] === ''
+                        || $pseudo[":path"] === ''
                         || (isset($headers["te"]) && \implode($headers["te"]) !== "trailers")
                     ) {
                         $error = self::PROTOCOL_ERROR;
                         goto stream_error;
                     }
 
-                    $method = $headers[":method"][0];
-                    $target = $headers[":path"][0];
-                    $scheme = $headers[":scheme"][0] ?? ($this->client->isEncrypted() ? "https" : "http");
-                    $host = $headers[":authority"][0] ?? "";
+                    $method = $pseudo[":method"];
+                    $target = $pseudo[":path"];
+                    $scheme = $pseudo[":scheme"] ?? ($this->client->isEncrypted() ? "https" : "http");
+                    $host = $pseudo[":authority"] ?? "";
                     $query = null;
 
                     if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\])(?::([1-9]\d*))?$#i", $host, $matches)) {
