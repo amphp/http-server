@@ -2,14 +2,15 @@
 
 namespace Amp\Http\Server\Test\Driver;
 
-use Amp\Artax\Cookie\ArrayCookieJar;
-use Amp\Artax\Cookie\Cookie;
-use Amp\Artax\DefaultClient;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\ByteStream\IteratorStream;
+use Amp\CancellationToken;
 use Amp\Delayed;
 use Amp\Emitter;
+use Amp\Http\Client\Connection\DefaultConnectionPool;
+use Amp\Http\Client\Request as ClientRequest;
+use Amp\Http\Client\SocketClient;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Client;
@@ -28,9 +29,11 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
 use Amp\Http\Status;
 use Amp\Loop;
+use Amp\Promise;
 use Amp\Socket;
 use Amp\Socket\Certificate;
 use Amp\Socket\ClientTlsContext;
+use Amp\Socket\ConnectContext;
 use Amp\Socket\ServerTlsContext;
 use Amp\Success;
 use League\Uri;
@@ -74,8 +77,6 @@ class RemoteClientTest extends TestCase
                 $query = new Query($req->getUri()->getQuery());
                 $this->assertEquals(["foo" => "bar", "baz" => ["1", "2"]], $query->getPairs());
                 $this->assertEquals(["header"], $req->getHeaderArray("custom"));
-                $this->assertNotNull($req->getCookie("test"));
-                $this->assertSame("value", $req->getCookie("test")->getValue());
 
                 $data = \str_repeat("*", 100000);
                 $stream = new InMemoryStream("data/" . $data . "/data");
@@ -88,14 +89,20 @@ class RemoteClientTest extends TestCase
                 return $res;
             });
 
-            $cookies = new ArrayCookieJar;
-            $cookies->store(new Cookie("test", "value", null, "/", "localhost"));
-            $context = (new Socket\ConnectContext)
-                ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
-            $client = new DefaultClient($cookies, null, $context);
+            $connector = new class implements Socket\Connector {
+                public function connect(string $uri, ?ConnectContext $context = null, ?CancellationToken $token = null): Promise
+                {
+                    $context = (new Socket\ConnectContext)
+                        ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
+
+                    return (new Socket\DnsConnector)->connect($uri, $context, $token);
+                }
+            };
+
+            $client = new SocketClient(new DefaultConnectionPool($connector));
             $port = \parse_url($address, PHP_URL_PORT);
             $promise = $client->request(
-                (new \Amp\Artax\Request("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))->withHeader("custom", "header")
+                (new ClientRequest("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))->withHeader("custom", "header")
             );
 
             /** @var Response $res */
@@ -104,7 +111,6 @@ class RemoteClientTest extends TestCase
             $this->assertEquals(["header"], $res->getHeaderArray("custom"));
             $body = yield $res->getBody()->buffer();
             $this->assertEquals("data/" . \str_repeat("*", 100000) . "/data", $body);
-            $this->assertEquals("with-value", $cookies->get("localhost", "/", "cookie")[0]->getValue());
 
             Loop::stop();
         });

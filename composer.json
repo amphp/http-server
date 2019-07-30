@@ -42,7 +42,7 @@
     },
     "require-dev": {
         "amphp/phpunit-util": "^1",
-        "amphp/http-client": "dev-master as 4.0",
+        "amphp/http-client": "connection-refactor-dev as 4.0",
         "amphp/log": "^1",
         "amphp/php-cs-fixer-config": "dev-master",
         "league/uri-components": "^1.7",

@@ -2,10 +2,11 @@
 
 namespace Amp\Http\Server\Test\Driver;
 
-use Amp\Artax\Internal\Parser;
 use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
+use Amp\Http\Client\Connection\Internal\Http1Parser;
+use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
@@ -740,18 +741,20 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertSame(3, $responses);
     }
 
-    public function verifyWrite($input, $status, $headers, $data)
+    public function verifyWrite(string $input, int $status, array $headers, string $data)
     {
         $actualBody = "";
-        $parser = new Parser(static function ($chunk) use (&$actualBody) {
+        $parser = new Http1Parser(new ClientRequest("/"), static function ($chunk) use (&$actualBody) {
             $actualBody .= $chunk;
-        }, Parser::MODE_RESPONSE);
-        $parsed = $parser->parse($input);
-        if ($parsed["headersOnly"]) {
-            $parser->parse();
+        });
+
+        $response = $parser->parse($input);
+        while (!$parser->isComplete()) {
+            $parser->parse($input);
         }
-        $this->assertEquals($status, $parsed["status"]);
-        $this->assertEquals($headers, $parsed["headers"]);
+
+        $this->assertEquals($status, $response->getStatus());
+        $this->assertEquals($headers, $response->getHeaders());
         $this->assertEquals($data, $actualBody);
     }
 

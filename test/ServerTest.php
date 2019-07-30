@@ -2,19 +2,19 @@
 
 namespace Amp\Http\Server\Test;
 
-use Amp\Artax\Client;
-use Amp\Artax\DefaultClient;
 use Amp\Delayed;
+use Amp\Http\Client\Request as ClientRequest;
+use Amp\Http\Client\SocketClient;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
 use Amp\Http\Status;
-use Amp\PHPUnit\TestCase;
+use Amp\PHPUnit\AsyncTestCase;
 use Amp\Promise;
 use Amp\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
 
-class ServerTest extends TestCase
+class ServerTest extends AsyncTestCase
 {
     public function testEmptySocketArray()
     {
@@ -36,9 +36,9 @@ class ServerTest extends TestCase
 
         Promise\wait($server->start());
 
-        $promise = (new DefaultClient)->request("http://" . $socket->getAddress() . "/", [
-            Client::OP_TRANSFER_TIMEOUT => 4000,
-        ]);
+        $request = new ClientRequest("http://" . $socket->getAddress() . "/");
+
+        $promise = (new SocketClient)->request($request);
 
         // Ensure client already connected and sent request
         Promise\wait(new Delayed(1000));

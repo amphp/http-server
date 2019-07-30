@@ -3,10 +3,10 @@
 namespace Amp\Http\Server\Test\Driver;
 
 use Amp\Http\Server\Driver\Client;
-use Amp\PHPUnit\TestCase;
+use Amp\PHPUnit\AsyncTestCase;
 use Amp\Socket\SocketAddress;
 
-abstract class HttpDriverTest extends TestCase
+abstract class HttpDriverTest extends AsyncTestCase
 {
     /**
      * @return Client|\PHPUnit\Framework\MockObject\MockObject Mocked client with empty local and remote addresses.
