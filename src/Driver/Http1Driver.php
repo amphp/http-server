@@ -23,26 +23,6 @@ use function Amp\call;
 
 final class Http1Driver implements HttpDriver
 {
-    /** @see https://tools.ietf.org/html/rfc7230#section-4.1.2 */
-    const DISALLOWED_TRAILERS = [
-        "authorization",
-        "content-encoding",
-        "content-length",
-        "content-range",
-        "content-type",
-        "cookie",
-        "expect",
-        "host",
-        "pragma",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "range",
-        "te",
-        "trailer",
-        "transfer-encoding",
-        "www-authenticate",
-    ];
-
     /** @var Http2Driver|null */
     private $http2;
 
@@ -161,8 +141,9 @@ final class Http1Driver implements HttpDriver
         $reason = $response->getReason();
 
         $headers = $this->filter($response, $protocol, $request ? $request->getHeaderArray("connection") : []);
+        $trailers = $response->getTrailers();
 
-        $chunked = !isset($headers["content-length"])
+        $chunked = (!isset($headers["content-length"]) || $trailers !== null)
             && $protocol === "1.1"
             && $status >= Status::OK;
 
@@ -239,8 +220,18 @@ final class Http1Driver implements HttpDriver
                 yield $promise;
             }
 
-            if ($buffer !== "" || $chunked || $shouldClose) {
-                yield ($this->write)($chunked ? "{$buffer}0\r\n\r\n" : $buffer, $shouldClose);
+            if ($chunked) {
+                $buffer .= "0\r\n";
+
+                if ($trailers) {
+                    $buffer .= Rfc7230::formatHeaders($trailers->getHeaders());
+                }
+
+                $buffer .= "\r\n";
+            }
+
+            if ($buffer !== "" || $shouldClose) {
+                yield ($this->write)($buffer, $shouldClose);
             }
         } catch (ClientException $exception) {
             return; // Client will be closed in finally.
@@ -588,7 +579,7 @@ final class Http1Driver implements HttpDriver
                                     throw new ClientException("Bad Request: " . $e->getMessage(), Status::BAD_REQUEST);
                                 }
 
-                                if (\array_intersect_key($trailers, self::DISALLOWED_TRAILERS)) {
+                                if (\array_intersect_key($trailers, Trailers::DISALLOWED_TRAILERS)) {
                                     throw new ClientException(
                                         "Trailer section contains disallowed headers",
                                         Status::BAD_REQUEST

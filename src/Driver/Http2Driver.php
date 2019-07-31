@@ -256,10 +256,12 @@ final class Http2Driver implements HttpDriver
             }
 
             if ($request->getMethod() === "HEAD") {
-                $this->writeData("", $id, true);
-                $chunk = null;
+                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
+                $this->writeData("", $id);
                 return;
             }
+
+            $trailers = $response->getTrailers();
 
             $buffer = "";
             $body = $response->getBody();
@@ -302,7 +304,7 @@ final class Http2Driver implements HttpDriver
                 }
 
                 flush: {
-                    $promise = $this->writeData($buffer, $id, false);
+                    $promise = $this->writeData($buffer, $id);
 
                     $buffer = $chunk = ""; // Don't use null here because of finally.
 
@@ -315,20 +317,56 @@ final class Http2Driver implements HttpDriver
                 return;
             }
 
-            yield $this->writeData($buffer, $id, true);
+            if ($trailers === null) {
+                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
+            }
+
+            yield $this->writeData($buffer, $id);
+
+            // Stream may have been closed while writing final body chunk.
+            if (!isset($this->streams[$id])) {
+                return;
+            }
+
+            $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
+
+            if ($trailers !== null) {
+                $headers = $this->table->encode($trailers->getHeaders());
+
+                if (\strlen($headers) > $this->maxFrameSize) {
+                    $split = \str_split($headers, $this->maxFrameSize);
+                    $headers = \array_shift($split);
+                    $this->writeFrame($headers, self::HEADERS, self::NOFLAG, $id);
+
+                    $headers = \array_pop($split);
+                    foreach ($split as $msgPart) {
+                        $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $id);
+                    }
+                    yield $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS | self::END_STREAM, $id);
+                } else {
+                    yield $this->writeFrame($headers, self::HEADERS, self::END_HEADERS | self::END_STREAM, $id);
+                }
+            }
         } catch (ClientException $exception) {
             $error = $exception->getCode() ?? self::CANCEL; // Set error code to be used in finally below.
         } finally {
-            if (isset($this->streams[$id]) && $chunk !== null) {
+            if (!isset($this->streams[$id])) {
+                return;
+            }
+
+            if ($chunk !== null) {
                 if (($buffer ?? "") !== "") {
-                    $this->writeData($buffer, $id, false);
+                    $this->writeData($buffer, $id);
                 }
 
                 $error = $error ?? self::INTERNAL_ERROR;
 
                 $this->writeFrame(\pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
                 $this->releaseStream($id, $exception ?? new ClientException("Stream error", $error));
+                return;
             }
+
+            $this->releaseStream($id);
         }
     }
 
@@ -460,14 +498,11 @@ final class Http2Driver implements HttpDriver
         return ($this->write)($data);
     }
 
-    private function writeData(string $data, int $id, bool $last): Promise
+    private function writeData(string $data, int $id): Promise
     {
         \assert(isset($this->streams[$id]), "The stream was closed");
 
         $this->streams[$id]->buffer .= $data;
-        if ($last) {
-            $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
-        }
 
         return $this->writeBufferedData($id);
     }
@@ -493,7 +528,6 @@ final class Http2Driver implements HttpDriver
 
             if ($stream->state & Http2Stream::LOCAL_CLOSED) {
                 $promise = $this->writeFrame($stream->buffer, self::DATA, self::END_STREAM, $id);
-                $this->releaseStream($id);
             } else {
                 $promise = $this->writeFrame($stream->buffer, self::DATA, self::NOFLAG, $id);
                 $stream->clientWindow -= $length;
@@ -795,8 +829,8 @@ final class Http2Driver implements HttpDriver
 
                             unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
 
-                            $deferred->resolve(new Trailers([]));
                             $emitter->complete();
+                            $deferred->resolve(new Trailers([]));
                         }
 
                         continue 2;
@@ -1209,11 +1243,6 @@ final class Http2Driver implements HttpDriver
                             goto stream_error;
                         }
 
-                        $deferred = $this->trailerDeferreds[$id];
-                        $emitter = $this->bodyEmitters[$id];
-
-                        unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
-
                         // Trailers must not contain pseudo-headers.
                         foreach ($headers as $name => $value) {
                             if ($name[0] === ':') {
@@ -1222,8 +1251,19 @@ final class Http2Driver implements HttpDriver
                             }
                         }
 
-                        $deferred->resolve(new Trailers($headers));
+                        // Trailers must not contain any disallowed fields.
+                        if (\array_intersect_key($headers, Trailers::DISALLOWED_TRAILERS)) {
+                            $error = self::PROTOCOL_ERROR;
+                            goto stream_error;
+                        }
+
+                        $deferred = $this->trailerDeferreds[$id];
+                        $emitter = $this->bodyEmitters[$id];
+
+                        unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
+
                         $emitter->complete();
+                        $deferred->resolve(new Trailers($headers));
 
                         continue;
                     }

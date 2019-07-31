@@ -7,12 +7,15 @@ use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Message;
 use Amp\Http\Status;
-use Amp\Loop;
+use Amp\Promise;
 use League\Uri;
+use function Amp\call;
 
 final class Response extends Message
 {
-    /** @var \Amp\ByteStream\InputStream  */
+
+
+    /** @var InputStream */
     private $body;
 
     /** @var int HTTP status code. */
@@ -33,17 +36,22 @@ final class Response extends Message
     /** @var callable[] */
     private $onDispose = [];
 
+    /** @var Trailers|null */
+    private $trailers;
+
     /**
-     * @param \Amp\ByteStream\InputStream|string|null $stringOrStream
-     * @param string[][] $headers
-     * @param int $code Status code.
+     * @param InputStream|string|null $stringOrStream
+     * @param string[][]              $headers
+     * @param int                     $code Status code.
+     * @param Trailers|null           $trailers
      *
      * @throws \Error If one of the arguments is invalid.
      */
     public function __construct(
         int $code = Status::OK,
         array $headers = [],
-        $stringOrStream = null
+        $stringOrStream = null,
+        ?Trailers $trailers = null
     ) {
         $this->status = $this->validateStatusCode($code);
         $this->reason = Status::getReason($this->status);
@@ -53,18 +61,16 @@ final class Response extends Message
         if (!empty($headers)) {
             $this->setHeaders($headers);
         }
+
+        if ($trailers !== null) {
+            $this->setTrailers($trailers);
+        }
     }
 
     public function __destruct()
     {
         foreach ($this->onDispose as $callable) {
-            try {
-                $callable();
-            } catch (\Throwable $exception) {
-                Loop::defer(function () use ($exception) {
-                    throw $exception; // Forward uncaught exceptions to the loop error handler.
-                });
-            }
+            Promise\rethrow(call($callable));
         }
     }
 
@@ -82,7 +88,7 @@ final class Response extends Message
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
      * to the length of the given string. Setting a stream will remove the Content-Length header.
      *
-     * @param \Amp\ByteStream\InputStream|string|null $stringOrStream
+     * @param InputStream|string|null $stringOrStream
      *
      * @throws \TypeError If the body given is not a string or instance of \Amp\ByteStream\InputStream
      */
@@ -131,7 +137,7 @@ final class Response extends Message
     /**
      * Sets the named header to the given value.
      *
-     * @param string $name
+     * @param string          $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
@@ -148,7 +154,7 @@ final class Response extends Message
     /**
      * Adds the value to the named header, or creates the header with the given value if it did not exist.
      *
-     * @param string $name
+     * @param string          $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
@@ -200,7 +206,7 @@ final class Response extends Message
      * Sets the response status code and reason phrase. Use null for the reason phrase to use the default phrase
      * associated with the status code.
      *
-     * @param int $code 100 - 599
+     * @param int         $code 100 - 599
      * @param string|null $reason
      */
     public function setStatus(int $code, string $reason = null): void
@@ -305,6 +311,34 @@ final class Response extends Message
     }
 
     /**
+     * @return Trailers|null Trailers to be written with the response.
+     */
+    public function getTrailers(): ?Trailers
+    {
+        return $this->trailers;
+    }
+
+    /**
+     * @param Trailers $trailers
+     */
+    public function setTrailers(Trailers $trailers): void
+    {
+        $this->setHeader('te', 'trailers');
+        $this->setHeader('trailer', \implode(', ', \array_keys($trailers->getHeaders())));
+        $this->trailers = $trailers;
+    }
+
+    /**
+     * Removes any trailer headers from the response.
+     */
+    public function removeTrailers(): void
+    {
+        $this->removeHeader('te');
+        $this->removeHeader('trailer');
+        $this->trailers = null;
+    }
+
+    /**
      * @return array
      */
     public function getPush(): array
@@ -350,16 +384,19 @@ final class Response extends Message
 
     /**
      * Sets a callback to be invoked once the response has been written to the client and changes the status of the
-     * response to 101 (Switching Protocols). The callback may be removed by changing the status to something else.
+     * response to 101 (Switching Protocols) and removes any trailers. The callback may be removed by changing the
+     * status to something else.
      *
      * @param callable $upgrade Callback invoked once the response has been written to the client. The callback is given
-     *     an instance of Amp\Http\Server\Driver\UpgradedSocket as the first parameter.
+     *                          an instance of Amp\Http\Server\Driver\UpgradedSocket as the first parameter.
      */
     public function upgrade(callable $upgrade): void
     {
         $this->upgrade = $upgrade;
         $this->status = Status::SWITCHING_PROTOCOLS;
         $this->reason = Status::getReason($this->status);
+
+        $this->removeTrailers();
     }
 
     /**

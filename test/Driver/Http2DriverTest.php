@@ -162,6 +162,7 @@ class Http2DriverTest extends HttpDriverTest
             ":path" => ["/foo"],
             ":scheme" => ["http"],
             ":method" => ["GET"],
+            "te" => ["trailers"],
             "trailers" => ["expires"],
         ];
 
