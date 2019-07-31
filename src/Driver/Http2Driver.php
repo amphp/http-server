@@ -1319,8 +1319,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $this->streams[$id]->maxBodySize = $bodySize;
-                        },
-                        $deferred->promise()
+                        }
                     );
 
                     if ($this->serverWindow <= 0) {
@@ -1335,7 +1334,8 @@ final class Http2Driver implements HttpDriver
                         $uri,
                         $headers,
                         $body,
-                        "2.0"
+                        "2.0",
+                        $deferred->promise()
                     );
 
                     if (isset($headers["content-length"])) {

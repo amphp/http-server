@@ -87,7 +87,7 @@ class Http2DriverTest extends HttpDriverTest
 
             /** @var \Amp\Http\Server\Request $request */
             $body = Promise\wait($request->getBody()->buffer());
-            $trailers = Promise\wait($request->getBody()->getTrailers());
+            $trailers = Promise\wait($request->getTrailers());
 
             $headers = $request->getHeaders();
             foreach ($headers as $header => $value) {

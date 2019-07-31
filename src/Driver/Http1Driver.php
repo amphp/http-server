@@ -502,8 +502,7 @@ final class Http1Driver implements HttpDriver
                         if ($bodySize > $maxBodySize) {
                             $maxBodySize = $bodySize;
                         }
-                    },
-                    $trailerDeferred->promise()
+                    }
                 );
 
                 // Do not yield promise until body is completely read.
@@ -513,7 +512,8 @@ final class Http1Driver implements HttpDriver
                     $uri,
                     $headers,
                     $body,
-                    $protocol
+                    $protocol,
+                    $trailerDeferred->promise()
                 ));
 
                 // DO NOT leave a reference to the Request or Body objects within the parser!

@@ -1068,7 +1068,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $this->assertSame("Body Content", $body);
 
-        $trailers = Promise\wait($request->getBody()->getTrailers());
+        $trailers = Promise\wait($request->getTrailers());
 
         $this->assertInstanceOf(Trailers::class, $trailers);
         $this->assertSame("42", $trailers->getHeader("My-Trailer"));

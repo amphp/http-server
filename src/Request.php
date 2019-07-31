@@ -7,6 +7,8 @@ use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Message;
 use Amp\Http\Server\Driver\Client;
+use Amp\Promise;
+use Amp\Success;
 use Psr\Http\Message\UriInterface as PsrUri;
 
 final class Request extends Message
@@ -23,7 +25,7 @@ final class Request extends Message
     /** @var string */
     private $protocol;
 
-    /** @var \Amp\Http\Server\RequestBody|null */
+    /** @var RequestBody|null */
     private $body;
 
     /** @var RequestCookie[] */
@@ -32,6 +34,9 @@ final class Request extends Message
     /** @var mixed[] */
     private $attributes = [];
 
+    /** @var Promise */
+    private $trailers;
+
     /**
      * @param Client                              $client The client sending the request.
      * @param string                              $method HTTP request method.
@@ -39,6 +44,7 @@ final class Request extends Message
      * @param string[]|string[][]                 $headers An array of strings or an array of string arrays.
      * @param RequestBody|InputStream|string|null $body
      * @param string                              $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
+     * @param Promise|null                        $trailers Promise for trailing headers.
      */
     public function __construct(
         Client $client,
@@ -46,12 +52,15 @@ final class Request extends Message
         PsrUri $uri,
         array $headers = [],
         $body = null,
-        string $protocol = "1.1"
+        string $protocol = "1.1",
+        ?Promise $trailers = null
     ) {
         $this->client = $client;
         $this->method = $method;
         $this->uri = $uri;
         $this->protocol = $protocol;
+
+        $this->trailers = $trailers;
 
         if ($body !== null) {
             $this->setBody($body);
@@ -390,5 +399,25 @@ final class Request extends Message
     public function setAttribute(string $name, $value): void
     {
         $this->attributes[$name] = $value;
+    }
+
+    /**
+     * @return Promise<Trailers>
+     */
+    public function getTrailers(): Promise
+    {
+        if ($this->trailers === null) {
+            $this->trailers = new Success(new Trailers([]));
+        }
+
+        return $this->trailers;
+    }
+
+    /**
+     * @param Promise<Trailers> $trailers
+     */
+    public function setTrailers(Promise $trailers): void
+    {
+        $this->trailers = $trailers;
     }
 }
