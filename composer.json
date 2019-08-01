@@ -33,16 +33,16 @@
         "amphp/byte-stream": "^1.3",
         "amphp/hpack": "^2",
         "amphp/http": "^1.2",
-        "amphp/socket": "dev-master as 1.0",
+        "amphp/socket": "^1",
         "league/uri-parser": "^1.3",
         "league/uri-schemes": "^1.1",
         "psr/http-message": "^1",
         "psr/log": "^1",
-        "cash/lrucache": "^1.0"
+        "cash/lrucache": "^1"
     },
     "require-dev": {
         "amphp/phpunit-util": "^1",
-        "amphp/http-client": "connection-refactor-dev as 4.0",
+        "amphp/http-client": "dev-master as 4.0",
         "amphp/log": "^1",
         "amphp/php-cs-fixer-config": "dev-master",
         "league/uri-components": "^1.7",
