@@ -10,7 +10,7 @@ use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Http\Client\Connection\DefaultConnectionPool;
 use Amp\Http\Client\Request as ClientRequest;
-use Amp\Http\Client\SocketClient;
+use Amp\Http\Client\Client as HttpClient;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Client;
@@ -99,13 +99,13 @@ class RemoteClientTest extends TestCase
                 }
             };
 
-            $client = new SocketClient(new DefaultConnectionPool($connector));
+            $client = new HttpClient(new DefaultConnectionPool($connector));
             $port = \parse_url($address, PHP_URL_PORT);
             $promise = $client->request(
                 (new ClientRequest("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))->withHeader("custom", "header")
             );
 
-            /** @var Response $res */
+            /** @var \Amp\Http\Client\Response $res */
             $res = yield $promise;
             $this->assertEquals(200, $res->getStatus());
             $this->assertEquals(["header"], $res->getHeaderArray("custom"));
@@ -134,6 +134,8 @@ class RemoteClientTest extends TestCase
             $port = \parse_url($address, PHP_URL_PORT);
             $context = (new Socket\ConnectContext)
                 ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
+
+            /** @var Socket\EncryptableSocket $socket */
             $socket = yield Socket\connect("tcp://localhost:$port/", $context);
             yield $socket->setupTls();
 
@@ -142,7 +144,7 @@ class RemoteClientTest extends TestCase
 
             $socket->close();
 
-            Loop::delay(100, function () use ($socket) {
+            Loop::delay(100, static function () {
                 Loop::stop();
             });
         });
@@ -154,7 +156,7 @@ class RemoteClientTest extends TestCase
 
         $driver->expects($this->once())
             ->method("setup")
-            ->willReturnCallback(function (Client $client, callable $emitter) use (&$emit) {
+            ->willReturnCallback(static function (Client $client, callable $emitter) use (&$emit) {
                 $emit = $emitter;
                 yield;
             });

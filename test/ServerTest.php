@@ -3,8 +3,8 @@
 namespace Amp\Http\Server\Test;
 
 use Amp\Delayed;
+use Amp\Http\Client\Client;
 use Amp\Http\Client\Request as ClientRequest;
-use Amp\Http\Client\SocketClient;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Server;
@@ -38,7 +38,7 @@ class ServerTest extends AsyncTestCase
 
         $request = new ClientRequest("http://" . $socket->getAddress() . "/");
 
-        $promise = (new SocketClient)->request($request);
+        $promise = (new Client)->request($request);
 
         // Ensure client already connected and sent request
         Promise\wait(new Delayed(1000));
