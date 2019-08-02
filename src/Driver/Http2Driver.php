@@ -259,7 +259,8 @@ final class Http2Driver implements HttpDriver
             }
 
             if ($request->getMethod() === "HEAD") {
-                $this->writeData("", $id, true);
+                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
+                $this->writeData("", $id);
                 $chunk = null;
                 return;
             }
@@ -292,12 +293,6 @@ final class Http2Driver implements HttpDriver
                     }
                 }
 
-                $length = \strlen($chunk);
-
-                if ($length === 0) {
-                    continue;
-                }
-
                 $buffer .= $chunk;
 
                 if (\strlen($buffer) < $streamThreshold) {
@@ -305,7 +300,7 @@ final class Http2Driver implements HttpDriver
                 }
 
                 flush: {
-                    $promise = $this->writeData($buffer, $id, false);
+                    $promise = $this->writeData($buffer, $id);
 
                     $buffer = $chunk = ""; // Don't use null here because of finally.
 
@@ -318,20 +313,27 @@ final class Http2Driver implements HttpDriver
                 return;
             }
 
-            yield $this->writeData($buffer, $id, true);
+            $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
+
+            yield $this->writeData($buffer, $id);
         } catch (ClientException $exception) {
             $error = $exception->getCode() ?? self::CANCEL; // Set error code to be used in finally below.
         } finally {
-            if (isset($this->streams[$id]) && $chunk !== null) {
+            if (!isset($this->streams[$id])) {
+                return;
+            }
+
+            if ($chunk !== null) {
                 if (($buffer ?? "") !== "") {
-                    $this->writeData($buffer, $id, false);
+                    $this->writeData($buffer, $id);
                 }
-
                 $error = $error ?? self::INTERNAL_ERROR;
-
                 $this->writeFrame(\pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
                 $this->releaseStream($id, $exception ?? new ClientException("Stream error", $error));
+                return;
             }
+
+            $this->releaseStream($id);
         }
     }
 
@@ -463,14 +465,11 @@ final class Http2Driver implements HttpDriver
         return ($this->write)($data);
     }
 
-    private function writeData(string $data, int $id, bool $last): Promise
+    private function writeData(string $data, int $id): Promise
     {
         \assert(isset($this->streams[$id]), "The stream was closed");
 
         $this->streams[$id]->buffer .= $data;
-        if ($last) {
-            $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
-        }
 
         return $this->writeBufferedData($id);
     }
@@ -496,12 +495,12 @@ final class Http2Driver implements HttpDriver
 
             if ($stream->state & Http2Stream::LOCAL_CLOSED) {
                 $promise = $this->writeFrame($stream->buffer, self::DATA, self::END_STREAM, $id);
-                $this->releaseStream($id);
             } else {
                 $promise = $this->writeFrame($stream->buffer, self::DATA, self::NOFLAG, $id);
-                $stream->clientWindow -= $length;
-                $stream->buffer = "";
             }
+
+            $stream->clientWindow -= $length;
+            $stream->buffer = "";
 
             if ($stream->deferred) {
                 $deferred = $stream->deferred;

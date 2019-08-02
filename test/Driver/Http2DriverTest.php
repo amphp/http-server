@@ -407,11 +407,17 @@ class Http2DriverTest extends TestCase
 
             yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
-            $this->assertCount(1, $driver->frames);
-            list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+            $this->assertCount(2, $driver->frames);
+            list($data, $type, $flags, $stream) = \array_shift($driver->frames);
+            $this->assertEquals(Http2Driver::DATA, $type);
+            $this->assertEquals(Http2Driver::NOFLAG, $flags);
+            $this->assertEquals("_", $data);
+            $this->assertEquals(1, $stream);
+
+            list($data, $type, $flags, $stream) = \array_shift($driver->frames);
             $this->assertEquals(Http2Driver::DATA, $type);
             $this->assertEquals(Http2Driver::END_STREAM, $flags);
-            $this->assertEquals("_", $data);
+            $this->assertEquals("", $data);
             $this->assertEquals(1, $stream);
 
             $parser->send(self::packHeader($headers, false, 3));
