@@ -258,6 +258,7 @@ final class Http2Driver implements HttpDriver
             if ($request->getMethod() === "HEAD") {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
                 $this->writeData("", $id);
+                $chunk = null;
                 return;
             }
 
@@ -287,12 +288,6 @@ final class Http2Driver implements HttpDriver
                     if (!isset($this->streams[$id])) {
                         return;
                     }
-                }
-
-                $length = \strlen($chunk);
-
-                if ($length === 0) {
-                    continue;
                 }
 
                 $buffer .= $chunk;
@@ -358,9 +353,7 @@ final class Http2Driver implements HttpDriver
                 if (($buffer ?? "") !== "") {
                     $this->writeData($buffer, $id);
                 }
-
                 $error = $error ?? self::INTERNAL_ERROR;
-
                 $this->writeFrame(\pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
                 $this->releaseStream($id, $exception ?? new ClientException("Stream error", $error));
                 return;
@@ -547,7 +540,7 @@ final class Http2Driver implements HttpDriver
             if ($stream->deferred) {
                 $deferred = $stream->deferred;
                 $stream->deferred = null;
-                $deferred->resolve();
+                $deferred->resolve($promise);
             }
 
             return $promise;
