@@ -655,12 +655,16 @@ final class RemoteClient implements Client
 
         \assert($this->logger->debug("Upgrade {$this->clientAddress} #{$this->id}") || true);
 
-        try {
-            $socket = ResourceSocket::fromServerSocket($this->socket, $this->options->getChunkSize());
-            $upgrade(new UpgradedSocket($this, $socket, $buffer));
-        } catch (\Throwable $exception) {
+        $socket = ResourceSocket::fromServerSocket($this->socket, $this->options->getChunkSize());
+        $socket = new UpgradedSocket($this, $socket, $buffer);
+
+        call($upgrade, $socket)->onResolve(function (?\Throwable $exception): void {
+            if (!$exception) {
+                return;
+            }
+
             $this->logger->error($exception);
             $this->close();
-        }
+        });
     }
 }
