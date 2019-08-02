@@ -12,7 +12,7 @@ interface HttpDriver
      * HTTP methods that are *known*. Requests for methods not defined here or within Options should result in a 501
      * (not implemented) response.
      */
-    const KNOWN_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"];
+    public const KNOWN_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"];
 
     /**
      * Setup the driver.

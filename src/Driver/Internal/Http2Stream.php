@@ -13,11 +13,11 @@ final class Http2Stream
 {
     use Struct;
 
-    const OPEN = 0;
-    const RESERVED = 0b0001;
-    const REMOTE_CLOSED = 0b0010;
-    const LOCAL_CLOSED = 0b0100;
-    const CLOSED = 0b0110;
+    public const OPEN = 0;
+    public const RESERVED = 0b0001;
+    public const REMOTE_CLOSED = 0b0010;
+    public const LOCAL_CLOSED = 0b0100;
+    public const CLOSED = 0b0110;
 
     /** @var string|null Packed header string. */
     public $headers;

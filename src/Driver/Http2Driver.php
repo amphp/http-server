@@ -25,58 +25,58 @@ use function Amp\call;
 
 final class Http2Driver implements HttpDriver
 {
-    const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-    const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
-    const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
+    private const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    private const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
+    private const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
 
-    const MAX_INCREMENT = (1 << 31) - 1;
+    private const MAX_INCREMENT = (1 << 31) - 1;
 
-    const HEADER_NAME_REGEX = '/^[\x21-\x40\x5b-\x7e]+$/';
+    private const HEADER_NAME_REGEX = '/^[\x21-\x40\x5b-\x7e]+$/';
 
-    const NOFLAG = "\x00";
-    const ACK = "\x01";
-    const END_STREAM = "\x01";
-    const END_HEADERS = "\x04";
-    const PADDED = "\x08";
-    const PRIORITY_FLAG = "\x20";
+    private const NOFLAG = "\x00";
+    private const ACK = "\x01";
+    private const END_STREAM = "\x01";
+    private const END_HEADERS = "\x04";
+    private const PADDED = "\x08";
+    private const PRIORITY_FLAG = "\x20";
 
-    const DATA = "\x00";
-    const HEADERS = "\x01";
-    const PRIORITY = "\x02";
-    const RST_STREAM = "\x03";
-    const SETTINGS = "\x04";
-    const PUSH_PROMISE = "\x05";
-    const PING = "\x06";
-    const GOAWAY = "\x07";
-    const WINDOW_UPDATE = "\x08";
-    const CONTINUATION = "\x09";
+    private const DATA = "\x00";
+    private const HEADERS = "\x01";
+    private const PRIORITY = "\x02";
+    private const RST_STREAM = "\x03";
+    private const SETTINGS = "\x04";
+    private const PUSH_PROMISE = "\x05";
+    private const PING = "\x06";
+    private const GOAWAY = "\x07";
+    private const WINDOW_UPDATE = "\x08";
+    private const CONTINUATION = "\x09";
 
     // Settings
-    const HEADER_TABLE_SIZE = 0x1; // 1 << 12
-    const ENABLE_PUSH = 0x2; // 1
-    const MAX_CONCURRENT_STREAMS = 0x3; // INF
-    const INITIAL_WINDOW_SIZE = 0x4; // 1 << 16 - 1
-    const MAX_FRAME_SIZE = 0x5; // 1 << 14
-    const MAX_HEADER_LIST_SIZE = 0x6; // INF
+    private const HEADER_TABLE_SIZE = 0x1; // 1 << 12
+    private const ENABLE_PUSH = 0x2; // 1
+    private const MAX_CONCURRENT_STREAMS = 0x3; // INF
+    private const INITIAL_WINDOW_SIZE = 0x4; // 1 << 16 - 1
+    private const MAX_FRAME_SIZE = 0x5; // 1 << 14
+    private const MAX_HEADER_LIST_SIZE = 0x6; // INF
 
     // Error codes
-    const GRACEFUL_SHUTDOWN = 0x0;
-    const PROTOCOL_ERROR = 0x1;
-    const INTERNAL_ERROR = 0x2;
-    const FLOW_CONTROL_ERROR = 0x3;
-    const SETTINGS_TIMEOUT = 0x4;
-    const STREAM_CLOSED = 0x5;
-    const FRAME_SIZE_ERROR = 0x6;
-    const REFUSED_STREAM = 0x7;
-    const CANCEL = 0x8;
-    const COMPRESSION_ERROR = 0x9;
-    const CONNECT_ERROR = 0xa;
-    const ENHANCE_YOUR_CALM = 0xb;
-    const INADEQUATE_SECURITY = 0xc;
-    const HTTP_1_1_REQUIRED = 0xd;
+    public const GRACEFUL_SHUTDOWN = 0x0;
+    public const PROTOCOL_ERROR = 0x1;
+    public const INTERNAL_ERROR = 0x2;
+    public const FLOW_CONTROL_ERROR = 0x3;
+    public const SETTINGS_TIMEOUT = 0x4;
+    public const STREAM_CLOSED = 0x5;
+    public const FRAME_SIZE_ERROR = 0x6;
+    public const REFUSED_STREAM = 0x7;
+    public const CANCEL = 0x8;
+    public const COMPRESSION_ERROR = 0x9;
+    public const CONNECT_ERROR = 0xa;
+    public const ENHANCE_YOUR_CALM = 0xb;
+    public const INADEQUATE_SECURITY = 0xc;
+    public const HTTP_1_1_REQUIRED = 0xd;
 
     // Headers to take over from original request if present
-    const PUSH_PROMISE_INTERSECT = [
+    private const PUSH_PROMISE_INTERSECT = [
         "accept" => 1,
         "accept-charset" => 1,
         "accept-encoding" => 1,
@@ -90,7 +90,7 @@ final class Http2Driver implements HttpDriver
         "via" => 1,
     ];
 
-    const KNOWN_PSEUDO_HEADERS = [
+    private const KNOWN_PSEUDO_HEADERS = [
         ":method" => 1,
         ":authority" => 1,
         ":path" => 1,
@@ -178,7 +178,7 @@ final class Http2Driver implements HttpDriver
      *
      * @return \Generator
      */
-    public function setup(Client $client, callable $onMessage, callable $write, string $settings = null): \Generator
+    public function setup(Client $client, callable $onMessage, callable $write, ?string $settings = null): \Generator
     {
         \assert(!$this->client, "The driver has already been setup");
 
@@ -383,7 +383,7 @@ final class Http2Driver implements HttpDriver
      *
      * @return Promise
      */
-    private function shutdown(int $lastId = null, ?\Throwable $reason = null): Promise
+    private function shutdown(?int $lastId = null, ?\Throwable $reason = null): Promise
     {
         $this->stopping = true;
 
@@ -420,7 +420,7 @@ final class Http2Driver implements HttpDriver
                 yield $promises;
             } finally {
                 if (!empty($this->streams)) {
-                    $exception = new ClientException("Client disconnected", self::CANCEL, $reason);
+                    $exception = new ClientException("Client disconnected", $reason->getCode(), $reason);
                     foreach ($this->streams as $id => $stream) {
                         $this->releaseStream($id, $exception);
                     }
@@ -1072,7 +1072,7 @@ final class Http2Driver implements HttpDriver
 
                         case self::WINDOW_UPDATE:
                             if ($length !== 4) {
-                                throw new Http2ConnectionException("Invalid frame size", self::PROTOCOL_ERROR);
+                                throw new Http2ConnectionException("Invalid frame size", self::FRAME_SIZE_ERROR);
                             }
 
                             if ($id > $this->remoteStreamId) {
@@ -1101,13 +1101,13 @@ final class Http2Driver implements HttpDriver
                                 $stream = $this->streams[$id];
 
                                 if ($stream->clientWindow + $windowSize > (2 << 30) - 1) {
-                                    throw new Http2StreamException("Insufficient window in stream for data", $id, self::FLOW_CONTROL_ERROR);
+                                    throw new Http2StreamException("Current window size plus new window exceeds maximum size", $id, self::FLOW_CONTROL_ERROR);
                                 }
 
                                 $stream->clientWindow += $windowSize;
                             } else {
                                 if ($this->clientWindow + $windowSize > (2 << 30) - 1) {
-                                    throw new Http2ConnectionException("Insufficient window in connection for data", self::FLOW_CONTROL_ERROR);
+                                    throw new Http2ConnectionException("Current window size plus new window exceeds maximum size", self::FLOW_CONTROL_ERROR);
                                 }
 
                                 $this->clientWindow += $windowSize;

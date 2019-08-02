@@ -22,19 +22,19 @@ use Psr\Log\LoggerInterface as PsrLogger;
 
 final class Server
 {
-    const STOPPED = 0;
-    const STARTING = 1;
-    const STARTED = 2;
-    const STOPPING = 3;
+    public const STOPPED = 0;
+    public const STARTING = 1;
+    public const STARTED = 2;
+    public const STOPPING = 3;
 
-    const STATES = [
+    public const STATES = [
         self::STOPPED => "STOPPED",
         self::STARTING => "STARTING",
         self::STARTED => "STARTED",
         self::STOPPING => "STOPPING",
     ];
 
-    const DEFAULT_SHUTDOWN_TIMEOUT = 3000;
+    public const DEFAULT_SHUTDOWN_TIMEOUT = 3000;
 
     /** @var int */
     private $state = self::STOPPED;
