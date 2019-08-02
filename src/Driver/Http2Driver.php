@@ -506,7 +506,7 @@ final class Http2Driver implements HttpDriver
             if ($stream->deferred) {
                 $deferred = $stream->deferred;
                 $stream->deferred = null;
-                $deferred->resolve();
+                $deferred->resolve($promise);
             }
 
             return $promise;
@@ -523,11 +523,9 @@ final class Http2Driver implements HttpDriver
                 $this->writeFrame(\substr($data, $off, $this->maxFrameSize), self::DATA, self::NOFLAG, $id);
             }
 
-            $promise = $this->writeFrame(\substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
+            $this->writeFrame(\substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
 
             $stream->buffer = \substr($data, $delta);
-
-            return $promise;
         }
 
         if ($stream->deferred === null) {
