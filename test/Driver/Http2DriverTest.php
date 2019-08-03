@@ -319,165 +319,163 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testFlowControl()
     {
-        Loop::run(function () {
-            list($driver, $parser) = $this->setupDriver(function (Request $read) use (&$request) {
-                $request = $read;
-            }, (new Options)->withStreamThreshold(1)); // Set stream threshold to 1 to force immediate writes to client.
+        list($driver, $parser) = $this->setupDriver(function (Request $read) use (&$request) {
+            $request = $read;
+        }, (new Options)->withStreamThreshold(1)); // Set stream threshold to 1 to force immediate writes to client.
 
-            $parser->send(Http2Driver::PREFACE);
+        $parser->send(Http2Driver::PREFACE);
 
-            foreach ($driver->frames as list($data, $type, $flags, $stream)) {
-                $this->assertEquals(Http2Driver::SETTINGS, $type);
-                $this->assertEquals(0, $stream);
-            }
-            $driver->frames = [];
-
-            $parser->send(self::packFrame(\pack("nN", Http2Driver::INITIAL_WINDOW_SIZE, 66000), Http2Driver::SETTINGS, Http2Driver::NOFLAG));
-            $this->assertCount(1, $driver->frames);
-            list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        foreach ($driver->frames as list($data, $type, $flags, $stream)) {
             $this->assertEquals(Http2Driver::SETTINGS, $type);
-            $this->assertEquals(Http2Driver::ACK, $flags);
-            $this->assertEquals("", $data);
             $this->assertEquals(0, $stream);
+        }
+        $driver->frames = [];
 
-            $headers = [
-                ":authority" => "localhost",
-                ":path"      => "/",
-                ":scheme"    => "http",
-                ":method"    => "GET",
-                "test"       => "successful",
-            ];
-            $parser->send(self::packHeader($headers, false, 1));
+        $parser->send(self::packFrame(\pack("nN", Http2Driver::INITIAL_WINDOW_SIZE, 66000), Http2Driver::SETTINGS, Http2Driver::NOFLAG));
+        $this->assertCount(1, $driver->frames);
+        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        $this->assertEquals(Http2Driver::SETTINGS, $type);
+        $this->assertEquals(Http2Driver::ACK, $flags);
+        $this->assertEquals("", $data);
+        $this->assertEquals(0, $stream);
 
-            // $onMessage callback should be invoked.
-            $this->assertInstanceOf(Request::class, $request);
+        $headers = [
+            ":authority" => "localhost",
+            ":path"      => "/",
+            ":scheme"    => "http",
+            ":method"    => "GET",
+            "test"       => "successful",
+        ];
+        $parser->send(self::packHeader($headers, false, 1));
 
-            $emitter = new Emitter;
-            $driver->write($request, new Response(
-                Status::OK,
-                ["content-type" => "text/html; charset=utf-8"],
-                new IteratorStream($emitter->iterate())
-            ));
+        // $onMessage callback should be invoked.
+        $this->assertInstanceOf(Request::class, $request);
 
-            $hpack = new HPack;
-            $this->assertEquals([$hpack->encode([
-                ":status"      => Status::OK,
-                "content-type" => ["text/html; charset=utf-8"],
-                "date"         => [""],
-            ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1], \array_pop($driver->frames));
+        $emitter = new Emitter;
+        $driver->write($request, new Response(
+            Status::OK,
+            ["content-type" => "text/html; charset=utf-8"],
+            new IteratorStream($emitter->iterate())
+        ));
 
-            $emitter->emit(\str_repeat("_", 66002));
-            $emitter->complete();
+        $hpack = new HPack;
+        $this->assertEquals([$hpack->encode([
+            ":status"      => Status::OK,
+            "content-type" => ["text/html; charset=utf-8"],
+            "date"         => [""],
+        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1], \array_pop($driver->frames));
 
-            $recv = "";
-            foreach ($driver->frames as list($data, $type, $flags, $stream)) {
-                $recv .= $data;
-                $this->assertEquals(Http2Driver::DATA, $type);
-                $this->assertEquals(Http2Driver::NOFLAG, $flags);
-                $this->assertEquals(1, $stream);
-            }
-            $driver->frames = [];
+        $emitter->emit(\str_repeat("_", 66002));
+        $emitter->complete();
 
-            $this->assertEquals(Http2Driver::DEFAULT_WINDOW_SIZE, \strlen($recv)); // global window!!
-
-            $chunkSize = 66000 - HTTP2Driver::DEFAULT_WINDOW_SIZE;
-            $parser->send(self::packFrame(\pack("N", $chunkSize), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
-
-            yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
-
-            $this->assertCount(1, $driver->frames);
-            list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        $recv = "";
+        foreach ($driver->frames as list($data, $type, $flags, $stream)) {
+            $recv .= $data;
             $this->assertEquals(Http2Driver::DATA, $type);
             $this->assertEquals(Http2Driver::NOFLAG, $flags);
-            $this->assertEquals($chunkSize, \strlen($data));
             $this->assertEquals(1, $stream);
+        }
+        $driver->frames = [];
 
-            $parser->send(self::packFrame(\pack("N", 4), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
-            $this->assertCount(0, $driver->frames); // global window update alone must not trigger send
+        $this->assertEquals(Http2Driver::DEFAULT_WINDOW_SIZE, \strlen($recv)); // global window!!
 
-            $parser->send(self::packFrame(\pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG, 1));
+        $chunkSize = 66000 - HTTP2Driver::DEFAULT_WINDOW_SIZE;
+        $parser->send(self::packFrame(\pack("N", $chunkSize), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
 
-            yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
-            $this->assertCount(1, $driver->frames);
-            list($data, $type, $flags, $stream) = \array_pop($driver->frames);
-            $this->assertEquals(Http2Driver::DATA, $type);
-            $this->assertEquals(Http2Driver::NOFLAG, $flags);
-            $this->assertEquals("_", $data);
-            $this->assertEquals(1, $stream);
+        $this->assertCount(1, $driver->frames);
+        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        $this->assertEquals(Http2Driver::DATA, $type);
+        $this->assertEquals(Http2Driver::NOFLAG, $flags);
+        $this->assertEquals($chunkSize, \strlen($data));
+        $this->assertEquals(1, $stream);
 
-            $parser->send(self::packFrame(\pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG, 1));
+        $parser->send(self::packFrame(\pack("N", 4), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
+        $this->assertCount(0, $driver->frames); // global window update alone must not trigger send
 
-            yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        $parser->send(self::packFrame(\pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG, 1));
 
-            $this->assertCount(2, $driver->frames);
-            list($data, $type, $flags, $stream) = \array_shift($driver->frames);
-            $this->assertEquals(Http2Driver::DATA, $type);
-            $this->assertEquals(Http2Driver::NOFLAG, $flags);
-            $this->assertEquals("_", $data);
-            $this->assertEquals(1, $stream);
+        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
-            list($data, $type, $flags, $stream) = \array_shift($driver->frames);
-            $this->assertEquals(Http2Driver::DATA, $type);
-            $this->assertEquals(Http2Driver::END_STREAM, $flags);
-            $this->assertEquals("", $data);
-            $this->assertEquals(1, $stream);
+        $this->assertCount(1, $driver->frames);
+        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        $this->assertEquals(Http2Driver::DATA, $type);
+        $this->assertEquals(Http2Driver::NOFLAG, $flags);
+        $this->assertEquals("_", $data);
+        $this->assertEquals(1, $stream);
 
-            $parser->send(self::packHeader($headers, false, 3));
+        $parser->send(self::packFrame(\pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG, 1));
 
-            // $onMessage callback should be invoked.
-            $this->assertInstanceOf(Request::class, $request);
+        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
-            $emitter = new Emitter;
-            $driver->write($request, new Response(
-                Status::OK,
-                ["content-type" => "text/html; charset=utf-8"],
-                new IteratorStream($emitter->iterate())
-            ));
+        $this->assertCount(2, $driver->frames);
+        list($data, $type, $flags, $stream) = \array_shift($driver->frames);
+        $this->assertEquals(Http2Driver::DATA, $type);
+        $this->assertEquals(Http2Driver::NOFLAG, $flags);
+        $this->assertEquals("_", $data);
+        $this->assertEquals(1, $stream);
 
-            $hpack = new HPack;
-            $this->assertEquals([$hpack->encode([
-                ":status"      => Status::OK,
-                "content-type" => ["text/html; charset=utf-8"],
-                "date"         => [""],
-            ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], \array_pop($driver->frames));
+        list($data, $type, $flags, $stream) = \array_shift($driver->frames);
+        $this->assertEquals(Http2Driver::DATA, $type);
+        $this->assertEquals(Http2Driver::END_STREAM, $flags);
+        $this->assertEquals("", $data);
+        $this->assertEquals(1, $stream);
 
-            $emitter->emit("**");
+        $parser->send(self::packHeader($headers, false, 3));
 
-            yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        // $onMessage callback should be invoked.
+        $this->assertInstanceOf(Request::class, $request);
 
-            $this->assertCount(1, $driver->frames);
-            list($data, $type, $flags, $stream) = \array_pop($driver->frames);
-            $this->assertEquals(Http2Driver::DATA, $type);
-            $this->assertEquals(Http2Driver::NOFLAG, $flags);
-            $this->assertEquals("**", $data);
-            $this->assertEquals(3, $stream);
+        $emitter = new Emitter;
+        $driver->write($request, new Response(
+            Status::OK,
+            ["content-type" => "text/html; charset=utf-8"],
+            new IteratorStream($emitter->iterate())
+        ));
 
-            $emitter->emit("*");
-            $this->assertCount(0, $driver->frames); // global window too small
+        $hpack = new HPack;
+        $this->assertEquals([$hpack->encode([
+            ":status"      => Status::OK,
+            "content-type" => ["text/html; charset=utf-8"],
+            "date"         => [""],
+        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], \array_pop($driver->frames));
 
-            $parser->send(self::packFrame(\pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
+        $emitter->emit("**");
 
-            yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
-            $this->assertCount(1, $driver->frames);
-            list($data, $type, $flags, $stream) = \array_pop($driver->frames);
-            $this->assertEquals(Http2Driver::DATA, $type);
-            $this->assertEquals(Http2Driver::NOFLAG, $flags);
-            $this->assertEquals("*", $data);
-            $this->assertEquals(3, $stream);
+        $this->assertCount(1, $driver->frames);
+        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        $this->assertEquals(Http2Driver::DATA, $type);
+        $this->assertEquals(Http2Driver::NOFLAG, $flags);
+        $this->assertEquals("**", $data);
+        $this->assertEquals(3, $stream);
 
-            $emitter->complete();
+        $emitter->emit("*");
+        $this->assertCount(0, $driver->frames); // global window too small
 
-            yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        $parser->send(self::packFrame(\pack("N", 1), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG));
 
-            $this->assertCount(1, $driver->frames);
-            list($data, $type, $flags, $stream) = \array_pop($driver->frames);
-            $this->assertEquals(Http2Driver::DATA, $type);
-            $this->assertEquals(Http2Driver::END_STREAM, $flags);
-            $this->assertEquals("", $data);
-            $this->assertEquals(3, $stream);
-        });
+        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+
+        $this->assertCount(1, $driver->frames);
+        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        $this->assertEquals(Http2Driver::DATA, $type);
+        $this->assertEquals(Http2Driver::NOFLAG, $flags);
+        $this->assertEquals("*", $data);
+        $this->assertEquals(3, $stream);
+
+        $emitter->complete();
+
+        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+
+        $this->assertCount(1, $driver->frames);
+        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        $this->assertEquals(Http2Driver::DATA, $type);
+        $this->assertEquals(Http2Driver::END_STREAM, $flags);
+        $this->assertEquals("", $data);
+        $this->assertEquals(3, $stream);
     }
 
     public function testClosingStreamYieldsFalseFromWriter()
