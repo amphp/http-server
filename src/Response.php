@@ -36,14 +36,14 @@ final class Response extends Message
     /** @var callable[] */
     private $onDispose = [];
 
-    /** @var Trailers|null */
-    private $trailers;
+    /** @var Promise<string>[] */
+    private $trailers = [];
 
     /**
      * @param InputStream|string|null $stringOrStream
      * @param string[][]              $headers
      * @param int                     $code Status code.
-     * @param Trailers|null           $trailers
+     * @param Promise<string>[]|null  $trailers
      *
      * @throws \Error If one of the arguments is invalid.
      */
@@ -51,7 +51,7 @@ final class Response extends Message
         int $code = Status::OK,
         array $headers = [],
         $stringOrStream = null,
-        ?Trailers $trailers = null
+        array $trailers = []
     ) {
         $this->status = $this->validateStatusCode($code);
         $this->reason = Status::getReason($this->status);
@@ -62,7 +62,7 @@ final class Response extends Message
             $this->setHeaders($headers);
         }
 
-        if ($trailers !== null) {
+        if (!empty($trailers)) {
             $this->setTrailers($trailers);
         }
     }
@@ -311,20 +311,32 @@ final class Response extends Message
     }
 
     /**
-     * @return Trailers|null Trailers to be written with the response.
+     * @return Promise<string>[] Trailers to be written with the response.
      */
-    public function getTrailers(): ?Trailers
+    public function getTrailers(): array
     {
         return $this->trailers;
     }
 
     /**
-     * @param Trailers $trailers
+     * @param Promise<string>[]
      */
-    public function setTrailers(Trailers $trailers): void
+    public function setTrailers(array $trailers): void
     {
+        $trailers = \array_change_key_case($trailers, \CASE_LOWER);
+
+        foreach ($trailers as $name => $trailer) {
+            if (isset(Trailers::DISALLOWED_TRAILERS[$name])) {
+                throw new \Error(\sprintf("Trailers cannot contain '%s' fields", $name));
+            }
+
+            if (!$trailer instanceof Promise) {
+                throw new \Error("Trailer array should contain promises that will resolve to strings");
+            }
+        }
+
         $this->setHeader('te', 'trailers');
-        $this->setHeader('trailer', \implode(', ', \array_keys($trailers->getHeaders())));
+        $this->setHeader('trailer', \implode(', ', \array_keys($trailers)));
         $this->trailers = $trailers;
     }
 
@@ -335,7 +347,7 @@ final class Response extends Message
     {
         $this->removeHeader('te');
         $this->removeHeader('trailer');
-        $this->trailers = null;
+        $this->trailers = [];
     }
 
     /**

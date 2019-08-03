@@ -143,7 +143,7 @@ final class Http1Driver implements HttpDriver
         $headers = $this->filter($response, $protocol, $request ? $request->getHeaderArray("connection") : []);
         $trailers = $response->getTrailers();
 
-        $chunked = (!isset($headers["content-length"]) || $trailers !== null)
+        $chunked = (!isset($headers["content-length"]) || !empty($trailers))
             && $protocol === "1.1"
             && $status >= Status::OK;
 
@@ -223,8 +223,13 @@ final class Http1Driver implements HttpDriver
             if ($chunked) {
                 $buffer .= "0\r\n";
 
-                if ($trailers) {
-                    $buffer .= Rfc7230::formatHeaders($trailers->getHeaders());
+                if (!empty($trailers)) {
+                    $trailers = yield $trailers; // $trailers is an array of promises.
+                    $trailers = \array_map(function (string $trailer): array {
+                        return [$trailer];
+                    }, $trailers);
+
+                    $buffer .= Rfc7230::formatHeaders($trailers);
                 }
 
                 $buffer .= "\r\n";

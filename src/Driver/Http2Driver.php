@@ -25,39 +25,39 @@ use function Amp\call;
 
 final class Http2Driver implements HttpDriver
 {
-    private const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-    private const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
-    private const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
+    public const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    public const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
+    public const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
 
-    private const MAX_INCREMENT = (1 << 31) - 1;
+    public const MAX_INCREMENT = (1 << 31) - 1;
 
     private const HEADER_NAME_REGEX = '/^[\x21-\x40\x5b-\x7e]+$/';
 
-    private const NOFLAG = "\x00";
-    private const ACK = "\x01";
-    private const END_STREAM = "\x01";
-    private const END_HEADERS = "\x04";
-    private const PADDED = "\x08";
-    private const PRIORITY_FLAG = "\x20";
+    public const NOFLAG = "\x00";
+    public const ACK = "\x01";
+    public const END_STREAM = "\x01";
+    public const END_HEADERS = "\x04";
+    public const PADDED = "\x08";
+    public const PRIORITY_FLAG = "\x20";
 
-    private const DATA = "\x00";
-    private const HEADERS = "\x01";
-    private const PRIORITY = "\x02";
-    private const RST_STREAM = "\x03";
-    private const SETTINGS = "\x04";
-    private const PUSH_PROMISE = "\x05";
-    private const PING = "\x06";
-    private const GOAWAY = "\x07";
-    private const WINDOW_UPDATE = "\x08";
-    private const CONTINUATION = "\x09";
+    public const DATA = "\x00";
+    public const HEADERS = "\x01";
+    public const PRIORITY = "\x02";
+    public const RST_STREAM = "\x03";
+    public const SETTINGS = "\x04";
+    public const PUSH_PROMISE = "\x05";
+    public const PING = "\x06";
+    public const GOAWAY = "\x07";
+    public const WINDOW_UPDATE = "\x08";
+    public const CONTINUATION = "\x09";
 
     // Settings
-    private const HEADER_TABLE_SIZE = 0x1; // 1 << 12
-    private const ENABLE_PUSH = 0x2; // 1
-    private const MAX_CONCURRENT_STREAMS = 0x3; // INF
-    private const INITIAL_WINDOW_SIZE = 0x4; // 1 << 16 - 1
-    private const MAX_FRAME_SIZE = 0x5; // 1 << 14
-    private const MAX_HEADER_LIST_SIZE = 0x6; // INF
+    public const HEADER_TABLE_SIZE = 0x1; // 1 << 12
+    public const ENABLE_PUSH = 0x2; // 1
+    public const MAX_CONCURRENT_STREAMS = 0x3; // INF
+    public const INITIAL_WINDOW_SIZE = 0x4; // 1 << 16 - 1
+    public const MAX_FRAME_SIZE = 0x5; // 1 << 14
+    public const MAX_HEADER_LIST_SIZE = 0x6; // INF
 
     // Error codes
     public const GRACEFUL_SHUTDOWN = 0x0;
@@ -312,7 +312,7 @@ final class Http2Driver implements HttpDriver
 
             $trailers = $response->getTrailers();
 
-            if ($trailers === null) {
+            if (empty($trailers)) {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
             }
 
@@ -323,10 +323,15 @@ final class Http2Driver implements HttpDriver
                 return;
             }
 
-            if ($trailers !== null) {
+            if (!empty($trailers)) {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
 
-                $headers = $this->table->encode($trailers->getHeaders());
+                $trailers = yield $trailers; // $trailers is an array of promises.
+                $trailers = \array_map(function (string $trailer): array {
+                    return [$trailer];
+                }, $trailers);
+
+                $headers = $this->table->encode($trailers);
 
                 if (\strlen($headers) > $this->maxFrameSize) {
                     $split = \str_split($headers, $this->maxFrameSize);
