@@ -2,90 +2,50 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\Http\InvalidHeaderException;
 use Amp\Http\Server\Trailers;
-use PHPUnit\Framework\TestCase;
+use Amp\PHPUnit\AsyncTestCase;
+use Amp\Success;
 
-class TrailersTest extends TestCase
+class TrailersTest extends AsyncTestCase
 {
     public function testMessageHasHeader()
     {
-        $trailers = new Trailers(['fooHeader' => 'barValue']);
+        $promise = new Success(['fooHeader' => 'barValue']);
+
+        $trailers = new Trailers($promise, ['fooHeader']);
+        $trailers = yield $trailers->getTrailers();
+
         $this->assertTrue($trailers->hasHeader('fooHeader'));
+        $this->assertSame('barValue', $trailers->getHeader('fooHeader'));
     }
 
     public function testHasHeaderReturnsFalseForEmptyArrayValue()
     {
-        $trailers = new Trailers(['fooHeader' => []]);
-        $this->assertFalse($trailers->hasHeader('fooHeader'));
+        $promise = new Success(['fooHeader' => []]);
+
+        $this->expectException(InvalidHeaderException::class);
+        $this->expectExceptionMessage('Trailers do not contain the expected fields');
+
+        $trailers = new Trailers($promise, ['fooHeader']);
+        $this->assertFalse((yield $trailers->getTrailers())->hasHeader('fooHeader'));
     }
 
-    public function testSetHeaderReturnsFalseForEmptyArrayValue()
+    public function testDisallowedFieldsInConstructor()
     {
-        $trailers = new Trailers([]);
-        $trailers->setHeader('fooHeader', []);
-        $this->assertFalse($trailers->hasHeader('fooHeader'));
+        $this->expectException(InvalidHeaderException::class);
+        $this->expectExceptionMessage("Field 'content-length' is not allowed in trailers");
+
+        $trailers = new Trailers(new Success, ['content-length']);
     }
 
-    public function testAddHeaderReturnsFalseForEmptyArrayValue()
+    public function testDisallowedFieldsInPromiseResolution()
     {
-        $trailers = new Trailers([]);
-        $trailers->addHeader('fooHeader', []);
-        $this->assertFalse($trailers->hasHeader('fooHeader'));
-    }
+        $this->expectException(InvalidHeaderException::class);
+        $this->expectExceptionMessage("Field 'content-length' is not allowed in trailers");
 
-    public function testAddHeaderReturnsTrueForEmptyArrayValueIfExisted()
-    {
-        $trailers = new Trailers(['fooHeader' => 'foo']);
-        $trailers->addHeader('fooHeader', []);
-        $this->assertTrue($trailers->hasHeader('fooHeader'));
-    }
+        $trailers = new Trailers(new Success(['content-length' => 0]));
 
-    public function testAddHeaderWithNonExistingStringValue()
-    {
-        $trailers = new Trailers([]);
-        $trailers->addHeader('fooHeader', 'bar');
-        $this->assertSame('bar', $trailers->getHeader('fooHeader'));
-    }
-
-    public function testAddHeaderWithExistingValue()
-    {
-        $trailers = new Trailers(['fooHeader' => 'foo']);
-        $trailers->addHeader('fooHeader', 'bar');
-        $this->assertSame(['fooheader' => ['foo', 'bar']], $trailers->getHeaders());
-    }
-
-    public function testSetHeaderDoesNotKeepStringKeys()
-    {
-        $trailers = new Trailers([]);
-        $trailers->setHeader('fooHeader', ['stringKey' => 'bazValue']);
-        $this->assertSame(['fooheader' => ['bazValue']], $trailers->getHeaders());
-    }
-
-    public function testAddHeaderDoesNotKeepStringKeys()
-    {
-        $trailers = new Trailers([]);
-        $trailers->addHeader('fooHeader', ['stringKey' => 'barValue']);
-        $this->assertSame(['fooheader' => ['barValue']], $trailers->getHeaders());
-    }
-
-    public function testSetHeadersIsAtomic()
-    {
-        if (\ini_get('zend.assertions') !== '1' || !\ini_get('assert.exception')) {
-            $this->markTestSkipped('Assertions need to be enabled and throw for this test.');
-        }
-
-        $trailers = new Trailers([]);
-
-        try {
-            $trailers->setHeaders([
-                'x' => 'y',
-                'foo' => "x: test\r\n",
-            ]);
-
-            $this->fail('Expected an exception.');
-        } catch (\AssertionError $e) {
-            $this->assertFalse($trailers->hasHeader('x'));
-            $this->assertFalse($trailers->hasHeader('foo'));
-        }
+        yield $trailers->getTrailers();
     }
 }

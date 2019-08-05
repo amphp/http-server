@@ -848,8 +848,8 @@ class Http1DriverTest extends HttpDriverTest
             ],
             [
                 new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
-                new Response(Status::OK, [], new InMemoryStream, ['test' => new Success('value')]),
-                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
+                new Response(Status::OK, [], new InMemoryStream, new Trailers(new Success(['test' => 'value']), ['test'])),
+                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\nTrailers: test\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
                 false,
             ],
             [

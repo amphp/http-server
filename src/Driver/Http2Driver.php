@@ -587,7 +587,7 @@ final class Http2Driver implements HttpDriver
         if (isset($this->trailerDeferreds[$id])) {
             $deferred = $this->trailerDeferreds[$id];
             unset($this->trailerDeferreds[$id]);
-            $deferred->resolve($exception ?? new ClientException("Client disconnected", self::CANCEL));
+            $deferred->fail($exception ?? new ClientException("Client disconnected", self::CANCEL));
         }
 
         unset($this->streams[$id]);
@@ -822,7 +822,7 @@ final class Http2Driver implements HttpDriver
                                 unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
 
                                 $emitter->complete();
-                                $deferred->resolve(new Trailers([]));
+                                $deferred->resolve([]);
                             }
 
                             continue 2;
@@ -1215,7 +1215,7 @@ final class Http2Driver implements HttpDriver
                             unset($this->bodyEmitters[$id], $this->trailerDeferreds[$id]);
 
                             $emitter->complete();
-                            $deferred->resolve(new Trailers($headers));
+                            $deferred->resolve($headers);
 
                             continue;
                         }
@@ -1315,16 +1315,6 @@ final class Http2Driver implements HttpDriver
                             $this->writeFrame(\pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG);
                         }
 
-                        $request = new Request(
-                            $this->client,
-                            $method,
-                            $uri,
-                            $headers,
-                            $body,
-                            "2.0",
-                            $deferred->promise()
-                        );
-
                         if (isset($headers["content-length"])) {
                             $contentLength = \implode($headers["content-length"]);
                             if (!\preg_match('/^0|[1-9][0-9]*$/', $contentLength)) {
@@ -1334,12 +1324,29 @@ final class Http2Driver implements HttpDriver
                             $stream->expectedLength = (int) $contentLength;
                         }
 
+                        $trailers = new Trailers(
+                            $deferred->promise(),
+                            isset($headers['trailers'])
+                                ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
+                                : []
+                        );
+
+                        $request = new Request(
+                            $this->client,
+                            $method,
+                            $uri,
+                            $headers,
+                            $body,
+                            "2.0",
+                            $trailers
+                        );
+
                         $this->streamIdMap[\spl_object_hash($request)] = $id;
                         $stream->pendingResponse = ($this->onMessage)($request);
 
-                        // Must null reference to Request and Body objects
+                        // Must null reference to Request, Trailers, and Body objects
                         // so they are destroyed when request handler completes.
-                        $request = $body = null;
+                        $request = $trailers = $body = null;
                     }
                 } catch (Http2StreamException $exception) {
                     $id = $exception->getStreamId();

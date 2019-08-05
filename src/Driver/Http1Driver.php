@@ -143,7 +143,7 @@ final class Http1Driver implements HttpDriver
         $headers = $this->filter($response, $protocol, $request ? $request->getHeaderArray("connection") : []);
         $trailers = $response->getTrailers();
 
-        $chunked = (!isset($headers["content-length"]) || !empty($trailers))
+        $chunked = (!isset($headers["content-length"]) || $trailers !== null)
             && $protocol === "1.1"
             && $status >= Status::OK;
 
@@ -223,8 +223,8 @@ final class Http1Driver implements HttpDriver
             if ($chunked) {
                 $buffer .= "0\r\n";
 
-                if (!empty($trailers)) {
-                    $trailers = yield $trailers; // $trailers is an array of promises.
+                if ($trailers !== null) {
+                    $trailers = yield $trailers->getTrailers(); // $trailers is an array of promises.
                     $trailers = \array_map(function (string $trailer): array {
                         return [$trailer];
                     }, $trailers);
@@ -501,6 +501,13 @@ final class Http1Driver implements HttpDriver
                     }
                 );
 
+                $trailers = new Trailers(
+                    $trailerDeferred->promise(),
+                    isset($headers['trailers'])
+                        ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
+                        : []
+                );
+
                 // Do not yield promise until body is completely read.
                 $this->pendingResponse = ($this->onMessage)(new Request(
                     $this->client,
@@ -509,11 +516,12 @@ final class Http1Driver implements HttpDriver
                     $headers,
                     $body,
                     $protocol,
-                    $trailerDeferred->promise()
+                    $trailers
                 ));
 
-                // DO NOT leave a reference to the Request or Body objects within the parser!
+                // DO NOT leave a reference to the Request, Trailers, or Body objects within the parser!
 
+                $trailers = null;
                 $body = "";
 
                 if ($isChunked) {
@@ -591,7 +599,7 @@ final class Http1Driver implements HttpDriver
                                     );
                                 }
 
-                                $trailerDeferred->resolve(new Trailers($trailers));
+                                $trailerDeferred->resolve($trailers);
                                 $trailerDeferred = null;
                             }
 
@@ -696,7 +704,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 if ($trailerDeferred !== null) {
-                    $trailerDeferred->resolve(new Trailers([]));
+                    $trailerDeferred->resolve([]);
                     $trailerDeferred = null;
                 }
 

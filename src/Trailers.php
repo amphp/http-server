@@ -2,9 +2,12 @@
 
 namespace Amp\Http\Server;
 
+use Amp\Deferred;
+use Amp\Http\InvalidHeaderException;
 use Amp\Http\Message;
+use Amp\Promise;
 
-final class Trailers extends Message
+final class Trailers
 {
     /** @see https://tools.ietf.org/html/rfc7230#section-4.1.2 */
     public const DISALLOWED_TRAILERS = [
@@ -26,41 +29,87 @@ final class Trailers extends Message
         "www-authenticate" => 1,
     ];
 
+    /** @var string[] */
+    private $fields = [];
+
+    /** @var Promise<Message> */
+    private $headers;
+
     /**
-     * @param string[][] $headers
+     * @param Promise<string[]|string[][]> $promise Resolved with the trailer values.
+     * @param string[]            $fields Expected header fields. May be empty, but if provided, the array of headers
+     *                                    used to resolve the given promise must contain exactly the fields given in
+     *                                    this array.
+     *
+     * @throws InvalidHeaderException If the fields list contains a disallowed field.
      */
-    public function __construct(array $headers)
+    public function __construct(Promise $promise, array $fields = [])
     {
-        if (!empty($headers)) {
-            $this->setHeaders($headers);
-        }
-    }
+        if (!empty($fields)) {
+            $this->fields = $fields = \array_map('strtolower', $fields);
 
-    public function setHeaders(array $headers): void
-    {
-        parent::setHeaders($headers);
-    }
-
-    public function setHeader(string $name, $value): void
-    {
-        if (isset(self::DISALLOWED_TRAILERS[\strtolower($name)])) {
-            throw new \Error(\sprintf("Field %s is not allowed in trailers", $name));
+            foreach ($this->fields as $field) {
+                if (isset(self::DISALLOWED_TRAILERS[$field])) {
+                    throw new InvalidHeaderException(\sprintf("Field '%s' is not allowed in trailers", $field));
+                }
+            }
         }
 
-        parent::setHeader($name, $value);
+        $deferred = new Deferred;
+
+        $promise->onResolve(static function (?\Throwable $exception, ?array $headers) use ($fields, $deferred): void {
+            if ($exception) {
+                $deferred->fail($exception);
+                return;
+            }
+
+            try {
+                $deferred->resolve(new class($headers, $fields) extends Message {
+                    public function __construct(array $headers, array $fields)
+                    {
+                        $this->setHeaders($headers);
+
+                        $keys = \array_keys($this->getHeaders());
+
+                        if (!empty($fields)) {
+                            // Note that the Trailer header does not need to be set for the message to include trailers.
+                            // @see https://tools.ietf.org/html/rfc7230#section-4.4
+
+                            if (\array_diff($fields, $keys)) {
+                                throw new InvalidHeaderException("Trailers do not contain the expected fields");
+                            }
+
+                            return; // Check below unnecessary if fields list is set.
+                        }
+
+                        foreach ($keys as $field) {
+                            if (isset(Trailers::DISALLOWED_TRAILERS[$field])) {
+                                throw new InvalidHeaderException(\sprintf("Field '%s' is not allowed in trailers", $field));
+                            }
+                        }
+                    }
+                });
+            } catch (\Throwable $exception) {
+                $deferred->fail($exception);
+            }
+        });
+
+        $this->headers = $deferred->promise();
     }
 
-    public function addHeader(string $name, $value): void
+    /**
+     * @return string[] List of expected trailer fields. May be empty, but still receive trailers.
+     */
+    public function getFields(): array
     {
-        if (isset(self::DISALLOWED_TRAILERS[\strtolower($name)])) {
-            throw new \Error(\sprintf("Field %s is not allowed in trailers", $name));
-        }
-
-        parent::addHeader($name, $value);
+        return $this->fields;
     }
 
-    public function removeHeader(string $name): void
+    /**
+     * @return Promise<Message>
+     */
+    public function getTrailers(): Promise
     {
-        parent::removeHeader($name);
+        return $this->headers;
     }
 }

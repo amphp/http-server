@@ -7,8 +7,6 @@ use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Message;
 use Amp\Http\Server\Driver\Client;
-use Amp\Promise;
-use Amp\Success;
 use Psr\Http\Message\UriInterface as PsrUri;
 
 final class Request extends Message
@@ -34,7 +32,7 @@ final class Request extends Message
     /** @var mixed[] */
     private $attributes = [];
 
-    /** @var Promise */
+    /** @var Trailers|null */
     private $trailers;
 
     /**
@@ -44,7 +42,7 @@ final class Request extends Message
      * @param string[]|string[][]                 $headers An array of strings or an array of string arrays.
      * @param RequestBody|InputStream|string|null $body
      * @param string                              $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
-     * @param Promise|null                        $trailers Promise for trailing headers.
+     * @param Trailers|null                       $trailers Trailers if request has trailers, or null otherwise.
      */
     public function __construct(
         Client $client,
@@ -53,14 +51,12 @@ final class Request extends Message
         array $headers = [],
         $body = null,
         string $protocol = "1.1",
-        ?Promise $trailers = null
+        ?Trailers $trailers = null
     ) {
         $this->client = $client;
         $this->method = $method;
         $this->uri = $uri;
         $this->protocol = $protocol;
-
-        $this->trailers = $trailers;
 
         if ($body !== null) {
             $this->setBody($body);
@@ -68,6 +64,10 @@ final class Request extends Message
 
         if (!empty($headers)) {
             $this->setHeaders($headers);
+        }
+
+        if ($trailers !== null) {
+            $this->setTrailers($trailers);
         }
     }
 
@@ -402,22 +402,26 @@ final class Request extends Message
     }
 
     /**
-     * @return Promise<Trailers>
+     * @return Trailers|null
      */
-    public function getTrailers(): Promise
+    public function getTrailers(): ?Trailers
     {
-        if ($this->trailers === null) {
-            $this->trailers = new Success(new Trailers([]));
-        }
-
         return $this->trailers;
     }
 
     /**
-     * @param Promise<Trailers> $trailers
+     * @param Trailers $trailers
      */
-    public function setTrailers(Promise $trailers): void
+    public function setTrailers(Trailers $trailers): void
     {
         $this->trailers = $trailers;
+    }
+
+    /**
+     * Removes any trailer headers from the request.
+     */
+    public function removeTrailers(): void
+    {
+        $this->trailers = null;
     }
 }
