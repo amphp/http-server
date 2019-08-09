@@ -334,6 +334,10 @@ final class Http1Driver implements HttpDriver
                     );
                 }
 
+                if (isset($contentLength["content-length"][1])) {
+                    throw new ClientException("Bad Request: multiple content-length headers", Status::BAD_REQUEST);
+                }
+
                 $contentLength = $headers["content-length"][0] ?? null;
                 if ($contentLength !== null) {
                     if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {

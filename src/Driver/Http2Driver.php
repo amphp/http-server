@@ -1336,13 +1336,18 @@ final class Http2Driver implements HttpDriver
                     );
 
                     if (isset($headers["content-length"])) {
-                        $length = \implode($headers["content-length"]);
-                        if (!\preg_match('/^0|[1-9][0-9]*$/', $length)) {
+                        if (isset($headers["content-length"][1])) {
                             $error = self::PROTOCOL_ERROR;
                             goto stream_error;
                         }
 
-                        $stream->expectedLength = (int) $length;
+                        $contentLength = $headers["content-length"][0];
+                        if (!\preg_match('/^0|[1-9][0-9]*$/', $contentLength)) {
+                            $error = self::PROTOCOL_ERROR;
+                            goto stream_error;
+                        }
+
+                        $stream->expectedLength = (int) $contentLength;
                     }
 
                     $this->streamIdMap[\spl_object_hash($request)] = $id;
