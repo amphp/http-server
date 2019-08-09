@@ -16,6 +16,7 @@ use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Loop;
 use Amp\MultiReasonException;
 use Amp\Promise;
+use Amp\Socket;
 use Amp\Socket\Server as SocketServer;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
@@ -314,7 +315,7 @@ final class Server
             if (isset($context["ssl"])) {
                 $scheme = "https";
 
-                if (self::hasAlpnSupport()) {
+                if (Socket\hasTlsAlpnSupport()) {
                     \stream_context_set_option($server, "ssl", "alpn_protocols", \implode(", ", $protocols));
                 } elseif ($protocols) {
                     $this->logger->alert("ALPN not supported with the installed version of OpenSSL");
@@ -483,18 +484,5 @@ final class Server
             "clients" => $this->clients,
             "connectionTimeouts" => $this->timeouts,
         ];
-    }
-
-    /**
-     * @see https://wiki.openssl.org/index.php/Manual:OPENSSL_VERSION_NUMBER(3)
-     * @return bool
-     */
-    private static function hasAlpnSupport(): bool
-    {
-        if (!\defined("OPENSSL_VERSION_NUMBER")) {
-            return false;
-        }
-
-        return \OPENSSL_VERSION_NUMBER >= 0x10002000;
     }
 }
