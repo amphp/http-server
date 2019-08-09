@@ -348,7 +348,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 if (isset($headers["transfer-encoding"])) {
-                    $value = \strtolower($headers["transfer-encoding"][0]);
+                    $value = \strtolower(\implode(', ', $headers["transfer-encoding"]));
                     if (!($isChunked = $value === "chunked") && $value !== "identity") {
                         throw new ClientException(
                             "Bad Request: unsupported transfer-encoding",
