@@ -754,7 +754,7 @@ final class Http2Driver implements HttpDriver
                             $this->writeFrame(\pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG, $id);
                         }
 
-                        if ($this->serverWindow <= 0) {
+                        if ($this->serverWindow <= $maxBodySize >> 1) {
                             $increment = \max($stream->serverWindow, $maxBodySize);
                             $this->serverWindow += $increment;
 
