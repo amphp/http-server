@@ -1198,10 +1198,8 @@ final class Http2Driver implements HttpDriver
                             }
 
                             // Trailers must not contain pseudo-headers.
-                            foreach ($headers as $name => $value) {
-                                if ($name[0] === ':') {
-                                    throw new Http2StreamException("Trailers should not contain pseudo headers", $id, self::PROTOCOL_ERROR);
-                                }
+                            if (!empty($pseudo)) {
+                                throw new Http2StreamException("Trailers must not contain pseudo headers", $id, self::PROTOCOL_ERROR);
                             }
 
                             // Trailers must not contain any disallowed fields.
@@ -1291,7 +1289,7 @@ final class Http2Driver implements HttpDriver
                             continue;
                         }
 
-                        $this->trailerDeferreds[$id] = $deferred = new Deferred;
+                        $this->trailerDeferreds[$id] = new Deferred;
                         $this->bodyEmitters[$id] = new Emitter;
 
                         $body = new RequestBody(
@@ -1325,7 +1323,7 @@ final class Http2Driver implements HttpDriver
                         }
 
                         $trailers = new Trailers(
-                            $deferred->promise(),
+                            $this->trailerDeferreds[$id]->promise(),
                             isset($headers['trailers'])
                                 ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
                                 : []
