@@ -746,7 +746,7 @@ class Http1DriverTest extends HttpDriverTest
         $actualBody = "";
         $parser = new Http1Parser(new ClientRequest("/"), static function ($chunk) use (&$actualBody) {
             $actualBody .= $chunk;
-        });
+        }, $this->createCallback(0));
 
         $response = $parser->parse($input);
         while (!$parser->isComplete()) {

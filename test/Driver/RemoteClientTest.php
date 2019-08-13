@@ -101,9 +101,9 @@ class RemoteClientTest extends TestCase
 
             $client = new HttpClient(new DefaultConnectionPool($connector));
             $port = \parse_url($address, PHP_URL_PORT);
-            $promise = $client->request(
-                (new ClientRequest("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET"))->withHeader("custom", "header")
-            );
+            $request = new ClientRequest("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET");
+            $request->setHeader("custom", "header");
+            $promise = $client->request($request);
 
             /** @var \Amp\Http\Client\Response $res */
             $res = yield $promise;
