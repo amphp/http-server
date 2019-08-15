@@ -39,9 +39,6 @@ final class RemoteClient implements Client
     /** @var SocketAddress */
     private $serverAddress;
 
-    /** @var bool */
-    private $isEncrypted = false;
-
     /** @var TlsInfo|null */
     private $tlsInfo;
 
@@ -218,7 +215,7 @@ final class RemoteClient implements Client
     /** @inheritdoc */
     public function isEncrypted(): bool
     {
-        return $this->isEncrypted;
+        return $this->tlsInfo !== null;
     }
 
     /** @inheritdoc */
@@ -385,13 +382,12 @@ final class RemoteClient implements Client
         if ($handshake = @\stream_socket_enable_crypto($this->socket, true)) {
             Loop::cancel($this->readWatcher);
 
-            $this->isEncrypted = true;
             $this->tlsInfo = TlsInfo::fromStreamResource($this->socket);
             \assert($this->tlsInfo !== null);
 
             \assert($this->logger->debug(\sprintf(
                 "Crypto negotiated (ALPN: %s) %s",
-                ($this->cryptoInfo["alpn_protocol"] ?? "none"),
+                $this->tlsInfo->getApplicationLayerProtocol() ?? "none",
                 $this->clientAddress->toString()
             )) || true);
 
