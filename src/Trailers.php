@@ -2,10 +2,10 @@
 
 namespace Amp\Http\Server;
 
-use Amp\Deferred;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Message;
 use Amp\Promise;
+use function Amp\call;
 
 final class Trailers
 {
@@ -55,46 +55,33 @@ final class Trailers
             }
         }
 
-        $deferred = new Deferred;
+        $this->headers = call(static function () use ($promise, $fields): \Generator {
+            return new class(yield $promise, $fields) extends Message {
+                public function __construct(array $headers, array $fields)
+                {
+                    $this->setHeaders($headers);
 
-        $promise->onResolve(static function (?\Throwable $exception, ?array $headers) use ($fields, $deferred): void {
-            if ($exception) {
-                $deferred->fail($exception);
-                return;
-            }
+                    $keys = \array_keys($this->getHeaders());
 
-            try {
-                $deferred->resolve(new class($headers, $fields) extends Message {
-                    public function __construct(array $headers, array $fields)
-                    {
-                        $this->setHeaders($headers);
+                    if (!empty($fields)) {
+                        // Note that the Trailer header does not need to be set for the message to include trailers.
+                        // @see https://tools.ietf.org/html/rfc7230#section-4.4
 
-                        $keys = \array_keys($this->getHeaders());
-
-                        if (!empty($fields)) {
-                            // Note that the Trailer header does not need to be set for the message to include trailers.
-                            // @see https://tools.ietf.org/html/rfc7230#section-4.4
-
-                            if (\array_diff($fields, $keys)) {
-                                throw new InvalidHeaderException("Trailers do not contain the expected fields");
-                            }
-
-                            return; // Check below unnecessary if fields list is set.
+                        if (\array_diff($fields, $keys)) {
+                            throw new InvalidHeaderException("Trailers do not contain the expected fields");
                         }
 
-                        foreach ($keys as $field) {
-                            if (isset(Trailers::DISALLOWED_TRAILERS[$field])) {
-                                throw new InvalidHeaderException(\sprintf("Field '%s' is not allowed in trailers", $field));
-                            }
+                        return; // Check below unnecessary if fields list is set.
+                    }
+
+                    foreach ($keys as $field) {
+                        if (isset(Trailers::DISALLOWED_TRAILERS[$field])) {
+                            throw new InvalidHeaderException(\sprintf("Field '%s' is not allowed in trailers", $field));
                         }
                     }
-                });
-            } catch (\Throwable $exception) {
-                $deferred->fail($exception);
-            }
+                }
+            };
         });
-
-        $this->headers = $deferred->promise();
     }
 
     /**
