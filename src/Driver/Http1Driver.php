@@ -7,6 +7,7 @@ use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\InvalidHeaderException;
+use Amp\Http\Message;
 use Amp\Http\Rfc7230;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\ErrorHandler;
@@ -141,7 +142,12 @@ final class Http1Driver implements HttpDriver
         $reason = $response->getReason();
 
         $headers = $this->filter($response, $protocol, $request ? $request->getHeaderArray("connection") : []);
+
         $trailers = $response->getTrailers();
+
+        if ($trailers !== null && !isset($headers["trailer"]) && ($fields = $trailers->getFields())) {
+            $headers["trailer"] = [\implode(", ", $fields)];
+        }
 
         $chunked = (!isset($headers["content-length"]) || $trailers !== null)
             && $protocol === "1.1"
@@ -224,12 +230,9 @@ final class Http1Driver implements HttpDriver
                 $buffer .= "0\r\n";
 
                 if ($trailers !== null) {
-                    $trailers = yield $trailers->getTrailers(); // $trailers is an array of promises.
-                    $trailers = \array_map(function (string $trailer): array {
-                        return [$trailer];
-                    }, $trailers);
-
-                    $buffer .= Rfc7230::formatHeaders($trailers);
+                    $trailers = yield $trailers->getTrailers();
+                    \assert($trailers instanceof Message);
+                    $buffer .= Rfc7230::formatHeaders($trailers->getHeaders());
                 }
 
                 $buffer .= "\r\n";

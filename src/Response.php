@@ -323,11 +323,6 @@ final class Response extends Message
      */
     public function setTrailers(Trailers $trailers): void
     {
-        $fields = $trailers->getFields();
-        if (!empty($fields)) {
-            $this->setHeader('trailer', \implode(', ', $fields));
-        }
-
         $this->trailers = $trailers;
     }
 
@@ -336,7 +331,6 @@ final class Response extends Message
      */
     public function removeTrailers(): void
     {
-        $this->removeHeader('trailer');
         $this->trailers = null;
     }
 

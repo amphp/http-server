@@ -13,6 +13,7 @@ use Amp\Http\Server\Driver\TimeReference;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\PHPUnit\TestCase;
@@ -252,6 +253,68 @@ class Http2DriverTest extends HttpDriverTest
         );
 
         return [$driver, $parser];
+    }
+
+    public function testWrite()
+    {
+        $buffer = "";
+        $options = new Options;
+        $driver = new Http2Driver($options, $this->createMock(TimeReference::class));
+        $parser = $driver->setup(
+            $this->createClientMock(),
+            $this->createCallback(0),
+            function (string $data, bool $close = false) use (&$buffer) {
+                // HTTP/2 shall only reset streams, not abort the connection
+                $this->assertFalse($close);
+                $buffer .= $data;
+                return new Success;
+            },
+            "" // Simulate upgrade request.
+        );
+
+        $parser->send(Http2Driver::PREFACE);
+
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2.0");
+
+        $body = "foo";
+        $trailers = new Trailers(new Success(["expires" => "date"]), ["expires"]);
+
+        $emitter = new Emitter;
+        $coroutine = $driver->write($request, new Response(Status::OK, [
+            "content-length" => \strlen($body),
+        ], new IteratorStream($emitter->iterate()), $trailers));
+
+        $emitter->emit($body);
+        $emitter->complete();
+
+        $data = self::packFrame(\pack(
+            "nNnNnNnN",
+            Http2Driver::INITIAL_WINDOW_SIZE,
+            $options->getBodySizeLimit(),
+            Http2Driver::MAX_CONCURRENT_STREAMS,
+            $options->getConcurrentStreamLimit(),
+            Http2Driver::MAX_HEADER_LIST_SIZE,
+            $options->getHeaderSizeLimit(),
+            Http2Driver::MAX_FRAME_SIZE,
+            Http2Driver::DEFAULT_MAX_FRAME_SIZE
+        ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0);
+
+        $hpack = new HPack;
+
+        $data .= self::packFrame($hpack->encode([
+            ":status" => Status::OK,
+            "content-length" => [\strlen($body)],
+            "trailer" => "expires",
+            "date" => [""],
+        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
+
+        $data .= self::packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
+
+        $data .= self::packFrame($hpack->encode([
+            "expires" => ["date"],
+        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS | HTTP2Driver::END_STREAM, 1);
+
+        $this->assertEquals($data, $buffer);
     }
 
     public function testWriterAbortAfterHeaders()

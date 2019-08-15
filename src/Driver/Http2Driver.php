@@ -7,6 +7,7 @@ use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\HPack;
+use Amp\Http\Message;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Driver\Internal\Http2Stream;
 use Amp\Http\Server\Options;
@@ -226,6 +227,12 @@ final class Http2Driver implements HttpDriver
             // Remove headers that are obsolete in HTTP/2.
             unset($headers["connection"], $headers["keep-alive"], $headers["transfer-encoding"]);
 
+            $trailers = $response->getTrailers();
+
+            if ($trailers !== null && !isset($headers["trailer"]) && ($fields = $trailers->getFields())) {
+                $headers["trailer"] = [\implode(", ", $fields)];
+            }
+
             $headers["date"] = [$this->timeReference->getCurrentDate()];
 
             if (!empty($push = $response->getPush())) {
@@ -310,9 +317,7 @@ final class Http2Driver implements HttpDriver
                 return;
             }
 
-            $trailers = $response->getTrailers();
-
-            if (empty($trailers)) {
+            if ($trailers === null) {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
             }
 
@@ -323,15 +328,13 @@ final class Http2Driver implements HttpDriver
                 return;
             }
 
-            if (!empty($trailers)) {
+            if ($trailers !== null) {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
 
-                $trailers = yield $trailers; // $trailers is an array of promises.
-                $trailers = \array_map(function (string $trailer): array {
-                    return [$trailer];
-                }, $trailers);
+                $trailers = yield $trailers->getTrailers();
+                \assert($trailers instanceof Message);
 
-                $headers = $this->table->encode($trailers);
+                $headers = $this->table->encode($trailers->getHeaders());
 
                 if (\strlen($headers) > $this->maxFrameSize) {
                     $split = \str_split($headers, $this->maxFrameSize);
@@ -501,6 +504,7 @@ final class Http2Driver implements HttpDriver
 
     private function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise
     {
+        $bin = \bin2hex($type);
         $data = \substr(\pack("N", \strlen($data)), 1, 3) . $type . $flags . \pack("N", $stream) . $data;
         return ($this->write)($data);
     }
