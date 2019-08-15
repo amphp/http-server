@@ -1307,14 +1307,18 @@ final class Http2Driver implements HttpDriver
                             }
                         );
 
-                        if ($this->serverWindow <= 0) {
+                        if ($this->serverWindow <= $maxBodySize >> 1) {
                             $increment = $maxBodySize - $this->serverWindow;
                             $this->serverWindow = $maxBodySize;
                             $this->writeFrame(\pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG);
                         }
 
                         if (isset($headers["content-length"])) {
-                            $contentLength = \implode($headers["content-length"]);
+                            if (isset($headers["content-length"][1])) {
+                                throw new Http2StreamException("Received multiple content-length headers", $id, self::PROTOCOL_ERROR);
+                            }
+
+                            $contentLength = $headers["content-length"][0];
                             if (!\preg_match('/^0|[1-9][0-9]*$/', $contentLength)) {
                                 throw new Http2StreamException("Invalid content-length header value", $id, self::PROTOCOL_ERROR);
                             }

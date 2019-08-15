@@ -330,6 +330,10 @@ final class Http1Driver implements HttpDriver
                     );
                 }
 
+                if (isset($contentLength["content-length"][1])) {
+                    throw new ClientException("Bad Request: multiple content-length headers", Status::BAD_REQUEST);
+                }
+
                 $contentLength = $headers["content-length"][0] ?? null;
                 if ($contentLength !== null) {
                     if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {
@@ -340,7 +344,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 if (isset($headers["transfer-encoding"])) {
-                    $value = \strtolower($headers["transfer-encoding"][0]);
+                    $value = \strtolower(\implode(', ', $headers["transfer-encoding"]));
                     if (!($isChunked = $value === "chunked") && $value !== "identity") {
                         throw new ClientException(
                             "Bad Request: unsupported transfer-encoding",

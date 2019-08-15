@@ -24,7 +24,7 @@ final class UpgradedSocket implements EncryptableSocket
     /**
      * @param Client         $client
      * @param ResourceSocket $socket
-     * @param string Remaining buffer previously read from the socket.
+     * @param string         $buffer Remaining buffer previously read from the socket.
      */
     public function __construct(Client $client, ResourceSocket $socket, string $buffer)
     {
