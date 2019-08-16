@@ -336,7 +336,7 @@ final class Http2Driver implements HttpDriver
             if ($trailers !== null) {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
 
-                $trailers = yield $trailers->getTrailers();
+                $trailers = yield $trailers->awaitMessage();
                 \assert($trailers instanceof Message);
 
                 $headers = $this->table->encode($trailers->getHeaders());

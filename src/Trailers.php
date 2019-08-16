@@ -95,7 +95,7 @@ final class Trailers
     /**
      * @return Promise<Message>
      */
-    public function getTrailers(): Promise
+    public function awaitMessage(): Promise
     {
         return $this->headers;
     }

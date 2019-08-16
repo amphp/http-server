@@ -1085,7 +1085,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $this->assertSame("Body Content", $body);
 
-        $trailers = yield $request->getTrailers()->getTrailers();
+        $trailers = yield $request->getTrailers()->awaitMessage();
 
         $this->assertInstanceOf(Message::class, $trailers);
         $this->assertSame("42", $trailers->getHeader("My-Trailer"));
