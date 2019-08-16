@@ -45,7 +45,7 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory, ServerObserve
             return new Http2Driver($this->options, $this->timeReference, $this->logger);
         }
 
-        return new Http1Driver($this->options, $this->timeReference, $this->errorHandler);
+        return new Http1Driver($this->options, $this->timeReference, $this->errorHandler, $this->logger);
     }
 
     /** {@inheritdoc} */

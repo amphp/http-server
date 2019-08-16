@@ -7,6 +7,7 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\Http\Client\Connection\Internal\Http1Parser;
 use Amp\Http\Client\Request as ClientRequest;
+use Amp\Http\Message;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
@@ -20,6 +21,7 @@ use Amp\Http\Status;
 use Amp\Promise;
 use Amp\Success;
 use League\Uri;
+use Psr\Log\NullLogger;
 
 class Http1DriverTest extends HttpDriverTest
 {
@@ -37,7 +39,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             $options,
             $this->createMock(TimeReference::class),
-            new DefaultErrorHandler // Using concrete instance to generate error response.
+            new DefaultErrorHandler, // Using concrete instance to generate error response.
+            new NullLogger
         );
 
         $client = $this->createClientMock();
@@ -68,7 +71,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             $options,
             $this->createMock(TimeReference::class),
-            new DefaultErrorHandler // Using concrete instance to generate error response.
+            new DefaultErrorHandler, // Using concrete instance to generate error response.
+            new NullLogger
         );
 
         $client = $this->createClientMock();
@@ -103,7 +107,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             new Options,
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $parser = $driver->setup(
@@ -141,7 +146,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             new Options,
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $parser = $driver->setup(
@@ -191,7 +197,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             new Options,
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $parser = $driver->setup(
@@ -240,7 +247,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             new Options,
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $parser = $driver->setup(
@@ -609,7 +617,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             (new Options)->withBodySizeLimit(4),
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $parser = $driver->setup(
@@ -661,7 +670,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             new Options,
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $parser = $driver->setup(
@@ -767,7 +777,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             (new Options)->withConnectionTimeout(60),
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $buffer = "";
@@ -811,7 +822,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             (new Options)->withConnectionTimeout(60),
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $buffer = "";
@@ -872,7 +884,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             (new Options)->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $driver->setup(
@@ -935,7 +948,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             $options,
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $parser = $driver->setup(
@@ -962,7 +976,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             $options,
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $parser = $driver->setup(
@@ -997,7 +1012,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             new Options,
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $parser = $driver->setup(
@@ -1033,7 +1049,8 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             new Options,
             $this->createMock(TimeReference::class),
-            $this->createMock(ErrorHandler::class)
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
         );
 
         $parser = $driver->setup(
@@ -1064,13 +1081,13 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertInstanceOf(Request::class, $request);
 
         /** @var \Amp\Http\Server\Request $request */
-        $body = Promise\wait($request->getBody()->buffer());
+        $body = yield $request->getBody()->buffer();
 
         $this->assertSame("Body Content", $body);
 
-        $trailers = Promise\wait($request->getTrailers());
+        $trailers = yield $request->getTrailers()->getTrailers();
 
-        $this->assertInstanceOf(Trailers::class, $trailers);
+        $this->assertInstanceOf(Message::class, $trailers);
         $this->assertSame("42", $trailers->getHeader("My-Trailer"));
     }
 }

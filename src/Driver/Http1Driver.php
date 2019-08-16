@@ -20,6 +20,7 @@ use Amp\Http\Status;
 use Amp\Promise;
 use Amp\TimeoutException;
 use League\Uri;
+use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 
 final class Http1Driver implements HttpDriver
@@ -35,6 +36,9 @@ final class Http1Driver implements HttpDriver
 
     /** @var TimeReference */
     private $timeReference;
+
+    /** @var PsrLogger */
+    private $logger;
 
     /** @var Emitter|null */
     private $bodyEmitter;
@@ -57,11 +61,12 @@ final class Http1Driver implements HttpDriver
     /** @var bool */
     private $stopping = false;
 
-    public function __construct(Options $options, TimeReference $timeReference, ErrorHandler $errorHandler)
+    public function __construct(Options $options, TimeReference $timeReference, ErrorHandler $errorHandler, PsrLogger $logger)
     {
         $this->options = $options;
         $this->timeReference = $timeReference;
         $this->errorHandler = $errorHandler;
+        $this->logger = $logger;
     }
 
     /** {@inheritdoc} */
@@ -305,7 +310,7 @@ final class Http1Driver implements HttpDriver
                 if ($protocol !== "1.1" && $protocol !== "1.0") {
                     if ($protocol === "2.0" && $this->options->isHttp2UpgradeAllowed()) {
                         // Internal upgrade to HTTP/2.
-                        $this->http2 = new Http2Driver($this->options, $this->timeReference);
+                        $this->http2 = new Http2Driver($this->options, $this->timeReference, $this->logger);
                         $parser = $this->http2->setup($this->client, $this->onMessage, $this->write);
 
                         $parser->send("$startLine\r\n$rawHeaders\r\n$buffer");
@@ -463,7 +468,7 @@ final class Http1Driver implements HttpDriver
                     );
 
                     // Internal upgrade
-                    $this->http2 = new Http2Driver($this->options, $this->timeReference);
+                    $this->http2 = new Http2Driver($this->options, $this->timeReference, $this->logger);
                     $parser = $this->http2->setup($this->client, $this->onMessage, $this->write, $h2cSettings);
 
                     $parser->current(); // Yield from this parser after reading the current request body.
