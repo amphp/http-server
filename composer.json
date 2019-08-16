@@ -47,7 +47,7 @@
         "amphp/php-cs-fixer-config": "dev-master",
         "league/uri-components": "^1.7",
         "monolog/monolog": "^1.23",
-        "phpunit/phpunit": "^6",
+        "phpunit/phpunit": "^7 | ^8",
         "infection/infection": "^0.9.2"
     },
     "suggest": {

@@ -13,21 +13,19 @@ use function Amp\Promise\wait;
 
 class RedirectTest extends TestCase
 {
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Invalid redirect URI; Host redirect must not contain a query or fragment component
-     */
     public function testBadRedirectPath()
     {
+        $this->expectException(\Error::class);
+        $this->expectExceptionMessage("Invalid redirect URI; Host redirect must not contain a query or fragment component");
+
         new RedirectHandler(Uri\Http::createFromString("http://localhost/?foo"));
     }
 
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Invalid status code; code in the range 300..399 required
-     */
     public function testBadRedirectCode()
     {
+        $this->expectException(\Error::class);
+        $this->expectExceptionMessage("Invalid status code; code in the range 300..399 required");
+
         new RedirectHandler(Uri\Http::createFromString("http://localhost"), Status::CREATED);
     }
 

@@ -27,11 +27,8 @@
             <directory suffix=".php">src</directory>
         </whitelist>
     </filter>
-    <listeners>
-        <listener class="Amp\PHPUnit\LoopReset"/>
-    </listeners>
     <logging>
-        <log type="coverage-html" target="build/coverage" title="Amp" highlight="true"/>
+        <log type="coverage-html" target="build/coverage"/>
         <log type="coverage-clover" target="build/logs/clover.xml"/>
     </logging>
 </phpunit>

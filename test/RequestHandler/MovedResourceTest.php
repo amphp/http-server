@@ -12,21 +12,19 @@ use function Amp\Promise\wait;
 
 class MovedResourceTest extends TestCase
 {
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Empty path in provided URI
-     */
     public function testEmptyPath()
     {
+        $this->expectException(\Error::class);
+        $this->expectExceptionMessage("Empty path in provided URI");
+
         new MovedResourceHandler(Uri\Http::createFromString(""));
     }
 
-    /**
-     * @expectedException \Error
-     * @expectedExceptionMessage Invalid status code; code in the range 300..399 required
-     */
     public function testBadRedirectCode()
     {
+        $this->expectException(\Error::class);
+        $this->expectExceptionMessage("Invalid status code; code in the range 300..399 required");
+
         new MovedResourceHandler(Uri\Http::createFromString("/new/path"), Status::CREATED);
     }
 
