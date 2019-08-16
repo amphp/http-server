@@ -15,11 +15,11 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\Loop;
-use Amp\PHPUnit\TestCase;
+use Amp\PHPUnit\AsyncTestCase;
 use Amp\Promise;
 use Amp\Success;
 use League\Uri;
+use Psr\Log\NullLogger;
 
 class Http2DriverTest extends HttpDriverTest
 {
@@ -191,19 +191,15 @@ class Http2DriverTest extends HttpDriverTest
 
     public function setupDriver(callable $onMessage = null, Options $options = null): array
     {
-        $driver = new class($this, $options ?? new Options, $this->createMock(TimeReference::class)) implements HttpDriver {
+        $driver = new class($options ?? new Options, $this->createMock(TimeReference::class)) implements HttpDriver {
             public $frames = [];
-
-            /** @var TestCase */
-            private $test;
 
             /** @var Http2Driver */
             private $driver;
 
-            public function __construct($test, $options, $timeReference)
+            public function __construct($options, $timeReference)
             {
-                $this->driver = new Http2Driver($options, $timeReference);
-                $this->test = $test;
+                $this->driver = new Http2Driver($options, $timeReference, new NullLogger);
             }
 
             public function setup(Client $client, callable $onMessage, callable $write): \Generator
@@ -216,7 +212,7 @@ class Http2DriverTest extends HttpDriverTest
                     $data = \substr($data, 9);
 
                     if ($type === Http2Driver::RST_STREAM || $type === Http2Driver::GOAWAY) {
-                        TestCase::fail("RST_STREAM or GOAWAY frame received");
+                        AsyncTestCase::fail("RST_STREAM or GOAWAY frame received");
                     }
 
                     if ($type === Http2Driver::WINDOW_UPDATE) {
@@ -259,7 +255,7 @@ class Http2DriverTest extends HttpDriverTest
     {
         $buffer = "";
         $options = new Options;
-        $driver = new Http2Driver($options, $this->createMock(TimeReference::class));
+        $driver = new Http2Driver($options, $this->createMock(TimeReference::class), new NullLogger);
         $parser = $driver->setup(
             $this->createClientMock(),
             $this->createCallback(0),
@@ -321,7 +317,7 @@ class Http2DriverTest extends HttpDriverTest
     {
         $buffer = "";
         $options = new Options;
-        $driver = new Http2Driver($options, $this->createMock(TimeReference::class));
+        $driver = new Http2Driver($options, $this->createMock(TimeReference::class), new NullLogger);
         $parser = $driver->setup(
             $this->createClientMock(),
             $this->createCallback(0),
@@ -543,7 +539,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testClosingStreamYieldsFalseFromWriter()
     {
-        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class));
+        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
 
         $parser = $driver->setup(
             $this->createClientMock(),
@@ -588,7 +584,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testPush()
     {
-        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class));
+        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
 
         $requests = [];
 

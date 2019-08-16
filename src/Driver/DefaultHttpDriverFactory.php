@@ -8,6 +8,7 @@ use Amp\Http\Server\Server;
 use Amp\Http\Server\ServerObserver;
 use Amp\Promise;
 use Amp\Success;
+use Psr\Log\LoggerInterface as PsrLogger;
 
 final class DefaultHttpDriverFactory implements HttpDriverFactory, ServerObserver
 {
@@ -20,11 +21,15 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory, ServerObserve
     /** @var ErrorHandler */
     private $errorHandler;
 
+    /** @var PsrLogger */
+    private $logger;
+
     public function onStart(Server $server): Promise
     {
         $this->options = $server->getOptions();
         $this->timeReference = $server->getTimeReference();
         $this->errorHandler = $server->getErrorHandler();
+        $this->logger = $server->getLogger();
         return new Success;
     }
 
@@ -37,7 +42,7 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory, ServerObserve
     public function selectDriver(Client $client): HttpDriver
     {
         if ($client->isEncrypted() && $client->getTlsInfo()->getApplicationLayerProtocol() === "h2") {
-            return new Http2Driver($this->options, $this->timeReference);
+            return new Http2Driver($this->options, $this->timeReference, $this->logger);
         }
 
         return new Http1Driver($this->options, $this->timeReference, $this->errorHandler);

@@ -22,6 +22,7 @@ use Amp\Success;
 use Amp\TimeoutException;
 use League\Uri;
 use Psr\Http\Message\UriInterface as PsrUri;
+use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 
 final class Http2Driver implements HttpDriver
@@ -101,14 +102,17 @@ final class Http2Driver implements HttpDriver
     /** @var string 64-bit for ping. */
     private $counter = "aaaaaaaa";
 
-    /** @var \Amp\Http\Server\Driver\Client */
+    /** @var Client */
     private $client;
 
-    /** @var \Amp\Http\Server\Options */
+    /** @var Options */
     private $options;
 
-    /** @var \Amp\Http\Server\Driver\TimeReference */
+    /** @var TimeReference */
     private $timeReference;
+
+    /** @var PsrLogger */
+    private $logger;
 
     /** @var int */
     private $serverWindow = self::DEFAULT_WINDOW_SIZE;
@@ -158,13 +162,14 @@ final class Http2Driver implements HttpDriver
     /** @var callable */
     private $write;
 
-    /** @var \Amp\Http\HPack */
+    /** @var HPack */
     private $table;
 
-    public function __construct(Options $options, TimeReference $timeReference)
+    public function __construct(Options $options, TimeReference $timeReference, PsrLogger $logger)
     {
         $this->options = $options;
         $this->timeReference = $timeReference;
+        $this->logger = $logger;
 
         $this->remainingStreams = $this->options->getConcurrentStreamLimit();
 
@@ -447,6 +452,7 @@ final class Http2Driver implements HttpDriver
         }
 
         $uri = $uri->withQuery($url->getQuery());
+        \assert($uri instanceof PsrUri);
 
         $url = (string) $uri;
 
@@ -504,7 +510,6 @@ final class Http2Driver implements HttpDriver
 
     private function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise
     {
-        $bin = \bin2hex($type);
         $data = \substr(\pack("N", \strlen($data)), 1, 3) . $type . $flags . \pack("N", $stream) . $data;
         return ($this->write)($data);
     }
@@ -1063,11 +1068,17 @@ final class Http2Driver implements HttpDriver
                                 $buffer .= yield;
                             }
 
-                            if ($error !== 0) {
-                                // @TODO Log error, since the client says we made a boo-boo.
+                            $message = \sprintf(
+                                "Received GOAWAY frame from %s with error code %d",
+                                $this->client->getRemoteAddress(),
+                                $error
+                            );
+
+                            if ($error !== self::GRACEFUL_SHUTDOWN) {
+                                $this->logger->notice($message);
                             }
 
-                            yield $this->shutdown($lastId, new Http2ConnectionException("Received GOAWAY frame"));
+                            yield $this->shutdown($lastId, new Http2ConnectionException($message, $error));
                             $this->client->close();
 
                             return;
