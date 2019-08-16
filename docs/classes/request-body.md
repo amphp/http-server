@@ -10,8 +10,7 @@ Additionally, it allows increasing the body size limit dynamically and allows ac
 ```php
 public function __construct(
     InputStream $stream,
-    callable $upgradeSize = null,
-    Promise $trailers = null
+    ?callable $upgradeSize = null
 )
 ```
 
@@ -21,11 +20,7 @@ public function __construct(
 |`callable`<br>`null`|`$upgradeSize`|Callback used to increase the maximum size of the body.|
 |`Promise`<br>`null`|`$trailers`|Promise for trailing headers.|
 
-## `increaseSizeLimit(int $limit)`
+## `increaseSizeLimit(int $limit): void`
 
 Increases the size limit dynamically if an `$upgradeSize` callback is present.
 Otherwise this is a no-op.
-
-## `getTrailers(): Promise`
-
-Allows access to the [`Trailers`](trailers.md) of a request once the promise resolves.

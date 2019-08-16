@@ -31,11 +31,15 @@ public function __construct(
 {:.warning}
 > `$servers` must be a non-empty list of [`Amp\Socket\Server`](https://amphp.org/socket/server) objects. Otherwise an [`\Error`](http://php.net/manual/en/class.error.php) will be thrown.
 
-## `setDriverFactory(HttpDriverFactory $driverFactory)`
+## `setDriverFactory(HttpDriverFactory $driverFactory): void`
 
 Define a custom HTTP driver factory.
 
-## `setErrorHandler(ErrorHandler $errorHandler)`
+## `setClientFactory(ClientFactory $clientFactory): void`
+
+Define a custom client factory.
+
+## `setErrorHandler(ErrorHandler $errorHandler): void`
 
 Sets the error handler instance to be used for generating error responses.
 

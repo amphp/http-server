@@ -18,7 +18,8 @@ public function __construct(
     Psr\Http\Message\UriInterface $uri, 
     string[] | string[][] $headers = [], 
     RequestBody | Amp\ByteStream\InputStream | string | null $body = null, 
-    string $protocol = "1.1"
+    string $protocol = "1.1",
+    ?Trailers $trailers = null
 )
 ```
 
@@ -39,7 +40,7 @@ Returns the [`Сlient`](client.md) sending the request
 
 Returns the HTTP method used to make this request, e.g. `"GET"`.
 
-## `setMethod(string $method)`
+## `setMethod(string $method): void`
 
 Sets the request HTTP method.
 
@@ -47,7 +48,7 @@ Sets the request HTTP method.
 
 Returns the request [`URI`](https://www.php-fig.org/psr/psr-7/#35-psrhttpmessageuriinterface).
 
-## `setUri(Psr\Http\Message\UriInterface $uri)`
+## `setUri(Psr\Http\Message\UriInterface $uri): void`
 
 Sets a new [`URI`](https://www.php-fig.org/psr/psr-7/#35-psrhttpmessageuriinterface) for the request.
 
@@ -59,7 +60,7 @@ Returns the HTTP protocol version as a string (e.g. "1.0", "1.1", "2.0").
 
 Sets a new protocol version number for the request.
 
-## `getHeaders(): array`
+## `getHeaders(): string[][]`
 
 Returns the headers as a string-indexed array of arrays of strings or an empty array if no headers have been set.
 
@@ -67,7 +68,7 @@ Returns the headers as a string-indexed array of arrays of strings or an empty a
 
 Checks if given header exists.
 
-## `getHeaderArray(string $name): array`
+## `getHeaderArray(string $name): string[]`
 
 Returns the array of values for the given header or an empty array if the header does not exist.
 
@@ -78,20 +79,20 @@ If multiple headers are present for the named header, only the first header valu
 Use `getHeaderArray()` to return an array of all values for the particular header.
 Returns `null` if the header does not exist.
 
-## `setHeaders(array $headers)`
+## `setHeaders(array $headers): void`
 
 Sets the headers from the given array.
 
-## `setHeader(string $name, string | string[] $value)`
+## `setHeader(string $name, string | string[] $value): void`
 
 Sets the header to the given value(s).
 All previous header lines with the given name will be replaced.
 
-## `addHeader(string $name, string | string[] $value)`
+## `addHeader(string $name, string | string[] $value): void`
 
 Adds an additional header line with the given name.
 
-## `removeHeader(string $name)`
+## `removeHeader(string $name): void`
 
 Removes the given header if it exists.
 If multiple header lines with the same name exist, all of them are removed.
@@ -115,17 +116,17 @@ If `$stringOrStream` value is not valid, [`\TypeError`](http://php.net/manual/en
 
 Returns all [cookies](https://amphp.org/http/cookies) in associative map
 
-## `getCookie(string): RequestCookie | null`
+## `getCookie(string): ?RequestCookie`
 
 Gets a [cookie](https://amphp.org/http/cookies) value by name or `null`.
 
-## `setCookie(RequestCookie $cookie)`
+## `setCookie(RequestCookie $cookie): void`
 
 Adds a [`Cookie`](https://amphp.org/http/cookies) to the request.
 
 If `$cookie` value is not valid, [`\Error`](http://php.net/manual/en/class.error.php) is thrown.
 
-## `removeCookie(string $name)`
+## `removeCookie(string $name): void`
 
 Removes a cookie from the request.
 
@@ -140,9 +141,17 @@ Retrieve a variable from the request's mutable local storage.
 {:.note}
 > Name of the attribute should be namespaced with a vendor and package namespace, like classes.
 
-## `setAttribute(string $name, mixed $value)`
+## `setAttribute(string $name, mixed $value): void`
 
 Assign a variable to the request's mutable local storage. 
 
 {:.note}
 > Name of the attribute should be namespaced with a vendor and package namespace, like classes.
+
+## `getTrailers(): Trailers`
+
+Allows access to the [`Trailers`](trailers.md) of a request.
+
+## `setTrailers(Trailers $trailers): void`
+
+Assigns the [`Trailers`](trailers.md) object to be used in the request.

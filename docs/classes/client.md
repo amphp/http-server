@@ -10,26 +10,26 @@ A default implementation can be found in `Amp\Http\Server\Driver\RemoteClient`.
 
 ## `start(HttpDriverFactory $factory)`
 
-Listen for requests on the client and parse them using the given HTTP driver.
+Listen for requests on the client and parse them using the HTTP driver created by the given driver factory. This method is called by the server and must not be called again.
 
 ## `getOptions(): Options`
 
 Server options object.
 
-## `getPendingRequestCount()`
+## `getPendingRequestCount(): int`
 
 Number of requests being read.
 
-## `getPendingResponseCount()`
+## `getPendingResponseCount(): int`
 
 Number of requests with pending responses.
 
-## `isWaitingOnResponse()`
+## `isWaitingOnResponse(): bool`
 
 `true` if the number of pending responses is greater than the number of pending requests.
 Useful for determining if a request handler is actively writing a response or if a request is taking too long to arrive.
 
-## `getId()`
+## `getId(): int`
 
 Integer ID of this client.
 This ID is unique per process, see [PHP.net documentation for resource casts to integers](https://secure.php.net/manual/en/language.types.integer.php#language.types.integer.casting).
@@ -42,18 +42,13 @@ Remote address or unix socket path.
 
 Local server address or unix socket path.
 
-## `isUnix(): bool`
-
-`true` if this client is connected via an unix domain socket.
-
 ## `isEncrypted(): bool`
 
 `true` if the client is encrypted, `false` if plaintext.
 
-## `getCryptoContext(): array`
+## `getTlsInfo(): ?TlsInfo`
 
-If the client is encrypted, returns the array returned from `stream_get_meta_data($this->socket)["crypto"]`.
-Otherwise returns an empty array.
+If the client is encrypted, returns the `TlsInfo` object. Null is returned for plaintext clients.
 
 ## `isExported(): bool`
 
@@ -63,11 +58,11 @@ Otherwise returns an empty array.
 
 Integer mask of `Client::CLOSED_*` constants.
 
-## `onClose(callable $onClose)`
+## `onClose(callable $onClose): void`
 
 Attaches a callback invoked with this client closes.
 The callback is passed this object as the first parameter.
 
-## `close()`
+## `close(): void`
 
 Forcefully closes the client connection.

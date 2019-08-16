@@ -22,7 +22,7 @@ This method is called only once, immediately after the `HttpDriver` object is re
 
 `$write` is a `callable(string $data, bool $close = false): Promise` that is used to write raw bytes in `$data` to the client. If `$close` is `true`, the client is closed after the bytes have been written.
 
-This method returns a generator that is sent the raw data read from the client. The generator yields `null` or `Promise` instances. If the generator yields a promise, no additional data is to be sent to the parser until the promise resolves. Each yield must be prepared to receive additional client data, including those yielding promises. The generator should not throw an exception.
+This method returns a generator that is sent the raw data read from the client. The generator yields `null` or `Promise` instances. If the generator yields a promise, no additional data is to be sent to the parser until the promise resolves. Only null yields will receive additional client data. Promise yields will be sent `null`. The generator should not throw an exception.
 
 ## `write(Request $request, Response $response): Promise`
 
