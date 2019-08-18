@@ -7,6 +7,7 @@ use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Message;
 use Amp\Http\Server\Driver\Client;
+use Amp\Http\Server\Driver\Priority;
 use Psr\Http\Message\UriInterface as PsrUri;
 
 final class Request extends Message
@@ -35,14 +36,18 @@ final class Request extends Message
     /** @var Trailers|null */
     private $trailers;
 
+    /** @var Priority */
+    private $priority;
+
     /**
-     * @param Client                              $client The client sending the request.
-     * @param string                              $method HTTP request method.
-     * @param PsrUri                              $uri The full URI being requested, including host, port, and protocol.
-     * @param string[]|string[][]                 $headers An array of strings or an array of string arrays.
+     * @param Client                              $client   The client sending the request.
+     * @param string                              $method   HTTP request method.
+     * @param PsrUri                              $uri      The full URI being requested, including host, port, and protocol.
+     * @param string[]|string[][]                 $headers  An array of strings or an array of string arrays.
      * @param RequestBody|InputStream|string|null $body
      * @param string                              $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
      * @param Trailers|null                       $trailers Trailers if request has trailers, or null otherwise.
+     * @param Priority|null                       $priority Handles request priority updates.
      */
     public function __construct(
         Client $client,
@@ -51,12 +56,14 @@ final class Request extends Message
         array $headers = [],
         $body = null,
         string $protocol = "1.1",
-        ?Trailers $trailers = null
+        ?Trailers $trailers = null,
+        ?Priority $priority = null
     ) {
         $this->client = $client;
         $this->method = $method;
         $this->uri = $uri;
         $this->protocol = $protocol;
+        $this->priority = $priority;
 
         if ($body !== null) {
             $this->setBody($body);
@@ -72,11 +79,24 @@ final class Request extends Message
     }
 
     /**
-     * @return \Amp\Http\Server\Driver\Client The client sending the request.
+     * @return Client The client sending the request.
      */
     public function getClient(): Client
     {
         return $this->client;
+    }
+
+    /**
+     * @param callable $onUpdate Callable accepting 4 parameters:
+     *                           int $id, int $priority, int $dependency, bool $exclusive
+     */
+    public function onPriorityUpdate(callable $onUpdate): void
+    {
+        if ($this->priority === null) {
+            return;
+        }
+
+        $this->priority->onUpdate($onUpdate);
     }
 
     /**

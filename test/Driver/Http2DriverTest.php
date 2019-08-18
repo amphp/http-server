@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Test\Driver;
 
+use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\IteratorStream;
 use Amp\Delayed;
 use Amp\Emitter;
@@ -579,7 +580,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $emitter->emit("{data}");
 
-        Promise\wait($writer); // Will throw if the writer is not complete.
+        yield $writer; // Will throw if the writer is not complete.
     }
 
     public function testPush()
@@ -616,9 +617,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $this->assertInstanceOf(Request::class, $requests[0]);
 
-        $writer = $driver->write($requests[0], $response);
-
-        Promise\wait($writer);
+        yield $driver->write($requests[0], $response);
 
         $paths = ["/base", "/absolute/path", "/base/relative/path", "/base/path/with/query"];
 
@@ -630,5 +629,58 @@ class Http2DriverTest extends HttpDriverTest
 
         $request = $requests[\count($requests) - 1];
         $this->assertSame("key=value", $request->getUri()->getQuery());
+    }
+
+    public function testPriority()
+    {
+        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
+
+        $requests = [];
+
+        $parser = $driver->setup(
+            $this->createClientMock(),
+            function (Request $read) use (&$requests) {
+                $requests[] = $read;
+                return new Success;
+            },
+            function () {
+                return new Success;
+            }
+        );
+
+        $parser->send(Http2Driver::PREFACE);
+
+        $headers = [
+            ":authority" => "localhost",
+            ":path" => "/",
+            ":scheme" => "https",
+            ":method" => "GET",
+        ];
+        $parser->send(self::packHeader($headers, false, 1));
+        $parser->send(null);
+
+        $headers = [
+            ":authority" => "localhost",
+            ":path" => "/test",
+            ":scheme" => "https",
+            ":method" => "GET",
+        ];
+        $parser->send(self::packHeader($headers, false, 3));
+
+        // $onMessage callback should be invoked twice.
+        $this->assertCount(2, $requests);
+
+        $callback = $this->createCallback(2);
+        $callback->method('__invoke')
+            ->withConsecutive([3, 256, 1, false], [3, 1, 1, true]);
+
+        $requests[1]->onPriorityUpdate($callback);
+
+        $parser->send(self::packFrame(\pack("N", 1) . \chr(255), Http2Driver::PRIORITY, Http2Driver::NOFLAG, 3));
+
+        $parser->send(self::packFrame(\pack("N", 0x80000001) . \chr(0), Http2Driver::PRIORITY, Http2Driver::NOFLAG, 3));
+
+        yield $driver->write($requests[0], new Response(Status::OK, [], new InMemoryStream('test')));
+        yield $driver->write($requests[1], new Response(Status::OK, [], new InMemoryStream('test')));
     }
 }

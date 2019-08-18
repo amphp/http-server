@@ -475,14 +475,18 @@ final class Http2Driver implements HttpDriver
         ], \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), $headers);
 
         $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
-        $request = new Request($this->client, "GET", $uri, $headers, null, "2.0");
-        $this->streamIdMap[\spl_object_hash($request)] = $id;
 
         $this->streams[$id] = $stream = new Http2Stream(
+            $id,
             0, // No data will be incoming on this stream.
             $this->initialWindowSize,
             Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
         );
+
+        $stream->priority->update(Priority::DEFAULT_WEIGHT, $streamId, false);
+
+        $request = new Request($this->client, "GET", $uri, $headers, null, "2.0", null, $stream->priority);
+        $this->streamIdMap[\spl_object_hash($request)] = $id;
 
         $headers = \pack("N", $id) . $this->table->encode($headers);
         if (\strlen($headers) >= $this->maxFrameSize) {
@@ -638,6 +642,7 @@ final class Http2Driver implements HttpDriver
 
                 // Upgraded connections automatically assume an initial stream with ID 1.
                 $this->streams[1] = new Http2Stream(
+                    1,
                     0, // No data will be incoming on this stream.
                     $this->initialWindowSize,
                     Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
@@ -848,11 +853,15 @@ final class Http2Driver implements HttpDriver
                                     throw new Http2StreamException("Stream remote closed", $id, self::STREAM_CLOSED);
                                 }
                             } else {
-                                if ($id === 0 || !($id & 1) || $this->remainingStreams-- <= 0 || $id <= $this->remoteStreamId) {
+                                if ($id === 0 || !($id & 1) || $id <= $this->remoteStreamId) {
                                     throw new Http2ConnectionException("Invalid stream ID", self::PROTOCOL_ERROR);
                                 }
 
-                                $stream = $this->streams[$id] = new Http2Stream($maxBodySize, $this->initialWindowSize);
+                                if ($this->remainingStreams-- <= 0) {
+                                    throw new Http2ConnectionException("Too many open streams", self::PROTOCOL_ERROR);
+                                }
+
+                                $stream = $this->streams[$id] = new Http2Stream($id, $maxBodySize, $this->initialWindowSize);
                             }
 
                             // Headers frames can be received on previously opened streams (trailer headers).
@@ -874,18 +883,17 @@ final class Http2Driver implements HttpDriver
                                     $buffer .= yield;
                                 }
 
-                                $dependency = \unpack("N", $buffer)[1];
+                                $parent = \unpack("N", $buffer)[1];
 
-                                if ($exclusive = $dependency & 0x80000000) {
-                                    $dependency &= 0x7fffffff;
+                                if ($exclusive = $parent & 0x80000000) {
+                                    $parent &= 0x7fffffff;
                                 }
 
-                                if ($id === 0 || $dependency === $id) {
+                                if ($id === 0 || $parent === $id) {
                                     throw new Http2ConnectionException("Invalid dependency ID", self::PROTOCOL_ERROR);
                                 }
 
-                                $stream->dependency = $dependency;
-                                $stream->priority = \ord($buffer[4]);
+                                $stream->priority->update(\ord($buffer[4]) + 1, $parent, $exclusive);
 
                                 $buffer = \substr($buffer, 5);
                                 $length -= 5;
@@ -927,21 +935,25 @@ final class Http2Driver implements HttpDriver
                                 $buffer .= yield;
                             }
 
-                            $dependency = \unpack("N", $buffer)[1];
-                            if ($exclusive = $dependency & 0x80000000) {
-                                $dependency &= 0x7fffffff;
+                            $parent = \unpack("N", $buffer)[1];
+                            if ($exclusive = $parent & 0x80000000) {
+                                $parent &= 0x7fffffff;
                             }
 
-                            $priority = \ord($buffer[4]);
+                            $weight = \ord($buffer[4]) + 1;
                             $buffer = \substr($buffer, 5);
 
-                            if ($id === 0 || $dependency === $id) {
+                            if ($id === 0 || $parent === $id) {
                                 throw new Http2ConnectionException("Invalid dependency ID", self::PROTOCOL_ERROR);
                             }
 
                             if (!isset($this->streams[$id])) {
-                                if ($id === 0 || !($id & 1) || $this->remainingStreams-- <= 0) {
+                                if ($id === 0 || !($id & 1)) {
                                     throw new Http2ConnectionException("Invalid stream ID", self::PROTOCOL_ERROR);
+                                }
+
+                                if ($this->remainingStreams-- <= 0) {
+                                    throw new Http2ConnectionException("Too many open streams", self::PROTOCOL_ERROR);
                                 }
 
                                 if ($id <= $this->remoteStreamId) {
@@ -950,7 +962,7 @@ final class Http2Driver implements HttpDriver
 
                                 // Open a new stream if the ID has not been seen before, but do not set
                                 // $this->remoteStreamId. That will be set once the headers are received.
-                                $this->streams[$id] = new Http2Stream($maxBodySize, $this->initialWindowSize);
+                                $this->streams[$id] = new Http2Stream($id, $maxBodySize, $this->initialWindowSize);
                             }
 
                             $stream = $this->streams[$id];
@@ -959,8 +971,7 @@ final class Http2Driver implements HttpDriver
                                 throw new Http2ConnectionException("Headers not complete", self::PROTOCOL_ERROR);
                             }
 
-                            $stream->dependency = $dependency;
-                            $stream->priority = $priority;
+                            $stream->priority->update($weight, $parent, $exclusive);
 
                             continue 2;
 
@@ -1292,7 +1303,9 @@ final class Http2Driver implements HttpDriver
                                 $uri,
                                 $headers,
                                 null,
-                                "2.0"
+                                "2.0",
+                                null,
+                                $stream->priority
                             );
 
                             $this->streamIdMap[\spl_object_hash($request)] = $id;
@@ -1355,7 +1368,8 @@ final class Http2Driver implements HttpDriver
                             $headers,
                             $body,
                             "2.0",
-                            $trailers
+                            $trailers,
+                            $stream->priority
                         );
 
                         $this->streamIdMap[\spl_object_hash($request)] = $id;

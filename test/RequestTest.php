@@ -5,12 +5,13 @@ namespace Amp\Http\Server\Test;
 use Amp\ByteStream\InMemoryStream;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Server\Driver\Client;
+use Amp\Http\Server\Driver\Priority;
 use Amp\Http\Server\MissingAttributeError;
 use Amp\Http\Server\Request;
-use Amp\PHPUnit\TestCase;
+use Amp\PHPUnit\AsyncTestCase;
 use League\Uri\Http;
 
-class RequestTest extends TestCase
+class RequestTest extends AsyncTestCase
 {
     public function testGetClient()
     {
@@ -180,5 +181,22 @@ class RequestTest extends TestCase
         $this->assertCount(1, $request->getCookies());
         $this->assertNotNull($cookie = $request->getCookie('foo'));
         $this->assertSame('', $cookie->getValue());
+    }
+
+    public function testPriorityUpdate()
+    {
+        $client = $this->createMock(Client::class);
+        $priority = new Priority(3);
+
+        $request = new Request($client, 'GET', Http::createFromString('/'), [], null, '2.0', null, $priority);
+
+        $callback = $this->createCallback(2);
+        $callback->method('__invoke')
+            ->withConsecutive([3, 256, 1, true], [3, 1, 5, false]);
+
+        $request->onPriorityUpdate($callback);
+
+        $priority->update(256, 1, true);
+        $priority->update(1, 5, false);
     }
 }

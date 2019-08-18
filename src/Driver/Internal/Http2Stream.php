@@ -2,6 +2,9 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
+use Amp\Deferred;
+use Amp\Http\Server\Driver\Priority;
+use Amp\Promise;
 use Amp\Struct;
 
 /**
@@ -34,10 +37,10 @@ final class Http2Stream
     /** @var int */
     public $clientWindow;
 
-    /** @var \Amp\Promise|null */
+    /** @var Promise|null */
     public $pendingResponse;
 
-    /** @var \Amp\Promise|null */
+    /** @var Promise|null */
     public $pendingWrite;
 
     /** @var string */
@@ -46,20 +49,18 @@ final class Http2Stream
     /** @var int */
     public $state;
 
-    /** @var \Amp\Deferred|null */
+    /** @var Deferred|null */
     public $deferred;
 
-    /** @var int Integer between 0 and 255 */
-    public $priority = 0;
-
-    /** @var int */
-    public $dependency = 0;
+    /** @var Priority */
+    public $priority;
 
     /** @var int|null */
     public $expectedLength;
 
-    public function __construct(int $serverSize, int $clientSize, int $state = self::OPEN)
+    public function __construct(int $id, int $serverSize, int $clientSize, int $state = self::OPEN)
     {
+        $this->priority = new Priority($id);
         $this->serverWindow = $serverSize;
         $this->maxBodySize = $serverSize;
         $this->clientWindow = $clientSize;
