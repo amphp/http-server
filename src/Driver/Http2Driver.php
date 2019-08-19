@@ -1091,7 +1091,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             if ($id > $this->remoteStreamId) {
-                                throw new Http2ConnectionException("Frame ID already used", self::PROTOCOL_ERROR);
+                                throw new Http2ConnectionException("Frame ID does not exist", self::PROTOCOL_ERROR);
                             }
 
                             while (\strlen($buffer) < 4) {
