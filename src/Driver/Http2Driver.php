@@ -475,6 +475,7 @@ final class Http2Driver implements HttpDriver
         ], \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), $headers);
 
         $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
+        $this->remoteStreamId = \max($id, $this->remoteStreamId);
         $request = new Request($this->client, "GET", $uri, $headers, null, "2.0");
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
@@ -485,6 +486,7 @@ final class Http2Driver implements HttpDriver
         );
 
         $headers = \pack("N", $id) . $this->table->encode($headers);
+
         if (\strlen($headers) >= $this->maxFrameSize) {
             $split = \str_split($headers, $this->maxFrameSize);
             $headers = \array_shift($split);
@@ -492,9 +494,9 @@ final class Http2Driver implements HttpDriver
 
             $headers = \array_pop($split);
             foreach ($split as $msgPart) {
-                $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $streamId);
+                $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $id);
             }
-            $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $streamId);
+            $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $id);
         } else {
             $this->writeFrame($headers, self::PUSH_PROMISE, self::END_HEADERS, $streamId);
         }
