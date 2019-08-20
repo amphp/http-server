@@ -6,6 +6,7 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Http\HPack;
+use Amp\Http\Message;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\Driver\HttpDriver;
@@ -84,11 +85,17 @@ class Http2DriverTest extends HttpDriverTest
                 }
             }
 
+            /** @var Request $request */
             $this->assertInstanceOf(Request::class, $request);
 
-            /** @var \Amp\Http\Server\Request $request */
-            $body = Promise\wait($request->getBody()->buffer());
-            $trailers = Promise\wait($request->getTrailers());
+            $body = yield $request->getBody()->buffer();
+            $trailers = $request->getTrailers();
+
+            if ($trailers !== null) {
+                $trailers = yield $trailers->awaitMessage();
+                /** @var $trailers Message */
+                $this->assertInstanceOf(Message::class, $trailers);
+            }
 
             $headers = $request->getHeaders();
             foreach ($headers as $header => $value) {
@@ -105,7 +112,7 @@ class Http2DriverTest extends HttpDriverTest
             $this->assertSame($expectations["port"] ?? 80, $request->getUri()->getPort() ?: $defaultPort, "uriPort mismatch");
             $this->assertSame($expectations["host"], $request->getUri()->getHost(), "uriHost mismatch");
             $this->assertSame($expectations["body"], $body, "body mismatch");
-            $this->assertSame($expectations["trailers"] ?? [], $trailers->getHeaders());
+            $this->assertSame($expectations["trailers"] ?? [], $trailers ? $trailers->getHeaders() : []);
         }
     }
 
@@ -164,7 +171,7 @@ class Http2DriverTest extends HttpDriverTest
             ":scheme" => ["http"],
             ":method" => ["GET"],
             "te" => ["trailers"],
-            "trailers" => ["expires"],
+            "trailer" => ["expires"],
         ];
 
         $msg = self::packFrame(\pack("N", 100), Http2Driver::WINDOW_UPDATE, Http2Driver::NOFLAG);
@@ -179,7 +186,7 @@ class Http2DriverTest extends HttpDriverTest
             "method" => "GET",
             "uri" => "/foo",
             "host" => "localhost",
-            "headers" => ["trailers" => ["expires"]],
+            "headers" => ["te" => ["trailers"], "trailer" => ["expires"]],
             "body" => "ab",
             "trailers" => ["expires" => ["date"]],
         ];
@@ -579,7 +586,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $emitter->emit("{data}");
 
-        Promise\wait($writer); // Will throw if the writer is not complete.
+        yield $writer; // Will throw if the writer is not complete.
     }
 
     public function testPush()
@@ -616,9 +623,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $this->assertInstanceOf(Request::class, $requests[0]);
 
-        $writer = $driver->write($requests[0], $response);
-
-        Promise\wait($writer);
+        yield $driver->write($requests[0], $response);
 
         $paths = ["/base", "/absolute/path", "/base/relative/path", "/base/path/with/query"];
 

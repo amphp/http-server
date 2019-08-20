@@ -467,12 +467,7 @@ final class Http2Driver implements HttpDriver
             $path .= "?" . $query;
         }
 
-        $headers = \array_merge([
-            ":authority" => [$uri->getAuthority()],
-            ":scheme"    => [$uri->getScheme()],
-            ":path"      => [$path],
-            ":method"    => ["GET"],
-        ], \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), $headers);
+        $headers = \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT);
 
         $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
         $this->remoteStreamId = \max($id, $this->remoteStreamId);
@@ -484,6 +479,13 @@ final class Http2Driver implements HttpDriver
             $this->initialWindowSize,
             Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
         );
+
+        $headers = \array_merge([
+            ":authority" => [$uri->getAuthority()],
+            ":scheme"    => [$uri->getScheme()],
+            ":path"      => [$path],
+            ":method"    => ["GET"],
+        ], $headers);
 
         $headers = \pack("N", $id) . $this->table->encode($headers);
 
@@ -1245,7 +1247,7 @@ final class Http2Driver implements HttpDriver
                             throw new Http2StreamException("Shutting down", $id, self::REFUSED_STREAM);
                         }
 
-                        if (!isset($pseudo[":method"], $pseudo[":path"], $pseudo[":scheme"])
+                        if (!isset($pseudo[":method"], $pseudo[":path"], $pseudo[":scheme"], $pseudo[":authority"])
                             || isset($headers["connection"])
                             || $pseudo[":path"] === ''
                             || (isset($headers["te"]) && \implode($headers["te"]) !== "trailers")
@@ -1255,8 +1257,8 @@ final class Http2Driver implements HttpDriver
 
                         $method = $pseudo[":method"];
                         $target = $pseudo[":path"];
-                        $scheme = $pseudo[":scheme"] ?? ($this->client->isEncrypted() ? "https" : "http");
-                        $host = $pseudo[":authority"] ?? "";
+                        $scheme = $pseudo[":scheme"];
+                        $host = $pseudo[":authority"];
                         $query = null;
 
                         if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\])(?::([1-9]\d*))?$#i", $host, $matches)) {

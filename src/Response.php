@@ -13,8 +13,6 @@ use function Amp\call;
 
 final class Response extends Message
 {
-
-
     /** @var InputStream */
     private $body;
 
@@ -144,6 +142,10 @@ final class Response extends Message
      */
     public function setHeader(string $name, $value): void
     {
+        if (($name[0] ?? ":") === ":") {
+            throw new \Error("Header name cannot be empty or start with a colon (:)");
+        }
+
         parent::setHeader($name, $value);
 
         if (\stripos($name, "set-cookie") === 0) {
@@ -161,6 +163,10 @@ final class Response extends Message
      */
     public function addHeader(string $name, $value): void
     {
+        if (($name[0] ?? ":") === ":") {
+            throw new \Error("Header name cannot be empty or start with a colon (:)");
+        }
+
         parent::addHeader($name, $value);
 
         if (\stripos($name, "set-cookie") === 0) {
@@ -354,7 +360,7 @@ final class Response extends Message
     {
         \assert((function (array $headers) {
             foreach ($headers as $name => $header) {
-                if ($name[0] === ":" || !\strncasecmp("host", $name, 4)) {
+                if (($name[0] ?? ":") === ":" || !\strncasecmp("host", $name, 4)) {
                     return false;
                 }
             }
