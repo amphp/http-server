@@ -876,18 +876,18 @@ final class Http2Driver implements HttpDriver
                                     $buffer .= yield;
                                 }
 
-                                $dependency = \unpack("N", $buffer)[1];
+                                $parent = \unpack("N", $buffer)[1];
 
-                                if ($exclusive = $dependency & 0x80000000) {
-                                    $dependency &= 0x7fffffff;
+                                if ($exclusive = $parent & 0x80000000) {
+                                    $parent &= 0x7fffffff;
                                 }
 
-                                if ($id === 0 || $dependency === $id) {
+                                if ($id === 0 || $parent === $id) {
                                     throw new Http2ConnectionException("Invalid dependency ID", self::PROTOCOL_ERROR);
                                 }
 
-                                $stream->dependency = $dependency;
-                                $stream->priority = \ord($buffer[4]);
+                                $stream->dependency = $parent;
+                                $stream->weight = \ord($buffer[4]) + 1;
 
                                 $buffer = \substr($buffer, 5);
                                 $length -= 5;
@@ -929,15 +929,15 @@ final class Http2Driver implements HttpDriver
                                 $buffer .= yield;
                             }
 
-                            $dependency = \unpack("N", $buffer)[1];
-                            if ($exclusive = $dependency & 0x80000000) {
-                                $dependency &= 0x7fffffff;
+                            $parent = \unpack("N", $buffer)[1];
+                            if ($exclusive = $parent & 0x80000000) {
+                                $parent &= 0x7fffffff;
                             }
 
-                            $priority = \ord($buffer[4]);
+                            $weight = \ord($buffer[4]) + 1;
                             $buffer = \substr($buffer, 5);
 
-                            if ($id === 0 || $dependency === $id) {
+                            if ($id === 0 || $parent === $id) {
                                 throw new Http2ConnectionException("Invalid dependency ID", self::PROTOCOL_ERROR);
                             }
 
@@ -961,8 +961,8 @@ final class Http2Driver implements HttpDriver
                                 throw new Http2ConnectionException("Headers not complete", self::PROTOCOL_ERROR);
                             }
 
-                            $stream->dependency = $dependency;
-                            $stream->priority = $priority;
+                            $stream->dependency = $parent;
+                            $stream->weight = $weight;
 
                             continue 2;
 

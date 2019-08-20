@@ -49,8 +49,8 @@ final class Http2Stream
     /** @var \Amp\Deferred|null */
     public $deferred;
 
-    /** @var int Integer between 0 and 255 */
-    public $priority = 0;
+    /** @var int Integer between 1 and 256 */
+    public $weight = 0;
 
     /** @var int */
     public $dependency = 0;
