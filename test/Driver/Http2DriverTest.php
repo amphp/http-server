@@ -131,7 +131,7 @@ class Http2DriverTest extends HttpDriverTest
         $msg .= self::packHeader($headers, false, 1);
 
         $expectations = [
-            "protocol" => "2.0",
+            "protocol" => "2",
             "method" => "GET",
             "uri" => "/foo",
             "host" => "localhost",
@@ -153,7 +153,7 @@ class Http2DriverTest extends HttpDriverTest
         $msg .= self::packFrame("b", Http2Driver::DATA, Http2Driver::END_STREAM, 1);
 
         $expectations = [
-            "protocol" => "2.0",
+            "protocol" => "2",
             "method" => "GET",
             "uri" => "/foo",
             "host" => "localhost",
@@ -182,7 +182,7 @@ class Http2DriverTest extends HttpDriverTest
         $msg .= self::packHeader(["expires" => ["date"]], false, 1);
 
         $expectations = [
-            "protocol" => "2.0",
+            "protocol" => "2",
             "method" => "GET",
             "uri" => "/foo",
             "host" => "localhost",
@@ -277,7 +277,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser->send(Http2Driver::PREFACE);
 
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2.0");
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2");
 
         $body = "foo";
         $trailers = new Trailers(new Success(["expires" => "date"]), ["expires"]);
@@ -339,7 +339,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser->send(Http2Driver::PREFACE);
 
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2.0");
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2");
 
         $emitter = new Emitter;
         $coroutine = $driver->write($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));

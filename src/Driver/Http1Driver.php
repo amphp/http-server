@@ -482,7 +482,7 @@ final class Http1Driver implements HttpDriver
                     $headers[":scheme"] = [$uri->getScheme()];
                     $headers[":path"] = [$target];
 
-                    $protocol = "2.0";
+                    $protocol = "2";
                 }
 
                 if (!($isChunked || $contentLength)) {
