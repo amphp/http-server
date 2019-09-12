@@ -106,6 +106,13 @@ class RequestTest extends TestCase
         $request->setAttribute('foo', 'bar');
         $this->assertSame('bar', $request->getAttribute('foo'));
 
+        $request->setAttribute('bar', 'baz');
+        $this->assertSame('baz', $request->getAttribute('bar'));
+
+        $this->assertSame(['foo' => 'bar', 'bar' => 'baz'], $request->getAttributes());
+
+        $request->removeAttribute('bar');
+
         $this->expectException(MissingAttributeError::class);
         $request->getAttribute('bar');
     }

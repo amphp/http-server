@@ -353,6 +353,14 @@ final class Request extends Message
     }
 
     /**
+     * @return mixed[] An array of all request attributes in the request's mutable local storage, indexed by name.
+     */
+    public function getAttributes(): array
+    {
+        return $this->attributes;
+    }
+
+    /**
      * Check whether a variable with the given name exists in the request's mutable local storage.
      *
      * Each request has its own mutable local storage to which request handlers and middleware may read and write data.
@@ -378,6 +386,8 @@ final class Request extends Message
      * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
      *
      * @return mixed
+     *
+     * @throws MissingAttributeError If an attribute with the given name does not exist.
      */
     public function getAttribute(string $name)
     {
@@ -407,6 +417,22 @@ final class Request extends Message
     public function setAttribute(string $name, $value): void
     {
         $this->attributes[$name] = $value;
+    }
+
+    /**
+     * Remove an attribute from the request's mutable local storage.
+     *
+     * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
+     *
+     * @throws MissingAttributeError If an attribute with the given name does not exist.
+     */
+    public function removeAttribute(string $name): void
+    {
+        if (!$this->hasAttribute($name)) {
+            throw new MissingAttributeError("The requested attribute '{$name}' does not exist");
+        }
+
+        unset($this->attributes[$name]);
     }
 
     /**

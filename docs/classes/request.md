@@ -130,6 +130,10 @@ If `$cookie` value is not valid, [`\Error`](http://php.net/manual/en/class.error
 
 Removes a cookie from the request.
 
+## `getAttributes(): array`
+
+Returns an array of all the attributes stored in the request's mutable local storage.
+
 ## `hasAttribute(string $name): bool`
 
 Check whether an attribute with the given name exists in the request's mutable local storage.
@@ -147,6 +151,10 @@ Assign a variable to the request's mutable local storage.
 
 {:.note}
 > Name of the attribute should be namespaced with a vendor and package namespace, like classes.
+
+## `removeAttribute(string $name): void`
+
+Removes a variable from the request's mutable local storage.
 
 ## `getTrailers(): Trailers`
 
