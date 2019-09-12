@@ -28,7 +28,7 @@ class Http1DriverTest extends HttpDriverTest
     /**
      * @dataProvider provideUnparsableRequests
      */
-    public function testBadRequestBufferedParse(string $unparsable, int $errCode, string $errMsg, Options $options)
+    public function testBadRequestBufferedParse(string $unparsable, int $errCode, string $errMsg, Options $options): void
     {
         $written = "";
         $writer = function (string $data) use (&$written): Promise {
@@ -60,7 +60,7 @@ class Http1DriverTest extends HttpDriverTest
     /**
      * @dataProvider provideUnparsableRequests
      */
-    public function testBadRequestIncrementalParse(string $unparsable, int $errCode, string $errMsg, Options $options)
+    public function testBadRequestIncrementalParse(string $unparsable, int $errCode, string $errMsg, Options $options): void
     {
         $written = "";
         $writer = function (string $data) use (&$written): Promise {
@@ -97,7 +97,7 @@ class Http1DriverTest extends HttpDriverTest
     /**
      * @dataProvider provideParsableRequests
      */
-    public function testBufferedRequestParse(string $msg, array $expectations)
+    public function testBufferedRequestParse(string $msg, array $expectations): \Generator
     {
         $resultEmitter = function (Request $req) use (&$request) {
             $request = $req;
@@ -125,7 +125,7 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertInstanceOf(Request::class, $request);
 
         /** @var \Amp\Http\Server\Request $request */
-        $body = Promise\wait($request->getBody()->buffer());
+        $body = yield $request->getBody()->buffer();
 
         $this->assertSame($expectations["protocol"], $request->getProtocolVersion(), "protocol mismatch");
         $this->assertSame($expectations["method"], $request->getMethod(), "method mismatch");
@@ -137,7 +137,7 @@ class Http1DriverTest extends HttpDriverTest
     /**
      * @dataProvider provideParsableRequests
      */
-    public function testIncrementalRequestParse($msg, $expectations)
+    public function testIncrementalRequestParse(string $msg, array $expectations): \Generator
     {
         $resultEmitter = function (Request $req) use (&$request) {
             $request = $req;
@@ -166,7 +166,7 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertInstanceOf(Request::class, $request);
 
         /** @var \Amp\Http\Server\Request $request */
-        $body = Promise\wait($request->getBody()->buffer());
+        $body = yield $request->getBody()->buffer();
 
         $defaultPort = $request->getUri()->getScheme() === "https" ? 443 : 80;
         $this->assertSame($expectations["protocol"], $request->getProtocolVersion(), "protocol mismatch");
@@ -177,7 +177,7 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertSame(80, $request->getUri()->getPort() ?: $defaultPort);
     }
 
-    public function testIdentityBodyParseEmit()
+    public function testIdentityBodyParseEmit(): \Generator
     {
         $originalBody = "12345";
         $length = \strlen($originalBody);
@@ -218,12 +218,12 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertInstanceOf(Request::class, $request);
 
         /** @var \Amp\Http\Server\Request $request */
-        $body = Promise\wait($request->getBody()->buffer());
+        $body = yield $request->getBody()->buffer();
 
         $this->assertSame($originalBody, $body);
     }
 
-    public function testChunkedBodyParseEmit()
+    public function testChunkedBodyParseEmit(): \Generator
     {
         $msg =
             "POST https://test.local:1337/post-endpoint HTTP/1.0\r\n" .
@@ -267,12 +267,12 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertInstanceOf(Request::class, $request);
 
         /** @var \Amp\Http\Server\Request $request */
-        $body = Promise\wait($request->getBody()->buffer());
+        $body = yield $request->getBody()->buffer();
 
         $this->assertSame($expectedBody, $body);
     }
 
-    public function provideParsableRequests()
+    public function provideParsableRequests(): array
     {
         $return = [];
 
@@ -473,7 +473,7 @@ class Http1DriverTest extends HttpDriverTest
         return $return;
     }
 
-    public function provideUnparsableRequests()
+    public function provideUnparsableRequests(): array
     {
         $return = [];
 
@@ -606,7 +606,7 @@ class Http1DriverTest extends HttpDriverTest
     /**
      * @dataProvider provideUpgradeBodySizeData
      */
-    public function testUpgradeBodySizeContentLength($data, $payload)
+    public function testUpgradeBodySizeContentLength(string $data, string $payload): \Generator
     {
         $resultEmitter = function (Request $req) use (&$request) {
             $body = $req->getBody();
@@ -635,7 +635,7 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertInstanceOf(Request::class, $request);
 
         /** @var \Amp\Http\Server\Request $request */
-        $body = Promise\wait($request->getBody()->buffer());
+        $body = yield $request->getBody()->buffer();
 
         $this->assertSame($payload, $body);
     }
@@ -655,7 +655,7 @@ class Http1DriverTest extends HttpDriverTest
         return $return;
     }
 
-    public function testPipelinedRequests()
+    public function testPipelinedRequests(): void
     {
         list($payloads, $results) = \array_map(null, ...$this->provideUpgradeBodySizeData());
 
@@ -751,7 +751,7 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertSame(3, $responses);
     }
 
-    public function verifyWrite(string $input, int $status, array $headers, string $data)
+    public function verifyWrite(string $input, int $status, array $headers, string $data): void
     {
         $actualBody = "";
         $parser = new Http1Parser(new ClientRequest("/"), static function ($chunk) use (&$actualBody) {
@@ -768,7 +768,7 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertEquals($data, $actualBody);
     }
 
-    public function testWrite()
+    public function testWrite(): void
     {
         $headers = ["test" => ["successful"]];
         $status = 200;
@@ -817,7 +817,7 @@ class Http1DriverTest extends HttpDriverTest
     }
 
     /** @dataProvider provideWriteResponses */
-    public function testResponseWrite(Request $request, Response $response, string $expectedBuffer, bool $expectedClosed)
+    public function testResponseWrite(Request $request, Response $response, string $expectedBuffer, bool $expectedClosed): \Generator
     {
         $driver = new Http1Driver(
             (new Options)->withConnectionTimeout(60),
@@ -843,13 +843,13 @@ class Http1DriverTest extends HttpDriverTest
             }
         );
 
-        Promise\wait($driver->write($request, $response));
+        yield $driver->write($request, $response);
 
         $this->assertSame($buffer, $expectedBuffer);
         $this->assertSame($closed, $expectedClosed);
     }
 
-    public function provideWriteResponses()
+    public function provideWriteResponses(): array
     {
         return [
             [
@@ -861,7 +861,7 @@ class Http1DriverTest extends HttpDriverTest
             [
                 new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
                 new Response(Status::OK, [], new InMemoryStream, new Trailers(new Success(['test' => 'value']), ['test'])),
-                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\nTrailers: test\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntrailer: test\r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
                 false,
             ],
             [
@@ -879,7 +879,7 @@ class Http1DriverTest extends HttpDriverTest
         ];
     }
 
-    public function testWriteAbortAfterHeaders()
+    public function testWriteAbortAfterHeaders(): void
     {
         $driver = new Http1Driver(
             (new Options)->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
@@ -918,7 +918,7 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertTrue($invoked);
     }
 
-    public function testHttp2Upgrade()
+    public function testHttp2Upgrade(): void
     {
         $settings = \strtr(\base64_encode(\pack("nN", 1, 1)), "+/", "-_");
         $payload = "GET /path HTTP/1.1\r\n" .
@@ -969,7 +969,7 @@ class Http1DriverTest extends HttpDriverTest
         $parser->send($payload);
     }
 
-    public function testNativeHttp2()
+    public function testNativeHttp2(): void
     {
         $options = (new Options)->withHttp2Upgrade();
 
@@ -1005,7 +1005,7 @@ class Http1DriverTest extends HttpDriverTest
         $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
     }
 
-    public function testExpect100Continue()
+    public function testExpect100Continue(): void
     {
         $received = "";
 
@@ -1044,7 +1044,7 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertSame("HTTP/1.1 100 Continue\r\n\r\n", $received);
     }
 
-    public function testTrailerHeaders()
+    public function testTrailerHeaders(): \Generator
     {
         $driver = new Http1Driver(
             new Options,

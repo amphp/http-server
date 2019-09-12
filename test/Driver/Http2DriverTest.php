@@ -60,7 +60,7 @@ class Http2DriverTest extends HttpDriverTest
     /**
      * @dataProvider provideSimpleCases
      */
-    public function testSimpleCases(string $msg, array $expectations)
+    public function testSimpleCases(string $msg, array $expectations): \Generator
     {
         $msg = Http2Driver::PREFACE . $msg;
 
@@ -258,7 +258,7 @@ class Http2DriverTest extends HttpDriverTest
         return [$driver, $parser];
     }
 
-    public function testWrite()
+    public function testWrite(): void
     {
         $buffer = "";
         $options = new Options;
@@ -320,7 +320,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->assertEquals($data, $buffer);
     }
 
-    public function testWriterAbortAfterHeaders()
+    public function testWriterAbortAfterHeaders(): void
     {
         $buffer = "";
         $options = new Options;
@@ -371,7 +371,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->assertEquals($data, $buffer);
     }
 
-    public function testPingPong()
+    public function testPingPong(): void
     {
         list($driver, $parser) = $this->setupDriver();
 
@@ -383,7 +383,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->assertEquals([["blahbleh", Http2Driver::PING, Http2Driver::ACK, 0]], $driver->frames);
     }
 
-    public function testFlowControl()
+    public function testFlowControl(): \Generator
     {
         list($driver, $parser) = $this->setupDriver(function (Request $read) use (&$request) {
             $request = $read;
@@ -544,7 +544,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->assertEquals(3, $stream);
     }
 
-    public function testClosingStreamYieldsFalseFromWriter()
+    public function testClosingStreamYieldsFalseFromWriter(): \Generator
     {
         $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
 
@@ -589,7 +589,7 @@ class Http2DriverTest extends HttpDriverTest
         yield $writer; // Will throw if the writer is not complete.
     }
 
-    public function testPush()
+    public function testPush(): \Generator
     {
         $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
 

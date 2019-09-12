@@ -5,48 +5,44 @@ namespace Amp\Http\Server\Test;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
-use Amp\Loop;
-use Amp\PHPUnit\TestCase;
+use Amp\PHPUnit\AsyncTestCase;
 use Amp\PHPUnit\TestException;
 
-class ResponseTest extends TestCase
+class ResponseTest extends AsyncTestCase
 {
-    public function testDispose()
+    public function testDispose(): void
     {
         $response = new Response;
         $response->onDispose($this->createCallback(1));
         $response = null;
     }
 
-    public function testDisposeThrowing()
+    public function testDisposeThrowing(): void
     {
+        $this->expectException(TestException::class);
+
         $response = new Response;
         $response->onDispose(function () {
             throw new TestException;
         });
         $response = null;
-
-        $this->expectException(TestException::class);
-        Loop::run(function () {
-            Loop::stop();
-        });
     }
 
-    public function testSetBodyWithConvertibleType()
+    public function testSetBodyWithConvertibleType(): void
     {
         $response = new Response;
         $response->setBody(42);
         $this->assertTrue(true);
     }
 
-    public function testSetBodyWithWrongType()
+    public function testSetBodyWithWrongType(): void
     {
         $response = new Response;
         $this->expectException(\TypeError::class);
         $response->setBody(new \stdClass);
     }
 
-    public function testCookies()
+    public function testCookies(): void
     {
         $request = new Response(Status::OK, [
             'set-cookie' => new ResponseCookie('foo', 'bar'),
@@ -71,19 +67,19 @@ class ResponseTest extends TestCase
         $this->assertSame('', $cookie->getValue());
     }
 
-    public function testStatusCodeOutOfRangeBelow()
+    public function testStatusCodeOutOfRangeBelow(): void
     {
         $this->expectException(\Error::class);
         new Response(99);
     }
 
-    public function testStatusCodeOutOfRangeAbove()
+    public function testStatusCodeOutOfRangeAbove(): void
     {
         $this->expectException(\Error::class);
         new Response(600);
     }
 
-    public function testUndoUpgrade()
+    public function testUndoUpgrade(): void
     {
         $response = new Response;
         $this->assertNull($response->getUpgradeCallable());

@@ -4,15 +4,14 @@ namespace Amp\Http\Server\Test;
 
 use Amp\ByteStream\InMemoryStream;
 use Amp\Http\Server\RequestBody;
-use Amp\PHPUnit\TestCase;
-use Amp\Promise;
+use Amp\PHPUnit\AsyncTestCase;
 
-class RequestBodyTest extends TestCase
+class RequestBodyTest extends AsyncTestCase
 {
-    public function testIncreaseWithoutCallback()
+    public function testIncreaseWithoutCallback(): \Generator
     {
         $body = new RequestBody(new InMemoryStream("foobar"));
         $body->increaseSizeLimit(1);
-        $this->assertSame("foobar", Promise\wait($body->buffer()));
+        $this->assertSame("foobar", yield $body->buffer());
     }
 }
