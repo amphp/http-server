@@ -31,7 +31,8 @@ final class Http2Driver implements HttpDriver
     public const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
     public const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
 
-    public const MAX_INCREMENT = (1 << 31) - 1;
+    private const MINIMUM_WINDOW = (1 << 15) - 1;
+    private const MAX_INCREMENT = (1 << 16) - 1;
 
     private const HEADER_NAME_REGEX = '/^[\x21-\x40\x5b-\x7e]+$/';
 
@@ -784,23 +785,6 @@ final class Http2Driver implements HttpDriver
                                 throw new Http2StreamException("Max body size exceeded", $id, self::CANCEL);
                             }
 
-                            if ($stream->serverWindow <= 0 && ($increment = $stream->maxBodySize - $stream->received)) {
-                                if ($increment > self::MAX_INCREMENT) {
-                                    $increment = self::MAX_INCREMENT;
-                                }
-
-                                $stream->serverWindow += $increment;
-
-                                $this->writeFrame(\pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG, $id);
-                            }
-
-                            if ($this->serverWindow <= 0) {
-                                $increment = \max($stream->serverWindow, $maxBodySize);
-                                $this->serverWindow += $increment;
-
-                                $this->writeFrame(\pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG);
-                            }
-
                             while (\strlen($buffer) < $length) {
                                 /* it is fine to just .= the $body as $length < 2^14 */
                                 $buffer .= yield;
@@ -808,13 +792,44 @@ final class Http2Driver implements HttpDriver
 
                             $body = \substr($buffer, 0, $length - $padding);
                             $buffer = \substr($buffer, $length);
+
+                            if ($this->serverWindow <= self::MINIMUM_WINDOW) {
+                                $this->serverWindow += self::MAX_INCREMENT;
+                                $this->writeFrame(\pack("N", self::MAX_INCREMENT), self::WINDOW_UPDATE, self::NOFLAG);
+                            }
+
+                            // Stream may close while reading body
+                            if (!isset($this->bodyEmitters[$id])) {
+                                continue 2;
+                            }
+
                             if ($body !== "") {
                                 if (\is_int($stream->expectedLength)) {
                                     $stream->expectedLength -= \strlen($body);
                                 }
 
-                                if (isset($this->bodyEmitters[$id])) { // Stream may close while reading body chunk.
-                                    yield $this->bodyEmitters[$id]->emit($body);
+                                $promise = $this->bodyEmitters[$id]->emit($body);
+
+                                if ($stream->serverWindow <= self::MINIMUM_WINDOW) {
+                                    $promise->onResolve(function (?\Throwable $exception) use ($id): void {
+                                        if ($exception || !isset($this->streams[$id])) {
+                                            return;
+                                        }
+
+                                        $stream = $this->streams[$id];
+
+                                        if ($stream->state & Http2Stream::REMOTE_CLOSED || $stream->serverWindow > self::MINIMUM_WINDOW) {
+                                            return;
+                                        }
+
+                                        $increment = \min($stream->maxBodySize - $stream->received - $stream->serverWindow, self::MAX_INCREMENT);
+                                        if ($increment <= 0) {
+                                            return;
+                                        }
+                                        $stream->serverWindow += $increment;
+
+                                        $this->writeFrame(\pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG, $id);
+                                    });
                                 }
                             }
 
