@@ -92,7 +92,7 @@ class Http2DriverTest extends HttpDriverTest
             $trailers = $request->getTrailers();
 
             if ($trailers !== null) {
-                $trailers = yield $trailers->awaitMessage();
+                $trailers = yield $trailers->await();
                 /** @var $trailers Message */
                 $this->assertInstanceOf(Message::class, $trailers);
             }
