@@ -235,7 +235,7 @@ final class Http1Driver implements HttpDriver
                 $buffer .= "0\r\n";
 
                 if ($trailers !== null) {
-                    $trailers = yield $trailers->awaitMessage();
+                    $trailers = yield $trailers->await();
                     \assert($trailers instanceof Message);
                     $buffer .= Rfc7230::formatHeaders($trailers->getHeaders());
                 }

@@ -11,22 +11,22 @@ final class Trailers
 {
     /** @see https://tools.ietf.org/html/rfc7230#section-4.1.2 */
     public const DISALLOWED_TRAILERS = [
-        "authorization" => 1,
-        "content-encoding" => 1,
-        "content-length" => 1,
-        "content-range" => 1,
-        "content-type" => 1,
-        "cookie" => 1,
-        "expect" => 1,
-        "host" => 1,
-        "pragma" => 1,
-        "proxy-authenticate" => 1,
-        "proxy-authorization" => 1,
-        "range" => 1,
-        "te" => 1,
-        "trailer" => 1,
-        "transfer-encoding" => 1,
-        "www-authenticate" => 1,
+        "authorization" => true,
+        "content-encoding" => true,
+        "content-length" => true,
+        "content-range" => true,
+        "content-type" => true,
+        "cookie" => true,
+        "expect" => true,
+        "host" => true,
+        "pragma" => true,
+        "proxy-authenticate" => true,
+        "proxy-authorization" => true,
+        "range" => true,
+        "te" => true,
+        "trailer" => true,
+        "transfer-encoding" => true,
+        "www-authenticate" => true,
     ];
 
     /** @var string[] */
@@ -37,9 +37,8 @@ final class Trailers
 
     /**
      * @param Promise<string[]|string[][]> $promise Resolved with the trailer values.
-     * @param string[]            $fields Expected header fields. May be empty, but if provided, the array of headers
-     *                                    used to resolve the given promise must contain exactly the fields given in
-     *                                    this array.
+     * @param string[]                     $fields Expected header fields. May be empty, but if provided, the array of
+     *     headers used to resolve the given promise must contain exactly the fields given in this array.
      *
      * @throws InvalidHeaderException If the fields list contains a disallowed field.
      */
@@ -95,7 +94,7 @@ final class Trailers
     /**
      * @return Promise<Message>
      */
-    public function awaitMessage(): Promise
+    public function await(): Promise
     {
         return $this->headers;
     }
