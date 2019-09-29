@@ -213,6 +213,12 @@ final class RemoteClient implements Client
     }
 
     /** @inheritdoc */
+    public function isUnix(): bool
+    {
+        return $this->getRemoteAddress()->getPort() === null;
+    }
+
+    /** @inheritdoc */
     public function isEncrypted(): bool
     {
         return $this->tlsInfo !== null;
