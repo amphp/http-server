@@ -9,9 +9,9 @@ use Amp\Socket\TlsInfo;
 
 interface Client
 {
-    const CLOSED_RD = 1;
-    const CLOSED_WR = 2;
-    const CLOSED_RDWR = 3;
+    public const CLOSED_RD = 1;
+    public const CLOSED_WR = 2;
+    public const CLOSED_RDWR = 3;
 
     /**
      * Listen for requests on the client and parse them using the given HTTP driver.
@@ -62,6 +62,11 @@ interface Client
     public function getLocalAddress(): SocketAddress;
 
     /**
+     * @return bool `true` if the client is connected via a unix socket
+     */
+    public function isUnix(): bool;
+
+    /**
      * @return bool `true` if the client is encrypted, `false` if plaintext.
      */
     public function isEncrypted(): bool;
@@ -100,7 +105,7 @@ interface Client
      *
      * @param int $timeout Number of milliseconds before the connection is forcefully closed.
      *
-     * @return \Amp\Promise Resolved once any pending responses have been sent to the client.
+     * @return Promise Resolved once any pending responses have been sent to the client.
      */
     public function stop(int $timeout): Promise;
 }
