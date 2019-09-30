@@ -11,6 +11,7 @@ final class Options
 
     private $concurrentStreamLimit = 256;
     private $framesPerSecondLimit = 1024;
+    private $controlFrameLimit = 16;
     private $minimumAverageFrameSize = 1024;
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
 
@@ -272,7 +273,7 @@ final class Options
 
     /**
      * @param int $frames Maximum number of HTTP/2 frames per second before the average length minimum is enforced.
-     *     Default is 60.
+     *     Default is 1024.
      *
      * @return self
      *
@@ -288,6 +289,36 @@ final class Options
 
         $new = clone $this;
         $new->framesPerSecondLimit = $frames;
+
+        return $new;
+    }
+
+    /**
+     * @return int Maximum number of HTTP/2 control frames a connection can receive between header or data frames.
+     */
+    public function getControlFrameLimit(): int
+    {
+        return $this->controlFrameLimit;
+    }
+
+    /**
+     * @param int $frames Maximum number of HTTP/2 control frames a connection can receive between header or data
+     *                    frames before the connection is closed. Default is 16.
+     *
+     * @return self
+     *
+     * @throws \Error If the frame count is less than 1.
+     */
+    public function withControlFrameLimit(int $frames): self
+    {
+        if ($frames < 1) {
+            throw new \Error(
+                "Max number of HTTP/2 control frames between header or data frames must be greater than zero"
+            );
+        }
+
+        $new = clone $this;
+        $new->controlFrameLimit = $frames;
 
         return $new;
     }

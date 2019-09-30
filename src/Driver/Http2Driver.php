@@ -620,9 +620,11 @@ final class Http2Driver implements HttpDriver
         $maxHeaderSize = $this->options->getHeaderSizeLimit();
         $maxBodySize = $this->options->getBodySizeLimit();
         $maxFramesPerSecond = $this->options->getFramesPerSecondLimit();
+        $controlFrameLimit = $this->options->getControlFrameLimit();
         $minAverageFrameSize = $this->options->getMinimumAverageFrameSize();
 
         $frameCount = 0;
+        $controlFrameCount = 0;
         $bytesReceived = 0;
         $lastReset = $this->timeReference->getCurrentTime();
         $continuation = false;
@@ -706,21 +708,6 @@ final class Http2Driver implements HttpDriver
             }
 
             while (true) {
-                if (++$frameCount === $maxFramesPerSecond) {
-                    $now = $this->timeReference->getCurrentTime();
-                    if ($lastReset === $now && $bytesReceived / $frameCount < $minAverageFrameSize) {
-                        throw new Http2ConnectionException(
-                            $this->client,
-                            "Average frame size too low",
-                            self::ENHANCE_YOUR_CALM
-                        );
-                    }
-
-                    $lastReset = $now;
-                    $frameCount = 0;
-                    $bytesReceived = 0;
-                }
-
                 while (\strlen($buffer) < 9) {
                     $buffer .= yield;
                 }
@@ -742,6 +729,41 @@ final class Http2Driver implements HttpDriver
                 }
 
                 $buffer = \substr($buffer, 9);
+
+                if (++$frameCount >= $maxFramesPerSecond) {
+                    $now = $this->timeReference->getCurrentTime();
+                    if ($lastReset === $now && $bytesReceived / $frameCount < $minAverageFrameSize) {
+                        throw new Http2ConnectionException(
+                            $this->client,
+                            "Average frame size too low",
+                            self::ENHANCE_YOUR_CALM
+                        );
+                    }
+
+                    $lastReset = $now;
+                    $frameCount = 0;
+                    $bytesReceived = 0;
+                }
+
+                switch ($type) {
+                    case self::DATA:
+                    case self::HEADERS:
+                    case self::CONTINUATION:
+                        $controlFrameCount = 0;
+                        break;
+
+                    default:
+                        ++$controlFrameCount;
+                        break;
+                }
+
+                if ($controlFrameCount > $controlFrameLimit) {
+                    throw new Http2ConnectionException(
+                        $this->client,
+                        "Received too many control frames without data frames",
+                        self::ENHANCE_YOUR_CALM
+                    );
+                }
 
                 // Fail if expecting a continuation frame and anything else is received.
                 if ($continuation && $type !== self::CONTINUATION) {

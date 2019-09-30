@@ -179,6 +179,24 @@ class OptionsTest extends TestCase
         $options->withFramesPerSecondLimit(0);
     }
 
+    public function testWithControlFrameLimit(): void
+    {
+        $options = new Options;
+
+        // default
+        $this->assertSame(16, $options->getControlFrameLimit());
+
+        // change
+        $this->assertSame(1, $options->withControlFrameLimit(1)->getControlFrameLimit());
+
+        // change doesn't affect original
+        $this->assertSame(16, $options->getControlFrameLimit());
+
+        // invalid
+        $this->expectException(\Error::class);
+        $options->withControlFrameLimit(0);
+    }
+
     public function testWithChunkSize(): void
     {
         $options = new Options;
