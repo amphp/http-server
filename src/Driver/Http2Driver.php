@@ -80,24 +80,24 @@ final class Http2Driver implements HttpDriver
 
     // Headers to take over from original request if present
     private const PUSH_PROMISE_INTERSECT = [
-        "accept" => 1,
-        "accept-charset" => 1,
-        "accept-encoding" => 1,
-        "accept-language" => 1,
-        "authorization" => 1,
-        "cache-control" => 1,
-        "cookie" => 1,
-        "date" => 1,
-        "host" => 1,
-        "user-agent" => 1,
-        "via" => 1,
+        "accept" => true,
+        "accept-charset" => true,
+        "accept-encoding" => true,
+        "accept-language" => true,
+        "authorization" => true,
+        "cache-control" => true,
+        "cookie" => true,
+        "date" => true,
+        "host" => true,
+        "user-agent" => true,
+        "via" => true,
     ];
 
     private const KNOWN_PSEUDO_HEADERS = [
-        ":method" => 1,
-        ":authority" => 1,
-        ":path" => 1,
-        ":scheme" => 1,
+        ":method" => true,
+        ":authority" => true,
+        ":path" => true,
+        ":scheme" => true,
     ];
 
     /** @var string 64-bit for ping. */
