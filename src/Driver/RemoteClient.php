@@ -452,7 +452,7 @@ final class RemoteClient implements Client
     private function write(string $data, bool $close = false): Promise
     {
         if ($this->status & self::CLOSED_WR) {
-            return new Failure(new ClientException("The client disconnected"));
+            return new Failure(new ClientException($this, "Client socket closed"));
         }
 
         if (!$this->writeDeferred) {
@@ -460,7 +460,7 @@ final class RemoteClient implements Client
 
             if ($bytesWritten === false) {
                 $this->close();
-                return new Failure(new ClientException("The client disconnected"));
+                return new Failure(new ClientException($this, "Client socket closed"));
             }
 
             if ($bytesWritten !== 0) {
