@@ -31,6 +31,7 @@ final class Http2Driver implements HttpDriver
     public const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
     public const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
 
+    private const SMALL_WINDOW_UPDATE_THRESHOLD = 1024;
     private const MINIMUM_WINDOW = (1 << 15) - 1;
     private const MAX_INCREMENT = (1 << 16) - 1;
 
@@ -621,10 +622,12 @@ final class Http2Driver implements HttpDriver
     {
         $maxHeaderSize = $this->options->getHeaderSizeLimit();
         $maxBodySize = $this->options->getBodySizeLimit();
+        $timeout = $this->options->getConnectionTimeout();
 
         $totalBytesReceivedSinceReset = 0;
         $payloadBytesReceivedSinceReset = 0;
-        $lastReset = $this->timeReference->getCurrentTime();
+        $smallWindowUpdates = 0;
+        $lastReset = $lastStreamOpening = $this->timeReference->getCurrentTime();
         $continuation = false;
 
         try {
@@ -721,6 +724,14 @@ final class Http2Driver implements HttpDriver
                     $lastReset = $now;
                     $totalBytesReceivedSinceReset = 0;
                     $payloadBytesReceivedSinceReset = 0;
+                }
+
+                if (empty($this->streams) && $lastStreamOpening < $now - $timeout) {
+                    throw new Http2ConnectionException(
+                        $this->client,
+                        "Too much time elapsed with non-payload frames",
+                        self::ENHANCE_YOUR_CALM
+                    );
                 }
 
                 while (\strlen($buffer) < 9) {
@@ -933,6 +944,9 @@ final class Http2Driver implements HttpDriver
 
                             // Headers frames can be received on previously opened streams (trailer headers).
                             $this->remoteStreamId = \max($id, $this->remoteStreamId);
+
+                            // Only note stream opening time when headers frame is received.
+                            $lastStreamOpening = $now;
 
                             $padding = 0;
 
@@ -1274,6 +1288,14 @@ final class Http2Driver implements HttpDriver
 
                             $windowSize = \unpack("N", $buffer)[1];
                             $buffer = \substr($buffer, 4);
+
+                            if ($windowSize < self::SMALL_WINDOW_UPDATE_THRESHOLD && ++$smallWindowUpdates > 10) {
+                                throw new Http2ConnectionException(
+                                    $this->client,
+                                    "Too many small window updates",
+                                    self::ENHANCE_YOUR_CALM
+                                );
+                            }
 
                             if ($id) {
                                 if (!isset($this->streams[$id])) {
@@ -1641,6 +1663,7 @@ final class Http2Driver implements HttpDriver
             }
         } catch (Http2ConnectionException $exception) {
             $this->shutdown(null, $exception);
+        } finally {
             $this->client->close();
         }
     }
