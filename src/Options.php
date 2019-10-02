@@ -10,8 +10,7 @@ final class Options
     private $connectionTimeout = 15; // seconds
 
     private $concurrentStreamLimit = 256;
-    private $framesPerSecondLimit = 1024;
-    private $minimumAverageFrameSize = 1024;
+
     private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
 
     private $bodySizeLimit = 131072;
@@ -153,7 +152,7 @@ final class Options
 
     /**
      * @param int $bytes Default maximum request body size in bytes. Individual requests may be increased by calling
-     *     `RequestBody::increaseSizeLimit($newLimit)`. Default is 131072 (128k).
+     *                   `RequestBody::increaseSizeLimit($newLimit)`. Default is 131072 (128k).
      *
      * @return self
      *
@@ -211,7 +210,7 @@ final class Options
     }
 
     /**
-     * @param int $streams Maximum number of concurrent HTTP/2 streams. Default is 20.
+     * @param int $streams Maximum number of concurrent HTTP/2 streams. Default is 256.
      *
      * @return self
      *
@@ -232,67 +231,6 @@ final class Options
     }
 
     /**
-     * @return int Minimum average frame size required if more than the maximum number of frames per second are
-     *     received on an HTTP/2 connection.
-     */
-    public function getMinimumAverageFrameSize(): int
-    {
-        return $this->minimumAverageFrameSize;
-    }
-
-    /**
-     * @param int $size Minimum average frame size required if more than the maximum number of frames per second are
-     *     received on an HTTP/2 connection. Default is 1024 (1k).
-     *
-     * @return self
-     *
-     * @throws \Error If the size is less than 1.
-     */
-    public function withMinimumAverageFrameSize(int $size): self
-    {
-        if ($size < 1) {
-            throw new \Error(
-                "Minimum average frame size must be greater than zero"
-            );
-        }
-
-        $new = clone $this;
-        $new->minimumAverageFrameSize = $size;
-
-        return $new;
-    }
-
-    /**
-     * @return int Maximum number of HTTP/2 frames per second before the average length minimum is enforced.
-     */
-    public function getFramesPerSecondLimit(): int
-    {
-        return $this->framesPerSecondLimit;
-    }
-
-    /**
-     * @param int $frames Maximum number of HTTP/2 frames per second before the average length minimum is enforced.
-     *     Default is 60.
-     *
-     * @return self
-     *
-     * @throws \Error If the frame count is less than 1.
-     */
-    public function withFramesPerSecondLimit(int $frames): self
-    {
-        if ($frames < 1) {
-            throw new \Error(
-                "Max number of HTTP/2 frames per second setting must be greater than zero"
-            );
-        }
-
-        $new = clone $this;
-        $new->framesPerSecondLimit = $frames;
-
-        return $new;
-    }
-
-    /**
      * @return int The maximum number of bytes to read from a client per read.
      */
     public function getChunkSize(): int
@@ -302,7 +240,7 @@ final class Options
 
     /**
      * @param int $bytes The maximum number of bytes to read from a client per read. Larger numbers are better for
-     *     performance but can increase memory usage. Default is 8192 (8k).
+     *                   performance but can increase memory usage. Default is 8192 (8k).
      *
      * @return self
      *
@@ -332,7 +270,7 @@ final class Options
 
     /**
      * @param int $bytes TThe minimum number of bytes to write to a client time for streamed responses. Larger numbers
-     *     are better for performance but can increase memory usage. Default is 1024 (1k).
+     *                   are better for performance but can increase memory usage. Default is 1024 (1k).
      *
      * @return self
      *
@@ -362,7 +300,7 @@ final class Options
 
     /**
      * @param string[] $allowedMethods An array of allowed request methods. Default is GET, POST, PUT, PATCH, HEAD,
-     *     OPTIONS, DELETE.
+     *                                 OPTIONS, DELETE.
      *
      * @return self
      *
