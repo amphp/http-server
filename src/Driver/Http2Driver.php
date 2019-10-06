@@ -384,9 +384,9 @@ final class Http2Driver implements HttpDriver
     }
 
     /**
-     * @param int|null   $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no frames have
-     *                           been opened.
-     * @param \Throwable $reason
+     * @param int|null        $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no
+     *                        streams have been opened.
+     * @param \Throwable|null $reason
      *
      * @return Promise
      */
@@ -407,9 +407,9 @@ final class Http2Driver implements HttpDriver
                     }
                 }
 
+                $code = $reason ? $reason->getCode() : self::GRACEFUL_SHUTDOWN;
                 $lastId = $lastId ?? ($id ?? 0);
-
-                yield $this->writeFrame(\pack("NN", $lastId, $reason->getCode()), self::GOAWAY, self::NOFLAG);
+                yield $this->writeFrame(\pack("NN", $lastId, $code), self::GOAWAY, self::NOFLAG);
 
                 yield $promises;
 
@@ -431,6 +431,8 @@ final class Http2Driver implements HttpDriver
                         $this->releaseStream($id, $reason);
                     }
                 }
+
+                $this->client->close();
             }
         });
     }
@@ -1224,8 +1226,7 @@ final class Http2Driver implements HttpDriver
                                 $this->logger->notice($message);
                             }
 
-                            yield $this->shutdown($lastId, new Http2ConnectionException($this->client, $message, $error));
-                            $this->client->close();
+                            $this->shutdown($lastId, new Http2ConnectionException($this->client, $message, $error));
 
                             return;
 
@@ -1633,8 +1634,7 @@ final class Http2Driver implements HttpDriver
                 }
             }
         } catch (Http2ConnectionException $exception) {
-            yield $this->shutdown(null, $exception);
-            $this->client->close();
+            $this->shutdown(null, $exception);
         }
     }
 
