@@ -642,7 +642,7 @@ class Http2DriverTest extends HttpDriverTest
         $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
 
         $client = $this->createClientMock();
-        $client->expects($this->once())
+        $client->expects($this->atLeastOnce())
             ->method('close');
 
         $lastWrite = null;
@@ -677,7 +677,7 @@ class Http2DriverTest extends HttpDriverTest
         $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
 
         $client = $this->createClientMock();
-        $client->expects($this->once())
+        $client->expects($this->atLeastOnce())
             ->method('close');
 
         $lastWrite = null;
