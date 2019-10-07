@@ -31,7 +31,6 @@ final class Http2Driver implements HttpDriver
     public const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
     public const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
 
-    private const SMALL_WINDOW_UPDATE_THRESHOLD = 1024;
     private const MINIMUM_WINDOW = (1 << 15) - 1;
     private const MAX_INCREMENT = (1 << 16) - 1;
 
@@ -626,7 +625,6 @@ final class Http2Driver implements HttpDriver
 
         $totalBytesReceivedSinceReset = 0;
         $payloadBytesReceivedSinceReset = 0;
-        $smallWindowUpdates = 0;
         $lastReset = $lastStreamOpening = $this->timeReference->getCurrentTime();
         $continuation = false;
 
@@ -1288,14 +1286,6 @@ final class Http2Driver implements HttpDriver
 
                             $windowSize = \unpack("N", $buffer)[1];
                             $buffer = \substr($buffer, 4);
-
-                            if ($windowSize < self::SMALL_WINDOW_UPDATE_THRESHOLD && ++$smallWindowUpdates > 10) {
-                                throw new Http2ConnectionException(
-                                    $this->client,
-                                    "Too many small window updates",
-                                    self::ENHANCE_YOUR_CALM
-                                );
-                            }
 
                             if ($id) {
                                 if (!isset($this->streams[$id])) {
