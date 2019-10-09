@@ -143,42 +143,6 @@ class OptionsTest extends TestCase
         $options->withConcurrentStreamLimit(0);
     }
 
-    public function testWithMinimumAverageFrameSize(): void
-    {
-        $options = new Options;
-
-        // default
-        $this->assertSame(1024, $options->getMinimumAverageFrameSize());
-
-        // change
-        $this->assertSame(1, $options->withMinimumAverageFrameSize(1)->getMinimumAverageFrameSize());
-
-        // change doesn't affect original
-        $this->assertSame(1024, $options->getMinimumAverageFrameSize());
-
-        // invalid
-        $this->expectException(\Error::class);
-        $options->withMinimumAverageFrameSize(0);
-    }
-
-    public function testWithFramesPerSecondLimit(): void
-    {
-        $options = new Options;
-
-        // default
-        $this->assertSame(1024, $options->getFramesPerSecondLimit());
-
-        // change
-        $this->assertSame(1, $options->withFramesPerSecondLimit(1)->getFramesPerSecondLimit());
-
-        // change doesn't affect original
-        $this->assertSame(1024, $options->getFramesPerSecondLimit());
-
-        // invalid
-        $this->expectException(\Error::class);
-        $options->withFramesPerSecondLimit(0);
-    }
-
     public function testWithChunkSize(): void
     {
         $options = new Options;

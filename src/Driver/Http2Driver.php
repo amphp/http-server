@@ -621,12 +621,11 @@ final class Http2Driver implements HttpDriver
     {
         $maxHeaderSize = $this->options->getHeaderSizeLimit();
         $maxBodySize = $this->options->getBodySizeLimit();
-        $maxFramesPerSecond = $this->options->getFramesPerSecondLimit();
-        $minAverageFrameSize = $this->options->getMinimumAverageFrameSize();
+        $timeout = $this->options->getConnectionTimeout();
 
-        $frameCount = 0;
-        $bytesReceived = 0;
-        $lastReset = $this->timeReference->getCurrentTime();
+        $totalBytesReceivedSinceReset = 0;
+        $payloadBytesReceivedSinceReset = 0;
+        $lastReset = $lastStreamOpening = $this->timeReference->getCurrentTime();
         $continuation = false;
 
         try {
@@ -708,19 +707,29 @@ final class Http2Driver implements HttpDriver
             }
 
             while (true) {
-                if (++$frameCount === $maxFramesPerSecond) {
-                    $now = $this->timeReference->getCurrentTime();
-                    if ($lastReset === $now && $bytesReceived / $frameCount < $minAverageFrameSize) {
+                $now = $this->timeReference->getCurrentTime();
+                if ($lastReset === $now) {
+                    // Inspired by nginx flood detection:
+                    // https://github.com/nginx/nginx/commit/af0e284b967d0ecff1abcdce6558ed4635e3e757
+                    if ($totalBytesReceivedSinceReset > $payloadBytesReceivedSinceReset + 8192) {
                         throw new Http2ConnectionException(
                             $this->client,
-                            "Average frame size too low",
+                            "Flood detected",
                             self::ENHANCE_YOUR_CALM
                         );
                     }
-
+                } else {
                     $lastReset = $now;
-                    $frameCount = 0;
-                    $bytesReceived = 0;
+                    $totalBytesReceivedSinceReset = 0;
+                    $payloadBytesReceivedSinceReset = 0;
+                }
+
+                if (empty($this->streams) && $lastStreamOpening < $now - $timeout) {
+                    throw new Http2ConnectionException(
+                        $this->client,
+                        "Too much time elapsed with non-payload frames",
+                        self::ENHANCE_YOUR_CALM
+                    );
                 }
 
                 while (\strlen($buffer) < 9) {
@@ -728,7 +737,7 @@ final class Http2Driver implements HttpDriver
                 }
 
                 $length = \unpack("N", "\0" . \substr($buffer, 0, 3))[1];
-                $bytesReceived += $length;
+                $totalBytesReceivedSinceReset += $length + 9;
 
                 if ($length > self::DEFAULT_MAX_FRAME_SIZE) { // Do we want to allow increasing max frame size?
                     throw new Http2ConnectionException($this->client, "Max frame size exceeded", self::FRAME_SIZE_ERROR);
@@ -808,6 +817,8 @@ final class Http2Driver implements HttpDriver
                                     self::PROTOCOL_ERROR
                                 );
                             }
+
+                            $payloadBytesReceivedSinceReset += $length;
 
                             $this->serverWindow -= $length;
                             $stream->serverWindow -= $length;
@@ -932,6 +943,9 @@ final class Http2Driver implements HttpDriver
                             // Headers frames can be received on previously opened streams (trailer headers).
                             $this->remoteStreamId = \max($id, $this->remoteStreamId);
 
+                            // Only note stream opening time when headers frame is received.
+                            $lastStreamOpening = $now;
+
                             $padding = 0;
 
                             if (($flags & self::PADDED) !== "\0") {
@@ -985,6 +999,8 @@ final class Http2Driver implements HttpDriver
                                     self::ENHANCE_YOUR_CALM
                                 );
                             }
+
+                            $payloadBytesReceivedSinceReset += $length;
 
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;
@@ -1344,6 +1360,8 @@ final class Http2Driver implements HttpDriver
                                 );
                             }
 
+                            $payloadBytesReceivedSinceReset += $length;
+
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;
                             }
@@ -1635,6 +1653,8 @@ final class Http2Driver implements HttpDriver
             }
         } catch (Http2ConnectionException $exception) {
             $this->shutdown(null, $exception);
+        } finally {
+            $this->client->close();
         }
     }
 

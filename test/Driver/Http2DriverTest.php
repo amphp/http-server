@@ -636,4 +636,83 @@ class Http2DriverTest extends HttpDriverTest
         $request = $requests[\count($requests) - 1];
         $this->assertSame("key=value", $request->getUri()->getQuery());
     }
+
+    public function testPingFlood(): void
+    {
+        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
+
+        $client = $this->createClientMock();
+        $client->expects($this->atLeastOnce())
+            ->method('close');
+
+        $lastWrite = null;
+
+        $parser = $driver->setup(
+            $client,
+            $this->createCallback(0),
+            function (string $data) use (&$lastWrite) {
+                $lastWrite = $data;
+                return new Success;
+            }
+        );
+
+        $parser->send(Http2Driver::PREFACE);
+
+        $buffer = "";
+        $ping = "aaaaaaaa";
+        for ($i = 0; $i < 1024; ++$i) {
+            $buffer .= self::packFrame($ping++, Http2Driver::PING, Http2Driver::NOFLAG);
+        }
+
+        $parser->send($buffer);
+
+        $this->assertSame(
+            self::packFrame(\pack("NN", 0, Http2Driver::ENHANCE_YOUR_CALM), Http2Driver::GOAWAY, Http2Driver::NOFLAG),
+            $lastWrite
+        );
+    }
+
+    public function testTinyDataFlood(): void
+    {
+        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
+
+        $client = $this->createClientMock();
+        $client->expects($this->atLeastOnce())
+            ->method('close');
+
+        $lastWrite = null;
+
+        $parser = $driver->setup(
+            $client,
+            $this->createCallback(1),
+            function (string $data) use (&$lastWrite) {
+                $lastWrite = $data;
+                return new Success;
+            }
+        );
+
+        $parser->send(Http2Driver::PREFACE);
+
+        $headers = [
+            ":authority" => "localhost",
+            ":path" => "/base",
+            ":scheme" => "https",
+            ":method" => "POST",
+            "content-length" => "1024"
+        ];
+        $parser->send(self::packHeader($headers, false, 1));
+
+        $buffer = "";
+        for ($i = 0; $i < 1023; ++$i) {
+            $buffer .= self::packFrame(" ", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
+        }
+        $buffer .= self::packFrame(" ", Http2Driver::DATA, Http2Driver::END_STREAM, 1);
+
+        $parser->send($buffer);
+
+        $this->assertSame(
+            self::packFrame(\pack("NN", 0, Http2Driver::ENHANCE_YOUR_CALM), Http2Driver::GOAWAY, Http2Driver::NOFLAG),
+            $lastWrite
+        );
+    }
 }
