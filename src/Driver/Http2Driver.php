@@ -508,7 +508,7 @@ final class Http2Driver implements HttpDriver
         $stream->pendingResponse = ($this->onMessage)($request);
     }
 
-    public function ping(): Promise
+    private function ping(): Promise
     {
         // no need to receive the PONG frame, that's anyway registered by the keep-alive handler
         return $this->writeFrame($this->counter++, self::PING, self::NOFLAG);
