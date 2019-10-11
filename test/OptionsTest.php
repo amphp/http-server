@@ -71,22 +71,58 @@ class OptionsTest extends TestCase
         $options->withConnectionsPerIpLimit(0);
     }
 
-    public function testWithConnectionTimeout(): void
+    public function testWithKeepAliveTimeout(): void
     {
         $options = new Options;
 
         // default
-        $this->assertSame(15, $options->getConnectionTimeout());
+        $this->assertSame(15, $options->getKeepAliveTimeout());
 
         // change
-        $this->assertSame(1, $options->withConnectionTimeout(1)->getConnectionTimeout());
+        $this->assertSame(1, $options->withKeepAliveTimeout(1)->getKeepAliveTimeout());
 
         // change doesn't affect original
-        $this->assertSame(15, $options->getConnectionTimeout());
+        $this->assertSame(15, $options->getKeepAliveTimeout());
 
         // invalid
         $this->expectException(\Error::class);
-        $options->withConnectionTimeout(0);
+        $options->withKeepAliveTimeout(0);
+    }
+
+    public function testWithHttp2Timeout(): void
+    {
+        $options = new Options;
+
+        // default
+        $this->assertSame(60, $options->getHttp2Timeout());
+
+        // change
+        $this->assertSame(1, $options->withHttp2Timeout(1)->getHttp2Timeout());
+
+        // change doesn't affect original
+        $this->assertSame(60, $options->getHttp2Timeout());
+
+        // invalid
+        $this->expectException(\Error::class);
+        $options->withHttp2Timeout(0);
+    }
+
+    public function testWithTlsSetupTimeout(): void
+    {
+        $options = new Options;
+
+        // default
+        $this->assertSame(5, $options->getTlsSetupTimeout());
+
+        // change
+        $this->assertSame(1, $options->withTlsSetupTimeout(1)->getTlsSetupTimeout());
+
+        // change doesn't affect original
+        $this->assertSame(5, $options->getTlsSetupTimeout());
+
+        // invalid
+        $this->expectException(\Error::class);
+        $options->withTlsSetupTimeout(0);
     }
 
     public function testWithBodySizeLimit(): void

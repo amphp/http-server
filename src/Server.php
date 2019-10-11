@@ -113,10 +113,7 @@ final class Server
         $this->options = $options ?? new Options;
         $this->clientFactory = new DefaultClientFactory;
         $this->timeReference = new SystemTimeReference;
-        $this->timeouts = new TimeoutCache(
-            $this->timeReference,
-            $this->options->getConnectionTimeout()
-        );
+        $this->timeouts = new TimeoutCache($this->timeReference);
 
         if ($this->options->isCompressionEnabled()) {
             if (!\extension_loaded('zlib')) {
@@ -131,7 +128,7 @@ final class Server
 
         $this->requestHandler = $requestHandler;
 
-        $this->timeReference->onTimeUpdate(\Closure::fromCallable([$this, 'timeoutKeepAlives']));
+        $this->timeReference->onTimeUpdate(\Closure::fromCallable([$this, 'checkClientTimeouts']));
 
         $this->observers = new \SplObjectStorage;
         $this->observers->attach(new Internal\PerformanceRecommender);
@@ -454,7 +451,7 @@ final class Server
         }
     }
 
-    private function timeoutKeepAlives(int $now): void
+    private function checkClientTimeouts(int $now): void
     {
         foreach ($this->timeouts as $id => $expiresAt) {
             if ($now < $expiresAt) {
@@ -464,7 +461,6 @@ final class Server
             $client = $this->clients[$id];
 
             if ($client->isWaitingOnResponse()) {
-                $this->timeouts->renew($id);
                 continue;
             }
 

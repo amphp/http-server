@@ -146,13 +146,13 @@ final class RemoteClient implements Client
             throw new \Error("Client already started");
         }
 
-        $this->timeoutCache->renew($this->id);
 
         $this->writeWatcher = Loop::onWritable($this->socket, \Closure::fromCallable([$this, 'onWritable']));
         Loop::disable($this->writeWatcher);
 
         $context = \stream_context_get_options($this->socket);
         if (isset($context["ssl"])) {
+            $this->timeoutCache->renew($this->id, $this->options->getTlsSetupTimeout());
             $this->readWatcher = Loop::onReadable(
                 $this->socket,
                 \Closure::fromCallable([$this, 'negotiateCrypto']),
@@ -311,6 +311,8 @@ final class RemoteClient implements Client
             \Closure::fromCallable([$this, 'write'])
         );
 
+        $this->timeoutCache->renew($this->id, $this->httpDriver->getCurrentTimeout());
+
         $this->requestParser->current();
     }
 
@@ -339,7 +341,7 @@ final class RemoteClient implements Client
     {
         $data = @\stream_get_contents($this->socket, $this->options->getChunkSize());
         if ($data !== false && $data !== "") {
-            $this->timeoutCache->renew($this->id);
+            $this->timeoutCache->renew($this->id, $this->httpDriver->getCurrentTimeout());
             $this->parse($data);
             return;
         }
@@ -425,7 +427,7 @@ final class RemoteClient implements Client
             return;
         }
 
-        $this->timeoutCache->renew($this->id);
+        $this->timeoutCache->renew($this->id, $this->httpDriver->getCurrentTimeout());
 
         if ($bytesWritten !== \strlen($this->writeBuffer)) {
             $this->writeBuffer = \substr($this->writeBuffer, $bytesWritten);
@@ -464,7 +466,7 @@ final class RemoteClient implements Client
             }
 
             if ($bytesWritten !== 0) {
-                $this->timeoutCache->renew($this->id);
+                $this->timeoutCache->renew($this->id, $this->httpDriver->getCurrentTimeout());
             }
 
             if ($bytesWritten === \strlen($data)) {

@@ -246,6 +246,11 @@ class Http2DriverTest extends HttpDriverTest
             {
                 return $this->driver->getPendingRequestCount();
             }
+
+            public function getCurrentTimeout(): int
+            {
+                return $this->driver->getCurrentTimeout();
+            }
         };
 
         $parser = $driver->setup(

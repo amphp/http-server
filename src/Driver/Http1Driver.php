@@ -58,6 +58,9 @@ final class Http1Driver implements HttpDriver
     /** @var Promise|null */
     private $lastWrite;
 
+    /** @var int */
+    private $timeout;
+
     /** @var bool */
     private $stopping = false;
 
@@ -67,6 +70,8 @@ final class Http1Driver implements HttpDriver
         $this->timeReference = $timeReference;
         $this->errorHandler = $errorHandler;
         $this->logger = $logger;
+
+        $this->timeout = $this->options->getKeepAliveTimeout();
     }
 
     /** {@inheritdoc} */
@@ -106,6 +111,11 @@ final class Http1Driver implements HttpDriver
         }
 
         return 0;
+    }
+
+    public function getCurrentTimeout(): int
+    {
+        return $this->timeout;
     }
 
     public function stop(): Promise
@@ -849,8 +859,7 @@ final class Http1Driver implements HttpDriver
             $headers["connection"] = ["close"];
         } else {
             $headers["connection"] = ["keep-alive"];
-            $keepAlive = "timeout={$this->options->getConnectionTimeout()}";
-            $headers["keep-alive"] = [$keepAlive];
+            $headers["keep-alive"] = ["timeout=" . $this->timeout];
         }
 
         $headers["date"] = [$this->timeReference->getCurrentDate()];

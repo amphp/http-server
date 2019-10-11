@@ -7,7 +7,9 @@ final class Options
     private $debug = false;
     private $connectionLimit = 10000;
     private $connectionsPerIpLimit = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
-    private $connectionTimeout = 15; // seconds
+    private $keepAliveTimeout = 15; // seconds
+    private $http2Timeout = 60; // seconds
+    private $tlsSetupTimeout = 5; // seconds
 
     private $concurrentStreamLimit = 256;
 
@@ -114,21 +116,22 @@ final class Options
     }
 
     /**
-     * @return int Number of seconds a connection may be idle before it is automatically closed.
+     * @return int Number of seconds an HTTP/1.x connection may be idle before it is automatically closed.
      */
-    public function getConnectionTimeout(): int
+    public function getKeepAliveTimeout(): int
     {
-        return $this->connectionTimeout;
+        return $this->keepAliveTimeout;
     }
 
     /**
-     * @param int $seconds Number of seconds a connection may be idle before it is automatically closed. Default is 15.
+     * @param int $seconds Number of seconds an HTTP/1.x connection may be idle before it is automatically closed.
+     *                     Default is 15.
      *
      * @return self
      *
      * @throws \Error If the number of seconds is less than 1.
      */
-    public function withConnectionTimeout(int $seconds): self
+    public function withKeepAliveTimeout(int $seconds): self
     {
         if ($seconds < 1) {
             throw new \Error(
@@ -137,7 +140,67 @@ final class Options
         }
 
         $new = clone $this;
-        $new->connectionTimeout = $seconds;
+        $new->keepAliveTimeout = $seconds;
+
+        return $new;
+    }
+
+    /**
+     * @return int Number of seconds an HTTP/2 connection may be idle before it is automatically closed.
+     */
+    public function getHttp2Timeout(): int
+    {
+        return $this->http2Timeout;
+    }
+
+    /**
+     * @param int $seconds Number of seconds an HTTP/2 connection may be idle before it is automatically closed.
+     *                     Default is 60.
+     *
+     * @return self
+     *
+     * @throws \Error If the number of seconds is less than 1.
+     */
+    public function withHttp2Timeout(int $seconds): self
+    {
+        if ($seconds < 1) {
+            throw new \Error(
+                "HTTP/2 timeout setting must be greater than or equal to one second"
+            );
+        }
+
+        $new = clone $this;
+        $new->http2Timeout = $seconds;
+
+        return $new;
+    }
+
+    /**
+     * @return int Number of seconds a connection may take to setup TLS.
+     */
+    public function getTlsSetupTimeout(): int
+    {
+        return $this->tlsSetupTimeout;
+    }
+
+    /**
+     * @param int $seconds Number of seconds connection may take to setup TLS.
+     *                     Default is 5.
+     *
+     * @return self
+     *
+     * @throws \Error If the number of seconds is less than 1.
+     */
+    public function withTlsSetupTimeout(int $seconds): self
+    {
+        if ($seconds < 1) {
+            throw new \Error(
+                "TLS timeout setting must be greater than or equal to one second"
+            );
+        }
+
+        $new = clone $this;
+        $new->tlsSetupTimeout = $seconds;
 
         return $new;
     }

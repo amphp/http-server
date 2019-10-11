@@ -49,6 +49,11 @@ interface HttpDriver
     public function getPendingRequestCount(): int;
 
     /**
+     * @return int Number of seconds until the client should be closed if there is no activity.
+     */
+    public function getCurrentTimeout(): int;
+
+    /**
      * Stops processing further requests, returning a promise that is resolved when all currently pending requests
      * have been fulfilled and any remaining data is send to the client (such as GOAWAY frames for HTTP/2).
      *

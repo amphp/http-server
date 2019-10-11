@@ -166,6 +166,9 @@ final class Http2Driver implements HttpDriver
     /** @var HPack */
     private $table;
 
+    /** @var int */
+    private $timeout;
+
     public function __construct(Options $options, TimeReference $timeReference, PsrLogger $logger)
     {
         $this->options = $options;
@@ -173,6 +176,7 @@ final class Http2Driver implements HttpDriver
         $this->logger = $logger;
 
         $this->remainingStreams = $this->options->getConcurrentStreamLimit();
+        $this->timeout = $this->options->getHttp2Timeout();
 
         $this->table = new HPack;
     }
@@ -442,6 +446,11 @@ final class Http2Driver implements HttpDriver
         return \count($this->bodyEmitters);
     }
 
+    public function getCurrentTimeout(): int
+    {
+        return $this->timeout;
+    }
+
     private function dispatchInternalRequest(Request $request, int $streamId, PsrUri $url, array $headers = []): void
     {
         $uri = $request->getUri();
@@ -621,7 +630,7 @@ final class Http2Driver implements HttpDriver
     {
         $maxHeaderSize = $this->options->getHeaderSizeLimit();
         $maxBodySize = $this->options->getBodySizeLimit();
-        $timeout = $this->options->getConnectionTimeout();
+        $timeout = $this->options->getKeepAliveTimeout();
 
         $totalBytesReceivedSinceReset = 0;
         $payloadBytesReceivedSinceReset = 0;
