@@ -436,6 +436,14 @@ final class Request extends Message
     }
 
     /**
+     * Remove all attributes from the request's mutable local storage.
+     */
+    public function removeAttributes(): void
+    {
+        $this->attributes = [];
+    }
+
+    /**
      * @return Trailers|null
      */
     public function getTrailers(): ?Trailers

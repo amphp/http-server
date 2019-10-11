@@ -113,8 +113,12 @@ class RequestTest extends TestCase
 
         $request->removeAttribute('bar');
 
+        $this->assertFalse($request->hasAttribute('bar'));
+
+        $request->removeAttributes();
+
         $this->expectException(MissingAttributeError::class);
-        $request->getAttribute('bar');
+        $request->getAttribute('foo');
     }
 
     public function testSetBody(): void
