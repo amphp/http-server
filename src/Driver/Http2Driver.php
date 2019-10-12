@@ -642,6 +642,7 @@ final class Http2Driver implements HttpDriver
         $payloadBytesReceivedSinceReset = 0;
         $lastReset = $lastStreamOpening = $this->timeReference->getCurrentTime();
         $continuation = false;
+        $pinged = 0;
 
         try {
             if ($settings !== null) {
@@ -1219,6 +1220,11 @@ final class Http2Driver implements HttpDriver
                             $data = \substr($buffer, 0, 8);
 
                             if (($flags & self::ACK) === "\0") {
+                                if (!$pinged && $this->expiresAt <= $this->timeReference->getCurrentTime() + 5) {
+                                    $this->expiresAt += 5; // Allow a few extra seconds for request after first ping.
+                                }
+
+                                ++$pinged;
                                 $this->writeFrame($data, self::PING, self::ACK);
                             }
 
@@ -1559,6 +1565,8 @@ final class Http2Driver implements HttpDriver
                                 self::PROTOCOL_ERROR
                             );
                         }
+
+                        $pinged = 0; // Reset ping count when a request is received.
 
                         if ($stream->state & Http2Stream::REMOTE_CLOSED) {
                             $request = new Request(
