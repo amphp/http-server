@@ -113,7 +113,7 @@ final class Server
         $this->options = $options ?? new Options;
         $this->clientFactory = new DefaultClientFactory;
         $this->timeReference = new SystemTimeReference;
-        $this->timeouts = new TimeoutCache($this->timeReference);
+        $this->timeouts = new TimeoutCache;
 
         if ($this->options->isCompressionEnabled()) {
             if (!\extension_loaded('zlib')) {
@@ -279,8 +279,16 @@ final class Server
             $this->observers->attach($this->driverFactory);
         }
 
+        if ($this->clientFactory instanceof ServerObserver) {
+            $this->observers->attach($this->clientFactory);
+        }
+
         if ($this->requestHandler instanceof ServerObserver) {
             $this->observers->attach($this->requestHandler);
+        }
+
+        if ($this->errorHandler instanceof ServerObserver) {
+            $this->observers->attach($this->errorHandler);
         }
 
         $this->state = self::STARTING;
@@ -336,7 +344,8 @@ final class Server
             $this->errorHandler,
             $this->logger,
             $this->options,
-            $this->timeouts
+            $this->timeouts,
+            $this->timeReference
         );
 
         \assert($this->logger->debug("Accept {$client->getRemoteAddress()} on " .

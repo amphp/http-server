@@ -16,6 +16,7 @@ interface ClientFactory
      * @param PsrLogger      $logger
      * @param Options        $options
      * @param TimeoutCache   $timeoutCache
+     * @param TimeReference  $timeReference
      *
      * @return Client
      */
@@ -25,6 +26,7 @@ interface ClientFactory
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
-        TimeoutCache $timeoutCache
+        TimeoutCache $timeoutCache,
+        TimeReference $timeReference
     ): Client;
 }

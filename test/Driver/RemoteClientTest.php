@@ -17,8 +17,8 @@ use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\RemoteClient;
+use Amp\Http\Server\Driver\SystemTimeReference;
 use Amp\Http\Server\Driver\TimeoutCache;
-use Amp\Http\Server\Driver\TimeReference;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -56,7 +56,7 @@ class RemoteClientTest extends AsyncTestCase
         $handler = new CallableRequestHandler($handler);
         $tlsContext = (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"));
 
-        $servers = [Socket\listen(
+        $servers = [Socket\Server::listen(
             $address,
             (new Socket\BindContext())->withTlsContext($tlsContext)
         )];
@@ -119,7 +119,7 @@ class RemoteClientTest extends AsyncTestCase
         list($address, $server) = yield from $this->startServer(function (Request $req) use (&$server) {
             $this->assertEquals("POST", $req->getMethod());
             $this->assertEquals("/", $req->getUri()->getPath());
-            $this->assertEquals([], $req->getAllParams());
+            $this->assertEquals([], $req->getAttributes());
             $this->assertEquals("body", yield $req->getBody()->buffer());
 
             $data = "data";
@@ -179,7 +179,8 @@ class RemoteClientTest extends AsyncTestCase
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
             $options,
-            new TimeoutCache($this->createMock(TimeReference::class), 10)
+            new TimeoutCache,
+            new SystemTimeReference
         );
 
         $client->start($factory);
@@ -386,7 +387,8 @@ class RemoteClientTest extends AsyncTestCase
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
             $options,
-            new TimeoutCache($this->createMock(TimeReference::class), 10)
+            new TimeoutCache,
+            new SystemTimeReference
         );
 
         $client->start($factory);
@@ -419,7 +421,8 @@ class RemoteClientTest extends AsyncTestCase
             $this->createMock(ErrorHandler::class),
             $this->createMock(PsrLogger::class),
             $options,
-            new TimeoutCache($this->createMock(TimeReference::class), 10)
+            new TimeoutCache,
+            new SystemTimeReference
         );
 
         $client->start($factory);
@@ -441,19 +444,20 @@ class RemoteClientTest extends AsyncTestCase
      */
     public function testIO(bool $unixSocket, bool $tls): \Generator
     {
-        $tlsContext = null;
+        $bindContext = null;
 
         if ($tls) {
             $tlsContext = (new Socket\ServerTlsContext)
                 ->withDefaultCertificate(new Socket\Certificate(\dirname(__DIR__) . "/server.pem"));
+            $bindContext = (new Socket\BindContext)->withTlsContext($tlsContext);
         }
 
         if ($unixSocket) {
             $uri = \tempnam(\sys_get_temp_dir(), "aerys.") . ".sock";
             $uri = "unix://" . $uri;
-            $server = Socket\Server::listen($uri, null, $tlsContext);
+            $server = Socket\Server::listen($uri, $bindContext);
         } else {
-            $server = Socket\Server::listen("tcp://127.0.0.1:0", null, $tlsContext);
+            $server = Socket\Server::listen("tcp://127.0.0.1:0", $bindContext);
             $uri = $server->getAddress();
         }
 
