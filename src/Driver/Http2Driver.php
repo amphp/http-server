@@ -136,7 +136,7 @@ final class Http2Driver implements HttpDriver
     /** @var int Last used remote stream ID. */
     private $remoteStreamId = 0;
 
-    /** @var \Amp\Http\Server\Driver\Internal\Http2Stream[] */
+    /** @var Http2Stream[] */
     private $streams = [];
 
     /** @var int[] Map of request hashes to stream IDs. */
@@ -145,10 +145,10 @@ final class Http2Driver implements HttpDriver
     /** @var int[] Map of URLs pushed on this connection. */
     private $pushCache = [];
 
-    /** @var \Amp\Deferred[] */
+    /** @var Deferred[] */
     private $trailerDeferreds = [];
 
-    /** @var \Amp\Emitter[] */
+    /** @var Emitter[] */
     private $bodyEmitters = [];
 
     /** @var int Number of streams that may be opened. */
@@ -169,6 +169,9 @@ final class Http2Driver implements HttpDriver
     /** @var int */
     private $timeout;
 
+    /** @var int */
+    private $expiresAt;
+
     public function __construct(Options $options, TimeReference $timeReference, PsrLogger $logger)
     {
         $this->options = $options;
@@ -177,6 +180,7 @@ final class Http2Driver implements HttpDriver
 
         $this->remainingStreams = $this->options->getConcurrentStreamLimit();
         $this->timeout = $this->options->getHttp2Timeout();
+        $this->expiresAt = $this->timeReference->getCurrentTime() + $this->timeout;
 
         $this->table = new HPack;
     }
@@ -446,9 +450,9 @@ final class Http2Driver implements HttpDriver
         return \count($this->bodyEmitters);
     }
 
-    public function getCurrentTimeout(): int
+    public function getExpirationTime(): int
     {
-        return $this->timeout;
+        return $this->expiresAt;
     }
 
     private function dispatchInternalRequest(Request $request, int $streamId, PsrUri $url, array $headers = []): void
@@ -545,6 +549,8 @@ final class Http2Driver implements HttpDriver
         $stream = $this->streams[$id];
         $delta = \min($this->clientWindow, $stream->clientWindow);
         $length = \strlen($stream->buffer);
+
+        $this->expiresAt = $this->timeReference->getCurrentTime() + $this->timeout;
 
         if ($delta >= $length) {
             $this->clientWindow -= $length;
@@ -828,6 +834,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
+                            $this->expiresAt = $this->timeReference->getCurrentTime() + $this->timeout;
 
                             $this->serverWindow -= $length;
                             $stream->serverWindow -= $length;
@@ -1010,6 +1017,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
+                            $this->expiresAt = $this->timeReference->getCurrentTime() + $this->timeout;
 
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;
@@ -1370,6 +1378,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
+                            $this->expiresAt = $this->timeReference->getCurrentTime() + $this->timeout;
 
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;

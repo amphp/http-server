@@ -113,9 +113,9 @@ final class Http1Driver implements HttpDriver
         return 0;
     }
 
-    public function getCurrentTimeout(): int
+    public function getExpirationTime(): int
     {
-        return $this->timeout;
+        return $this->timeReference->getCurrentTime() + $this->timeout;
     }
 
     public function stop(): Promise

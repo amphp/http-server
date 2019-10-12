@@ -49,9 +49,10 @@ interface HttpDriver
     public function getPendingRequestCount(): int;
 
     /**
-     * @return int Number of seconds until the client should be closed if there is no activity.
+     * @return int Timestamp when the connection should be closed. This time should be updated when data is sent
+     *             or received on the connection.
      */
-    public function getCurrentTimeout(): int;
+    public function getExpirationTime(): int;
 
     /**
      * Stops processing further requests, returning a promise that is resolved when all currently pending requests

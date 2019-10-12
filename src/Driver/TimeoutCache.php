@@ -12,13 +12,7 @@ final class TimeoutCache implements \IteratorAggregate
     /** @var int[] Client IDs recently updated. */
     private $updates = [];
 
-    /** @var int Current timestamp. */
-    private $now;
-
-    /**
-     * @param TimeReference $timeReference
-     */
-    public function __construct(TimeReference $timeReference)
+    public function __construct()
     {
         // Maybe we do need our own LRU-cache implementation?
         $this->cache = new class(\PHP_INT_MAX) extends LRUCache implements \IteratorAggregate {
@@ -27,21 +21,17 @@ final class TimeoutCache implements \IteratorAggregate
                 yield from $this->data;
             }
         };
-
-        $timeReference->onTimeUpdate(function (int $timestamp) {
-            $this->now = $timestamp;
-        });
     }
 
     /**
      * Renews the timeout for the given ID.
      *
      * @param int $id
-     * @param int $timeout
+     * @param int $expiresAt New expiration time.
      */
-    public function renew(int $id, int $timeout): void
+    public function renew(int $id, int $expiresAt): void
     {
-        $this->updates[$id] = $this->now + $timeout;
+        $this->updates[$id] = $expiresAt;
     }
 
     /**

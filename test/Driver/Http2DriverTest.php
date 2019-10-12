@@ -247,9 +247,9 @@ class Http2DriverTest extends HttpDriverTest
                 return $this->driver->getPendingRequestCount();
             }
 
-            public function getCurrentTimeout(): int
+            public function getExpirationTime(): int
             {
-                return $this->driver->getCurrentTimeout();
+                return $this->driver->getExpirationTime();
             }
         };
 
