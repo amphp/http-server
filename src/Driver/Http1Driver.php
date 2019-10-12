@@ -115,6 +115,10 @@ final class Http1Driver implements HttpDriver
 
     public function getExpirationTime(): int
     {
+        if ($this->http2) {
+            return $this->http2->getExpirationTime();
+        }
+
         return $this->timeReference->getCurrentTime() + $this->timeout;
     }
 
