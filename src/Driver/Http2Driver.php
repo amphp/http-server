@@ -7,6 +7,7 @@ use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
 use Amp\Http\HPack;
+use Amp\Http\InvalidHeaderException;
 use Amp\Http\Message;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Driver\Internal\Http2Stream;
@@ -1634,12 +1635,22 @@ final class Http2Driver implements HttpDriver
                             $stream->expectedLength = (int) $contentLength;
                         }
 
-                        $trailers = new Trailers(
-                            $this->trailerDeferreds[$id]->promise(),
-                            isset($headers['trailers'])
-                                ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
-                                : []
-                        );
+                        try {
+                            $trailers = new Trailers(
+                                $this->trailerDeferreds[$id]->promise(),
+                                isset($headers['trailers'])
+                                    ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
+                                    : []
+                            );
+                        } catch (InvalidHeaderException $exception) {
+                            throw new Http2StreamException(
+                                $this->client,
+                                "Invalid headers field in promises trailers",
+                                $id,
+                                self::PROTOCOL_ERROR,
+                                $exception
+                            );
+                        }
 
                         $request = new Request(
                             $this->client,

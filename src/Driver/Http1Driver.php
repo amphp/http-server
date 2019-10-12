@@ -551,12 +551,21 @@ final class Http1Driver implements HttpDriver
                     }
                 );
 
-                $trailers = new Trailers(
-                    $trailerDeferred->promise(),
-                    isset($headers['trailers'])
-                        ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
-                        : []
-                );
+                try {
+                    $trailers = new Trailers(
+                        $trailerDeferred->promise(),
+                        isset($headers['trailers'])
+                            ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
+                            : []
+                    );
+                } catch (InvalidHeaderException $exception) {
+                    throw new ClientException(
+                        $this->client,
+                        "Invalid headers field in promises trailers",
+                        0,
+                        $exception
+                    );
+                }
 
                 // Do not yield promise until body is completely read.
                 $this->pendingResponse = ($this->onMessage)(new Request(
