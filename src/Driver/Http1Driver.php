@@ -71,7 +71,7 @@ final class Http1Driver implements HttpDriver
         $this->errorHandler = $errorHandler;
         $this->logger = $logger;
 
-        $this->timeout = $this->options->getKeepAliveTimeout();
+        $this->timeout = $this->options->getHttp1Timeout();
     }
 
     /** {@inheritdoc} */

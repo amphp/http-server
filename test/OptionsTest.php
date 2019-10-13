@@ -71,22 +71,22 @@ class OptionsTest extends TestCase
         $options->withConnectionsPerIpLimit(0);
     }
 
-    public function testWithKeepAliveTimeout(): void
+    public function testWithHttp1Timeout(): void
     {
         $options = new Options;
 
         // default
-        $this->assertSame(15, $options->getKeepAliveTimeout());
+        $this->assertSame(15, $options->getHttp1Timeout());
 
         // change
-        $this->assertSame(1, $options->withKeepAliveTimeout(1)->getKeepAliveTimeout());
+        $this->assertSame(1, $options->withHttp1Timeout(1)->getHttp1Timeout());
 
         // change doesn't affect original
-        $this->assertSame(15, $options->getKeepAliveTimeout());
+        $this->assertSame(15, $options->getHttp1Timeout());
 
         // invalid
         $this->expectException(\Error::class);
-        $options->withKeepAliveTimeout(0);
+        $options->withHttp1Timeout(0);
     }
 
     public function testWithHttp2Timeout(): void

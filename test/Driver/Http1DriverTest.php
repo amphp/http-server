@@ -775,7 +775,7 @@ class Http1DriverTest extends HttpDriverTest
         $data = "foobar";
 
         $driver = new Http1Driver(
-            (new Options)->withKeepAliveTimeout(60),
+            (new Options)->withHttp1Timeout(60),
             $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
@@ -820,7 +820,7 @@ class Http1DriverTest extends HttpDriverTest
     public function testResponseWrite(Request $request, Response $response, string $expectedBuffer, bool $expectedClosed): \Generator
     {
         $driver = new Http1Driver(
-            (new Options)->withKeepAliveTimeout(60),
+            (new Options)->withHttp1Timeout(60),
             $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger

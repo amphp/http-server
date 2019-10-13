@@ -641,11 +641,10 @@ final class Http2Driver implements HttpDriver
     {
         $maxHeaderSize = $this->options->getHeaderSizeLimit();
         $maxBodySize = $this->options->getBodySizeLimit();
-        $timeout = $this->options->getKeepAliveTimeout();
 
         $totalBytesReceivedSinceReset = 0;
         $payloadBytesReceivedSinceReset = 0;
-        $lastReset = $lastStreamOpening = $this->now;
+        $lastReset = $this->now;
         $continuation = false;
         $pinged = 0;
 
@@ -746,14 +745,6 @@ final class Http2Driver implements HttpDriver
                     $lastReset = $this->now;
                     $totalBytesReceivedSinceReset = 0;
                     $payloadBytesReceivedSinceReset = 0;
-                }
-
-                if (empty($this->streams) && $lastStreamOpening < $this->now - $timeout) {
-                    throw new Http2ConnectionException(
-                        $this->client,
-                        "Too much time elapsed with non-payload frames",
-                        self::ENHANCE_YOUR_CALM
-                    );
                 }
 
                 while (\strlen($buffer) < 9) {
@@ -967,9 +958,6 @@ final class Http2Driver implements HttpDriver
 
                             // Headers frames can be received on previously opened streams (trailer headers).
                             $this->remoteStreamId = \max($id, $this->remoteStreamId);
-
-                            // Only note stream opening time when headers frame is received.
-                            $lastStreamOpening = $this->now;
 
                             $padding = 0;
 

@@ -7,7 +7,7 @@ final class Options
     private $debug = false;
     private $connectionLimit = 10000;
     private $connectionsPerIpLimit = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
-    private $keepAliveTimeout = 15; // seconds
+    private $http1Timeout = 15; // seconds
     private $http2Timeout = 60; // seconds
     private $tlsSetupTimeout = 5; // seconds
 
@@ -118,9 +118,9 @@ final class Options
     /**
      * @return int Number of seconds an HTTP/1.x connection may be idle before it is automatically closed.
      */
-    public function getKeepAliveTimeout(): int
+    public function getHttp1Timeout(): int
     {
-        return $this->keepAliveTimeout;
+        return $this->http1Timeout;
     }
 
     /**
@@ -131,7 +131,7 @@ final class Options
      *
      * @throws \Error If the number of seconds is less than 1.
      */
-    public function withKeepAliveTimeout(int $seconds): self
+    public function withHttp1Timeout(int $seconds): self
     {
         if ($seconds < 1) {
             throw new \Error(
@@ -140,7 +140,7 @@ final class Options
         }
 
         $new = clone $this;
-        $new->keepAliveTimeout = $seconds;
+        $new->http1Timeout = $seconds;
 
         return $new;
     }
