@@ -11,6 +11,9 @@ use Amp\Success;
 final class SystemTimeReference implements TimeReference, ServerObserver
 {
     /** @var string */
+    private $nextId = 'a';
+
+    /** @var string */
     private $watcherId;
 
     /** @var callable[] */
@@ -57,10 +60,22 @@ final class SystemTimeReference implements TimeReference, ServerObserver
     }
 
     /** @inheritdoc */
-    public function onTimeUpdate(callable $callback): void
+    public function onTimeUpdate(callable $callback): string
     {
-        $this->callbacks[] = $callback;
+        $id = $this->nextId++;
+        $this->callbacks[$id] = $callback;
         $callback($this->currentTime, $this->currentHttpDate);
+        return $id;
+    }
+
+    /** @inheritdoc */
+    public function cancelTimeUpdate(string $id): void
+    {
+        if (!isset($this->callbacks[$id])) {
+            throw new \Error('No callback found with the given ID');
+        }
+
+        unset($this->callbacks[$id]);
     }
 
     /**

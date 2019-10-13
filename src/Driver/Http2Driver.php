@@ -168,6 +168,9 @@ final class Http2Driver implements HttpDriver
     private $table;
 
     /** @var int */
+    private $now;
+
+    /** @var int */
     private $timeout;
 
     /** @var int */
@@ -181,7 +184,8 @@ final class Http2Driver implements HttpDriver
 
         $this->remainingStreams = $this->options->getConcurrentStreamLimit();
         $this->timeout = $this->options->getHttp2Timeout();
-        $this->expiresAt = $this->timeReference->getCurrentTime() + $this->timeout;
+        $this->now = $this->timeReference->getCurrentTime();
+        $this->expiresAt = $this->now + $this->timeout;
 
         $this->table = new HPack;
     }
@@ -551,7 +555,7 @@ final class Http2Driver implements HttpDriver
         $delta = \min($this->clientWindow, $stream->clientWindow);
         $length = \strlen($stream->buffer);
 
-        $this->expiresAt = $this->timeReference->getCurrentTime() + $this->timeout;
+        $this->expiresAt = $this->now + $this->timeout;
 
         if ($delta >= $length) {
             $this->clientWindow -= $length;
@@ -641,9 +645,13 @@ final class Http2Driver implements HttpDriver
 
         $totalBytesReceivedSinceReset = 0;
         $payloadBytesReceivedSinceReset = 0;
-        $lastReset = $lastStreamOpening = $this->timeReference->getCurrentTime();
+        $lastReset = $lastStreamOpening = $this->now;
         $continuation = false;
         $pinged = 0;
+
+        $timeReferenceId = $this->timeReference->onTimeUpdate(function (int $now): void {
+            $this->now = $now;
+        });
 
         try {
             if ($settings !== null) {
@@ -724,8 +732,7 @@ final class Http2Driver implements HttpDriver
             }
 
             while (true) {
-                $now = $this->timeReference->getCurrentTime();
-                if ($lastReset === $now) {
+                if ($lastReset === $this->now) {
                     // Inspired by nginx flood detection:
                     // https://github.com/nginx/nginx/commit/af0e284b967d0ecff1abcdce6558ed4635e3e757
                     if ($totalBytesReceivedSinceReset > $payloadBytesReceivedSinceReset + 8192) {
@@ -736,12 +743,12 @@ final class Http2Driver implements HttpDriver
                         );
                     }
                 } else {
-                    $lastReset = $now;
+                    $lastReset = $this->now;
                     $totalBytesReceivedSinceReset = 0;
                     $payloadBytesReceivedSinceReset = 0;
                 }
 
-                if (empty($this->streams) && $lastStreamOpening < $now - $timeout) {
+                if (empty($this->streams) && $lastStreamOpening < $this->now - $timeout) {
                     throw new Http2ConnectionException(
                         $this->client,
                         "Too much time elapsed with non-payload frames",
@@ -836,7 +843,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
-                            $this->expiresAt = $this->timeReference->getCurrentTime() + $this->timeout;
+                            $this->expiresAt = $this->now + $this->timeout;
 
                             $this->serverWindow -= $length;
                             $stream->serverWindow -= $length;
@@ -962,7 +969,7 @@ final class Http2Driver implements HttpDriver
                             $this->remoteStreamId = \max($id, $this->remoteStreamId);
 
                             // Only note stream opening time when headers frame is received.
-                            $lastStreamOpening = $now;
+                            $lastStreamOpening = $this->now;
 
                             $padding = 0;
 
@@ -1019,7 +1026,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
-                            $this->expiresAt = $this->timeReference->getCurrentTime() + $this->timeout;
+                            $this->expiresAt = $this->now + $this->timeout;
 
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;
@@ -1221,8 +1228,9 @@ final class Http2Driver implements HttpDriver
                             $data = \substr($buffer, 0, 8);
 
                             if (($flags & self::ACK) === "\0") {
-                                if (!$pinged && $this->expiresAt <= $this->timeReference->getCurrentTime() + 5) {
-                                    $this->expiresAt += 5; // Allow a few extra seconds for request after first ping.
+                                if (!$pinged) {
+                                    // Ensure there are a few extra seconds for request after first ping.
+                                    $this->expiresAt = \max($this->expiresAt, $this->now + 5);
                                 }
 
                                 ++$pinged;
@@ -1385,7 +1393,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
-                            $this->expiresAt = $this->timeReference->getCurrentTime() + $this->timeout;
+                            $this->expiresAt = $this->now + $this->timeout;
 
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;
@@ -1691,6 +1699,7 @@ final class Http2Driver implements HttpDriver
         } catch (Http2ConnectionException $exception) {
             $this->shutdown(null, $exception);
         } finally {
+            $this->timeReference->cancelTimeUpdate($timeReferenceId);
             $this->client->close();
         }
     }

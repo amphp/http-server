@@ -22,6 +22,17 @@ interface TimeReference
      * Callbacks SHOULD NOT throw. Any errors will bubble up to the event loop.
      *
      * @param callable $callback
+     *
+     * @return string Identifier that can be used to cancel the update callback.
      */
-    public function onTimeUpdate(callable $callback): void;
+    public function onTimeUpdate(callable $callback): string;
+
+    /**
+     * Removes the callback with the given identifier.
+     *
+     * @param string $id
+     *
+     * @throws \Error If the identifier does not exist.
+     */
+    public function cancelTimeUpdate(string $id): void;
 }
