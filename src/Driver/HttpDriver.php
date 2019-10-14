@@ -49,8 +49,10 @@ interface HttpDriver
     public function getPendingRequestCount(): int;
 
     /**
-     * @return int Timestamp when the connection should be closed. This time should be updated when data is sent
-     *             or received on the connection.
+     * @return int Timestamp when the connection should be closed. This time is accessed each time raw data is read from
+     *             or written to the underlying socket. This time may be a constant offset from the current timestamp
+     *             (such as for HTTP/1.x) or only updated when the connection performs an action that should extend
+     *             the connection timeout (such as receiving or sending payload frames in HTTP/2).
      */
     public function getExpirationTime(): int;
 
