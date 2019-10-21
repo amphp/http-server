@@ -158,7 +158,7 @@ final class RemoteClient implements Client
 
         $context = \stream_context_get_options($this->socket);
         if (isset($context["ssl"])) {
-            $this->timeoutCache->renew(
+            $this->timeoutCache->update(
                 $this->id,
                 $this->timeReference->getCurrentTime() + $this->options->getTlsSetupTimeout()
             );
@@ -328,7 +328,7 @@ final class RemoteClient implements Client
             \Closure::fromCallable([$this, 'write'])
         );
 
-        $this->timeoutCache->renew($this->id, $this->httpDriver->getExpirationTime());
+        $this->timeoutCache->update($this->id, $this->httpDriver->getExpirationTime());
 
         $this->requestParser->current();
     }
@@ -358,7 +358,7 @@ final class RemoteClient implements Client
     {
         $data = @\stream_get_contents($this->socket, $this->options->getChunkSize());
         if ($data !== false && $data !== "") {
-            $this->timeoutCache->renew($this->id, $this->httpDriver->getExpirationTime());
+            $this->timeoutCache->update($this->id, $this->httpDriver->getExpirationTime());
             $this->parse($data);
             return;
         }
@@ -450,7 +450,7 @@ final class RemoteClient implements Client
             return;
         }
 
-        $this->timeoutCache->renew($this->id, $this->httpDriver->getExpirationTime());
+        $this->timeoutCache->update($this->id, $this->httpDriver->getExpirationTime());
 
         if ($bytesWritten !== \strlen($this->writeBuffer)) {
             $this->writeBuffer = \substr($this->writeBuffer, $bytesWritten);
@@ -489,7 +489,7 @@ final class RemoteClient implements Client
             }
 
             if ($bytesWritten !== 0) {
-                $this->timeoutCache->renew($this->id, $this->httpDriver->getExpirationTime());
+                $this->timeoutCache->update($this->id, $this->httpDriver->getExpirationTime());
             }
 
             if ($bytesWritten === \strlen($data)) {

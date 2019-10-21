@@ -7,9 +7,6 @@ final class TimeoutCache implements \IteratorAggregate
     /** @var int[] */
     private $expirationTimes = [];
 
-    /** @var int[] Client IDs recently updated. */
-    private $updates = [];
-
     /**
      * @param int $id Client ID.
      *
@@ -26,10 +23,11 @@ final class TimeoutCache implements \IteratorAggregate
      * @param int $id Client ID.
      * @param int $expiresAt New expiration time.
      */
-    public function renew(int $id, int $expiresAt): void
+    public function update(int $id, int $expiresAt): void
     {
         if ($expiresAt > ($this->expirationTimes[$id] ?? 0)) {
-            $this->updates[$id] = $expiresAt;
+            unset($this->expirationTimes[$id]);
+            $this->expirationTimes[$id] = $expiresAt;
         }
     }
 
@@ -40,7 +38,7 @@ final class TimeoutCache implements \IteratorAggregate
      */
     public function clear(int $id): void
     {
-        unset($this->expirationTimes[$id], $this->updates[$id]);
+        unset($this->expirationTimes[$id]);
     }
 
     /**
@@ -48,13 +46,6 @@ final class TimeoutCache implements \IteratorAggregate
      */
     public function getIterator(): \Iterator
     {
-        foreach ($this->updates as $id => $expiration) {
-            unset($this->expirationTimes[$id]);
-            $this->expirationTimes[$id] = $expiration;
-        }
-
-        $this->updates = [];
-
-        return yield from $this->expirationTimes;
+        yield from $this->expirationTimes;
     }
 }
