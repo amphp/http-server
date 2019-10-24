@@ -11,6 +11,7 @@ use Amp\Http\Message;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
+use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Driver\TimeReference;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
@@ -47,7 +48,7 @@ class Http1DriverTest extends HttpDriverTest
         $client->method('getPendingResponseCount')
             ->willReturn(1);
 
-        $parser = $driver->setup($client, $this->createCallback(0), $writer);
+        $parser = $driver->setup($client, new TimeoutCache, $this->createCallback(0), $writer);
 
         $parser->send($unparsable);
 
@@ -79,7 +80,7 @@ class Http1DriverTest extends HttpDriverTest
         $client->method('getPendingResponseCount')
             ->willReturn(1);
 
-        $parser = $driver->setup($client, $this->createCallback(0), $writer);
+        $parser = $driver->setup($client, new TimeoutCache, $this->createCallback(0), $writer);
 
         for ($i = 0, $c = \strlen($unparsable); $i < $c; $i++) {
             $parser->send($unparsable[$i]);
@@ -113,6 +114,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             $resultEmitter,
             $this->createCallback(0)
         );
@@ -152,6 +154,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             $resultEmitter,
             $this->createCallback(0)
         );
@@ -203,6 +206,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             $resultEmitter,
             $this->createCallback(0)
         );
@@ -253,6 +257,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             $resultEmitter,
             $this->createCallback(0)
         );
@@ -623,6 +628,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             $resultEmitter,
             $this->createCallback(0)
         );
@@ -676,6 +682,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             $resultEmitter,
             function () {
                 return new Success;
@@ -785,6 +792,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$buffer, &$fin) {
                 $buffer .= $data;
@@ -831,6 +839,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$buffer, &$closed) {
                 $buffer .= $data;
@@ -890,6 +899,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$invoked) {
                 static $i = 0;
@@ -954,6 +964,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             function (Request $request) {
                 $this->assertSame("foo.bar", $request->getUri()->getHost());
                 $this->assertSame("/path", $request->getUri()->getPath());
@@ -982,6 +993,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             $this->createCallback(0),
             function (string $data) use ($options) {
                 $expected = Http2DriverTest::packFrame(\pack(
@@ -1018,6 +1030,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             function (Request $req) use (&$request) {
                 $request = $req;
             },
@@ -1055,6 +1068,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
+            new TimeoutCache,
             function (Request $req) use (&$request) {
                 $request = $req;
             },

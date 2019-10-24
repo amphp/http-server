@@ -324,11 +324,10 @@ final class RemoteClient implements Client
         $this->httpDriver = $driver;
         $this->requestParser = $this->httpDriver->setup(
             $this,
+            $this->timeoutCache,
             \Closure::fromCallable([$this, 'onMessage']),
             \Closure::fromCallable([$this, 'write'])
         );
-
-        $this->timeoutCache->update($this->id, $this->httpDriver->getExpirationTime());
 
         $this->requestParser->current();
     }
@@ -358,7 +357,6 @@ final class RemoteClient implements Client
     {
         $data = @\stream_get_contents($this->socket, $this->options->getChunkSize());
         if ($data !== false && $data !== "") {
-            $this->timeoutCache->update($this->id, $this->httpDriver->getExpirationTime());
             $this->parse($data);
             return;
         }
@@ -450,8 +448,6 @@ final class RemoteClient implements Client
             return;
         }
 
-        $this->timeoutCache->update($this->id, $this->httpDriver->getExpirationTime());
-
         if ($bytesWritten !== \strlen($this->writeBuffer)) {
             $this->writeBuffer = \substr($this->writeBuffer, $bytesWritten);
             return;
@@ -486,10 +482,6 @@ final class RemoteClient implements Client
             if ($bytesWritten === false) {
                 $this->close();
                 return new Failure(new ClientException($this, "Client socket closed"));
-            }
-
-            if ($bytesWritten !== 0) {
-                $this->timeoutCache->update($this->id, $this->httpDriver->getExpirationTime());
             }
 
             if ($bytesWritten === \strlen($data)) {

@@ -113,6 +113,9 @@ final class Http2Driver implements HttpDriver
     /** @var TimeReference */
     private $timeReference;
 
+    /** @var TimeoutCache */
+    private $timeoutCache;
+
     /** @var PsrLogger */
     private $logger;
 
@@ -170,12 +173,6 @@ final class Http2Driver implements HttpDriver
     /** @var int */
     private $now;
 
-    /** @var int */
-    private $timeout;
-
-    /** @var int */
-    private $expiresAt;
-
     public function __construct(Options $options, TimeReference $timeReference, PsrLogger $logger)
     {
         $this->options = $options;
@@ -183,26 +180,26 @@ final class Http2Driver implements HttpDriver
         $this->logger = $logger;
 
         $this->remainingStreams = $this->options->getConcurrentStreamLimit();
-        $this->timeout = $this->options->getHttp2Timeout();
         $this->now = $this->timeReference->getCurrentTime();
-        $this->expiresAt = $this->now + $this->timeout;
 
         $this->table = new HPack;
     }
 
     /**
-     * @param Client      $client
-     * @param callable    $onMessage
-     * @param callable    $write
-     * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
+     * @param Client       $client
+     * @param TimeoutCache $timeoutCache
+     * @param callable     $onMessage
+     * @param callable     $write
+     * @param string|null  $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
      *
      * @return \Generator
      */
-    public function setup(Client $client, callable $onMessage, callable $write, ?string $settings = null): \Generator
+    public function setup(Client $client, TimeoutCache $timeoutCache, callable $onMessage, callable $write, ?string $settings = null): \Generator
     {
         \assert(!$this->client, "The driver has already been setup");
 
         $this->client = $client;
+        $this->timeoutCache = $timeoutCache;
         $this->onMessage = $onMessage;
         $this->write = $write;
 
@@ -220,6 +217,8 @@ final class Http2Driver implements HttpDriver
         if (!isset($this->streams[$id])) {
             return new Success; // Client closed the stream or connection.
         }
+
+        $this->timeoutCache->update($this->client->getId(), $this->now + $this->options->getHttp2Timeout());
 
         $stream = $this->streams[$id]; // $this->streams[$id] may be unset in send().
         return $stream->pendingWrite = new Coroutine($this->send($id, $response, $request));
@@ -255,7 +254,7 @@ final class Http2Driver implements HttpDriver
             $headers["date"] = [$this->timeReference->getCurrentDate()];
 
             if (!empty($push = $response->getPush())) {
-                foreach ($push as list($pushUri, $pushHeaders)) {
+                foreach ($push as [$pushUri, $pushHeaders]) {
                     \assert($pushUri instanceof PsrUri && \is_array($pushHeaders));
                     if ($this->allowsPush) {
                         $this->dispatchInternalRequest($request, $id, $pushUri, $pushHeaders);
@@ -398,7 +397,7 @@ final class Http2Driver implements HttpDriver
 
     /**
      * @param int|null        $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no
-     *                        streams have been opened.
+     *                                streams have been opened.
      * @param \Throwable|null $reason
      *
      * @return Promise
@@ -455,11 +454,6 @@ final class Http2Driver implements HttpDriver
         return \count($this->bodyEmitters);
     }
 
-    public function getExpirationTime(): int
-    {
-        return $this->expiresAt;
-    }
-
     private function dispatchInternalRequest(Request $request, int $streamId, PsrUri $url, array $headers = []): void
     {
         $uri = $request->getUri();
@@ -487,7 +481,7 @@ final class Http2Driver implements HttpDriver
             $path .= "?" . $query;
         }
 
-        $headers = \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT);
+        $headers = \array_merge(\array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), $headers);
 
         $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
         $this->remoteStreamId = \max($id, $this->remoteStreamId);
@@ -555,7 +549,7 @@ final class Http2Driver implements HttpDriver
         $delta = \min($this->clientWindow, $stream->clientWindow);
         $length = \strlen($stream->buffer);
 
-        $this->expiresAt = $this->now + $this->timeout;
+        $this->timeoutCache->update($this->client->getId(), $this->now + $this->options->getHttp2Timeout());
 
         if ($delta >= $length) {
             $this->clientWindow -= $length;
@@ -651,6 +645,8 @@ final class Http2Driver implements HttpDriver
         $timeReferenceId = $this->timeReference->onTimeUpdate(function (int $now): void {
             $this->now = $now;
         });
+
+        $this->timeoutCache->update($this->client->getId(), $this->now + $this->options->getHttp2Timeout());
 
         try {
             if ($settings !== null) {
@@ -834,7 +830,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
-                            $this->expiresAt = $this->now + $this->timeout;
+                            $this->timeoutCache->update($this->client->getId(), $this->now + $this->options->getHttp2Timeout());
 
                             $this->serverWindow -= $length;
                             $stream->serverWindow -= $length;
@@ -1014,7 +1010,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
-                            $this->expiresAt = $this->now + $this->timeout;
+                            $this->timeoutCache->update($this->client->getId(), $this->now + $this->options->getHttp2Timeout());
 
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;
@@ -1218,7 +1214,10 @@ final class Http2Driver implements HttpDriver
                             if (($flags & self::ACK) === "\0") {
                                 if (!$pinged) {
                                     // Ensure there are a few extra seconds for request after first ping.
-                                    $this->expiresAt = \max($this->expiresAt, $this->now + 5);
+                                    $this->timeoutCache->update($this->client->getId(), \max(
+                                        $this->timeoutCache->getExpirationTime($this->client->getId()),
+                                        $this->now + 5
+                                    ));
                                 }
 
                                 ++$pinged;
@@ -1381,7 +1380,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
-                            $this->expiresAt = $this->now + $this->timeout;
+                            $this->timeoutCache->update($this->client->getId(), $this->now + $this->options->getHttp2Timeout());
 
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;
@@ -1425,7 +1424,7 @@ final class Http2Driver implements HttpDriver
 
                         $headers = [];
                         $pseudo = [];
-                        foreach ($decoded as list($name, $value)) {
+                        foreach ($decoded as [$name, $value]) {
                             if (!\preg_match(self::HEADER_NAME_REGEX, $name)) {
                                 throw new Http2StreamException(
                                     $this->client,

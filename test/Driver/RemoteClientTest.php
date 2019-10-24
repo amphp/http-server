@@ -70,7 +70,7 @@ class RemoteClientTest extends AsyncTestCase
 
     public function testTrivialHttpRequest(): \Generator
     {
-        list($address, $server) = yield from $this->startServer(function (Request $req) {
+        [$address, $server] = yield from $this->startServer(function (Request $req) {
             $this->assertEquals("GET", $req->getMethod());
             $this->assertEquals("/uri", $req->getUri()->getPath());
             $query = new Query($req->getUri()->getQuery());
@@ -116,7 +116,7 @@ class RemoteClientTest extends AsyncTestCase
 
     public function testClientDisconnect(): \Generator
     {
-        list($address, $server) = yield from $this->startServer(function (Request $req) use (&$server) {
+        [$address, $server] = yield from $this->startServer(function (Request $req) use (&$server) {
             $this->assertEquals("POST", $req->getMethod());
             $this->assertEquals("/", $req->getUri()->getPath());
             $this->assertEquals([], $req->getAttributes());
@@ -146,13 +146,13 @@ class RemoteClientTest extends AsyncTestCase
         });
     }
 
-    public function tryRequest(Request $request, callable $requestHandler): array
+    protected function tryRequest(Request $request, callable $requestHandler): array
     {
         $driver = $this->createMock(HttpDriver::class);
 
         $driver->expects($this->once())
             ->method("setup")
-            ->willReturnCallback(static function (Client $client, callable $emitter) use (&$emit) {
+            ->willReturnCallback(static function (Client $client, TimeoutCache $timeoutCache, callable $emitter) use (&$emit) {
                 $emit = $emitter;
                 yield;
             });
@@ -202,7 +202,7 @@ class RemoteClientTest extends AsyncTestCase
         );
 
         /** @var \Amp\Http\Server\Response $response */
-        list($response, $body) = $this->tryRequest($request, function (Request $req) {
+        [$response, $body] = $this->tryRequest($request, function (Request $req) {
             $this->assertSame("localhost", $req->getHeader("Host"));
             $this->assertSame("/foo", $req->getUri()->getPath());
             $this->assertSame("GET", $req->getMethod());
@@ -238,7 +238,7 @@ class RemoteClientTest extends AsyncTestCase
         $emitter->complete();
 
         /** @var \Amp\Http\Server\Response $response */
-        list($response, $body) = $this->tryRequest($request, function (Request $req) {
+        [$response, $body] = $this->tryRequest($request, function (Request $req) {
             $buffer = "";
             while (null !== $chunk = yield $req->getBody()->read()) {
                 $buffer .= $chunk;
@@ -346,7 +346,7 @@ class RemoteClientTest extends AsyncTestCase
 
         $driver->expects($this->once())
             ->method("setup")
-            ->willReturnCallback(function (Client $client, callable $emitter) use (&$emit) {
+            ->willReturnCallback(function (Client $client, TimeoutCache $timeoutCache, callable $emitter) use (&$emit) {
                 $emit = $emitter;
                 yield;
             });
@@ -399,12 +399,17 @@ class RemoteClientTest extends AsyncTestCase
         $this->assertSame(\str_repeat($bodyData, 3), $body);
     }
 
-    public function startClient(callable $parser, $socket): RemoteClient
+    protected function startClient(callable $parser, $socket): RemoteClient
     {
         $driver = $this->createMock(HttpDriver::class);
 
         $driver->method("setup")
-            ->willReturnCallback(function (Client $client, callable $onMessage, callable $writer) use ($parser) {
+            ->willReturnCallback(function (
+                Client $client,
+                TimeoutCache $timeoutCache,
+                callable $onMessage,
+                callable $writer
+            ) use ($parser) {
                 yield from $parser($writer);
             });
 

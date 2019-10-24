@@ -37,6 +37,9 @@ final class Http1Driver implements HttpDriver
     /** @var TimeReference */
     private $timeReference;
 
+    /** @var TimeoutCache */
+    private $timeoutCache;
+
     /** @var PsrLogger */
     private $logger;
 
@@ -58,9 +61,6 @@ final class Http1Driver implements HttpDriver
     /** @var Promise|null */
     private $lastWrite;
 
-    /** @var int */
-    private $timeout;
-
     /** @var bool */
     private $stopping = false;
 
@@ -70,16 +70,15 @@ final class Http1Driver implements HttpDriver
         $this->timeReference = $timeReference;
         $this->errorHandler = $errorHandler;
         $this->logger = $logger;
-
-        $this->timeout = $this->options->getHttp1Timeout();
     }
 
     /** {@inheritdoc} */
-    public function setup(Client $client, callable $onMessage, callable $write): \Generator
+    public function setup(Client $client, TimeoutCache $timeoutCache, callable $onMessage, callable $write): \Generator
     {
         \assert(!$this->client, "The driver has already been setup");
 
         $this->client = $client;
+        $this->timeoutCache = $timeoutCache;
         $this->onMessage = $onMessage;
         $this->write = $write;
 
@@ -113,15 +112,6 @@ final class Http1Driver implements HttpDriver
         return 0;
     }
 
-    public function getExpirationTime(): int
-    {
-        if ($this->http2) {
-            return $this->http2->getExpirationTime();
-        }
-
-        return $this->timeReference->getCurrentTime() + $this->timeout;
-    }
-
     public function stop(): Promise
     {
         $this->stopping = true;
@@ -135,6 +125,14 @@ final class Http1Driver implements HttpDriver
                 yield $this->lastWrite;
             }
         });
+    }
+
+    private function updateTimeout(): void
+    {
+        $this->timeoutCache->update(
+            $this->client->getId(),
+            $this->timeReference->getCurrentTime() + $this->options->getHttp1Timeout()
+        );
     }
 
     /**
@@ -152,6 +150,8 @@ final class Http1Driver implements HttpDriver
         if ($this->lastWrite) {
             yield $this->lastWrite; // Prevent writing another response until the first is finished.
         }
+
+        $this->updateTimeout();
 
         $shouldClose = false;
 
@@ -242,6 +242,8 @@ final class Http1Driver implements HttpDriver
 
                 $buffer = $chunk = ""; // Don't use null here, because of the finally
 
+                $this->updateTimeout();
+
                 yield $promise;
             }
 
@@ -258,6 +260,7 @@ final class Http1Driver implements HttpDriver
             }
 
             if ($buffer !== "" || $shouldClose) {
+                $this->updateTimeout();
                 yield ($this->write)($buffer, $shouldClose);
             }
         } catch (ClientException $exception) {
@@ -273,6 +276,8 @@ final class Http1Driver implements HttpDriver
     {
         $maxHeaderSize = $this->options->getHeaderSizeLimit();
         $parser = null;
+
+        $this->updateTimeout();
 
         $buffer = yield;
 
@@ -320,13 +325,13 @@ final class Http1Driver implements HttpDriver
                     throw new ClientException($this->client, "Bad Request: invalid request line", Status::BAD_REQUEST);
                 }
 
-                list(, $method, $target, $protocol) = $matches;
+                [, $method, $target, $protocol] = $matches;
 
                 if ($protocol !== "1.1" && $protocol !== "1.0") {
                     if ($protocol === "2.0" && $this->options->isHttp2UpgradeAllowed()) {
                         // Internal upgrade to HTTP/2.
                         $this->http2 = new Http2Driver($this->options, $this->timeReference, $this->logger);
-                        $parser = $this->http2->setup($this->client, $this->onMessage, $this->write);
+                        $parser = $this->http2->setup($this->client, $this->timeoutCache, $this->onMessage, $this->write);
 
                         $parser->send("$startLine\r\n$rawHeaders\r\n$buffer");
                         continue; // Yield from the above parser immediately.
@@ -507,7 +512,7 @@ final class Http1Driver implements HttpDriver
 
                     // Internal upgrade
                     $this->http2 = new Http2Driver($this->options, $this->timeReference, $this->logger);
-                    $parser = $this->http2->setup($this->client, $this->onMessage, $this->write, $h2cSettings);
+                    $parser = $this->http2->setup($this->client, $this->timeoutCache, $this->onMessage, $this->write, $h2cSettings);
 
                     $parser->current(); // Yield from this parser after reading the current request body.
 
@@ -522,6 +527,8 @@ final class Http1Driver implements HttpDriver
 
                     $protocol = "2";
                 }
+
+                $this->updateTimeout();
 
                 if (!($isChunked || $contentLength)) {
                     // Wait for response to be fully written.
@@ -682,6 +689,7 @@ final class Http1Driver implements HttpDriver
 
                                 while ($bodyBufferSize < $remaining) {
                                     if ($bodyBufferSize) {
+                                        $this->updateTimeout();
                                         yield $emitter->emit($body);
                                         $body = "";
                                         $bodySize += $bodyBufferSize;
@@ -696,6 +704,7 @@ final class Http1Driver implements HttpDriver
                                 }
 
                                 if ($remaining) {
+                                    $this->updateTimeout();
                                     yield $emitter->emit(\substr($body, 0, $remaining));
                                     $buffer = \substr($body, $remaining);
                                     $body = "";
@@ -725,6 +734,8 @@ final class Http1Driver implements HttpDriver
                                 continue;
                             }
 
+                            $this->updateTimeout();
+
                             if ($bufferLength >= $chunkLengthRemaining + 2) {
                                 yield $emitter->emit(\substr($buffer, 0, $chunkLengthRemaining));
                                 $buffer = \substr($buffer, $chunkLengthRemaining + 2);
@@ -751,6 +762,7 @@ final class Http1Driver implements HttpDriver
                     // Note that $maxBodySize may change while looping.
                     while ($bodySize + $bodyBufferSize < \min($maxBodySize, $contentLength)) {
                         if ($bodyBufferSize) {
+                            $this->updateTimeout();
                             $buffer = yield $emitter->emit($buffer);
                             $bodySize += $bodyBufferSize;
                         }
@@ -761,6 +773,7 @@ final class Http1Driver implements HttpDriver
                     $remaining = \min($maxBodySize, $contentLength) - $bodySize;
 
                     if ($remaining) {
+                        $this->updateTimeout();
                         yield $emitter->emit(\substr($buffer, 0, $remaining));
                         $buffer = \substr($buffer, $remaining);
                     }
@@ -777,6 +790,8 @@ final class Http1Driver implements HttpDriver
 
                 $this->bodyEmitter = null;
                 $emitter->complete();
+
+                $this->updateTimeout();
 
                 yield $this->pendingResponse; // Wait for response to be fully written.
             } while (true);
@@ -850,7 +865,7 @@ final class Http1Driver implements HttpDriver
 
         if (!empty($push)) {
             $headers["link"] = [];
-            foreach ($push as list($pushUri, $pushHeaders)) {
+            foreach ($push as [$pushUri]) {
                 $headers["link"][] = "<$pushUri>; rel=preload";
             }
         }
@@ -872,7 +887,7 @@ final class Http1Driver implements HttpDriver
             $headers["connection"] = ["close"];
         } else {
             $headers["connection"] = ["keep-alive"];
-            $headers["keep-alive"] = ["timeout=" . $this->timeout];
+            $headers["keep-alive"] = ["timeout=" . $this->options->getHttp1Timeout()];
         }
 
         $headers["date"] = [$this->timeReference->getCurrentDate()];
