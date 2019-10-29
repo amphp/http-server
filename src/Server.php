@@ -462,14 +462,11 @@ final class Server
 
     private function checkClientTimeouts(int $now): void
     {
-        foreach ($this->timeouts as $id => $expiresAt) {
-            if ($now < $expiresAt) {
-                break;
-            }
-
+        while (!$this->timeouts->isEmpty() && $id = $this->timeouts->extract($now)) {
             $client = $this->clients[$id];
 
             if ($client->isWaitingOnResponse()) {
+                $this->timeouts->update($id, $now + 1);
                 continue;
             }
 
