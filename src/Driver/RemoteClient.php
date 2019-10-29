@@ -78,9 +78,6 @@ final class RemoteClient implements Client
     /** @var TimeoutCache */
     private $timeoutCache;
 
-    /** @var TimeReference */
-    private $timeReference;
-
     /** @var PsrLogger */
     private $logger;
 
@@ -106,7 +103,6 @@ final class RemoteClient implements Client
      * @param PsrLogger      $logger
      * @param Options        $options
      * @param TimeoutCache   $timeoutCache
-     * @param TimeReference  $timeReference
      */
     public function __construct(
         $socket,
@@ -114,8 +110,7 @@ final class RemoteClient implements Client
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
-        TimeoutCache $timeoutCache,
-        TimeReference $timeReference
+        TimeoutCache $timeoutCache
     ) {
         \stream_set_blocking($socket, false);
 
@@ -124,7 +119,6 @@ final class RemoteClient implements Client
 
         $this->options = $options;
         $this->timeoutCache = $timeoutCache;
-        $this->timeReference = $timeReference;
         $this->logger = $logger;
         $this->requestHandler = $requestHandler;
         $this->errorHandler = $errorHandler;
@@ -160,7 +154,7 @@ final class RemoteClient implements Client
         if (isset($context["ssl"])) {
             $this->timeoutCache->update(
                 $this->id,
-                $this->timeReference->getCurrentTime() + $this->options->getTlsSetupTimeout()
+                \time() + $this->options->getTlsSetupTimeout()
             );
 
             $this->readWatcher = Loop::onReadable(
@@ -176,7 +170,6 @@ final class RemoteClient implements Client
             $this,
             $this->options,
             $this->logger,
-            $this->timeReference,
             $this->errorHandler
         ));
 
@@ -418,7 +411,6 @@ final class RemoteClient implements Client
                 $this,
                 $this->options,
                 $this->logger,
-                $this->timeReference,
                 $this->errorHandler
             ));
 

@@ -14,7 +14,6 @@ interface HttpDriverFactory
      * @param Client $client
      * @param Options $options
      * @param PsrLogger $logger
-     * @param TimeReference $timeReference
      * @param ErrorHandler $errorHandler
      *
      * @return HttpDriver
@@ -23,7 +22,6 @@ interface HttpDriverFactory
         Client $client,
         Options $options,
         PsrLogger $logger,
-        TimeReference $timeReference,
         ErrorHandler $errorHandler
     ): HttpDriver;
 

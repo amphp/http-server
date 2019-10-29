@@ -13,14 +13,13 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         Client $client,
         Options $options,
         PsrLogger $logger,
-        TimeReference $timeReference,
         ErrorHandler $errorHandler
     ): HttpDriver {
         if ($client->isEncrypted() && $client->getTlsInfo()->getApplicationLayerProtocol() === "h2") {
-            return new Http2Driver($options, $timeReference, $logger);
+            return new Http2Driver($options, $logger);
         }
 
-        return new Http1Driver($options, $timeReference, $errorHandler, $logger);
+        return new Http1Driver($options, $errorHandler, $logger);
     }
 
     /** {@inheritdoc} */

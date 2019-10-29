@@ -11,7 +11,6 @@ use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\TimeoutCache;
-use Amp\Http\Server\Driver\TimeReference;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
@@ -22,6 +21,7 @@ use Amp\Promise;
 use Amp\Success;
 use League\Uri;
 use Psr\Log\NullLogger;
+use function Amp\Http\formatDateHeader;
 
 class Http2DriverTest extends HttpDriverTest
 {
@@ -199,15 +199,15 @@ class Http2DriverTest extends HttpDriverTest
 
     public function setupDriver(callable $onMessage = null, Options $options = null): array
     {
-        $driver = new class($options ?? new Options, $this->createMock(TimeReference::class)) implements HttpDriver {
+        $driver = new class($options ?? new Options) implements HttpDriver {
             public $frames = [];
 
             /** @var Http2Driver */
             private $driver;
 
-            public function __construct($options, $timeReference)
+            public function __construct($options)
             {
-                $this->driver = new Http2Driver($options, $timeReference, new NullLogger);
+                $this->driver = new Http2Driver($options, new NullLogger);
             }
 
             public function setup(Client $client, TimeoutCache $timeoutCache, callable $onMessage, callable $write): \Generator
@@ -264,7 +264,7 @@ class Http2DriverTest extends HttpDriverTest
     {
         $buffer = "";
         $options = new Options;
-        $driver = new Http2Driver($options, $this->createMock(TimeReference::class), new NullLogger);
+        $driver = new Http2Driver($options, new NullLogger);
         $parser = $driver->setup(
             $this->createClientMock(),
             new TimeoutCache,
@@ -311,7 +311,7 @@ class Http2DriverTest extends HttpDriverTest
             ":status" => Status::OK,
             "content-length" => [\strlen($body)],
             "trailer" => "expires",
-            "date" => [""],
+            "date" => [formatDateHeader()],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
 
         $data .= self::packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
@@ -327,7 +327,7 @@ class Http2DriverTest extends HttpDriverTest
     {
         $buffer = "";
         $options = new Options;
-        $driver = new Http2Driver($options, $this->createMock(TimeReference::class), new NullLogger);
+        $driver = new Http2Driver($options, new NullLogger);
         $parser = $driver->setup(
             $this->createClientMock(),
             new TimeoutCache,
@@ -366,7 +366,7 @@ class Http2DriverTest extends HttpDriverTest
         $hpack = new HPack;
         $data .= self::packFrame($hpack->encode([
             ":status" => Status::OK,
-            "date" => [""],
+            "date" => [formatDateHeader()],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
 
         $data .= self::packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
@@ -432,7 +432,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->assertEquals([$hpack->encode([
             ":status"      => Status::OK,
             "content-type" => ["text/html; charset=utf-8"],
-            "date"         => [""],
+            "date"         => [formatDateHeader()],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1], \array_pop($driver->frames));
 
         $emitter->emit(\str_repeat("_", 66002));
@@ -508,7 +508,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->assertEquals([$hpack->encode([
             ":status"      => Status::OK,
             "content-type" => ["text/html; charset=utf-8"],
-            "date"         => [""],
+            "date"         => [formatDateHeader()],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], \array_pop($driver->frames));
 
         $emitter->emit("**");
@@ -550,7 +550,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testClosingStreamYieldsFalseFromWriter(): \Generator
     {
-        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
+        $driver = new Http2Driver(new Options, new NullLogger);
 
         $parser = $driver->setup(
             $this->createClientMock(),
@@ -596,7 +596,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testPush(): \Generator
     {
-        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
+        $driver = new Http2Driver(new Options, new NullLogger);
 
         $requests = [];
 
@@ -645,7 +645,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testPingFlood(): void
     {
-        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
+        $driver = new Http2Driver(new Options, new NullLogger);
 
         $client = $this->createClientMock();
         $client->expects($this->atLeastOnce())
@@ -681,7 +681,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testTinyDataFlood(): void
     {
-        $driver = new Http2Driver(new Options, $this->createMock(TimeReference::class), new NullLogger);
+        $driver = new Http2Driver(new Options, new NullLogger);
 
         $client = $this->createClientMock();
         $client->expects($this->atLeastOnce())

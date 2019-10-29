@@ -15,9 +15,8 @@ final class DefaultClientFactory implements ClientFactory
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
-        TimeoutCache $timeoutCache,
-        TimeReference $timeReference
+        TimeoutCache $timeoutCache
     ): Client {
-        return new RemoteClient($socket, $requestHandler, $errorHandler, $logger, $options, $timeoutCache, $timeReference);
+        return new RemoteClient($socket, $requestHandler, $errorHandler, $logger, $options, $timeoutCache);
     }
 }

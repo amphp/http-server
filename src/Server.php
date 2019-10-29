@@ -9,9 +9,7 @@ use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\DefaultClientFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
-use Amp\Http\Server\Driver\SystemTimeReference;
 use Amp\Http\Server\Driver\TimeoutCache;
-use Amp\Http\Server\Driver\TimeReference;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Loop;
 use Amp\MultiReasonException;
@@ -58,9 +56,6 @@ final class Server
     /** @var PsrLogger */
     private $logger;
 
-    /** @var TimeReference */
-    private $timeReference;
-
     /** @var \SplObjectStorage */
     private $observers;
 
@@ -80,7 +75,10 @@ final class Server
     private $clientsPerIP = [];
 
     /** @var TimeoutCache */
-    private $timeouts;
+    private $timeoutCache;
+
+    /** @var string */
+    private $timeoutWatcher;
 
     /**
      * @param SocketServer[] $servers
@@ -112,8 +110,7 @@ final class Server
         $this->logger = $logger;
         $this->options = $options ?? new Options;
         $this->clientFactory = new DefaultClientFactory;
-        $this->timeReference = new SystemTimeReference;
-        $this->timeouts = new TimeoutCache;
+        $this->timeoutCache = new TimeoutCache;
 
         if ($this->options->isCompressionEnabled()) {
             if (!\extension_loaded('zlib')) {
@@ -128,13 +125,21 @@ final class Server
 
         $this->requestHandler = $requestHandler;
 
-        $this->timeReference->onTimeUpdate(\Closure::fromCallable([$this, 'checkClientTimeouts']));
+        $this->timeoutWatcher = Loop::repeat(1000, \Closure::fromCallable([$this, 'checkClientTimeouts']));
+        Loop::disable($this->timeoutWatcher);
 
         $this->observers = new \SplObjectStorage;
         $this->observers->attach(new Internal\PerformanceRecommender);
 
         $this->errorHandler = new DefaultErrorHandler;
         $this->driverFactory = new DefaultHttpDriverFactory;
+    }
+
+    public function __destruct()
+    {
+        if ($this->timeoutWatcher) {
+            Loop::cancel($this->timeoutWatcher);
+        }
     }
 
     /**
@@ -226,14 +231,6 @@ final class Server
     }
 
     /**
-     * @return TimeReference
-     */
-    public function getTimeReference(): TimeReference
-    {
-        return $this->timeReference;
-    }
-
-    /**
      * Attach an observer.
      *
      * @param ServerObserver $observer
@@ -272,8 +269,6 @@ final class Server
     private function doStart(): \Generator
     {
         \assert($this->logger->debug("Starting") || true);
-
-        $this->observers->attach($this->timeReference);
 
         if ($this->driverFactory instanceof ServerObserver) {
             $this->observers->attach($this->driverFactory);
@@ -330,6 +325,8 @@ final class Server
             $this->acceptWatcherIds[$serverName] = Loop::onReadable($server, $onAcceptable);
             $this->logger->info("Listening on {$scheme}://{$serverName}/");
         }
+
+        Loop::enable($this->timeoutWatcher);
     }
 
     private function onAcceptable(string $watcherId, $server): void
@@ -344,8 +341,7 @@ final class Server
             $this->errorHandler,
             $this->logger,
             $this->options,
-            $this->timeouts,
-            $this->timeReference
+            $this->timeoutCache
         );
 
         \assert($this->logger->debug("Accept {$client->getRemoteAddress()} on " .
@@ -458,17 +454,21 @@ final class Server
         if (!empty($exceptions)) {
             throw new MultiReasonException($exceptions, "onStop observer failure");
         }
+
+        Loop::disable($this->timeoutWatcher);
     }
 
-    private function checkClientTimeouts(int $now): void
+    private function checkClientTimeouts(): void
     {
-        while ($id = $this->timeouts->extract($now)) {
+        $now = \time();
+
+        while ($id = $this->timeoutCache->extract($now)) {
             \assert(isset($this->clients[$id]), "Timeout cache contains an invalid client ID");
 
             $client = $this->clients[$id];
 
             if ($client->isWaitingOnResponse()) {
-                $this->timeouts->update($id, $now + 1);
+                $this->timeoutCache->update($id, $now + 1);
                 continue;
             }
 
@@ -481,12 +481,11 @@ final class Server
     {
         return [
             "state" => $this->state,
-            "timeReference" => $this->timeReference,
             "observers" => $this->observers,
             "acceptWatcherIds" => $this->acceptWatcherIds,
             "boundServers" => $this->boundServers,
             "clients" => $this->clients,
-            "connectionTimeouts" => $this->timeouts,
+            "connectionTimeouts" => $this->timeoutCache,
         ];
     }
 }

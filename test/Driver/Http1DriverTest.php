@@ -12,7 +12,6 @@ use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\Driver\TimeoutCache;
-use Amp\Http\Server\Driver\TimeReference;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -23,6 +22,7 @@ use Amp\Promise;
 use Amp\Success;
 use League\Uri;
 use Psr\Log\NullLogger;
+use function Amp\Http\formatDateHeader;
 
 class Http1DriverTest extends HttpDriverTest
 {
@@ -39,7 +39,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             $options,
-            $this->createMock(TimeReference::class),
             new DefaultErrorHandler, // Using concrete instance to generate error response.
             new NullLogger
         );
@@ -71,7 +70,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             $options,
-            $this->createMock(TimeReference::class),
             new DefaultErrorHandler, // Using concrete instance to generate error response.
             new NullLogger
         );
@@ -107,7 +105,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             new Options,
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -147,7 +144,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             new Options,
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -199,7 +195,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             new Options,
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -250,7 +245,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             new Options,
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -621,7 +615,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             (new Options)->withBodySizeLimit(4),
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -675,7 +668,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             new Options,
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -783,7 +775,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             (new Options)->withHttp1Timeout(60),
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -819,7 +810,7 @@ class Http1DriverTest extends HttpDriverTest
             "link" => ["</foo>; rel=preload"],
             "connection" => ["keep-alive"],
             "keep-alive" => ["timeout=60"],
-            "date" => [""], // Empty due to mock TimeReference
+            "date" => [formatDateHeader()],
             "transfer-encoding" => ["chunked"],
         ], $data);
     }
@@ -829,7 +820,6 @@ class Http1DriverTest extends HttpDriverTest
     {
         $driver = new Http1Driver(
             (new Options)->withHttp1Timeout(60),
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -860,29 +850,31 @@ class Http1DriverTest extends HttpDriverTest
 
     public function provideWriteResponses(): array
     {
+        $date = formatDateHeader();
+
         return [
             [
                 new Request($this->createClientMock(), "HEAD", Uri\Http::createFromString("/")),
                 new Response(Status::OK, [], new InMemoryStream),
-                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntransfer-encoding: chunked\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: $date\r\ntransfer-encoding: chunked\r\n\r\n",
                 false,
             ],
             [
                 new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
                 new Response(Status::OK, [], new InMemoryStream, new Trailers(new Success(['test' => 'value']), ['test'])),
-                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\ntrailer: test\r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: $date\r\ntrailer: test\r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
                 false,
             ],
             [
                 new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
                 new Response(Status::OK, ["content-length" => 0], new InMemoryStream),
-                "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: \r\n\r\n",
+                "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: $date\r\n\r\n",
                 false,
             ],
             [
                 new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "1.0"),
                 new Response(Status::OK, [], new InMemoryStream),
-                "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: \r\n\r\n",
+                "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: $date\r\n\r\n",
                 true,
             ],
         ];
@@ -892,7 +884,6 @@ class Http1DriverTest extends HttpDriverTest
     {
         $driver = new Http1Driver(
             (new Options)->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -957,7 +948,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             $options,
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -986,7 +976,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             $options,
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -1023,7 +1012,6 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             new Options,
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -1061,7 +1049,6 @@ class Http1DriverTest extends HttpDriverTest
     {
         $driver = new Http1Driver(
             new Options,
-            $this->createMock(TimeReference::class),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
