@@ -462,7 +462,9 @@ final class Server
 
     private function checkClientTimeouts(int $now): void
     {
-        while (!$this->timeouts->isEmpty() && $id = $this->timeouts->extract($now)) {
+        while ($id = $this->timeouts->extract($now)) {
+            \assert(isset($this->clients[$id]), "Timeout cache contains an invalid client ID");
+
             $client = $this->clients[$id];
 
             if ($client->isWaitingOnResponse()) {

@@ -91,11 +91,7 @@ final class TimeoutCache
      */
     public function extract(int $now): ?int
     {
-        if (empty($this->data)) {
-            throw new \Error('No data left in the heap.');
-        }
-
-        if ($this->data[0]->expiration > $now) {
+        if (empty($this->data) || $this->data[0]->expiration > $now) {
             return null;
         }
 
@@ -146,15 +142,5 @@ final class TimeoutCache
         }
 
         return $data->id;
-    }
-
-    /**
-     * Determines if the heap is empty.
-     *
-     * @return  bool
-     */
-    public function isEmpty(): bool
-    {
-        return empty($this->data);
     }
 }
