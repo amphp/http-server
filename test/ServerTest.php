@@ -3,7 +3,7 @@
 namespace Amp\Http\Server\Test;
 
 use Amp\Delayed;
-use Amp\Http\Client\Client;
+use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
@@ -37,10 +37,10 @@ class ServerTest extends AsyncTestCase
 
         $request = new ClientRequest("http://" . $socket->getAddress() . "/");
 
-        $promise = (new Client)->request($request);
+        $promise = HttpClientBuilder::buildDefault()->request($request);
 
         // Ensure client already connected and sent request
-        yield new Delayed(1000);
+        yield new Delayed(100);
         yield $server->stop();
 
         $response = yield $promise;

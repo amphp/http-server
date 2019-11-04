@@ -8,8 +8,8 @@ use Amp\ByteStream\IteratorStream;
 use Amp\CancellationToken;
 use Amp\Delayed;
 use Amp\Emitter;
-use Amp\Http\Client\Client as HttpClient;
 use Amp\Http\Client\Connection\DefaultConnectionPool;
+use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Server\DefaultErrorHandler;
@@ -97,7 +97,7 @@ class RemoteClientTest extends AsyncTestCase
             }
         };
 
-        $client = new HttpClient(new DefaultConnectionPool($connector));
+        $client = (new HttpClientBuilder)->usingPool(new DefaultConnectionPool($connector))->build();
         $port = \parse_url($address, PHP_URL_PORT);
         $request = new ClientRequest("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET");
         $request->setHeader("custom", "header");
