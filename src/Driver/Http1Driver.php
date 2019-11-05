@@ -473,7 +473,7 @@ final class Http1Driver implements HttpDriver
                             "port" => (int) $matches[2],
                         ]);
                     }
-                } catch (Uri\UriException $exception) {
+                } catch (\Exception $exception) {
                     throw new ClientException(
                         $this->client,
                         "Bad Request: invalid target",

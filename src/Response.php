@@ -369,8 +369,8 @@ final class Response extends Message
 
         try {
             $uri = Uri\Http::createFromString($url);
-        } catch (Uri\Exception $exception) {
-            throw new \Error($exception->getMessage(), 0, $exception);
+        } catch (\Exception $exception) {
+            throw new \Error("Invalid push URI: " . $exception->getMessage(), 0, $exception);
         }
 
         $this->push[$url] = [$uri, $headers];
