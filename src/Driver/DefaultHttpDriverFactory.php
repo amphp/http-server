@@ -11,9 +11,9 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
     /** {@inheritdoc} */
     public function selectDriver(
         Client $client,
-        Options $options,
+        ErrorHandler $errorHandler,
         PsrLogger $logger,
-        ErrorHandler $errorHandler
+        Options $options
     ): HttpDriver {
         if ($client->isEncrypted() && $client->getTlsInfo()->getApplicationLayerProtocol() === "h2") {
             return new Http2Driver($options, $logger);

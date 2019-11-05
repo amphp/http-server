@@ -168,9 +168,9 @@ final class RemoteClient implements Client
 
         $this->setup($driverFactory->selectDriver(
             $this,
-            $this->options,
+            $this->errorHandler,
             $this->logger,
-            $this->errorHandler
+            $this->options
         ));
 
         $this->readWatcher = Loop::onReadable($this->socket, \Closure::fromCallable([$this, 'onReadable']));
@@ -409,9 +409,9 @@ final class RemoteClient implements Client
 
             $this->setup($driverFactory->selectDriver(
                 $this,
-                $this->options,
+                $this->errorHandler,
                 $this->logger,
-                $this->errorHandler
+                $this->options
             ));
 
             $this->readWatcher = Loop::onReadable($this->socket, \Closure::fromCallable([$this, 'onReadable']));
