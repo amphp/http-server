@@ -1558,7 +1558,7 @@ final class Http2Driver implements HttpDriver
                                 "path"   => $target,
                                 "query"  => $query,
                             ]);
-                        } catch (\Exception $exception) {
+                        } catch (Uri\Contracts\UriException $exception) {
                             throw new Http2ConnectionException(
                                 $this->client,
                                 "Invalid request URI",
