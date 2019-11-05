@@ -19,13 +19,13 @@ use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\RemoteClient;
 use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\ErrorHandler;
+use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Http\Server\Server;
 use Amp\Http\Status;
 use Amp\Loop;
 use Amp\PHPUnit\AsyncTestCase;
@@ -61,7 +61,7 @@ class RemoteClientTest extends AsyncTestCase
         )];
 
         $options = (new Options)->withDebugMode();
-        $server = new Server($servers, $handler, $this->createMock(PsrLogger::class), $options);
+        $server = new HttpServer($servers, $handler, $this->createMock(PsrLogger::class), $options);
 
         yield $server->start();
         return [$address, $server];

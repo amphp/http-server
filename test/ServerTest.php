@@ -5,9 +5,9 @@ namespace Amp\Http\Server\Test;
 use Amp\Delayed;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
+use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Http\Server\Server;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\Socket;
@@ -19,7 +19,7 @@ class ServerTest extends AsyncTestCase
     {
         $this->expectException(\Error::class);
         $this->expectExceptionMessage('Argument 1 can\'t be an empty array');
-        new Server([], new CallableRequestHandler(function () {
+        new HttpServer([], new CallableRequestHandler(function () {
             return new Response;
         }), $this->createMock(PsrLogger::class));
     }
@@ -27,7 +27,7 @@ class ServerTest extends AsyncTestCase
     public function testShutdownWaitsOnUnfinishedResponses(): \Generator
     {
         $socket = Socket\Server::listen("tcp://127.0.0.1:0");
-        $server = new Server([$socket], new CallableRequestHandler(function () {
+        $server = new HttpServer([$socket], new CallableRequestHandler(function () {
             yield new Delayed(2000);
 
             return new Response(Status::NO_CONTENT);

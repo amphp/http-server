@@ -3,11 +3,11 @@
 namespace Amp\Http\Server\Middleware;
 
 use Amp\Http\Server\ClientException;
+use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Http\Server\Server;
 use Amp\Http\Server\ServerObserver;
 use Amp\Http\Status;
 use Amp\Promise;
@@ -68,7 +68,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
         });
     }
 
-    public function onStart(Server $server): Promise
+    public function onStart(HttpServer $server): Promise
     {
         $this->debug = $server->getOptions()->isInDebugMode();
         $this->logger = $server->getLogger();
@@ -76,7 +76,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
         return new Success;
     }
 
-    public function onStop(Server $server): Promise
+    public function onStop(HttpServer $server): Promise
     {
         return new Success;
     }

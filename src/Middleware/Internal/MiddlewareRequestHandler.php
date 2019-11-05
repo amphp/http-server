@@ -2,10 +2,10 @@
 
 namespace Amp\Http\Server\Middleware\Internal;
 
+use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
-use Amp\Http\Server\Server;
 use Amp\Http\Server\ServerObserver;
 use Amp\Promise;
 
@@ -36,7 +36,7 @@ final class MiddlewareRequestHandler implements RequestHandler, ServerObserver
     }
 
     /** @inheritdoc */
-    public function onStart(Server $server): Promise
+    public function onStart(HttpServer $server): Promise
     {
         $promises = [];
 
@@ -52,7 +52,7 @@ final class MiddlewareRequestHandler implements RequestHandler, ServerObserver
     }
 
     /** @inheritdoc */
-    public function onStop(Server $server): Promise
+    public function onStop(HttpServer $server): Promise
     {
         $promises = [];
 

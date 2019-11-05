@@ -14,19 +14,19 @@ interface ServerObserver
      * connections. This method should be used to set up any necessary state for responding to requests, including
      * starting loop watchers such as timers.
      *
-     * @param Server $server
+     * @param HttpServer $server
      *
      * @return Promise
      */
-    public function onStart(Server $server): Promise;
+    public function onStart(HttpServer $server): Promise;
 
     /**
      * Invoked when the server has initiated stopping. No further requests are accepted and any connected clients
      * should be closed gracefully and any loop watchers cancelled.
      *
-     * @param Server $server
+     * @param HttpServer $server
      *
      * @return Promise
      */
-    public function onStop(Server $server): Promise;
+    public function onStop(HttpServer $server): Promise;
 }

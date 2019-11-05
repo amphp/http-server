@@ -19,7 +19,7 @@ use Amp\Socket\Server as SocketServer;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 
-final class Server
+final class HttpServer
 {
     public const STOPPED = 0;
     public const STARTING = 1;

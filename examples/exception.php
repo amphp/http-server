@@ -4,8 +4,8 @@
 require \dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream\ResourceOutputStream;
+use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
-use Amp\Http\Server\Server;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
@@ -24,7 +24,7 @@ Amp\Loop::run(function () {
     $logger = new Logger('server');
     $logger->pushHandler($logHandler);
 
-    $server = new Server($servers, new CallableRequestHandler(function () {
+    $server = new HttpServer($servers, new CallableRequestHandler(function () {
         throw new \Exception("Something went wrong :-(");
     }), $logger);
 

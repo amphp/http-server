@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Internal;
 
-use Amp\Http\Server\Server;
+use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\ServerObserver;
 use Amp\Promise;
 use Amp\Success;
@@ -10,7 +10,7 @@ use Amp\Success;
 final class PerformanceRecommender implements ServerObserver
 {
     /** @inheritdoc */
-    public function onStart(Server $server): Promise
+    public function onStart(HttpServer $server): Promise
     {
         $logger = $server->getLogger();
 
@@ -40,7 +40,7 @@ final class PerformanceRecommender implements ServerObserver
     }
 
     /** @inheritdoc */
-    public function onStop(Server $server): Promise
+    public function onStop(HttpServer $server): Promise
     {
         return new Success;
     }

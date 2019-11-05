@@ -5,10 +5,10 @@ require \dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream\ResourceOutputStream;
 use Amp\Delayed;
+use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Http\Server\Server;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
@@ -28,7 +28,7 @@ Amp\Loop::run(function () {
     $logger = new Logger('server');
     $logger->pushHandler($logHandler);
 
-    $server = new Server($servers, new CallableRequestHandler(function (Request $request) {
+    $server = new HttpServer($servers, new CallableRequestHandler(function (Request $request) {
         // We delay the response here, but this could also be non-blocking I/O.
         // Further requests are still processed concurrently.
         yield new Delayed(3000);
