@@ -22,7 +22,6 @@ use Amp\Promise;
 use Amp\Success;
 use League\Uri;
 use Psr\Log\NullLogger;
-use function Amp\Http\formatDateHeader;
 
 class Http1DriverTest extends HttpDriverTest
 {
@@ -762,8 +761,11 @@ class Http1DriverTest extends HttpDriverTest
             $parser->parse($input);
         }
 
+        $responseHeaders = $response->getHeaders();
+        unset($responseHeaders['date']);
+
         $this->assertEquals($status, $response->getStatus());
-        $this->assertEquals($headers, $response->getHeaders());
+        $this->assertEquals($headers, $responseHeaders);
         $this->assertEquals($data, $actualBody);
     }
 
@@ -810,13 +812,12 @@ class Http1DriverTest extends HttpDriverTest
             "link" => ["</foo>; rel=preload"],
             "connection" => ["keep-alive"],
             "keep-alive" => ["timeout=60"],
-            "date" => [formatDateHeader()],
             "transfer-encoding" => ["chunked"],
         ], $data);
     }
 
     /** @dataProvider provideWriteResponses */
-    public function testResponseWrite(Request $request, Response $response, string $expectedBuffer, bool $expectedClosed): \Generator
+    public function testResponseWrite(Request $request, Response $response, string $expectedRegexp, bool $expectedClosed): \Generator
     {
         $driver = new Http1Driver(
             (new Options)->withHttp1Timeout(60),
@@ -844,37 +845,35 @@ class Http1DriverTest extends HttpDriverTest
 
         yield $driver->write($request, $response);
 
-        $this->assertSame($buffer, $expectedBuffer);
+        $this->assertRegExp('#' . $expectedRegexp . '#i', $buffer);
         $this->assertSame($closed, $expectedClosed);
     }
 
     public function provideWriteResponses(): array
     {
-        $date = formatDateHeader();
-
         return [
             [
                 new Request($this->createClientMock(), "HEAD", Uri\Http::createFromString("/")),
                 new Response(Status::OK, [], new InMemoryStream),
-                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: $date\r\ntransfer-encoding: chunked\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=\d{2}\r\ndate: .* GMT\r\ntransfer-encoding: chunked\r\n\r\n",
                 false,
             ],
             [
                 new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
                 new Response(Status::OK, [], new InMemoryStream, new Trailers(new Success(['test' => 'value']), ['test'])),
-                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: $date\r\ntrailer: test\r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\ntrailer: test\r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
                 false,
             ],
             [
                 new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
                 new Response(Status::OK, ["content-length" => 0], new InMemoryStream),
-                "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: $date\r\n\r\n",
+                "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\n\r\n",
                 false,
             ],
             [
                 new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "1.0"),
                 new Response(Status::OK, [], new InMemoryStream),
-                "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: $date\r\n\r\n",
+                "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: .* GMT\r\n\r\n",
                 true,
             ],
         ];
