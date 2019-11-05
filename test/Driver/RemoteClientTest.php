@@ -72,8 +72,8 @@ class RemoteClientTest extends AsyncTestCase
         [$address, $server] = yield from $this->startServer(function (Request $req) {
             $this->assertEquals("GET", $req->getMethod());
             $this->assertEquals("/uri", $req->getUri()->getPath());
-            $query = new Query($req->getUri()->getQuery());
-            $this->assertEquals(["foo" => "bar", "baz" => ["1", "2"]], $query->getPairs());
+            $query = Query::createFromUri($req->getUri());
+            $this->assertEquals(["foo" => "bar", "baz" => ["1", "2"]], \iterator_to_array($query->getIterator()));
             $this->assertEquals(["header"], $req->getHeaderArray("custom"));
 
             $data = \str_repeat("*", 100000);
