@@ -341,7 +341,7 @@ final class Response extends Message
     }
 
     /**
-     * @return array
+     * @return Push[]
      */
     public function getPush(): array
     {
@@ -358,22 +358,13 @@ final class Response extends Message
      */
     public function push(string $url, array $headers = []): void
     {
-        \assert((function (array $headers) {
-            foreach ($headers as $name => $header) {
-                if (($name[0] ?? ":") === ":" || !\strncasecmp("host", $name, 4)) {
-                    return false;
-                }
-            }
-            return true;
-        })($headers), "Headers must not contain colon prefixed headers or a Host header");
-
         try {
             $uri = Uri\Http::createFromString($url);
         } catch (\Exception $exception) {
             throw new \Error("Invalid push URI: " . $exception->getMessage(), 0, $exception);
         }
 
-        $this->push[$url] = [$uri, $headers];
+        $this->push[$url] = new Push($uri, $headers);
     }
 
     /**

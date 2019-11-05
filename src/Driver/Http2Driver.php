@@ -249,13 +249,12 @@ final class Http2Driver implements HttpDriver
 
             $headers["date"] = [formatDateHeader()];
 
-            if (!empty($push = $response->getPush())) {
-                foreach ($push as [$pushUri, $pushHeaders]) {
-                    \assert($pushUri instanceof PsrUri && \is_array($pushHeaders));
+            if (!empty($pushed = $response->getPush())) {
+                foreach ($pushed as $push) {
                     if ($this->allowsPush) {
-                        $this->dispatchInternalRequest($request, $id, $pushUri, $pushHeaders);
+                        $this->dispatchInternalRequest($request, $id, $push->getUri(), $push->getHeaders());
                     } else {
-                        $headers["link"][] = "<$pushUri>; rel=preload";
+                        $headers["link"][] = "<{$push->getUri()}>; rel=preload";
                     }
                 }
             }
