@@ -23,8 +23,6 @@ interface HttpDriver
      * resolution. The generator MUST yield only null or a promise.
      *
      * @param Client       $client       The client associated with the data being sent to the returned generator.
-     * @param TimeoutCache $timeoutCache Update the client timeout when data is received or sent on the connection
-     *                                   which should extend the client timeout.
      * @param callable     $onMessage    Invoked with an instance of Request when the returned parser has parsed a
      *                                   request. Returns a promise that is resolved once the response has been
      *                                   generated and writing the response to the client initiated (but not
@@ -34,7 +32,7 @@ interface HttpDriver
      *
      * @return \Generator Request parser.
      */
-    public function setup(Client $client, TimeoutCache $timeoutCache, callable $onMessage, callable $write): \Generator;
+    public function setup(Client $client, callable $onMessage, callable $write): \Generator;
 
     /**
      * Write the given response to the client using the write callback provided to `setup()`.

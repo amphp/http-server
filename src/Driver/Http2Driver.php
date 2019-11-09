@@ -111,9 +111,6 @@ final class Http2Driver implements HttpDriver
     /** @var Options */
     private $options;
 
-    /** @var TimeoutCache */
-    private $timeoutCache;
-
     /** @var PsrLogger */
     private $logger;
 
@@ -180,19 +177,17 @@ final class Http2Driver implements HttpDriver
 
     /**
      * @param Client       $client
-     * @param TimeoutCache $timeoutCache
      * @param callable     $onMessage
      * @param callable     $write
      * @param string|null  $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
      *
      * @return \Generator
      */
-    public function setup(Client $client, TimeoutCache $timeoutCache, callable $onMessage, callable $write, ?string $settings = null): \Generator
+    public function setup(Client $client, callable $onMessage, callable $write, ?string $settings = null): \Generator
     {
         \assert(!$this->client, "The driver has already been setup");
 
         $this->client = $client;
-        $this->timeoutCache = $timeoutCache;
         $this->onMessage = $onMessage;
         $this->write = $write;
 
@@ -211,10 +206,7 @@ final class Http2Driver implements HttpDriver
             return new Success; // Client closed the stream or connection.
         }
 
-        $this->timeoutCache->update(
-            $this->client->getId(),
-            \time() + $this->options->getHttp2Timeout()
-        );
+        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         $stream = $this->streams[$id]; // $this->streams[$id] may be unset in send().
         return $stream->pendingWrite = new Coroutine($this->send($id, $response, $request));
@@ -544,7 +536,7 @@ final class Http2Driver implements HttpDriver
         $delta = \min($this->clientWindow, $stream->clientWindow);
         $length = \strlen($stream->buffer);
 
-        $this->timeoutCache->update($this->client->getId(), \time() + $this->options->getHttp2Timeout());
+        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         if ($delta >= $length) {
             $this->clientWindow -= $length;
@@ -637,10 +629,7 @@ final class Http2Driver implements HttpDriver
         $continuation = false;
         $pinged = 0;
 
-        $this->timeoutCache->update(
-            $this->client->getId(),
-            \time() + $this->options->getHttp2Timeout()
-        );
+        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         try {
             if ($settings !== null) {
@@ -825,10 +814,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
-                            $this->timeoutCache->update(
-                                $this->client->getId(),
-                                \time() + $this->options->getHttp2Timeout()
-                            );
+                            $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             $this->serverWindow -= $length;
                             $stream->serverWindow -= $length;
@@ -1008,10 +994,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
-                            $this->timeoutCache->update(
-                                $this->client->getId(),
-                                \time() + $this->options->getHttp2Timeout()
-                            );
+                            $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;
@@ -1215,10 +1198,9 @@ final class Http2Driver implements HttpDriver
                             if (($flags & self::ACK) === "\0") {
                                 if (!$pinged) {
                                     // Ensure there are a few extra seconds for request after first ping.
-                                    $this->timeoutCache->update($this->client->getId(), \max(
-                                        $this->timeoutCache->getExpirationTime($this->client->getId()),
-                                        \time() + 5
-                                    ));
+                                    $this->client->updateExpirationTime(
+                                        \max($this->client->getExpirationTime(), \time() + 5)
+                                    );
                                 }
 
                                 ++$pinged;
@@ -1381,10 +1363,7 @@ final class Http2Driver implements HttpDriver
                             }
 
                             $payloadBytesReceivedSinceReset += $length;
-                            $this->timeoutCache->update(
-                                $this->client->getId(),
-                                \time() + $this->options->getHttp2Timeout()
-                            );
+                            $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;

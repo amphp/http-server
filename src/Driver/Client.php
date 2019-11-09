@@ -89,6 +89,18 @@ interface Client
     public function getStatus(): int;
 
     /**
+     * @return int Timestamp when the client will automatically be closed. This timestamp is updated when there
+     *             is activity on the connect that should extend the timeout.
+     */
+    public function getExpirationTime(): int;
+
+    /**
+     * @param int $expiresAt Timestamp when the client should be automatically closed if there is no further activity
+     *                       from the client.
+     */
+    public function updateExpirationTime(int $expiresAt): void;
+
+    /**
      * Attaches a callback invoked with this client closes. The callback is passed this object as the first parameter.
      *
      * @param callable $callback

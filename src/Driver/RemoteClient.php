@@ -252,6 +252,20 @@ final class RemoteClient implements Client
         return $this->status;
     }
 
+    public function getExpirationTime(): int
+    {
+        return $this->timeoutCache->getExpirationTime($this->id) ?? 0;
+    }
+
+    public function updateExpirationTime(int $expiresAt): void
+    {
+        if ($this->onClose === null) {
+            return; // Client closed.
+        }
+
+        $this->timeoutCache->update($this->id, $expiresAt);
+    }
+
     /** @inheritdoc */
     public function close(): void
     {
@@ -317,7 +331,6 @@ final class RemoteClient implements Client
         $this->httpDriver = $driver;
         $this->requestParser = $this->httpDriver->setup(
             $this,
-            $this->timeoutCache,
             \Closure::fromCallable([$this, 'onMessage']),
             \Closure::fromCallable([$this, 'write'])
         );

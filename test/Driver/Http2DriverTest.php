@@ -10,7 +10,6 @@ use Amp\Http\Message;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\Driver\HttpDriver;
-use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
@@ -210,9 +209,9 @@ class Http2DriverTest extends HttpDriverTest
                 $this->driver = new Http2Driver($options, new NullLogger);
             }
 
-            public function setup(Client $client, TimeoutCache $timeoutCache, callable $onMessage, callable $write): \Generator
+            public function setup(Client $client, callable $onMessage, callable $write): \Generator
             {
-                return $this->driver->setup($client, new TimeoutCache, $onMessage, function ($data) use ($write) {
+                return $this->driver->setup($client, $onMessage, function ($data) use ($write) {
                     // $data = substr(pack("N", \strlen($data)), 1, 3) . $type . $flags . pack("N", $stream) . $data;
                     $type = $data[3];
                     $flags = $data[4];
@@ -251,7 +250,6 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
-            new TimeoutCache,
             $onMessage ?? function () {
             },
             $this->createCallback(0)
@@ -267,7 +265,6 @@ class Http2DriverTest extends HttpDriverTest
         $driver = new Http2Driver($options, new NullLogger);
         $parser = $driver->setup(
             $this->createClientMock(),
-            new TimeoutCache,
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$buffer) {
                 // HTTP/2 shall only reset streams, not abort the connection
@@ -330,7 +327,6 @@ class Http2DriverTest extends HttpDriverTest
         $driver = new Http2Driver($options, new NullLogger);
         $parser = $driver->setup(
             $this->createClientMock(),
-            new TimeoutCache,
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$buffer) {
                 // HTTP/2 shall only reset streams, not abort the connection
@@ -554,7 +550,6 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
-            new TimeoutCache,
             function (Request $read) use (&$request) {
                 $request = $read;
                 return new Success;
@@ -602,7 +597,6 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
-            new TimeoutCache,
             function (Request $read) use (&$requests) {
                 $requests[] = $read;
                 return new Success;
@@ -655,7 +649,6 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $client,
-            new TimeoutCache,
             $this->createCallback(0),
             function (string $data) use (&$lastWrite) {
                 $lastWrite = $data;
@@ -691,7 +684,6 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $client,
-            new TimeoutCache,
             $this->createCallback(1),
             function (string $data) use (&$lastWrite) {
                 $lastWrite = $data;

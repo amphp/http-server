@@ -151,7 +151,7 @@ class RemoteClientTest extends AsyncTestCase
 
         $driver->expects($this->once())
             ->method("setup")
-            ->willReturnCallback(static function (Client $client, TimeoutCache $timeoutCache, callable $emitter) use (&$emit) {
+            ->willReturnCallback(static function (Client $client, callable $emitter) use (&$emit) {
                 $emit = $emitter;
                 yield;
             });
@@ -344,7 +344,7 @@ class RemoteClientTest extends AsyncTestCase
 
         $driver->expects($this->once())
             ->method("setup")
-            ->willReturnCallback(function (Client $client, TimeoutCache $timeoutCache, callable $emitter) use (&$emit) {
+            ->willReturnCallback(function (Client $client, callable $emitter) use (&$emit) {
                 $emit = $emitter;
                 yield;
             });
@@ -403,7 +403,6 @@ class RemoteClientTest extends AsyncTestCase
         $driver->method("setup")
             ->willReturnCallback(function (
                 Client $client,
-                TimeoutCache $timeoutCache,
                 callable $onMessage,
                 callable $writer
             ) use ($parser) {
