@@ -402,7 +402,9 @@ final class RemoteClient implements Client
             \assert($this->tlsInfo !== null);
 
             \assert($this->logger->debug(\sprintf(
-                "Crypto negotiated (ALPN: %s) %s",
+                "TLS negotiated (%s with %s, application protocol: %s) %s",
+                $this->tlsInfo->getVersion(),
+                $this->tlsInfo->getCipherName(),
                 $this->tlsInfo->getApplicationLayerProtocol() ?? "none",
                 $this->clientAddress->toString()
             )) || true);
@@ -419,7 +421,7 @@ final class RemoteClient implements Client
         }
 
         if ($handshake === false) {
-            \assert($this->logger->debug("Crypto handshake error {$this->clientAddress}") || true);
+            \assert($this->logger->debug("TLS handshake error for {$this->clientAddress}: " . \error_get_last()['message']) || true);
             $this->close();
         }
     }
