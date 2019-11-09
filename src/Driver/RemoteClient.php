@@ -415,11 +415,11 @@ final class RemoteClient implements Client
             \assert($this->tlsInfo !== null);
 
             \assert($this->logger->debug(\sprintf(
-                "TLS negotiated (%s with %s, application protocol: %s) %s",
+                "TLS negotiated with %s (%s with %s, application protocol: %s)",
+                $this->clientAddress->toString(),
                 $this->tlsInfo->getVersion(),
                 $this->tlsInfo->getCipherName(),
-                $this->tlsInfo->getApplicationLayerProtocol() ?? "none",
-                $this->clientAddress->toString()
+                $this->tlsInfo->getApplicationLayerProtocol() ?? "none"
             )) || true);
 
             $this->setup($driverFactory->selectDriver(
@@ -434,7 +434,12 @@ final class RemoteClient implements Client
         }
 
         if ($handshake === false) {
-            \assert($this->logger->debug("TLS handshake error for {$this->clientAddress}: " . \error_get_last()['message']) || true);
+            \assert($this->logger->debug(\sprintf(
+                "TLS handshake error with %s: %s",
+                $this->clientAddress,
+                $this->cleanTlsErrorMessage(\error_get_last()['message'])
+            )) || true);
+
             $this->close();
         }
     }
@@ -692,5 +697,14 @@ final class RemoteClient implements Client
             $this->logger->error($exception);
             $this->close();
         });
+    }
+
+    private function cleanTlsErrorMessage(string $message): string
+    {
+        $message = \str_replace('stream_socket_enable_crypto(): ', '', $message);
+        $message = \str_replace('SSL operation failed with code ', 'TLS operation failed with code ', $message);
+        $message = \str_replace('. OpenSSL Error messages', '', $message);
+
+        return $message;
     }
 }
