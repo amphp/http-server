@@ -285,6 +285,34 @@ class OptionsTest extends TestCase
         $this->assertTrue($options->isHttp2UpgradeAllowed());
     }
 
+    public function testWithoutPush(): void
+    {
+        $options = new Options;
+
+        // default
+        $this->assertTrue($options->isPushEnabled());
+
+        // change
+        $this->assertFalse($options->withoutPush()->isPushEnabled());
+
+        // change doesn't affect original
+        $this->assertTrue($options->isPushEnabled());
+    }
+
+    public function testWithPush(): void
+    {
+        $options = (new Options)->withoutPush();
+
+        // default
+        $this->assertFalse($options->isPushEnabled());
+
+        // change
+        $this->assertTrue($options->withPush()->isPushEnabled());
+
+        // change doesn't affect original
+        $this->assertFalse($options->isPushEnabled());
+    }
+
     public function testWithCompression(): void
     {
         $options = new Options;

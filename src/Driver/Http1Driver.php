@@ -851,13 +851,8 @@ final class Http1Driver implements HttpDriver
             return $headers;
         }
 
-        $pushed = $response->getPush();
-
-        if (!empty($pushed)) {
-            $headers["link"] = [];
-            foreach ($pushed as $push) {
-                $headers["link"][] = "<{$push->getUri()}>; rel=preload";
-            }
+        foreach ($response->getPushed() as $push) {
+            $headers["link"][] = "<{$push->getUri()}>; rel=preload";
         }
 
         $contentLength = $headers["content-length"][0] ?? null;

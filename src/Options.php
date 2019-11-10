@@ -22,6 +22,7 @@ final class Options
 
     private $compression = true;
     private $allowHttp2Upgrade = false;
+    private $pushEnabled = true;
 
     /**
      * @return bool `true` if server is in debug mode, `false` if in production mode.
@@ -440,6 +441,41 @@ final class Options
     {
         $new = clone $this;
         $new->allowHttp2Upgrade = false;
+
+        return $new;
+    }
+
+    /**
+     * @return bool `true` if HTTP/2 push promises will be sent by the server, `false` if pushes will only set a
+     *              preload link header in the response.
+     */
+    public function isPushEnabled(): bool
+    {
+        return $this->pushEnabled;
+    }
+
+    /**
+     * Enables HTTP/2 push promises.
+     *
+     * @return self
+     */
+    public function withPush(): self
+    {
+        $new = clone $this;
+        $new->pushEnabled = true;
+
+        return $new;
+    }
+
+    /**
+     * Disables HTTP/2 push promises.
+     *
+     * @return self
+     */
+    public function withoutPush(): self
+    {
+        $new = clone $this;
+        $new->pushEnabled = false;
 
         return $new;
     }

@@ -127,7 +127,7 @@ final class Http2Driver implements HttpDriver
     private $maxFrameSize = self::DEFAULT_MAX_FRAME_SIZE;
 
     /** @var bool */
-    private $allowsPush = true;
+    private $allowsPush;
 
     /** @var int Last used local stream ID. */
     private $localStreamId = 0;
@@ -171,6 +171,7 @@ final class Http2Driver implements HttpDriver
         $this->logger = $logger;
 
         $this->remainingStreams = $this->options->getConcurrentStreamLimit();
+        $this->allowsPush = $this->options->isPushEnabled();
 
         $this->table = new HPack;
     }
@@ -241,13 +242,11 @@ final class Http2Driver implements HttpDriver
 
             $headers["date"] = [formatDateHeader()];
 
-            if (!empty($pushed = $response->getPush())) {
-                foreach ($pushed as $push) {
-                    if ($this->allowsPush) {
-                        $this->dispatchInternalRequest($request, $id, $push->getUri(), $push->getHeaders());
-                    } else {
-                        $headers["link"][] = "<{$push->getUri()}>; rel=preload";
-                    }
+            foreach ($response->getPushed() as $push) {
+                if ($this->allowsPush) {
+                    $this->dispatchInternalRequest($request, $id, $push->getUri(), $push->getHeaders());
+                } else {
+                    $headers["link"][] = "<{$push->getUri()}>; rel=preload";
                 }
             }
 
@@ -1713,7 +1712,7 @@ final class Http2Driver implements HttpDriver
                     );
                 }
 
-                $this->allowsPush = (bool) $unpacked["value"];
+                $this->allowsPush = ((bool) $unpacked["value"]) && $this->options->isPushEnabled();
                 return;
 
             case self::MAX_FRAME_SIZE:
