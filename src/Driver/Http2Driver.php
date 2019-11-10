@@ -713,7 +713,7 @@ final class Http2Driver implements HttpDriver
                 if ($lastReset === $now) {
                     // Inspired by nginx flood detection:
                     // https://github.com/nginx/nginx/commit/af0e284b967d0ecff1abcdce6558ed4635e3e757
-                    if ($totalBytesReceivedSinceReset > $payloadBytesReceivedSinceReset + 8192) {
+                    if ($totalBytesReceivedSinceReset / 2 > $payloadBytesReceivedSinceReset + 8192) {
                         throw new Http2ConnectionException(
                             $this->client,
                             "Flood detected",
