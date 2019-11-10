@@ -1666,6 +1666,13 @@ final class Http2Driver implements HttpDriver
                 }
             }
         } catch (Http2ConnectionException $exception) {
+            $message = \sprintf(
+                "Fatal connection error for client %s: %s",
+                $this->client->getRemoteAddress(),
+                $exception->getMessage()
+            );
+
+            $this->logger->notice($message);
             $this->shutdown(null, $exception);
         } finally {
             $this->client->close();
