@@ -713,7 +713,7 @@ final class Http2Driver implements HttpDriver
                 if ($lastReset === $now) {
                     // Inspired by nginx flood detection:
                     // https://github.com/nginx/nginx/commit/af0e284b967d0ecff1abcdce6558ed4635e3e757
-                    if ($totalBytesReceivedSinceReset > $payloadBytesReceivedSinceReset + 8192) {
+                    if ($totalBytesReceivedSinceReset / 2 > $payloadBytesReceivedSinceReset + 1024) {
                         throw new Http2ConnectionException(
                             $this->client,
                             "Flood detected",
@@ -761,7 +761,7 @@ final class Http2Driver implements HttpDriver
                     switch ($type) {
                         case self::DATA:
                             $padding = 0;
-                            $payloadBytesReceivedSinceReset += $length + 9;
+                            $payloadBytesReceivedSinceReset += $length;
                             $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             if (($flags & self::PADDED) !== "\0") {
@@ -938,7 +938,7 @@ final class Http2Driver implements HttpDriver
                             $this->remoteStreamId = \max($id, $this->remoteStreamId);
 
                             $padding = 0;
-                            $payloadBytesReceivedSinceReset += $length + 9;
+                            $payloadBytesReceivedSinceReset += $length;
                             $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             if (($flags & self::PADDED) !== "\0") {
@@ -1359,7 +1359,7 @@ final class Http2Driver implements HttpDriver
                                 );
                             }
 
-                            $payloadBytesReceivedSinceReset += $length + 9;
+                            $payloadBytesReceivedSinceReset += $length;
                             $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             while (\strlen($buffer) < $length) {
