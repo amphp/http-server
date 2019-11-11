@@ -761,6 +761,8 @@ final class Http2Driver implements HttpDriver
                     switch ($type) {
                         case self::DATA:
                             $padding = 0;
+                            $payloadBytesReceivedSinceReset += $length + 9;
+                            $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             if (($flags & self::PADDED) !== "\0") {
                                 if ($buffer === "") {
@@ -811,9 +813,6 @@ final class Http2Driver implements HttpDriver
                                     self::PROTOCOL_ERROR
                                 );
                             }
-
-                            $payloadBytesReceivedSinceReset += $length;
-                            $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             $this->serverWindow -= $length;
                             $stream->serverWindow -= $length;
@@ -939,6 +938,8 @@ final class Http2Driver implements HttpDriver
                             $this->remoteStreamId = \max($id, $this->remoteStreamId);
 
                             $padding = 0;
+                            $payloadBytesReceivedSinceReset += $length + 9;
+                            $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             if (($flags & self::PADDED) !== "\0") {
                                 if ($buffer === "") {
@@ -991,9 +992,6 @@ final class Http2Driver implements HttpDriver
                                     self::ENHANCE_YOUR_CALM
                                 );
                             }
-
-                            $payloadBytesReceivedSinceReset += $length;
-                            $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             while (\strlen($buffer) < $length) {
                                 $buffer .= yield;
@@ -1361,7 +1359,7 @@ final class Http2Driver implements HttpDriver
                                 );
                             }
 
-                            $payloadBytesReceivedSinceReset += $length;
+                            $payloadBytesReceivedSinceReset += $length + 9;
                             $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
                             while (\strlen($buffer) < $length) {
