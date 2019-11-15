@@ -24,6 +24,8 @@ use function Amp\call;
 
 final class RemoteClient implements Client
 {
+    private const SHUTDOWN_TIMEOUT_ON_ERROR = 1000;
+
     /** @var DefaultErrorHandler */
     private static $defaultErrorHandler;
 
@@ -580,21 +582,26 @@ final class RemoteClient implements Client
             $method = $request->getMethod();
 
             if (!\in_array($method, $this->options->getAllowedMethods(), true)) {
-                if (!\in_array($method, HttpDriver::KNOWN_METHODS, true)) {
-                    $response = yield from $this->makeNotImplementedResponse();
-                } else {
-                    $response = yield from $this->makeMethodNotAllowedResponse();
-                }
+                $response = yield from $this->makeMethodErrorResponse(
+                    \in_array($method, HttpDriver::KNOWN_METHODS, true)
+                        ? Status::METHOD_NOT_ALLOWED
+                        : Status::NOT_IMPLEMENTED
+                );
             } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
                 $response = $this->makeOptionsResponse();
             } else {
                 $response = yield $this->requestHandler->handleRequest(clone $request);
 
                 if (!$response instanceof Response) {
-                    throw new \Error("At least one request handler must return an instance of " . Response::class);
+                    throw new \Error(\sprintf(
+                        "Promise returned from %s::handleRequest() must resolve to an instance of %s",
+                        \get_class($this->requestHandler),
+                        Response::class
+                    ));
                 }
             }
         } catch (ClientException $exception) {
+            yield $this->stop(self::SHUTDOWN_TIMEOUT_ON_ERROR);
             $this->close();
             return;
         } catch (\Throwable $exception) {
@@ -623,22 +630,10 @@ final class RemoteClient implements Client
         }
     }
 
-    private function makeMethodNotAllowedResponse(): \Generator
+    private function makeMethodErrorResponse(int $status): \Generator
     {
-        $status = Status::METHOD_NOT_ALLOWED;
         /** @var Response $response */
         $response = yield $this->errorHandler->handleError($status);
-        $response->setHeader("Connection", "close");
-        $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
-        return $response;
-    }
-
-    private function makeNotImplementedResponse(): \Generator
-    {
-        $status = Status::NOT_IMPLEMENTED;
-        /** @var Response $response */
-        $response = yield $this->errorHandler->handleError($status);
-        $response->setHeader("Connection", "close");
         $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
         return $response;
     }
