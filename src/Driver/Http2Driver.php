@@ -12,6 +12,7 @@ use Amp\Http\Message;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Driver\Internal\Http2Stream;
 use Amp\Http\Server\Options;
+use Amp\Http\Server\Push;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
@@ -22,7 +23,6 @@ use Amp\Promise;
 use Amp\Success;
 use Amp\TimeoutException;
 use League\Uri;
-use Psr\Http\Message\UriInterface as PsrUri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
 use function Amp\Http\formatDateHeader;
@@ -242,11 +242,11 @@ final class Http2Driver implements HttpDriver
 
             $headers["date"] = [formatDateHeader()];
 
-            foreach ($response->getPushed() as $push) {
+            $headers["link"] = [];
+            foreach ($response->getPushes() as $push) {
+                $headers["link"][] = "<{$push->getUri()}>; rel=preload";
                 if ($this->allowsPush) {
-                    $this->dispatchInternalRequest($request, $id, $push->getUri(), $push->getHeaders());
-                } else {
-                    $headers["link"][] = "<{$push->getUri()}>; rel=preload";
+                    $this->sendPushPromise($request, $id, $push);
                 }
             }
 
@@ -440,21 +440,25 @@ final class Http2Driver implements HttpDriver
         return \count($this->bodyEmitters);
     }
 
-    private function dispatchInternalRequest(Request $request, int $streamId, PsrUri $url, array $headers = []): void
+    private function sendPushPromise(Request $request, int $streamId, Push $push): void
     {
-        $uri = $request->getUri();
-        $path = $url->getPath();
+        $requestUri = $request->getUri();
+        $pushUri = $push->getUri();
+        $path = $pushUri->getPath();
 
-        if (($path[0] ?? "") === "/") { // Absolute path
-            $uri = $uri->withPath($path);
-        } else { // Relative path
-            $uri = $uri->withPath(\rtrim($uri->getPath(), "/") . "/" . $path);
+        if (($path[0] ?? "/") !== "/") { // Relative Path
+            $pushUri = $requestUri // Base push URI from original request URI.
+                ->withPath($requestUri->getPath() . "/" . $path)
+                ->withQuery($pushUri->getQuery());
         }
 
-        $uri = $uri->withQuery($url->getQuery());
-        \assert($uri instanceof PsrUri);
+        if ($pushUri->getAuthority() === '') {
+            $pushUri = $pushUri // If push URI did not provide a host, use original request URI.
+                ->withHost($requestUri->getHost())
+                ->withPort($requestUri->getPort());
+        }
 
-        $url = (string) $uri;
+        $url = (string) $pushUri;
 
         if (isset($this->pushCache[$url])) {
             return; // Resource already pushed to this client.
@@ -462,17 +466,21 @@ final class Http2Driver implements HttpDriver
 
         $this->pushCache[$url] = $streamId;
 
-        $path = $uri->getPath();
-        if ($query = $uri->getQuery()) {
+        $path = $pushUri->getPath();
+        if ($query = $pushUri->getQuery()) {
             $path .= "?" . $query;
         }
 
-        $headers = \array_merge(\array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), $headers);
+        $headers = \array_merge(
+            \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), // Uses only select headers
+            $push->getHeaders() // Overwrites request headers with those defined in push.
+        );
 
+        // $id is the new stream ID for the pushed response, $streamId is the original request stream ID.
         $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
         $this->remoteStreamId = \max($id, $this->remoteStreamId);
-        $request = new Request($this->client, "GET", $uri, $headers, null, "2");
-        $this->streamIdMap[\spl_object_hash($request)] = $id;
+
+        $request = new Request($this->client, "GET", $pushUri, $headers, null, "2");
 
         $this->streams[$id] = $stream = new Http2Stream(
             0, // No data will be incoming on this stream.
@@ -480,9 +488,11 @@ final class Http2Driver implements HttpDriver
             Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
         );
 
+        $this->streamIdMap[\spl_object_hash($request)] = $id;
+
         $headers = \array_merge([
-            ":authority" => [$uri->getAuthority()],
-            ":scheme"    => [$uri->getScheme()],
+            ":authority" => [$pushUri->getAuthority()],
+            ":scheme"    => [$pushUri->getScheme()],
             ":path"      => [$path],
             ":method"    => ["GET"],
         ], $headers);

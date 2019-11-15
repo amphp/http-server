@@ -343,7 +343,7 @@ final class Response extends Message
     /**
      * @return Push[]
      */
-    public function getPushed(): array
+    public function getPushes(): array
     {
         return $this->push;
     }
