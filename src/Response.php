@@ -38,9 +38,9 @@ final class Response extends Message
     private $trailers;
 
     /**
-     * @param InputStream|string|null $stringOrStream
-     * @param string[][]              $headers
      * @param int                     $code Status code.
+     * @param string[][]              $headers
+     * @param InputStream|string|null $stringOrStream
      * @param Trailers|null           $trailers
      *
      * @throws \Error If one of the arguments is invalid.
@@ -378,10 +378,11 @@ final class Response extends Message
     /**
      * Sets a callback to be invoked once the response has been written to the client and changes the status of the
      * response to 101 (Switching Protocols) and removes any trailers. The callback may be removed by changing the
-     * status to something else.
+     * response status to any value other than 101.
      *
      * @param callable $upgrade Callback invoked once the response has been written to the client. The callback is given
-     *                          an instance of Amp\Http\Server\Driver\UpgradedSocket as the first parameter.
+     *                          three parameters: an instance of Driver\UpgradedSocket, the original Request object,
+     *                          and this Response object.
      */
     public function upgrade(callable $upgrade): void
     {
@@ -397,7 +398,7 @@ final class Response extends Message
      *
      * @return callable|null Upgrade function.
      */
-    public function getUpgradeCallable(): ?callable
+    public function getUpgradeHandler(): ?callable
     {
         return $this->upgrade;
     }

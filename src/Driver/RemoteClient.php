@@ -616,9 +616,9 @@ final class RemoteClient implements Client
 
         if ($response->isUpgraded()) {
             $this->isExported = true;
-            $callback = $response->getUpgradeCallable();
-            $promise->onResolve(function () use ($callback, $buffer): void {
-                $this->export($callback, $buffer);
+            $callback = $response->getUpgradeHandler();
+            $promise->onResolve(function () use ($callback, $request, $response, $buffer): void {
+                $this->export($callback, $request, $response, $buffer);
             });
         }
     }
@@ -673,10 +673,12 @@ final class RemoteClient implements Client
     /**
      * Invokes the export function on Response with the socket upgraded from the HTTP server.
      *
-     * @param callable $upgrade callable
+     * @param callable $upgrade
+     * @param Request  $request
+     * @param Response $response
      * @param string   $buffer Remaining buffer read from the socket.
      */
-    private function export(callable $upgrade, string $buffer): void
+    private function export(callable $upgrade, Request $request, Response $response, string $buffer): void
     {
         if ($this->status & self::CLOSED_RDWR) {
             return;
@@ -689,7 +691,7 @@ final class RemoteClient implements Client
         $socket = ResourceSocket::fromServerSocket($this->socket, $this->options->getChunkSize());
         $socket = new UpgradedSocket($this, $socket, $buffer);
 
-        call($upgrade, $socket)->onResolve(function (?\Throwable $exception): void {
+        call($upgrade, $socket, $request, $response)->onResolve(function (?\Throwable $exception): void {
             if (!$exception) {
                 return;
             }

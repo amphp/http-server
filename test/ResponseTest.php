@@ -82,12 +82,12 @@ class ResponseTest extends AsyncTestCase
     public function testUndoUpgrade(): void
     {
         $response = new Response;
-        $this->assertNull($response->getUpgradeCallable());
+        $this->assertNull($response->getUpgradeHandler());
 
         $response->upgrade($this->createCallback(0));
-        $this->assertNotNull($response->getUpgradeCallable());
+        $this->assertNotNull($response->getUpgradeHandler());
 
         $response->setStatus(500);
-        $this->assertNull($response->getUpgradeCallable());
+        $this->assertNull($response->getUpgradeHandler());
     }
 }
