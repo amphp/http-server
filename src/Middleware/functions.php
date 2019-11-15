@@ -16,11 +16,8 @@ use Amp\Http\Server\RequestHandler;
  */
 function stack(RequestHandler $requestHandler, Middleware ...$middlewares): RequestHandler
 {
-    $middleware = \end($middlewares);
-
-    while ($middleware) {
+    foreach (\array_reverse($middlewares) as $middleware) {
         $requestHandler = new MiddlewareRequestHandler($middleware, $requestHandler);
-        $middleware = \prev($middlewares);
     }
 
     return $requestHandler;
