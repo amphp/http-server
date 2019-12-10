@@ -660,15 +660,13 @@ final class Http1Driver implements HttpDriver
                             if ($bufferLength >= $chunkLengthRemaining + 2) {
                                 $buffer .= yield $emitter->emit(\substr($buffer, 0, $chunkLengthRemaining));
                                 $buffer = \substr($buffer, $chunkLengthRemaining + 2);
-                            } else {
-                                $buffer = yield $emitter->emit($buffer);
-                                $chunkLengthRemaining -= $bufferLength;
-                            }
 
-                            if ($bufferLength >= $chunkLengthRemaining + 2) {
                                 $chunkLengthRemaining = null;
                                 continue 2; // next chunk (chunked loop)
                             }
+
+                            $buffer = yield $emitter->emit($buffer);
+                            $chunkLengthRemaining -= $bufferLength;
                         }
                     }
 
