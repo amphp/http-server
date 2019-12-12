@@ -177,10 +177,10 @@ final class Http2Driver implements HttpDriver
     }
 
     /**
-     * @param Client       $client
-     * @param callable     $onMessage
-     * @param callable     $write
-     * @param string|null  $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
+     * @param Client      $client
+     * @param callable    $onMessage
+     * @param callable    $write
+     * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
      *
      * @return \Generator
      */
@@ -213,6 +213,17 @@ final class Http2Driver implements HttpDriver
         return $stream->pendingWrite = new Coroutine($this->send($id, $response, $request));
     }
 
+    /** @inheritdoc */
+    public function stop(): Promise
+    {
+        return $this->shutdown();
+    }
+
+    public function getPendingRequestCount(): int
+    {
+        return \count($this->bodyEmitters);
+    }
+
     private function send(int $id, Response $response, Request $request): \Generator
     {
         $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
@@ -222,7 +233,11 @@ final class Http2Driver implements HttpDriver
 
             if ($status < Status::OK) {
                 $response->setStatus(Status::HTTP_VERSION_NOT_SUPPORTED);
-                throw new ClientException($this->client, "1xx response codes are not supported in HTTP/2", self::HTTP_1_1_REQUIRED);
+                throw new ClientException(
+                    $this->client,
+                    "1xx response codes are not supported in HTTP/2",
+                    self::HTTP_1_1_REQUIRED
+                );
             }
 
             if ($status === Status::HTTP_VERSION_NOT_SUPPORTED && $response->getHeader("upgrade")) {
@@ -250,7 +265,7 @@ final class Http2Driver implements HttpDriver
                 }
             }
 
-            $headers = $this->table->encode($headers);
+            $headers = $this->encodeHeaders($headers);
 
             if (\strlen($headers) > $this->maxFrameSize) {
                 $split = \str_split($headers, $this->maxFrameSize);
@@ -338,7 +353,7 @@ final class Http2Driver implements HttpDriver
                 $trailers = yield $trailers->await();
                 \assert($trailers instanceof Message);
 
-                $headers = $this->table->encode($trailers->getHeaders());
+                $headers = $this->encodeHeaders($trailers->getHeaders());
 
                 if (\strlen($headers) > $this->maxFrameSize) {
                     $split = \str_split($headers, $this->maxFrameSize);
@@ -373,12 +388,6 @@ final class Http2Driver implements HttpDriver
 
             $this->releaseStream($id);
         }
-    }
-
-    /** @inheritdoc */
-    public function stop(): Promise
-    {
-        return $this->shutdown();
     }
 
     /**
@@ -435,11 +444,6 @@ final class Http2Driver implements HttpDriver
         });
     }
 
-    public function getPendingRequestCount(): int
-    {
-        return \count($this->bodyEmitters);
-    }
-
     private function sendPushPromise(Request $request, int $streamId, Push $push): void
     {
         $requestUri = $request->getUri();
@@ -492,12 +496,12 @@ final class Http2Driver implements HttpDriver
 
         $headers = \array_merge([
             ":authority" => [$pushUri->getAuthority()],
-            ":scheme"    => [$pushUri->getScheme()],
-            ":path"      => [$path],
-            ":method"    => ["GET"],
+            ":scheme" => [$pushUri->getScheme()],
+            ":path" => [$path],
+            ":method" => ["GET"],
         ], $headers);
 
-        $headers = \pack("N", $id) . $this->table->encode($headers);
+        $headers = \pack("N", $id) . $this->encodeHeaders($headers);
 
         if (\strlen($headers) >= $this->maxFrameSize) {
             $split = \str_split($headers, $this->maxFrameSize);
@@ -744,7 +748,11 @@ final class Http2Driver implements HttpDriver
                 $totalBytesReceivedSinceReset += $length + 9;
 
                 if ($length > self::DEFAULT_MAX_FRAME_SIZE) { // Do we want to allow increasing max frame size?
-                    throw new Http2ConnectionException($this->client, "Max frame size exceeded", self::FRAME_SIZE_ERROR);
+                    throw new Http2ConnectionException(
+                        $this->client,
+                        "Max frame size exceeded",
+                        self::FRAME_SIZE_ERROR
+                    );
                 }
 
                 $type = $buffer[3];
@@ -783,7 +791,11 @@ final class Http2Driver implements HttpDriver
                                 $length--;
 
                                 if ($padding > $length) {
-                                    throw new Http2ConnectionException($this->client, "Padding greater than length", self::PROTOCOL_ERROR);
+                                    throw new Http2ConnectionException(
+                                        $this->client,
+                                        "Padding greater than length",
+                                        self::PROTOCOL_ERROR
+                                    );
                                 }
                             }
 
@@ -829,7 +841,12 @@ final class Http2Driver implements HttpDriver
                             $stream->received += $length;
 
                             if ($stream->received >= $stream->maxBodySize && ($flags & self::END_STREAM) === "\0") {
-                                throw new Http2StreamException($this->client, "Max body size exceeded", $id, self::CANCEL);
+                                throw new Http2StreamException(
+                                    $this->client,
+                                    "Max body size exceeded",
+                                    $id,
+                                    self::CANCEL
+                                );
                             }
 
                             while (\strlen($buffer) < $length) {
@@ -880,7 +897,12 @@ final class Http2Driver implements HttpDriver
                                         }
                                         $stream->serverWindow += $increment;
 
-                                        $this->writeFrame(\pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG, $id);
+                                        $this->writeFrame(
+                                            \pack("N", $increment),
+                                            self::WINDOW_UPDATE,
+                                            self::NOFLAG,
+                                            $id
+                                        );
                                     });
                                 }
                             }
@@ -1539,10 +1561,10 @@ final class Http2Driver implements HttpDriver
                         try {
                             $uri = Uri\Http::createFromComponents([
                                 "scheme" => $scheme,
-                                "host"   => $host,
-                                "port"   => $port,
-                                "path"   => $target,
-                                "query"  => $query,
+                                "host" => $host,
+                                "port" => $port,
+                                "path" => $target,
+                                "query" => $query,
                             ]);
                         } catch (Uri\Contracts\UriException $exception) {
                             throw new Http2ConnectionException(
@@ -1761,5 +1783,18 @@ final class Http2Driver implements HttpDriver
 
             $this->writeBufferedData($id);
         }
+    }
+
+    private function encodeHeaders(array $headers): string
+    {
+        $input = [];
+
+        foreach ($headers as $field => $values) {
+            foreach ($values as $value) {
+                $input[] = [$field, $value];
+            }
+        }
+
+        return $this->table->encode($input);
     }
 }
