@@ -1791,7 +1791,7 @@ final class Http2Driver implements HttpDriver
 
         foreach ($headers as $field => $values) {
             foreach ($values as $value) {
-                $input[] = [$field, $value];
+                $input[] = [(string) $field, (string) $value];
             }
         }
 

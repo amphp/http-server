@@ -29,11 +29,23 @@ class Http2DriverTest extends HttpDriverTest
         return \substr(\pack("N", \strlen($data)), 1, 3) . $type . $flags . \pack("N", $stream) . $data;
     }
 
-    public static function packHeader(array $headers, bool $continue = false, int $stream = 1, int $split = \PHP_INT_MAX): string
-    {
+    public static function packHeader(
+        array $headers,
+        bool $continue = false,
+        int $stream = 1,
+        int $split = \PHP_INT_MAX
+    ): string {
+        $input = [];
+
+        foreach ($headers as $field => $values) {
+            foreach ((array) $values as $value) {
+                $input[] = [$field, $value];
+            }
+        }
+
         $data = "";
         $hpack = new HPack;
-        $headers = $hpack->encode($headers);
+        $headers = $hpack->encode($input);
         $all = \str_split($headers, $split);
         if ($split !== PHP_INT_MAX) {
             $flag = Http2Driver::PADDED;
@@ -65,7 +77,7 @@ class Http2DriverTest extends HttpDriverTest
         $msg = Http2Driver::PREFACE . $msg;
 
         for ($mode = 0; $mode <= 1; $mode++) {
-            list($driver, $parser) = $this->setupDriver(function (Request $req) use (&$request, &$parser) {
+            [$driver, $parser] = $this->setupDriver(function (Request $req) use (&$request, &$parser) {
                 $request = $req;
             });
 
@@ -305,16 +317,16 @@ class Http2DriverTest extends HttpDriverTest
         $hpack = new HPack;
 
         $data .= self::packFrame($hpack->encode([
-            ":status" => Status::OK,
-            "content-length" => [\strlen($body)],
-            "trailer" => "expires",
-            "date" => [formatDateHeader()],
+            [":status", (string) Status::OK],
+            ["content-length", \strlen($body)],
+            ["trailer", "expires"],
+            ["date", formatDateHeader()],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
 
         $data .= self::packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
 
         $data .= self::packFrame($hpack->encode([
-            "expires" => ["date"],
+            ["expires", "date"],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS | HTTP2Driver::END_STREAM, 1);
 
         $this->assertEquals($data, $buffer);
@@ -361,8 +373,8 @@ class Http2DriverTest extends HttpDriverTest
 
         $hpack = new HPack;
         $data .= self::packFrame($hpack->encode([
-            ":status" => Status::OK,
-            "date" => [formatDateHeader()],
+            [":status", (string) Status::OK],
+            ["date", formatDateHeader()],
         ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1);
 
         $data .= self::packFrame("foo", Http2Driver::DATA, Http2Driver::NOFLAG, 1);
@@ -373,7 +385,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testPingPong(): void
     {
-        list($driver, $parser) = $this->setupDriver();
+        [$driver, $parser] = $this->setupDriver();
 
         $parser->send(Http2Driver::PREFACE);
         $driver->frames = []; // ignore settings and window updates...
@@ -385,13 +397,13 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testFlowControl(): \Generator
     {
-        list($driver, $parser) = $this->setupDriver(function (Request $read) use (&$request) {
+        [$driver, $parser] = $this->setupDriver(function (Request $read) use (&$request) {
             $request = $read;
         }, (new Options)->withStreamThreshold(1)); // Set stream threshold to 1 to force immediate writes to client.
 
         $parser->send(Http2Driver::PREFACE);
 
-        foreach ($driver->frames as list($data, $type, $flags, $stream)) {
+        foreach ($driver->frames as [$data, $type, $flags, $stream]) {
             $this->assertEquals(Http2Driver::SETTINGS, $type);
             $this->assertEquals(0, $stream);
         }
@@ -399,7 +411,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser->send(self::packFrame(\pack("nN", Http2Driver::INITIAL_WINDOW_SIZE, 66000), Http2Driver::SETTINGS, Http2Driver::NOFLAG));
         $this->assertCount(1, $driver->frames);
-        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        [$data, $type, $flags, $stream] = \array_pop($driver->frames);
         $this->assertEquals(Http2Driver::SETTINGS, $type);
         $this->assertEquals(Http2Driver::ACK, $flags);
         $this->assertEquals("", $data);
@@ -407,10 +419,10 @@ class Http2DriverTest extends HttpDriverTest
 
         $headers = [
             ":authority" => "localhost",
-            ":path"      => "/",
-            ":scheme"    => "http",
-            ":method"    => "GET",
-            "test"       => "successful",
+            ":path" => "/",
+            ":scheme" => "http",
+            ":method" => "GET",
+            "test" => "successful",
         ];
         $parser->send(self::packHeader($headers, false, 1));
 
@@ -425,17 +437,22 @@ class Http2DriverTest extends HttpDriverTest
         ));
 
         $hpack = new HPack;
-        $this->assertEquals([$hpack->encode([
-            ":status"      => Status::OK,
-            "content-type" => ["text/html; charset=utf-8"],
-            "date"         => [formatDateHeader()],
-        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 1], \array_pop($driver->frames));
+        $this->assertEquals([
+            $hpack->encode([
+                [":status", (string) Status::OK],
+                ["content-type", "text/html; charset=utf-8"],
+                ["date", formatDateHeader()],
+            ]),
+            Http2Driver::HEADERS,
+            Http2Driver::END_HEADERS,
+            1,
+        ], \array_pop($driver->frames));
 
         $emitter->emit(\str_repeat("_", 66002));
         $emitter->complete();
 
         $recv = "";
-        foreach ($driver->frames as list($data, $type, $flags, $stream)) {
+        foreach ($driver->frames as [$data, $type, $flags, $stream]) {
             $recv .= $data;
             $this->assertEquals(Http2Driver::DATA, $type);
             $this->assertEquals(Http2Driver::NOFLAG, $flags);
@@ -451,7 +468,7 @@ class Http2DriverTest extends HttpDriverTest
         yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(1, $driver->frames);
-        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        [$data, $type, $flags, $stream] = \array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::NOFLAG, $flags);
         $this->assertEquals($chunkSize, \strlen($data));
@@ -465,7 +482,7 @@ class Http2DriverTest extends HttpDriverTest
         yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(1, $driver->frames);
-        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        [$data, $type, $flags, $stream] = \array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::NOFLAG, $flags);
         $this->assertEquals("_", $data);
@@ -476,13 +493,13 @@ class Http2DriverTest extends HttpDriverTest
         yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(2, $driver->frames);
-        list($data, $type, $flags, $stream) = \array_shift($driver->frames);
+        [$data, $type, $flags, $stream] = \array_shift($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::NOFLAG, $flags);
         $this->assertEquals("_", $data);
         $this->assertEquals(1, $stream);
 
-        list($data, $type, $flags, $stream) = \array_shift($driver->frames);
+        [$data, $type, $flags, $stream] = \array_shift($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::END_STREAM, $flags);
         $this->assertEquals("", $data);
@@ -501,18 +518,23 @@ class Http2DriverTest extends HttpDriverTest
         ));
 
         $hpack = new HPack;
-        $this->assertEquals([$hpack->encode([
-            ":status"      => Status::OK,
-            "content-type" => ["text/html; charset=utf-8"],
-            "date"         => [formatDateHeader()],
-        ]), Http2Driver::HEADERS, Http2Driver::END_HEADERS, 3], \array_pop($driver->frames));
+        $this->assertEquals([
+            $hpack->encode([
+                [":status", (string) Status::OK],
+                ["content-type", "text/html; charset=utf-8"],
+                ["date", formatDateHeader()],
+            ]),
+            Http2Driver::HEADERS,
+            Http2Driver::END_HEADERS,
+            3,
+        ], \array_pop($driver->frames));
 
         $emitter->emit("**");
 
         yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(1, $driver->frames);
-        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        [$data, $type, $flags, $stream] = \array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::NOFLAG, $flags);
         $this->assertEquals("**", $data);
@@ -526,7 +548,7 @@ class Http2DriverTest extends HttpDriverTest
         yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(1, $driver->frames);
-        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        [$data, $type, $flags, $stream] = \array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::NOFLAG, $flags);
         $this->assertEquals("*", $data);
@@ -537,7 +559,7 @@ class Http2DriverTest extends HttpDriverTest
         yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(1, $driver->frames);
-        list($data, $type, $flags, $stream) = \array_pop($driver->frames);
+        [$data, $type, $flags, $stream] = \array_pop($driver->frames);
         $this->assertEquals(Http2Driver::DATA, $type);
         $this->assertEquals(Http2Driver::END_STREAM, $flags);
         $this->assertEquals("", $data);
@@ -698,7 +720,7 @@ class Http2DriverTest extends HttpDriverTest
             ":path" => "/base",
             ":scheme" => "https",
             ":method" => "POST",
-            "content-length" => "1024"
+            "content-length" => "1024",
         ];
         $parser->send(self::packHeader($headers, false, 1));
 
