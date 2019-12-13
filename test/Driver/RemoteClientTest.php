@@ -9,7 +9,6 @@ use Amp\CancellationToken;
 use Amp\Delayed;
 use Amp\Emitter;
 use Amp\Http\Client\Connection\DefaultConnectionFactory;
-use Amp\Http\Client\Connection\DefaultConnectionPool;
 use Amp\Http\Client\Connection\UnlimitedConnectionPool;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
@@ -77,8 +76,10 @@ class RemoteClientTest extends AsyncTestCase
             $this->assertEquals("GET", $req->getMethod());
             $this->assertEquals("/uri", $req->getUri()->getPath());
             $query = Query::createFromUri($req->getUri());
-            $this->assertEquals([["foo", "bar"], ["baz", "1"], ["baz", "2"]],
-                \iterator_to_array($query->getIterator()));
+            $this->assertEquals(
+                [["foo", "bar"], ["baz", "1"], ["baz", "2"]],
+                \iterator_to_array($query->getIterator())
+            );
             $this->assertEquals(["header"], $req->getHeaderArray("custom"));
 
             $data = \str_repeat("*", 100000);
@@ -419,8 +420,14 @@ class RemoteClientTest extends AsyncTestCase
             $tlsContext = [];
         }
 
-        $client = \stream_socket_client($uri, $errno, $errstr, 1, STREAM_CLIENT_CONNECT,
-            \stream_context_create($tlsContext));
+        $client = \stream_socket_client(
+            $uri,
+            $errno,
+            $errstr,
+            1,
+            STREAM_CLIENT_CONNECT,
+            \stream_context_create($tlsContext)
+        );
 
         $client = $this->startClient(function (callable $write) {
             $this->assertEquals("a", yield);
