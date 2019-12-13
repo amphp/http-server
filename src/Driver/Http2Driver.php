@@ -1790,6 +1790,8 @@ final class Http2Driver implements HttpDriver
         $input = [];
 
         foreach ($headers as $field => $values) {
+            $values = (array) $values;
+
             foreach ($values as $value) {
                 $input[] = [(string) $field, (string) $value];
             }
