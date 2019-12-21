@@ -19,9 +19,6 @@ final class Http2Stream
     public const LOCAL_CLOSED = 0b0100;
     public const CLOSED = 0b0110;
 
-    /** @var string|null Packed header string. */
-    public $headers;
-
     /** @var int Current max body length. */
     public $maxBodySize;
 
