@@ -33,56 +33,11 @@ use function Amp\Http\formatDateHeader;
 
 final class Http2Driver implements HttpDriver, Http2Processor
 {
-    public const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
     public const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
     public const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
 
     private const MINIMUM_WINDOW = (1 << 15) - 1;
     private const MAX_INCREMENT = (1 << 16) - 1;
-
-    private const HEADER_NAME_REGEX = '/^[\x21-\x40\x5b-\x7e]+$/';
-
-    public const NOFLAG = "\x00";
-    public const ACK = "\x01";
-    public const END_STREAM = "\x01";
-    public const END_HEADERS = "\x04";
-    public const PADDED = "\x08";
-    public const PRIORITY_FLAG = "\x20";
-
-    public const DATA = "\x00";
-    public const HEADERS = "\x01";
-    public const PRIORITY = "\x02";
-    public const RST_STREAM = "\x03";
-    public const SETTINGS = "\x04";
-    public const PUSH_PROMISE = "\x05";
-    public const PING = "\x06";
-    public const GOAWAY = "\x07";
-    public const WINDOW_UPDATE = "\x08";
-    public const CONTINUATION = "\x09";
-
-    // Settings
-    public const HEADER_TABLE_SIZE = 0x1; // 1 << 12
-    public const ENABLE_PUSH = 0x2; // 1
-    public const MAX_CONCURRENT_STREAMS = 0x3; // INF
-    public const INITIAL_WINDOW_SIZE = 0x4; // 1 << 16 - 1
-    public const MAX_FRAME_SIZE = 0x5; // 1 << 14
-    public const MAX_HEADER_LIST_SIZE = 0x6; // INF
-
-    // Error codes
-    public const GRACEFUL_SHUTDOWN = 0x0;
-    public const PROTOCOL_ERROR = 0x1;
-    public const INTERNAL_ERROR = 0x2;
-    public const FLOW_CONTROL_ERROR = 0x3;
-    public const SETTINGS_TIMEOUT = 0x4;
-    public const STREAM_CLOSED = 0x5;
-    public const FRAME_SIZE_ERROR = 0x6;
-    public const REFUSED_STREAM = 0x7;
-    public const CANCEL = 0x8;
-    public const COMPRESSION_ERROR = 0x9;
-    public const CONNECT_ERROR = 0xa;
-    public const ENHANCE_YOUR_CALM = 0xb;
-    public const INADEQUATE_SECURITY = 0xc;
-    public const HTTP_1_1_REQUIRED = 0xd;
 
     // Headers to take over from original request if present
     private const PUSH_PROMISE_INTERSECT = [
@@ -97,13 +52,6 @@ final class Http2Driver implements HttpDriver, Http2Processor
         "host" => true,
         "user-agent" => true,
         "via" => true,
-    ];
-
-    private const KNOWN_PSEUDO_HEADERS = [
-        ":method" => true,
-        ":authority" => true,
-        ":path" => true,
-        ":scheme" => true,
     ];
 
     /** @var string 64-bit for ping. */
@@ -243,12 +191,12 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 throw new ClientException(
                     $this->client,
                     "1xx response codes are not supported in HTTP/2",
-                    self::HTTP_1_1_REQUIRED
+                    Http2Parser::HTTP_1_1_REQUIRED
                 );
             }
 
             if ($status === Status::HTTP_VERSION_NOT_SUPPORTED && $response->getHeader("upgrade")) {
-                throw new ClientException($this->client, "Upgrade requests require HTTP/1.1", self::HTTP_1_1_REQUIRED);
+                throw new ClientException($this->client, "Upgrade requests require HTTP/1.1", Http2Parser::HTTP_1_1_REQUIRED);
             }
 
             $headers = \array_merge([":status" => $status], $response->getHeaders());
@@ -277,15 +225,15 @@ final class Http2Driver implements HttpDriver, Http2Processor
             if (\strlen($headers) > $this->maxFrameSize) {
                 $split = \str_split($headers, $this->maxFrameSize);
                 $headers = \array_shift($split);
-                $this->writeFrame($headers, self::HEADERS, self::NOFLAG, $id);
+                $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG, $id);
 
                 $headers = \array_pop($split);
                 foreach ($split as $msgPart) {
-                    $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $id);
+                    $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
                 }
-                yield $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $id);
+                yield $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id);
             } else {
-                yield $this->writeFrame($headers, self::HEADERS, self::END_HEADERS, $id);
+                yield $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id);
             }
 
             if ($request->getMethod() === "HEAD") {
@@ -365,19 +313,19 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 if (\strlen($headers) > $this->maxFrameSize) {
                     $split = \str_split($headers, $this->maxFrameSize);
                     $headers = \array_shift($split);
-                    $this->writeFrame($headers, self::HEADERS, self::NOFLAG, $id);
+                    $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG, $id);
 
                     $headers = \array_pop($split);
                     foreach ($split as $msgPart) {
-                        $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $id);
+                        $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
                     }
-                    yield $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS | self::END_STREAM, $id);
+                    yield $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
                 } else {
-                    yield $this->writeFrame($headers, self::HEADERS, self::END_HEADERS | self::END_STREAM, $id);
+                    yield $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
                 }
             }
         } catch (ClientException $exception) {
-            $error = $exception->getCode() ?? self::CANCEL; // Set error code to be used in finally below.
+            $error = $exception->getCode() ?? Http2Parser::CANCEL; // Set error code to be used in finally below.
         } finally {
             if (!isset($this->streams[$id])) {
                 return;
@@ -387,8 +335,8 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 if (($buffer ?? "") !== "") {
                     $this->writeData($buffer, $id);
                 }
-                $error = $error ?? self::INTERNAL_ERROR;
-                $this->writeFrame(\pack("N", $error), self::RST_STREAM, self::NOFLAG, $id);
+                $error = $error ?? Http2Parser::INTERNAL_ERROR;
+                $this->writeFrame(\pack("N", $error), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, $id);
                 $this->releaseStream($id, $exception ?? new ClientException($this->client, "Stream error", $error));
                 return;
             }
@@ -421,9 +369,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
                     }
                 }
 
-                $code = $reason ? $reason->getCode() : self::GRACEFUL_SHUTDOWN;
+                $code = $reason ? $reason->getCode() : Http2Parser::GRACEFUL_SHUTDOWN;
                 $lastId = $lastId ?? ($id ?? 0);
-                yield $this->writeFrame(\pack("NN", $lastId, $code), self::GOAWAY, self::NOFLAG);
+                yield $this->writeFrame(\pack("NN", $lastId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
 
                 yield $promises;
 
@@ -514,15 +462,15 @@ final class Http2Driver implements HttpDriver, Http2Processor
         if (\strlen($headers) >= $this->maxFrameSize) {
             $split = \str_split($headers, $this->maxFrameSize);
             $headers = \array_shift($split);
-            $this->writeFrame($headers, self::PUSH_PROMISE, self::NOFLAG, $streamId);
+            $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::NO_FLAG, $streamId);
 
             $headers = \array_pop($split);
             foreach ($split as $msgPart) {
-                $this->writeFrame($msgPart, self::CONTINUATION, self::NOFLAG, $id);
+                $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
             }
-            $this->writeFrame($headers, self::CONTINUATION, self::END_HEADERS, $id);
+            $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id);
         } else {
-            $this->writeFrame($headers, self::PUSH_PROMISE, self::END_HEADERS, $streamId);
+            $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::END_HEADERS, $streamId);
         }
 
         $stream->pendingResponse = ($this->onMessage)($request);
@@ -531,13 +479,12 @@ final class Http2Driver implements HttpDriver, Http2Processor
     private function ping(): Promise
     {
         // no need to receive the PONG frame, that's anyway registered by the keep-alive handler
-        return $this->writeFrame($this->counter++, self::PING, self::NOFLAG);
+        return $this->writeFrame($this->counter++, Http2Parser::PING, Http2Parser::NO_FLAG);
     }
 
-    private function writeFrame(string $data, string $type, string $flags, int $stream = 0): Promise
+    private function writeFrame(string $data, int $type, int $flags, int $stream = 0): Promise
     {
-        $data = \substr(\pack("N", \strlen($data)), 1, 3) . $type . $flags . \pack("N", $stream) . $data;
-        return ($this->write)($data);
+        return ($this->write)(\substr(\pack("NccN", \strlen($data), $type, $flags, $stream), 1) . $data);
     }
 
     private function writeData(string $data, int $id): Promise
@@ -566,14 +513,14 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 $split = \str_split($stream->buffer, $this->maxFrameSize);
                 $stream->buffer = \array_pop($split);
                 foreach ($split as $part) {
-                    $this->writeFrame($part, self::DATA, self::NOFLAG, $id);
+                    $this->writeFrame($part, Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
                 }
             }
 
             if ($stream->state & Http2Stream::LOCAL_CLOSED) {
-                $promise = $this->writeFrame($stream->buffer, self::DATA, self::END_STREAM, $id);
+                $promise = $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::END_STREAM, $id);
             } else {
-                $promise = $this->writeFrame($stream->buffer, self::DATA, self::NOFLAG, $id);
+                $promise = $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
             }
 
             $stream->clientWindow -= $length;
@@ -596,10 +543,10 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $this->clientWindow -= $delta;
 
             for ($off = 0; $off < $end; $off += $this->maxFrameSize) {
-                $this->writeFrame(\substr($data, $off, $this->maxFrameSize), self::DATA, self::NOFLAG, $id);
+                $this->writeFrame(\substr($data, $off, $this->maxFrameSize), Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
             }
 
-            $this->writeFrame(\substr($data, $off, $delta - $off), self::DATA, self::NOFLAG, $id);
+            $this->writeFrame(\substr($data, $off, $delta - $off), Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
 
             $stream->buffer = \substr($data, $delta);
         }
@@ -618,13 +565,13 @@ final class Http2Driver implements HttpDriver, Http2Processor
         if (isset($this->bodyEmitters[$id])) {
             $emitter = $this->bodyEmitters[$id];
             unset($this->bodyEmitters[$id]);
-            $emitter->fail($exception ?? new ClientException($this->client, "Client disconnected", self::CANCEL));
+            $emitter->fail($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
         }
 
         if (isset($this->trailerDeferreds[$id])) {
             $deferred = $this->trailerDeferreds[$id];
             unset($this->trailerDeferreds[$id]);
-            $deferred->fail($exception ?? new ClientException($this->client, "Client disconnected", self::CANCEL));
+            $deferred->fail($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
         }
 
         unset($this->streams[$id]);
@@ -659,48 +606,48 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 $this->writeFrame(
                     \pack(
                         "nNnNnNnN",
-                        self::INITIAL_WINDOW_SIZE,
+                        Http2Parser::INITIAL_WINDOW_SIZE,
                         $this->options->getBodySizeLimit(),
-                        self::MAX_CONCURRENT_STREAMS,
+                        Http2Parser::MAX_CONCURRENT_STREAMS,
                         $this->options->getConcurrentStreamLimit(),
-                        self::MAX_HEADER_LIST_SIZE,
+                        Http2Parser::MAX_HEADER_LIST_SIZE,
                         $this->options->getHeaderSizeLimit(),
-                        self::MAX_FRAME_SIZE,
+                        Http2Parser::MAX_FRAME_SIZE,
                         self::DEFAULT_MAX_FRAME_SIZE
                     ),
-                    self::SETTINGS,
-                    self::NOFLAG
+                    Http2Parser::SETTINGS,
+                    Http2Parser::NO_FLAG
                 );
             }
 
             $buffer = yield;
 
-            while (\strlen($buffer) < \strlen(self::PREFACE)) {
+            while (\strlen($buffer) < \strlen(Http2Parser::PREFACE)) {
                 $buffer .= yield;
             }
 
-            if (\strncmp($buffer, self::PREFACE, \strlen(self::PREFACE)) !== 0) {
-                throw new Http2ConnectionException("Invalid preface", self::PROTOCOL_ERROR);
+            if (\strncmp($buffer, Http2Parser::PREFACE, \strlen(Http2Parser::PREFACE)) !== 0) {
+                throw new Http2ConnectionException("Invalid preface", Http2Parser::PROTOCOL_ERROR);
             }
 
-            $buffer = \substr($buffer, \strlen(self::PREFACE));
+            $buffer = \substr($buffer, \strlen(Http2Parser::PREFACE));
 
             if ($settings === null) {
                 // Initial settings frame, delayed until after the preface is read for non-upgraded connections.
                 $this->writeFrame(
                     \pack(
                         "nNnNnNnN",
-                        self::INITIAL_WINDOW_SIZE,
+                        Http2Parser::INITIAL_WINDOW_SIZE,
                         $this->options->getBodySizeLimit(),
-                        self::MAX_CONCURRENT_STREAMS,
+                        Http2Parser::MAX_CONCURRENT_STREAMS,
                         $this->options->getConcurrentStreamLimit(),
-                        self::MAX_HEADER_LIST_SIZE,
+                        Http2Parser::MAX_HEADER_LIST_SIZE,
                         $this->options->getHeaderSizeLimit(),
-                        self::MAX_FRAME_SIZE,
+                        Http2Parser::MAX_FRAME_SIZE,
                         self::DEFAULT_MAX_FRAME_SIZE
                     ),
-                    self::SETTINGS,
-                    self::NOFLAG
+                    Http2Parser::SETTINGS,
+                    Http2Parser::NO_FLAG
                 );
             }
 
@@ -758,7 +705,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         }
 
         ++$this->pinged;
-        $this->writeFrame($data, self::PING, self::ACK);
+        $this->writeFrame($data, Http2Parser::PING, Http2Parser::ACK);
     }
 
     public function handleShutdown(int $lastId, int $error): void
@@ -769,7 +716,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $error
         );
 
-        if ($error !== self::GRACEFUL_SHUTDOWN) {
+        if ($error !== Http2Parser::GRACEFUL_SHUTDOWN) {
             $this->logger->notice($message);
         }
 
@@ -781,7 +728,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         if ($streamId > $this->remoteStreamId) {
             throw new Http2ConnectionException(
                 "Stream ID does not exist",
-                self::PROTOCOL_ERROR
+                Http2Parser::PROTOCOL_ERROR
             );
         }
 
@@ -795,7 +742,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             throw new Http2StreamException(
                 "Current window size plus new window exceeds maximum size",
                 $streamId,
-                self::FLOW_CONTROL_ERROR
+                Http2Parser::FLOW_CONTROL_ERROR
             );
         }
 
@@ -809,7 +756,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         if ($this->clientWindow + $windowSize > (2 << 30) - 1) {
             throw new Http2ConnectionException(
                 "Current window size plus new window exceeds maximum size",
-                self::FLOW_CONTROL_ERROR
+                Http2Parser::FLOW_CONTROL_ERROR
             );
         }
 
@@ -824,7 +771,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             if (!isset(Http2Parser::KNOWN_REQUEST_PSEUDO_HEADERS[$name])) {
                 throw new Http2ConnectionException(
                     "Invalid pseudo header",
-                    self::PROTOCOL_ERROR
+                    Http2Parser::PROTOCOL_ERROR
                 );
             }
         }
@@ -836,14 +783,14 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 throw new Http2StreamException(
                     "Stream remote closed",
                     $streamId,
-                    self::STREAM_CLOSED
+                    Http2Parser::STREAM_CLOSED
                 );
             }
         } else {
             if (!($streamId & 1) || $this->remainingStreams-- <= 0 || $streamId <= $this->remoteStreamId) {
                 throw new Http2ConnectionException(
                     "Invalid stream ID",
-                    self::PROTOCOL_ERROR
+                    Http2Parser::PROTOCOL_ERROR
                 );
             }
 
@@ -859,7 +806,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             if (!$ended) {
                 throw new Http2ConnectionException(
                     "Trailers must end the stream",
-                    self::PROTOCOL_ERROR
+                    Http2Parser::PROTOCOL_ERROR
                 );
             }
 
@@ -868,7 +815,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 throw new Http2StreamException(
                     "Trailers must not contain pseudo headers",
                     $streamId,
-                    self::PROTOCOL_ERROR
+                    Http2Parser::PROTOCOL_ERROR
                 );
             }
 
@@ -877,7 +824,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 throw new Http2StreamException(
                     "Disallowed trailer field name",
                     $streamId,
-                    self::PROTOCOL_ERROR
+                    Http2Parser::PROTOCOL_ERROR
                 );
             }
 
@@ -896,14 +843,14 @@ final class Http2Driver implements HttpDriver, Http2Processor
             throw new Http2StreamException(
                 "Stream already reserved",
                 $streamId,
-                self::PROTOCOL_ERROR
+                Http2Parser::PROTOCOL_ERROR
             );
         }
 
         $stream->state |= Http2Stream::RESERVED;
 
         if ($this->stopping) {
-            throw new Http2StreamException("Shutting down", $streamId, self::REFUSED_STREAM);
+            throw new Http2StreamException("Shutting down", $streamId, Http2Parser::REFUSED_STREAM);
         }
 
         if (!isset($pseudo[":method"], $pseudo[":path"], $pseudo[":scheme"], $pseudo[":authority"])
@@ -914,7 +861,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             throw new Http2StreamException(
                 "Invalid header values",
                 $streamId,
-                self::PROTOCOL_ERROR
+                Http2Parser::PROTOCOL_ERROR
             );
         }
 
@@ -928,7 +875,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             throw new Http2StreamException(
                 "Invalid authority (host) name",
                 $streamId,
-                self::PROTOCOL_ERROR
+                Http2Parser::PROTOCOL_ERROR
             );
         }
 
@@ -955,7 +902,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         } catch (Uri\Contracts\UriException $exception) {
             throw new Http2ConnectionException(
                 "Invalid request URI",
-                self::PROTOCOL_ERROR
+                Http2Parser::PROTOCOL_ERROR
             );
         }
 
@@ -1000,7 +947,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         if ($this->serverWindow <= $maxBodySize >> 1) {
             $increment = $maxBodySize - $this->serverWindow;
             $this->serverWindow = $maxBodySize;
-            $this->writeFrame(\pack("N", $increment), self::WINDOW_UPDATE, self::NOFLAG);
+            $this->writeFrame(\pack("N", $increment), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
         }
 
         if (isset($headers["content-length"])) {
@@ -1008,7 +955,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 throw new Http2StreamException(
                     "Received multiple content-length headers",
                     $streamId,
-                    self::PROTOCOL_ERROR
+                    Http2Parser::PROTOCOL_ERROR
                 );
             }
 
@@ -1017,7 +964,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 throw new Http2StreamException(
                     "Invalid content-length header value",
                     $streamId,
-                    self::PROTOCOL_ERROR
+                    Http2Parser::PROTOCOL_ERROR
                 );
             }
 
@@ -1035,7 +982,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             throw new Http2StreamException(
                 "Invalid headers field in promises trailers",
                 $streamId,
-                self::PROTOCOL_ERROR,
+                Http2Parser::PROTOCOL_ERROR,
                 $exception
             );
         }
@@ -1064,13 +1011,13 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 throw new Http2StreamException(
                     "Stream closed",
                     $streamId,
-                    self::STREAM_CLOSED
+                    Http2Parser::STREAM_CLOSED
                 );
             }
 
             throw new Http2ConnectionException(
                 "Invalid stream ID",
-                self::PROTOCOL_ERROR
+                Http2Parser::PROTOCOL_ERROR
             );
         }
 
@@ -1081,7 +1028,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             throw new Http2StreamException(
                 "Stream remote closed",
                 $streamId,
-                self::PROTOCOL_ERROR
+                Http2Parser::PROTOCOL_ERROR
             );
         }
 
@@ -1097,13 +1044,13 @@ final class Http2Driver implements HttpDriver, Http2Processor
             throw new Http2StreamException(
                 "Max body size exceeded",
                 $streamId,
-                self::CANCEL
+                Http2Parser::CANCEL
             );
         }
 
         if ($this->serverWindow <= self::MINIMUM_WINDOW) {
             $this->serverWindow += self::MAX_INCREMENT;
-            $this->writeFrame(\pack("N", self::MAX_INCREMENT), self::WINDOW_UPDATE, self::NOFLAG);
+            $this->writeFrame(\pack("N", self::MAX_INCREMENT), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
         }
 
         if (\is_int($stream->expectedLength)) {
@@ -1137,8 +1084,8 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
                 $this->writeFrame(
                     \pack("N", $increment),
-                    self::WINDOW_UPDATE,
-                    self::NOFLAG,
+                    Http2Parser::WINDOW_UPDATE,
+                    Http2Parser::NO_FLAG,
                     $streamId
                 );
             });
@@ -1159,7 +1106,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             throw new Http2StreamException(
                 "Body length does not match content-length header",
                 $streamId,
-                self::PROTOCOL_ERROR
+                Http2Parser::PROTOCOL_ERROR
             );
         }
 
@@ -1180,7 +1127,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
     {
         throw new Http2ConnectionException(
             "Client should not send push promise frames",
-            self::PROTOCOL_ERROR
+            Http2Parser::PROTOCOL_ERROR
         );
     }
 
@@ -1190,7 +1137,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             if ($streamId === 0 || !($streamId & 1) || $this->remainingStreams-- <= 0) {
                 throw new Http2ConnectionException(
                     "Invalid stream ID",
-                    self::PROTOCOL_ERROR
+                    Http2Parser::PROTOCOL_ERROR
                 );
             }
 
@@ -1214,7 +1161,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         if ($streamId > $this->remoteStreamId) {
             throw new Http2ConnectionException(
                 "Invalid stream ID",
-                self::PROTOCOL_ERROR
+                Http2Parser::PROTOCOL_ERROR
             );
         }
 
@@ -1233,9 +1180,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
     {
         foreach ($settings as $key => $value) {
             switch ($key) {
-                case self::INITIAL_WINDOW_SIZE:
+                case Http2Parser::INITIAL_WINDOW_SIZE:
                     if ($value >= 1 << 31) {
-                        throw new Http2ConnectionException("Invalid window size", self::FLOW_CONTROL_ERROR);
+                        throw new Http2ConnectionException("Invalid window size", Http2Parser::FLOW_CONTROL_ERROR);
                     }
 
                     $priorWindowSize = $this->initialWindowSize;
@@ -1250,28 +1197,28 @@ final class Http2Driver implements HttpDriver, Http2Processor
                     Loop::defer(\Closure::fromCallable([$this, 'sendBufferedData']));
                     break;
 
-                case self::ENABLE_PUSH:
+                case Http2Parser::ENABLE_PUSH:
                     if ($value & ~1) {
                         throw new Http2ConnectionException(
                             "Invalid push promise toggle value",
-                            self::PROTOCOL_ERROR
+                            Http2Parser::PROTOCOL_ERROR
                         );
                     }
 
                     $this->allowsPush = ((bool) $value) && $this->options->isPushEnabled();
                     break;
 
-                case self::MAX_FRAME_SIZE:
+                case Http2Parser::MAX_FRAME_SIZE:
                     if ($value < 1 << 14 || $value >= 1 << 24) {
-                        throw new Http2ConnectionException("Invalid max frame size", self::PROTOCOL_ERROR);
+                        throw new Http2ConnectionException("Invalid max frame size", Http2Parser::PROTOCOL_ERROR);
                     }
 
                     $this->maxFrameSize = $value;
                     break;
 
-                case self::HEADER_TABLE_SIZE:
-                case self::MAX_HEADER_LIST_SIZE:
-                case self::MAX_CONCURRENT_STREAMS:
+                case Http2Parser::HEADER_TABLE_SIZE:
+                case Http2Parser::MAX_HEADER_LIST_SIZE:
+                case Http2Parser::MAX_CONCURRENT_STREAMS:
                     break; // @TODO Respect these settings from the client.
 
                 default:
@@ -1279,7 +1226,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             }
         }
 
-        $this->writeFrame("", self::SETTINGS, self::ACK);
+        $this->writeFrame("", Http2Parser::SETTINGS, Http2Parser::ACK);
     }
 
     public function handleStreamException(Http2StreamException $exception): void
@@ -1287,7 +1234,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $streamId = $exception->getStreamId();
         $errorCode = $exception->getCode();
 
-        $this->writeFrame(\pack("N", $errorCode), self::RST_STREAM, self::NOFLAG, $streamId);
+        $this->writeFrame(\pack("N", $errorCode), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, $streamId);
 
         if (isset($this->streams[$streamId])) {
             $this->releaseStream($streamId, new ClientException($this->client, "HTTP/2 stream error", 0, $exception));
