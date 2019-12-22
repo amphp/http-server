@@ -655,6 +655,8 @@ final class Http2Driver implements HttpDriver, Http2Processor
             unset($buffer, $settings);
 
             yield from $parser;
+        } catch (Http2ConnectionException $exception) {
+            $this->shutdown(null, $exception);
         } finally {
             $this->client->close();
         }
