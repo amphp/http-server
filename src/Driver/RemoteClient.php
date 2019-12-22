@@ -439,7 +439,7 @@ final class RemoteClient implements Client
             \assert($this->logger->debug(\sprintf(
                 "TLS handshake error with %s: %s",
                 $this->clientAddress,
-                $this->cleanTlsErrorMessage(\error_get_last()['message'])
+                $this->cleanTlsErrorMessage(\error_get_last()['message'] ?? 'unknown error')
             )) || true);
 
             $this->close();
