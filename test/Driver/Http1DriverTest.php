@@ -7,6 +7,7 @@ use Amp\ByteStream\IteratorStream;
 use Amp\Emitter;
 use Amp\Http\Client\Connection\Internal\Http1Parser;
 use Amp\Http\Client\Request as ClientRequest;
+use Amp\Http\Http2\Http2Parser;
 use Amp\Http\Message;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Http1Driver;
@@ -924,15 +925,15 @@ class Http1DriverTest extends HttpDriverTest
             "HTTP/1.1 101 Switching Protocols",
             Http2DriverTest::packFrame(\pack(
                 "nNnNnNnN",
-                Http2Driver::INITIAL_WINDOW_SIZE,
+                Http2Parser::INITIAL_WINDOW_SIZE,
                 $options->getBodySizeLimit(),
-                Http2Driver::MAX_CONCURRENT_STREAMS,
+                Http2Parser::MAX_CONCURRENT_STREAMS,
                 $options->getConcurrentStreamLimit(),
-                Http2Driver::MAX_HEADER_LIST_SIZE,
+                Http2Parser::MAX_HEADER_LIST_SIZE,
                 $options->getHeaderSizeLimit(),
-                Http2Driver::MAX_FRAME_SIZE,
+                Http2Parser::MAX_FRAME_SIZE,
                 Http2Driver::DEFAULT_MAX_FRAME_SIZE
-            ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0)
+            ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG, 0)
         ];
 
         $driver = new Http1Driver(
@@ -974,15 +975,15 @@ class Http1DriverTest extends HttpDriverTest
             function (string $data) use ($options) {
                 $expected = Http2DriverTest::packFrame(\pack(
                     "nNnNnNnN",
-                    Http2Driver::INITIAL_WINDOW_SIZE,
+                    Http2Parser::INITIAL_WINDOW_SIZE,
                     $options->getBodySizeLimit(),
-                    Http2Driver::MAX_CONCURRENT_STREAMS,
+                    Http2Parser::MAX_CONCURRENT_STREAMS,
                     $options->getConcurrentStreamLimit(),
-                    Http2Driver::MAX_HEADER_LIST_SIZE,
+                    Http2Parser::MAX_HEADER_LIST_SIZE,
                     $options->getHeaderSizeLimit(),
-                    Http2Driver::MAX_FRAME_SIZE,
+                    Http2Parser::MAX_FRAME_SIZE,
                     Http2Driver::DEFAULT_MAX_FRAME_SIZE
-                ), Http2Driver::SETTINGS, Http2Driver::NOFLAG, 0);
+                ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG, 0);
 
                 $this->assertSame($expected, $data);
 
