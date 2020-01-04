@@ -218,7 +218,21 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertSame($originalBody, $body);
     }
 
-    public function testChunkedBodyParseEmit(): \Generator
+    /**
+     * provide multiple chunk-sizes to test with.
+     * @return \Generator
+     */
+    public function chunkSizeProvider(): \Generator
+    {
+        for ($i = 1; $i < 11; $i++) {
+            yield [$i];
+        }
+    }
+
+    /**
+     * @dataProvider chunkSizeProvider
+     */
+    public function testChunkedBodyParseEmit(int $chunkSize): \Generator
     {
         $msg =
             "POST https://test.local:1337/post-endpoint HTTP/1.0\r\n" .
@@ -251,10 +265,10 @@ class Http1DriverTest extends HttpDriverTest
             $this->createCallback(0)
         );
 
-        for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
-            $promise = $parser->send($msg[$i]);
+        foreach (\str_split($msg, $chunkSize) as $chunk) {
+            $promise = $parser->send($chunk);
             while ($promise instanceof Promise) {
-                $promise = $parser->send(null);
+                $promise = $parser->send("");
             }
         }
 
