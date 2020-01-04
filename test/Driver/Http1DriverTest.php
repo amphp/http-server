@@ -20,6 +20,7 @@ use Amp\Http\Status;
 use Amp\PHPUnit\TestCase;
 use Amp\Promise;
 use Amp\Success;
+use Generator;
 use League\Uri;
 
 class Http1DriverTest extends TestCase
@@ -218,7 +219,21 @@ class Http1DriverTest extends TestCase
         $this->assertSame($originalBody, $body);
     }
 
-    public function testChunkedBodyParseEmit()
+    /**
+     * provide multiple chunk-sizes to test with.
+     * @return Generator
+     */
+    public function chunkSizeProvider()
+    {
+        for ($i = 1; $i < 11; $i++) {
+            yield [$i];
+        }
+    }
+
+    /**
+     * @dataProvider chunkSizeProvider
+     */
+    public function testChunkedBodyParseEmit(int $chunkSize)
     {
         $msg =
             "POST https://test.local:1337/post-endpoint HTTP/1.0\r\n" .
@@ -251,13 +266,13 @@ class Http1DriverTest extends TestCase
             $this->createCallback(0)
         );
 
-        for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
-            $promise = $parser->send($msg[$i]);
+        foreach (\str_split($msg, $chunkSize) as $chunk) {
+            $promise = $parser->send($chunk);
+            while ($promise instanceof Promise) {
+                $promise = $parser->send("");
+            }
         }
 
-        while ($promise instanceof Promise) {
-            $promise = $parser->send("");
-        }
 
         $this->assertInstanceOf(Request::class, $request);
 
