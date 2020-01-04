@@ -586,80 +586,83 @@ final class Http2Driver implements HttpDriver, Http2Processor
      *
      * @return \Generator
      */
-    private function parser(string $settings = null): \Generator
+    private function parser(?string $settings = null): \Generator
     {
         $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         $parser = (new Http2Parser($this))->parse($settings);
 
         try {
-            if ($settings !== null) {
-                // Upgraded connections automatically assume an initial stream with ID 1.
-                $this->streams[1] = new Http2Stream(
-                    0, // No data will be incoming on this stream.
-                    $this->initialWindowSize,
-                    Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
-                );
-                $this->remainingStreams--;
-
-                // Initial settings frame, sent immediately for upgraded connections.
-                $this->writeFrame(
-                    \pack(
-                        "nNnNnNnN",
-                        Http2Parser::INITIAL_WINDOW_SIZE,
-                        $this->options->getBodySizeLimit(),
-                        Http2Parser::MAX_CONCURRENT_STREAMS,
-                        $this->options->getConcurrentStreamLimit(),
-                        Http2Parser::MAX_HEADER_LIST_SIZE,
-                        $this->options->getHeaderSizeLimit(),
-                        Http2Parser::MAX_FRAME_SIZE,
-                        self::DEFAULT_MAX_FRAME_SIZE
-                    ),
-                    Http2Parser::SETTINGS,
-                    Http2Parser::NO_FLAG
-                );
-            }
-
-            $buffer = yield;
-
-            while (\strlen($buffer) < \strlen(Http2Parser::PREFACE)) {
-                $buffer .= yield;
-            }
-
-            if (\strncmp($buffer, Http2Parser::PREFACE, \strlen(Http2Parser::PREFACE)) !== 0) {
-                throw new Http2ConnectionException("Invalid preface", Http2Parser::PROTOCOL_ERROR);
-            }
-
-            $buffer = \substr($buffer, \strlen(Http2Parser::PREFACE));
-
-            if ($settings === null) {
-                // Initial settings frame, delayed until after the preface is read for non-upgraded connections.
-                $this->writeFrame(
-                    \pack(
-                        "nNnNnNnN",
-                        Http2Parser::INITIAL_WINDOW_SIZE,
-                        $this->options->getBodySizeLimit(),
-                        Http2Parser::MAX_CONCURRENT_STREAMS,
-                        $this->options->getConcurrentStreamLimit(),
-                        Http2Parser::MAX_HEADER_LIST_SIZE,
-                        $this->options->getHeaderSizeLimit(),
-                        Http2Parser::MAX_FRAME_SIZE,
-                        self::DEFAULT_MAX_FRAME_SIZE
-                    ),
-                    Http2Parser::SETTINGS,
-                    Http2Parser::NO_FLAG
-                );
-            }
-
-            $parser->send($buffer);
-            unset($buffer, $settings);
-
+            $parser->send(yield from $this->readPreface($settings !== null));
             yield from $parser;
         } catch (Http2ConnectionException $exception) {
             $this->shutdown(null, $exception);
         } finally {
             $this->client->close();
         }
+    }
+
+    private function readPreface(bool $upgraded): \Generator
+    {
+        if ($upgraded) {
+            // Upgraded connections automatically assume an initial stream with ID 1.
+            $this->streams[1] = new Http2Stream(
+                0, // No data will be incoming on this stream.
+                $this->initialWindowSize,
+                Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
+            );
+            $this->remainingStreams--;
+
+            // Initial settings frame, sent immediately for upgraded connections.
+            $this->writeFrame(
+                \pack(
+                    "nNnNnNnN",
+                    Http2Parser::INITIAL_WINDOW_SIZE,
+                    $this->options->getBodySizeLimit(),
+                    Http2Parser::MAX_CONCURRENT_STREAMS,
+                    $this->options->getConcurrentStreamLimit(),
+                    Http2Parser::MAX_HEADER_LIST_SIZE,
+                    $this->options->getHeaderSizeLimit(),
+                    Http2Parser::MAX_FRAME_SIZE,
+                    self::DEFAULT_MAX_FRAME_SIZE
+                ),
+                Http2Parser::SETTINGS,
+                Http2Parser::NO_FLAG
+            );
+        }
+
+        $buffer = yield;
+
+        while (\strlen($buffer) < \strlen(Http2Parser::PREFACE)) {
+            $buffer .= yield;
+        }
+
+        if (\strncmp($buffer, Http2Parser::PREFACE, \strlen(Http2Parser::PREFACE)) !== 0) {
+            throw new Http2ConnectionException("Invalid preface", Http2Parser::PROTOCOL_ERROR);
+        }
+
+        $buffer = \substr($buffer, \strlen(Http2Parser::PREFACE));
+
+        if (!$upgraded) {
+            // Initial settings frame, delayed until after the preface is read for non-upgraded connections.
+            $this->writeFrame(
+                \pack(
+                    "nNnNnNnN",
+                    Http2Parser::INITIAL_WINDOW_SIZE,
+                    $this->options->getBodySizeLimit(),
+                    Http2Parser::MAX_CONCURRENT_STREAMS,
+                    $this->options->getConcurrentStreamLimit(),
+                    Http2Parser::MAX_HEADER_LIST_SIZE,
+                    $this->options->getHeaderSizeLimit(),
+                    Http2Parser::MAX_FRAME_SIZE,
+                    self::DEFAULT_MAX_FRAME_SIZE
+                ),
+                Http2Parser::SETTINGS,
+                Http2Parser::NO_FLAG
+            );
+        }
+
+        return $buffer;
     }
 
     private function sendBufferedData(): void

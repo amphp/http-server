@@ -33,7 +33,7 @@
         "amphp/amp": "^2",
         "amphp/byte-stream": "^1.3",
         "amphp/hpack": "^3",
-        "amphp/http": "dev-http2 as 1.6",
+        "amphp/http": "^1.6-rc1",
         "amphp/socket": "^1",
         "league/uri": "^6",
         "psr/http-message": "^1",
@@ -42,7 +42,7 @@
     },
     "require-dev": {
         "amphp/phpunit-util": "^1.1",
-        "amphp/http-client": "dev-master",
+        "amphp/http-client": "^4",
         "amphp/log": "^1",
         "amphp/php-cs-fixer-config": "dev-master",
         "league/uri-components": "^2",
