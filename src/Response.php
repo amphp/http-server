@@ -39,7 +39,7 @@ final class Response extends Message
 
     /**
      * @param int                     $code Status code.
-     * @param string[][]              $headers
+     * @param string[]|string[][]     $headers
      * @param InputStream|string|null $stringOrStream
      * @param Trailers|null           $trailers
      *
