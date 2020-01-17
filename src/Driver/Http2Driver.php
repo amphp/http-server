@@ -774,8 +774,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
     {
         foreach ($pseudo as $name => $value) {
             if (!isset(Http2Parser::KNOWN_REQUEST_PSEUDO_HEADERS[$name])) {
-                throw new Http2ConnectionException(
+                throw new Http2StreamException(
                     "Invalid pseudo header",
+                    $streamId,
                     Http2Parser::PROTOCOL_ERROR
                 );
             }
