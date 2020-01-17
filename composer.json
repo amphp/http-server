@@ -33,7 +33,7 @@
         "amphp/amp": "^2",
         "amphp/byte-stream": "^1.3",
         "amphp/hpack": "^3",
-        "amphp/http": "^1.6-rc1",
+        "amphp/http": "^1.6",
         "amphp/socket": "^1",
         "league/uri": "^6",
         "psr/http-message": "^1",
