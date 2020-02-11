@@ -344,7 +344,11 @@ final class Http1Driver implements HttpDriver
                         $rawHeaders = \preg_replace(Rfc7230::HEADER_FOLD_REGEX, ' ', $rawHeaders);
                     }
 
-                    $headers = Rfc7230::parseHeaders($rawHeaders);
+                    $headers = Rfc7230::parseRawHeaders($rawHeaders);
+                    $headerMap = [];
+                    foreach ($headers as [$key, $value]) {
+                        $headerMap[\strtolower($key)][] = $value;
+                    }
                 } catch (InvalidHeaderException $e) {
                     throw new ClientException(
                         $this->client,
@@ -361,7 +365,7 @@ final class Http1Driver implements HttpDriver
                     );
                 }
 
-                $contentLength = $headers["content-length"][0] ?? null;
+                $contentLength = $headerMap["content-length"][0] ?? null;
                 if ($contentLength !== null) {
                     if (!\preg_match("/^(?:0|[1-9][0-9]*)$/", $contentLength)) {
                         throw new ClientException(
@@ -374,8 +378,8 @@ final class Http1Driver implements HttpDriver
                     $contentLength = (int) $contentLength;
                 }
 
-                if (isset($headers["transfer-encoding"])) {
-                    $value = \strtolower(\implode(', ', $headers["transfer-encoding"]));
+                if (isset($headerMap["transfer-encoding"])) {
+                    $value = \strtolower(\implode(', ', $headerMap["transfer-encoding"]));
                     if (!($isChunked = $value === "chunked") && $value !== "identity") {
                         throw new ClientException(
                             $this->client,
@@ -385,15 +389,15 @@ final class Http1Driver implements HttpDriver
                     }
                 }
 
-                if (!isset($headers["host"][0])) {
+                if (!isset($headerMap["host"][0])) {
                     throw new ClientException($this->client, "Bad Request: missing host header", Status::BAD_REQUEST);
                 }
 
-                if (isset($headers["host"][1])) {
+                if (isset($headerMap["host"][1])) {
                     throw new ClientException($this->client, "Bad Request: multiple host headers", Status::BAD_REQUEST);
                 }
 
-                if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\])(?::([1-9]\d*))?$#i", $headers["host"][0], $matches)) {
+                if (!\preg_match("#^([A-Z\d\.\-]+|\[[\d:]+\])(?::([1-9]\d*))?$#i", $headerMap["host"][0], $matches)) {
                     throw new ClientException($this->client, "Bad Request: invalid host header", Status::BAD_REQUEST);
                 }
 
@@ -475,25 +479,25 @@ final class Http1Driver implements HttpDriver
                     );
                 }
 
-                if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
+                if (isset($headerMap["expect"][0]) && \strtolower($headerMap["expect"][0]) === "100-continue") {
                     yield $this->write(
-                        new Request($this->client, $method, $uri, $headers, null, $protocol),
+                        new Request($this->client, $method, $uri, $headerMap, null, $protocol),
                         new Response(Status::CONTINUE, [])
                     );
                 }
 
                 // Handle HTTP/2 upgrade request.
                 if ($protocol === "1.1"
-                    && isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0])
+                    && isset($headerMap["upgrade"][0], $headerMap["http2-settings"][0], $headerMap["connection"][0])
                     && !$this->client->isEncrypted()
                     && $this->options->isHttp2UpgradeAllowed()
-                    && false !== \stripos($headers["connection"][0], "upgrade")
-                    && \strtolower($headers["upgrade"][0]) === "h2c"
-                    && false !== $h2cSettings = \base64_decode(\strtr($headers["http2-settings"][0], "-_", "+/"), true)
+                    && false !== \stripos($headerMap["connection"][0], "upgrade")
+                    && \strtolower($headerMap["upgrade"][0]) === "h2c"
+                    && false !== $h2cSettings = \base64_decode(\strtr($headerMap["http2-settings"][0], "-_", "+/"), true)
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
                     yield $this->write(
-                        new Request($this->client, $method, $uri, $headers, null, $protocol),
+                        new Request($this->client, $method, $uri, $headerMap, null, $protocol),
                         new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
                             "upgrade" => "h2c",
@@ -506,14 +510,16 @@ final class Http1Driver implements HttpDriver
 
                     $parser->current(); // Yield from this parser after reading the current request body.
 
-                    // Not needed for HTTP/2 request.
-                    unset($headers["upgrade"], $headers["connection"], $headers["http2-settings"]);
-
-                    // Make request look like HTTP/2 request.
-                    $headers[":method"] = [$method];
-                    $headers[":authority"] = [$uri->getAuthority()];
-                    $headers[":scheme"] = [$uri->getScheme()];
-                    $headers[":path"] = [$target];
+                    // Remove headers that are not related to the HTTP/2 request.
+                    foreach ($headers as $index => [$key, $value]) {
+                        switch (\strtolower($key)) {
+                            case "upgrade":
+                            case "connection":
+                            case "http2-settings":
+                                unset($headers[$index]);
+                                break;
+                        }
+                    }
 
                     $protocol = "2";
                 }
@@ -521,15 +527,15 @@ final class Http1Driver implements HttpDriver
                 $this->updateTimeout();
 
                 if (!($isChunked || $contentLength)) {
-                    // Wait for response to be fully written.
-                    yield $this->pendingResponse = ($this->onMessage)(new Request(
-                        $this->client,
-                        $method,
-                        $uri,
-                        $headers,
-                        null,
-                        $protocol
-                    ), $buffer);
+                    $request = new Request($this->client, $method, $uri, [], null, $protocol);
+                    foreach ($headers as [$key, $value]) {
+                        $request->addHeader($key, $value);
+                    }
+
+                    $this->pendingResponse = ($this->onMessage)($request, $buffer);
+                    $request = null; // DO NOT leave a reference to the Request object in the parser!
+
+                    yield $this->pendingResponse; // Wait for response to be generated.
 
                     continue;
                 }
@@ -551,8 +557,8 @@ final class Http1Driver implements HttpDriver
                 try {
                     $trailers = new Trailers(
                         $trailerDeferred->promise(),
-                        isset($headers['trailers'])
-                            ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
+                        isset($headerMap['trailers'])
+                            ? \array_map('trim', \explode(',', \implode(',', $headerMap['trailers'])))
                             : []
                     );
                 } catch (InvalidHeaderException $exception) {
@@ -564,19 +570,16 @@ final class Http1Driver implements HttpDriver
                     );
                 }
 
+                $request = new Request($this->client, $method, $uri, [], $body, $protocol, $trailers);
+                foreach ($headers as [$key, $value]) {
+                    $request->addHeader($key, $value);
+                }
+
                 // Do not yield promise until body is completely read.
-                $this->pendingResponse = ($this->onMessage)(new Request(
-                    $this->client,
-                    $method,
-                    $uri,
-                    $headers,
-                    $body,
-                    $protocol,
-                    $trailers
-                ));
+                $this->pendingResponse = ($this->onMessage)($request);
 
                 // DO NOT leave a reference to the Request, Trailers, or Body objects within the parser!
-
+                $request = null;
                 $trailers = null;
                 $body = "";
 
@@ -781,7 +784,7 @@ final class Http1Driver implements HttpDriver
 
                 $this->updateTimeout();
 
-                yield $this->pendingResponse; // Wait for response to be fully written.
+                yield $this->pendingResponse; // Wait for response to be generated.
             } while (true);
         } catch (ClientException $exception) {
             if ($this->bodyEmitter === null || $this->client->getPendingResponseCount()) {
