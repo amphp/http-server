@@ -128,6 +128,7 @@ class Http1DriverTest extends HttpDriverTest
         $this->assertSame($expectations["method"], $request->getMethod(), "method mismatch");
         $this->assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
         $this->assertSame($expectations["headers"], $request->getHeaders(), "headers mismatch");
+        $this->assertSame($expectations["raw-headers"], $request->getRawHeaders(), "raw headers mismatch");
         $this->assertSame($expectations["body"], $body, "body mismatch");
     }
 
@@ -297,6 +298,7 @@ class Http1DriverTest extends HttpDriverTest
             "method" => "GET",
             "uri" => "/",
             "headers" => ["host" => ["localhost"]],
+            "raw-headers" => [["Host", "localhost"]],
             "body" => "",
         ];
 
@@ -322,12 +324,20 @@ class Http1DriverTest extends HttpDriverTest
             "content-length" => ["3"],
         ];
 
+        $rawHeaders = [
+            ["Host", "localhost:80"],
+            ["Cookie", "cookie1"],
+            ["Cookie", "cookie2"],
+            ["Content-Length", "3"],
+        ];
+
         $expectations = [
             "trace" => $trace,
             "protocol" => "1.0",
             "method" => "POST",
             "uri" => "/post-endpoint",
             "headers" => $headers,
+            "raw-headers" => $rawHeaders,
             "body" => "123",
         ];
 
@@ -344,6 +354,7 @@ class Http1DriverTest extends HttpDriverTest
             "method" => "OPTIONS",
             "uri" => "",
             "headers" => ["host" => ["localhost"]],
+            "raw-headers" => [["Host", "localhost"]],
             "body" => "",
         ];
 
@@ -375,12 +386,24 @@ class Http1DriverTest extends HttpDriverTest
             "content-length" => ["5"],
         ];
 
+        $rawHeaders = [
+            ["Host", "localhost"],
+            ["Connection", "keep-alive"],
+            ["User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.97 Safari/537.11"],
+            ["Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"],
+            ["Accept-Encoding", "gzip,deflate,sdch"],
+            ["Accept-Language", "en-US,en;q=0.8"],
+            ["Accept-Charset", "ISO-8859-1,utf-8;q=0.7,*;q=0.3"],
+            ["Content-Length", "5"],
+        ];
+
         $expectations = [
             "trace" => $trace,
             "protocol" => "1.1",
             "method" => "GET",
             "uri" => "/test",
             "headers" => $headers,
+            "raw-headers" => $rawHeaders,
             "body" => "12345",
         ];
 
@@ -402,12 +425,18 @@ class Http1DriverTest extends HttpDriverTest
             'x-my-header' => ['42'],
         ];
 
+        $rawHeaders = [
+            ["Host", "localhost"],
+            ["X-My-Header", "42"],
+        ];
+
         $expectations = [
             "trace" => $trace,
             "protocol" => "1.0",
             "method" => "GET",
             "uri" => "/someurl.html",
             "headers" => $headers,
+            "raw-headers" => $rawHeaders,
             "body" => "",
         ];
 
@@ -432,12 +461,18 @@ class Http1DriverTest extends HttpDriverTest
             "transfer-encoding" => ["chunked"],
         ];
 
+        $rawHeaders = [
+            ["Host", "localhost"],
+            ["Transfer-Encoding", "chunked"],
+        ];
+
         $expectations = [
             "trace" => $trace,
             "protocol" => "1.1",
             "method" => "GET",
             "uri" => "/test",
             "headers" => $headers,
+            "raw-headers" => $rawHeaders,
             "body" => "woot!test",
         ];
 
@@ -462,7 +497,11 @@ class Http1DriverTest extends HttpDriverTest
         $headers = [
             "host" => ["localhost"],
             "transfer-encoding" => ["chunked"],
-            //"my-trailer" => ["42"],
+        ];
+
+        $rawHeaders = [
+            ["Host", "localhost"],
+            ["Transfer-Encoding", "chunked"],
         ];
 
         $expectations = [
@@ -471,6 +510,7 @@ class Http1DriverTest extends HttpDriverTest
             "method" => "GET",
             "uri" => "/test",
             "headers" => $headers,
+            "raw-headers" => $rawHeaders,
             "body" => "woot!test",
         ];
 
