@@ -47,5 +47,5 @@ $middleware = new class implements Middleware {
     }
 };
 
-$server = new Server($servers, Middleware\stack($handler, $middleware), $logger);
+$server = new HttpServer($servers, Middleware\stack($handler, $middleware), $logger);
 ```

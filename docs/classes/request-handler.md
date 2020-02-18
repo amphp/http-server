@@ -22,7 +22,7 @@ $servers = [
     Socket\listen("[::]:1337"),
 ];
 
-$server = new Server($servers, new CallableRequestHandler(function (Request $request) {
+$server = new HttpServer($servers, new CallableRequestHandler(function (Request $request) {
     return new Response(Status::OK, [
         "content-type" => "text/plain; charset=utf-8"
     ], "Hello, World!");

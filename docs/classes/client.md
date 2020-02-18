@@ -42,6 +42,10 @@ Remote address or unix socket path.
 
 Local server address or unix socket path.
 
+## `isUnix(): bool`
+
+`true` if the client is connected via a Unix socket, `false` if TCP socket.
+
 ## `isEncrypted(): bool`
 
 `true` if the client is encrypted, `false` if plaintext.
@@ -57,6 +61,14 @@ If the client is encrypted, returns the `TlsInfo` object. Null is returned for p
 ## `getStatus(): int`
 
 Integer mask of `Client::CLOSED_*` constants.
+
+## `getExpirationTime(): int`
+
+Timestamp when the client will automatically be closed if no further activity is received on the connection.
+
+## `updateExpirationTime(int $expiresAt): void`
+
+Sets the timestamp when the client should automatically be closed if no further activity is received on the connection.
 
 ## `onClose(callable $onClose): void`
 

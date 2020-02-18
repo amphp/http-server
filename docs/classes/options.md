@@ -57,22 +57,56 @@ Sets the maximum number of connections to allow from a single IP address.
 {:.note}
 > Default connections per IP limit is `30`.
 
-## `getConnectionTimeout(): int`
+## `getHttp1Timeout(): int`
 
-Returns amount of time in seconds a connection may be idle before it is automatically closed.
+Returns amount of time in seconds an HTTP/1.x connection may be idle before it is automatically closed.
 
 {:.note}
-> Default connection timeout is `15` seconds.
+> Default HTTP/1.x connection timeout is `15` seconds.
 
-## `withConnectionTimeout(int $seconds): Options`
+## `withHttp1Timeout(int $seconds): Options`
 
-Sets the number of seconds a connection may be idle before it is automatically closed.
+Sets the number of seconds an HTTP/1.x connection may be idle before it is automatically closed.
 
 {:.warning}
-> Connection timeout must be greater than or equal to one second.
+> HTTP/1.x connection timeout must be greater than or equal to one second.
 
 {:.note}
-> Default connection timeout is `15` seconds.
+> Default HTTP/1.x connection timeout is `15` seconds.
+
+## `getHttp2Timeout(): int`
+
+Returns amount of time in seconds an HTTP/2` connection may be idle before it is automatically closed.
+
+{:.note}
+> Default HTTP/2 connection timeout is `60` seconds.
+
+## `withHttp2Timeout(int $seconds): Options`
+
+Sets the number of seconds an HTTP/2 connection may be idle before it is automatically closed.
+
+{:.warning}
+> HTTP/2 connection timeout must be greater than or equal to one second.
+
+{:.note}
+> Default HTTP/2 connection timeout is `60` seconds.
+
+## `getTlsSetupTimeout(): int`
+
+Returns amount of time in seconds that can elapse during TLS setup before a connection is automatically closed.
+
+{:.note}
+> Default TLS setup timeout is `5` seconds.
+
+## `withTlsSetupTimeout(int $seconds): Options`
+
+Sets the number of seconds that may elapse during TLS setup before a connection is automatically closed.
+
+{:.warning}
+> TLS setup timeout must be greater than or equal to one second.
+
+{:.note}
+> Default TLS setup timeout is `5` seconds.
 
 ## `getBodySizeLimit(): int`
 
@@ -124,40 +158,6 @@ Sets the maximum number of concurrent HTTP/2 streams per connection.
 
 {:.note}
 > Default concurrent streams limit is `20`.
-
-## `getMinimumAverageFrameSize(): int`
-
-Returns minimum average frame size required if more than the maximum number of frames per second are received on an HTTP/2 connection.
-
-{:.note}
-> Default minimum average frame size is `1024` bytes (1k).
-
-## `withMinimumAverageFrameSize(int $size): Options`
-
-Sets minimum average frame size required if more than the maximum number of frames per second are received on an HTTP/2 connection.
-
-{:.warning}
-> Minimum average frame size must be greater than zero.
-
-{:.note}
-> Default minimum average frame size is `1024` bytes (1k).
-
-## `getFramesPerSecondLimit(): int`
-
-Returns the maximum number of HTTP/2 frames per second before the average length minimum is enforced.
-
-{:.note}
-> Default frames per second limit is `60`.
-
-## `withFramesPerSecondLimit(int $frames): Options`
-
-Sets the maximum number of HTTP/2 frames per second before the average length minimum is enforced.
-
-{:.warning}
-> Maximum number of HTTP/2 frames per second setting must be greater than zero.
-
-{:.note}
-> Default frames per second limit is `60`.
 
 ## `getChunkSize(): int`
 

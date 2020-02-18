@@ -12,8 +12,8 @@ The **`Response`** class represents an HTTP response. The **`Response`** promise
 
 ```php
 public function __construct(
-    int $code = Status::OK, 
-    string[] | string[][] $headers = [], 
+    int $code = Status::OK,
+    string[] | string[][] $headers = [],
     Amp\ByteStream\InputStream | string | null $stringOrStream = null,
     ?Trailers $trailers = null
 )
@@ -110,13 +110,13 @@ Adds a [cookie](https://amphp.org/http/cookies) to the response.
 
 Removes a [cookie](https://amphp.org/http/cookies) from the response.
 
-## `getPush(): string[][]`
+## `getPushes(): Push[]`
 
 Returns list of push resources in an associative map:
 
 ```php
 [
-    string $url => [ Psr\Http\Message\UriInterface $uri, string[][] $headers ],
+    string $url => `Push`,
 ]
 ```
 

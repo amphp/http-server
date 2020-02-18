@@ -13,11 +13,11 @@ The **`Request`** class represents an HTTP request. It's used in [request handle
 
 ```php
 public function __construct(
-    Client $client, 
-    string $method, 
-    Psr\Http\Message\UriInterface $uri, 
-    string[] | string[][] $headers = [], 
-    RequestBody | Amp\ByteStream\InputStream | string | null $body = null, 
+    Client $client,
+    string $method,
+    Psr\Http\Message\UriInterface $uri,
+    string[] | string[][] $headers = [],
+    RequestBody | Amp\ByteStream\InputStream | string | null $body = null,
     string $protocol = "1.1",
     ?Trailers $trailers = null
 )
@@ -110,7 +110,7 @@ Sets the stream for the message body
 > Setting an [`InputStream`](https://amphp.org/byte-stream/#inputstream) will remove the `Content-Length` header.
 > If you know the exact content length of your stream, you can add a `content-length` header _after_ calling `setBody()`.
 
-If `$stringOrStream` value is not valid, [`\TypeError`](http://php.net/manual/en/class.typeerror.php) is thrown. 
+If `$stringOrStream` value is not valid, [`\TypeError`](http://php.net/manual/en/class.typeerror.php) is thrown.
 
 ## `getCookies(): RequestCookie[]`
 
@@ -134,20 +134,24 @@ Removes a cookie from the request.
 
 Returns an array of all the attributes stored in the request's mutable local storage.
 
+## `removeAttributes(): array`
+
+Removes all request attributes from the request's mutable local storage.
+
 ## `hasAttribute(string $name): bool`
 
 Check whether an attribute with the given name exists in the request's mutable local storage.
 
 ## `getAttribute(string $name): mixed`
 
-Retrieve a variable from the request's mutable local storage. 
+Retrieve a variable from the request's mutable local storage.
 
 {:.note}
 > Name of the attribute should be namespaced with a vendor and package namespace, like classes.
 
 ## `setAttribute(string $name, mixed $value): void`
 
-Assign a variable to the request's mutable local storage. 
+Assign a variable to the request's mutable local storage.
 
 {:.note}
 > Name of the attribute should be namespaced with a vendor and package namespace, like classes.

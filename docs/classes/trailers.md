@@ -22,6 +22,6 @@ public function __construct(
 
 Returns the declared trailer fields to be expected in the trailers. If given, the field names in the trailers must match exactly.
 
-## `awaitMessage(): Promise<Message>`
+## `await(): Promise<Message>`
 
 Returns a promise that is resolved with an instance of `Amp\Http\Message` when the trailers are received.

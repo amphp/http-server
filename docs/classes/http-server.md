@@ -1,14 +1,17 @@
 ---
-title: Server
-permalink: /classes/server
+title: HttpServer
+permalink: /classes/http-server
 ---
 
 * Table of Contents
 {:toc}
 
-The `Server` instance controls the whole listening and dispatches the parsed requests.
+The `HttpServer` instance controls the whole listening and dispatches the parsed requests.
 
-The `Server` class has a [custom debug output](http://php.net/manual/en/language.oop5.magic.php#object.debuginfo), which isn't part of the public API and which shouldn't be relied upon.
+The `HttpServer` class has a [custom debug output](http://php.net/manual/en/language.oop5.magic.php#object.debuginfo), which isn't part of the public API and which shouldn't be relied upon.
+
+{:.note}
+> This class was previously named `Server`. An alias to `Server` name exists for backward-compatibility with v1.x, but may be removed in a future version.
 
 ## Constructor
 

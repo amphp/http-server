@@ -5,9 +5,9 @@ permalink: /production
 
 ## General
 
-- Set your `ulimit -n` (maximum open file descriptors) high enough to manage all your connections. Recommended is at least `$workers * (Options->getConnectionLimit() + 100)`. [100 is an arbitrary number usually big enough for all the persisting file descriptors. If not enough, add more.]
+- Set your `ulimit -n` (maximum open file descriptors) high enough to manage all your connections. Recommended is at least `(Options->getConnectionLimit() + 100)`. [100 is an arbitrary number usually big enough for all the persisting file descriptors. If not enough, add more.]
 - In case you are using a properly configured load-balancer in front of Amp's HTTP servers, you should set the number of connections near to the maximum the host system can handle.
-- Amp's HTTP server has a [static content server](https://github.com/amphp/http-server-static-content), which isn't too bad (use some [extension](https://github.com/amphp/file#optional-extension-backends) if you use it!), but for heavy loads, a CDN is recommended.
+- Amp's HTTP server has a [static content server](https://github.com/amphp/http-server-static-content), which is acceptable for lighter loads (use some [extension](https://github.com/amphp/file#optional-extension-backends) if you use it!), but for heavy loads, a CDN is recommended.
 - Avoid a low [`memory_limit`](http://php.net/manual/en/ini.core.php#ini.memory-limit) setting, it is one of the few things able to kill the server ungracefully. If you have a memory leak, fix it, instead of relying on the master process to restart it.
 
 ## Options
