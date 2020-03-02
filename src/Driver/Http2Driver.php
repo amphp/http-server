@@ -1192,7 +1192,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         foreach ($settings as $key => $value) {
             switch ($key) {
                 case Http2Parser::INITIAL_WINDOW_SIZE:
-                    if ($value >= 1 << 31) {
+                    if ($value > 2147483647) { // (1 << 31) - 1
                         throw new Http2ConnectionException("Invalid window size", Http2Parser::FLOW_CONTROL_ERROR);
                     }
 
