@@ -6,7 +6,7 @@ permalink: /classes/options
 * Table of Contents
 {:toc}
 
-The `Options` class represents possible settings for the [HTTP server](server.md). The `Options` is an immutable class, it never modifies itself but returns a new object instead.
+The `Options` class represents possible settings for the [HTTP server](http-server.md). The `Options` is an immutable class, it never modifies itself but returns a new object instead.
 
 ## `isInDebugMode(): bool`
 
