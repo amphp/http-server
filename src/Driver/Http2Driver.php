@@ -341,7 +341,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 return;
             }
 
-            $this->releaseStream($id);
+            if ($this->streams[$id]->state & Http2Stream::REMOTE_CLOSED) {
+                $this->releaseStream($id);
+            }
         }
     }
 
@@ -1123,17 +1125,23 @@ final class Http2Driver implements HttpDriver, Http2Processor
             );
         }
 
-        if (!isset($this->bodyEmitters[$streamId], $this->trailerDeferreds[$streamId])) {
-            return; // Stream closed after emitting body fragment.
+        try {
+            if (!isset($this->bodyEmitters[$streamId], $this->trailerDeferreds[$streamId])) {
+                return; // Stream closed after emitting body fragment.
+            }
+
+            $deferred = $this->trailerDeferreds[$streamId];
+            $emitter = $this->bodyEmitters[$streamId];
+
+            unset($this->bodyEmitters[$streamId], $this->trailerDeferreds[$streamId]);
+
+            $emitter->complete();
+            $deferred->resolve([]);
+        } finally {
+            if ($stream->state & Http2Stream::LOCAL_CLOSED) {
+                $this->releaseStream($streamId);
+            }
         }
-
-        $deferred = $this->trailerDeferreds[$streamId];
-        $emitter = $this->bodyEmitters[$streamId];
-
-        unset($this->bodyEmitters[$streamId], $this->trailerDeferreds[$streamId]);
-
-        $emitter->complete();
-        $deferred->resolve([]);
     }
 
     public function handlePushPromise(int $streamId, int $pushId, array $pseudo, array $headers): void

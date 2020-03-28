@@ -742,4 +742,51 @@ class Http2DriverTest extends HttpDriverTest
             $lastWrite
         );
     }
+
+    public function testSendingResponseBeforeRequestCompletes(): \Generator
+    {
+        $driver = new Http2Driver(new Options, new NullLogger);
+        $invoked = false;
+        $parser = $driver->setup(
+            $this->createClientMock(),
+            function () use (&$invoked) {
+                $invoked = true;
+                return new Success;
+            },
+            function ($data) {
+                $type = \ord($data[3]);
+                $flags = \ord($data[4]);
+                $stream = \unpack("N", \substr($data, 5, 4))[1];
+                $data = \substr($data, 9);
+
+                if ($type === Http2Parser::RST_STREAM || $type === Http2Parser::GOAWAY) {
+                    AsyncTestCase::fail("RST_STREAM or GOAWAY frame received");
+                }
+
+                return new Success;
+            }
+        );
+
+        $parser->send(Http2Parser::PREFACE);
+
+        $headers = [
+            ":authority" => "localhost",
+            ":path" => "/",
+            ":scheme" => "http",
+            ":method" => "GET",
+        ];
+        $parser->send(self::packHeader($headers, true, 1)); // Stream 1 used for upgrade request.
+
+        $this->assertTrue($invoked);
+
+        // Note that Request object is not actually used in this test.
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2");
+        $driver->write($request, new Response(Status::OK, [
+            "content-length" => "0",
+        ]));
+
+        yield new Delayed(0);
+
+        $parser->send(self::packFrame("body-data", Http2Parser::DATA, Http2Parser::END_STREAM, 1));
+    }
 }
