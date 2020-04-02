@@ -24,3 +24,7 @@ You can import further functionality that's ready to be used from the additional
 ## Sessions
 
 - [`amphp/http-server-session`](https://github.com/amphp/http-server-session)
+
+## CORS (3rd party)
+
+- [`cspray/labrador-http-cors`](https://github.com/labrador-kennel/http-cors)
