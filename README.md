@@ -17,6 +17,7 @@ The packages was previously named [`amphp/aerys`](https://github.com/amphp/aerys
 - Customizable GZIP compression
 - HTTP/2.0 support
 - Middleware hooks
+- [CORS](https://github.com/labrador-kennel/http-cors) (3rd party)
 
 ## Requirements
 
