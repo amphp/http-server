@@ -41,7 +41,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
             } catch (\Throwable $exception) {
                 $status = Status::INTERNAL_SERVER_ERROR;
 
-                $this->logger->error($exception);
+                $this->logger->error($exception->getMessage(), ['exception' => $exception]);
 
                 // Return an HTML page with the exception in debug mode.
                 if ($this->debug) {
