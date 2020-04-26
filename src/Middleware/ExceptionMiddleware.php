@@ -41,7 +41,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
             } catch (\Throwable $exception) {
                 $status = Status::INTERNAL_SERVER_ERROR;
 
-                $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+                $this->logger->error('An exception was thrown while processing a request, causing an error 500 response.', ['exception' => $exception]);
 
                 // Return an HTML page with the exception in debug mode.
                 if ($this->debug) {
