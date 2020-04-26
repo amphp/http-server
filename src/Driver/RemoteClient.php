@@ -611,7 +611,7 @@ final class RemoteClient implements Client
         } catch (\Throwable $exception) {
             $errorType = \get_class($exception);
             $this->logger->critical(
-                "Unexpected {$errorType} thrown from RequestHandler::handleRequest(), falling back to error response.",
+                "Unexpected {$errorType} thrown from RequestHandler::handleRequest(), falling back to error handler.",
                 ['exception' => $exception]
             );
             
