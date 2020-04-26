@@ -396,7 +396,7 @@ final class RemoteClient implements Client
             }
         } catch (\Throwable $exception) {
             // Parser *should not* throw an exception, but in case it does...
-            $this->logger->critical($exception->getMessage(), ['exception' => $exception]);
+            $this->logger->critical('Request parser threw an exception (this should never happen).', ['exception' => $exception]);
             $this->close();
         }
     }
