@@ -614,7 +614,7 @@ final class RemoteClient implements Client
                 "Unexpected {$errorType} thrown from RequestHandler::handleRequest(), falling back to error handler.",
                 ['exception' => $exception]
             );
-            
+
             $response = yield from $this->makeExceptionResponse($request);
         } finally {
             $this->pendingHandlers--;
