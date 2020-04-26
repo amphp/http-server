@@ -691,7 +691,7 @@ final class RemoteClient implements Client
                 return;
             }
 
-            $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+            $this->logger->error('Unexpected exception during socket upgrade, closing connection.', ['exception' => $exception]);
             $this->close();
         });
     }
