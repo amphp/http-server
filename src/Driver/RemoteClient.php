@@ -610,7 +610,7 @@ final class RemoteClient implements Client
             return;
         } catch (\Throwable $exception) {
             $errorType = \get_class($exception);
-            $this->logger->critical(
+            $this->logger->error(
                 "Unexpected {$errorType} thrown from RequestHandler::handleRequest(), falling back to error handler.",
                 ['exception' => $exception]
             );
@@ -668,7 +668,7 @@ final class RemoteClient implements Client
         } catch (\Throwable $exception) {
             // If the error handler throws, fallback to returning the default error page.
             $errorType = \get_class($exception);
-            $this->logger->critical(
+            $this->logger->error(
                 "Unexpected {$errorType} thrown from ErrorHandler::handleError(), falling back to default error handler.",
                 ['exception' => $exception]
             );
@@ -705,7 +705,7 @@ final class RemoteClient implements Client
             }
 
             $errorType = \get_class($exception);
-            $this->logger->critical(
+            $this->logger->error(
                 "Unexpected {$errorType} thrown during socket upgrade, closing connection.",
                 ['exception' => $exception]
             );
