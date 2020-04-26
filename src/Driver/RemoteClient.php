@@ -658,7 +658,7 @@ final class RemoteClient implements Client
             return yield $this->errorHandler->handleError($status, null, $request);
         } catch (\Throwable $exception) {
             // If the error handler throws, fallback to returning the default HTML error page.
-            $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+            $this->logger->error('Error handler threw an exception, falling back to the default HTML error page.', ['exception' => $exception]);
 
             // The default error handler will never throw, otherwise there's a bug
             return yield self::$defaultErrorHandler->handleError($status, null, $request);
