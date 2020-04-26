@@ -41,10 +41,15 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
             } catch (\Throwable $exception) {
                 $status = Status::INTERNAL_SERVER_ERROR;
 
-                $this->logger->error($exception);
+                $errorType = \get_class($exception);
 
                 // Return an HTML page with the exception in debug mode.
                 if ($this->debug) {
+                    $this->logger->error(
+                        "Unexpected {$errorType} thrown from RequestHandler::handleRequest(), falling back to stack trace response, because debug mode is enabled.",
+                        ['exception' => $exception]
+                    );
+
                     $html = \str_replace(
                         ["{uri}", "{class}", "{message}", "{file}", "{line}", "{trace}"],
                         \array_map("htmlspecialchars", [
@@ -62,6 +67,11 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
                         "content-type" => "text/html; charset=utf-8",
                     ], $html);
                 }
+
+                $this->logger->error(
+                    "Unexpected {$errorType} thrown from RequestHandler::handleRequest(), falling back to error handler.",
+                    ['exception' => $exception]
+                );
 
                 return yield $this->errorHandler->handleError($status, null, $request);
             }
