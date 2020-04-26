@@ -397,9 +397,10 @@ final class RemoteClient implements Client
         } catch (\Throwable $exception) {
             // Parser *should not* throw an exception, but in case it does...
             $errorType = \get_class($exception);
-            $this->logger->critical("Unexpected {$errorType} while parsing request, closing connection.", [
-                'exception' => $exception
-            ]);
+            $this->logger->critical(
+                "Unexpected {$errorType} while parsing request, closing connection.",
+                ['exception' => $exception]
+            );
 
             $this->close();
         }
