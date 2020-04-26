@@ -605,7 +605,7 @@ final class RemoteClient implements Client
             $this->close();
             return;
         } catch (\Throwable $exception) {
-            $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+            $this->logger->error('An exception was thrown while processing a request.', ['exception' => $exception]);
             $response = yield from $this->makeExceptionResponse($request);
         } finally {
             $this->pendingHandlers--;
