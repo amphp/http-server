@@ -1,4 +1,4 @@
-sudo: false
+os: linux
 
 language: php
 
@@ -8,7 +8,7 @@ php:
   - 7.4
   - nightly
 
-matrix:
+jobs:
   allow_failures:
     - php: nightly
   fast_finish: true
@@ -21,8 +21,6 @@ before_install:
 
 install:
   - travis_retry composer update -n --prefer-dist
-  - travis_retry wget https://github.com/php-coveralls/php-coveralls/releases/download/v1.0.2/coveralls.phar
-  - chmod +x coveralls.phar
 
 script:
   - php -dzend.assertions=1 -dassert.exception=1 vendor/bin/phpunit --coverage-text --verbose --coverage-clover build/logs/clover.xml
@@ -30,7 +28,9 @@ script:
   - sh travis/h2spec.sh
 
 after_script:
-  - travis_retry ./coveralls.phar -v
+  - wget https://github.com/php-coveralls/php-coveralls/releases/download/v2.2.0/php-coveralls.phar
+  - chmod +x php-coveralls.phar
+  - travis_retry ./php-coveralls.phar -v
 
 cache:
   directories:
