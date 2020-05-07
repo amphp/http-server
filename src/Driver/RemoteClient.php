@@ -580,6 +580,8 @@ final class RemoteClient implements Client
      */
     private function respond(Request $request, string $buffer): \Generator
     {
+        $clientRequest = clone $request;
+
         $this->pendingHandlers++;
         $this->pendingResponses++;
 
@@ -595,7 +597,7 @@ final class RemoteClient implements Client
             } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
                 $response = $this->makeOptionsResponse();
             } else {
-                $response = yield $this->requestHandler->handleRequest(clone $request);
+                $response = yield $this->requestHandler->handleRequest($request);
 
                 if (!$response instanceof Response) {
                     throw new \Error(\sprintf(
@@ -613,7 +615,7 @@ final class RemoteClient implements Client
             $errorType = \get_class($exception);
             $this->logger->error(
                 "Unexpected {$errorType} thrown from RequestHandler::handleRequest(), falling back to error handler.",
-                ['exception' => $exception]
+                $this->createLogContext($exception, $request)
             );
 
             $response = yield from $this->makeExceptionResponse($request);
@@ -625,7 +627,7 @@ final class RemoteClient implements Client
             return; // Client closed before response could be sent.
         }
 
-        $promise = $this->httpDriver->write($request, $response);
+        $promise = $this->httpDriver->write($clientRequest, $response);
 
         $promise->onResolve(function (): void {
             $this->pendingResponses--;
@@ -671,7 +673,7 @@ final class RemoteClient implements Client
             $errorType = \get_class($exception);
             $this->logger->error(
                 "Unexpected {$errorType} thrown from ErrorHandler::handleError(), falling back to default error handler.",
-                ['exception' => $exception]
+                $this->createLogContext($exception, $request)
             );
 
             // The default error handler will never throw, otherwise there's a bug
@@ -700,7 +702,7 @@ final class RemoteClient implements Client
         $socket = ResourceSocket::fromServerSocket($this->socket, $this->options->getChunkSize());
         $socket = new UpgradedSocket($this, $socket, $buffer);
 
-        call($upgrade, $socket, $request, $response)->onResolve(function (?\Throwable $exception): void {
+        call($upgrade, $socket, $request, $response)->onResolve(function (?\Throwable $exception) use ($request): void {
             if (!$exception) {
                 return;
             }
@@ -708,7 +710,7 @@ final class RemoteClient implements Client
             $errorType = \get_class($exception);
             $this->logger->error(
                 "Unexpected {$errorType} thrown during socket upgrade, closing connection.",
-                ['exception' => $exception]
+                $this->createLogContext($exception, $request)
             );
 
             $this->close();
@@ -722,5 +724,15 @@ final class RemoteClient implements Client
         $message = \str_replace('. OpenSSL Error messages', '', $message);
 
         return $message;
+    }
+
+    private function createLogContext(\Throwable $exception, Request $request): array
+    {
+        $logContext = ['exception' => $exception];
+        if ($this->options->isRequestLoggingEnabled()) {
+            $logContext['request'] = $request;
+        }
+
+        return $logContext;
     }
 }
