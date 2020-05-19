@@ -2,8 +2,11 @@
 title: RequestBody
 permalink: /classes/request-body
 ---
-**`RequestBody`** extends [`Payload`](https://amphp.org/byte-stream/payload) and allows streamed and buffered access to an [`InputStream`](https://amphp.org/byte-stream/#inputstream). 
+**`RequestBody`** extends [`Payload`](https://amphp.org/byte-stream/payload) and allows streamed and buffered access to an [`InputStream`](https://amphp.org/byte-stream/#inputstream).
 Additionally, it allows increasing the body size limit dynamically and allows access to the request trailers.
+
+{:.note}
+> Note that `RequestBody` itself doesn't provide parsing of form data. You can use [`amphp/http-server-form-parser`](https://github.com/amphp/http-server-form-parser) if you need it.
 
 ## Constructor
 

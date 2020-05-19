@@ -13,6 +13,8 @@ The packages was previously named [`amphp/aerys`](https://github.com/amphp/aerys
 - [Static file serving](https://github.com/amphp/http-server-static-content)
 - [WebSockets](https://github.com/amphp/websocket-server)
 - [Dynamic app endpoint routing](https://github.com/amphp/http-server-router)
+- [Request body parser](https://github.com/amphp/http-server-form-parser)
+- [Sessions](https://github.com/amphp/http-server-session)
 - Full TLS support
 - Customizable GZIP compression
 - HTTP/2.0 support
@@ -53,7 +55,7 @@ Amp\Loop::run(function () {
         Server::listen("0.0.0.0:1337"),
         Server::listen("[::]:1337"),
     ];
-    
+
     $server = new HttpServer($sockets, new CallableRequestHandler(function (Request $request) {
         return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8"

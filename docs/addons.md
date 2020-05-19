@@ -21,6 +21,10 @@ You can import further functionality that's ready to be used from the additional
 
 - [`amphp/websocket-server`](https://github.com/amphp/websocket-server)
 
+## Request body parser
+
+- [`amphp/http-server-form-parser`](https://github.com/amphp/http-server-form-parser)
+
 ## Sessions
 
 - [`amphp/http-server-session`](https://github.com/amphp/http-server-session)
