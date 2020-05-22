@@ -32,14 +32,11 @@ class StackTest extends AsyncTestCase
 
                 return $requestHandler->handleRequest($request);
             }
-        }, new class implements Middleware {
-            public function handleRequest(Request $request, RequestHandler $requestHandler): Promise
-            {
-                $request->setAttribute(StackTest::class, $request->getAttribute(StackTest::class) . "b");
+        }, new Middleware\CallableMiddleware(function (Request $request, RequestHandler $requestHandler) {
+            $request->setAttribute(StackTest::class, $request->getAttribute(StackTest::class) . "b");
 
-                return $requestHandler->handleRequest($request);
-            }
-        });
+            return $requestHandler->handleRequest($request);
+        }));
 
         /** @var Response $response */
         $response = yield $stack->handleRequest($request);
