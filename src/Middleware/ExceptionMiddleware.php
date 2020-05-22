@@ -20,7 +20,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
     private $debug = false;
 
     /** @var bool */
-    private $requestLogging = false;
+    private $requestLogContext = false;
 
     /** @var \Psr\Log\LoggerInterface */
     private $logger;
@@ -84,7 +84,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
     public function onStart(HttpServer $server): Promise
     {
         $this->debug = $server->getOptions()->isInDebugMode();
-        $this->requestLogging = $server->getOptions()->isRequestLoggingEnabled();
+        $this->requestLogContext = $server->getOptions()->isRequestLogContextEnabled();
         $this->logger = $server->getLogger();
         $this->errorHandler = $server->getErrorHandler();
         return new Success;
@@ -98,7 +98,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
     private function createLogContext(\Throwable $exception, Request $request): array
     {
         $logContext = ['exception' => $exception];
-        if ($this->requestLogging) {
+        if ($this->requestLogContext) {
             $logContext['request'] = $request;
         }
 

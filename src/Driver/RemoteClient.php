@@ -729,7 +729,7 @@ final class RemoteClient implements Client
     private function createLogContext(\Throwable $exception, Request $request): array
     {
         $logContext = ['exception' => $exception];
-        if ($this->options->isRequestLoggingEnabled()) {
+        if ($this->options->isRequestLogContextEnabled()) {
             $logContext['request'] = $request;
         }
 
