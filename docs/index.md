@@ -32,6 +32,8 @@ You can then access the example server at [`http://localhost:1337/`](http://loca
 The `Server` uses a `NullLogger` by default.
 If you pass a `Psr\Log\LoggerInterface` instance to its constructor, you'll get helpful log messages.
 
+Optionally you can use `Options::withRequestLogContext()` to enable passing the `Request` object to the logger in the `$context` array. This is disabled by default.
+
 {:.note}
 > Internally generated log messages of the `DEBUG` level are only generated if `zend.assertions` is set to `1`.
 > If it isn't set to `1` in your config, load the server with `php -d zend.assertions=1 examples/hello-world.php`.

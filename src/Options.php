@@ -23,6 +23,7 @@ final class Options
     private $compression = true;
     private $allowHttp2Upgrade = false;
     private $pushEnabled = true;
+    private $requestLogContext = false;
 
     /**
      * @return bool `true` if server is in debug mode, `false` if in production mode.
@@ -510,6 +511,33 @@ final class Options
     {
         $new = clone $this;
         $new->compression = false;
+
+        return $new;
+    }
+
+    public function isRequestLogContextEnabled(): bool
+    {
+        return $this->requestLogContext;
+    }
+
+    /**
+     * Enables passing the causing Request object to Logger.
+     */
+    public function withRequestLogContext(): self
+    {
+        $new = clone $this;
+        $new->requestLogContext = true;
+
+        return $new;
+    }
+
+    /**
+     * Disables passing the causing Request object to Logger.
+     */
+    public function withoutRequestLogContext(): self
+    {
+        $new = clone $this;
+        $new->requestLogContext = false;
 
         return $new;
     }

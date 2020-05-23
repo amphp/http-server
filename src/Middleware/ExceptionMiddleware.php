@@ -19,6 +19,9 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
     /** @var bool */
     private $debug = false;
 
+    /** @var bool */
+    private $requestLogContext = false;
+
     /** @var \Psr\Log\LoggerInterface */
     private $logger;
 
@@ -47,7 +50,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
                 if ($this->debug) {
                     $this->logger->error(
                         "Unexpected {$errorType} thrown from RequestHandler::handleRequest(), falling back to stack trace response, because debug mode is enabled.",
-                        ['exception' => $exception]
+                        $this->createLogContext($exception, $request)
                     );
 
                     $html = \str_replace(
@@ -70,7 +73,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
 
                 $this->logger->error(
                     "Unexpected {$errorType} thrown from RequestHandler::handleRequest(), falling back to error handler.",
-                    ['exception' => $exception]
+                    $this->createLogContext($exception, $request)
                 );
 
                 return yield $this->errorHandler->handleError($status, null, $request);
@@ -81,6 +84,7 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
     public function onStart(HttpServer $server): Promise
     {
         $this->debug = $server->getOptions()->isInDebugMode();
+        $this->requestLogContext = $server->getOptions()->isRequestLogContextEnabled();
         $this->logger = $server->getLogger();
         $this->errorHandler = $server->getErrorHandler();
         return new Success;
@@ -89,5 +93,15 @@ final class ExceptionMiddleware implements Middleware, ServerObserver
     public function onStop(HttpServer $server): Promise
     {
         return new Success;
+    }
+
+    private function createLogContext(\Throwable $exception, Request $request): array
+    {
+        $logContext = ['exception' => $exception];
+        if ($this->requestLogContext) {
+            $logContext['request'] = $request;
+        }
+
+        return $logContext;
     }
 }
