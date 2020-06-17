@@ -580,7 +580,8 @@ final class RemoteClient implements Client
      */
     private function respond(Request $request, string $buffer): \Generator
     {
-        $clientRequest = clone $request;
+        $clientRequest = $request;
+        $request = clone $request;
 
         $this->pendingHandlers++;
         $this->pendingResponses++;
