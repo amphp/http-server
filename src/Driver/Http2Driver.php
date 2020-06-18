@@ -3,6 +3,7 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\IteratorStream;
+use Amp\CancellationTokenSource;
 use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Emitter;
@@ -14,6 +15,7 @@ use Amp\Http\Http2\Http2StreamException;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Message;
 use Amp\Http\Server\ClientException;
+use Amp\Http\Server\Driver\Internal\AutoCancellingInputStream;
 use Amp\Http\Server\Driver\Internal\Http2Stream;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Push;
@@ -28,6 +30,7 @@ use Amp\Success;
 use Amp\TimeoutException;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
+use function Amp\asyncCall;
 use function Amp\call;
 use function Amp\Http\formatDateHeader;
 
@@ -942,8 +945,32 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $this->trailerDeferreds[$streamId] = new Deferred;
         $this->bodyEmitters[$streamId] = new Emitter;
 
+        $bodyStream = new IteratorStream($this->bodyEmitters[$streamId]->iterate());
+
+        $cancel = function () use ($streamId, $bodyStream) {
+            if (isset($this->streams[$streamId])) {
+                $stream = $this->streams[$streamId];
+
+                if (!($stream->state & Http2Stream::REMOTE_CLOSED) && ($stream->state & Http2Stream::LOCAL_CLOSED) && $stream->buffer === '') {
+                    asyncCall(function () use ($bodyStream) {
+                        try {
+                            while (null !== yield $bodyStream->read()) {
+                                print 'read chunk' . PHP_EOL;
+                                // discard
+                            }
+                        } catch (\Exception $e) {
+                            // ignore
+                        }
+                    });
+                }
+            }
+        };
+
+        $cancellationSource = new CancellationTokenSource;
+        $cancellationSource->getToken()->subscribe($cancel);
+
         $body = new RequestBody(
-            new IteratorStream($this->bodyEmitters[$streamId]->iterate()),
+            new AutoCancellingInputStream($bodyStream, $cancellationSource),
             function (int $bodySize) use ($streamId) {
                 if (!isset($this->streams[$streamId], $this->bodyEmitters[$streamId])) {
                     return;
@@ -957,12 +984,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
             }
         );
 
-        $maxBodySize = $this->options->getBodySizeLimit();
-
-        if ($this->serverWindow <= $maxBodySize >> 1) {
-            $increment = $maxBodySize - $this->serverWindow;
-            $this->serverWindow = $maxBodySize;
-            $this->writeFrame(\pack("N", $increment), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
+        if ($this->serverWindow <= self::MINIMUM_WINDOW) {
+            $this->serverWindow += self::MAX_INCREMENT;
+            $this->writeFrame(\pack("N", self::MAX_INCREMENT), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
         }
 
         if (isset($headers["content-length"])) {
@@ -1082,19 +1106,19 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
                 $stream = $this->streams[$streamId];
 
-                if ($stream->state & Http2Stream::REMOTE_CLOSED
-                    || $stream->serverWindow > self::MINIMUM_WINDOW
-                ) {
+                if ($stream->serverWindow > self::MINIMUM_WINDOW) {
                     return;
                 }
 
                 $increment = \min(
-                    $stream->maxBodySize - $stream->received - $stream->serverWindow,
+                    $stream->maxBodySize + 1 - $stream->received - $stream->serverWindow,
                     self::MAX_INCREMENT
                 );
+
                 if ($increment <= 0) {
                     return;
                 }
+
                 $stream->serverWindow += $increment;
 
                 $this->writeFrame(
