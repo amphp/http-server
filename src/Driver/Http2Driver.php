@@ -1089,12 +1089,14 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 }
 
                 $increment = \min(
-                    $stream->maxBodySize - $stream->received - $stream->serverWindow,
+                    $stream->maxBodySize + 1 - $stream->received - $stream->serverWindow,
                     self::MAX_INCREMENT
                 );
+
                 if ($increment <= 0) {
                     return;
                 }
+
                 $stream->serverWindow += $increment;
 
                 $this->writeFrame(
