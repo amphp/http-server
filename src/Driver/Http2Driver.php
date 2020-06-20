@@ -179,531 +179,6 @@ final class Http2Driver implements HttpDriver, Http2Processor
         return \count($this->bodyEmitters);
     }
 
-    private function send(int $id, Response $response, Request $request): \Generator
-    {
-        $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
-
-        try {
-            $status = $response->getStatus();
-
-            if ($status < Status::OK) {
-                $response->setStatus(Status::HTTP_VERSION_NOT_SUPPORTED);
-                throw new ClientException(
-                    $this->client,
-                    "1xx response codes are not supported in HTTP/2",
-                    Http2Parser::HTTP_1_1_REQUIRED
-                );
-            }
-
-            if ($status === Status::HTTP_VERSION_NOT_SUPPORTED && $response->getHeader("upgrade")) {
-                throw new ClientException($this->client, "Upgrade requests require HTTP/1.1", Http2Parser::HTTP_1_1_REQUIRED);
-            }
-
-            $headers = \array_merge([":status" => $status], $response->getHeaders());
-
-            // Remove headers that are obsolete in HTTP/2.
-            unset($headers["connection"], $headers["keep-alive"], $headers["transfer-encoding"]);
-
-            $trailers = $response->getTrailers();
-
-            if ($trailers !== null && !isset($headers["trailer"]) && ($fields = $trailers->getFields())) {
-                $headers["trailer"] = [\implode(", ", $fields)];
-            }
-
-            $headers["date"] = [formatDateHeader()];
-
-            $headers["link"] = [];
-            foreach ($response->getPushes() as $push) {
-                $headers["link"][] = "<{$push->getUri()}>; rel=preload";
-                if ($this->allowsPush) {
-                    $this->sendPushPromise($request, $id, $push);
-                }
-            }
-
-            $headers = $this->encodeHeaders($headers);
-
-            if (\strlen($headers) > $this->maxFrameSize) {
-                $split = \str_split($headers, $this->maxFrameSize);
-                $headers = \array_shift($split);
-                $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG, $id);
-
-                $headers = \array_pop($split);
-                foreach ($split as $msgPart) {
-                    $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
-                }
-                yield $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id);
-            } else {
-                yield $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id);
-            }
-
-            if ($request->getMethod() === "HEAD") {
-                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
-                $this->writeData("", $id);
-                $chunk = null;
-                return;
-            }
-
-            $buffer = "";
-            $body = $response->getBody();
-            $streamThreshold = $this->options->getStreamThreshold();
-
-            $readPromise = $body->read();
-
-            while (true) {
-                try {
-                    if ($buffer !== "") {
-                        $chunk = yield Promise\timeout($readPromise, 100);
-                    } else {
-                        $chunk = yield $readPromise;
-                    }
-
-                    if ($chunk === null) {
-                        break;
-                    }
-
-                    $readPromise = $body->read(); // directly start new read
-                } catch (TimeoutException $e) {
-                    goto flush;
-                } finally {
-                    // Stream may have been closed while waiting for body data.
-                    if (!isset($this->streams[$id])) {
-                        return;
-                    }
-                }
-
-                $buffer .= $chunk;
-
-                if (\strlen($buffer) < $streamThreshold) {
-                    continue;
-                }
-
-                flush: {
-                    $promise = $this->writeData($buffer, $id);
-
-                    $buffer = $chunk = ""; // Don't use null here because of finally.
-
-                    yield $promise;
-                }
-            }
-
-            // Stream may have been closed while waiting for body data.
-            if (!isset($this->streams[$id])) {
-                return;
-            }
-
-            if ($trailers === null) {
-                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
-            }
-
-            yield $this->writeData($buffer, $id);
-
-            // Stream may have been closed while writing final body chunk.
-            if (!isset($this->streams[$id])) {
-                return;
-            }
-
-            if ($trailers !== null) {
-                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
-
-                $trailers = yield $trailers->await();
-                \assert($trailers instanceof Message);
-
-                $headers = $this->encodeHeaders($trailers->getHeaders());
-
-                if (\strlen($headers) > $this->maxFrameSize) {
-                    $split = \str_split($headers, $this->maxFrameSize);
-                    $headers = \array_shift($split);
-                    $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG, $id);
-
-                    $headers = \array_pop($split);
-                    foreach ($split as $msgPart) {
-                        $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
-                    }
-                    yield $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
-                } else {
-                    yield $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
-                }
-            }
-        } catch (ClientException $exception) {
-            $error = $exception->getCode() ?? Http2Parser::CANCEL; // Set error code to be used in finally below.
-        } finally {
-            if (!isset($this->streams[$id])) {
-                return;
-            }
-
-            if ($chunk !== null) {
-                if (($buffer ?? "") !== "") {
-                    $this->writeData($buffer, $id);
-                }
-                $error = $error ?? Http2Parser::INTERNAL_ERROR;
-                $this->writeFrame(\pack("N", $error), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, $id);
-                $this->releaseStream($id, $exception ?? new ClientException($this->client, "Stream error", $error));
-                return;
-            }
-
-            if ($this->streams[$id]->state & Http2Stream::REMOTE_CLOSED) {
-                $this->releaseStream($id);
-            }
-        }
-    }
-
-    /**
-     * @param int|null        $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no
-     *                                streams have been opened.
-     * @param \Throwable|null $reason
-     *
-     * @return Promise
-     */
-    private function shutdown(?int $lastId = null, ?\Throwable $reason = null): Promise
-    {
-        $this->stopping = true;
-
-        return call(function () use ($lastId, $reason) {
-            try {
-                $promises = [];
-                foreach ($this->streams as $id => $stream) {
-                    if ($lastId && $id > $lastId) {
-                        break;
-                    }
-
-                    if ($stream->pendingResponse) {
-                        $promises[] = $stream->pendingResponse;
-                    }
-                }
-
-                $code = $reason ? $reason->getCode() : Http2Parser::GRACEFUL_SHUTDOWN;
-                $lastId = $lastId ?? ($id ?? 0);
-                yield $this->writeFrame(\pack("NN", $lastId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
-
-                yield $promises;
-
-                $promises = [];
-                foreach ($this->streams as $id => $stream) {
-                    if ($lastId && $id > $lastId) {
-                        break;
-                    }
-
-                    if ($stream->pendingWrite) {
-                        $promises[] = $stream->pendingWrite;
-                    }
-                }
-
-                yield $promises;
-            } finally {
-                if (!empty($this->streams)) {
-                    $exception = new ClientException($this->client, $reason->getMessage(), $reason->getCode(), $reason);
-                    foreach ($this->streams as $id => $stream) {
-                        $this->releaseStream($id, $exception);
-                    }
-                }
-
-                $this->client->close();
-            }
-        });
-    }
-
-    private function sendPushPromise(Request $request, int $streamId, Push $push): void
-    {
-        $requestUri = $request->getUri();
-        $pushUri = $push->getUri();
-        $path = $pushUri->getPath();
-
-        if (($path[0] ?? "/") !== "/") { // Relative Path
-            $pushUri = $requestUri // Base push URI from original request URI.
-                ->withPath($requestUri->getPath() . "/" . $path)
-                ->withQuery($pushUri->getQuery());
-        }
-
-        if ($pushUri->getAuthority() === '') {
-            $pushUri = $pushUri // If push URI did not provide a host, use original request URI.
-                ->withHost($requestUri->getHost())
-                ->withPort($requestUri->getPort());
-        }
-
-        $url = (string) $pushUri;
-
-        if (isset($this->pushCache[$url])) {
-            return; // Resource already pushed to this client.
-        }
-
-        $this->pushCache[$url] = $streamId;
-
-        $path = $pushUri->getPath();
-        if ($query = $pushUri->getQuery()) {
-            $path .= "?" . $query;
-        }
-
-        $headers = \array_merge(
-            \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), // Uses only select headers
-            $push->getHeaders() // Overwrites request headers with those defined in push.
-        );
-
-        // $id is the new stream ID for the pushed response, $streamId is the original request stream ID.
-        $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
-        $this->remoteStreamId = \max($id, $this->remoteStreamId);
-
-        $request = new Request($this->client, "GET", $pushUri, $headers, null, "2");
-
-        $this->streams[$id] = $stream = new Http2Stream(
-            0, // No data will be incoming on this stream.
-            $this->initialWindowSize,
-            Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
-        );
-
-        $this->streamIdMap[\spl_object_hash($request)] = $id;
-
-        $headers = \array_merge([
-            ":authority" => [$pushUri->getAuthority()],
-            ":scheme" => [$pushUri->getScheme()],
-            ":path" => [$path],
-            ":method" => ["GET"],
-        ], $headers);
-
-        $headers = \pack("N", $id) . $this->encodeHeaders($headers);
-
-        if (\strlen($headers) >= $this->maxFrameSize) {
-            $split = \str_split($headers, $this->maxFrameSize);
-            $headers = \array_shift($split);
-            $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::NO_FLAG, $streamId);
-
-            $headers = \array_pop($split);
-            foreach ($split as $msgPart) {
-                $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
-            }
-            $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id);
-        } else {
-            $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::END_HEADERS, $streamId);
-        }
-
-        $stream->pendingResponse = ($this->onMessage)($request);
-    }
-
-    private function ping(): Promise
-    {
-        // no need to receive the PONG frame, that's anyway registered by the keep-alive handler
-        return $this->writeFrame($this->counter++, Http2Parser::PING, Http2Parser::NO_FLAG);
-    }
-
-    private function writeFrame(string $data, int $type, int $flags, int $stream = 0): Promise
-    {
-        \assert(Http2Parser::logDebugFrame('send', $type, $flags, $stream, \strlen($data)));
-
-        return ($this->write)(\substr(\pack("NccN", \strlen($data), $type, $flags, $stream), 1) . $data);
-    }
-
-    private function writeData(string $data, int $id): Promise
-    {
-        \assert(isset($this->streams[$id]), "The stream was closed");
-
-        $this->streams[$id]->buffer .= $data;
-
-        return $this->writeBufferedData($id);
-    }
-
-    private function writeBufferedData(int $id): Promise
-    {
-        \assert(isset($this->streams[$id]), "The stream was closed");
-
-        $stream = $this->streams[$id];
-        $delta = \min($this->clientWindow, $stream->clientWindow);
-        $length = \strlen($stream->buffer);
-
-        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
-
-        if ($delta >= $length) {
-            $this->clientWindow -= $length;
-
-            if ($length > $this->maxFrameSize) {
-                $split = \str_split($stream->buffer, $this->maxFrameSize);
-                $stream->buffer = \array_pop($split);
-                foreach ($split as $part) {
-                    $this->writeFrame($part, Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
-                }
-            }
-
-            if ($stream->state & Http2Stream::LOCAL_CLOSED) {
-                $promise = $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::END_STREAM, $id);
-            } else {
-                $promise = $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
-            }
-
-            $stream->clientWindow -= $length;
-            $stream->buffer = "";
-
-            if ($stream->deferred) {
-                $deferred = $stream->deferred;
-                $stream->deferred = null;
-                $deferred->resolve($promise);
-            }
-
-            return $promise;
-        }
-
-        if ($delta > 0) {
-            $data = $stream->buffer;
-            $end = $delta - $this->maxFrameSize;
-
-            $stream->clientWindow -= $delta;
-            $this->clientWindow -= $delta;
-
-            for ($off = 0; $off < $end; $off += $this->maxFrameSize) {
-                $this->writeFrame(\substr($data, $off, $this->maxFrameSize), Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
-            }
-
-            $this->writeFrame(\substr($data, $off, $delta - $off), Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
-
-            $stream->buffer = \substr($data, $delta);
-        }
-
-        if ($stream->deferred === null) {
-            $stream->deferred = new Deferred;
-        }
-
-        return $stream->deferred->promise();
-    }
-
-    private function releaseStream(int $id, ClientException $exception = null): void
-    {
-        \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
-
-        if (isset($this->bodyEmitters[$id])) {
-            $emitter = $this->bodyEmitters[$id];
-            unset($this->bodyEmitters[$id]);
-            $emitter->fail($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
-        }
-
-        if (isset($this->trailerDeferreds[$id])) {
-            $deferred = $this->trailerDeferreds[$id];
-            unset($this->trailerDeferreds[$id]);
-            $deferred->fail($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
-        }
-
-        unset($this->streams[$id]);
-
-        if ($id & 1) { // Client-initiated stream.
-            $this->remainingStreams++;
-        }
-    }
-
-    /**
-     * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
-     *
-     * @return \Generator
-     */
-    private function parser(?string $settings = null): \Generator
-    {
-        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
-
-        $parser = (new Http2Parser($this))->parse($settings);
-
-        try {
-            $parser->send(yield from $this->readPreface($settings !== null));
-
-            if (!$parser->valid()) {
-                return;
-            }
-
-            yield from $parser;
-        } catch (Http2ConnectionException $exception) {
-            $this->shutdown(null, $exception);
-        } finally {
-            $this->client->close();
-        }
-    }
-
-    private function readPreface(bool $upgraded): \Generator
-    {
-        if ($upgraded) {
-            // Upgraded connections automatically assume an initial stream with ID 1.
-            $this->streams[1] = new Http2Stream(
-                0, // No data will be incoming on this stream.
-                $this->initialWindowSize,
-                Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
-            );
-            $this->remainingStreams--;
-
-            // Initial settings frame, sent immediately for upgraded connections.
-            $this->writeFrame(
-                \pack(
-                    "nNnNnNnN",
-                    Http2Parser::INITIAL_WINDOW_SIZE,
-                    $this->options->getBodySizeLimit(),
-                    Http2Parser::MAX_CONCURRENT_STREAMS,
-                    $this->options->getConcurrentStreamLimit(),
-                    Http2Parser::MAX_HEADER_LIST_SIZE,
-                    $this->options->getHeaderSizeLimit(),
-                    Http2Parser::MAX_FRAME_SIZE,
-                    self::DEFAULT_MAX_FRAME_SIZE
-                ),
-                Http2Parser::SETTINGS,
-                Http2Parser::NO_FLAG
-            );
-        }
-
-        $buffer = yield;
-
-        while (\strlen($buffer) < \strlen(Http2Parser::PREFACE)) {
-            $buffer .= yield;
-        }
-
-        if (\strncmp($buffer, Http2Parser::PREFACE, \strlen(Http2Parser::PREFACE)) !== 0) {
-            throw new Http2ConnectionException("Invalid preface", Http2Parser::PROTOCOL_ERROR);
-        }
-
-        $buffer = \substr($buffer, \strlen(Http2Parser::PREFACE));
-
-        if (!$upgraded) {
-            // Initial settings frame, delayed until after the preface is read for non-upgraded connections.
-            $this->writeFrame(
-                \pack(
-                    "nNnNnNnN",
-                    Http2Parser::INITIAL_WINDOW_SIZE,
-                    $this->options->getBodySizeLimit(),
-                    Http2Parser::MAX_CONCURRENT_STREAMS,
-                    $this->options->getConcurrentStreamLimit(),
-                    Http2Parser::MAX_HEADER_LIST_SIZE,
-                    $this->options->getHeaderSizeLimit(),
-                    Http2Parser::MAX_FRAME_SIZE,
-                    self::DEFAULT_MAX_FRAME_SIZE
-                ),
-                Http2Parser::SETTINGS,
-                Http2Parser::NO_FLAG
-            );
-        }
-
-        return $buffer;
-    }
-
-    private function sendBufferedData(): void
-    {
-        foreach ($this->streams as $id => $stream) {
-            if ($this->clientWindow <= 0) {
-                return;
-            }
-
-            if (!\strlen($stream->buffer) || $stream->clientWindow <= 0) {
-                continue;
-            }
-
-            $this->writeBufferedData($id);
-        }
-    }
-
-    private function encodeHeaders(array $headers): string
-    {
-        $input = [];
-
-        foreach ($headers as $field => $values) {
-            $values = (array) $values;
-
-            foreach ($values as $value) {
-                $input[] = [(string) $field, (string) $value];
-            }
-        }
-
-        return $this->hpack->encode($input);
-    }
-
     public function handlePong(string $data): void
     {
         // Ignored
@@ -809,7 +284,8 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 );
             }
 
-            $stream = $this->streams[$streamId] = new Http2Stream($this->options->getBodySizeLimit(), $this->initialWindowSize);
+            $stream = $this->streams[$streamId] = new Http2Stream($this->options->getBodySizeLimit(),
+                $this->initialWindowSize);
         }
 
         // Headers frames can be received on previously opened streams (trailer headers).
@@ -957,12 +433,20 @@ final class Http2Driver implements HttpDriver, Http2Processor
             }
         );
 
-        $maxBodySize = $this->options->getBodySizeLimit();
+        $increment = \min(
+            $stream->maxBodySize + 1 - $stream->received - $stream->serverWindow,
+            2147483647 - $stream->serverWindow
+        );
 
-        if ($this->serverWindow <= $maxBodySize >> 1) {
-            $increment = $maxBodySize - $this->serverWindow;
-            $this->serverWindow = $maxBodySize;
-            $this->writeFrame(\pack("N", $increment), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
+        if ($increment > 0) {
+            $stream->serverWindow += $increment;
+
+            $this->writeFrame(
+                \pack("N", $increment),
+                Http2Parser::WINDOW_UPDATE,
+                Http2Parser::NO_FLAG,
+                $streamId
+            );
         }
 
         if (isset($headers["content-length"])) {
@@ -1038,7 +522,6 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
         $stream = $this->streams[$streamId];
 
-
         if ($stream->state & Http2Stream::REMOTE_CLOSED) {
             throw new Http2StreamException(
                 "Stream remote closed",
@@ -1063,9 +546,10 @@ final class Http2Driver implements HttpDriver, Http2Processor
             );
         }
 
-        if ($this->serverWindow <= self::MINIMUM_WINDOW) {
-            $this->serverWindow += self::MAX_INCREMENT;
-            $this->writeFrame(\pack("N", self::MAX_INCREMENT), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
+        $increment = 2147483647 - $this->serverWindow;
+        if ($increment > 0) {
+            $this->serverWindow += $increment;
+            $this->writeFrame(\pack("N", $increment), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
         }
 
         if (\is_int($stream->expectedLength)) {
@@ -1073,40 +557,31 @@ final class Http2Driver implements HttpDriver, Http2Processor
         }
 
         $promise = $this->bodyEmitters[$streamId]->emit($data);
+        $promise->onResolve(function (?\Throwable $exception) use ($streamId): void {
+            if ($exception || !isset($this->streams[$streamId])) {
+                return;
+            }
 
-        if ($stream->serverWindow <= self::MINIMUM_WINDOW) {
-            $promise->onResolve(function (?\Throwable $exception) use ($streamId): void {
-                if ($exception || !isset($this->streams[$streamId])) {
-                    return;
-                }
+            $stream = $this->streams[$streamId];
 
-                $stream = $this->streams[$streamId];
+            $increment = \min(
+                $stream->maxBodySize + 1 - $stream->received - $stream->serverWindow,
+                2147483647 - $stream->serverWindow
+            );
 
-                if ($stream->state & Http2Stream::REMOTE_CLOSED
-                    || $stream->serverWindow > self::MINIMUM_WINDOW
-                ) {
-                    return;
-                }
+            if ($increment <= 0) {
+                return;
+            }
 
-                $increment = \min(
-                    $stream->maxBodySize + 1 - $stream->received - $stream->serverWindow,
-                    self::MAX_INCREMENT
-                );
+            $stream->serverWindow += $increment;
 
-                if ($increment <= 0) {
-                    return;
-                }
-
-                $stream->serverWindow += $increment;
-
-                $this->writeFrame(
-                    \pack("N", $increment),
-                    Http2Parser::WINDOW_UPDATE,
-                    Http2Parser::NO_FLAG,
-                    $streamId
-                );
-            });
-        }
+            $this->writeFrame(
+                \pack("N", $increment),
+                Http2Parser::WINDOW_UPDATE,
+                Http2Parser::NO_FLAG,
+                $streamId
+            );
+        });
     }
 
     public function handleStreamEnd(int $streamId): void
@@ -1279,5 +754,536 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
         $this->logger->notice($message);
         $this->shutdown(null, new ClientException($this->client, "HTTP/2 connection error", $exception->getCode(), $exception));
+    }
+
+    private function send(int $id, Response $response, Request $request): \Generator
+    {
+        $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
+
+        try {
+            $status = $response->getStatus();
+
+            if ($status < Status::OK) {
+                $response->setStatus(Status::HTTP_VERSION_NOT_SUPPORTED);
+                throw new ClientException(
+                    $this->client,
+                    "1xx response codes are not supported in HTTP/2",
+                    Http2Parser::HTTP_1_1_REQUIRED
+                );
+            }
+
+            if ($status === Status::HTTP_VERSION_NOT_SUPPORTED && $response->getHeader("upgrade")) {
+                throw new ClientException($this->client, "Upgrade requests require HTTP/1.1",
+                    Http2Parser::HTTP_1_1_REQUIRED);
+            }
+
+            $headers = \array_merge([":status" => $status], $response->getHeaders());
+
+            // Remove headers that are obsolete in HTTP/2.
+            unset($headers["connection"], $headers["keep-alive"], $headers["transfer-encoding"]);
+
+            $trailers = $response->getTrailers();
+
+            if ($trailers !== null && !isset($headers["trailer"]) && ($fields = $trailers->getFields())) {
+                $headers["trailer"] = [\implode(", ", $fields)];
+            }
+
+            $headers["date"] = [formatDateHeader()];
+
+            $headers["link"] = [];
+            foreach ($response->getPushes() as $push) {
+                $headers["link"][] = "<{$push->getUri()}>; rel=preload";
+                if ($this->allowsPush) {
+                    $this->sendPushPromise($request, $id, $push);
+                }
+            }
+
+            $headers = $this->encodeHeaders($headers);
+
+            if (\strlen($headers) > $this->maxFrameSize) {
+                $split = \str_split($headers, $this->maxFrameSize);
+                $headers = \array_shift($split);
+                $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG, $id);
+
+                $headers = \array_pop($split);
+                foreach ($split as $msgPart) {
+                    $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
+                }
+                yield $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id);
+            } else {
+                yield $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id);
+            }
+
+            if ($request->getMethod() === "HEAD") {
+                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
+                $this->writeData("", $id);
+                $chunk = null;
+                return;
+            }
+
+            $buffer = "";
+            $body = $response->getBody();
+            $streamThreshold = $this->options->getStreamThreshold();
+
+            $readPromise = $body->read();
+
+            while (true) {
+                try {
+                    if ($buffer !== "") {
+                        $chunk = yield Promise\timeout($readPromise, 100);
+                    } else {
+                        $chunk = yield $readPromise;
+                    }
+
+                    if ($chunk === null) {
+                        break;
+                    }
+
+                    $readPromise = $body->read(); // directly start new read
+                } catch (TimeoutException $e) {
+                    goto flush;
+                } finally {
+                    // Stream may have been closed while waiting for body data.
+                    if (!isset($this->streams[$id])) {
+                        return;
+                    }
+                }
+
+                $buffer .= $chunk;
+
+                if (\strlen($buffer) < $streamThreshold) {
+                    continue;
+                }
+
+                flush: {
+                    $promise = $this->writeData($buffer, $id);
+
+                    $buffer = $chunk = ""; // Don't use null here because of finally.
+
+                    yield $promise;
+                }
+            }
+
+            // Stream may have been closed while waiting for body data.
+            if (!isset($this->streams[$id])) {
+                return;
+            }
+
+            if ($trailers === null) {
+                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
+            }
+
+            yield $this->writeData($buffer, $id);
+
+            // Stream may have been closed while writing final body chunk.
+            if (!isset($this->streams[$id])) {
+                return;
+            }
+
+            if ($trailers !== null) {
+                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
+
+                $trailers = yield $trailers->await();
+                \assert($trailers instanceof Message);
+
+                $headers = $this->encodeHeaders($trailers->getHeaders());
+
+                if (\strlen($headers) > $this->maxFrameSize) {
+                    $split = \str_split($headers, $this->maxFrameSize);
+                    $headers = \array_shift($split);
+                    $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG, $id);
+
+                    $headers = \array_pop($split);
+                    foreach ($split as $msgPart) {
+                        $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
+                    }
+                    yield $this->writeFrame($headers, Http2Parser::CONTINUATION,
+                        Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
+                } else {
+                    yield $this->writeFrame($headers, Http2Parser::HEADERS,
+                        Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
+                }
+            }
+        } catch (ClientException $exception) {
+            $error = $exception->getCode() ?? Http2Parser::CANCEL; // Set error code to be used in finally below.
+        } finally {
+            if (!isset($this->streams[$id])) {
+                return;
+            }
+
+            if ($chunk !== null) {
+                if (($buffer ?? "") !== "") {
+                    $this->writeData($buffer, $id);
+                }
+                $error = $error ?? Http2Parser::INTERNAL_ERROR;
+                $this->writeFrame(\pack("N", $error), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, $id);
+                $this->releaseStream($id, $exception ?? new ClientException($this->client, "Stream error", $error));
+                return;
+            }
+
+            if ($this->streams[$id]->state & Http2Stream::REMOTE_CLOSED) {
+                $this->releaseStream($id);
+            }
+        }
+    }
+
+    /**
+     * @param int|null        $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no
+     *                                streams have been opened.
+     * @param \Throwable|null $reason
+     *
+     * @return Promise
+     */
+    private function shutdown(?int $lastId = null, ?\Throwable $reason = null): Promise
+    {
+        $this->stopping = true;
+
+        return call(function () use ($lastId, $reason) {
+            try {
+                $promises = [];
+                foreach ($this->streams as $id => $stream) {
+                    if ($lastId && $id > $lastId) {
+                        break;
+                    }
+
+                    if ($stream->pendingResponse) {
+                        $promises[] = $stream->pendingResponse;
+                    }
+                }
+
+                $code = $reason ? $reason->getCode() : Http2Parser::GRACEFUL_SHUTDOWN;
+                $lastId = $lastId ?? ($id ?? 0);
+                yield $this->writeFrame(\pack("NN", $lastId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
+
+                yield $promises;
+
+                $promises = [];
+                foreach ($this->streams as $id => $stream) {
+                    if ($lastId && $id > $lastId) {
+                        break;
+                    }
+
+                    if ($stream->pendingWrite) {
+                        $promises[] = $stream->pendingWrite;
+                    }
+                }
+
+                yield $promises;
+            } finally {
+                if (!empty($this->streams)) {
+                    $exception = new ClientException($this->client, $reason->getMessage(), $reason->getCode(), $reason);
+                    foreach ($this->streams as $id => $stream) {
+                        $this->releaseStream($id, $exception);
+                    }
+                }
+
+                $this->client->close();
+            }
+        });
+    }
+
+    private function sendPushPromise(Request $request, int $streamId, Push $push): void
+    {
+        $requestUri = $request->getUri();
+        $pushUri = $push->getUri();
+        $path = $pushUri->getPath();
+
+        if (($path[0] ?? "/") !== "/") { // Relative Path
+            $pushUri = $requestUri // Base push URI from original request URI.
+            ->withPath($requestUri->getPath() . "/" . $path)
+                ->withQuery($pushUri->getQuery());
+        }
+
+        if ($pushUri->getAuthority() === '') {
+            $pushUri = $pushUri // If push URI did not provide a host, use original request URI.
+            ->withHost($requestUri->getHost())
+                ->withPort($requestUri->getPort());
+        }
+
+        $url = (string) $pushUri;
+
+        if (isset($this->pushCache[$url])) {
+            return; // Resource already pushed to this client.
+        }
+
+        $this->pushCache[$url] = $streamId;
+
+        $path = $pushUri->getPath();
+        if ($query = $pushUri->getQuery()) {
+            $path .= "?" . $query;
+        }
+
+        $headers = \array_merge(
+            \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), // Uses only select headers
+            $push->getHeaders() // Overwrites request headers with those defined in push.
+        );
+
+        // $id is the new stream ID for the pushed response, $streamId is the original request stream ID.
+        $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
+        $this->remoteStreamId = \max($id, $this->remoteStreamId);
+
+        $request = new Request($this->client, "GET", $pushUri, $headers, null, "2");
+
+        $this->streams[$id] = $stream = new Http2Stream(
+            0, // No data will be incoming on this stream.
+            $this->initialWindowSize,
+            Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
+        );
+
+        $this->streamIdMap[\spl_object_hash($request)] = $id;
+
+        $headers = \array_merge([
+            ":authority" => [$pushUri->getAuthority()],
+            ":scheme" => [$pushUri->getScheme()],
+            ":path" => [$path],
+            ":method" => ["GET"],
+        ], $headers);
+
+        $headers = \pack("N", $id) . $this->encodeHeaders($headers);
+
+        if (\strlen($headers) >= $this->maxFrameSize) {
+            $split = \str_split($headers, $this->maxFrameSize);
+            $headers = \array_shift($split);
+            $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::NO_FLAG, $streamId);
+
+            $headers = \array_pop($split);
+            foreach ($split as $msgPart) {
+                $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
+            }
+            $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id);
+        } else {
+            $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::END_HEADERS, $streamId);
+        }
+
+        $stream->pendingResponse = ($this->onMessage)($request);
+    }
+
+    private function ping(): Promise
+    {
+        // no need to receive the PONG frame, that's anyway registered by the keep-alive handler
+        return $this->writeFrame($this->counter++, Http2Parser::PING, Http2Parser::NO_FLAG);
+    }
+
+    private function writeFrame(string $data, int $type, int $flags, int $stream = 0): Promise
+    {
+        \assert(Http2Parser::logDebugFrame('send', $type, $flags, $stream, \strlen($data)));
+
+        return ($this->write)(\substr(\pack("NccN", \strlen($data), $type, $flags, $stream), 1) . $data);
+    }
+
+    private function writeData(string $data, int $id): Promise
+    {
+        \assert(isset($this->streams[$id]), "The stream was closed");
+
+        $this->streams[$id]->buffer .= $data;
+
+        return $this->writeBufferedData($id);
+    }
+
+    private function writeBufferedData(int $id): Promise
+    {
+        \assert(isset($this->streams[$id]), "The stream was closed");
+
+        $stream = $this->streams[$id];
+        $delta = \min($this->clientWindow, $stream->clientWindow);
+        $length = \strlen($stream->buffer);
+
+        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+
+        if ($delta >= $length) {
+            $this->clientWindow -= $length;
+
+            if ($length > $this->maxFrameSize) {
+                $split = \str_split($stream->buffer, $this->maxFrameSize);
+                $stream->buffer = \array_pop($split);
+                foreach ($split as $part) {
+                    $this->writeFrame($part, Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
+                }
+            }
+
+            if ($stream->state & Http2Stream::LOCAL_CLOSED) {
+                $promise = $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::END_STREAM, $id);
+            } else {
+                $promise = $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
+            }
+
+            $stream->clientWindow -= $length;
+            $stream->buffer = "";
+
+            if ($stream->deferred) {
+                $deferred = $stream->deferred;
+                $stream->deferred = null;
+                $deferred->resolve($promise);
+            }
+
+            return $promise;
+        }
+
+        if ($delta > 0) {
+            $data = $stream->buffer;
+            $end = $delta - $this->maxFrameSize;
+
+            $stream->clientWindow -= $delta;
+            $this->clientWindow -= $delta;
+
+            for ($off = 0; $off < $end; $off += $this->maxFrameSize) {
+                $this->writeFrame(\substr($data, $off, $this->maxFrameSize), Http2Parser::DATA, Http2Parser::NO_FLAG,
+                    $id);
+            }
+
+            $this->writeFrame(\substr($data, $off, $delta - $off), Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
+
+            $stream->buffer = \substr($data, $delta);
+        }
+
+        if ($stream->deferred === null) {
+            $stream->deferred = new Deferred;
+        }
+
+        return $stream->deferred->promise();
+    }
+
+    private function releaseStream(int $id, ClientException $exception = null): void
+    {
+        \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
+
+        if (isset($this->bodyEmitters[$id])) {
+            $emitter = $this->bodyEmitters[$id];
+            unset($this->bodyEmitters[$id]);
+            $emitter->fail($exception ?? new ClientException($this->client, "Client disconnected",
+                    Http2Parser::CANCEL));
+        }
+
+        if (isset($this->trailerDeferreds[$id])) {
+            $deferred = $this->trailerDeferreds[$id];
+            unset($this->trailerDeferreds[$id]);
+            $deferred->fail($exception ?? new ClientException($this->client, "Client disconnected",
+                    Http2Parser::CANCEL));
+        }
+
+        unset($this->streams[$id]);
+
+        if ($id & 1) { // Client-initiated stream.
+            $this->remainingStreams++;
+        }
+    }
+
+    /**
+     * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
+     *
+     * @return \Generator
+     */
+    private function parser(?string $settings = null): \Generator
+    {
+        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+
+        $parser = (new Http2Parser($this))->parse($settings);
+
+        try {
+            $parser->send(yield from $this->readPreface($settings !== null));
+
+            if (!$parser->valid()) {
+                return;
+            }
+
+            yield from $parser;
+        } catch (Http2ConnectionException $exception) {
+            $this->shutdown(null, $exception);
+        } finally {
+            $this->client->close();
+        }
+    }
+
+    private function readPreface(bool $upgraded): \Generator
+    {
+        if ($upgraded) {
+            // Upgraded connections automatically assume an initial stream with ID 1.
+            $this->streams[1] = new Http2Stream(
+                0, // No data will be incoming on this stream.
+                $this->initialWindowSize,
+                Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
+            );
+            $this->remainingStreams--;
+
+            // Initial settings frame, sent immediately for upgraded connections.
+            $this->writeFrame(
+                \pack(
+                    "nNnNnNnN",
+                    Http2Parser::INITIAL_WINDOW_SIZE,
+                    $this->options->getBodySizeLimit(),
+                    Http2Parser::MAX_CONCURRENT_STREAMS,
+                    $this->options->getConcurrentStreamLimit(),
+                    Http2Parser::MAX_HEADER_LIST_SIZE,
+                    $this->options->getHeaderSizeLimit(),
+                    Http2Parser::MAX_FRAME_SIZE,
+                    self::DEFAULT_MAX_FRAME_SIZE
+                ),
+                Http2Parser::SETTINGS,
+                Http2Parser::NO_FLAG
+            );
+        }
+
+        $buffer = yield;
+
+        while (\strlen($buffer) < \strlen(Http2Parser::PREFACE)) {
+            $buffer .= yield;
+        }
+
+        if (\strncmp($buffer, Http2Parser::PREFACE, \strlen(Http2Parser::PREFACE)) !== 0) {
+            throw new Http2ConnectionException("Invalid preface", Http2Parser::PROTOCOL_ERROR);
+        }
+
+        $buffer = \substr($buffer, \strlen(Http2Parser::PREFACE));
+
+        if (!$upgraded) {
+            // Initial settings frame, delayed until after the preface is read for non-upgraded connections.
+            $this->writeFrame(
+                \pack(
+                    "nNnNnNnN",
+                    Http2Parser::INITIAL_WINDOW_SIZE,
+                    $this->options->getBodySizeLimit(),
+                    Http2Parser::MAX_CONCURRENT_STREAMS,
+                    $this->options->getConcurrentStreamLimit(),
+                    Http2Parser::MAX_HEADER_LIST_SIZE,
+                    $this->options->getHeaderSizeLimit(),
+                    Http2Parser::MAX_FRAME_SIZE,
+                    self::DEFAULT_MAX_FRAME_SIZE
+                ),
+                Http2Parser::SETTINGS,
+                Http2Parser::NO_FLAG
+            );
+        }
+
+        return $buffer;
+    }
+
+    private function sendBufferedData(): void
+    {
+        foreach ($this->streams as $id => $stream) {
+            if ($this->clientWindow <= 0) {
+                return;
+            }
+
+            if (!\strlen($stream->buffer) || $stream->clientWindow <= 0) {
+                continue;
+            }
+
+            $this->writeBufferedData($id);
+        }
+    }
+
+    private function encodeHeaders(array $headers): string
+    {
+        $input = [];
+
+        foreach ($headers as $field => $values) {
+            $values = (array) $values;
+
+            foreach ($values as $value) {
+                $input[] = [(string) $field, (string) $value];
+            }
+        }
+
+        return $this->hpack->encode($input);
     }
 }
