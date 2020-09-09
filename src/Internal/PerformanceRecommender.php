@@ -25,7 +25,7 @@ final class PerformanceRecommender implements ServerObserver
         } else {
             if (\ini_get("zend.assertions") === "1") {
                 $logger->warning(
-                    "Running in production with assertions enabled is not recommended; it has a negative impact" .
+                    "Running in production with assertions enabled is not recommended; it has a negative impact " .
                     "on performance. Disable assertions in php.ini (zend.assertions = -1) for best performance " .
                     "or set the debug mode option to hide this warning."
                 );
