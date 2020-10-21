@@ -10,13 +10,12 @@ use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
-use Amp\Promise;
 use League\Uri;
 use function Amp\Http\Server\Middleware\stack;
 
 class StackTest extends AsyncTestCase
 {
-    public function testStackAppliesMiddlewaresInCorrectOrder(): \Generator
+    public function testStackAppliesMiddlewaresInCorrectOrder(): void
     {
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/foobar"));
 
@@ -26,7 +25,7 @@ class StackTest extends AsyncTestCase
 
             return $response;
         }), new class implements Middleware {
-            public function handleRequest(Request $request, RequestHandler $requestHandler): Promise
+            public function handleRequest(Request $request, RequestHandler $requestHandler): Response
             {
                 $request->setAttribute(StackTest::class, "a");
 
@@ -38,8 +37,7 @@ class StackTest extends AsyncTestCase
             return $requestHandler->handleRequest($request);
         }));
 
-        /** @var Response $response */
-        $response = yield $stack->handleRequest($request);
+        $response = $stack->handleRequest($request);
 
         $this->assertSame("ab", $response->getHeader("stack"));
     }

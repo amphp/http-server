@@ -4,26 +4,26 @@ namespace Amp\Http\Server;
 
 final class Options
 {
-    private $debug = false;
-    private $connectionLimit = 10000;
-    private $connectionsPerIpLimit = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
-    private $http1Timeout = 15; // seconds
-    private $http2Timeout = 60; // seconds
-    private $tlsSetupTimeout = 5; // seconds
+    private bool $debug = false;
+    private int $connectionLimit = 10000;
+    private int $connectionsPerIpLimit = 30; // IPv4: /32, IPv6: /56 (per RFC 6177)
+    private int $http1Timeout = 15; // seconds
+    private int $http2Timeout = 60; // seconds
+    private int $tlsSetupTimeout = 5; // seconds
 
-    private $concurrentStreamLimit = 256;
+    private int $concurrentStreamLimit = 256;
 
-    private $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
+    private array $allowedMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
 
-    private $bodySizeLimit = 131072;
-    private $headerSizeLimit = 32768;
-    private $chunkSize = 8192;
-    private $streamThreshold = 8192;
+    private int $bodySizeLimit = 131072;
+    private int $headerSizeLimit = 32768;
+    private int $chunkSize = 8192;
+    private int $streamThreshold = 8192;
 
-    private $compression = true;
-    private $allowHttp2Upgrade = false;
-    private $pushEnabled = true;
-    private $requestLogContext = false;
+    private bool $compression = true;
+    private bool $allowHttp2Upgrade = false;
+    private bool $pushEnabled = true;
+    private bool $requestLogContext = false;
 
     /**
      * @return bool `true` if server is in debug mode, `false` if in production mode.

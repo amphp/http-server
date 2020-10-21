@@ -11,29 +11,23 @@ use Psr\Http\Message\UriInterface as PsrUri;
 
 final class Request extends Message
 {
-    /** @var Client */
-    private $client;
+    private Client $client;
 
-    /** @var string */
-    private $method;
+    private string $method;
 
-    /** @var PsrUri */
-    private $uri;
+    private PsrUri $uri;
 
-    /** @var string */
-    private $protocol;
+    private string $protocol;
 
-    /** @var RequestBody|null */
-    private $body;
+    private ?RequestBody $body = null;
 
     /** @var RequestCookie[] */
-    private $cookies = [];
+    private array $cookies = [];
 
     /** @var mixed[] */
-    private $attributes = [];
+    private array $attributes = [];
 
-    /** @var Trailers|null */
-    private $trailers;
+    private ?Trailers $trailers = null;
 
     /**
      * @param Client                              $client The client sending the request.
@@ -49,7 +43,7 @@ final class Request extends Message
         string $method,
         PsrUri $uri,
         array $headers = [],
-        $body = null,
+        RequestBody|InputStream|string|null $body = null,
         string $protocol = "1.1",
         ?Trailers $trailers = null
     ) {

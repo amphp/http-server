@@ -3,7 +3,6 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\Http\Server\Options;
-use Amp\Promise;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 
@@ -116,8 +115,6 @@ interface Client
      * Gracefully close the client, responding to any pending requests before closing the connection.
      *
      * @param int $timeout Number of milliseconds before the connection is forcefully closed.
-     *
-     * @return Promise Resolved once any pending responses have been sent to the client.
      */
-    public function stop(int $timeout): Promise;
+    public function stop(int $timeout): void;
 }

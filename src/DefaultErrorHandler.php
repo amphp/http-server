@@ -3,8 +3,6 @@
 namespace Amp\Http\Server;
 
 use Amp\Http\Status;
-use Amp\Promise;
-use Amp\Success;
 
 /**
  * ErrorHandler instance used by default if none is given.
@@ -12,10 +10,10 @@ use Amp\Success;
 final class DefaultErrorHandler implements ErrorHandler
 {
     /** @var string[] */
-    private $cache = [];
+    private array $cache = [];
 
     /** {@inheritdoc} */
-    public function handleError(int $statusCode, string $reason = null, Request $request = null): Promise
+    public function handleError(int $statusCode, ?string $reason = null, ?Request $request = null): Response
     {
         static $errorHtml;
 
@@ -38,6 +36,6 @@ final class DefaultErrorHandler implements ErrorHandler
 
         $response->setStatus($statusCode, $reason);
 
-        return new Success($response);
+        return $response;
     }
 }

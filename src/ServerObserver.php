@@ -2,8 +2,6 @@
 
 namespace Amp\Http\Server;
 
-use Amp\Promise;
-
 /**
  * Allows reacting to server start and stop events.
  */
@@ -15,18 +13,14 @@ interface ServerObserver
      * starting loop watchers such as timers.
      *
      * @param HttpServer $server
-     *
-     * @return Promise
      */
-    public function onStart(HttpServer $server): Promise;
+    public function onStart(HttpServer $server): void;
 
     /**
      * Invoked when the server has initiated stopping. No further requests are accepted and any connected clients
      * should be closed gracefully and any loop watchers cancelled.
      *
      * @param HttpServer $server
-     *
-     * @return Promise
      */
-    public function onStop(HttpServer $server): Promise;
+    public function onStop(HttpServer $server): void;
 }

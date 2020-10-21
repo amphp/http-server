@@ -27,27 +27,25 @@ class MovedResourceTest extends AsyncTestCase
         new MovedResourceHandler(Uri\Http::createFromString("/new/path"), Status::CREATED);
     }
 
-    public function testSuccessfulRedirect(): \Generator
+    public function testSuccessfulRedirect(): void
     {
         $action = new MovedResourceHandler(Uri\Http::createFromString("/new/path"), Status::MOVED_PERMANENTLY);
         $uri = Uri\Http::createFromString("http://test.local/foo");
         $request = new Request($this->createMock(Client::class), "GET", $uri);
 
-        /** @var \Amp\Http\Server\Response $response */
-        $response = yield $action->handleRequest($request);
+        $response = $action->handleRequest($request);
 
         $this->assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
         $this->assertSame("/new/path", $response->getHeader("location"));
     }
 
-    public function testRequestWithQuery(): \Generator
+    public function testRequestWithQuery(): void
     {
         $action = new MovedResourceHandler(Uri\Http::createFromString("/new/path"), Status::MOVED_PERMANENTLY);
         $uri = Uri\Http::createFromString("http://test.local/foo?key=value");
         $request = new Request($this->createMock(Client::class), "GET", $uri);
 
-        /** @var \Amp\Http\Server\Response $response */
-        $response = yield $action->handleRequest($request);
+        $response = $action->handleRequest($request);
 
         $this->assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
         $this->assertSame("/new/path?key=value", $response->getHeader("location"));

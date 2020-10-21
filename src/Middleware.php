@@ -2,8 +2,6 @@
 
 namespace Amp\Http\Server;
 
-use Amp\Promise;
-
 /**
  * Middlewares allow pre-processing of requests and post-processing of responses.
  *
@@ -15,7 +13,7 @@ interface Middleware
      * @param Request        $request
      * @param RequestHandler $requestHandler
      *
-     * @return Promise<\Amp\Http\Server\Response>
+     * @return Response
      */
-    public function handleRequest(Request $request, RequestHandler $requestHandler): Promise;
+    public function handleRequest(Request $request, RequestHandler $requestHandler): Response;
 }

@@ -13,26 +13,25 @@ use Monolog\Logger;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
 
-Amp\Loop::run(function () {
-    $servers = [
-        Socket\Server::listen("0.0.0.0:1337"),
-        Socket\Server::listen("[::]:1337"),
-    ];
+$servers = [
+    Socket\Server::listen("0.0.0.0:1337"),
+    Socket\Server::listen("[::]:1337"),
+];
 
-    $logHandler = new StreamHandler(new ResourceOutputStream(\STDOUT));
-    $logHandler->setFormatter(new ConsoleFormatter);
-    $logger = new Logger('server');
-    $logger->pushHandler($logHandler);
+$logHandler = new StreamHandler(new ResourceOutputStream(\STDOUT));
+$logHandler->setFormatter(new ConsoleFormatter);
+$logger = new Logger('server');
+$logger->pushHandler($logHandler);
 
-    $server = new HttpServer($servers, new CallableRequestHandler(function () {
-        throw new \Exception("Something went wrong :-(");
-    }), $logger);
+$server = new HttpServer($servers, new CallableRequestHandler(function () {
+    throw new \Exception("Something went wrong :-(");
+}), $logger);
 
-    yield $server->start();
+$server->start();
 
-    // Stop the server when SIGINT is received (this is technically optional, but it is best to call Server::stop()).
-    Amp\Loop::onSignal(\SIGINT, function (string $watcherId) use ($server) {
-        Amp\Loop::cancel($watcherId);
-        yield $server->stop();
-    });
-});
+// Await SIGINT, SIGTERM, or SIGSTOP to be received.
+$signal = Amp\signal(\SIGINT, \SIGTERM, \SIGSTOP);
+
+$logger->info(\sprintf("Received signal %d, stopping HTTP server", $signal));
+
+$server->stop();

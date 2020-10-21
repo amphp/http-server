@@ -5,8 +5,7 @@ namespace Amp\Http\Server\Middleware;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
-use Amp\Promise;
-use function Amp\call;
+use Amp\Http\Server\Response;
 
 final class CallableMiddleware implements Middleware
 {
@@ -26,8 +25,8 @@ final class CallableMiddleware implements Middleware
     /**
      * {@inheritdoc}
      */
-    public function handleRequest(Request $request, RequestHandler $requestHandler): Promise
+    public function handleRequest(Request $request, RequestHandler $requestHandler): Response
     {
-        return call($this->callable, $request, $requestHandler);
+        return ($this->callable)($request, $requestHandler);
     }
 }

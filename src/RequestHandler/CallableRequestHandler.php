@@ -4,8 +4,7 @@ namespace Amp\Http\Server\RequestHandler;
 
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
-use Amp\Promise;
-use function Amp\call;
+use Amp\Http\Server\Response;
 
 final class CallableRequestHandler implements RequestHandler
 {
@@ -24,8 +23,8 @@ final class CallableRequestHandler implements RequestHandler
     /**
      * {@inheritdoc}
      */
-    public function handleRequest(Request $request): Promise
+    public function handleRequest(Request $request): Response
     {
-        return call($this->callable, $request);
+        return ($this->callable)($request);
     }
 }

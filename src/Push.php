@@ -8,8 +8,7 @@ use Psr\Http\Message\UriInterface as PsrUri;
 
 final class Push extends Message
 {
-    /** @var PsrUri */
-    private $uri;
+    private PsrUri $uri;
 
     /**
      * @param PsrUri            $uri

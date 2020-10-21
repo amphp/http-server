@@ -6,8 +6,8 @@ use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
+use Amp\Http\Server\Response;
 use Amp\Http\Server\ServerObserver;
-use Amp\Promise;
 
 /**
  * Wraps a request handler with a single middleware.
@@ -18,10 +18,10 @@ use Amp\Promise;
 final class MiddlewareRequestHandler implements RequestHandler, ServerObserver
 {
     /** @var Middleware */
-    private $middleware;
+    private Middleware $middleware;
 
     /** @var RequestHandler */
-    private $next;
+    private RequestHandler $next;
 
     public function __construct(Middleware $middleware, RequestHandler $requestHandler)
     {
@@ -30,40 +30,32 @@ final class MiddlewareRequestHandler implements RequestHandler, ServerObserver
     }
 
     /** {@inheritdoc} */
-    public function handleRequest(Request $request): Promise
+    public function handleRequest(Request $request): Response
     {
         return $this->middleware->handleRequest($request, $this->next);
     }
 
     /** @inheritdoc */
-    public function onStart(HttpServer $server): Promise
+    public function onStart(HttpServer $server): void
     {
-        $promises = [];
-
         if ($this->middleware instanceof ServerObserver) {
-            $promises[] = $this->middleware->onStart($server);
+            $this->middleware->onStart($server);
         }
 
         if ($this->next instanceof ServerObserver) {
-            $promises[] = $this->next->onStart($server);
+            $this->next->onStart($server);
         }
-
-        return Promise\all($promises);
     }
 
     /** @inheritdoc */
-    public function onStop(HttpServer $server): Promise
+    public function onStop(HttpServer $server): void
     {
-        $promises = [];
-
         if ($this->middleware instanceof ServerObserver) {
-            $promises[] = $this->middleware->onStop($server);
+            $this->middleware->onStop($server);
         }
 
         if ($this->next instanceof ServerObserver) {
-            $promises[] = $this->next->onStop($server);
+            $this->next->onStop($server);
         }
-
-        return Promise\all($promises);
     }
 }

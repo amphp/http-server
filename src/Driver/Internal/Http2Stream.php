@@ -2,6 +2,8 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
+use Amp\Deferred;
+use Amp\Promise;
 use Amp\Struct;
 
 /**
@@ -20,40 +22,31 @@ final class Http2Stream
     public const CLOSED = 0b0110;
 
     /** @var int Current max body length. */
-    public $maxBodySize;
+    public int $maxBodySize;
 
     /** @var int Bytes received on the stream. */
-    public $received = 0;
+    public int $received = 0;
 
-    /** @var int */
-    public $serverWindow;
+    public int $serverWindow;
 
-    /** @var int */
-    public $clientWindow;
+    public int $clientWindow;
 
-    /** @var \Amp\Promise|null */
-    public $pendingResponse;
+    public ?Promise $pendingResponse = null;
 
-    /** @var \Amp\Promise|null */
-    public $pendingWrite;
+    public ?Promise $pendingWrite = null;
 
-    /** @var string */
-    public $buffer = "";
+    public string $buffer = "";
 
-    /** @var int */
-    public $state;
+    public int $state;
 
-    /** @var \Amp\Deferred|null */
-    public $deferred;
+    public ?Deferred $deferred = null;
 
     /** @var int Integer between 1 and 256 */
-    public $weight = 0;
+    public int $weight = 0;
 
-    /** @var int */
-    public $dependency = 0;
+    public int $dependency = 0;
 
-    /** @var int|null */
-    public $expectedLength;
+    public ?int $expectedLength = null;
 
     public function __construct(int $serverSize, int $clientSize, int $state = self::OPEN)
     {

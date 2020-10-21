@@ -2,9 +2,8 @@
 
 namespace Amp\Http\Server\Test\Driver;
 
-use Amp\ByteStream\IteratorStream;
+use Amp\ByteStream\PipelineStream;
 use Amp\Delayed;
-use Amp\Emitter;
 use Amp\Http\HPack;
 use Amp\Http\Http2\Http2Parser;
 use Amp\Http\Message;
@@ -17,10 +16,14 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
+use Amp\PipelineSource;
 use Amp\Promise;
 use Amp\Success;
 use League\Uri;
 use Psr\Log\NullLogger;
+use function Amp\async;
+use function Amp\await;
+use function Amp\delay;
 use function Amp\Http\formatDateHeader;
 
 class Http2DriverTest extends HttpDriverTest
@@ -73,7 +76,7 @@ class Http2DriverTest extends HttpDriverTest
     /**
      * @dataProvider provideSimpleCases
      */
-    public function testSimpleCases(string $msg, array $expectations): \Generator
+    public function testSimpleCases(string $msg, array $expectations): void
     {
         $msg = Http2Parser::PREFACE . $msg;
 
@@ -101,12 +104,11 @@ class Http2DriverTest extends HttpDriverTest
             /** @var Request $request */
             $this->assertInstanceOf(Request::class, $request);
 
-            $body = yield $request->getBody()->buffer();
+            $body = $request->getBody()->buffer();
             $trailers = $request->getTrailers();
 
             if ($trailers !== null) {
-                $trailers = yield $trailers->await();
-                /** @var $trailers Message */
+                $trailers = $trailers->await();
                 $this->assertInstanceOf(Message::class, $trailers);
             }
 
@@ -212,10 +214,9 @@ class Http2DriverTest extends HttpDriverTest
     public function setupDriver(callable $onMessage = null, Options $options = null): array
     {
         $driver = new class($options ?? new Options) implements HttpDriver {
-            public $frames = [];
+            public array $frames = [];
 
-            /** @var Http2Driver */
-            private $driver;
+            private Http2Driver $driver;
 
             public function __construct($options)
             {
@@ -244,14 +245,14 @@ class Http2DriverTest extends HttpDriverTest
                 });
             }
 
-            public function write(Request $request, Response $response): Promise
+            public function write(Request $request, Response $response): void
             {
-                return $this->driver->write($request, $response);
+                $this->driver->write($request, $response);
             }
 
-            public function stop(): Promise
+            public function stop(): void
             {
-                return $this->driver->stop();
+                $this->driver->stop();
             }
 
             public function getPendingRequestCount(): int
@@ -294,10 +295,10 @@ class Http2DriverTest extends HttpDriverTest
         $body = "foo";
         $trailers = new Trailers(new Success(["expires" => "date"]), ["expires"]);
 
-        $emitter = new Emitter;
-        $coroutine = $driver->write($request, new Response(Status::OK, [
+        $emitter = new PipelineSource;
+        $coroutine = async(fn() => $driver->write($request, new Response(Status::OK, [
             "content-length" => \strlen($body),
-        ], new IteratorStream($emitter->iterate()), $trailers));
+        ], new PipelineStream($emitter->pipe()), $trailers)));
 
         $emitter->emit($body);
         $emitter->complete();
@@ -331,6 +332,8 @@ class Http2DriverTest extends HttpDriverTest
             ["expires", "date"],
         ]), Http2Parser::HEADERS, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, 1);
 
+        delay(10);
+
         $this->assertEquals($data, $buffer);
     }
 
@@ -355,8 +358,8 @@ class Http2DriverTest extends HttpDriverTest
 
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2");
 
-        $emitter = new Emitter;
-        $coroutine = $driver->write($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
+        $emitter = new PipelineSource;
+        $coroutine = async(fn() => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->pipe()))));
 
         $emitter->emit("foo");
         $emitter->fail(new \Exception);
@@ -385,6 +388,8 @@ class Http2DriverTest extends HttpDriverTest
         $data .= self::packFrame("foo", Http2Parser::DATA, Http2Parser::NO_FLAG, 1);
         $data .= self::packFrame(\pack("N", Http2Parser::INTERNAL_ERROR), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, 1);
 
+        delay(10);
+
         $this->assertEquals($data, $buffer);
     }
 
@@ -400,7 +405,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->assertEquals([["blahbleh", Http2Parser::PING, Http2Parser::ACK, 0]], $driver->frames);
     }
 
-    public function testFlowControl(): \Generator
+    public function testFlowControl(): void
     {
         [$driver, $parser] = $this->setupDriver(function (Request $read) use (&$request) {
             $request = $read;
@@ -434,12 +439,14 @@ class Http2DriverTest extends HttpDriverTest
         // $onMessage callback should be invoked.
         $this->assertInstanceOf(Request::class, $request);
 
-        $emitter = new Emitter;
-        $driver->write($request, new Response(
+        $emitter = new PipelineSource;
+        async(fn() => $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
-            new IteratorStream($emitter->iterate())
-        ));
+            new PipelineStream($emitter->pipe())
+        )));
+
+        delay(0);
 
         $hpack = new HPack;
         $this->assertEquals([
@@ -456,6 +463,8 @@ class Http2DriverTest extends HttpDriverTest
         $emitter->emit(\str_repeat("_", 66002));
         $emitter->complete();
 
+        delay(10);
+
         $recv = "";
         foreach ($driver->frames as [$data, $type, $flags, $stream]) {
             $recv .= $data;
@@ -470,7 +479,7 @@ class Http2DriverTest extends HttpDriverTest
         $chunkSize = 66000 - Http2Driver::DEFAULT_WINDOW_SIZE;
         $parser->send(self::packFrame(\pack("N", $chunkSize), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG));
 
-        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        delay(10); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(1, $driver->frames);
         [$data, $type, $flags, $stream] = \array_pop($driver->frames);
@@ -484,7 +493,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser->send(self::packFrame(\pack("N", 1), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG, 1));
 
-        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        delay(10); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(1, $driver->frames);
         [$data, $type, $flags, $stream] = \array_pop($driver->frames);
@@ -495,7 +504,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser->send(self::packFrame(\pack("N", 1), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG, 1));
 
-        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        delay(10); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(2, $driver->frames);
         [$data, $type, $flags, $stream] = \array_shift($driver->frames);
@@ -515,12 +524,14 @@ class Http2DriverTest extends HttpDriverTest
         // $onMessage callback should be invoked.
         $this->assertInstanceOf(Request::class, $request);
 
-        $emitter = new Emitter;
-        $driver->write($request, new Response(
+        $emitter = new PipelineSource;
+        async(fn() => $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
-            new IteratorStream($emitter->iterate())
-        ));
+            new PipelineStream($emitter->pipe())
+        )));
+
+        delay(0);
 
         $hpack = new HPack;
         $this->assertEquals([
@@ -536,7 +547,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $emitter->emit("**");
 
-        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        delay(10); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(1, $driver->frames);
         [$data, $type, $flags, $stream] = \array_pop($driver->frames);
@@ -550,7 +561,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser->send(self::packFrame(\pack("N", 1), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG));
 
-        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        delay(10); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(1, $driver->frames);
         [$data, $type, $flags, $stream] = \array_pop($driver->frames);
@@ -561,7 +572,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $emitter->complete();
 
-        yield new Delayed(0); // Allow loop to tick for defer to execute in driver.
+        delay(10); // Allow loop to tick for defer to execute in driver.
 
         $this->assertCount(1, $driver->frames);
         [$data, $type, $flags, $stream] = \array_pop($driver->frames);
@@ -571,7 +582,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->assertEquals(3, $stream);
     }
 
-    public function testClosingStreamYieldsFalseFromWriter(): \Generator
+    public function testClosingStreamYieldsFalseFromWriter(): void
     {
         $driver = new Http2Driver(new Options, new NullLogger);
 
@@ -599,8 +610,8 @@ class Http2DriverTest extends HttpDriverTest
         // $onMessage callback should be invoked.
         $this->assertInstanceOf(Request::class, $request);
 
-        $emitter = new Emitter;
-        $writer = $driver->write($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
+        $emitter = new PipelineSource;
+        $writer = async(fn() => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->pipe()))));
 
         $emitter->emit("{data}");
 
@@ -613,10 +624,10 @@ class Http2DriverTest extends HttpDriverTest
 
         $emitter->emit("{data}");
 
-        yield $writer; // Will throw if the writer is not complete.
+        await($writer); // Will throw if the writer is not complete.
     }
 
-    public function testPush(): \Generator
+    public function testPush(): void
     {
         $driver = new Http2Driver(new Options, new NullLogger);
 
@@ -650,7 +661,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $this->assertInstanceOf(Request::class, $requests[0]);
 
-        yield $driver->write($requests[0], $response);
+        $driver->write($requests[0], $response);
 
         $paths = ["/base", "/absolute/path", "/base/relative/path", "/base/path/with/query"];
 
@@ -743,7 +754,7 @@ class Http2DriverTest extends HttpDriverTest
         );
     }
 
-    public function testSendingResponseBeforeRequestCompletes(): \Generator
+    public function testSendingResponseBeforeRequestCompletes(): void
     {
         $driver = new Http2Driver(new Options, new NullLogger);
         $invoked = false;
@@ -785,7 +796,7 @@ class Http2DriverTest extends HttpDriverTest
             "content-length" => "0",
         ]));
 
-        yield new Delayed(0);
+        delay(0);
 
         $parser->send(self::packFrame("body-data", Http2Parser::DATA, Http2Parser::END_STREAM, 1));
     }

@@ -2,17 +2,14 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\ByteStream\IteratorStream;
-use Amp\Coroutine;
+use Amp\ByteStream\PipelineStream;
 use Amp\Deferred;
-use Amp\Emitter;
 use Amp\Http\HPack;
 use Amp\Http\Http2\Http2ConnectionException;
 use Amp\Http\Http2\Http2Parser;
 use Amp\Http\Http2\Http2Processor;
 use Amp\Http\Http2\Http2StreamException;
 use Amp\Http\InvalidHeaderException;
-use Amp\Http\Message;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Driver\Internal\Http2Stream;
 use Amp\Http\Server\Options;
@@ -23,12 +20,14 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Loop;
+use Amp\PipelineSource;
 use Amp\Promise;
 use Amp\Success;
 use Amp\TimeoutException;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\call;
+use function Amp\async;
+use function Amp\await;
 use function Amp\Http\formatDateHeader;
 
 final class Http2Driver implements HttpDriver, Http2Processor
@@ -55,58 +54,50 @@ final class Http2Driver implements HttpDriver, Http2Processor
     ];
 
     /** @var string 64-bit for ping. */
-    private $counter = "aaaaaaaa";
+    private string $counter = "aaaaaaaa";
 
-    /** @var Client */
-    private $client;
+    private Client $client;
 
-    /** @var Options */
-    private $options;
+    private Options $options;
 
-    /** @var PsrLogger */
-    private $logger;
+    private PsrLogger $logger;
 
-    /** @var int */
-    private $serverWindow = self::DEFAULT_WINDOW_SIZE;
+    private int $serverWindow = self::DEFAULT_WINDOW_SIZE;
 
-    /** @var int */
-    private $clientWindow = self::DEFAULT_WINDOW_SIZE;
+    private int $clientWindow = self::DEFAULT_WINDOW_SIZE;
 
-    /** @var int */
-    private $initialWindowSize = self::DEFAULT_WINDOW_SIZE;
+    private int $initialWindowSize = self::DEFAULT_WINDOW_SIZE;
 
-    /** @var int */
-    private $maxFrameSize = self::DEFAULT_MAX_FRAME_SIZE;
+    private int $maxFrameSize = self::DEFAULT_MAX_FRAME_SIZE;
 
     /** @var bool */
-    private $allowsPush;
+    private bool $allowsPush;
 
     /** @var int Last used local stream ID. */
-    private $localStreamId = 0;
+    private int $localStreamId = 0;
 
     /** @var int Last used remote stream ID. */
-    private $remoteStreamId = 0;
+    private int $remoteStreamId = 0;
 
     /** @var Http2Stream[] */
-    private $streams = [];
+    private array $streams = [];
 
     /** @var int[] Map of request hashes to stream IDs. */
-    private $streamIdMap = [];
+    private array $streamIdMap = [];
 
     /** @var int[] Map of URLs pushed on this connection. */
-    private $pushCache = [];
+    private array $pushCache = [];
 
     /** @var Deferred[] */
-    private $trailerDeferreds = [];
+    private array $trailerDeferreds = [];
 
-    /** @var Emitter[] */
-    private $bodyEmitters = [];
+    /** @var PipelineSource[] */
+    private array $bodyEmitters = [];
 
     /** @var int Number of streams that may be opened. */
-    private $remainingStreams;
+    private int $remainingStreams;
 
-    /** @var bool */
-    private $stopping = false;
+    private bool $stopping = false;
 
     /** @var callable */
     private $onMessage;
@@ -114,11 +105,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
     /** @var callable */
     private $write;
 
-    /** @var int */
-    private $pinged = 0;
+    private int $pinged = 0;
 
-    /** @var HPack */
-    private $hpack;
+    private HPack $hpack;
 
     public function __construct(Options $options, PsrLogger $logger)
     {
@@ -141,7 +130,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
      */
     public function setup(Client $client, callable $onMessage, callable $write, ?string $settings = null): \Generator
     {
-        \assert(!$this->client, "The driver has already been setup");
+        \assert(!isset($this->client), "The driver has already been setup");
 
         $this->client = $client;
         $this->onMessage = $onMessage;
@@ -150,28 +139,35 @@ final class Http2Driver implements HttpDriver, Http2Processor
         return $this->parser($settings);
     }
 
-    public function write(Request $request, Response $response): Promise
+    public function write(Request $request, Response $response): void
     {
-        \assert($this->client, "The driver has not been setup");
+        \assert(isset($this->client), "The driver has not been setup");
 
         $hash = \spl_object_hash($request);
         $id = $this->streamIdMap[$hash] ?? 1; // Default ID of 1 for upgrade requests.
         unset($this->streamIdMap[$hash]);
 
         if (!isset($this->streams[$id])) {
-            return new Success; // Client closed the stream or connection.
+            return; // Client closed the stream or connection.
         }
 
         $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         $stream = $this->streams[$id]; // $this->streams[$id] may be unset in send().
-        return $stream->pendingWrite = new Coroutine($this->send($id, $response, $request));
+        $deferred = new Deferred;
+        $stream->pendingWrite = $deferred->promise();
+
+        try {
+            $this->send($id, $response, $request);
+        } finally {
+            $deferred->resolve();
+        }
     }
 
     /** @inheritdoc */
-    public function stop(): Promise
+    public function stop(): void
     {
-        return $this->shutdown();
+        $this->shutdown();
     }
 
     public function getPendingRequestCount(): int
@@ -179,7 +175,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         return \count($this->bodyEmitters);
     }
 
-    private function send(int $id, Response $response, Request $request): \Generator
+    private function send(int $id, Response $response, Request $request): void
     {
         $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
@@ -231,9 +227,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 foreach ($split as $msgPart) {
                     $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
                 }
-                yield $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id);
+                await($this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id));
             } else {
-                yield $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id);
+                await($this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id));
             }
 
             if ($request->getMethod() === "HEAD") {
@@ -247,21 +243,21 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $body = $response->getBody();
             $streamThreshold = $this->options->getStreamThreshold();
 
-            $readPromise = $body->read();
+            $readPromise = async(fn() => $body->read());
 
             while (true) {
                 try {
                     if ($buffer !== "") {
-                        $chunk = yield Promise\timeout($readPromise, 100);
+                        $chunk = await(Promise\timeout($readPromise, 100));
                     } else {
-                        $chunk = yield $readPromise;
+                        $chunk = await($readPromise);
                     }
 
                     if ($chunk === null) {
                         break;
                     }
 
-                    $readPromise = $body->read(); // directly start new read
+                    $readPromise = async(fn() => $body->read()); // directly start new read
                 } catch (TimeoutException $e) {
                     goto flush;
                 } finally {
@@ -282,7 +278,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
                     $buffer = $chunk = ""; // Don't use null here because of finally.
 
-                    yield $promise;
+                    await($promise);
                 }
             }
 
@@ -295,7 +291,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
             }
 
-            yield $this->writeData($buffer, $id);
+            await($this->writeData($buffer, $id));
 
             // Stream may have been closed while writing final body chunk.
             if (!isset($this->streams[$id])) {
@@ -305,8 +301,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             if ($trailers !== null) {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
 
-                $trailers = yield $trailers->await();
-                \assert($trailers instanceof Message);
+                $trailers = $trailers->await();
 
                 $headers = $this->encodeHeaders($trailers->getHeaders());
 
@@ -319,9 +314,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
                     foreach ($split as $msgPart) {
                         $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
                     }
-                    yield $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
+                    await($this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id));
                 } else {
-                    yield $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
+                    await($this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id));
                 }
             }
         } catch (ClientException $exception) {
@@ -351,55 +346,51 @@ final class Http2Driver implements HttpDriver, Http2Processor
      * @param int|null        $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no
      *                                streams have been opened.
      * @param \Throwable|null $reason
-     *
-     * @return Promise
      */
-    private function shutdown(?int $lastId = null, ?\Throwable $reason = null): Promise
+    private function shutdown(?int $lastId = null, ?\Throwable $reason = null): void
     {
         $this->stopping = true;
 
-        return call(function () use ($lastId, $reason) {
-            try {
-                $promises = [];
-                foreach ($this->streams as $id => $stream) {
-                    if ($lastId && $id > $lastId) {
-                        break;
-                    }
-
-                    if ($stream->pendingResponse) {
-                        $promises[] = $stream->pendingResponse;
-                    }
+        try {
+            $promises = [];
+            foreach ($this->streams as $id => $stream) {
+                if ($lastId && $id > $lastId) {
+                    break;
                 }
 
-                $code = $reason ? $reason->getCode() : Http2Parser::GRACEFUL_SHUTDOWN;
-                $lastId = $lastId ?? ($id ?? 0);
-                yield $this->writeFrame(\pack("NN", $lastId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
-
-                yield $promises;
-
-                $promises = [];
-                foreach ($this->streams as $id => $stream) {
-                    if ($lastId && $id > $lastId) {
-                        break;
-                    }
-
-                    if ($stream->pendingWrite) {
-                        $promises[] = $stream->pendingWrite;
-                    }
+                if ($stream->pendingResponse) {
+                    $promises[] = $stream->pendingResponse;
                 }
-
-                yield $promises;
-            } finally {
-                if (!empty($this->streams)) {
-                    $exception = new ClientException($this->client, $reason->getMessage(), $reason->getCode(), $reason);
-                    foreach ($this->streams as $id => $stream) {
-                        $this->releaseStream($id, $exception);
-                    }
-                }
-
-                $this->client->close();
             }
-        });
+
+            $code = $reason ? $reason->getCode() : Http2Parser::GRACEFUL_SHUTDOWN;
+            $lastId = $lastId ?? ($id ?? 0);
+            await($this->writeFrame(\pack("NN", $lastId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG));
+
+            await($promises);
+
+            $promises = [];
+            foreach ($this->streams as $id => $stream) {
+                if ($lastId && $id > $lastId) {
+                    break;
+                }
+
+                if ($stream->pendingWrite) {
+                    $promises[] = $stream->pendingWrite;
+                }
+            }
+
+            await($promises);
+        } finally {
+            if (!empty($this->streams)) {
+                $exception = new ClientException($this->client, $reason->getMessage(), $reason->getCode(), $reason);
+                foreach ($this->streams as $id => $stream) {
+                    $this->releaseStream($id, $exception);
+                }
+            }
+
+            $this->client->close();
+        }
     }
 
     private function sendPushPromise(Request $request, int $streamId, Push $push): void
@@ -940,10 +931,10 @@ final class Http2Driver implements HttpDriver, Http2Processor
         }
 
         $this->trailerDeferreds[$streamId] = new Deferred;
-        $this->bodyEmitters[$streamId] = new Emitter;
+        $this->bodyEmitters[$streamId] = new PipelineSource;
 
         $body = new RequestBody(
-            new IteratorStream($this->bodyEmitters[$streamId]->iterate()),
+            new PipelineStream($this->bodyEmitters[$streamId]->pipe()),
             function (int $bodySize) use ($streamId) {
                 if (!isset($this->streams[$streamId], $this->bodyEmitters[$streamId])) {
                     return;

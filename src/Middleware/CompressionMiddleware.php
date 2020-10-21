@@ -2,13 +2,12 @@
 
 namespace Amp\Http\Server\Middleware;
 
-use Amp\ByteStream\IteratorStream;
-use Amp\Coroutine;
+use Amp\AsyncGenerator;
+use Amp\ByteStream\PipelineStream;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
-use Amp\Producer;
-use Amp\Promise;
+use Amp\Http\Server\Response;
 use cash\LRUCache;
 
 final class CompressionMiddleware implements Middleware
@@ -21,16 +20,14 @@ final class CompressionMiddleware implements Middleware
     const DEFAULT_CONTENT_TYPE_REGEX = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
 
     /** @var int Minimum body length before body is compressed. */
-    private $minimumLength;
+    private int $minimumLength;
 
-    /** @var string */
-    private $contentRegex;
+    private string $contentRegex;
 
     /** @var int Minimum chunk size before being compressed. */
-    private $chunkSize;
+    private int $chunkSize;
 
-    /** @var LRUCache */
-    private $contentTypeCache;
+    private LRUCache $contentTypeCache;
 
     public function __construct(
         int $minimumLength = self::DEFAULT_MINIMUM_LENGTH,
@@ -56,15 +53,9 @@ final class CompressionMiddleware implements Middleware
         $this->contentRegex = $contentRegex;
     }
 
-    public function handleRequest(Request $request, RequestHandler $requestHandler): Promise
+    public function handleRequest(Request $request, RequestHandler $requestHandler): Response
     {
-        return new Coroutine($this->deflate($request, $requestHandler));
-    }
-
-    public function deflate(Request $request, RequestHandler $requestHandler): \Generator
-    {
-        /** @var \Amp\Http\Server\Response $response */
-        $response = yield $requestHandler->handleRequest($request);
+        $response = $requestHandler->handleRequest($request);
 
         $headers = $response->getHeaders();
 
@@ -122,7 +113,7 @@ final class CompressionMiddleware implements Middleware
 
         if ($contentLength === null) {
             do {
-                $bodyBuffer .= $chunk = yield $body->read();
+                $bodyBuffer .= $chunk = $body->read();
 
                 if (isset($bodyBuffer[$this->minimumLength])) {
                     break;
@@ -165,28 +156,28 @@ final class CompressionMiddleware implements Middleware
         $response->setHeader("content-encoding", $encoding);
         $response->addHeader("vary", "accept-encoding");
 
-        $iterator = new Producer(function (callable $emit) use ($resource, $body, $bodyBuffer) {
+        $generator = new AsyncGenerator(function () use ($resource, $body, $bodyBuffer) {
             do {
                 if (isset($bodyBuffer[$this->chunkSize - 1])) {
                     if (false === $bodyBuffer = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) {
                         throw new \RuntimeException("Failed adding data to deflate context");
                     }
 
-                    yield $emit($bodyBuffer);
+                    yield $bodyBuffer;
                     $bodyBuffer = '';
                 }
 
-                $bodyBuffer .= $chunk = yield $body->read();
+                $bodyBuffer .= $chunk = $body->read();
             } while ($chunk !== null);
 
             if (false === $bodyBuffer = \deflate_add($resource, $bodyBuffer, \ZLIB_FINISH)) {
                 throw new \RuntimeException("Failed adding data to deflate context");
             }
 
-            $emit($bodyBuffer);
+            yield $bodyBuffer;
         });
 
-        $response->setBody(new IteratorStream($iterator));
+        $response->setBody(new PipelineStream($generator));
 
         return $response;
     }

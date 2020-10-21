@@ -2,8 +2,6 @@
 
 namespace Amp\Http\Server;
 
-use Amp\Coroutine;
-use Amp\Failure;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\DefaultClientFactory;
@@ -16,8 +14,9 @@ use Amp\MultiReasonException;
 use Amp\Promise;
 use Amp\Socket;
 use Amp\Socket\Server as SocketServer;
-use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
+use function Amp\async;
+use function Amp\await;
 
 final class HttpServer
 {
@@ -35,50 +34,39 @@ final class HttpServer
 
     public const DEFAULT_SHUTDOWN_TIMEOUT = 3000;
 
-    /** @var int */
-    private $state = self::STOPPED;
+    private int $state = self::STOPPED;
 
-    /** @var Options */
-    private $options;
+    private Options $options;
 
-    /** @var RequestHandler */
-    private $requestHandler;
+    private RequestHandler $requestHandler;
 
-    /** @var ErrorHandler */
-    private $errorHandler;
+    private ErrorHandler $errorHandler;
 
-    /** @var ClientFactory */
-    private $clientFactory;
+    private ClientFactory $clientFactory;
 
-    /** @var HttpDriverFactory */
-    private $driverFactory;
+    private HttpDriverFactory $driverFactory;
 
-    /** @var PsrLogger */
-    private $logger;
+    private PsrLogger $logger;
 
-    /** @var \SplObjectStorage */
-    private $observers;
+    private \SplObjectStorage $observers;
 
     /** @var string[] */
-    private $acceptWatcherIds = [];
+    private array $acceptWatcherIds = [];
 
     /** @var resource[] Server sockets. */
-    private $boundServers = [];
+    private array $boundServers = [];
 
     /** @var Client[] */
-    private $clients = [];
+    private array $clients = [];
 
-    /** @var int */
-    private $clientCount = 0;
+    private int $clientCount = 0;
 
     /** @var int[] */
-    private $clientsPerIP = [];
+    private array $clientsPerIP = [];
 
-    /** @var TimeoutCache */
-    private $timeoutCache;
+    private TimeoutCache $timeoutCache;
 
-    /** @var string */
-    private $timeoutWatcher;
+    private string $timeoutWatcher;
 
     /**
      * @param SocketServer[] $servers
@@ -248,27 +236,12 @@ final class HttpServer
 
     /**
      * Start the server.
-     *
-     * @return \Amp\Promise
      */
-    public function start(): Promise
+    public function start(): void
     {
-        try {
-            if ($this->state === self::STOPPED) {
-                return new Coroutine($this->doStart());
-            }
-
-            return new Failure(new \Error(
-                "Cannot start server: already " . self::STATES[$this->state]
-            ));
-        } catch (\Throwable $uncaught) {
-            return new Failure($uncaught);
+        if ($this->state !== self::STOPPED) {
+            throw new \Error("Cannot start server: already " . self::STATES[$this->state]);
         }
-    }
-
-    private function doStart(): \Generator
-    {
-        \assert($this->logger->debug("Starting") || true);
 
         if ($this->driverFactory instanceof ServerObserver) {
             $this->observers->attach($this->driverFactory);
@@ -290,13 +263,13 @@ final class HttpServer
 
         $promises = [];
         foreach ($this->observers as $observer) {
-            $promises[] = $observer->onStart($this, $this->logger, $this->errorHandler);
+            async(fn() => $observer->onStart($this, $this->logger, $this->errorHandler));
         }
-        list($exceptions) = yield Promise\any($promises);
+        list($exceptions) = await(Promise\any($promises));
 
         if (!empty($exceptions)) {
             try {
-                yield from $this->doStop(self::DEFAULT_SHUTDOWN_TIMEOUT);
+                $this->stop(self::DEFAULT_SHUTDOWN_TIMEOUT);
             } finally {
                 throw new MultiReasonException($exceptions, "onStart observer initialization failure");
             }
@@ -406,24 +379,21 @@ final class HttpServer
      * Stop the server.
      *
      * @param int $timeout Number of milliseconds to allow clients to gracefully shutdown before forcefully closing.
-     *
-     * @return Promise
      */
-    public function stop(int $timeout = self::DEFAULT_SHUTDOWN_TIMEOUT): Promise
+    public function stop(int $timeout = self::DEFAULT_SHUTDOWN_TIMEOUT): void
     {
         switch ($this->state) {
             case self::STARTED:
-                return new Coroutine($this->doStop($timeout));
+                $this->shutdown($timeout);
+                return;
             case self::STOPPED:
-                return new Success;
+                return;
             default:
-                return new Failure(new \Error(
-                    "Cannot stop server: currently " . self::STATES[$this->state]
-                ));
+                throw new \Error("Cannot stop server: currently " . self::STATES[$this->state]);
         }
     }
 
-    private function doStop(int $timeout): \Generator
+    private function shutdown(int $timeout): void
     {
         \assert($this->logger->debug("Stopping") || true);
         $this->state = self::STOPPING;
@@ -439,14 +409,14 @@ final class HttpServer
             $promises[] = $client->stop($timeout);
         }
 
-        yield Promise\any($promises);
+        await(Promise\any($promises));
 
         $promises = [];
         foreach ($this->observers as $observer) {
-            $promises[] = $observer->onStop($this);
+            $promises[] = async(fn() => $observer->onStop($this));
         }
 
-        list($exceptions) = yield Promise\any($promises);
+        list($exceptions) = await(Promise\any($promises));
 
         \assert($this->logger->debug("Stopped") || true);
         $this->state = self::STOPPED;

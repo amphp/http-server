@@ -5,10 +5,10 @@ namespace Amp\Http\Server\Driver;
 final class TimeoutCache
 {
     /** @var object[] */
-    private $data = [];
+    private array $data = [];
 
     /** @var int[] */
-    private $pointers = [];
+    private array $pointers = [];
 
     /**
      * @param int $id Client ID.
@@ -47,8 +47,8 @@ final class TimeoutCache
         }
 
         $entry = new class {
-            public $id;
-            public $expiration;
+            public int $id;
+            public int $expiration;
         };
 
         $entry->id = $id;

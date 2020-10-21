@@ -4,13 +4,11 @@ namespace Amp\Http\Server\Internal;
 
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\ServerObserver;
-use Amp\Promise;
-use Amp\Success;
 
 final class PerformanceRecommender implements ServerObserver
 {
     /** @inheritdoc */
-    public function onStart(HttpServer $server): Promise
+    public function onStart(HttpServer $server): void
     {
         $logger = $server->getLogger();
 
@@ -35,13 +33,10 @@ final class PerformanceRecommender implements ServerObserver
                 $logger->warning("The 'xdebug' extension is loaded, which has a major impact on performance.");
             }
         }
-
-        return new Success;
     }
 
     /** @inheritdoc */
-    public function onStop(HttpServer $server): Promise
+    public function onStop(HttpServer $server): void
     {
-        return new Success;
     }
 }

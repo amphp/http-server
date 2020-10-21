@@ -4,16 +4,15 @@ namespace Amp\Http\Server\RequestHandler;
 
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
+use Amp\Http\Server\Response;
 use Amp\Http\Status;
-use Amp\Promise;
-use Amp\Success;
 use Psr\Http\Message\UriInterface as PsrUri;
 use function Amp\Http\Server\redirectTo;
 
 final class MovedResourceHandler implements RequestHandler
 {
-    private $path;
-    private $statusCode;
+    private string $path;
+    private int $statusCode;
 
     /**
      * Create a handler that redirects any requests to a new resource path.
@@ -38,7 +37,7 @@ final class MovedResourceHandler implements RequestHandler
         $this->statusCode = $statusCode;
     }
 
-    public function handleRequest(Request $request): Promise
+    public function handleRequest(Request $request): Response
     {
         $uri = $request->getUri()->withPath($this->path);
 
@@ -49,6 +48,6 @@ final class MovedResourceHandler implements RequestHandler
             $path .= "?" . $query;
         }
 
-        return new Success(redirectTo($path, $this->statusCode));
+        return redirectTo($path, $this->statusCode);
     }
 }

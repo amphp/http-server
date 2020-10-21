@@ -9,33 +9,31 @@ use Amp\Http\Message;
 use Amp\Http\Status;
 use Amp\Promise;
 use League\Uri;
-use function Amp\call;
+use function Amp\async;
 
 final class Response extends Message
 {
-    /** @var InputStream */
-    private $body;
+    private InputStream $body;
 
     /** @var int HTTP status code. */
-    private $status;
+    private int $status;
 
     /** @var string Response reason. */
-    private $reason;
+    private string $reason;
 
     /** @var ResponseCookie[] */
-    private $cookies = [];
+    private array $cookies = [];
 
-    /** @var array */
-    private $push = [];
+    /** @var Push[] */
+    private array $push = [];
 
-    /** @var array|null */
-    private $upgrade;
+    /** @var callable|null */
+    private $upgrade = null;
 
     /** @var callable[] */
-    private $onDispose = [];
+    private array $onDispose = [];
 
-    /** @var Trailers|null */
-    private $trailers;
+    private ?Trailers $trailers = null;
 
     /**
      * @param int                     $code Status code.
@@ -48,7 +46,7 @@ final class Response extends Message
     public function __construct(
         int $code = Status::OK,
         array $headers = [],
-        $stringOrStream = null,
+        InputStream|string|null $stringOrStream = null,
         ?Trailers $trailers = null
     ) {
         $this->status = $this->validateStatusCode($code);
@@ -68,14 +66,14 @@ final class Response extends Message
     public function __destruct()
     {
         foreach ($this->onDispose as $callable) {
-            Promise\rethrow(call($callable));
+            Promise\rethrow(async($callable));
         }
     }
 
     /**
      * Returns the stream for the message body.
      *
-     * @return \Amp\ByteStream\InputStream
+     * @return InputStream
      */
     public function getBody(): InputStream
     {
@@ -90,7 +88,7 @@ final class Response extends Message
      *
      * @throws \TypeError If the body given is not a string or instance of \Amp\ByteStream\InputStream
      */
-    public function setBody($stringOrStream): void
+    public function setBody(InputStream|string|null $stringOrStream): void
     {
         if ($stringOrStream instanceof InputStream) {
             $this->body = $stringOrStream;

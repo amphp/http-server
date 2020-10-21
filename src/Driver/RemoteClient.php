@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Coroutine;
 use Amp\Deferred;
 use Amp\Failure;
 use Amp\Http\Server\ClientException;
@@ -20,83 +19,61 @@ use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\call;
+use function Amp\async;
 
 final class RemoteClient implements Client
 {
     private const SHUTDOWN_TIMEOUT_ON_ERROR = 1000;
 
-    /** @var DefaultErrorHandler */
-    private static $defaultErrorHandler;
+    private static DefaultErrorHandler $defaultErrorHandler;
 
-    /** @var int */
-    private $id;
+    private int $id;
 
     /** @var resource Stream socket resource */
     private $socket;
 
-    /** @var SocketAddress */
-    private $clientAddress;
+    private SocketAddress $clientAddress;
 
-    /** @var SocketAddress */
-    private $serverAddress;
+    private SocketAddress $serverAddress;
 
-    /** @var TlsInfo|null */
-    private $tlsInfo;
+    private ?TlsInfo $tlsInfo = null;
 
-    /** @var \Generator */
-    private $requestParser;
+    private \Generator $requestParser;
 
-    /** @var string */
-    private $readWatcher;
+    private string $readWatcher;
 
-    /** @var string */
-    private $writeWatcher;
+    private string $writeWatcher;
 
-    /** @var string */
-    private $writeBuffer = "";
+    private string $writeBuffer = "";
 
-    /** @var int */
-    private $status = 0;
+    private int $status = 0;
 
-    /** @var bool */
-    private $isExported = false;
+    private bool $isExported = false;
 
-    /** @var Options */
-    private $options;
+    private Options $options;
 
-    /** @var HttpDriver */
-    private $httpDriver;
+    private HttpDriver $httpDriver;
 
-    /** @var RequestHandler */
-    private $requestHandler;
+    private RequestHandler $requestHandler;
 
-    /** @var ErrorHandler */
-    private $errorHandler;
+    private ErrorHandler $errorHandler;
 
     /** @var callable[]|null */
-    private $onClose = [];
+    private ?array $onClose = [];
 
-    /** @var TimeoutCache */
-    private $timeoutCache;
+    private TimeoutCache $timeoutCache;
 
-    /** @var PsrLogger */
-    private $logger;
+    private PsrLogger $logger;
 
-    /** @var Deferred|null */
-    private $writeDeferred;
+    private ?Deferred $writeDeferred = null;
 
-    /** @var int */
-    private $pendingHandlers = 0;
+    private int $pendingHandlers = 0;
 
-    /** @var int */
-    private $pendingResponses = 0;
+    private int $pendingResponses = 0;
 
-    /** @var bool */
-    private $paused = false;
+    private bool $paused = false;
 
-    /** @var callable */
-    private $resume;
+    private \Closure $resume;
 
     /**
      * @param resource       $socket Stream socket resource.
@@ -125,7 +102,7 @@ final class RemoteClient implements Client
         $this->requestHandler = $requestHandler;
         $this->errorHandler = $errorHandler;
 
-        if (!self::$defaultErrorHandler) {
+        if (!isset(self::$defaultErrorHandler)) {
             self::$defaultErrorHandler = new DefaultErrorHandler;
         }
 
@@ -144,10 +121,9 @@ final class RemoteClient implements Client
      */
     public function start(HttpDriverFactory $driverFactory): void
     {
-        if ($this->readWatcher) {
+        if (isset($this->readWatcher)) {
             throw new \Error("Client already started");
         }
-
 
         $this->writeWatcher = Loop::onWritable($this->socket, \Closure::fromCallable([$this, 'onWritable']));
         Loop::disable($this->writeWatcher);
@@ -193,7 +169,7 @@ final class RemoteClient implements Client
     /** @inheritdoc */
     public function getPendingRequestCount(): int
     {
-        if ($this->httpDriver === null) {
+        if (!isset($this->httpDriver)) {
             return 0;
         }
 
@@ -297,7 +273,7 @@ final class RemoteClient implements Client
         }
 
         foreach ($onClose as $callback) {
-            Promise\rethrow(call($callback, $this));
+            Promise\rethrow(async($callback, $this));
         }
     }
 
@@ -305,7 +281,7 @@ final class RemoteClient implements Client
     public function onClose(callable $callback): void
     {
         if ($this->onClose === null) {
-            Promise\rethrow(call($callback, $this));
+            Promise\rethrow(async($callback, $this));
             return;
         }
 
@@ -313,16 +289,18 @@ final class RemoteClient implements Client
     }
 
     /** @inheritdoc */
-    public function stop(int $timeout): Promise
+    public function stop(int $timeout): void
     {
-        if ($this->httpDriver === null) {
+        if (!isset($this->httpDriver)) {
             $this->close();
-            return new Success;
+            return;
         }
 
-        $promise = Promise\timeout($this->httpDriver->stop(), $timeout);
-        $promise->onResolve([$this, "close"]);
-        return $promise;
+        try {
+            Promise\timeout(async(fn() => $this->httpDriver->stop()), $timeout);
+        } finally {
+            $this->close();
+        }
     }
 
     /**
@@ -342,16 +320,16 @@ final class RemoteClient implements Client
 
     private function clear(): void
     {
-        $this->httpDriver = null;
-        $this->requestParser = null;
-        $this->resume = null;
+        unset($this->httpDriver);
+        unset($this->requestParser);
+        unset($this->resume);
         $this->paused = true;
 
-        if ($this->readWatcher) {
+        if (isset($this->readWatcher)) {
             Loop::cancel($this->readWatcher);
         }
 
-        if ($this->writeWatcher) {
+        if (isset($this->writeWatcher)) {
             Loop::cancel($this->writeWatcher);
         }
 
@@ -389,7 +367,8 @@ final class RemoteClient implements Client
             if ($promise instanceof Promise && !$this->isExported && !($this->status & self::CLOSED_RDWR)) {
                 // Parser wants to wait until a promise completes.
                 $this->paused = true;
-                $promise->onResolve($this->resume); // Resume will set $this->paused to false if called immediately.
+                // Resume will set $this->paused to false if called immediately.
+                $promise->onResolve($this->resume);
                 if ($this->paused) { // Avoids potential for unnecessary disable followed by enable.
                     Loop::disable($this->readWatcher);
                 }
@@ -548,7 +527,7 @@ final class RemoteClient implements Client
             $this->clientAddress->toString()
         )) || true);
 
-        return new Coroutine($this->respond($request, $buffer));
+        return async(fn() => $this->respond($request, $buffer));
     }
 
     /**
@@ -556,7 +535,7 @@ final class RemoteClient implements Client
      *
      * @param \Throwable|null $exception
      */
-    private function resume(\Throwable $exception = null): void
+    private function resume(?\Throwable $exception): void
     {
         if ($exception) {
             $this->close();
@@ -575,10 +554,8 @@ final class RemoteClient implements Client
      *
      * @param Request $request
      * @param string  $buffer
-     *
-     * @return \Generator
      */
-    private function respond(Request $request, string $buffer): \Generator
+    private function respond(Request $request, string $buffer): void
     {
         $clientRequest = $request;
         $request = clone $request;
@@ -590,7 +567,7 @@ final class RemoteClient implements Client
             $method = $request->getMethod();
 
             if (!\in_array($method, $this->options->getAllowedMethods(), true)) {
-                $response = yield from $this->makeMethodErrorResponse(
+                $response = $this->makeMethodErrorResponse(
                     \in_array($method, HttpDriver::KNOWN_METHODS, true)
                         ? Status::METHOD_NOT_ALLOWED
                         : Status::NOT_IMPLEMENTED
@@ -598,18 +575,10 @@ final class RemoteClient implements Client
             } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
                 $response = $this->makeOptionsResponse();
             } else {
-                $response = yield $this->requestHandler->handleRequest($request);
-
-                if (!$response instanceof Response) {
-                    throw new \Error(\sprintf(
-                        "Promise returned from %s::handleRequest() must resolve to an instance of %s",
-                        \get_class($this->requestHandler),
-                        Response::class
-                    ));
-                }
+                $response = $this->requestHandler->handleRequest($request);
             }
         } catch (ClientException $exception) {
-            yield $this->stop(self::SHUTDOWN_TIMEOUT_ON_ERROR);
+            $this->stop(self::SHUTDOWN_TIMEOUT_ON_ERROR);
             $this->close();
             return;
         } catch (\Throwable $exception) {
@@ -619,7 +588,7 @@ final class RemoteClient implements Client
                 $this->createLogContext($exception, $request)
             );
 
-            $response = yield from $this->makeExceptionResponse($request);
+            $response = $this->makeExceptionResponse($request);
         } finally {
             $this->pendingHandlers--;
         }
@@ -628,25 +597,22 @@ final class RemoteClient implements Client
             return; // Client closed before response could be sent.
         }
 
-        $promise = $this->httpDriver->write($clientRequest, $response);
-
-        $promise->onResolve(function (): void {
-            $this->pendingResponses--;
-        });
-
         if ($response->isUpgraded()) {
             $this->isExported = true;
-            $callback = $response->getUpgradeHandler();
-            $promise->onResolve(function () use ($callback, $request, $response, $buffer): void {
-                $this->export($callback, $request, $response, $buffer);
-            });
+        }
+
+        $this->httpDriver->write($clientRequest, $response);
+
+        $this->pendingResponses--;
+
+        if ($this->isExported) {
+            $this->export($response->getUpgradeHandler(), $request, $response, $buffer);
         }
     }
 
-    private function makeMethodErrorResponse(int $status): \Generator
+    private function makeMethodErrorResponse(int $status): Response
     {
-        /** @var Response $response */
-        $response = yield $this->errorHandler->handleError($status);
+        $response = $this->errorHandler->handleError($status);
         $response->setHeader("Allow", \implode(", ", $this->options->getAllowedMethods()));
         return $response;
     }
@@ -660,15 +626,13 @@ final class RemoteClient implements Client
      * Used if an exception is thrown from a request handler.
      *
      * @param Request $request
-     *
-     * @return \Generator
      */
-    private function makeExceptionResponse(Request $request): \Generator
+    private function makeExceptionResponse(Request $request): Response
     {
         $status = Status::INTERNAL_SERVER_ERROR;
 
         try {
-            return yield $this->errorHandler->handleError($status, null, $request);
+            return $this->errorHandler->handleError($status, null, $request);
         } catch (\Throwable $exception) {
             // If the error handler throws, fallback to returning the default error page.
             $errorType = \get_class($exception);
@@ -678,7 +642,7 @@ final class RemoteClient implements Client
             );
 
             // The default error handler will never throw, otherwise there's a bug
-            return yield self::$defaultErrorHandler->handleError($status, null, $request);
+            return self::$defaultErrorHandler->handleError($status, null, $request);
         }
     }
 
@@ -703,7 +667,7 @@ final class RemoteClient implements Client
         $socket = ResourceSocket::fromServerSocket($this->socket, $this->options->getChunkSize());
         $socket = new UpgradedSocket($this, $socket, $buffer);
 
-        call($upgrade, $socket, $request, $response)->onResolve(function (?\Throwable $exception) use ($request): void {
+        async($upgrade, $socket, $request, $response)->onResolve(function (?\Throwable $exception) use ($request): void {
             if (!$exception) {
                 return;
             }

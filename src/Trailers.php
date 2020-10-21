@@ -5,7 +5,8 @@ namespace Amp\Http\Server;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Message;
 use Amp\Promise;
-use function Amp\call;
+use function Amp\async;
+use function Amp\await;
 
 final class Trailers
 {
@@ -30,10 +31,10 @@ final class Trailers
     ];
 
     /** @var string[] */
-    private $fields = [];
+    private array $fields = [];
 
     /** @var Promise<Message> */
-    private $headers;
+    private Promise $headers;
 
     /**
      * @param Promise<string[]|string[][]> $promise Resolved with the trailer values.
@@ -54,8 +55,8 @@ final class Trailers
             }
         }
 
-        $this->headers = call(static function () use ($promise, $fields): \Generator {
-            return new class(yield $promise, $fields) extends Message {
+        $this->headers = async(static function () use ($promise, $fields): Message {
+            return new class(await($promise), $fields) extends Message {
                 public function __construct(array $headers, array $fields)
                 {
                     $this->setHeaders($headers);
@@ -92,10 +93,10 @@ final class Trailers
     }
 
     /**
-     * @return Promise<Message>
+     * @return Message
      */
-    public function await(): Promise
+    public function await(): Message
     {
-        return $this->headers;
+        return await($this->headers);
     }
 }

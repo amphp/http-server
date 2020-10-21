@@ -4,16 +4,15 @@ namespace Amp\Http\Server\RequestHandler;
 
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
+use Amp\Http\Server\Response;
 use Amp\Http\Status;
-use Amp\Promise;
-use Amp\Success;
 use Psr\Http\Message\UriInterface as PsrUri;
 use function Amp\Http\Server\redirectTo;
 
 final class RedirectHandler implements RequestHandler
 {
-    private $redirectUri;
-    private $statusCode;
+    private string $redirectUri;
+    private int $statusCode;
 
     /**
      * Create a redirect handler.
@@ -37,7 +36,7 @@ final class RedirectHandler implements RequestHandler
         $this->statusCode = $statusCode;
     }
 
-    public function handleRequest(Request $request): Promise
+    public function handleRequest(Request $request): Response
     {
         $uri = $request->getUri();
         $path = $uri->getPath();
@@ -47,6 +46,6 @@ final class RedirectHandler implements RequestHandler
             $path .= "?" . $query;
         }
 
-        return new Success(redirectTo($this->redirectUri . $path, $this->statusCode));
+        return redirectTo($this->redirectUri . $path, $this->statusCode);
     }
 }

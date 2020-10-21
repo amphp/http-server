@@ -4,7 +4,6 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
-use Amp\Promise;
 
 interface HttpDriver
 {
@@ -39,10 +38,8 @@ interface HttpDriver
      *
      * @param Request  $request
      * @param Response $response
-     *
-     * @return Promise Resolves once the response has been written to the client.
      */
-    public function write(Request $request, Response $response): Promise;
+    public function write(Request $request, Response $response): void;
 
     /**
      * @return int Number of requests that are being read by the parser.
@@ -50,10 +47,8 @@ interface HttpDriver
     public function getPendingRequestCount(): int;
 
     /**
-     * Stops processing further requests, returning a promise that is resolved when all currently pending requests
-     * have been fulfilled and any remaining data is send to the client (such as GOAWAY frames for HTTP/2).
-     *
-     * @return Promise
+     * Stops processing further requests, returning once all currently pending requests have been fulfilled and any
+     * remaining data is send to the client (such as GOAWAY frames for HTTP/2).
      */
-    public function stop(): Promise;
+    public function stop(): void;
 }

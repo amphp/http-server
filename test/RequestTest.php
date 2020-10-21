@@ -7,10 +7,10 @@ use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\MissingAttributeError;
 use Amp\Http\Server\Request;
+use Amp\PHPUnit\AsyncTestCase;
 use League\Uri\Http;
-use PHPUnit\Framework\TestCase;
 
-class RequestTest extends TestCase
+class RequestTest extends AsyncTestCase
 {
     public function testGetClient(): void
     {
