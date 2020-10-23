@@ -406,7 +406,7 @@ final class HttpServer
 
         $promises = [];
         foreach ($this->clients as $client) {
-            $promises[] = $client->stop($timeout);
+            $promises[] = async(fn() => $client->stop($timeout));
         }
 
         await(Promise\any($promises));

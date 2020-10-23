@@ -20,6 +20,7 @@ use Amp\Socket\TlsInfo;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\async;
+use function Amp\await;
 
 final class RemoteClient implements Client
 {
@@ -297,7 +298,7 @@ final class RemoteClient implements Client
         }
 
         try {
-            Promise\timeout(async(fn() => $this->httpDriver->stop()), $timeout);
+            await(Promise\timeout(async(fn() => $this->httpDriver->stop()), $timeout));
         } finally {
             $this->close();
         }
