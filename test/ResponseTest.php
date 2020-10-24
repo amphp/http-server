@@ -6,7 +6,9 @@ use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
+use Amp\PHPUnit\LoopCaughtException;
 use Amp\PHPUnit\TestException;
+use function Amp\delay;
 
 class ResponseTest extends AsyncTestCase
 {
@@ -19,13 +21,16 @@ class ResponseTest extends AsyncTestCase
 
     public function testDisposeThrowing(): void
     {
-        $this->expectException(TestException::class);
+        $this->expectException(LoopCaughtException::class);
 
         $response = new Response;
         $response->onDispose(function () {
             throw new TestException;
         });
-        $response = null;
+
+        unset($response);
+
+        delay(0);
     }
 
     public function testSetBodyWithConvertibleType(): void

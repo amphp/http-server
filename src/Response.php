@@ -7,9 +7,8 @@ use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Message;
 use Amp\Http\Status;
-use Amp\Promise;
 use League\Uri;
-use function Amp\async;
+use function Amp\defer;
 
 final class Response extends Message
 {
@@ -66,7 +65,7 @@ final class Response extends Message
     public function __destruct()
     {
         foreach ($this->onDispose as $callable) {
-            Promise\rethrow(async($callable));
+            defer($callable);
         }
     }
 

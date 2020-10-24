@@ -5,7 +5,6 @@ namespace Amp\Http\Server\Driver;
 use Amp\ByteStream\PipelineStream;
 use Amp\Deferred;
 use Amp\Http\InvalidHeaderException;
-use Amp\Http\Message;
 use Amp\Http\Rfc7230;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\ErrorHandler;
@@ -235,7 +234,6 @@ final class Http1Driver implements HttpDriver
 
                 if ($trailers !== null) {
                     $trailers = $trailers->await();
-                    \assert($trailers instanceof Message);
                     $buffer .= Rfc7230::formatHeaders($trailers->getHeaders());
                 }
 

@@ -22,7 +22,6 @@ use Amp\Http\Status;
 use Amp\Loop;
 use Amp\PipelineSource;
 use Amp\Promise;
-use Amp\Success;
 use Amp\TimeoutException;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;

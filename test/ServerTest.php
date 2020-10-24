@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server\Test;
 
-use Amp\Delayed;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Server\HttpServer;
@@ -12,6 +11,7 @@ use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
+use function Amp\delay;
 
 class ServerTest extends AsyncTestCase
 {
@@ -24,26 +24,25 @@ class ServerTest extends AsyncTestCase
         }), $this->createMock(PsrLogger::class));
     }
 
-    public function testShutdownWaitsOnUnfinishedResponses(): \Generator
+    public function testShutdownWaitsOnUnfinishedResponses(): void
     {
         $socket = Socket\Server::listen("tcp://127.0.0.1:0");
         $server = new HttpServer([$socket], new CallableRequestHandler(function () {
-            yield new Delayed(2000);
-
+            delay(200);
             return new Response(Status::NO_CONTENT);
         }), $this->createMock(PsrLogger::class));
 
-        yield $server->start();
+        $server->start();
 
         $request = new ClientRequest("http://" . $socket->getAddress() . "/");
 
-        $promise = HttpClientBuilder::buildDefault()->request($request);
+        $response = HttpClientBuilder::buildDefault()->request($request);
 
         // Ensure client already connected and sent request
-        yield new Delayed(100);
-        yield $server->stop();
+        delay(100);
 
-        $response = yield $promise;
+        $server->stop();
+
         $this->assertSame(Status::NO_CONTENT, $response->getStatus());
     }
 }

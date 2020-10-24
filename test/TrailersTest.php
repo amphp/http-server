@@ -9,18 +9,18 @@ use Amp\Success;
 
 class TrailersTest extends AsyncTestCase
 {
-    public function testMessageHasHeader()
+    public function testMessageHasHeader(): void
     {
         $promise = new Success(['fooHeader' => 'barValue']);
 
         $trailers = new Trailers($promise, ['fooHeader']);
-        $trailers = yield $trailers->await();
+        $trailers = $trailers->await();
 
         $this->assertTrue($trailers->hasHeader('fooHeader'));
         $this->assertSame('barValue', $trailers->getHeader('fooHeader'));
     }
 
-    public function testHasHeaderReturnsFalseForEmptyArrayValue()
+    public function testHasHeaderReturnsFalseForEmptyArrayValue(): void
     {
         $promise = new Success(['fooHeader' => []]);
 
@@ -28,10 +28,10 @@ class TrailersTest extends AsyncTestCase
         $this->expectExceptionMessage('Trailers do not contain the expected fields');
 
         $trailers = new Trailers($promise, ['fooHeader']);
-        $this->assertFalse((yield $trailers->await())->hasHeader('fooHeader'));
+        $this->assertFalse(($trailers->await())->hasHeader('fooHeader'));
     }
 
-    public function testDisallowedFieldsInConstructor()
+    public function testDisallowedFieldsInConstructor(): void
     {
         $this->expectException(InvalidHeaderException::class);
         $this->expectExceptionMessage("Field 'content-length' is not allowed in trailers");
@@ -39,13 +39,13 @@ class TrailersTest extends AsyncTestCase
         $trailers = new Trailers(new Success, ['content-length']);
     }
 
-    public function testDisallowedFieldsInPromiseResolution()
+    public function testDisallowedFieldsInPromiseResolution(): void
     {
         $this->expectException(InvalidHeaderException::class);
         $this->expectExceptionMessage("Field 'content-length' is not allowed in trailers");
 
         $trailers = new Trailers(new Success(['content-length' => 0]));
 
-        yield $trailers->await();
+        $trailers->await();
     }
 }

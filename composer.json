@@ -42,6 +42,7 @@
     },
     "require-dev": {
         "amphp/phpunit-util": "^2-dev",
+        "amphp/http-client": "^5-dev",
         "amphp/log": "^2-dev",
         "amphp/php-cs-fixer-config": "dev-master",
         "league/uri-components": "^2",

@@ -8,10 +8,10 @@ use Amp\PHPUnit\AsyncTestCase;
 
 class RequestBodyTest extends AsyncTestCase
 {
-    public function testIncreaseWithoutCallback(): \Generator
+    public function testIncreaseWithoutCallback(): void
     {
         $body = new RequestBody(new InMemoryStream("foobar"));
         $body->increaseSizeLimit(1);
-        $this->assertSame("foobar", yield $body->buffer());
+        $this->assertSame("foobar", $body->buffer());
     }
 }
