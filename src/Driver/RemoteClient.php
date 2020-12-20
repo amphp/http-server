@@ -181,7 +181,7 @@ final class RemoteClient implements Client
     /** @inheritdoc */
     public function isWaitingOnResponse(): bool
     {
-        return $this->httpDriver !== null && $this->pendingHandlers > $this->httpDriver->getPendingRequestCount();
+        return isset($this->httpDriver) && $this->pendingHandlers > $this->httpDriver->getPendingRequestCount();
     }
 
     /** @inheritdoc */
