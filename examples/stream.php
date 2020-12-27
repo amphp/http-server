@@ -4,8 +4,8 @@
 require \dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\AsyncGenerator;
+use Amp\ByteStream;
 use Amp\ByteStream\PipelineStream;
-use Amp\ByteStream\ResourceOutputStream;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -25,7 +25,7 @@ $servers = [
     Socket\Server::listen("[::]:1337"),
 ];
 
-$logHandler = new StreamHandler(new ResourceOutputStream(\STDOUT));
+$logHandler = new StreamHandler(ByteStream\getStdout());
 $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
@@ -44,8 +44,8 @@ $server = new HttpServer($servers, new CallableRequestHandler(function (Request 
 
 $server->start();
 
-// Await SIGINT, SIGTERM, or SIGSTOP to be received.
-$signal = Amp\signal(\SIGINT, \SIGTERM, \SIGSTOP);
+// Await SIGINT or SIGTERM to be received.
+$signal = Amp\trap(\SIGINT, \SIGTERM);
 
 $logger->info(\sprintf("Received signal %d, stopping HTTP server", $signal));
 
