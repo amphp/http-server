@@ -21,6 +21,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop\Loop;
 use function Amp\async;
 use function Amp\await;
+use function Revolt\EventLoop\defer;
 
 final class RemoteClient implements Client
 {
