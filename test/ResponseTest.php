@@ -8,7 +8,7 @@ use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\PHPUnit\LoopCaughtException;
 use Amp\PHPUnit\TestException;
-use function Amp\delay;
+use function Revolt\EventLoop\delay;
 
 class ResponseTest extends AsyncTestCase
 {
@@ -30,14 +30,14 @@ class ResponseTest extends AsyncTestCase
 
         unset($response);
 
-        delay(0);
+        delay(10);
     }
 
     public function testSetBodyWithConvertibleType(): void
     {
         $response = new Response;
         $response->setBody(42);
-        $this->assertTrue(true);
+        self::assertTrue(true);
     }
 
     public function testSetBodyWithWrongType(): void
@@ -53,23 +53,23 @@ class ResponseTest extends AsyncTestCase
             'set-cookie' => new ResponseCookie('foo', 'bar'),
         ]);
 
-        $this->assertNull($request->getCookie('foobar'));
-        $this->assertInstanceOf(ResponseCookie::class, $request->getCookie('foo'));
-        $this->assertCount(1, $request->getCookies());
+        self::assertNull($request->getCookie('foobar'));
+        self::assertInstanceOf(ResponseCookie::class, $request->getCookie('foo'));
+        self::assertCount(1, $request->getCookies());
 
         $request->removeCookie('foo');
-        $this->assertCount(0, $request->getCookies());
-        $this->assertFalse($request->hasHeader('set-cookie'));
+        self::assertCount(0, $request->getCookies());
+        self::assertFalse($request->hasHeader('set-cookie'));
 
         $request->setCookie(new ResponseCookie('foo', 'baz'));
-        $this->assertCount(1, $request->getCookies());
-        $this->assertTrue($request->hasHeader('set-cookie'));
+        self::assertCount(1, $request->getCookies());
+        self::assertTrue($request->hasHeader('set-cookie'));
 
         $request->removeCookie('foo');
         $request->addHeader('set-cookie', new ResponseCookie('foo'));
-        $this->assertCount(1, $request->getCookies());
-        $this->assertNotNull($cookie = $request->getCookie('foo'));
-        $this->assertSame('', $cookie->getValue());
+        self::assertCount(1, $request->getCookies());
+        self::assertNotNull($cookie = $request->getCookie('foo'));
+        self::assertSame('', $cookie->getValue());
     }
 
     public function testStatusCodeOutOfRangeBelow(): void
@@ -87,12 +87,12 @@ class ResponseTest extends AsyncTestCase
     public function testUndoUpgrade(): void
     {
         $response = new Response;
-        $this->assertNull($response->getUpgradeHandler());
+        self::assertNull($response->getUpgradeHandler());
 
         $response->upgrade($this->createCallback(0));
-        $this->assertNotNull($response->getUpgradeHandler());
+        self::assertNotNull($response->getUpgradeHandler());
 
         $response->setStatus(500);
-        $this->assertNull($response->getUpgradeHandler());
+        self::assertNull($response->getUpgradeHandler());
     }
 }

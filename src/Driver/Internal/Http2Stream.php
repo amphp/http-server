@@ -4,7 +4,7 @@ namespace Amp\Http\Server\Driver\Internal;
 
 use Amp\Deferred;
 use Amp\Promise;
-use Amp\Struct;
+use Revolt\EventLoop\Internal\Struct;
 
 /**
  * Used in Http2Driver.

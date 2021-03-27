@@ -23,7 +23,7 @@ use Amp\Success;
 use League\Uri;
 use Psr\Log\NullLogger;
 use function Amp\async;
-use function Amp\delay;
+use function Revolt\EventLoop\delay;
 
 class Http1DriverTest extends HttpDriverTest
 {
@@ -57,7 +57,7 @@ class Http1DriverTest extends HttpDriverTest
         $expected = \sprintf("HTTP/1.0 %d %s", $errCode, $errMsg);
         $written = \substr($written, 0, \strlen($expected));
 
-        $this->assertSame($expected, $written);
+        self::assertSame($expected, $written);
     }
 
     /**
@@ -95,7 +95,7 @@ class Http1DriverTest extends HttpDriverTest
         $expected = \sprintf("HTTP/1.0 %d %s", $errCode, $errMsg);
         $written = \substr($written, 0, \strlen($expected));
 
-        $this->assertSame($expected, $written);
+        self::assertSame($expected, $written);
     }
 
     /**
@@ -125,17 +125,17 @@ class Http1DriverTest extends HttpDriverTest
             $promise = $parser->send(null);
         }
 
-        $this->assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(Request::class, $request);
 
         /** @var Request $request */
         $body = $request->getBody()->buffer();
 
-        $this->assertSame($expectations["protocol"], $request->getProtocolVersion(), "protocol mismatch");
-        $this->assertSame($expectations["method"], $request->getMethod(), "method mismatch");
-        $this->assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
-        $this->assertSame($expectations["headers"], $request->getHeaders(), "headers mismatch");
-        $this->assertSame($expectations["raw-headers"], $request->getRawHeaders(), "raw headers mismatch");
-        $this->assertSame($expectations["body"], $body, "body mismatch");
+        self::assertSame($expectations["protocol"], $request->getProtocolVersion(), "protocol mismatch");
+        self::assertSame($expectations["method"], $request->getMethod(), "method mismatch");
+        self::assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
+        self::assertSame($expectations["headers"], $request->getHeaders(), "headers mismatch");
+        self::assertSame($expectations["raw-headers"], $request->getRawHeaders(), "raw headers mismatch");
+        self::assertSame($expectations["body"], $body, "body mismatch");
     }
 
     /**
@@ -166,18 +166,18 @@ class Http1DriverTest extends HttpDriverTest
             }
         }
 
-        $this->assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(Request::class, $request);
 
         /** @var Request $request */
         $body = $request->getBody()->buffer();
 
         $defaultPort = $request->getUri()->getScheme() === "https" ? 443 : 80;
-        $this->assertSame($expectations["protocol"], $request->getProtocolVersion(), "protocol mismatch");
-        $this->assertSame($expectations["method"], $request->getMethod(), "method mismatch");
-        $this->assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
-        $this->assertSame($expectations["headers"], $request->getHeaders(), "headers mismatch");
-        $this->assertSame($expectations["body"], $body, "body mismatch");
-        $this->assertSame(80, $request->getUri()->getPort() ?: $defaultPort);
+        self::assertSame($expectations["protocol"], $request->getProtocolVersion(), "protocol mismatch");
+        self::assertSame($expectations["method"], $request->getMethod(), "method mismatch");
+        self::assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
+        self::assertSame($expectations["headers"], $request->getHeaders(), "headers mismatch");
+        self::assertSame($expectations["body"], $body, "body mismatch");
+        self::assertSame(80, $request->getUri()->getPort() ?: $defaultPort);
     }
 
     public function testIdentityBodyParseEmit(): void
@@ -217,12 +217,12 @@ class Http1DriverTest extends HttpDriverTest
             $promise = $parser->send(null);
         }
 
-        $this->assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(Request::class, $request);
 
         /** @var Request $request */
         $body = $request->getBody()->buffer();
 
-        $this->assertSame($originalBody, $body);
+        self::assertSame($originalBody, $body);
     }
 
     /**
@@ -279,12 +279,12 @@ class Http1DriverTest extends HttpDriverTest
             }
         }
 
-        $this->assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(Request::class, $request);
 
         /** @var Request $request */
         $body = $request->getBody()->buffer();
 
-        $this->assertSame($expectedBody, $body);
+        self::assertSame($expectedBody, $body);
     }
 
     public function provideParsableRequests(): array
@@ -685,12 +685,12 @@ class Http1DriverTest extends HttpDriverTest
             $promise = $parser->send(null);
         }
 
-        $this->assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(Request::class, $request);
 
         /** @var $request */
         $body = $request->getBody()->buffer();
 
-        $this->assertSame($payload, $body);
+        self::assertSame($payload, $body);
     }
 
     public function provideUpgradeBodySizeData()
@@ -710,7 +710,7 @@ class Http1DriverTest extends HttpDriverTest
 
     public function testPipelinedRequests(): void
     {
-        list($payloads, $results) = \array_map(null, ...$this->provideUpgradeBodySizeData());
+        [$payloads, $results] = \array_map(null, ...$this->provideUpgradeBodySizeData());
 
         $responses = 0;
 
@@ -738,10 +738,10 @@ class Http1DriverTest extends HttpDriverTest
 
         delay(5);
 
-        $this->assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(Request::class, $request);
 
         /** @var Request $request */
-        async(fn() => $request->getBody()->buffer())->onResolve(function ($exception, $data) use (&$body) {
+        async(fn () => $request->getBody()->buffer())->onResolve(function ($exception, $data) use (&$body) {
             $body = $data;
         });
 
@@ -750,9 +750,9 @@ class Http1DriverTest extends HttpDriverTest
             delay(5);
         }
 
-        $this->assertSame($results[0], $body);
+        self::assertSame($results[0], $body);
 
-        async(fn() => $driver->write($request, new Response));
+        async(fn () => $driver->write($request, new Response));
         $request = null;
         $body = null;
 
@@ -761,10 +761,10 @@ class Http1DriverTest extends HttpDriverTest
             delay(5);
         }
 
-        $this->assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(Request::class, $request);
 
         /** @var Request $request */
-        async(fn() => $request->getBody()->buffer())->onResolve(function ($exception, $data) use (&$body) {
+        async(fn () => $request->getBody()->buffer())->onResolve(function ($exception, $data) use (&$body) {
             $body = $data;
         });
 
@@ -773,10 +773,10 @@ class Http1DriverTest extends HttpDriverTest
             delay(5);
         }
 
-        $this->assertSame($results[1], $body);
+        self::assertSame($results[1], $body);
 
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"));
-        async(fn() => $driver->write($request, new Response));
+        async(fn () => $driver->write($request, new Response));
         $request = null;
         $body = null;
 
@@ -791,10 +791,9 @@ class Http1DriverTest extends HttpDriverTest
             delay(5);
         }
 
-        $this->assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(Request::class, $request);
 
-        /** @var Request $request */
-        async(fn() => $request->getBody()->buffer())->onResolve(function ($exception, $data) use (&$body) {
+        async(fn () => $request->getBody()->buffer())->onResolve(function ($exception, $data) use (&$body) {
             $body = $data;
         });
 
@@ -803,13 +802,13 @@ class Http1DriverTest extends HttpDriverTest
             delay(5);
         }
 
-        $this->assertSame($results[0], $body);
+        self::assertSame($results[0], $body);
 
         $request = new Request($this->createClientMock(), "POST", Uri\Http::createFromString("/"));
-        async(fn() => $driver->write($request, new Response));
+        async(fn () => $driver->write($request, new Response));
         $request = null;
 
-        $this->assertSame(3, $responses);
+        self::assertSame(3, $responses);
 
         delay(5);
     }
@@ -829,9 +828,9 @@ class Http1DriverTest extends HttpDriverTest
         $responseHeaders = $response->getHeaders();
         unset($responseHeaders['date']);
 
-        $this->assertEquals($status, $response->getStatus());
-        $this->assertEquals($headers, $responseHeaders);
-        $this->assertEquals($data, $actualBody);
+        self::assertEquals($status, $response->getStatus());
+        self::assertEquals($headers, $responseHeaders);
+        self::assertEquals($data, $actualBody);
     }
 
     public function testWrite(): void
@@ -864,7 +863,7 @@ class Http1DriverTest extends HttpDriverTest
         $response = new Response(Status::OK, $headers, new PipelineStream($emitter->pipe()));
         $response->push("/foo");
 
-        async(fn() => $driver->write($request, $response));
+        async(fn () => $driver->write($request, $response));
 
         foreach (\str_split($data) as $c) {
             $emitter->emit($c);
@@ -873,7 +872,7 @@ class Http1DriverTest extends HttpDriverTest
 
         delay(5);
 
-        $this->assertFalse($fin);
+        self::assertFalse($fin);
         $this->verifyWrite($buffer, $status, $headers + [
             "link" => ["</foo>; rel=preload"],
             "connection" => ["keep-alive"],
@@ -910,8 +909,8 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver->write($request, $response);
 
-        $this->assertMatchesRegularExpression('#' . $expectedRegexp . '#i', $buffer);
-        $this->assertSame($closed, $expectedClosed);
+        self::assertMatchesRegularExpression('#' . $expectedRegexp . '#i', $buffer);
+        self::assertSame($closed, $expectedClosed);
     }
 
     public function provideWriteResponses(): array
@@ -978,17 +977,17 @@ class Http1DriverTest extends HttpDriverTest
 
         $emitter = new PipelineSource;
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "1.0");
-        async(fn() => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->pipe()))));
+        async(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->pipe()))));
 
         delay(5);
 
         $emitter->emit("foo");
-        $this->assertNull($invoked);
+        self::assertNull($invoked);
         $emitter->complete();
 
         delay(5);
 
-        $this->assertTrue($invoked);
+        self::assertTrue($invoked);
     }
 
     public function testHttp2Upgrade(): void
@@ -1015,7 +1014,7 @@ class Http1DriverTest extends HttpDriverTest
                 $options->getHeaderSizeLimit(),
                 Http2Parser::MAX_FRAME_SIZE,
                 Http2Driver::DEFAULT_MAX_FRAME_SIZE
-            ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG, 0)
+            ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG)
         ];
 
         $driver = new Http1Driver(
@@ -1067,7 +1066,7 @@ class Http1DriverTest extends HttpDriverTest
                     $options->getHeaderSizeLimit(),
                     Http2Parser::MAX_FRAME_SIZE,
                     Http2Driver::DEFAULT_MAX_FRAME_SIZE
-                ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG, 0);
+                ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG);
 
                 $this->assertSame($expected, $data);
 
@@ -1111,11 +1110,11 @@ class Http1DriverTest extends HttpDriverTest
         delay(5);
 
         /** @var Request $request */
-        $this->assertInstanceOf(Request::class, $request);
-        $this->assertSame("POST", $request->getMethod());
-        $this->assertSame("100-continue", $request->getHeader("expect"));
+        self::assertInstanceOf(Request::class, $request);
+        self::assertSame("POST", $request->getMethod());
+        self::assertSame("100-continue", $request->getHeader("expect"));
 
-        $this->assertSame("HTTP/1.1 100 Continue\r\n\r\n", $received);
+        self::assertSame("HTTP/1.1 100 Continue\r\n\r\n", $received);
     }
 
     public function testTrailerHeaders(): void
@@ -1151,16 +1150,16 @@ class Http1DriverTest extends HttpDriverTest
             $promise = $parser->send(null);
         }
 
-        $this->assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(Request::class, $request);
 
         /** @var Request $request */
         $body = $request->getBody()->buffer();
 
-        $this->assertSame("Body Content", $body);
+        self::assertSame("Body Content", $body);
 
         $trailers = $request->getTrailers()->await();
 
-        $this->assertInstanceOf(Message::class, $trailers);
-        $this->assertSame("42", $trailers->getHeader("My-Trailer"));
+        self::assertInstanceOf(Message::class, $trailers);
+        self::assertSame("42", $trailers->getHeader("My-Trailer"));
     }
 }

@@ -36,8 +36,8 @@ class RedirectTest extends AsyncTestCase
 
         $response = $action->handleRequest($request);
 
-        $this->assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
-        $this->assertSame("https://localhost/foo", $response->getHeader("location"));
+        self::assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
+        self::assertSame("https://localhost/foo", $response->getHeader("location"));
     }
 
     public function testSuccessfulRelativeRedirect(): void
@@ -48,8 +48,8 @@ class RedirectTest extends AsyncTestCase
 
         $response = $action->handleRequest($request);
 
-        $this->assertSame(Status::TEMPORARY_REDIRECT, $response->getStatus());
-        $this->assertSame("/test/foo", $response->getHeader("location"));
+        self::assertSame(Status::TEMPORARY_REDIRECT, $response->getStatus());
+        self::assertSame("/test/foo", $response->getHeader("location"));
     }
 
     public function testRedirectWithQuery(): void
@@ -60,20 +60,20 @@ class RedirectTest extends AsyncTestCase
 
         $response = $action->handleRequest($request);
 
-        $this->assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
-        $this->assertSame("/new/path/foo?key=value", $response->getHeader("location"));
+        self::assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
+        self::assertSame("/new/path/foo?key=value", $response->getHeader("location"));
     }
 
     public function testRedirectTo(): void
     {
         $response = redirectTo('/foobar', Status::PERMANENT_REDIRECT);
 
-        $this->assertSame(Status::PERMANENT_REDIRECT, $response->getStatus());
-        $this->assertSame('/foobar', $response->getHeader('location'));
+        self::assertSame(Status::PERMANENT_REDIRECT, $response->getStatus());
+        self::assertSame('/foobar', $response->getHeader('location'));
     }
 
     public function testRedirectTo_DefaultStatus(): void
     {
-        $this->assertSame(302, redirectTo('/foobar')->getStatus());
+        self::assertSame(302, redirectTo('/foobar')->getStatus());
     }
 }

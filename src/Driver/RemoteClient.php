@@ -12,16 +12,15 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
-use Amp\Loop;
 use Amp\Promise;
 use Amp\Socket\ResourceSocket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 use Amp\Success;
 use Psr\Log\LoggerInterface as PsrLogger;
+use Revolt\EventLoop\Loop;
 use function Amp\async;
 use function Amp\await;
-use function Amp\defer;
 
 final class RemoteClient implements Client
 {
@@ -299,7 +298,7 @@ final class RemoteClient implements Client
         }
 
         try {
-            await(Promise\timeout(async(fn() => $this->httpDriver->stop()), $timeout));
+            await(Promise\timeout(async(fn () => $this->httpDriver->stop()), $timeout));
         } finally {
             $this->close();
         }
@@ -322,9 +321,9 @@ final class RemoteClient implements Client
 
     private function clear(): void
     {
-        unset($this->httpDriver);
-        unset($this->requestParser);
-        unset($this->resume);
+        unset($this->httpDriver, $this->requestParser, $this->resume);
+
+
         $this->paused = true;
 
         if (isset($this->readWatcher)) {
@@ -529,7 +528,7 @@ final class RemoteClient implements Client
             $this->clientAddress->toString()
         )) || true);
 
-        return async(fn() => $this->respond($request, $buffer));
+        return async(fn () => $this->respond($request, $buffer));
     }
 
     /**

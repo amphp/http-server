@@ -8,7 +8,7 @@ use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Message;
 use Amp\Http\Status;
 use League\Uri;
-use function Amp\defer;
+use function Revolt\EventLoop\defer;
 
 final class Response extends Message
 {

@@ -39,12 +39,12 @@ class StackTest extends AsyncTestCase
 
         $response = $stack->handleRequest($request);
 
-        $this->assertSame("ab", $response->getHeader("stack"));
+        self::assertSame("ab", $response->getHeader("stack"));
     }
 
     public function testEmptyMiddlewareSet(): void
     {
         $mock = $this->createMock(RequestHandler::class);
-        $this->assertSame($mock, stack($mock));
+        self::assertSame($mock, stack($mock));
     }
 }

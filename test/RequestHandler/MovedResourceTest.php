@@ -35,8 +35,8 @@ class MovedResourceTest extends AsyncTestCase
 
         $response = $action->handleRequest($request);
 
-        $this->assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
-        $this->assertSame("/new/path", $response->getHeader("location"));
+        self::assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
+        self::assertSame("/new/path", $response->getHeader("location"));
     }
 
     public function testRequestWithQuery(): void
@@ -47,7 +47,7 @@ class MovedResourceTest extends AsyncTestCase
 
         $response = $action->handleRequest($request);
 
-        $this->assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
-        $this->assertSame("/new/path?key=value", $response->getHeader("location"));
+        self::assertSame(Status::MOVED_PERMANENTLY, $response->getStatus());
+        self::assertSame("/new/path?key=value", $response->getHeader("location"));
     }
 }

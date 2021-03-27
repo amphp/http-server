@@ -11,7 +11,7 @@ use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\delay;
+use function Revolt\EventLoop\delay;
 
 class ServerTest extends AsyncTestCase
 {
@@ -43,6 +43,6 @@ class ServerTest extends AsyncTestCase
 
         $server->stop();
 
-        $this->assertSame(Status::NO_CONTENT, $response->getStatus());
+        self::assertSame(Status::NO_CONTENT, $response->getStatus());
     }
 }

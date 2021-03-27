@@ -19,12 +19,12 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\Loop;
 use Amp\PipelineSource;
 use Amp\Promise;
 use Amp\TimeoutException;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
+use Revolt\EventLoop\Loop;
 use function Amp\async;
 use function Amp\await;
 use function Amp\Http\formatDateHeader;
@@ -242,7 +242,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $body = $response->getBody();
             $streamThreshold = $this->options->getStreamThreshold();
 
-            $readPromise = async(fn() => $body->read());
+            $readPromise = async(fn () => $body->read());
 
             while (true) {
                 try {
@@ -256,7 +256,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                         break;
                     }
 
-                    $readPromise = async(fn() => $body->read()); // directly start new read
+                    $readPromise = async(fn () => $body->read()); // directly start new read
                 } catch (TimeoutException $e) {
                     goto flush;
                 } finally {

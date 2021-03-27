@@ -181,7 +181,7 @@ final class Http1Driver implements HttpDriver
         $streamThreshold = $this->options->getStreamThreshold();
 
         try {
-            $readPromise = async(fn() => $body->read());
+            $readPromise = async(fn () => $body->read());
 
             while (true) {
                 try {
@@ -195,7 +195,7 @@ final class Http1Driver implements HttpDriver
                         break;
                     }
 
-                    $readPromise = async(fn() => $body->read()); // directly start new read
+                    $readPromise = async(fn () => $body->read()); // directly start new read
                 } catch (TimeoutException $e) {
                     goto flush;
                 }
@@ -471,7 +471,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 if (isset($headerMap["expect"][0]) && \strtolower($headerMap["expect"][0]) === "100-continue") {
-                    yield async(fn() => $this->write(
+                    yield async(fn () => $this->write(
                         new Request($this->client, $method, $uri, $headerMap, null, $protocol),
                         new Response(Status::CONTINUE, [])
                     ));
@@ -487,7 +487,7 @@ final class Http1Driver implements HttpDriver
                     && false !== $h2cSettings = \base64_decode(\strtr($headerMap["http2-settings"][0], "-_", "+/"), true)
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
-                    yield async(fn() => $this->write(
+                    yield async(fn () => $this->write(
                         new Request($this->client, $method, $uri, $headerMap, null, $protocol),
                         new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
@@ -788,18 +788,18 @@ final class Http1Driver implements HttpDriver
                 $emitter = $this->bodyEmitter;
                 $this->bodyEmitter = null;
                 $emitter->fail($exception ?? new ClientException(
-                        $this->client,
-                        "Client disconnected",
-                        Status::REQUEST_TIMEOUT
-                    ));
+                    $this->client,
+                    "Client disconnected",
+                    Status::REQUEST_TIMEOUT
+                ));
             }
 
             if (isset($trailerDeferred)) {
                 $trailerDeferred->fail($exception ?? new ClientException(
-                        $this->client,
-                        "Client disconnected",
-                        Status::REQUEST_TIMEOUT
-                    ));
+                    $this->client,
+                    "Client disconnected",
+                    Status::REQUEST_TIMEOUT
+                ));
                 $trailerDeferred = null;
             }
         }
@@ -820,7 +820,7 @@ final class Http1Driver implements HttpDriver
         $response->setHeader("connection", "close");
 
         $lastWrite = $this->lastWrite;
-        return $this->lastWrite = async(fn() => $this->send($lastWrite, $response));
+        return $this->lastWrite = async(fn () => $this->send($lastWrite, $response));
     }
 
     /**

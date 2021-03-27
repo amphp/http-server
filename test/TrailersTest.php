@@ -16,8 +16,8 @@ class TrailersTest extends AsyncTestCase
         $trailers = new Trailers($promise, ['fooHeader']);
         $trailers = $trailers->await();
 
-        $this->assertTrue($trailers->hasHeader('fooHeader'));
-        $this->assertSame('barValue', $trailers->getHeader('fooHeader'));
+        self::assertTrue($trailers->hasHeader('fooHeader'));
+        self::assertSame('barValue', $trailers->getHeader('fooHeader'));
     }
 
     public function testHasHeaderReturnsFalseForEmptyArrayValue(): void
@@ -28,7 +28,7 @@ class TrailersTest extends AsyncTestCase
         $this->expectExceptionMessage('Trailers do not contain the expected fields');
 
         $trailers = new Trailers($promise, ['fooHeader']);
-        $this->assertFalse(($trailers->await())->hasHeader('fooHeader'));
+        self::assertFalse(($trailers->await())->hasHeader('fooHeader'));
     }
 
     public function testDisallowedFieldsInConstructor(): void

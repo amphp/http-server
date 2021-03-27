@@ -9,12 +9,12 @@ use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
-use Amp\Loop;
 use Amp\MultiReasonException;
 use Amp\Promise;
 use Amp\Socket;
 use Amp\Socket\Server as SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
+use Revolt\EventLoop\Loop;
 use function Amp\async;
 use function Amp\await;
 
@@ -263,9 +263,9 @@ final class HttpServer
 
         $promises = [];
         foreach ($this->observers as $observer) {
-            async(fn() => $observer->onStart($this, $this->logger, $this->errorHandler));
+            async(fn () => $observer->onStart($this, $this->logger, $this->errorHandler));
         }
-        list($exceptions) = await(Promise\any($promises));
+        [$exceptions] = await(Promise\any($promises));
 
         if (!empty($exceptions)) {
             try {
@@ -406,17 +406,17 @@ final class HttpServer
 
         $promises = [];
         foreach ($this->clients as $client) {
-            $promises[] = async(fn() => $client->stop($timeout));
+            $promises[] = async(fn () => $client->stop($timeout));
         }
 
         await(Promise\any($promises));
 
         $promises = [];
         foreach ($this->observers as $observer) {
-            $promises[] = async(fn() => $observer->onStop($this));
+            $promises[] = async(fn () => $observer->onStop($this));
         }
 
-        list($exceptions) = await(Promise\any($promises));
+        [$exceptions] = await(Promise\any($promises));
 
         \assert($this->logger->debug("Stopped") || true);
         $this->state = self::STOPPED;
