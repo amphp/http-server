@@ -60,7 +60,8 @@
         },
         "files": [
             "src/Middleware/functions.php",
-            "src/functions.php"
+            "src/functions.php",
+            "src/Server.php"
         ]
     },
     "autoload-dev": {
