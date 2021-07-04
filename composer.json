@@ -55,6 +55,10 @@
         {
             "type": "vcs",
             "url": "git@github.com:revolt-php/event-loop.git"
+        },
+        {
+            "type": "vcs",
+            "url": "git@github.com:revolt-php/future.git"
         }
     ],
     "suggest": {
@@ -66,7 +70,8 @@
         },
         "files": [
             "src/Middleware/functions.php",
-            "src/functions.php"
+            "src/functions.php",
+            "src/Server.php"
         ]
     },
     "autoload-dev": {

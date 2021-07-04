@@ -405,18 +405,18 @@ final class HttpServer
         $this->acceptWatcherIds = [];
 
         $promises = [];
+        foreach ($this->observers as $observer) {
+            $promises[] = async(fn() => $observer->onStop($this));
+        }
+
+        list($exceptions) = await(Promise\any($promises));
+
+        $promises = [];
         foreach ($this->clients as $client) {
             $promises[] = async(fn () => $client->stop($timeout));
         }
 
         await(Promise\any($promises));
-
-        $promises = [];
-        foreach ($this->observers as $observer) {
-            $promises[] = async(fn () => $observer->onStop($this));
-        }
-
-        [$exceptions] = await(Promise\any($promises));
 
         \assert($this->logger->debug("Stopped") || true);
         $this->state = self::STOPPED;
