@@ -82,8 +82,6 @@ final class HttpServer
 
     /**
      * @param SocketServer[] $servers
-     * @param RequestHandler $requestHandler
-     * @param PsrLogger      $logger
      * @param Options|null   $options Null creates an Options object with all default options.
      *
      * @throws \Error
@@ -145,8 +143,6 @@ final class HttpServer
     /**
      * Define a custom HTTP driver factory.
      *
-     * @param HttpDriverFactory $driverFactory
-     *
      * @throws \Error If the server has started.
      */
     public function setDriverFactory(HttpDriverFactory $driverFactory): void
@@ -160,8 +156,6 @@ final class HttpServer
 
     /**
      * Define a custom Client factory.
-     *
-     * @param ClientFactory $clientFactory
      *
      * @throws \Error If the server has started.
      */
@@ -177,8 +171,6 @@ final class HttpServer
     /**
      * Set the error handler instance to be used for generating error responses.
      *
-     * @param ErrorHandler $errorHandler
-     *
      * @throws \Error If the server has started.
      */
     public function setErrorHandler(ErrorHandler $errorHandler): void
@@ -192,8 +184,6 @@ final class HttpServer
 
     /**
      * Retrieve the current server state.
-     *
-     * @return int
      */
     public function getState(): int
     {
@@ -202,8 +192,6 @@ final class HttpServer
 
     /**
      * Retrieve the server options object.
-     *
-     * @return Options
      */
     public function getOptions(): Options
     {
@@ -212,8 +200,6 @@ final class HttpServer
 
     /**
      * Retrieve the error handler.
-     *
-     * @return ErrorHandler
      */
     public function getErrorHandler(): ErrorHandler
     {
@@ -222,8 +208,6 @@ final class HttpServer
 
     /**
      * Retrieve the logger.
-     *
-     * @return PsrLogger
      */
     public function getLogger(): PsrLogger
     {
@@ -232,8 +216,6 @@ final class HttpServer
 
     /**
      * Attach an observer.
-     *
-     * @param ServerObserver $observer
      *
      * @throws \Error If the server has started.
      */
@@ -249,7 +231,7 @@ final class HttpServer
     /**
      * Start the server.
      *
-     * @return \Amp\Promise
+     * @return Promise<void>
      */
     public function start(): Promise
     {
