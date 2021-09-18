@@ -4,6 +4,8 @@
 require \dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream\ResourceOutputStream;
+use Amp\CancelledException;
+use Amp\Future;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Request;
@@ -12,12 +14,9 @@ use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
-use Amp\Promise;
 use Amp\Socket;
-use Amp\TimeoutException;
+use Amp\TimeoutCancellationToken;
 use Monolog\Logger;
-use function Amp\async;
-use function Amp\await;
 use function Revolt\EventLoop\trapSignal;
 
 // Used for testing against h2spec (https://github.com/summerwind/h2spec)
@@ -41,10 +40,10 @@ $logger->pushHandler($logHandler);
 $server = new HttpServer($servers, new CallableRequestHandler(static function (Request $request) {
     try {
         // Buffer entire body, but timeout after 100ms.
-        $body = await(Promise\timeout(async(fn () => $request->getBody()->buffer()), 100));
+        $body = Future\spawn(fn () => $request->getBody()->buffer())->join(new TimeoutCancellationToken(0.1));
     } catch (ClientException $exception) {
         // Ignore failure to read body due to RST_STREAM frames.
-    } catch (TimeoutException $exception) {
+    } catch (CancelledException $exception) {
         // Ignore failure to read body tue to timeout.
     }
 
