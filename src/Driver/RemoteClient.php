@@ -83,7 +83,7 @@ final class RemoteClient implements Client
     }
 
     /**
-     * Listen for requests on the client and parse them using the given HTTP driver.
+     * Listen for requests on the client and parse them using the HTTP driver generated from the given factory.
      *
      * @param HttpDriverFactory $driverFactory
      *
@@ -128,7 +128,7 @@ final class RemoteClient implements Client
                 \assert($this->logger->debug(\sprintf(
                         "Exception while handling client %s: %s",
                         $this->socket->getRemoteAddress(),
-                        $this->cleanTlsErrorMessage(\error_get_last()['message'] ?? 'unknown error')
+                        $exception->getMessage()
                     )) || true
                 );
 
@@ -268,11 +268,14 @@ final class RemoteClient implements Client
 
         $this->socket->close();
 
-        if (($this->socket->getLocalAddress()->getHost()[0] ?? "") !== "/") { // no unix domain socket
-            \assert($this->logger->debug("Close {$this->socket->getRemoteAddress()} #{$this->id}") || true);
-        } else {
-            \assert($this->logger->debug("Close connection on {$this->socket->getLocalAddress()} #{$this->id}") || true);
-        }
+        \assert(function (): bool {
+            if (($this->socket->getLocalAddress()->getHost()[0] ?? "") !== "/") { // no unix domain socket
+                $this->logger->debug("Close {$this->socket->getRemoteAddress()} #{$this->id}");
+            } else {
+                $this->logger->debug("Close connection on {$this->socket->getLocalAddress()} #{$this->id}");
+            }
+            return true;
+        });
 
         foreach ($onClose as $callback) {
             defer(fn () => $callback($this));
@@ -383,7 +386,7 @@ final class RemoteClient implements Client
             } else {
                 $response = $this->requestHandler->handleRequest($request);
             }
-        } catch (ClientException $exception) {
+        } catch (ClientException) {
             $this->stop(self::SHUTDOWN_TIMEOUT_ON_ERROR);
             $this->close();
             return;
@@ -483,15 +486,6 @@ final class RemoteClient implements Client
 
             $this->close();
         }
-    }
-
-    private function cleanTlsErrorMessage(string $message): string
-    {
-        $message = \str_replace('stream_socket_enable_crypto(): ', '', $message);
-        $message = \str_replace('SSL operation failed with code ', 'TLS operation failed with code ', $message);
-        $message = \str_replace('. OpenSSL Error messages', '', $message);
-
-        return $message;
     }
 
     private function createLogContext(\Throwable $exception, Request $request): array

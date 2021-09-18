@@ -299,7 +299,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             }
 
             if ($chunk !== null) {
-                if (($buffer ?? "") !== "") {
+                if (isset($buffer) && $buffer !== "") {
                     $this->writeData($buffer, $id);
                 }
                 $error = $error ?? Http2Parser::INTERNAL_ERROR;

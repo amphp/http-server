@@ -15,7 +15,7 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         PsrLogger $logger,
         Options $options
     ): HttpDriver {
-        if ($client->isEncrypted() && $client->getTlsInfo()->getApplicationLayerProtocol() === "h2") {
+        if ($client->getTlsInfo()?->getApplicationLayerProtocol() === "h2") {
             return new Http2Driver($options, $logger);
         }
 
